@@ -86,6 +86,44 @@ ever have found:
 - Some all-day events are entered as one-hour timed events in bare UTC at
   arbitrary minute offsets — a data-entry artefact, not a spec feature.
 
+### Private feeds
+
+A personal calendar's iCal URL is a **bearer credential with no expiry**. Anyone
+holding it can read that calendar forever. Treat it accordingly:
+
+- Never paste it into a chat, an issue, a commit message, or a log.
+- Never record it in the provenance table below. Record the product only.
+- If one has been exposed, rotate it. Google: calendar settings → *Integrate
+  calendar* → **Reset private URLs**. The old URL dies immediately.
+
+The fetch script detects private-looking URLs, refuses to echo them in full, and
+points you at the scrubber.
+
+**Scrub before git ever sees the file:**
+
+```bash
+npm run fixture:scrub -- test/fixtures/real/my-calendar.ics
+```
+
+The scrubber replaces letters with `x` and digits with `9`, and preserves
+everything else byte for byte — punctuation, whitespace, escape sequences,
+zero-width characters, emoji. Because values keep their exact length, RFC 5545
+folding lands on identical octet boundaries and the fixture still exercises the
+unfolding path the way the original did. Summarising or deleting values would
+quietly change the thing under test.
+
+Preserved verbatim, because they *are* the test: `UID`, `RRULE`, `EXDATE`,
+`RDATE`, `RECURRENCE-ID`, `DTSTART`, `DTEND`, `DURATION`, `TZID` parameters,
+`VTIMEZONE` blocks, `SEQUENCE`, `STATUS`, `TRANSP`, property order, folding, and
+CRLF line endings.
+
+Dropped outright, being personal data with no structural interest: `ATTENDEE`,
+`ORGANIZER`, `ATTACH`, `URL`, and any `X-` property whose value contains an
+address or a link.
+
+Then check the result yourself before committing. The scrubber prints the exact
+command; it should output nothing.
+
 ### Adding another feed
 
 ```bash

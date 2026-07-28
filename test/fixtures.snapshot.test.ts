@@ -38,6 +38,15 @@ const CONFIGS: Readonly<Record<string, Partial<FixtureConfig>>> = {
     windowStart: '2026-06-15T00:00:00Z',
     windowEnd: '2026-06-16T00:00:00Z',
   },
+  // A personal Google export, scrubbed. Deliberately a single month rather than
+  // a year: this calendar expands to tens of thousands of instances, and a
+  // snapshot nobody can read is a snapshot nobody reviews. Year-scale coverage
+  // lives in google-feed.test.ts as invariants instead.
+  'real/google-personal.ics': {
+    targetTimezone: 'America/New_York',
+    windowStart: '2026-09-01T00:00:00Z',
+    windowEnd: '2026-10-01T00:00:00Z',
+  },
   // Frederick County MD. Descriptions included so the snapshot records how this
   // producer's HTML-in-DESCRIPTION habit survives parsing.
   'real/fcps-school-district.ics': {

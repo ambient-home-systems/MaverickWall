@@ -13,6 +13,7 @@ declare module 'node:fs' {
     isDirectory(): boolean;
   }
   export function readFileSync(path: string, encoding: 'utf8'): string;
+  export function existsSync(path: string): boolean;
   export function readdirSync(path: string, options: { withFileTypes: true }): Dirent[];
 }
 

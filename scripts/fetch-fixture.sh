@@ -38,7 +38,20 @@ if [ -e "$DEST" ]; then
   exit 1
 fi
 
-echo "==> Fetching $URL"
+# A private feed URL is a bearer credential with no expiry. Never echo it in
+# full: terminal scrollback gets pasted into issues and chat windows.
+MASKED=$(printf '%s' "$URL" | sed -E 's#(private-|secret/|basic/)[A-Za-z0-9_-]{8,}#\1***REDACTED***#g')
+IS_PRIVATE=0
+if printf '%s' "$URL" | grep -qiE 'private-|/secret/|[A-Za-z0-9]{24,}'; then
+  IS_PRIVATE=1
+fi
+
+echo "==> Fetching $MASKED"
+if [ "$IS_PRIVATE" = "1" ]; then
+  echo "    This looks like a private feed URL. It is a credential: anyone"
+  echo "    holding it can read this calendar indefinitely, and it does not"
+  echo "    expire. It will not be echoed in full or written anywhere."
+fi
 # A real User-Agent, because some providers reject blank ones, and because
 # identifying ourselves is the polite thing to do.
 curl -fsSL \
@@ -83,6 +96,18 @@ if [ -n "$TZIDS" ]; then
   echo "    TZIDs seen:"
   echo "$TZIDS" | sed 's/^/      /'
 fi
+if [ "$IS_PRIVATE" = "1" ]; then
+  echo "==> This is a private feed. Scrub it before it goes anywhere near git:"
+  echo
+  echo "      npm run fixture:scrub -- $DEST"
+  echo
+  echo "    Content is replaced with same-length placeholders, so folding and"
+  echo "    every structural property survive intact. Recurrence, timezones,"
+  echo "    overrides and exceptions are exactly what we want to test; titles"
+  echo "    and attendees are not."
+  echo
+fi
+
 echo
 echo "==> Next, two things, both required:"
 echo
@@ -96,7 +121,13 @@ echo "         windowStart: '2026-01-01T00:00:00Z',"
 echo "         windowEnd: '2028-01-01T00:00:00Z',"
 echo "       },"
 echo
-echo "  2. Add a provenance row to test/fixtures/README.md: source URL,"
-echo "     producer, retrieval date, household timezone."
+if [ "$IS_PRIVATE" = "1" ]; then
+  echo "  2. Add a provenance row to test/fixtures/README.md. For the source,"
+  echo "     record the PRODUCT ONLY, never the URL:"
+  echo "       | Source | Google Calendar (private iCal URL, not recorded) |"
+else
+  echo "  2. Add a provenance row to test/fixtures/README.md: source URL,"
+  echo "     producer, retrieval date, household timezone."
+fi
 echo
 echo "Then: npx vitest run   (a new snapshot will be written; read it)"

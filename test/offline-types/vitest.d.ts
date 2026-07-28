@@ -42,6 +42,8 @@ declare module 'vitest' {
     each: EachFn;
     skip: TestFn;
     only: TestFn;
+    skipIf(condition: boolean): TestFn;
+    runIf(condition: boolean): TestFn;
   }
 
   export const it: TestFn;

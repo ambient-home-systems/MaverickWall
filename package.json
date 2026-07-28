@@ -35,7 +35,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "vitest run test/performance.test.ts",
-    "fixture:add": "bash scripts/fetch-fixture.sh"
+    "fixture:add": "bash scripts/fetch-fixture.sh",
+    "fixture:scrub": "node scripts/scrub-fixture.mjs"
   },
   "dependencies": {
     "ical.js": "^2.1.0"
