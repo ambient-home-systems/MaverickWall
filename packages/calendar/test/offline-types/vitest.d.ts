@@ -51,6 +51,8 @@ declare module 'vitest' {
   export const describe: TestFn;
   export function beforeEach(fn: () => void | Promise<void>): void;
   export function afterEach(fn: () => void | Promise<void>): void;
+  export function beforeAll(fn: () => void | Promise<void>): void;
+  export function afterAll(fn: () => void | Promise<void>): void;
 }
 
 declare module 'vitest/config' {
