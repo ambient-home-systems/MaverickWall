@@ -83,3 +83,11 @@ declare class SharedArrayBuffer { constructor(byteLength: number) }
 declare const Atomics: {
   wait(typedArray: Int32Array, index: number, value: number, timeout?: number): string;
 };
+
+declare module 'node:url' {
+  export function fileURLToPath(url: string | URL): string;
+}
+
+interface ImportMeta {
+  url: string;
+}
