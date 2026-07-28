@@ -1,5 +1,38 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`fixture snapshots > real/fcps-school-district.ics 1`] = `
+{
+  "calendarName": "Calendar",
+  "config": {
+    "includeDescription": true,
+    "targetTimezone": "America/New_York",
+    "windowEnd": "2028-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-05-12T04:00:00.000Z -> 2026-05-13T04:00:00.000Z [all-day] (America/New_York) "ES (grades 4-5) Hugh B. Nolan Track & Field Event (rain date 5/19)" desc="ES (grades 4-5) Hugh B. Nolan Track & Field Event (rain date 5/19)"",
+    "2026-05-13T04:00:00.000Z -> 2026-05-14T04:00:00.000Z [all-day] (America/New_York) "Postponed: MS Hugh B. Nolan Track & Field Event (rain date 5/19)" desc="<p>Postponed- rescheduled to Tuesday, May 19.</p>\\n<p>MS Hugh B. Nolan Track &amp; Field Event (rain date 5/19)</p>"",
+    "2026-05-19T04:00:00.000Z -> 2026-05-20T04:00:00.000Z [all-day] (America/New_York) "Hugh B. Nolan Middle School Track Meet" desc="<p>Hugh B. Nolan Middle School Track Meet</p>\\n<p>*Rescheduled due to inclement weather from May 13.</p>"",
+    "2026-09-11T13:49:00.000Z -> 2026-09-11T14:49:00.000Z [timed] (UTC) "Rosh Hoshanah begins at sunset" desc="Rosh Hoshanah begins at sunset"",
+    "2026-09-21T04:00:00.000Z -> 2026-09-22T04:00:00.000Z [all-day] (America/New_York) "Schools closed" desc="Schools closed"",
+    "2026-09-23T04:00:00.000Z -> 2026-09-24T04:00:00.000Z [all-day] (America/New_York) "Autumn begins" desc="<p>Autumn begins</p>"",
+    "2026-10-16T04:00:00.000Z -> 2026-10-17T04:00:00.000Z [all-day] (America/New_York) "Professional Learning Day" desc="Professional Learning Day<br>"",
+    "2026-10-28T04:00:00.000Z -> 2026-10-29T04:00:00.000Z [all-day] (America/New_York) "ES & MS Teacher Conferences" desc="ES &amp; MS Teacher Conferences"",
+    "2026-12-31T05:00:00.000Z -> 2027-01-01T05:00:00.000Z [all-day] (America/New_York) "New Year's Eve" desc="New Year's Eve"",
+    "2027-01-18T05:00:00.000Z -> 2027-01-19T05:00:00.000Z [all-day] (America/New_York) "Martin Luther King, Jr. Day" desc="Martin Luther King, Jr. Day"",
+    "2027-03-10T05:00:00.000Z -> 2027-03-11T05:00:00.000Z [all-day] (America/New_York) "Eid al-Fitr" desc="Eid al-Fitr&nbsp;"",
+    "2027-05-13T04:00:00.000Z -> 2027-05-14T04:00:00.000Z [all-day] (America/New_York) "FCPS Tennis Tournament" @ "Baker Park & FHS" desc="FCPS Tennis Tournament"",
+    "2027-05-31T04:00:00.000Z -> 2027-06-01T04:00:00.000Z [all-day] (America/New_York) "Memorial Day" desc="Memorial Day"",
+    "2027-06-04T04:00:00.000Z -> 2027-06-05T04:00:00.000Z [all-day] (America/New_York) "Last scheduled day of school for students**" desc="<p>Last scheduled day of school for students**</p>\\n<p>**The last scheduled day of school is based on the adopted Board calendar and may change due to inclement weather or other closures. Maryland law requires 180 instructional days. School systems must identify six inclement weather make-up days if a virtual instruction plan has not been approved.</p>"",
+  ],
+  "fixture": "real/fcps-school-district.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 14,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
 exports[`fixture snapshots > synthetic/allday.ics 1`] = `
 {
   "calendarName": null,

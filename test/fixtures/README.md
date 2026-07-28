@@ -41,7 +41,54 @@ The 5000-event feed for requirement 20 is **generated at test time** by
 `test/support/generate-large.ts` rather than committed, because a multi-megabyte
 fixture in git history is a tax on every future clone.
 
-## Real fixtures — not yet supplied
+## Real fixtures
+
+### `real/fcps-school-district.ics`
+
+Frederick County Public Schools, Maryland. Public feed, no scrubbing required.
+
+| | |
+| --- | --- |
+| Source | `https://www.fcps.org/ICalendarHandler?calendarId=74783647` |
+| Producer | `-//ddaysoftware.com//NONSGML DDay.iCal 1.0//EN` |
+| Retrieved | 2026-07-28 |
+| Household timezone | `America/New_York` |
+| Contents | Excerpt. 14 VEVENTs selected verbatim from a ~250-event feed, chosen to cover every quirk found. Byte-for-byte as emitted, including CRLF, folding, and invisible characters. |
+
+Frozen at the retrieval date on purpose: the district edits this calendar
+continuously, so a live fetch would break the snapshot weekly.
+
+**What it caught.** Two real bugs, neither of which the synthetic corpus would
+ever have found:
+
+1. **U+200B in `SUMMARY`.** Two titles begin with a zero-width space, pasted in
+   from a web editor and invisible to whoever typed them. `String.trim()` does
+   not remove it, so those titles sorted under the wrong letter and never
+   compared equal to the identical-looking string beside them. Fixed in
+   `readString`.
+2. **`TZID:US Eastern`.** Neither an IANA name nor a Windows one — a bare form
+   DDay.iCal emits. It resolved to *unknown* and fell back to the target zone.
+   Harmless in this file, since no VEVENT references it, but the same producer
+   is used by municipalities that do. Added to the alias table.
+
+**What it confirmed.** Things designed for that turned out to matter:
+
+- Almost every event is `VALUE=DATE` with exclusive `DTEND`. All-day handling is
+  the dominant correctness concern for this audience, well ahead of recurrence.
+- **The feed contains no `RRULE` at all.** Not one. A district publishes explicit
+  one-off events, so the recurrence engine — the part that took the most care —
+  is not what makes this feed render correctly.
+- Reschedules are modelled as two unrelated events with different UIDs, one
+  retitled `Postponed: …`, rather than as `RECURRENCE-ID` overrides.
+- `DESCRIPTION` carries raw HTML: `<p>`, `<br>`, `&amp;`, `&nbsp;`. We leave it
+  untouched; decoding would corrupt descriptions that legitimately contain those
+  characters, and descriptions are stripped by default anyway.
+- Some all-day events are entered as one-hour timed events in bare UTC at
+  arbitrary minute offsets — a data-entry artefact, not a spec feature.
+
+### Still wanted
+
+
 
 `real/` is empty. These are the exports I'd like, in rough priority order. The
 first four cover most households; the last five are where the interesting bugs

@@ -131,12 +131,23 @@ function readStatus(vevent: Component): EventStatus {
     : 'CONFIRMED';
 }
 
+/**
+ * Zero-width and word-joining characters at the edges of a value.
+ *
+ * Web-based calendar editors paste these in constantly and they are invisible
+ * to whoever typed them. `String.trim()` does not remove them, because they are
+ * not Unicode White_Space, so without this a title silently sorts under the
+ * wrong letter and compares unequal to the identical-looking string next to it.
+ * Interior occurrences are left alone; only the edges are cleaned.
+ */
+const EDGE_NOISE = /^[\s\u200B-\u200D\u2060\uFEFF]+|[\s\u200B-\u200D\u2060\uFEFF]+$/g;
+
 function readString(vevent: Component, name: string): string | undefined {
   const raw = vevent.getFirstPropertyValue(name);
   if (typeof raw !== 'string') return undefined;
   // ical.js already unescapes \, \; \n and unfolds continuation lines.
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  const cleaned = raw.replace(EDGE_NOISE, '');
+  return cleaned.length > 0 ? cleaned : undefined;
 }
 
 function wallClockFromUtcMs(ms: number): WallClock {

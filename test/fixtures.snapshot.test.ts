@@ -38,6 +38,14 @@ const CONFIGS: Readonly<Record<string, Partial<FixtureConfig>>> = {
     windowStart: '2026-06-15T00:00:00Z',
     windowEnd: '2026-06-16T00:00:00Z',
   },
+  // Frederick County MD. Descriptions included so the snapshot records how this
+  // producer's HTML-in-DESCRIPTION habit survives parsing.
+  'real/fcps-school-district.ics': {
+    targetTimezone: 'America/New_York',
+    windowStart: '2026-01-01T00:00:00Z',
+    windowEnd: '2028-01-01T00:00:00Z',
+    includeDescription: true,
+  },
 };
 
 function configFor(fixture: string): FixtureConfig {

@@ -56,6 +56,17 @@ const WINDOWS_TO_IANA: Readonly<Record<string, string>> = {
   'new zealand standard time': 'Pacific/Auckland',
   'utc': 'UTC',
   'coordinated universal time': 'UTC',
+
+  // Bare forms emitted by DDay.iCal and its descendants, seen in the wild on
+  // school district and municipal feeds. Not Windows names, not IANA names.
+  'us eastern': 'America/New_York',
+  'us central': 'America/Chicago',
+  'us mountain': 'America/Denver',
+  'us pacific': 'America/Los_Angeles',
+  'eastern': 'America/New_York',
+  'central': 'America/Chicago',
+  'mountain': 'America/Denver',
+  'pacific': 'America/Los_Angeles',
 };
 
 export type ZoneResolution =

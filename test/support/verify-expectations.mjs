@@ -107,5 +107,19 @@ for (const zone of ['Pacific/Auckland','America/Los_Angeles','Asia/Kolkata','UTC
   check(`R10 ${zone} last touched day`, tz.localDateOf(endMs - 1, zone), '2026-03-15');
 }
 
+
+console.log('== real-feeds.test.ts expectations (FCPS, America/New_York) ==');
+const NYC = 'America/New_York';
+check('FCPS Sep 21 2026 midnight NY', at(2026,9,21,0,0,NYC), '2026-09-21T04:00:00.000Z');
+check('FCPS Sep 23 2026 midnight NY', at(2026,9,23,0,0,NYC), '2026-09-23T04:00:00.000Z');
+check('FCPS Dec 31 2026 midnight NY', at(2026,12,31,0,0,NYC), '2026-12-31T05:00:00.000Z');
+check('FCPS Jan 18 2027 midnight NY', at(2027,1,18,0,0,NYC), '2027-01-18T05:00:00.000Z');
+check('FCPS Mar 10 2027 midnight NY (before DST)', at(2027,3,10,0,0,NYC), '2027-03-10T05:00:00.000Z');
+check('FCPS May 13 2027 midnight NY (after DST)', at(2027,5,13,0,0,NYC), '2027-05-13T04:00:00.000Z');
+check('FCPS May 31 2027 midnight NY', at(2027,5,31,0,0,NYC), '2027-05-31T04:00:00.000Z');
+check('US DST 2027 starts Mar 14', dow(2027,3,14), 'Sun');
+check('NY is UTC-5 on 2027-03-10', offH('2027-03-10T12:00:00Z', NYC), -5);
+check('NY is UTC-4 on 2027-03-15', offH('2027-03-15T12:00:00Z', NYC), -4);
+
 console.log(`\n${pass} checks passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
