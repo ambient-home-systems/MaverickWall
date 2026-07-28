@@ -32,10 +32,20 @@ const MAX_SALVAGE_BLOCKS = 10_000;
 
 class WarningLog {
   private readonly items: CalendarWarning[] = [];
+  private readonly seen = new Set<string>();
 
   add(code: CalendarWarningCode, message: string, uid?: string): void {
+    // Deduplicated. A single event resolves a timezone at least twice, once for
+    // DTSTART and once for DTEND, and every property that fails does so
+    // identically. Without this, a large Outlook feed fills the cap below with
+    // copies of one warning and buries everything else.
+    const key = `${code}|${uid ?? ''}|${message}`;
+    if (this.seen.has(key)) return;
+
     // Bounded so one catastrophic feed cannot exhaust memory or flood logs.
     if (this.items.length >= MAX_WARNINGS) return;
+
+    this.seen.add(key);
     this.items.push(uid === undefined ? { code, message } : { code, message, uid });
   }
 

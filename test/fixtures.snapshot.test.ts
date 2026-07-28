@@ -52,6 +52,19 @@ function configFor(fixture: string): FixtureConfig {
   return { ...DEFAULT_CONFIG, ...CONFIGS[fixture] };
 }
 
+/**
+ * Real fixtures must declare their household timezone explicitly.
+ *
+ * Synthetic fixtures are written against a known zone, so a default is fine.
+ * A real feed inherits whatever zone the household lives in, and quietly
+ * snapshotting it against the wrong one produces a plausible-looking record of
+ * incorrect behaviour — the worst possible outcome for a file whose entire job
+ * is to be read during review.
+ */
+function requiresExplicitConfig(fixture: string): boolean {
+  return fixture.startsWith('real/');
+}
+
 /** One readable line per event. Diffs stay legible when something shifts. */
 function describeEvent(event: NormalizedEvent): string {
   const parts = [
@@ -75,6 +88,16 @@ describe('fixture snapshots', () => {
   it('the corpus is not empty', () => {
     expect(fixtures.length).toBeGreaterThan(0);
   });
+
+  it.each(fixtures.filter(requiresExplicitConfig))(
+    '%s declares its household timezone',
+    (fixture) => {
+      expect(
+        CONFIGS[fixture]?.targetTimezone,
+        `Add a config entry for '${fixture}' in CONFIGS with the household timezone.`,
+      ).toBeTruthy();
+    },
+  );
 
   it.each(fixtures)('%s', (fixture) => {
     const config = configFor(fixture);

@@ -252,6 +252,36 @@ describe('R19 — malformed input returns a typed error and never throws', () =>
   });
 });
 
+describe('warnings', () => {
+  it('reports each distinct problem once, not once per property', () => {
+    // A timezone is resolved for DTSTART and again for DTEND, so an unmapped
+    // zone used to be reported twice per event. On a large corporate feed that
+    // filled the warning cap with copies of a single message.
+    const result = expandRaw('synthetic/windows-timezones.ics');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const keys = result.meta.warnings.map((w) => `${w.code}|${w.uid ?? ''}|${w.message}`);
+    expect(keys).toEqual([...new Set(keys)]);
+  });
+
+  it('still reports the same distinct problems after deduplication', () => {
+    const result = expandRaw('synthetic/windows-timezones.ics');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const uids = result.meta.warnings
+      .filter((w) => w.code === 'WINDOWS_TIMEZONE_MAPPED')
+      .map((w) => w.uid);
+    expect(uids).toEqual([
+      'outlook-eastern@synthetic',
+      'outlook-gmt@synthetic',
+      'mozilla-prefixed@synthetic',
+    ]);
+    expect(result.meta.warnings.some((w) => w.code === 'UNRESOLVED_TIMEZONE')).toBe(true);
+  });
+});
+
 describe('input validation', () => {
   it('rejects an unknown target timezone with a typed error', () => {
     const result = expandCalendar({

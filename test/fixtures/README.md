@@ -53,7 +53,7 @@ Frederick County Public Schools, Maryland. Public feed, no scrubbing required.
 | Producer | `-//ddaysoftware.com//NONSGML DDay.iCal 1.0//EN` |
 | Retrieved | 2026-07-28 |
 | Household timezone | `America/New_York` |
-| Contents | Excerpt. 14 VEVENTs selected verbatim from a ~250-event feed, chosen to cover every quirk found. Byte-for-byte as emitted, including CRLF, folding, and invisible characters. |
+| Contents | Full feed as published, byte-for-byte, including CRLF, folding, and invisible characters. |
 
 Frozen at the retrieval date on purpose: the district edits this calendar
 continuously, so a live fetch would break the snapshot weekly.
@@ -85,6 +85,37 @@ ever have found:
   characters, and descriptions are stripped by default anyway.
 - Some all-day events are entered as one-hour timed events in bare UTC at
   arbitrary minute offsets — a data-entry artefact, not a spec feature.
+
+### Adding another feed
+
+```bash
+npm run fixture:add -- 'https://example.org/calendar.ics' acme-district
+```
+
+The script fetches the feed, refuses anything that is not iCalendar (a dead feed
+URL usually answers with an HTML error page, not a 404), and prints a summary of
+what it found — event count, all-day share, RRULE count, producer, and any TZIDs
+in use. That summary is worth reading before anything else: it tells you what the
+fixture is actually going to exercise.
+
+Then two required steps, which the script reminds you about:
+
+1. **Declare the household timezone** in `CONFIGS` in
+   `test/fixtures.snapshot.test.ts`. This is enforced — a fixture under `real/`
+   with no explicit `targetTimezone` fails the suite rather than quietly
+   snapshotting against a wrong zone. A plausible-looking record of incorrect
+   behaviour is worse than no record.
+2. **Add a provenance row** below: source URL, producer, retrieval date,
+   household timezone.
+
+Run the suite. A new snapshot is written. **Read it before committing** — that
+first read is the entire value of adding the fixture, because it is where you
+find out what the producer actually does.
+
+A note on refetching: most producers stamp `DTSTAMP` and similar with the fetch
+time, so re-fetching an unchanged calendar still shows a diff in the `.ics`. The
+snapshot will not move, because we ignore those fields. If the `.ics` changes and
+the snapshot does not, nothing meaningful changed.
 
 ### Still wanted
 

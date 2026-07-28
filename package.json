@@ -34,7 +34,8 @@
     "verify:expectations": "node --experimental-strip-types test/support/verify-expectations.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bench": "vitest run test/performance.test.ts"
+    "bench": "vitest run test/performance.test.ts",
+    "fixture:add": "bash scripts/fetch-fixture.sh"
   },
   "dependencies": {
     "ical.js": "^2.1.0"
