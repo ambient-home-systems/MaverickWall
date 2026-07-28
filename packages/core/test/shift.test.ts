@@ -5,7 +5,7 @@ import {
   type CalendarPlan,
   type PatternPlan,
   type ShiftType,
-} from '../src/domain/shift.js';
+} from '../src/domain/shift/index.js';
 
 const TYPES: ShiftType[] = [
   { key: 'day', label: 'Day', shortCode: 'D', colorToken: '--s-day', isWorking: true },

@@ -1,4 +1,4 @@
-import { addDays, daysBetween, floorMod, type CivilDate } from '../time/civil.js';
+import { addDays, daysBetween, floorMod, type CivilDate } from '../../time/civil.js';
 
 /**
  * Shift rotation.
@@ -57,7 +57,15 @@ export interface PatternPlan extends PlanBase {
 }
 
 export interface ShiftMatcher {
-  readonly shiftTypeKey: string;
+  /**
+   * Shift type key, or `null` to mean explicitly not working.
+   *
+   * Calendars frequently state rest days outright — "Break Day" — and that is
+   * positive information, not an absence. Matching it to `null` lets a
+   * calendar-derived plan say "definitely off" and stop a lower-priority
+   * pattern plan from filling the day back in.
+   */
+  readonly shiftTypeKey: string | null;
   /** Case-insensitive. A substring test unless `isRegex`. */
   readonly pattern: string;
   readonly isRegex: boolean;
@@ -114,7 +122,11 @@ function byPrecedence(a: ShiftPlan, b: ShiftPlan): number {
   return daysBetween(a.effectiveFrom, b.effectiveFrom);
 }
 
-function matchTitle(matchers: readonly ShiftMatcher[], titles: readonly string[]): string | undefined {
+/** `undefined` means no matcher fired; `null` means one fired and said "off". */
+function matchTitle(
+  matchers: readonly ShiftMatcher[],
+  titles: readonly string[],
+): string | null | undefined {
   for (const matcher of matchers) {
     for (const title of titles) {
       if (matcher.isRegex) {
