@@ -1,0 +1,28 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:Microsoft Exchange Server 2010
+BEGIN:VEVENT
+UID:outlook-eastern@synthetic
+SUMMARY:Authored with a Windows zone name
+DTSTART;TZID=Eastern Standard Time:20260615T090000
+DTEND;TZID=Eastern Standard Time:20260615T100000
+END:VEVENT
+BEGIN:VEVENT
+UID:outlook-gmt@synthetic
+SUMMARY:GMT Standard Time is really Europe/London
+DTSTART;TZID=GMT Standard Time:20260615T090000
+DTEND;TZID=GMT Standard Time:20260615T100000
+END:VEVENT
+BEGIN:VEVENT
+UID:mozilla-prefixed@synthetic
+SUMMARY:Producer-prefixed TZID
+DTSTART;TZID=/mozilla.org/20050126_1/America/Chicago:20260615T090000
+DTEND;TZID=/mozilla.org/20050126_1/America/Chicago:20260615T100000
+END:VEVENT
+BEGIN:VEVENT
+UID:unknown-zone@synthetic
+SUMMARY:Unresolvable TZID falls back to the target zone
+DTSTART;TZID=Middle/Earth:20260615T090000
+DTEND;TZID=Middle/Earth:20260615T100000
+END:VEVENT
+END:VCALENDAR

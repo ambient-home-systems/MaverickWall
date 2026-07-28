@@ -1,0 +1,34 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Maverick Wall//Synthetic Fixture//EN
+BEGIN:VEVENT
+SUMMARY:No UID so this one is dropped
+DTSTART;TZID=America/Chicago:20260601T080000
+DTEND;TZID=America/Chicago:20260601T090000
+END:VEVENT
+BEGIN:VEVENT
+UID:no-dtstart@synthetic
+SUMMARY:No DTSTART so this one is dropped too
+DTEND;TZID=America/Chicago:20260601T090000
+END:VEVENT
+BEGIN:VEVENT
+UID:survivor@synthetic
+SUMMARY:This one is fine and must still appear
+DTSTART;TZID=America/Chicago:20260601T100000
+DTEND;TZID=America/Chicago:20260601T110000
+END:VEVENT
+BEGIN:VEVENT
+UID:bad-rrule@synthetic
+SUMMARY:Nonsense RRULE degrades to a single occurrence
+DTSTART;TZID=America/Chicago:20260602T100000
+DTEND;TZID=America/Chicago:20260602T110000
+RRULE:FREQ=FORTNIGHTLY;COUNT=banana
+END:VEVENT
+BEGIN:VEVENT
+UID:orphan-override@synthetic
+SUMMARY:Override with no master in this file
+RECURRENCE-ID;TZID=America/Chicago:20260603T080000
+DTSTART;TZID=America/Chicago:20260603T140000
+DTEND;TZID=America/Chicago:20260603T150000
+END:VEVENT
+END:VCALENDAR

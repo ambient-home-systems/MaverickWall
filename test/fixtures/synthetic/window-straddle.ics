@@ -1,0 +1,40 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Maverick Wall//Synthetic Fixture//EN
+BEGIN:VEVENT
+UID:straddle-start@synthetic
+SUMMARY:Starts before the window and ends inside it
+DTSTART:20260614T220000Z
+DTEND:20260615T060000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:straddle-end@synthetic
+SUMMARY:Starts inside the window and ends after it
+DTSTART:20260615T220000Z
+DTEND:20260616T060000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:straddle-entirely@synthetic
+SUMMARY:Starts before and ends after the whole window
+DTSTART:20260601T000000Z
+DTEND:20260701T000000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:wholly-before@synthetic
+SUMMARY:Ends before the window opens
+DTSTART:20260610T100000Z
+DTEND:20260610T110000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:wholly-after@synthetic
+SUMMARY:Starts after the window closes
+DTSTART:20260620T100000Z
+DTEND:20260620T110000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:zero-length-inside@synthetic
+SUMMARY:Zero length instant inside the window
+DTSTART:20260615T120000Z
+DTEND:20260615T120000Z
+END:VEVENT
+END:VCALENDAR

@@ -1,0 +1,443 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fixture snapshots > synthetic/allday.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2028-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-02-28T06:00:00.000Z -> 2026-03-01T06:00:00.000Z [all-day] (America/Chicago) "Last day of February"",
+    "2026-03-06T06:00:00.000Z -> 2026-03-10T05:00:00.000Z [all-day] (America/Chicago) "Four days spanning US spring-forward"",
+    "2026-03-15T05:00:00.000Z -> 2026-03-16T05:00:00.000Z [all-day] (America/Chicago) "One day only, exclusive DTEND"",
+    "2026-03-20T05:00:00.000Z -> 2026-03-21T05:00:00.000Z [all-day] (America/Chicago) "One day, DTEND omitted"",
+    "2026-03-31T05:00:00.000Z -> 2026-04-01T05:00:00.000Z [all-day] (America/Chicago) "Last day of March"",
+    "2026-04-15T05:00:00.000Z -> 2026-04-16T05:00:00.000Z [all-day] (America/Chicago) "Annual all-day" #20260415T000000",
+    "2026-12-31T06:00:00.000Z -> 2027-01-01T06:00:00.000Z [all-day] (America/Chicago) "Last day of the year"",
+    "2027-04-15T05:00:00.000Z -> 2027-04-16T05:00:00.000Z [all-day] (America/Chicago) "Annual all-day" #20270415T000000",
+  ],
+  "fixture": "synthetic/allday.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 8,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/cancelled.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T15:00:00.000Z -> 2026-06-01T15:30:00.000Z [timed] (America/Chicago) "Confirmed neighbour"",
+    "2026-06-01T17:00:00.000Z -> 2026-06-01T17:30:00.000Z [timed] (America/Chicago) <TENTATIVE> "Tentative survives"",
+    "2026-06-01T19:00:00.000Z -> 2026-06-01T19:30:00.000Z [timed] (America/Chicago) "No STATUS defaults to confirmed"",
+  ],
+  "fixture": "synthetic/cancelled.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 3,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/dst-europe.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "Europe/Berlin",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-03-25T08:00:00.000Z -> 2026-03-25T08:30:00.000Z [timed] (Europe/Berlin) "Weekly across EU spring-forward 2026-03-29" #20260325T090000",
+    "2026-03-25T09:00:00.000Z -> 2026-03-25T09:30:00.000Z [timed] (Europe/London) "London weekly across the same EU dates" #20260325T090000",
+    "2026-04-01T07:00:00.000Z -> 2026-04-01T07:30:00.000Z [timed] (Europe/Berlin) "Weekly across EU spring-forward 2026-03-29" #20260401T090000",
+    "2026-04-01T08:00:00.000Z -> 2026-04-01T08:30:00.000Z [timed] (Europe/London) "London weekly across the same EU dates" #20260401T090000",
+    "2026-04-08T07:00:00.000Z -> 2026-04-08T07:30:00.000Z [timed] (Europe/Berlin) "Weekly across EU spring-forward 2026-03-29" #20260408T090000",
+    "2026-04-08T08:00:00.000Z -> 2026-04-08T08:30:00.000Z [timed] (Europe/London) "London weekly across the same EU dates" #20260408T090000",
+    "2026-10-21T07:00:00.000Z -> 2026-10-21T07:30:00.000Z [timed] (Europe/Berlin) "Weekly across EU fall-back 2026-10-25" #20261021T090000",
+    "2026-10-28T08:00:00.000Z -> 2026-10-28T08:30:00.000Z [timed] (Europe/Berlin) "Weekly across EU fall-back 2026-10-25" #20261028T090000",
+    "2026-11-04T08:00:00.000Z -> 2026-11-04T08:30:00.000Z [timed] (Europe/Berlin) "Weekly across EU fall-back 2026-10-25" #20261104T090000",
+  ],
+  "fixture": "synthetic/dst-europe.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 9,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/dst-us.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/New_York",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-03-04T14:00:00.000Z -> 2026-03-04T14:30:00.000Z [timed] (America/New_York) "Weekly across US spring-forward 2026-03-08" #20260304T090000",
+    "2026-03-08T06:00:00.000Z -> 2026-03-08T08:00:00.000Z [timed] (America/New_York) "Meeting spanning the spring-forward gap"",
+    "2026-03-11T13:00:00.000Z -> 2026-03-11T13:30:00.000Z [timed] (America/New_York) "Weekly across US spring-forward 2026-03-08" #20260311T090000",
+    "2026-03-18T13:00:00.000Z -> 2026-03-18T13:30:00.000Z [timed] (America/New_York) "Weekly across US spring-forward 2026-03-08" #20260318T090000",
+    "2026-10-28T13:00:00.000Z -> 2026-10-28T13:30:00.000Z [timed] (America/New_York) "Weekly across US fall-back 2026-11-01" #20261028T090000",
+    "2026-11-04T14:00:00.000Z -> 2026-11-04T14:30:00.000Z [timed] (America/New_York) "Weekly across US fall-back 2026-11-01" #20261104T090000",
+    "2026-11-11T14:00:00.000Z -> 2026-11-11T14:30:00.000Z [timed] (America/New_York) "Weekly across US fall-back 2026-11-01" #20261111T090000",
+  ],
+  "fixture": "synthetic/dst-us.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 7,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/empty-calendar.ics 1`] = `
+{
+  "calendarName": "Nothing scheduled",
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [],
+  "fixture": "synthetic/empty-calendar.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 0,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/escaped-text.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "includeDescription": true,
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T13:00:00.000Z -> 2026-06-01T14:00:00.000Z [timed] (America/Chicago) "Pick up milk, eggs, and bread" @ "Aisle 3; back of the store"",
+    "2026-06-02T13:00:00.000Z -> 2026-06-02T14:00:00.000Z [timed] (America/Chicago) "Two line title" @ "Room A\\nBuilding 2" desc="First line\\nSecond line\\nThird line"",
+    "2026-06-03T13:00:00.000Z -> 2026-06-03T14:00:00.000Z [timed] (America/Chicago) "Path is C:\\\\Users\\\\family\\\\calendar"",
+    "2026-06-04T13:00:00.000Z -> 2026-06-04T14:00:00.000Z [timed] (America/Chicago) "Semicolons; commas, newlines\\n and backslashes \\\\ together"",
+  ],
+  "fixture": "synthetic/escaped-text.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 4,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/exdate.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T13:00:00.000Z -> 2026-06-01T13:30:00.000Z [timed] (America/Chicago) "Daily with one skipped day" #20260601T080000",
+    "2026-06-02T13:00:00.000Z -> 2026-06-02T13:30:00.000Z [timed] (America/Chicago) "Daily with one skipped day" #20260602T080000",
+    "2026-06-04T13:00:00.000Z -> 2026-06-04T13:30:00.000Z [timed] (America/Chicago) "Daily with one skipped day" #20260604T080000",
+    "2026-06-05T13:00:00.000Z -> 2026-06-05T13:30:00.000Z [timed] (America/Chicago) "Daily with one skipped day" #20260605T080000",
+    "2026-07-01T13:00:00.000Z -> 2026-07-01T13:30:00.000Z [timed] (America/Chicago) "Daily with two skipped days on one line" #20260701T080000",
+    "2026-07-03T13:00:00.000Z -> 2026-07-03T13:30:00.000Z [timed] (America/Chicago) "Daily with two skipped days on one line" #20260703T080000",
+    "2026-07-05T13:00:00.000Z -> 2026-07-05T13:30:00.000Z [timed] (America/Chicago) "Daily with two skipped days on one line" #20260705T080000",
+    "2026-08-10T05:00:00.000Z -> 2026-08-11T05:00:00.000Z [all-day] (America/Chicago) "All-day series with a skipped date" #20260810T000000",
+    "2026-08-11T05:00:00.000Z -> 2026-08-12T05:00:00.000Z [all-day] (America/Chicago) "All-day series with a skipped date" #20260811T000000",
+    "2026-08-13T05:00:00.000Z -> 2026-08-14T05:00:00.000Z [all-day] (America/Chicago) "All-day series with a skipped date" #20260813T000000",
+  ],
+  "fixture": "synthetic/exdate.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 10,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/floating-times.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-03-04T15:00:00.000Z -> 2026-03-04T15:30:00.000Z [timed] (America/Chicago) "Floating weekly across US spring-forward" #20260304T090000",
+    "2026-03-11T14:00:00.000Z -> 2026-03-11T14:30:00.000Z [timed] (America/Chicago) "Floating weekly across US spring-forward" #20260311T090000",
+    "2026-03-18T14:00:00.000Z -> 2026-03-18T14:30:00.000Z [timed] (America/Chicago) "Floating weekly across US spring-forward" #20260318T090000",
+    "2026-06-14T08:00:00.000Z -> 2026-06-14T09:00:00.000Z [timed] (UTC) "Explicit UTC for contrast"",
+    "2026-06-14T13:00:00.000Z -> 2026-06-14T14:00:00.000Z [timed] (America/Chicago) "No TZID and no Z"",
+  ],
+  "fixture": "synthetic/floating-times.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 5,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/line-folding.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T13:00:00.000Z -> 2026-06-01T14:00:00.000Z [timed] (America/Chicago) "This summary is deliberately longer than seventy-five octets so that it must be folded across a continuation line per RFC 5545 section 3.1" @ "1600 Pennsylvania Avenue Northwest, Washington, DC 20500, United States of America"",
+    "2026-06-02T13:00:00.000Z -> 2026-06-02T14:00:00.000Z [timed] (America/Chicago) "Continuation lines may begin with a horizontal tab rather than a space and must unfold identically"",
+    "2026-06-03T13:00:00.000Z -> 2026-06-03T14:00:00.000Z [timed] (America/Chicago) "One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three"",
+  ],
+  "fixture": "synthetic/line-folding.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 3,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/malformed-garbage.ics 1`] = `
+{
+  "code": "PARSE_FAILED",
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "fixture": "synthetic/malformed-garbage.ics",
+  "message": "The calendar feed could not be parsed.",
+  "outcome": "error",
+}
+`;
+
+exports[`fixture snapshots > synthetic/malformed-html.ics 1`] = `
+{
+  "code": "PARSE_FAILED",
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "fixture": "synthetic/malformed-html.ics",
+  "message": "The calendar feed could not be parsed.",
+  "outcome": "error",
+}
+`;
+
+exports[`fixture snapshots > synthetic/malformed-truncated.ics 1`] = `
+{
+  "code": "PARSE_FAILED",
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "fixture": "synthetic/malformed-truncated.ics",
+  "message": "The calendar feed could not be parsed.",
+  "outcome": "error",
+}
+`;
+
+exports[`fixture snapshots > synthetic/partial-damage.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T15:00:00.000Z -> 2026-06-01T16:00:00.000Z [timed] (America/Chicago) "This one is fine and must still appear"",
+    "2026-06-03T19:00:00.000Z -> 2026-06-03T20:00:00.000Z [timed] (America/Chicago) "Override with no master in this file"",
+  ],
+  "fixture": "synthetic/partial-damage.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 2,
+  "truncated": false,
+  "warnings": [
+    "EVENT_SKIPPED | - | 1 event could not be read and was skipped; the rest of the calendar is unaffected.",
+    "MISSING_UID | - | An event has no UID and was skipped.",
+    "MISSING_DTSTART | no-dtstart@synthetic | An event has no usable DTSTART and was skipped.",
+    "ORPHAN_OVERRIDE | orphan-override@synthetic | A modified occurrence arrived without its parent event; showing it on its own.",
+  ],
+}
+`;
+
+exports[`fixture snapshots > synthetic/rdate.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T13:00:00.000Z -> 2026-06-01T14:00:00.000Z [timed] (America/Chicago) "Weekly plus one extra date" #20260601T080000",
+    "2026-06-08T13:00:00.000Z -> 2026-06-08T14:00:00.000Z [timed] (America/Chicago) "Weekly plus one extra date" #20260608T080000",
+    "2026-06-19T13:00:00.000Z -> 2026-06-19T14:00:00.000Z [timed] (America/Chicago) "Weekly plus one extra date" #20260619T080000",
+    "2026-09-01T17:00:00.000Z -> 2026-09-01T18:00:00.000Z [timed] (America/Chicago) "No RRULE, dates listed explicitly" #20260901T120000",
+    "2026-09-03T17:00:00.000Z -> 2026-09-03T18:00:00.000Z [timed] (America/Chicago) "No RRULE, dates listed explicitly" #20260903T120000",
+    "2026-09-05T17:00:00.000Z -> 2026-09-05T18:00:00.000Z [timed] (America/Chicago) "No RRULE, dates listed explicitly" #20260905T120000",
+  ],
+  "fixture": "synthetic/rdate.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 6,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/recurrence-id-overrides.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T13:00:00.000Z -> 2026-06-01T13:30:00.000Z [timed] (America/Chicago) "Standup" #20260601T080000",
+    "2026-06-02T19:00:00.000Z -> 2026-06-02T19:30:00.000Z [timed] (America/Chicago) "Standup" #20260602T080000",
+    "2026-06-03T13:00:00.000Z -> 2026-06-03T14:00:00.000Z [timed] (America/Chicago) "Standup - retro instead" #20260603T080000",
+    "2026-06-05T13:00:00.000Z -> 2026-06-05T13:30:00.000Z [timed] (America/Chicago) "Standup" #20260605T080000",
+  ],
+  "fixture": "synthetic/recurrence-id-overrides.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 4,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/rrule-comprehensive.ics 1`] = `
+{
+  "calendarName": "RRULE coverage",
+  "config": {
+    "targetTimezone": "America/New_York",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "1997-01-01T00:00:00Z",
+  },
+  "events": [
+    "1997-08-05T13:00:00.000Z -> 1997-08-05T13:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=MO example" #19970805T090000",
+    "1997-08-05T14:00:00.000Z -> 1997-08-05T14:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=SU example" #19970805T100000",
+    "1997-08-10T13:00:00.000Z -> 1997-08-10T13:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=MO example" #19970810T090000",
+    "1997-08-17T14:00:00.000Z -> 1997-08-17T14:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=SU example" #19970817T100000",
+    "1997-08-19T13:00:00.000Z -> 1997-08-19T13:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=MO example" #19970819T090000",
+    "1997-08-19T14:00:00.000Z -> 1997-08-19T14:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=SU example" #19970819T100000",
+    "1997-08-24T13:00:00.000Z -> 1997-08-24T13:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=MO example" #19970824T090000",
+    "1997-08-31T14:00:00.000Z -> 1997-08-31T14:30:00.000Z [timed] (America/New_York) "RFC 5545 WKST=SU example" #19970831T100000",
+    "2026-01-05T14:00:00.000Z -> 2026-01-05T14:30:00.000Z [timed] (America/New_York) "Daily count 3" #20260105T090000",
+    "2026-01-05T16:00:00.000Z -> 2026-01-05T16:30:00.000Z [timed] (America/New_York) "Every other week Mon and Wed" #20260105T110000",
+    "2026-01-06T13:00:00.000Z -> 2026-01-06T13:30:00.000Z [timed] (America/New_York) "Weekly until a UTC instant" #20260106T080000",
+    "2026-01-06T14:00:00.000Z -> 2026-01-06T14:30:00.000Z [timed] (America/New_York) "Daily count 3" #20260106T090000",
+    "2026-01-07T14:00:00.000Z -> 2026-01-07T14:30:00.000Z [timed] (America/New_York) "Daily count 3" #20260107T090000",
+    "2026-01-07T16:00:00.000Z -> 2026-01-07T16:30:00.000Z [timed] (America/New_York) "Every other week Mon and Wed" #20260107T110000",
+    "2026-01-13T13:00:00.000Z -> 2026-01-13T13:30:00.000Z [timed] (America/New_York) "Weekly until a UTC instant" #20260113T080000",
+    "2026-01-15T19:00:00.000Z -> 2026-01-15T19:30:00.000Z [timed] (America/New_York) "Fifteenth of the month" #20260115T140000",
+    "2026-01-19T16:00:00.000Z -> 2026-01-19T16:30:00.000Z [timed] (America/New_York) "Every other week Mon and Wed" #20260119T110000",
+    "2026-01-20T13:00:00.000Z -> 2026-01-20T13:30:00.000Z [timed] (America/New_York) "Weekly until a UTC instant" #20260120T080000",
+    "2026-01-21T16:00:00.000Z -> 2026-01-21T16:30:00.000Z [timed] (America/New_York) "Every other week Mon and Wed" #20260121T110000",
+    "2026-01-27T13:00:00.000Z -> 2026-01-27T13:30:00.000Z [timed] (America/New_York) "Weekly until a UTC instant" #20260127T080000",
+    "2026-01-30T21:00:00.000Z -> 2026-01-30T21:30:00.000Z [timed] (America/New_York) "Last weekday of the month" #20260130T160000",
+    "2026-02-02T16:00:00.000Z -> 2026-02-02T16:30:00.000Z [timed] (America/New_York) "Every other week Mon and Wed" #20260202T110000",
+    "2026-02-04T16:00:00.000Z -> 2026-02-04T16:30:00.000Z [timed] (America/New_York) "Every other week Mon and Wed" #20260204T110000",
+    "2026-02-15T19:00:00.000Z -> 2026-02-15T19:30:00.000Z [timed] (America/New_York) "Fifteenth of the month" #20260215T140000",
+    "2026-02-27T21:00:00.000Z -> 2026-02-27T21:30:00.000Z [timed] (America/New_York) "Last weekday of the month" #20260227T160000",
+    "2026-03-15T18:00:00.000Z -> 2026-03-15T18:30:00.000Z [timed] (America/New_York) "Fifteenth of the month" #20260315T140000",
+    "2026-03-31T20:00:00.000Z -> 2026-03-31T20:30:00.000Z [timed] (America/New_York) "Last weekday of the month" #20260331T160000",
+  ],
+  "fixture": "synthetic/rrule-comprehensive.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 27,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/vtimezone-custom.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-01-15T15:30:00.000Z -> 2026-01-15T16:30:00.000Z [timed] (America/Chicago) "Same TZID in winter"",
+    "2026-06-15T14:30:00.000Z -> 2026-06-15T15:30:00.000Z [timed] (America/Chicago) "References the VTIMEZONE above"",
+  ],
+  "fixture": "synthetic/vtimezone-custom.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 2,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/window-straddle.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2026-06-16T00:00:00Z",
+    "windowStart": "2026-06-15T00:00:00Z",
+  },
+  "events": [
+    "2026-06-01T00:00:00.000Z -> 2026-07-01T00:00:00.000Z [timed] (UTC) "Starts before and ends after the whole window"",
+    "2026-06-14T22:00:00.000Z -> 2026-06-15T06:00:00.000Z [timed] (UTC) "Starts before the window and ends inside it"",
+    "2026-06-15T12:00:00.000Z -> 2026-06-15T12:00:00.000Z [timed] (UTC) "Zero length instant inside the window"",
+    "2026-06-15T22:00:00.000Z -> 2026-06-16T06:00:00.000Z [timed] (UTC) "Starts inside the window and ends after it"",
+  ],
+  "fixture": "synthetic/window-straddle.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 4,
+  "truncated": false,
+  "warnings": [],
+}
+`;
+
+exports[`fixture snapshots > synthetic/windows-timezones.ics 1`] = `
+{
+  "calendarName": null,
+  "config": {
+    "targetTimezone": "America/Chicago",
+    "windowEnd": "2027-01-01T00:00:00Z",
+    "windowStart": "2026-01-01T00:00:00Z",
+  },
+  "events": [
+    "2026-06-15T08:00:00.000Z -> 2026-06-15T09:00:00.000Z [timed] (Europe/London) "GMT Standard Time is really Europe/London"",
+    "2026-06-15T13:00:00.000Z -> 2026-06-15T14:00:00.000Z [timed] (America/New_York) "Authored with a Windows zone name"",
+    "2026-06-15T14:00:00.000Z -> 2026-06-15T15:00:00.000Z [timed] (America/Chicago) "Producer-prefixed TZID"",
+    "2026-06-15T14:00:00.000Z -> 2026-06-15T15:00:00.000Z [timed] (America/Chicago) "Unresolvable TZID falls back to the target zone"",
+  ],
+  "fixture": "synthetic/windows-timezones.ics",
+  "outcome": "ok",
+  "totalBeforeCap": 4,
+  "truncated": false,
+  "warnings": [
+    "WINDOWS_TIMEZONE_MAPPED | outlook-eastern@synthetic | Timezone "Eastern Standard Time" is not an IANA name; treating it as America/New_York.",
+    "WINDOWS_TIMEZONE_MAPPED | outlook-eastern@synthetic | Timezone "Eastern Standard Time" is not an IANA name; treating it as America/New_York.",
+    "WINDOWS_TIMEZONE_MAPPED | outlook-gmt@synthetic | Timezone "GMT Standard Time" is not an IANA name; treating it as Europe/London.",
+    "WINDOWS_TIMEZONE_MAPPED | outlook-gmt@synthetic | Timezone "GMT Standard Time" is not an IANA name; treating it as Europe/London.",
+    "WINDOWS_TIMEZONE_MAPPED | mozilla-prefixed@synthetic | Timezone "/mozilla.org/20050126_1/America/Chicago" is not an IANA name; treating it as America/Chicago.",
+    "WINDOWS_TIMEZONE_MAPPED | mozilla-prefixed@synthetic | Timezone "/mozilla.org/20050126_1/America/Chicago" is not an IANA name; treating it as America/Chicago.",
+    "UNRESOLVED_TIMEZONE | unknown-zone@synthetic | Timezone "Middle/Earth" is unknown; falling back to the target timezone.",
+    "UNRESOLVED_TIMEZONE | unknown-zone@synthetic | Timezone "Middle/Earth" is unknown; falling back to the target timezone.",
+  ],
+}
+`;

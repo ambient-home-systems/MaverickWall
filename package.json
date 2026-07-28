@@ -1,0 +1,49 @@
+{
+  "name": "@maverick-wall/calendar",
+  "version": "0.1.0",
+  "description": "Parse an ICS feed and expand it into concrete, timezone-correct events. Pure TypeScript, no I/O, never throws.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "ics",
+    "icalendar",
+    "rfc5545",
+    "recurrence",
+    "rrule",
+    "timezone",
+    "dst"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:offline": "tsc -p tsconfig.offline.json",
+    "verify:expectations": "node --experimental-strip-types test/support/verify-expectations.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "vitest run test/performance.test.ts"
+  },
+  "dependencies": {
+    "ical.js": "^2.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

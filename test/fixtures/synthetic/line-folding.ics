@@ -1,0 +1,28 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Maverick Wall//Synthetic Fixture//EN
+BEGIN:VEVENT
+UID:folded-summary@synthetic
+SUMMARY:This summary is deliberately longer than seventy-five octets so that i
+ t must be folded across a continuation line per RFC 5545 section 3.1
+DTSTART;TZID=America/Chicago:20260601T080000
+DTEND;TZID=America/Chicago:20260601T090000
+LOCATION:1600 Pennsylvania Avenue Northwest\, Washington\, DC 20500\, United S
+ tates of America
+END:VEVENT
+BEGIN:VEVENT
+UID:folded-tab@synthetic
+SUMMARY:Continuation lines may begin with a horizontal tab rather than a space
+	 and must unfold identically
+DTSTART;TZID=America/Chicago:20260602T080000
+DTEND;TZID=America/Chicago:20260602T090000
+END:VEVENT
+BEGIN:VEVENT
+UID:folded-thrice@synthetic
+SUMMARY:One two three four five six seven eight nine ten eleven twelve thirtee
+ n fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twen
+ ty-two twenty-three
+DTSTART;TZID=America/Chicago:20260603T080000
+DTEND;TZID=America/Chicago:20260603T090000
+END:VEVENT
+END:VCALENDAR
