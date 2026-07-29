@@ -63,3 +63,7 @@ declare module 'vitest' {
 declare module 'vitest/config' {
   export function defineConfig(config: unknown): unknown;
 }
+
+/** Timers, used by tests that need to yield. Not part of core's own surface. */
+declare function setTimeout(handler: (...args: never[]) => void, ms?: number): unknown;
+declare function clearTimeout(handle: unknown): void;

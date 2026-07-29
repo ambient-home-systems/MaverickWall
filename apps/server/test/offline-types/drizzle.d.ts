@@ -77,6 +77,8 @@ declare module 'better-sqlite3' {
       prepare(sql: string): Statement;
       exec(sql: string): Database;
       close(): Database;
+      /** Wraps a function so every statement inside runs in one transaction. */
+      transaction<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R;
       readonly open: boolean;
       readonly name: string;
     }

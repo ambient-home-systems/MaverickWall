@@ -62,3 +62,81 @@ declare module '@maverick-wall/core' {
   export interface Fetcher { fetch(request: FetchRequest): Promise<FetchOutcome> }
   export const FETCH_LIMITS: { ics: number; json: number; image: number };
 }
+
+declare module '@maverick-wall/calendar' {
+  export interface NormalizedEvent {
+    readonly uid: string;
+    readonly recurrenceId?: string;
+    readonly title: string;
+    readonly startUtc: Date;
+    readonly endUtc: Date;
+    readonly allDay: boolean;
+    readonly sourceTzid: string;
+    readonly location?: string;
+    readonly status: 'CONFIRMED' | 'TENTATIVE';
+    readonly isRecurringInstance: boolean;
+    readonly description?: string;
+  }
+  export interface CalendarError { readonly code: string; readonly message: string }
+  export function expandCalendar(input: {
+    readonly icsText: string;
+    readonly targetTimezone: string;
+    readonly windowStart: Date;
+    readonly windowEnd: Date;
+    readonly maxEvents?: number;
+    readonly includeDescription?: boolean;
+  }):
+    | { readonly ok: true; readonly value: NormalizedEvent[]; readonly meta: unknown }
+    | { readonly ok: false; readonly error: CalendarError };
+  export function localDateOf(instantMs: number, timeZone: string): string;
+}
+
+declare module '@maverick-wall/core' {
+  export interface JobRecord {
+    readonly key: string;
+    readonly kind: string;
+    readonly nextRunAt: number;
+    readonly consecutiveFailures: number;
+    readonly runningSince?: number | undefined;
+  }
+  export interface JobFinish {
+    readonly lastRunAt: number;
+    readonly lastDurationMs: number;
+    readonly nextRunAt: number;
+    readonly consecutiveFailures: number;
+    readonly lastError: string | null;
+  }
+  export interface JobStore {
+    due(now: number, staleBefore: number): readonly JobRecord[];
+    claim(key: string, now: number, staleBefore: number): boolean;
+    finish(key: string, update: JobFinish): void;
+  }
+  export interface JobTiming {
+    readonly intervalMs: number;
+    readonly jitterRatio?: number;
+    readonly backoffInitialMs?: number;
+    readonly backoffMaxMs?: number;
+  }
+  export type JobResult =
+    | { readonly status: 'ok' }
+    | { readonly status: 'skipped'; readonly reason: string }
+    | { readonly status: 'failed'; readonly error: string; readonly retryAfterSeconds?: number };
+  export type JobHandler = (job: JobRecord) => Promise<JobResult>;
+  export interface TickReport {
+    readonly considered: number;
+    readonly ran: number;
+    readonly succeeded: number;
+    readonly failed: number;
+    readonly skipped: number;
+  }
+  export function runDueJobs(options: {
+    readonly store: JobStore;
+    readonly handlers: Readonly<Record<string, JobHandler>>;
+    readonly timings: Readonly<Record<string, JobTiming>>;
+    readonly now: number;
+    readonly staleRunMs?: number;
+    readonly random?: () => number;
+    readonly onError?: (key: string, error: unknown) => void;
+  }): Promise<TickReport>;
+  export const DEFAULT_STALE_RUN_MS: number;
+}

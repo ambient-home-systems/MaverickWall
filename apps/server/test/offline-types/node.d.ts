@@ -74,9 +74,12 @@ declare const Buffer: {
   byteLength(value: string, encoding?: string): number;
 };
 
-declare function setTimeout(handler: () => void, ms?: number): { unref(): void };
+declare function setTimeout(handler: (...args: never[]) => void, ms?: number): { unref?(): void };
 declare function clearTimeout(handle: unknown): void;
-declare function setInterval(handler: () => void, ms?: number): { unref(): void };
+declare function setInterval(
+  handler: () => void,
+  ms?: number,
+): { unref?(): void };
 declare function clearInterval(handle: unknown): void;
 
 declare const console: {
