@@ -1,31 +1,27 @@
 /**
  * OFFLINE TYPECHECK SHIM — NOT SHIPPED, NOT AUTHORITATIVE.
  *
- * This file exists so `tsc -p tsconfig.offline.json` can typecheck the package
- * in an environment where node_modules cannot be installed. It is excluded from
- * the build and from the published tarball. Once `ical.js` is installed its own
- * types take precedence and this file must not be on the include path.
+ * Corrected to match what ical.js actually ships: a single default export
+ * carrying the classes, rather than named exports. The named-import form
+ * transpiles and runs fine, which is why the test suite passed for a long time
+ * while `tsc` had never once been run against this package.
  *
- * It is also a precise statement of our dependency surface: this is the *whole*
- * of ical.js that @maverick-wall/calendar touches. Anything not declared here
- * we do not use, which is what keeps a major-version bump auditable.
- *
- * Written against ical.js v2.x named exports. On v1.x the package used a single
- * default export instead, so imports would need adjusting.
+ * This file is also the complete statement of our dependency surface: this is
+ * the whole of ical.js that @maverick-wall/calendar touches.
  */
 declare module 'ical.js' {
-  export interface TimezoneLike {
+  interface TimezoneLike {
     readonly tzid: string;
   }
 
-  export class Timezone implements TimezoneLike {
+  class Timezone implements TimezoneLike {
     readonly tzid: string;
     static readonly utcTimezone: Timezone;
-    /** ical.js's floating-time sentinel. We iterate recurrence against it. */
+    /** ical.js's floating-time sentinel. Recurrence is iterated against it. */
     static readonly localTimezone: Timezone;
   }
 
-  export interface TimeData {
+  interface TimeData {
     year?: number;
     month?: number;
     day?: number;
@@ -35,7 +31,7 @@ declare module 'ical.js' {
     isDate?: boolean;
   }
 
-  export class Time {
+  class Time {
     constructor(data?: TimeData, zone?: Timezone);
     year: number;
     /** 1-12, unlike the JS Date convention. */
@@ -50,29 +46,29 @@ declare module 'ical.js' {
     toString(): string;
   }
 
-  export class Duration {
+  class Duration {
     toSeconds(): number;
   }
 
-  export interface RecurIterator {
+  interface RecurIterator {
     /** Returns the next occurrence, or null when the rule is exhausted. */
     next(): Time | null;
   }
 
-  export class Recur {
+  class Recur {
     static fromString(value: string): Recur;
     iterator(dtstart: Time): RecurIterator;
     toString(): string;
   }
 
-  export class Property {
+  class Property {
     readonly name: string;
     getParameter(name: string): string | string[] | undefined;
     getFirstValue(): unknown;
     getValues(): unknown[];
   }
 
-  export class Component {
+  class Component {
     constructor(jCal: unknown, parent?: Component);
     readonly name: string;
     getFirstProperty(name: string): Property | null;
@@ -82,5 +78,17 @@ declare module 'ical.js' {
   }
 
   /** Throws on malformed input; every call site wraps it. */
-  export function parse(input: string): unknown;
+  function parse(input: string): unknown;
+
+  const ICAL: {
+    Component: typeof Component;
+    Property: typeof Property;
+    Time: typeof Time;
+    Timezone: typeof Timezone;
+    Duration: typeof Duration;
+    Recur: typeof Recur;
+    parse: typeof parse;
+  };
+
+  export default ICAL;
 }

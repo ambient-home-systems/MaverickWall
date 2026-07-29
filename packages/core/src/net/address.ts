@@ -267,16 +267,32 @@ export function isPubliclyRoutable(ip: ParsedIp): boolean {
 }
 
 /**
- * True for addresses on the local network or host.
+ * True for addresses a household might legitimately self-host on.
  *
- * Distinct from "not public": the self-host exception exists so a household can
- * point at Immich or Nextcloud on their own LAN, and that opt-in should permit
- * private ranges without also permitting multicast, broadcast, or reserved
- * space, none of which a calendar feed could plausibly live on.
+ * Deliberately narrower than "not public", and the boundary is worth stating
+ * because getting it wrong is how the self-host exception becomes an SSRF hole.
+ *
+ * Included:
+ *   - RFC 1918 private space. Where Nextcloud, Immich and Home Assistant live,
+ *     including the 172.30.x supervisor address of a Home Assistant add-on.
+ *   - CGNAT space (100.64.0.0/10), because Tailscale uses it and reaching your
+ *     own services over Tailscale is a normal self-hosting pattern.
+ *
+ * Excluded, and each for a reason:
+ *   - **Link-local.** 169.254.0.0/16 holds APIPA addresses, which appear only
+ *     when DHCP has failed and which nobody deliberately serves from. It also
+ *     holds 169.254.169.254, the cloud metadata endpoint that is the single
+ *     most valuable target an SSRF can reach. Permitting "the local network"
+ *     must never permit that.
+ *   - **Loopback.** From inside a container this reaches the container itself,
+ *     which is not a self-hosting scenario, and services bound to loopback are
+ *     written on the assumption that nothing remote can reach them.
+ *   - Multicast, broadcast, reserved and documentation space, none of which a
+ *     calendar feed could plausibly live on.
  */
 export function isLocalNetwork(ip: ParsedIp): boolean {
   const kind = classifyIp(ip);
-  return kind === 'private' || kind === 'loopback' || kind === 'cgnat' || kind === 'link-local';
+  return kind === 'private' || kind === 'cgnat';
 }
 
 /** Render an address for logs and error messages. */

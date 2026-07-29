@@ -1,4 +1,9 @@
-import { Recur, Time, Timezone } from 'ical.js';
+import ICAL from 'ical.js';
+
+// See parse.ts for why the default export is destructured rather than imported
+// by name.
+const { Recur, Time, Timezone } = ICAL;
+type Time = InstanceType<typeof ICAL.Time>;
 import {
   addDaysToWallClock,
   formatWallClockBasic,

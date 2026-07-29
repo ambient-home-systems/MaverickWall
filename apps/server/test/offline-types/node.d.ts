@@ -71,7 +71,13 @@ declare const Buffer: {
   from(data: ArrayBuffer): Buffer;
   concat(list: Buffer[]): Buffer;
   alloc(size: number): Buffer;
+  byteLength(value: string, encoding?: string): number;
 };
+
+declare function setTimeout(handler: () => void, ms?: number): { unref(): void };
+declare function clearTimeout(handle: unknown): void;
+declare function setInterval(handler: () => void, ms?: number): { unref(): void };
+declare function clearInterval(handle: unknown): void;
 
 declare const console: {
   log(...args: unknown[]): void;
@@ -90,4 +96,65 @@ declare module 'node:url' {
 
 interface ImportMeta {
   url: string;
+}
+
+declare module 'node:dns' {
+  export function lookup(
+    hostname: string,
+    options: { all: true; verbatim?: boolean },
+    callback: (err: Error | null, addresses: { address: string; family: number }[]) => void,
+  ): void;
+}
+
+declare module 'node:http' {
+  export interface IncomingMessage {
+    statusCode?: number;
+    headers: Record<string, string | string[] | undefined>;
+    on(event: 'data', listener: (chunk: Buffer) => void): this;
+    on(event: 'end', listener: () => void): this;
+    on(event: 'error', listener: (error: Error) => void): this;
+    resume(): this;
+    destroy(): void;
+  }
+  export interface ClientRequest {
+    on(event: 'timeout', listener: () => void): this;
+    on(event: 'error', listener: (error: Error) => void): this;
+    end(): void;
+    destroy(): void;
+  }
+  export function request(
+    options: Record<string, unknown>,
+    callback: (response: IncomingMessage) => void,
+  ): ClientRequest;
+  export interface ServerResponse {
+    writeHead(status: number, headers?: Record<string, string>): void;
+    write(chunk: string): void;
+    end(body?: string): void;
+  }
+  export interface Server {
+    listen(port: number, host: string, callback: () => void): void;
+    address(): { port: number } | string | null;
+    close(): void;
+  }
+  export function createServer(
+    handler: (req: IncomingMessage & { url?: string }, res: ServerResponse) => void,
+  ): Server;
+}
+
+declare module 'node:https' {
+  import type { ClientRequest, IncomingMessage } from 'node:http';
+  export function request(
+    options: Record<string, unknown>,
+    callback: (response: IncomingMessage) => void,
+  ): ClientRequest;
+}
+
+declare class URL {
+  constructor(url: string, base?: string);
+  hostname: string;
+  href: string;
+  pathname: string;
+  port: string;
+  protocol: string;
+  search: string;
 }

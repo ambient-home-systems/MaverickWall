@@ -63,21 +63,32 @@ declare module 'drizzle-orm/better-sqlite3/migrator' {
 }
 
 declare module 'better-sqlite3' {
-  interface Statement {
-    run(...params: unknown[]): { changes: number; lastInsertRowid: number };
-    get(...params: unknown[]): unknown;
-    all(...params: unknown[]): unknown[];
-    pluck(toggle?: boolean): Statement;
+  // Mirrors the real shape: a constructor merged with a namespace, so the
+  // imported name is not usable as a type on its own.
+  namespace BetterSqlite3 {
+    interface Statement {
+      run(...params: unknown[]): { changes: number; lastInsertRowid: number };
+      get(...params: unknown[]): unknown;
+      all(...params: unknown[]): unknown[];
+      pluck(toggle?: boolean): Statement;
+    }
+    interface Database {
+      pragma(source: string, options?: { simple?: boolean }): unknown;
+      prepare(sql: string): Statement;
+      exec(sql: string): Database;
+      close(): Database;
+      readonly open: boolean;
+      readonly name: string;
+    }
   }
-  export default class Database {
-    constructor(path: string, options?: { readonly?: boolean; fileMustExist?: boolean; timeout?: number });
-    pragma(source: string, options?: { simple?: boolean }): unknown;
-    prepare(sql: string): Statement;
-    exec(sql: string): this;
-    close(): this;
-    readonly open: boolean;
-    readonly name: string;
+  interface DatabaseConstructor {
+    new (
+      path: string,
+      options?: { readonly?: boolean; fileMustExist?: boolean; timeout?: number },
+    ): BetterSqlite3.Database;
   }
+  const Database: DatabaseConstructor;
+  export default Database;
 }
 
 declare module 'drizzle-kit' {

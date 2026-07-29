@@ -1,0 +1,265 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createServer, type Server } from 'node:http';
+import { validateOutboundUrl, type UrlPolicy } from '@maverick-wall/core';
+import { createFetcher } from '../src/net/fetcher.js';
+
+/**
+ * The fetcher against a real HTTP server.
+ *
+ * Redirect chains, streamed size caps and timeouts cannot be proven with a
+ * stub: they are properties of how the socket behaves, not of the code's
+ * shape. So this stands up a server, points the fetcher at it, and makes it
+ * misbehave in the specific ways real feeds do.
+ */
+
+const ICS = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n';
+
+/** Loopback is refused by default, so tests opt in the same way an operator would. */
+const LOOPBACK: UrlPolicy = { allowLoopback: true, allowHttp: true };
+
+let server: Server;
+let base: string;
+const fetcher = createFetcher();
+
+interface Reply {
+  writeHead(status: number, headers?: Record<string, string>): void;
+  write(chunk: string): void;
+  end(body?: string): void;
+}
+interface Ask {
+  headers: Record<string, string | string[] | undefined>;
+}
+const routes: Record<string, (req: Ask, res: Reply) => void> = {};
+
+beforeAll(async () => {
+  server = createServer((req, res) => {
+    const handler = routes[(req.url ?? '').split('?')[0] ?? ''];
+    if (!handler) {
+      res.writeHead(404);
+      res.end('not found');
+      return;
+    }
+    handler(req as unknown as Ask, res as unknown as Reply);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+});
+
+afterAll(() => {
+  server.close();
+});
+
+function get(path: string, extra: Record<string, unknown> = {}) {
+  return fetcher.fetch({
+    url: `${base}${path}`,
+    policy: LOOPBACK,
+    maxBytes: 1024 * 1024,
+    timeoutMs: 2000,
+    ...extra,
+  });
+}
+
+routes['/cal.ics'] = (_req, res) => {
+  res.writeHead(200, {
+    'content-type': 'text/calendar; charset=utf-8',
+    etag: '"abc"',
+    'last-modified': 'Wed, 01 Jul 2026 00:00:00 GMT',
+  });
+  res.end(ICS);
+};
+
+routes['/conditional'] = (req, res) => {
+  if (req.headers['if-none-match'] === '"abc"') {
+    res.writeHead(304, { etag: '"abc"' });
+    res.end();
+  } else {
+    res.writeHead(200, { 'content-type': 'text/calendar' });
+    res.end(ICS);
+  }
+};
+
+routes['/html'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/html' });
+  res.end('<html>404 page</html>');
+};
+
+routes['/huge'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/calendar' });
+  const chunk = 'x'.repeat(64 * 1024);
+  let sent = 0;
+  const timer = setInterval(() => {
+    if (sent++ > 200) {
+      clearInterval(timer);
+      res.end();
+      return;
+    }
+    res.write(chunk);
+  }, 1);
+};
+
+routes['/slow'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/calendar' });
+  setTimeout(() => res.end(ICS), 5000);
+};
+
+routes['/500'] = (_req, res) => {
+  res.writeHead(500);
+  res.end('boom');
+};
+
+routes['/429'] = (_req, res) => {
+  res.writeHead(429, { 'retry-after': '120' });
+  res.end('slow down');
+};
+
+routes['/r1'] = (_req, res) => {
+  res.writeHead(302, { location: '/cal.ics' });
+  res.end();
+};
+
+routes['/loop'] = (_req, res) => {
+  res.writeHead(302, { location: '/loop' });
+  res.end();
+};
+
+routes['/to-metadata'] = (_req, res) => {
+  res.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/' });
+  res.end();
+};
+
+routes['/to-lan'] = (_req, res) => {
+  res.writeHead(302, { location: 'http://192.168.1.50/secret' });
+  res.end();
+};
+
+routes['/echo'] = (req, res) => {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(req.headers));
+};
+
+describe('the policy model', () => {
+  // The distinction that matters: enabling LAN access must never open the
+  // loopback interface, and neither flag may ever open link-local, because
+  // 169.254.169.254 is the cloud metadata endpoint.
+  it.each([
+    ['default', {}],
+    ['LAN opt-in', { allowPrivateNetwork: true, allowHttp: true }],
+    ['loopback opt-in', { allowLoopback: true, allowHttp: true }],
+    ['both', { allowPrivateNetwork: true, allowLoopback: true, allowHttp: true }],
+  ] as [string, UrlPolicy][])('refuses the metadata endpoint under %s', (_label, policy) => {
+    expect(validateOutboundUrl('http://169.254.169.254/latest/meta-data/', policy).ok).toBe(false);
+    expect(validateOutboundUrl('http://[fe80::1]/', policy).ok).toBe(false);
+  });
+
+  it('keeps loopback and LAN as separate decisions', () => {
+    const lan: UrlPolicy = { allowPrivateNetwork: true, allowHttp: true };
+    const loop: UrlPolicy = { allowLoopback: true, allowHttp: true };
+    expect(validateOutboundUrl('http://127.0.0.1/', lan).ok).toBe(false);
+    expect(validateOutboundUrl('http://127.0.0.1/', loop).ok).toBe(true);
+    expect(validateOutboundUrl('http://192.168.1.5/', loop).ok).toBe(false);
+    expect(validateOutboundUrl('http://192.168.1.5/', lan).ok).toBe(true);
+  });
+});
+
+describe('a well-behaved feed', () => {
+  it('returns the body with its caching headers', async () => {
+    const result = await get('/cal.ics', { acceptContentTypes: ['text/calendar'] });
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    expect(result.body).toBe(ICS);
+    expect(result.contentType).toBe('text/calendar');
+    expect(result.etag).toBe('"abc"');
+    expect(result.lastModified).toBe('Wed, 01 Jul 2026 00:00:00 GMT');
+    expect(result.byteSize).toBe(Buffer.byteLength(ICS));
+  });
+
+  it('identifies itself and forwards custom headers', async () => {
+    const result = await get('/echo', { headers: { 'X-Custom': 'yes' } });
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    const sent = JSON.parse(result.body) as Record<string, string>;
+    expect(sent['user-agent']?.startsWith('MaverickWall/')).toBe(true);
+    expect(sent['x-custom']).toBe('yes');
+  });
+});
+
+describe('conditional requests', () => {
+  it('recognises 304 so an unchanged feed costs almost nothing', async () => {
+    const result = await get('/conditional', { conditional: { etag: '"abc"' } });
+    expect(result.status).toBe('not-modified');
+  });
+
+  it('fetches normally without the header', async () => {
+    expect((await get('/conditional')).status).toBe('ok');
+  });
+});
+
+describe('misbehaving servers', () => {
+  it('rejects an HTML error page by content type', async () => {
+    // A dead feed URL answers with an HTML page far more often than it 404s.
+    // Checking the type turns a confusing parse failure into a clear message.
+    const result = await get('/html', { acceptContentTypes: ['text/calendar'] });
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' && result.code).toBe('unacceptable-content-type');
+  });
+
+  it('stops a response that keeps growing', async () => {
+    // Enforced while streaming. Content-Length is a claim, not a promise, and
+    // a hostile server can simply keep sending.
+    const result = await fetcher.fetch({
+      url: `${base}/huge`,
+      policy: LOOPBACK,
+      maxBytes: 256 * 1024,
+      timeoutMs: 4000,
+    });
+    expect(result.status === 'failed' && result.code).toBe('too-large');
+  });
+
+  it('gives up on a server that never answers', async () => {
+    const result = await fetcher.fetch({
+      url: `${base}/slow`,
+      policy: LOOPBACK,
+      maxBytes: 1024,
+      timeoutMs: 300,
+    });
+    expect(result.status === 'failed' && result.code).toBe('timeout');
+  });
+
+  it('reports an HTTP error with its status', async () => {
+    const result = await get('/500');
+    expect(result.status === 'failed' && result.httpStatus).toBe(500);
+  });
+
+  it('honours Retry-After so backoff respects the upstream', async () => {
+    const result = await get('/429');
+    expect(result.status === 'failed' && result.retryAfterSeconds).toBe(120);
+  });
+});
+
+describe('redirects', () => {
+  it('follows one and reports the final URL', async () => {
+    const result = await get('/r1', { acceptContentTypes: ['text/calendar'] });
+    expect(result.status).toBe('ok');
+    expect(result.status === 'ok' && result.finalUrl.endsWith('/cal.ics')).toBe(true);
+  });
+
+  it('stops a redirect loop', async () => {
+    expect((await get('/loop')).status === 'rejected').toBe(true);
+  });
+
+  it('revalidates the target, which is the bypass this closes', async () => {
+    // The standard SSRF bypass: the first request goes somewhere harmless and
+    // the 302 points at the metadata endpoint.
+    const meta = await get('/to-metadata');
+    expect(meta.status).toBe('rejected');
+    expect(meta.status === 'rejected' && meta.code).toBe('redirect-rejected');
+  });
+
+  it('applies the same policy to the target as to the original', async () => {
+    // This source opted into loopback only, so a redirect onto the LAN is
+    // refused even though some other source might be allowed to go there.
+    const lan = await get('/to-lan');
+    expect(lan.status === 'rejected' && lan.code).toBe('redirect-rejected');
+  });
+});

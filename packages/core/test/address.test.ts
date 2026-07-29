@@ -136,15 +136,30 @@ describe('malformed input', () => {
 });
 
 describe('isLocalNetwork', () => {
-  // Deliberately narrower than "not public". The self-host opt-in exists so a
-  // household can reach Immich or Nextcloud on their own LAN. It should not
-  // also unlock multicast, broadcast or reserved space, none of which a
-  // calendar feed could plausibly live on.
+  // The boundary of the self-host exception. Getting this wrong is how the
+  // opt-in becomes an SSRF hole: an earlier version returned true for the
+  // whole of link-local, which meant enabling local network access for a feed
+  // also permitted 169.254.169.254.
   const cases: [string, boolean][] = [
+    // Where self-hosted services actually live.
     ['192.168.1.50', true],
     ['10.0.0.5', true],
-    ['127.0.0.1', true],
-    ['169.254.1.1', true],
+    ['172.16.0.1', true],
+    ['172.30.32.2', true], // Home Assistant supervisor
+    ['100.64.0.1', true], // Tailscale
+    ['fd12:3456::1', true], // IPv6 unique local
+
+    // 169.254.169.254 is the cloud metadata endpoint. Opting into the local
+    // network must never open it, so the whole of link-local stays out.
+    ['169.254.169.254', false],
+    ['169.254.1.1', false],
+    ['fe80::1', false],
+
+    // Loopback reaches the container itself, and services bound to it are
+    // written assuming nothing remote can get there.
+    ['127.0.0.1', false],
+    ['::1', false],
+
     ['8.8.8.8', false],
     ['224.0.0.1', false],
     ['255.255.255.255', false],

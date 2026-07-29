@@ -1,4 +1,17 @@
-import { Component, Property, Time, parse as icalParse } from 'ical.js';
+import ICAL from 'ical.js';
+
+/**
+ * ical.js ships a single default export rather than named ones.
+ *
+ * Instance types are derived with `InstanceType` rather than referenced
+ * directly, because that works whether the package declares its classes in a
+ * namespace or as plain constructor values — and the answer has changed
+ * between major versions.
+ */
+const { Component, Property, Time, parse: icalParse } = ICAL;
+type Component = InstanceType<typeof ICAL.Component>;
+type Property = InstanceType<typeof ICAL.Property>;
+type Time = InstanceType<typeof ICAL.Time>;
 import { resolveTzid } from './zoneAliases.js';
 import { addDaysToWallClock } from './timezone.js';
 import type {

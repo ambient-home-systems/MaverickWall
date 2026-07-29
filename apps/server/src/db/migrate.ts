@@ -1,8 +1,8 @@
-import type Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { join } from 'node:path';
 import { withLock } from './lock.js';
+import type { SqliteDatabase } from './open.js';
 
 /**
  * Migrations, run on boot, behind a file lock.
@@ -43,7 +43,7 @@ export function lockPath(dataDir: string): string {
  * Never throws. Every outcome is a value the boot sequence can report on
  * screen, because that is the only channel to a household that has no terminal.
  */
-export function runMigrations(db: Database, options: MigrateOptions): MigrationOutcome {
+export function runMigrations(db: SqliteDatabase, options: MigrateOptions): MigrationOutcome {
   const path = lockPath(options.dataDir);
 
   const held = withLock(

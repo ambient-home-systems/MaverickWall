@@ -3,6 +3,16 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
+ * The instance type of a better-sqlite3 connection.
+ *
+ * The package exports a constructor merged with a namespace, so the imported
+ * name is not usable as a type on its own. Deriving it with `InstanceType`
+ * works regardless of how the declarations are shaped, which matters because
+ * that shape differs between the bundled types and @types/better-sqlite3.
+ */
+export type SqliteDatabase = InstanceType<typeof Database>;
+
+/**
  * Opening the database.
  *
  * Every pragma here is deliberate and every one of them has to be re-applied on
@@ -19,7 +29,7 @@ export interface OpenOptions {
 }
 
 export interface OpenResult {
-  readonly db: Database;
+  readonly db: SqliteDatabase;
   readonly path: string;
   /** Pragmas that did not take, for the diagnostics overlay. */
   readonly warnings: readonly string[];
@@ -78,7 +88,7 @@ export function openDatabase(options: OpenOptions): OpenResult {
  * Cheap, and it keeps the query planner's statistics current as the events
  * cache turns over. Failure is never worth surfacing.
  */
-export function optimize(db: Database): void {
+export function optimize(db: SqliteDatabase): void {
   try {
     db.pragma('optimize');
   } catch {
@@ -94,7 +104,7 @@ export function optimize(db: Database): void {
  * window. Rule eleven: assume nobody can reach this machine to fix anything, so
  * restoring has to be copying one file back.
  */
-export function backupTo(db: Database, destination: string): void {
+export function backupTo(db: SqliteDatabase, destination: string): void {
   // Parameter binding is not available for VACUUM INTO, so the path is quoted
   // by doubling single quotes. Destinations are constructed by us from a
   // timestamp, never from user input.
@@ -103,7 +113,7 @@ export function backupTo(db: Database, destination: string): void {
 }
 
 /** Integrity check, surfaced in diagnostics rather than run on every boot. */
-export function integrityCheck(db: Database): { ok: boolean; detail: string } {
+export function integrityCheck(db: SqliteDatabase): { ok: boolean; detail: string } {
   try {
     const result = String(db.pragma('integrity_check', { simple: true }));
     return { ok: result === 'ok', detail: result };
