@@ -242,3 +242,27 @@ describe('maintenance', () => {
     expect(existsSync(path)).toBe(true);
   });
 });
+
+describe('bootstrap', () => {
+  it('creates the schema from nothing, so a CLI can run before the server', async () => {
+    // The bug this pins: the command line tools opened the database and assumed
+    // the server had already migrated it. Adding a calendar source before the
+    // first boot — the order the setup instructions suggest — then failed with
+    // "no such table".
+    const { openAndMigrate } = await import('../src/db/bootstrap.js');
+    const dataDir = scratch();
+    const { db, migration } = openAndMigrate(dataDir);
+    expect(migration.status).toBe('current');
+    const row = db
+      .prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name='calendar_sources'")
+      .get() as { n: number };
+    expect(row.n).toBe(1);
+  });
+
+  it('is safe to run twice, as two entry points would', async () => {
+    const { openAndMigrate } = await import('../src/db/bootstrap.js');
+    const dataDir = scratch();
+    expect(openAndMigrate(dataDir).migration.status).toBe('current');
+    expect(openAndMigrate(dataDir).migration.status).toBe('current');
+  });
+});

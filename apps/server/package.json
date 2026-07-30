@@ -14,7 +14,8 @@
     "start": "node dist/main.js",
     "dev": "tsc -p tsconfig.json && node dist/main.js",
     "add-source": "node dist/tools/add-source.js",
-    "add-screen": "node dist/tools/add-screen.js"
+    "add-screen": "node dist/tools/add-screen.js",
+    "diagnose": "node dist/tools/diagnose-source.js"
   },
   "dependencies": {
     "@maverick-wall/calendar": "workspace:*",

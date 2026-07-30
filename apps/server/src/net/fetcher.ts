@@ -1,3 +1,4 @@
+import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import { lookup as dnsLookup } from 'node:dns';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -186,6 +187,53 @@ function pinnedLookup(addresses: readonly ResolvedAddress[]) {
   };
 }
 
+/**
+ * Decompress a response body.
+ *
+ * Announcing `accept-encoding` without decoding the result is a silent
+ * corruption: `node:http` does not decompress, and calling `toString('utf8')`
+ * on gzip bytes destroys them irreversibly — the magic number 1f 8b becomes
+ * 1f ef bf bd and nothing downstream can tell what happened. It surfaced as a
+ * calendar that would not parse, with no indication why.
+ *
+ * `maxOutputLength` is the defence against a compression bomb: a few hundred
+ * kilobytes that expand to gigabytes. Capping only the compressed size would
+ * not help, because the whole point of the attack is the ratio.
+ */
+function decodeBody(
+  raw: Buffer,
+  encoding: string | undefined,
+  maxBytes: number,
+): { ok: true; body: Buffer } | { ok: false; reason: 'too-large' | 'corrupt' } {
+  const scheme = (encoding ?? '').trim().toLowerCase();
+  if (scheme === '' || scheme === 'identity') return { ok: true, body: raw };
+
+  try {
+    const options = { maxOutputLength: maxBytes };
+    if (scheme === 'gzip' || scheme === 'x-gzip') {
+      return { ok: true, body: gunzipSync(raw, options) };
+    }
+    if (scheme === 'deflate') {
+      return { ok: true, body: inflateSync(raw, options) };
+    }
+    if (scheme === 'br') {
+      // Not advertised, but honoured if a server sends it anyway.
+      return { ok: true, body: brotliDecompressSync(raw, options) };
+    }
+  } catch (error) {
+    // Distinguished by error code rather than message text. Node reports an
+    // exceeded maxOutputLength as ERR_BUFFER_TOO_LARGE and malformed input as
+    // Z_DATA_ERROR; matching on wording would break on a Node upgrade and, more
+    // to the point, was already wrong.
+    const code = (error as NodeJS.ErrnoException).code;
+    return { ok: false, reason: code === 'ERR_BUFFER_TOO_LARGE' ? 'too-large' : 'corrupt' };
+  }
+
+  // An encoding we do not understand. Better to say so than to hand the caller
+  // bytes it will misread as text.
+  return { ok: false, reason: 'corrupt' };
+}
+
 function mediaType(contentType: string | undefined): string {
   return (contentType ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
 }
@@ -324,16 +372,40 @@ async function performRequest(
         });
 
         response.on('end', () => {
+          const decoded = decodeBody(
+            Buffer.concat(chunks),
+            headerValue(response.headers['content-encoding']),
+            request.maxBytes,
+          );
+
+          if (!decoded.ok) {
+            finish({
+              kind: 'done',
+              outcome:
+                decoded.reason === 'too-large'
+                  ? failed(
+                      'too-large',
+                      `The response expands to more than ${Math.round(request.maxBytes / 1024 / 1024)} MB.`,
+                    )
+                  : failed(
+                      'network-error',
+                      'The response was compressed in a way we could not read.',
+                    ),
+            });
+            return;
+          }
+
           const etag = headerValue(response.headers.etag);
           const lastModified = headerValue(response.headers['last-modified']);
           finish({
             kind: 'done',
             outcome: {
               status: 'ok',
-              body: Buffer.concat(chunks).toString('utf8'),
+              body: decoded.body.toString('utf8'),
               contentType: type,
               finalUrl: target.href,
-              byteSize: received,
+              // The decompressed size, which is what a caller cares about.
+              byteSize: decoded.body.length,
               ...(typeof etag === 'string' ? { etag } : {}),
               ...(typeof lastModified === 'string' ? { lastModified } : {}),
             },

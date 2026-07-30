@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { openDatabase } from '../db/open.js';
+import { openAndMigrate } from '../db/bootstrap.js';
 import { formatShortCode, issueDisplayToken } from '../auth/tokens.js';
 
 /**
@@ -18,7 +18,20 @@ import { formatShortCode, issueDisplayToken } from '../auth/tokens.js';
  */
 
 const dataDir = process.env['DATA_DIR'] ?? '/data';
-const { db } = openDatabase({ dataDir });
+
+// See add-source: the schema is this tool's responsibility too, because it may
+// well be the first thing anyone runs.
+const { db, migration, dataDir: resolved } = openAndMigrate(dataDir);
+if (migration.status === 'failed') {
+  console.error('The database schema could not be prepared:');
+  console.error(`  ${migration.error}`);
+  process.exit(1);
+}
+
+// Stated up front. If this is not the database you expected, nothing below is
+// going to behave the way you expect either.
+console.log(`Using ${resolved}`);
+
 const argv = process.argv.slice(2);
 
 if (argv[0] === '--list') {

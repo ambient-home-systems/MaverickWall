@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { DEFAULT_SHIFT_TYPES } from '@maverick-wall/core';
-import { openDatabase, optimize } from './db/open.js';
-import { describeOutcome, runMigrations } from './db/migrate.js';
+import { optimize, type SqliteDatabase } from './db/open.js';
+import { openAndMigrate } from './db/bootstrap.js';
 import { createKeyring, loadOrCreateMasterKey } from './secrets/keyring.js';
 import { createFetcher } from './net/fetcher.js';
 import { createJobStore, ensureJob, removeJobsNotIn } from './jobs/store.js';
@@ -9,7 +9,6 @@ import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createApp } from './http/app.js';
 import { countUsers, readHousehold } from './api/queries.js';
-import { formatShortCode, issueSetupToken } from './auth/tokens.js';
 import type { ManifestNotice } from './api/manifest.js';
 
 /**
@@ -33,27 +32,26 @@ async function main(): Promise<void> {
   const port = Number(env('PORT', '8080'));
   const notices: ManifestNotice[] = [];
 
-  const { db, path, warnings } = openDatabase({ dataDir });
+  const { db, path, dataDir: resolved, migration, warnings } = openAndMigrate(dataDir);
+  console.log(`[boot] data directory ${resolved}`);
   console.log(`[boot] database ${path}`);
+  if (dataDir !== resolved) {
+    // A relative DATA_DIR resolves against the working directory, and
+    // `pnpm --filter` sets that to the package rather than the repository root.
+    console.warn(
+      `[boot] DATA_DIR was relative ("${dataDir}"). Set it to an absolute path ` +
+        'to be sure every tool opens the same database.',
+    );
+  }
   for (const warning of warnings) {
     console.warn(`[boot] ${warning}`);
-    notices.push({ level: 'warn', code: 'storage', message: warning });
-  }
-
-  const outcome = runMigrations(db, {
-    dataDir,
-    migrationsFolder: new URL('../migrations', import.meta.url).pathname,
-  });
-  const migrationMessage = describeOutcome(outcome);
-  if (migrationMessage) {
-    console.warn(`[boot] ${migrationMessage}`);
     notices.push({
-      level: outcome.status === 'failed' ? 'error' : 'warn',
-      code: `migration-${outcome.status}`,
-      message: migrationMessage,
+      level: migration.status === 'failed' ? 'error' : 'warn',
+      code: 'storage',
+      message: warning,
     });
   }
-  if (outcome.status === 'failed') {
+  if (migration.status === 'failed') {
     // Deliberately continues. Whatever schema exists may still be enough to
     // show yesterday's calendar, and that beats a restart loop.
     console.error('[boot] continuing with the schema as it stands');
@@ -97,23 +95,57 @@ async function main(): Promise<void> {
   console.log(`[boot] scheduler started, timezone ${household.timezone}`);
 
   if (countUsers(db) === 0) {
-    // Nobody has a terminal on a wall display and there is no public signup.
-    // The token is short-lived and dies as soon as an account exists, unlike
-    // credentials seeded from the environment which persist for the life of
-    // the container.
-    const setup = issueSetupToken();
+    // The account setup flow does not exist yet, so this deliberately does not
+    // print a link to it. Advertising a URL that answers 404 is worse than
+    // saying plainly what is and is not available: somebody following the
+    // instruction has no way to tell a missing feature from a broken one.
+    const screens = db.prepare('SELECT COUNT(*) AS total FROM screens').get() as { total: number };
     console.log('');
-    console.log('  ┌─────────────────────────────────────────────────────┐');
-    console.log('  │  No account yet. Finish setup within 30 minutes:    │');
-    console.log('  └─────────────────────────────────────────────────────┘');
-    console.log(`     http://<this-host>:${port}/setup?token=${setup.token}`);
-    console.log(`     or enter code:  ${formatShortCode(setup.shortCode)}`);
+    console.log('  No account has been created. The admin interface is not built yet,');
+    console.log('  so use the command line tools for now:');
     console.log('');
+    console.log('    add-source "Family" "<ics-url>"   subscribe to a calendar');
+    console.log('    add-screen "Kitchen"              pair a display');
+    console.log('    add-screen --list                 show paired displays');
+    console.log('');
+    if (screens.total === 0) {
+      console.log('  No displays are paired, so /d/manifest will answer 401.');
+      console.log('');
+    }
   }
 
   const app = createApp({ db, appVersion: APP_VERSION, bootNotices: notices });
   const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
-  console.log(`[boot] listening on http://0.0.0.0:${port}`);
+
+  // Reported only once the socket is actually bound. Announcing it before
+  // binding meant a failed start still claimed to be listening, which is worse
+  // than saying nothing.
+  server.on?.('listening', () => {
+    console.log(`[boot] listening on http://0.0.0.0:${port}`);
+  });
+
+  server.on?.('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      // The likeliest cause by a distance is a previous instance still running,
+      // usually one started before a rebuild. A stack trace here tells nobody
+      // anything they can act on.
+      console.error('');
+      console.error(`  Port ${port} is already in use.`);
+      console.error('');
+      console.error('  Something else is listening there, most likely an older');
+      console.error('  copy of this server. To find and stop it:');
+      console.error('');
+      console.error(`    lsof -ti:${port} | xargs kill`);
+      console.error('');
+      console.error(`  Or choose a different port:  PORT=8081 node dist/main.js`);
+      console.error('');
+    } else {
+      console.error(`[boot] could not listen on ${port}:`, error.message);
+    }
+    scheduler.stop();
+    db.close();
+    process.exit(1);
+  });
 
   const shutdown = (signal: string): void => {
     console.log(`[shutdown] ${signal}`);
@@ -135,7 +167,7 @@ async function main(): Promise<void> {
  * Idempotent, and run on every boot rather than only the first, so a row
  * deleted by accident comes back rather than causing a puzzling empty screen.
  */
-function seedDefaults(db: ReturnType<typeof openDatabase>['db']): void {
+function seedDefaults(db: SqliteDatabase): void {
   const now = Date.now();
   db.prepare(
     `INSERT INTO household_settings (id, created_at, updated_at)
@@ -162,7 +194,7 @@ function seedDefaults(db: ReturnType<typeof openDatabase>['db']): void {
  * seconds out rather than instantly, so a boot that adds several does not fire
  * them all at once.
  */
-function registerJobs(db: ReturnType<typeof openDatabase>['db']): void {
+function registerJobs(db: SqliteDatabase): void {
   const sources = db.prepare('SELECT id FROM calendar_sources WHERE enabled = 1').all() as {
     id: string;
   }[];

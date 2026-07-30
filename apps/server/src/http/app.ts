@@ -205,6 +205,20 @@ export function createApp(deps: AppDeps): Hono {
     );
   });
 
+  app.get('/setup', (c: Context) =>
+    // Not built. Saying so beats a bare 404, which reads as a broken server
+    // rather than an unfinished one.
+    c.json(
+      {
+        error: 'not-implemented',
+        message:
+          'Account setup is not built yet. Use the add-source and add-screen ' +
+          'command line tools, then pair a display at /pair?token=…',
+      },
+      501,
+    ),
+  );
+
   app.notFound((c: Context) => c.json({ error: 'not-found', path: c.req.path }, 404));
 
   app.onError((error: Error, c: Context) => {

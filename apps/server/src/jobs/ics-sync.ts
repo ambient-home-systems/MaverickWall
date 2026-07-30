@@ -250,7 +250,12 @@ export function createIcsSyncHandler(deps: IcsSyncDeps): JobHandler {
 
     if (!expanded.ok) {
       // The feed downloaded but is not usable. Keep what we had.
-      return fail(sourceId, `${expanded.error.message} (${expanded.error.code})`);
+      //
+      // `detail` carries the parser's own complaint and is the only part that
+      // says what was actually wrong. Dropping it, as an earlier version did,
+      // left "The calendar feed could not be parsed" as the entire diagnosis.
+      const detail = expanded.error.detail ? `: ${expanded.error.detail}` : '';
+      return fail(sourceId, `${expanded.error.message} (${expanded.error.code})${detail}`);
     }
 
     const rows = expanded.value.map((event) => toEventRow(event, sourceId, timezone));

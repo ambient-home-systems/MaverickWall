@@ -54,6 +54,7 @@ declare module 'node:os' {
 declare module 'node:path' {
   export function join(...segments: string[]): string;
   export function dirname(path: string): string;
+  export function resolve(...segments: string[]): string;
 }
 
 declare namespace NodeJS {
@@ -83,7 +84,7 @@ declare const Buffer: {
   from(data: string, encoding?: string): Buffer;
   from(data: ArrayBuffer): Buffer;
   concat(list: Buffer[]): Buffer;
-  alloc(size: number): Buffer;
+  alloc(size: number, fill?: number): Buffer;
   byteLength(value: string, encoding?: string): number;
 };
 
@@ -173,4 +174,14 @@ declare class URL {
   port: string;
   protocol: string;
   search: string;
+}
+
+declare module "node:zlib" {
+  interface ZlibOptions { maxOutputLength?: number }
+  export function gunzipSync(data: Buffer, options?: ZlibOptions): Buffer;
+  export function inflateSync(data: Buffer, options?: ZlibOptions): Buffer;
+  export function brotliDecompressSync(data: Buffer, options?: ZlibOptions): Buffer;
+  export function gzipSync(data: Buffer): Buffer;
+  export function deflateSync(data: Buffer): Buffer;
+  export function brotliCompressSync(data: Buffer): Buffer;
 }

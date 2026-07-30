@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib';
 import { validateOutboundUrl, type UrlPolicy } from '@maverick-wall/core';
 import { createFetcher } from '../src/net/fetcher.js';
 
@@ -25,6 +26,8 @@ interface Reply {
   writeHead(status: number, headers?: Record<string, string>): void;
   write(chunk: string): void;
   end(body?: string): void;
+  /** Same as end, typed for binary payloads. */
+  endBuffer(body: Buffer): void;
 }
 interface Ask {
   headers: Record<string, string | string[] | undefined>;
@@ -39,7 +42,9 @@ beforeAll(async () => {
       res.end('not found');
       return;
     }
-    handler(req as unknown as Ask, res as unknown as Reply);
+    const reply = res as unknown as Reply;
+    reply.endBuffer = reply.end as unknown as (body: Buffer) => void;
+    handler(req as unknown as Ask, reply);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
@@ -131,6 +136,31 @@ routes['/to-metadata'] = (_req, res) => {
 routes['/to-lan'] = (_req, res) => {
   res.writeHead(302, { location: 'http://192.168.1.50/secret' });
   res.end();
+};
+
+routes['/gzip'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/calendar', 'content-encoding': 'gzip' });
+  res.endBuffer(gzipSync(Buffer.from(ICS, 'utf8')));
+};
+
+routes['/deflate'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/calendar', 'content-encoding': 'deflate' });
+  res.endBuffer(deflateSync(Buffer.from(ICS, 'utf8')));
+};
+
+routes['/br'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/calendar', 'content-encoding': 'br' });
+  res.endBuffer(brotliCompressSync(Buffer.from(ICS, 'utf8')));
+};
+
+routes['/lying-encoding'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/calendar', 'content-encoding': 'gzip' });
+  res.end(ICS);
+};
+
+routes['/bomb'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/calendar', 'content-encoding': 'gzip' });
+  res.endBuffer(gzipSync(Buffer.alloc(64 * 1024 * 1024, 0x41)));
 };
 
 routes['/echo'] = (req, res) => {
@@ -261,5 +291,36 @@ describe('redirects', () => {
     // refused even though some other source might be allowed to go there.
     const lan = await get('/to-lan');
     expect(lan.status === 'rejected' && lan.code).toBe('redirect-rejected');
+  });
+});
+
+describe('content encoding', () => {
+  // The bug this pins: `accept-encoding` was announced but the response was
+  // never decompressed. `toString('utf8')` on gzip bytes destroys them
+  // irreversibly -- the magic number 1f 8b becomes 1f ef bf bd -- and it
+  // surfaced as a Google Calendar feed that would not parse, with nothing to
+  // indicate why.
+  it.each(['/gzip', '/deflate', '/br'])('decodes %s back to the original', async (path) => {
+    const result = await get(path, { acceptContentTypes: ['text/calendar'] });
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    expect(result.body).toBe(ICS);
+    expect(result.byteSize).toBe(Buffer.byteLength(ICS, 'utf8'));
+  });
+
+  it('refuses a compression bomb rather than expanding it', async () => {
+    // Capping only the compressed size would not help: the ratio is the attack.
+    const result = await fetcher.fetch({
+      url: `${base}/bomb`,
+      policy: LOOPBACK,
+      maxBytes: 1024 * 1024,
+      timeoutMs: 4000,
+    });
+    expect(result.status === 'failed' && result.code).toBe('too-large');
+  });
+
+  it('reports a server that lies about its encoding', async () => {
+    const result = await get('/lying-encoding');
+    expect(result.status).toBe('failed');
   });
 });

@@ -37,7 +37,11 @@ declare module '@hono/node-server' {
     fetch: Hono['fetch'];
     port: number;
     hostname?: string;
-  }): { close(callback?: () => void): void };
+  }): {
+    close(callback?: () => void): void;
+    on?(event: 'listening', listener: () => void): void;
+    on?(event: 'error', listener: (error: NodeJS.ErrnoException) => void): void;
+  };
 }
 
 declare class Response {

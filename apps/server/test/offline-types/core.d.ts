@@ -77,7 +77,11 @@ declare module '@maverick-wall/calendar' {
     readonly isRecurringInstance: boolean;
     readonly description?: string;
   }
-  export interface CalendarError { readonly code: string; readonly message: string }
+  export interface CalendarError {
+    readonly code: string;
+    readonly message: string;
+    readonly detail?: string;
+  }
   export function expandCalendar(input: {
     readonly icsText: string;
     readonly targetTimezone: string;
@@ -86,7 +90,11 @@ declare module '@maverick-wall/calendar' {
     readonly maxEvents?: number;
     readonly includeDescription?: boolean;
   }):
-    | { readonly ok: true; readonly value: NormalizedEvent[]; readonly meta: unknown }
+    | {
+        readonly ok: true;
+        readonly value: NormalizedEvent[];
+        readonly meta: { readonly warnings: readonly { code: string; message: string }[] };
+      }
     | { readonly ok: false; readonly error: CalendarError };
   export function localDateOf(instantMs: number, timeZone: string): string;
 }

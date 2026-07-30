@@ -1,6 +1,6 @@
 import { validateOutboundUrl } from '@maverick-wall/core';
 import { randomBytes } from 'node:crypto';
-import { openDatabase } from '../db/open.js';
+import { openAndMigrate } from '../db/bootstrap.js';
 import { createKeyring, loadOrCreateMasterKey } from '../secrets/keyring.js';
 
 /**
@@ -45,7 +45,21 @@ if (!validated.ok) {
 }
 
 const dataDir = process.env['DATA_DIR'] ?? '/data';
-const { db } = openDatabase({ dataDir });
+
+// Migrate first. A tool that assumes the server has already created the schema
+// breaks the moment someone adds a source before the first boot, which is the
+// order the setup instructions actually suggest.
+const { db, migration, dataDir: resolved } = openAndMigrate(dataDir);
+if (migration.status === 'failed') {
+  console.error('The database schema could not be prepared:');
+  console.error(`  ${migration.error}`);
+  process.exit(1);
+}
+
+// Stated up front. If this is not the database you expected, nothing below is
+// going to behave the way you expect either.
+console.log(`Using ${resolved}`);
+
 const keyring = createKeyring(loadOrCreateMasterKey(dataDir).key);
 
 const id = randomBytes(8).toString('hex');
