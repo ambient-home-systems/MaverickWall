@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   addDays,
   eachDate,
+  matchShiftTitle,
   resolveShifts,
   type CivilDate,
   type ResolvedShift,
@@ -50,9 +51,35 @@ export interface ManifestShift {
   readonly source: string;
 }
 
+/**
+ * A shift belonging to somebody.
+ *
+ * Households have more than one shift worker. Resolving a single timeline —
+ * which an earlier version did — cannot say whose shift it is, and a wall
+ * showing one person's rota while the other's is invisible is worse than showing
+ * neither.
+ */
+export interface ManifestPersonShift extends ManifestShift {
+  readonly personId: string;
+  readonly personName: string;
+  readonly personColor: string;
+}
+
+export interface ManifestPerson {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly hasShiftRotation: boolean;
+}
+
 export interface ManifestDay {
   readonly date: CivilDate;
-  readonly shift?: ManifestShift;
+  /**
+   * One entry per person who has a shift that day, in the order people are
+   * sorted. Empty when nobody does — which is different from the feature being
+   * off, and the display should render those differently.
+   */
+  readonly shifts: readonly ManifestPersonShift[];
   readonly events: readonly ManifestEvent[];
 }
 
@@ -93,6 +120,8 @@ export interface Manifest {
   };
   readonly window: { readonly from: CivilDate; readonly to: CivilDate };
   readonly days: readonly ManifestDay[];
+  /** Everyone the wall knows about, so a legend can be drawn. */
+  readonly people: readonly ManifestPerson[];
   readonly sources: readonly ManifestSourceHealth[];
   /** Empty in the healthy case. Anything here gets a banner on screen. */
   readonly notices: readonly ManifestNotice[];
@@ -137,10 +166,19 @@ export interface HouseholdRow {
   readonly shiftEnabled: number;
 }
 
+export interface PersonRow {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly hasShiftRotation: number;
+  readonly sortOrder: number;
+}
+
 export interface BuildManifestInput {
   readonly household: HouseholdRow;
   readonly events: readonly EventCacheRow[];
   readonly sources: readonly SourceRow[];
+  readonly people: readonly PersonRow[];
   readonly shiftTypes: readonly ShiftType[];
   readonly shiftPlans: readonly ShiftPlan[];
   readonly shiftOverrides: readonly ShiftOverride[];
@@ -217,16 +255,98 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   );
   const colours = new Map(input.sources.map((source) => [source.id, source.color]));
 
-  const shifts = input.household.shiftEnabled === 1
-    ? resolveShifts({
+  const shiftEnabled = input.household.shiftEnabled === 1;
+
+  /**
+   * Event titles per date, so calendar-derived shift plans can see them.
+   *
+   * Without this a `calendar` plan can never fire: it matches on titles, and
+   * the resolver has no other way to learn them.
+   */
+  const titlesByDate = new Map<string, string[]>();
+  if (shiftEnabled) {
+    for (const row of input.events) {
+      for (const date of eachDate(row.startLocalDate, row.endLocalDate)) {
+        const bucket = titlesByDate.get(date) ?? [];
+        bucket.push(row.title);
+        titlesByDate.set(date, bucket);
+      }
+    }
+  }
+
+  /**
+   * Resolved per person, by filtering the plans and overrides that name them.
+   *
+   * Reusing the single-timeline resolver rather than teaching it about people
+   * keeps all the layering logic — override beats calendar beats pattern — in
+   * one tested place, and means a household with one shift worker costs exactly
+   * what it did before.
+   */
+  const people = [...input.people].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  const shiftsByDate = new Map<string, ManifestPersonShift[]>();
+
+  if (shiftEnabled) {
+    for (const person of people) {
+      const plans = input.shiftPlans.filter((plan) => {
+        const owner = (plan as unknown as { personId?: string | null }).personId;
+        // A plan with no owner predates people existing. Attribute it to the
+        // first person rather than dropping it silently.
+        return owner === person.id || (owner == null && person.id === people[0]?.id);
+      });
+      if (plans.length === 0) continue;
+
+      const overrides = input.shiftOverrides.filter((override) => {
+        const owner = (override as unknown as { personId?: string | null }).personId;
+        return owner === person.id || (owner == null && person.id === people[0]?.id);
+      });
+
+      for (const resolved of resolveShifts({
         from,
         to,
-        plans: input.shiftPlans,
-        overrides: input.shiftOverrides,
+        plans,
+        overrides,
         shiftTypes: input.shiftTypes,
+        titlesByDate,
+      })) {
+        const shift = shiftFor(resolved, input.shiftTypes);
+        if (!shift) continue;
+        const bucket = shiftsByDate.get(resolved.date) ?? [];
+        bucket.push({
+          ...shift,
+          personId: person.id,
+          personName: person.name,
+          personColor: person.color,
+        });
+        shiftsByDate.set(resolved.date, bucket);
+      }
+    }
+  }
+
+  /**
+   * Plans that absorb the events they read.
+   *
+   * A feed marking every single day with "Working Day Shift" or "Break Day"
+   * would otherwise fill the agenda with the same fact the day's colour already
+   * carries, and bury the dentist appointment underneath it.
+   */
+  const consuming = shiftEnabled
+    ? input.shiftPlans.filter((plan): plan is Extract<typeof plan, { kind: 'calendar' }> => {
+        const record = plan as unknown as { kind: string; consumesEvents?: boolean };
+        return record.kind === 'calendar' && record.consumesEvents !== false;
       })
     : [];
-  const shiftByDate = new Map(shifts.map((shift) => [shift.date, shift]));
+
+  const isConsumed = (sourceId: string, title: string): boolean =>
+    consuming.some((plan) => {
+      const record = plan as unknown as {
+        calendarSourceId?: string;
+        matchers?: readonly { shiftTypeKey: string | null; pattern: string; isRegex: boolean }[];
+      };
+      if (record.calendarSourceId !== undefined && record.calendarSourceId !== sourceId) {
+        return false;
+      }
+      return matchShiftTitle(record.matchers ?? [], title) !== undefined;
+    });
 
   // Events are bucketed by every local date they touch, so a multi-day trip
   // appears on each of its days rather than only the first. `continues` lets
@@ -234,6 +354,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   const byDate = new Map<string, ManifestEvent[]>();
   for (const row of input.events) {
     if (!visible.has(row.sourceId)) continue;
+    // Read as a shift, so it is not also listed as an appointment.
+    if (isConsumed(row.sourceId, row.title)) continue;
     const span = eachDate(row.startLocalDate, row.endLocalDate);
     const multiDay = span.length > 1;
     for (const date of span) {
@@ -262,8 +384,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       if (a.startsAt !== b.startsAt) return a.startsAt - b.startsAt;
       return a.title.localeCompare(b.title);
     });
-    const shift = shiftFor(shiftByDate.get(date), input.shiftTypes);
-    return shift === undefined ? { date, events } : { date, shift, events };
+    return { date, shifts: shiftsByDate.get(date) ?? [], events };
   });
 
   const theme = {
@@ -285,6 +406,12 @@ export function buildManifest(input: BuildManifestInput): Manifest {
     theme,
     window: { from, to },
     days,
+    people: people.map((person) => ({
+      id: person.id,
+      name: person.name,
+      color: person.color,
+      hasShiftRotation: person.hasShiftRotation === 1,
+    })),
     sources: input.sources.map((source) => ({
       id: source.id,
       name: source.name,

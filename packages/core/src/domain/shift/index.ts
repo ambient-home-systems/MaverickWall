@@ -10,3 +10,4 @@
 export * from './resolve.js';
 export * from './rotation.js';
 export * from './presets.js';
+export * from './titles.js';

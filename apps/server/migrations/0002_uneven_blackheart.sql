@@ -1,0 +1,1 @@
+ALTER TABLE `calendar_sources` ADD `allow_loopback` integer DEFAULT false NOT NULL;

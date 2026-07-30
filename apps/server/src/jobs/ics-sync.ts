@@ -25,6 +25,7 @@ export interface CalendarSourceRow {
   readonly urlEncrypted: string;
   readonly enabled: number;
   readonly allowPrivateNetwork: number;
+  readonly allowLoopback: number;
   readonly allowHttp: number;
   readonly etag: string | null;
   readonly lastModified: string | null;
@@ -112,7 +113,8 @@ export function createIcsSyncHandler(deps: IcsSyncDeps): JobHandler {
 
   const selectSource = deps.db.prepare(
     `SELECT id, name, url_encrypted AS urlEncrypted, enabled,
-            allow_private_network AS allowPrivateNetwork, allow_http AS allowHttp,
+            allow_private_network AS allowPrivateNetwork,
+            allow_loopback AS allowLoopback, allow_http AS allowHttp,
             etag, last_modified AS lastModified,
             consecutive_failures AS consecutiveFailures
        FROM calendar_sources WHERE id = ?`,
@@ -205,6 +207,7 @@ export function createIcsSyncHandler(deps: IcsSyncDeps): JobHandler {
 
     const policy: UrlPolicy = {
       allowPrivateNetwork: source.allowPrivateNetwork === 1,
+      allowLoopback: source.allowLoopback === 1,
       allowHttp: source.allowHttp === 1,
     };
 

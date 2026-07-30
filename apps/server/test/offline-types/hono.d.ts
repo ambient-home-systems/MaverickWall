@@ -53,4 +53,6 @@ declare class Response {
 }
 declare class Request {
   constructor(input: string, init?: { method?: string; headers?: Record<string, string> });
+  readonly url: string;
+  readonly headers: { get(name: string): string | null };
 }

@@ -29,6 +29,7 @@ interface SourceRow {
   readonly name: string;
   readonly urlEncrypted: string;
   readonly allowPrivateNetwork: number;
+  readonly allowLoopback: number;
   readonly allowHttp: number;
 }
 
@@ -36,7 +37,8 @@ const wanted = process.argv[2];
 const sources = db
   .prepare(
     `SELECT id, name, url_encrypted AS urlEncrypted,
-            allow_private_network AS allowPrivateNetwork, allow_http AS allowHttp
+            allow_private_network AS allowPrivateNetwork,
+            allow_loopback AS allowLoopback, allow_http AS allowHttp
        FROM calendar_sources ${wanted ? 'WHERE id = ?' : ''}`,
   )
   .all(...(wanted ? [wanted] : [])) as SourceRow[];
@@ -67,12 +69,16 @@ for (const source of sources) {
   }
   console.log(`  host:        ${host}`);
   console.log(`  path length: ${opened.value.length} characters`);
-  console.log(`  policy:      lan=${source.allowPrivateNetwork === 1} http=${source.allowHttp === 1}`);
+  console.log(
+    `  policy:      lan=${source.allowPrivateNetwork === 1} ` +
+      `loopback=${source.allowLoopback === 1} http=${source.allowHttp === 1}`,
+  );
 
   const response = await fetcher.fetch({
     url: opened.value,
     policy: {
       allowPrivateNetwork: source.allowPrivateNetwork === 1,
+      allowLoopback: source.allowLoopback === 1,
       allowHttp: source.allowHttp === 1,
     },
     maxBytes: FETCH_LIMITS.ics,

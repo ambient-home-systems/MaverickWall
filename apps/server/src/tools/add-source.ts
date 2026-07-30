@@ -19,7 +19,8 @@ import { createKeyring, loadOrCreateMasterKey } from '../secrets/keyring.js';
 function usage(): never {
   console.error('usage: add-source <name> <ics-url> [--allow-lan] [--allow-http]');
   console.error('');
-  console.error('  --allow-lan   permit a private-network address for this source only');
+  console.error('  --allow-lan       permit a private-network address for this source only');
+  console.error('  --allow-loopback  permit 127.0.0.1, for a service on this machine');
   console.error('  --allow-http  permit plain http for this source only');
   process.exit(1);
 }
@@ -33,9 +34,10 @@ const url = positional[1];
 if (!name || !url) usage();
 
 const allowPrivateNetwork = flags.has('--allow-lan');
+const allowLoopback = flags.has('--allow-loopback');
 const allowHttp = flags.has('--allow-http');
 
-const validated = validateOutboundUrl(url, { allowPrivateNetwork, allowHttp });
+const validated = validateOutboundUrl(url, { allowPrivateNetwork, allowLoopback, allowHttp });
 if (!validated.ok) {
   // Rejected before anything is stored, and the message is the same one the
   // admin UI will show.
@@ -67,15 +69,16 @@ const now = Date.now();
 
 db.prepare(
   `INSERT INTO calendar_sources
-     (id, name, url_encrypted, url_host, allow_private_network, allow_http,
-      created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     (id, name, url_encrypted, url_host, allow_private_network, allow_loopback,
+      allow_http, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 ).run(
   id,
   name,
   keyring.encrypt(url, 'calendar-source-url'),
   validated.value.hostname,
   allowPrivateNetwork ? 1 : 0,
+  allowLoopback ? 1 : 0,
   allowHttp ? 1 : 0,
   now,
   now,

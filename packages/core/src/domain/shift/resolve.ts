@@ -66,9 +66,20 @@ export interface ShiftMatcher {
    * pattern plan from filling the day back in.
    */
   readonly shiftTypeKey: string | null;
-  /** Case-insensitive. A substring test unless `isRegex`. */
   readonly pattern: string;
-  readonly isRegex: boolean;
+  /**
+   * How `pattern` is compared. Case-insensitive in every mode.
+   *
+   * `exact` is the right default for titles a person has picked from a list of
+   * what is genuinely in their feed: it cannot surprise them by also matching
+   * something else. `contains` is for feeds that vary their own wording — one
+   * real calendar writes both "Daddy - Working Day Shift" and "Daddy Working -
+   * Day Shift". `regex` is the escape hatch and a poor default for anything
+   * edited in a settings screen.
+   */
+  readonly matchMode?: 'exact' | 'contains' | 'regex';
+  /** @deprecated Use `matchMode`. Retained so stored matchers keep working. */
+  readonly isRegex?: boolean;
 }
 
 /** Derives shifts from event titles on a designated calendar source. */
@@ -77,6 +88,15 @@ export interface CalendarPlan extends PlanBase {
   readonly calendarSourceId: string;
   /** Evaluated in order; first match wins. */
   readonly matchers: readonly ShiftMatcher[];
+  /**
+   * Remove matched events from the agenda.
+   *
+   * On by default in practice, because a feed that marks every single day with
+   * "Working Day Shift" or "Break Day" would otherwise bury the appointments
+   * somebody is actually looking at the wall to find. The shift belongs in the
+   * day's colour; the event has done its job once it has been read.
+   */
+  readonly consumesEvents?: boolean;
 }
 
 export type ShiftPlan = PatternPlan | CalendarPlan;
@@ -122,6 +142,23 @@ function byPrecedence(a: ShiftPlan, b: ShiftPlan): number {
   return daysBetween(a.effectiveFrom, b.effectiveFrom);
 }
 
+/**
+ * Does any matcher claim this title?
+ *
+ * Exported because the manifest needs to ask the question per event, not per
+ * day: a shift plan that derives "Working Day Shift" from a calendar should
+ * also remove that event from the agenda, or the wall lists the same
+ * information twice — once as a day colour and once as an appointment.
+ *
+ * `undefined` means no matcher fired; `null` means one fired and said "off".
+ */
+export function matchShiftTitle(
+  matchers: readonly ShiftMatcher[],
+  title: string,
+): string | null | undefined {
+  return matchTitle(matchers, [title]);
+}
+
 /** `undefined` means no matcher fired; `null` means one fired and said "off". */
 function matchTitle(
   matchers: readonly ShiftMatcher[],
@@ -129,7 +166,11 @@ function matchTitle(
 ): string | null | undefined {
   for (const matcher of matchers) {
     for (const title of titles) {
-      if (matcher.isRegex) {
+      const mode = matcher.matchMode ?? (matcher.isRegex === true ? 'regex' : 'contains');
+      const candidate = title.trim().toLowerCase();
+      const pattern = matcher.pattern.trim().toLowerCase();
+
+      if (mode === 'regex') {
         let re: RegExp;
         try {
           re = new RegExp(matcher.pattern, 'i');
@@ -138,7 +179,9 @@ function matchTitle(
           continue;
         }
         if (re.test(title)) return matcher.shiftTypeKey;
-      } else if (title.toLowerCase().includes(matcher.pattern.toLowerCase())) {
+      } else if (mode === 'exact') {
+        if (candidate === pattern) return matcher.shiftTypeKey;
+      } else if (candidate.includes(pattern)) {
         return matcher.shiftTypeKey;
       }
     }

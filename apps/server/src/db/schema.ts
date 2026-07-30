@@ -215,6 +215,16 @@ export const calendarSources = sqliteTable(
     allowPrivateNetwork: integer('allow_private_network', { mode: 'boolean' })
       .notNull()
       .default(false),
+    /**
+     * Permit the loopback interface, separately from the LAN.
+     *
+     * Home Assistant add-ons reach each other over localhost, and a
+     * `--network host` deployment may have a service bound only to 127.0.0.1.
+     * Kept distinct from `allowPrivateNetwork` so enabling LAN access never
+     * implies it — and neither opens link-local, where the cloud metadata
+     * endpoint lives.
+     */
+    allowLoopback: integer('allow_loopback', { mode: 'boolean' }).notNull().default(false),
     allowHttp: integer('allow_http', { mode: 'boolean' }).notNull().default(false),
 
     /** Conditional GET state, so an unchanged feed costs one 304. */
@@ -352,6 +362,13 @@ export const shiftPlans = sqliteTable(
       onDelete: 'set null',
     }),
     matchers: text('matchers', { mode: 'json' }).$type<unknown[]>(),
+    /**
+     * Remove matched events from the agenda.
+     *
+     * A feed that marks every day with "Working Day Shift" or "Break Day" would
+     * otherwise bury the appointments somebody is looking at the wall to find.
+     */
+    consumesEvents: integer('consumes_events', { mode: 'boolean' }).notNull().default(true),
 
     ...timestamps,
   },

@@ -1,6 +1,6 @@
 import type { ShiftOverride, ShiftPlan, ShiftType } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
-import type { EventCacheRow, HouseholdRow, SourceRow } from './manifest.js';
+import type { EventCacheRow, HouseholdRow, PersonRow, SourceRow } from './manifest.js';
 
 /**
  * Reads for the manifest.
@@ -66,6 +66,16 @@ export function readEvents(db: SqliteDatabase, from: string, to: string): EventC
     .all(from, to) as EventCacheRow[];
 }
 
+export function readPeople(db: SqliteDatabase): PersonRow[] {
+  return db
+    .prepare(
+      `SELECT id, name, color, has_shift_rotation AS hasShiftRotation,
+              sort_order AS sortOrder
+         FROM people ORDER BY sort_order, name`,
+    )
+    .all() as PersonRow[];
+}
+
 export function readShiftTypes(db: SqliteDatabase): ShiftType[] {
   return db
     .prepare(
@@ -90,8 +100,9 @@ export function readShiftPlans(db: SqliteDatabase): ShiftPlan[] {
   return db
     .prepare(
       `SELECT id, name, kind, effective_from AS effectiveFrom, effective_to AS effectiveTo,
-              priority, anchor_date AS anchorDate, cycle,
-              calendar_source_id AS calendarSourceId, matchers
+              priority, person_id AS personId, anchor_date AS anchorDate, cycle,
+              calendar_source_id AS calendarSourceId, matchers,
+              consumes_events AS consumesEvents
          FROM shift_plans ORDER BY priority DESC, effective_from DESC`,
     )
     .all()
@@ -112,6 +123,7 @@ export function readShiftPlans(db: SqliteDatabase): ShiftPlan[] {
         ...record,
         cycle: parse<(string | null)[]>(record['cycle'], []),
         matchers: parse<unknown[]>(record['matchers'], []),
+        consumesEvents: record['consumesEvents'] === 1,
       } as unknown as ShiftPlan;
     });
 }
@@ -119,7 +131,7 @@ export function readShiftPlans(db: SqliteDatabase): ShiftPlan[] {
 export function readShiftOverrides(db: SqliteDatabase, from: string, to: string): ShiftOverride[] {
   return db
     .prepare(
-      `SELECT date, shift_type_key AS shiftTypeKey, note
+      `SELECT date, person_id AS personId, shift_type_key AS shiftTypeKey, note
          FROM shift_overrides WHERE date BETWEEN ? AND ?`,
     )
     .all(from, to) as ShiftOverride[];

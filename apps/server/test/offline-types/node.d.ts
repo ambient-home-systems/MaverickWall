@@ -185,3 +185,14 @@ declare module "node:zlib" {
   export function deflateSync(data: Buffer): Buffer;
   export function brotliCompressSync(data: Buffer): Buffer;
 }
+
+declare namespace Intl {
+  interface DateTimeFormat { format(date: Date): string }
+  interface DateTimeFormatOptions {
+    timeZone?: string; hour12?: boolean;
+    hour?: string; minute?: string; year?: string; month?: string; day?: string;
+  }
+}
+declare const Intl: {
+  DateTimeFormat: new (locale?: string, options?: Intl.DateTimeFormatOptions) => Intl.DateTimeFormat;
+};

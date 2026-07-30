@@ -82,6 +82,12 @@ declare module '@maverick-wall/calendar' {
     readonly message: string;
     readonly detail?: string;
   }
+  export interface ExpansionMeta {
+    readonly warnings: readonly { code: string; message: string }[];
+    readonly truncated: boolean;
+    readonly totalBeforeCap: number;
+    readonly calendarName?: string;
+  }
   export function expandCalendar(input: {
     readonly icsText: string;
     readonly targetTimezone: string;
@@ -93,7 +99,7 @@ declare module '@maverick-wall/calendar' {
     | {
         readonly ok: true;
         readonly value: NormalizedEvent[];
-        readonly meta: { readonly warnings: readonly { code: string; message: string }[] };
+        readonly meta: ExpansionMeta;
       }
     | { readonly ok: false; readonly error: CalendarError };
   export function localDateOf(instantMs: number, timeZone: string): string;
@@ -176,6 +182,10 @@ declare module '@maverick-wall/core' {
     readonly planId?: string;
     readonly note?: string;
   }
+  export function matchShiftTitle(
+    matchers: readonly { shiftTypeKey: string | null; pattern: string; isRegex: boolean }[],
+    title: string,
+  ): string | null | undefined;
   export function resolveShifts(input: {
     readonly from: CivilDate;
     readonly to: CivilDate;
@@ -194,4 +204,50 @@ declare module '@maverick-wall/core' {
     readonly colorToken: string;
     readonly isWorking: boolean;
   }[];
+}
+
+declare module '@maverick-wall/core' {
+  export const DEFAULT_SHIFT_MATCHERS: readonly {
+    readonly shiftTypeKey: string | null;
+    readonly pattern: string;
+    readonly isRegex: boolean;
+  }[];
+  export interface RotationPreset {
+    readonly key: string;
+    readonly name: string;
+    readonly summary: string;
+    readonly cycleDays: number;
+    readonly blocks: readonly unknown[];
+  }
+  export function presetByKey(key: string): RotationPreset | undefined;
+  export function buildRotationCycle(input: {
+    readonly blocks: readonly unknown[];
+    readonly anchorDate: string;
+  }): (string | null)[];
+}
+
+declare module '@maverick-wall/core' {
+  export interface TitleObservation {
+    readonly title: string;
+    readonly dates: readonly string[];
+    readonly allDay: boolean;
+    readonly startTime?: string;
+  }
+  export interface TitleCandidate {
+    readonly title: string;
+    readonly occurrences: number;
+    readonly coverage: number;
+    readonly longestRun: number;
+    readonly blocks: number;
+    readonly allDay: boolean;
+    readonly confidence: 'likely' | 'possible' | 'unlikely';
+    readonly reason: string;
+    readonly suggestedShiftKey: string | null | undefined;
+    readonly distinctStartTimes: number;
+  }
+  export function analyseTitles(input: {
+    readonly observations: readonly TitleObservation[];
+    readonly windowDays: number;
+    readonly minimumCoverage?: number;
+  }): TitleCandidate[];
 }

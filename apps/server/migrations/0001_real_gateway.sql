@@ -1,0 +1,1 @@
+ALTER TABLE `shift_plans` ADD `consumes_events` integer DEFAULT true NOT NULL;

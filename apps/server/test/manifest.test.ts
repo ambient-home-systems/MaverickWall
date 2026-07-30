@@ -6,8 +6,13 @@ import {
   type BuildManifestInput,
   type EventCacheRow,
   type HouseholdRow,
+  type PersonRow,
   type SourceRow,
 } from '../src/api/manifest.js';
+
+const PEOPLE: PersonRow[] = [
+  { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: 1, sortOrder: 0 },
+];
 
 const NOW = Date.parse('2026-09-10T12:00:00Z');
 
@@ -54,6 +59,7 @@ const BASE: BuildManifestInput = {
   household: HOUSEHOLD,
   events: EVENTS,
   sources: SOURCES,
+  people: PEOPLE,
   shiftTypes: SHIFT_TYPES,
   shiftPlans: PLANS,
   shiftOverrides: [],
@@ -125,9 +131,9 @@ describe('events', () => {
 describe('shifts', () => {
   it('resolves a working day and leaves rest days empty', () => {
     const manifest = buildManifest(BASE);
-    expect(dayOf(manifest, '2026-09-13')?.shift?.key).toBe('day');
-    expect(dayOf(manifest, '2026-09-13')?.shift?.source).toBe('pattern');
-    expect(dayOf(manifest, '2026-09-10')?.shift).toBeUndefined();
+    expect(dayOf(manifest, '2026-09-13')?.shifts[0]?.key).toBe('day');
+    expect(dayOf(manifest, '2026-09-13')?.shifts[0]?.source).toBe('pattern');
+    expect(dayOf(manifest, '2026-09-10')?.shifts).toEqual([]);
   });
 
   it('shows an override through to the display', () => {
@@ -135,14 +141,14 @@ describe('shifts', () => {
       ...BASE,
       shiftOverrides: [{ date: '2026-09-10', shiftTypeKey: 'night', note: 'covering' }],
     });
-    expect(dayOf(manifest, '2026-09-10')?.shift?.key).toBe('night');
-    expect(dayOf(manifest, '2026-09-10')?.shift?.source).toBe('override');
+    expect(dayOf(manifest, '2026-09-10')?.shifts[0]?.key).toBe('night');
+    expect(dayOf(manifest, '2026-09-10')?.shifts[0]?.source).toBe('override');
   });
 
   it('emits nothing at all when the feature is off', () => {
     // A household with no shift worker never sees any of it.
     const manifest = buildManifest({ ...BASE, household: { ...HOUSEHOLD, shiftEnabled: 0 } });
-    expect(manifest.days.every((day) => day.shift === undefined)).toBe(true);
+    expect(manifest.days.every((day) => day.shifts.length === 0)).toBe(true);
   });
 });
 
@@ -226,5 +232,162 @@ describe('etag', () => {
 
   it('is quoted, ready for the header', () => {
     expect(manifestEtag(buildManifest(BASE))).toMatch(/^"[0-9a-f]{32}"$/);
+  });
+});
+
+describe('shifts derived from a calendar', () => {
+  // The density problem this solves: a work calendar marks every single day
+  // with "Working Day Shift" or "Break Day". Left in the agenda, those bury the
+  // dentist appointment underneath the same fact the day's colour already says.
+  const WORK_EVENTS: EventCacheRow[] = [
+    { id: 'w1', sourceId: 's1', uid: 'w1', title: 'Daddy - Working Day Shift', location: null, startsAt: NOW, endsAt: NOW + 86_400_000, allDay: 1, startLocalDate: '2026-09-10', endLocalDate: '2026-09-10', status: 'CONFIRMED' },
+    { id: 'w2', sourceId: 's1', uid: 'w2', title: 'Daddy - Break Day', location: null, startsAt: NOW + 86_400_000, endsAt: NOW + 2 * 86_400_000, allDay: 1, startLocalDate: '2026-09-11', endLocalDate: '2026-09-11', status: 'CONFIRMED' },
+    { id: 'a1', sourceId: 's1', uid: 'a1', title: 'Mommy nail appt', location: null, startsAt: NOW, endsAt: NOW + 3_600_000, allDay: 0, startLocalDate: '2026-09-10', endLocalDate: '2026-09-10', status: 'CONFIRMED' },
+  ];
+
+  const CALENDAR_PLAN = [
+    {
+      kind: 'calendar',
+      id: 'c1',
+      name: 'from work',
+      effectiveFrom: '2000-01-01',
+      effectiveTo: null,
+      priority: 10,
+      calendarSourceId: 's1',
+      consumesEvents: true,
+      matchers: [
+        { shiftTypeKey: null, pattern: 'break day', isRegex: false },
+        { shiftTypeKey: 'day', pattern: 'day shift', isRegex: false },
+      ],
+    },
+  ] as unknown as ShiftPlan[];
+
+  const input: BuildManifestInput = { ...BASE, events: WORK_EVENTS, shiftPlans: CALENDAR_PLAN };
+
+  it('reads the shift from the event title', () => {
+    const manifest = buildManifest(input);
+    expect(dayOf(manifest, '2026-09-10')?.shifts[0]?.key).toBe('day');
+    expect(dayOf(manifest, '2026-09-10')?.shifts[0]?.source).toBe('calendar');
+  });
+
+  it('treats an explicit rest day as not working, not as unknown', () => {
+    const manifest = buildManifest(input);
+    expect(dayOf(manifest, '2026-09-11')?.shifts).toEqual([]);
+  });
+
+  it('removes the shift events from the agenda but keeps the appointments', () => {
+    const manifest = buildManifest(input);
+    const titles = manifest.days.flatMap((day) => day.events.map((event) => event.title));
+    expect(titles).toEqual(['Mommy nail appt']);
+  });
+
+  it('leaves them visible when the plan does not consume', () => {
+    const manifest = buildManifest({
+      ...input,
+      shiftPlans: [{ ...(CALENDAR_PLAN[0] as object), consumesEvents: false }] as unknown as ShiftPlan[],
+    });
+    const titles = manifest.days.flatMap((day) => day.events.map((event) => event.title));
+    expect(titles).toContain('Daddy - Working Day Shift');
+  });
+
+  it('only consumes events from the source the plan names', () => {
+    // Another calendar happening to contain the words "day shift" must not have
+    // its events silently swallowed.
+    const manifest = buildManifest({
+      ...input,
+      events: [...WORK_EVENTS, { ...WORK_EVENTS[0]!, id: 'other', sourceId: 's2', title: 'School day shift photos' }],
+    });
+    const titles = manifest.days.flatMap((day) => day.events.map((event) => event.title));
+    expect(titles).toContain('School day shift photos');
+  });
+
+  it('does nothing at all when the feature is off', () => {
+    const manifest = buildManifest({
+      ...input,
+      household: { ...HOUSEHOLD, shiftEnabled: 0 },
+    });
+    const titles = manifest.days.flatMap((day) => day.events.map((event) => event.title));
+    expect(titles).toContain('Daddy - Working Day Shift');
+    expect(manifest.days.every((day) => day.shifts.length === 0)).toBe(true);
+  });
+});
+
+describe('two people', () => {
+  // Households have more than one shift worker. Resolving a single timeline —
+  // which an earlier version did — cannot say whose shift it is, and a wall
+  // showing one person's rota while the other's is invisible is worse than
+  // showing neither.
+  const TWO: PersonRow[] = [
+    { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: 1, sortOrder: 0 },
+    { id: 'p2', name: 'Sam', color: '#4C7FD1', hasShiftRotation: 1, sortOrder: 1 },
+  ];
+
+  const plans = [
+    {
+      kind: 'pattern', id: 'a', name: 'Josh', personId: 'p1',
+      effectiveFrom: '2000-01-01', effectiveTo: null, priority: 0,
+      anchorDate: '2026-09-06', cycle: ['day', 'day', 'day', null, null, null, null],
+    },
+    {
+      kind: 'pattern', id: 'b', name: 'Sam', personId: 'p2',
+      effectiveFrom: '2000-01-01', effectiveTo: null, priority: 0,
+      anchorDate: '2026-09-06', cycle: [null, null, null, 'night', 'night', null, null],
+    },
+  ] as unknown as ShiftPlan[];
+
+  const input: BuildManifestInput = { ...BASE, people: TWO, shiftPlans: plans };
+
+  it('keeps each person on their own rota', () => {
+    const manifest = buildManifest(input);
+    // 2026-09-06 is cycle position 0: Josh works days, Sam is off.
+    const sixth = manifest.days.find((day) => day.date === '2026-09-09');
+    expect(sixth?.shifts.map((shift) => shift.personName)).toEqual(['Sam']);
+    expect(sixth?.shifts[0]?.key).toBe('night');
+  });
+
+  it('lists both when both are working', () => {
+    const bothWorking = buildManifest({
+      ...input,
+      shiftPlans: plans.map((plan) => ({
+        ...(plan as object),
+        cycle: ['day', 'day', 'day', 'day', 'day', 'day', 'day'],
+      })) as unknown as ShiftPlan[],
+    });
+    const day = bothWorking.days[0];
+    expect(day?.shifts).toHaveLength(2);
+    expect(day?.shifts.map((shift) => shift.personName)).toEqual(['Josh', 'Sam']);
+  });
+
+  it('carries each person’s colour, so the wall can tell them apart', () => {
+    const manifest = buildManifest(input);
+    const shifts = manifest.days.flatMap((day) => day.shifts);
+    expect(new Set(shifts.map((shift) => shift.personColor))).toEqual(
+      new Set(['#E8A33D', '#4C7FD1']),
+    );
+  });
+
+  it('orders people consistently', () => {
+    // Reversed input, same output: the wall must not reorder between polls.
+    const reversed = buildManifest({ ...input, people: [...TWO].reverse() });
+    const both = reversed.days.find((day) => day.shifts.length === 2);
+    if (both) expect(both.shifts.map((shift) => shift.personName)).toEqual(['Josh', 'Sam']);
+    expect(reversed.people.map((person) => person.name)).toEqual(['Josh', 'Sam']);
+  });
+
+  it('publishes the roster so a legend can be drawn', () => {
+    expect(buildManifest(input).people).toEqual([
+      { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: true },
+      { id: 'p2', name: 'Sam', color: '#4C7FD1', hasShiftRotation: true },
+    ]);
+  });
+
+  it('attributes an ownerless plan to the first person rather than dropping it', () => {
+    // Plans created before people existed. Silently discarding them would make
+    // an upgrade look like a broken rota.
+    const legacy = buildManifest({
+      ...input,
+      shiftPlans: [{ ...(plans[0] as object), personId: null }] as unknown as ShiftPlan[],
+    });
+    expect(legacy.days.some((day) => day.shifts.some((shift) => shift.personName === 'Josh'))).toBe(true);
   });
 });
