@@ -10,13 +10,19 @@
     "typecheck:offline": "tsc -p tsconfig.offline.json",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "start": "node dist/main.js",
+    "dev": "tsc -p tsconfig.json && node dist/main.js",
+    "add-source": "node dist/tools/add-source.js",
+    "add-screen": "node dist/tools/add-screen.js"
   },
   "dependencies": {
     "@maverick-wall/calendar": "workspace:*",
     "@maverick-wall/core": "workspace:*",
     "better-sqlite3": "^11.3.0",
-    "drizzle-orm": "^0.36.0"
+    "drizzle-orm": "^0.36.0",
+    "hono": "^4.6.0",
+    "@hono/node-server": "^1.13.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",

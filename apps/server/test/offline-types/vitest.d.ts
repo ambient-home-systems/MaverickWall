@@ -13,6 +13,7 @@ declare module 'vitest' {
     toMatchObject(expected: unknown): void;
     toMatchSnapshot(): void;
     toContain(expected: unknown): void;
+    toMatch(expected: RegExp | string): void;
     toHaveLength(expected: number): void;
     toBeTruthy(): void;
     toBeUndefined(): void;

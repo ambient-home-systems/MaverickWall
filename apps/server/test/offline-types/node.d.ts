@@ -5,6 +5,12 @@
  */
 declare module 'node:crypto' {
   export function randomBytes(size: number): Buffer;
+  export interface Hash {
+    update(data: string, encoding?: string): Hash;
+    digest(): Buffer;
+    digest(encoding: 'hex' | 'base64' | 'base64url'): string;
+  }
+  export function createHash(algorithm: string): Hash;
   export function timingSafeEqual(a: Buffer, b: Buffer): boolean;
   export function hkdfSync(
     digest: string, ikm: Buffer, salt: Buffer, info: string, keylen: number,
@@ -59,7 +65,14 @@ declare const process: {
   env: Record<string, string | undefined>;
   kill(pid: number, signal: number): void;
   hrtime: { bigint(): bigint };
+  exit(code?: number): never;
+  on(event: string, listener: () => void): void;
+  argv: string[];
 };
+
+interface ImportMeta {
+  url: string;
+}
 
 interface Buffer extends Uint8Array {
   toString(encoding?: string): string;

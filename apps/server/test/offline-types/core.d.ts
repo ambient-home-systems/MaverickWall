@@ -140,3 +140,50 @@ declare module '@maverick-wall/core' {
   }): Promise<TickReport>;
   export const DEFAULT_STALE_RUN_MS: number;
 }
+
+declare module '@maverick-wall/core' {
+  export type CivilDate = string;
+  export function addDays(date: CivilDate, days: number): CivilDate;
+  export function eachDate(from: CivilDate, to: CivilDate): CivilDate[];
+  export function daysBetween(from: CivilDate, to: CivilDate): number;
+  export function dayOfWeek(date: CivilDate): number;
+
+  export interface ShiftType {
+    readonly key: string;
+    readonly label: string;
+    readonly shortCode: string;
+    readonly colorToken: string;
+    readonly isWorking: boolean;
+  }
+  export interface ShiftOverride {
+    readonly date: CivilDate;
+    readonly shiftTypeKey: string | null;
+    readonly note?: string;
+  }
+  export type ShiftPlan = Record<string, unknown> & { readonly kind: 'pattern' | 'calendar' };
+  export interface ResolvedShift {
+    readonly date: CivilDate;
+    readonly shiftTypeKey: string | null;
+    readonly source: string;
+    readonly planId?: string;
+    readonly note?: string;
+  }
+  export function resolveShifts(input: {
+    readonly from: CivilDate;
+    readonly to: CivilDate;
+    readonly plans: readonly ShiftPlan[];
+    readonly overrides: readonly ShiftOverride[];
+    readonly titlesByDate?: ReadonlyMap<CivilDate, readonly string[]>;
+    readonly shiftTypes?: readonly ShiftType[];
+  }): ResolvedShift[];
+}
+
+declare module '@maverick-wall/core' {
+  export const DEFAULT_SHIFT_TYPES: readonly {
+    readonly key: string;
+    readonly label: string;
+    readonly shortCode: string;
+    readonly colorToken: string;
+    readonly isWorking: boolean;
+  }[];
+}
