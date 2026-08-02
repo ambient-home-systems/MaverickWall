@@ -1,0 +1,1 @@
+ALTER TABLE `calendar_sources` ADD `person_id` text REFERENCES people(id);

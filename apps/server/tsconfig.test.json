@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    /* A test may hold a value it only asserts on, which is not a defect. */
+    "noUnusedLocals": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

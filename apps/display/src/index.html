@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- No user scaling: this is screwed to a wall, and a stray touch that
+         zooms the calendar is a fault nobody in the household can undo. -->
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>Maverick Wall</title>
+    <!-- Rule three. Every byte is served from this container; there is no CDN,
+         no web font and no analytics, and the wall works with no internet
+         beyond the calendar feeds themselves. -->
+    <link rel="stylesheet" href="/assets/display.css" />
+  </head>
+  <body>
+    <div id="wall"></div>
+    <script type="module" src="/assets/main.js"></script>
+    <noscript>
+      Maverick Wall needs JavaScript to draw the calendar. The server itself is
+      running — try /healthz.
+    </noscript>
+  </body>
+</html>

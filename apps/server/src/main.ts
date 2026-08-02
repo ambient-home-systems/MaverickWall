@@ -2,13 +2,17 @@ import { serve } from '@hono/node-server';
 import { DEFAULT_SHIFT_TYPES } from '@maverick-wall/core';
 import { optimize, type SqliteDatabase } from './db/open.js';
 import { openAndMigrate } from './db/bootstrap.js';
-import { createKeyring, loadOrCreateMasterKey } from './secrets/keyring.js';
+import { createKeyring, deriveKey, loadOrCreateMasterKey } from './secrets/keyring.js';
 import { createFetcher } from './net/fetcher.js';
 import { createJobStore, ensureJob, removeJobsNotIn } from './jobs/store.js';
 import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createApp } from './http/app.js';
-import { countUsers, readHousehold } from './api/queries.js';
+import { createLogBuffer } from './logbuffer.js';
+import { applyStagedRestore } from './db/restore.js';
+import { createSetupTokenHolder } from './http/setup.js';
+import { countUsers, readHousehold, readUpdateState, recordUpdateCheck } from './api/queries.js';
+import { checkForUpdate } from './api/update-check.js';
 import type { ManifestNotice } from './api/manifest.js';
 
 /**
@@ -28,9 +32,39 @@ function env(name: string, fallback: string): string {
 }
 
 async function main(): Promise<void> {
+  const startedAt = Date.now();
   const dataDir = env('DATA_DIR', '/data');
   const port = Number(env('PORT', '8080'));
   const notices: ManifestNotice[] = [];
+
+  /*
+   * Capturing before anything else runs.
+   *
+   * The lines worth reading are the ones about a start that went badly, and a
+   * buffer installed later would miss exactly those.
+   */
+  const log = createLogBuffer();
+  log.capture();
+
+  /*
+   * A staged restore is applied here, before anything opens the database.
+   *
+   * The upload only wrote the file aside; this is the swap. Doing it at boot
+   * means no process has the old file open and the operation cannot land
+   * half-done under a live reader.
+   */
+  const restored = applyStagedRestore(dataDir);
+  if (restored.status === 'restored') {
+    console.log(`[boot] restored a database backup; the previous one is at ${restored.keptAt}`);
+    notices.push({
+      level: 'info',
+      code: 'restored',
+      message: 'A backup was restored. Check your calendars look right.',
+    });
+  } else if (restored.status === 'failed') {
+    console.error(`[boot] could not restore the staged backup: ${restored.error}`);
+    notices.push({ level: 'error', code: 'restore-failed', message: restored.error });
+  }
 
   const { db, path, dataDir: resolved, migration, warnings } = openAndMigrate(dataDir);
   console.log(`[boot] data directory ${resolved}`);
@@ -84,6 +118,25 @@ async function main(): Promise<void> {
         optimize(db);
         return { status: 'ok' };
       },
+      /*
+       * Only when the household asked for it.
+       *
+       * The job exists whether or not it is enabled, and checks the setting
+       * each time it fires. That is the safe way round: a switch that
+       * registers a job would leave a stale one running after somebody turned
+       * it off, and the thing being turned off is a request to a third party.
+       */
+      'update-check': async () => {
+        if (!readUpdateState(db).enabled) return { status: 'ok' };
+        const result = await checkForUpdate(fetcher, APP_VERSION);
+        recordUpdateCheck(
+          db,
+          Date.now(),
+          result.status === 'ok' ? result.latest : null,
+          result.status === 'ok' ? null : result.message,
+        );
+        return { status: 'ok' };
+      },
     },
     onError: (key, error) => {
       console.error(`[job] ${key}:`, error instanceof Error ? error.message : error);
@@ -94,27 +147,46 @@ async function main(): Promise<void> {
   scheduler.start();
   console.log(`[boot] scheduler started, timezone ${household.timezone}`);
 
-  if (countUsers(db) === 0) {
-    // The account setup flow does not exist yet, so this deliberately does not
-    // print a link to it. Advertising a URL that answers 404 is worse than
-    // saying plainly what is and is not available: somebody following the
-    // instruction has no way to tell a missing feature from a broken one.
-    const screens = db.prepare('SELECT COUNT(*) AS total FROM screens').get() as { total: number };
-    console.log('');
-    console.log('  No account has been created. The admin interface is not built yet,');
-    console.log('  so use the command line tools for now:');
-    console.log('');
-    console.log('    add-source "Family" "<ics-url>"   subscribe to a calendar');
-    console.log('    add-screen "Kitchen"              pair a display');
-    console.log('    add-screen --list                 show paired displays');
-    console.log('');
-    if (screens.total === 0) {
-      console.log('  No displays are paired, so /d/manifest will answer 401.');
-      console.log('');
-    }
-  }
+  // Derived from the master key rather than read from the environment, so
+  // sessions survive a restart without anyone having to set a variable — and so
+  // there is no default credential to leave unchanged. Its own purpose, so it
+  // is not the key that encrypts calendar URLs.
+  const authSecret = deriveKey(master.key, 'session').toString('base64');
+  const baseUrl = env('BASE_URL', `http://localhost:${port}`);
 
-  const app = createApp({ db, appVersion: APP_VERSION, bootNotices: notices });
+  /*
+   * The bootstrap code, printed here and nowhere else.
+   *
+   * This is the only way into a fresh installation, and reaching the container
+   * log is what stands in for proving you are the person who installed it.
+   * Re-issued on expiry, so the log always carries a usable one rather than a
+   * dead one from three hours ago.
+   */
+  const setupToken = createSetupTokenHolder((token) => {
+    console.log('');
+    console.log('  Nobody has set this up yet. Open:');
+    console.log('');
+    console.log(`    ${baseUrl}/setup?token=${token.token}`);
+    console.log('');
+    console.log(`  Or go to ${baseUrl}/setup and enter this code:  ${token.shortCode}`);
+    console.log('');
+    console.log('  It is valid for 30 minutes. A new one is printed here when it expires.');
+    console.log('');
+  });
+  if (countUsers(db) === 0) setupToken.current();
+
+  const app = createApp({
+    db,
+    appVersion: APP_VERSION,
+    bootNotices: notices,
+    auth: { secret: authSecret, baseUrl },
+    keyring,
+    fetcher,
+    setupToken,
+    dataDir: resolved,
+    startedAt,
+    log,
+  });
   const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
 
   // Reported only once the socket is actually bound. Announcing it before
@@ -208,6 +280,9 @@ function registerJobs(db: SqliteDatabase): void {
   removeJobsNotIn(db, 'ics-sync', keys);
 
   ensureJob(db, 'optimize', 'optimize', Date.now() + 60_000);
+  // Registered always, gated by the setting when it fires. Ten minutes out so
+  // a restart is never the thing that makes an outbound request.
+  ensureJob(db, 'update-check', 'update-check', Date.now() + 10 * 60_000);
 }
 
 main().catch((error: unknown) => {

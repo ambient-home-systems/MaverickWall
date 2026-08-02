@@ -1,6 +1,5 @@
-import { validateOutboundUrl } from '@maverick-wall/core';
-import { randomBytes } from 'node:crypto';
 import { openAndMigrate } from '../db/bootstrap.js';
+import { addCalendarSource } from '../api/sources.js';
 import { createKeyring, loadOrCreateMasterKey } from '../secrets/keyring.js';
 
 /**
@@ -37,15 +36,6 @@ const allowPrivateNetwork = flags.has('--allow-lan');
 const allowLoopback = flags.has('--allow-loopback');
 const allowHttp = flags.has('--allow-http');
 
-const validated = validateOutboundUrl(url, { allowPrivateNetwork, allowLoopback, allowHttp });
-if (!validated.ok) {
-  // Rejected before anything is stored, and the message is the same one the
-  // admin UI will show.
-  console.error(`Refused: ${validated.error.message}`);
-  console.error(`  (${validated.error.code})`);
-  process.exit(1);
-}
-
 const dataDir = process.env['DATA_DIR'] ?? '/data';
 
 // Migrate first. A tool that assumes the server has already created the schema
@@ -64,34 +54,22 @@ console.log(`Using ${resolved}`);
 
 const keyring = createKeyring(loadOrCreateMasterKey(dataDir).key);
 
-const id = randomBytes(8).toString('hex');
-const now = Date.now();
-
-db.prepare(
-  `INSERT INTO calendar_sources
-     (id, name, url_encrypted, url_host, allow_private_network, allow_loopback,
-      allow_http, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-).run(
-  id,
+const added = addCalendarSource(db, keyring, {
   name,
-  keyring.encrypt(url, 'calendar-source-url'),
-  validated.value.hostname,
-  allowPrivateNetwork ? 1 : 0,
-  allowLoopback ? 1 : 0,
-  allowHttp ? 1 : 0,
-  now,
-  now,
-);
+  url,
+  allowPrivateNetwork,
+  allowLoopback,
+  allowHttp,
+});
+if (!added.ok) {
+  // Rejected before anything is stored, and the message is the same one the
+  // admin UI shows.
+  console.error(`Refused: ${added.message}`);
+  console.error(`  (${added.code})`);
+  process.exit(1);
+}
 
-// Scheduled a few seconds out rather than immediately, so adding several in a
-// row does not fire them all at once.
-db.prepare(
-  `INSERT INTO job_state (key, kind, next_run_at, consecutive_failures, created_at, updated_at)
-   VALUES (?, 'ics-sync', ?, 0, ?, ?) ON CONFLICT(key) DO NOTHING`,
-).run(`ics-sync:${id}`, now + 3_000, now, now);
-
-console.log(`Added "${name}" (${id}) at ${validated.value.hostname}`);
+console.log(`Added "${name}" (${added.id}) at ${added.host}`);
 console.log('It will sync within a few seconds of the server starting.');
 console.log('');
 console.log('The URL is stored encrypted. Only the host is recorded in clear.');

@@ -47,6 +47,14 @@ const ALWAYS_OPEN = [
   '/pair',
   '/assets/',
   /*
+   * The sign-in form, which lives under the prefix it lets you through.
+   *
+   * Without this the redirect points at a path this same gate protects, so an
+   * anonymous browser is sent to `/admin/sign-in`, refused, and sent there
+   * again — a loop that a route table makes look entirely reasonable.
+   */
+  '/admin/sign-in',
+  /*
    * Authentication itself, which must work before setup can finish.
    *
    * Without this the gate deadlocks: completing setup requires an account,
@@ -86,7 +94,15 @@ export function requireSession(deps: GateDeps) {
 
     let user: SessionUser | undefined;
     try {
-      user = await deps.sessions.resolve(new Request(c.req.url, { method: 'GET' }));
+      /*
+       * The headers are the credential. Constructing a bodyless GET keeps a
+       * resolver from consuming the real request's body, but it has to carry
+       * the cookie across or every signed-in user resolves as anonymous —
+       * which is what this did until a test drove a real cookie through it.
+       */
+      user = await deps.sessions.resolve(
+        new Request(c.req.url, { method: 'GET', headers: c.req.raw.headers }),
+      );
     } catch {
       // A resolver that throws is a broken session store, not a rejected user.
       // Treating it as "not signed in" is the safe reading either way.

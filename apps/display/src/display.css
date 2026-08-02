@@ -1,0 +1,444 @@
+/*
+ * The wall, from `maverick-wall-design-directions.html`.
+ *
+ * Portrait 1080x1920 is the design target. ES2019-era CSS only: no :has(), no
+ * container queries, no subgrid, no @layer — and no color-mix(), which is the
+ * same vintage as :has() and which the design used. The tints it produced are
+ * pre-mixed per theme in theme.ts instead, against that theme's own
+ * background, which is what sits behind every tinted surface here.
+ *
+ * Rule three: no web font is fetched. The design's stacks name Roboto
+ * Condensed and Roboto Mono first, which are used if the device already has
+ * them and fall back to the narrow and monospace faces every platform ships.
+ *
+ * Every colour is a custom property written by theme.ts. Nothing here names
+ * one, so a theme swap is a token swap.
+ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  /*
+   * 1rem = 1% of the *canvas* height, which is not the viewport height once
+   * the wall has been rotated a quarter turn. The value is written by
+   * orientation.ts; the fallback is the unrotated case, so a bundle whose
+   * script has not run yet still lays out.
+   */
+  font-size: var(--root-size, calc(100vh / 100));
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg, #0B0E11);
+  color: var(--ink, #E9EEF4);
+  font-family: var(--f-sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  /* A wall has no pointer. */
+  cursor: none;
+}
+
+:root {
+  --f-cond: 'Roboto Condensed', 'Arial Narrow', 'Helvetica Neue', system-ui, sans-serif;
+  --f-sans: system-ui, 'Roboto', 'Segoe UI', -apple-system, sans-serif;
+  --f-serif: Georgia, 'Times New Roman', serif;
+  --f-mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --disp: var(--f-cond);
+}
+:root[data-theme="slate"] { --disp: var(--f-sans); }
+:root[data-theme="almanac"] { --disp: var(--f-serif); }
+
+/*
+ * The rotation frame.
+ *
+ * A screen hung sideways is turned here rather than in the operating system,
+ * because plenty of panels cannot be told to rotate and plenty of the ones
+ * that can forget it after a power cut. The frame takes the *swapped* size on
+ * a quarter turn and is spun about its own centre, which leaves it exactly
+ * covering the viewport.
+ */
+#wall {
+  width: var(--frame-w, 100vw);
+  height: var(--frame-h, 100vh);
+  transform-origin: 50% 50%;
+}
+:root[data-rotation="90"] #wall { transform: translate(-50%, -50%) rotate(90deg); }
+:root[data-rotation="180"] #wall { transform: translate(-50%, -50%) rotate(180deg); }
+:root[data-rotation="270"] #wall { transform: translate(-50%, -50%) rotate(270deg); }
+/* Centred first, so the turn happens about the middle of the screen. */
+:root[data-rotation="90"] #wall,
+:root[data-rotation="180"] #wall,
+:root[data-rotation="270"] #wall {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+}
+
+.screen {
+  height: 100%;
+  display: grid;
+  /* now, next, and the horizon taking what is left. */
+  /*
+   * `minmax(0, …)` on every track, not bare `auto`/`1fr`.
+   *
+   * An auto track sized to its content will happily grow past the container
+   * and, with the blocks having no overflow rule of their own, the week ahead
+   * drew straight over the month grid. Rows that can reach zero plus a clip on
+   * each block means the wall degrades by showing less, never by overlapping.
+   */
+  padding: 3.2rem 3rem 2.4rem;
+  gap: 2.6rem;
+  min-height: 0;
+}
+.screen > * { min-height: 0; overflow: hidden; }
+
+/*
+ * Portrait stacks in DOM order, which is the order the household chose.
+ *
+ * Flex rather than grid, because the blocks can now be in any order and a
+ * grid template would have to name rows positionally — "the second row
+ * yields" is the wrong rule once the second row might be the month. Which
+ * block gives up space is a property of the block, stated once below.
+ */
+.screen { display: flex; flex-direction: column; }
+
+/*
+ * The week ahead is the block that yields, wherever it sits.
+ *
+ * Today and the month both have to be whole — the first is what somebody
+ * walked over to read, the second is the rotation shape that has to be legible
+ * from the doorway. The day list is the only part that degrades gracefully by
+ * showing four days instead of six.
+ */
+.screen > .now { flex: 0 1 auto; }
+.screen > .next { flex: 1 1 auto; }
+.screen > .horizon { flex: 0 0 auto; }
+/*
+ * With no week ahead there is nothing left to absorb the slack, so the month
+ * takes it. The rows stretch rather than the wall ending halfway down with a
+ * third of the screen empty, and bigger cells read further across a room —
+ * which is the whole reason somebody turned the other block off.
+ */
+:root:not([data-blocks~="next"]) .screen > .horizon { flex: 1 1 auto; }
+/*
+ * The grid takes what is left *after* the legend, not the whole block.
+ *
+ * `height: 100%` here pushed the key out of the bottom of its own section —
+ * the grid claimed the lot and the thing explaining its colours was the part
+ * that got clipped.
+ */
+:root:not([data-blocks~="next"]) .horizon { display: flex; flex-direction: column; }
+:root:not([data-blocks~="next"]) .hz-grid {
+  flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(0, 1fr);
+}
+:root:not([data-blocks~="next"]) .legend { flex: 0 0 auto; }
+
+/* --- banners ---------------------------------------------------------- */
+
+.banners { display: grid; gap: 0.6rem; }
+.banner {
+  padding: 0.9rem 1.4rem;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border-left: 0.45rem solid var(--faint);
+  color: var(--muted);
+  font-size: 1.5rem;
+}
+.banner-warn { border-left-color: var(--accent); }
+.banner-error { border-left-color: var(--accent); color: var(--ink); }
+
+/* --- BLOCK 1 — NOW ---------------------------------------------------- */
+
+.now { display: grid; gap: 1.6rem; min-height: 0; }
+.now-top { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 2rem; }
+
+.clock {
+  font-family: var(--disp);
+  font-size: 11rem;
+  line-height: 0.82;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+:root[data-theme="almanac"] .clock { font-weight: 400; letter-spacing: -0.02em; }
+:root[data-theme="slate"] .clock { font-weight: 300; letter-spacing: -0.04em; }
+:root[data-theme="glance"] .clock { font-size: 13rem; }
+
+.today-date {
+  margin-top: 1.1rem;
+  font-family: var(--disp);
+  font-size: 2.9rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+:root[data-theme="almanac"] .today-date { font-style: italic; }
+
+/* The single most important element on the wall. */
+.shift-badge {
+  text-align: right;
+  padding: 1.1rem 1.6rem 1.2rem;
+  border-radius: var(--radius);
+  background: var(--sc-tint);
+  border-right: 0.6rem solid var(--sc);
+  min-width: 24rem;
+}
+:root[data-theme="almanac"] .shift-badge {
+  background: transparent;
+  border-right: none;
+  border-top: 0.35rem solid var(--sc);
+  padding-top: 0.9rem;
+}
+.shift-badge .who {
+  font-size: 1.3rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: center; gap: 0.6rem; justify-content: flex-end;
+}
+.shift-badge .who-face {
+  width: 2.4rem; height: 2.4rem; border-radius: 50%;
+  object-fit: cover; background: var(--panel);
+}
+.shift-badge .what {
+  font-family: var(--disp);
+  font-size: 3.6rem; font-weight: 700; line-height: 1.05;
+  margin-top: 0.3rem;
+  color: var(--sc);
+  text-transform: uppercase; letter-spacing: 0.005em;
+}
+:root[data-theme="almanac"] .shift-badge .what { text-transform: none; }
+:root[data-theme="slate"] .shift-badge .what { text-transform: none; font-weight: 600; }
+.shift-badge .until { font-size: 1.35rem; color: var(--muted); margin-top: 0.45rem; }
+
+.today-events { display: grid; gap: 0.85rem; min-height: 0; overflow: hidden; }
+.te { display: grid; grid-template-columns: 9.5rem 1fr; align-items: baseline; gap: 1.4rem; }
+.te-time {
+  font-family: var(--f-mono);
+  font-size: 1.85rem; color: var(--muted);
+  text-align: right; letter-spacing: -0.02em;
+}
+.te-title { font-size: 2.35rem; font-weight: 500; line-height: 1.18; }
+.te-where { color: var(--faint); font-size: 1.5rem; margin-left: 0.8rem; }
+/* The only highlight on the screen, so it has to mean something. */
+.te.is-next .te-title { color: var(--accent); font-weight: 700; }
+.te.is-next .te-time { color: var(--accent); }
+.te.is-past { opacity: 0.32; }
+:root[data-theme="glance"] .te.is-past { display: none; }
+
+/* --- BLOCK 2 — NEXT --------------------------------------------------- */
+
+.next { display: grid; gap: 0; align-content: start; min-height: 0; overflow: hidden; }
+:root[data-theme="glance"] .next { display: none; }
+
+.section-label {
+  font-size: 1.25rem; letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--faint); margin-bottom: 1.1rem;
+}
+
+.day-row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 1.6rem;
+  padding: 1.15rem 0 1.15rem 1.3rem;
+  border-top: 1px solid var(--rule);
+  /* Transparent rather than absent, so rows with no rota still line up. */
+  border-left: 0.45rem solid transparent;
+}
+.day-row.has-shift { border-left-color: var(--sc); }
+.day-row:last-child { border-bottom: 1px solid var(--rule); }
+:root[data-theme="almanac"] .day-row { border-left-width: 0.55rem; }
+
+.dr-dow {
+  font-family: var(--disp);
+  font-size: 1.65rem; font-weight: 700; letter-spacing: 0.13em;
+  text-transform: uppercase; color: var(--muted);
+}
+.dr-num { font-family: var(--disp); font-size: 3.1rem; font-weight: 700; line-height: 0.95; }
+:root[data-theme="almanac"] .dr-num { font-weight: 400; }
+.dr-shift {
+  font-size: 1.1rem; letter-spacing: 0.13em; text-transform: uppercase;
+  color: var(--sc); margin-top: 0.3rem; font-weight: 600;
+}
+
+.dr-events { display: grid; gap: 0.5rem; align-content: center; }
+.dr-ev { display: grid; grid-template-columns: 8rem 1fr; gap: 1.2rem; align-items: baseline; }
+.dr-ev-time {
+  font-family: var(--f-mono);
+  font-size: 1.5rem; color: var(--muted); text-align: right; letter-spacing: -0.02em;
+}
+.dr-ev-title { font-size: 1.95rem; line-height: 1.2; }
+.dr-ev.allday .dr-ev-title {
+  font-weight: 600;
+  border-left: 0.3rem solid var(--accent);
+  padding-left: 0.9rem;
+  grid-column: 1 / -1;
+}
+.dr-empty { font-size: 1.7rem; color: var(--faint); font-style: italic; }
+
+/* --- BLOCK 3 — HORIZON ------------------------------------------------ */
+
+/*
+ * `align-self` is deliberately not set here.
+ *
+ * It used to say `end`, meaning "sit at the bottom of the grid row". Once the
+ * portrait layout became a flex column the cross axis turned horizontal and
+ * the same declaration pinned the month grid to the right-hand edge at its
+ * intrinsic width — the sort of change that looks like a no-op in a diff and
+ * is obvious the moment somebody looks at the wall.
+ */
+.horizon { min-height: 0; overflow: hidden; }
+/* Rows are clipped whole rather than halfway through a line of text. */
+.next { align-content: start; }
+
+.hz-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.35rem; }
+.hz-head {
+  font-size: 1.1rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--faint); text-align: center; padding-bottom: 0.45rem;
+}
+.hz-cell {
+  position: relative;
+  min-height: 5.4rem;
+  padding: 0.45rem 0.5rem 0.4rem;
+  border-radius: var(--radius);
+  /* No rota resolved for the day: a plain cell, which is a different fact
+     from a rest day and has to look like one. */
+  background: transparent;
+  border-top: 0.28rem solid transparent;
+  overflow: hidden;
+}
+.hz-cell.has-shift { background: var(--sc-tint); border-top-color: var(--sc); }
+.hz-cell.is-today { outline: 0.25rem solid var(--ink); outline-offset: -0.25rem; }
+.hz-cell.dim { opacity: 0.42; }
+.hz-cell.outside .hz-num { color: var(--faint); }
+.hz-num { font-family: var(--disp); font-size: 1.85rem; font-weight: 700; line-height: 1; }
+:root[data-theme="almanac"] .hz-num { font-weight: 400; }
+.hz-dots { display: flex; gap: 0.28rem; margin-top: 0.42rem; flex-wrap: wrap; }
+.hz-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--ink); opacity: 0.55; }
+
+.legend {
+  display: flex; gap: 2.2rem; flex-wrap: wrap;
+  margin-top: 1.3rem; padding-top: 1.1rem;
+  border-top: 1px solid var(--rule);
+  font-size: 1.2rem; letter-spacing: 0.13em; text-transform: uppercase;
+  color: var(--muted); align-items: center;
+}
+:root[data-theme="glance"] .legend { display: none; }
+.legend span { display: flex; align-items: center; gap: 0.6rem; }
+.legend i { width: 1.5rem; height: 0.5rem; border-radius: 0.25rem; background: var(--sc); display: block; }
+
+/* --- the pre-first-paint and unpaired screens ------------------------- */
+
+.screen-message { display: flex; align-items: center; justify-content: center; }
+.message { text-align: center; }
+.message h1 { font-family: var(--disp); font-size: 6rem; font-weight: 700; }
+.message p { font-size: 2.4rem; color: var(--muted); margin-top: 1.6rem; }
+
+/* ======================================================================
+   LANDSCAPE
+   ======================================================================
+
+   Not the portrait layout squashed.
+
+   The design is drawn for portrait 1080x1920, which is how a dedicated wall
+   panel is hung — but plenty of households mount a spare television, and that
+   is landscape. Stacking three blocks down a short wide screen gives the
+   horizon a strip a few rem tall and wastes the width, so the blocks are
+   rearranged into two columns instead: the day on the left, the month on the
+   right, and the week ahead beneath the day.
+
+   The markup is identical in both. Only the placement and the type scale
+   change, so there is one renderer and one set of decisions behind it.
+*/
+/*
+ * Landscape is selected by `data-layout`, not by a media query.
+ *
+ * The browser's own orientation is the wrong input once rotation is in play: a
+ * television turned on its end still reports a landscape viewport while the
+ * thing a person is looking at is portrait. `orientation.ts` works out the
+ * canvas after rotation, and honours a household that has pinned it.
+ */
+:root[data-layout="landscape"] {
+  /*
+   * Scaled up, not down.
+   *
+   * The rem is calibrated against the design's 1920-tall portrait screen. A
+   * landscape canvas is roughly half as tall, so an unadjusted rem is half the
+   * size the design intended while the extra width sits empty — the opposite
+   * of the first guess made here, which shrank it further and left a wall of
+   * unreadable text in the corner of a television.
+   */
+  font-size: calc(var(--root-size, calc(100vh / 100)) * 1.5);
+}
+
+/*
+ * Landscape gives the month its own column.
+ *
+ * It is the widest thing on the wall and the only one that is itself a grid,
+ * so it takes the right-hand column whatever position it holds in the order,
+ * and the rest stack down the left in the order the household chose. Placing
+ * it by name rather than by position is what lets the order be arbitrary
+ * without a second set of layout rules.
+ */
+:root[data-layout="landscape"] .screen {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  grid-auto-rows: minmax(0, auto);
+  align-content: start;
+  padding: 2.6rem 2.8rem 2.2rem;
+  gap: 1.8rem 2.8rem;
+}
+/* Everything that is not the month stacks down the left. */
+:root[data-layout="landscape"] .screen > * { grid-column: 1; }
+:root[data-layout="landscape"] .banners { grid-column: 1 / -1; }
+:root[data-layout="landscape"] .next { align-content: start; min-height: 0; overflow: hidden; }
+:root[data-layout="landscape"] .horizon {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  align-self: stretch;
+  display: grid;
+  /* the weeks, then the legend pinned under them. */
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
+}
+/*
+ * With no month there is nothing to keep a second column for, so the rest of
+ * the wall takes the whole width rather than leaving half the screen empty.
+ *
+ * Driven by an attribute the script writes, not by `:has()` — that is the same
+ * vintage as the rest of what rule two rules out, and this file would be
+ * lying about its own constraints if it slipped in here.
+ */
+:root[data-layout="landscape"]:not([data-blocks~="horizon"]) .screen {
+  grid-template-columns: 1fr;
+}
+
+/* The clock no longer has a tall column to itself, so it stops dominating. */
+:root[data-layout="landscape"] .clock { font-size: 8.5rem; }
+:root[data-layout="landscape"][data-theme="glance"] .clock { font-size: 10rem; }
+:root[data-layout="landscape"] .shift-badge { min-width: 20rem; }
+
+/* Cells get the height the column gives them rather than a portrait floor. */
+:root[data-layout="landscape"] .hz-cell { min-height: 0; }
+:root[data-layout="landscape"] .hz-grid {
+  height: 100%; grid-auto-rows: minmax(0, 1fr); align-content: stretch;
+}
+:root[data-layout="landscape"] .hz-head { align-self: end; }
+
+/*
+ * Glance drops the week ahead, so the day takes the whole left column rather
+ * than leaving a gap where it was.
+ */
+:root[data-layout="landscape"][data-theme="glance"] .screen {
+  grid-template-areas: "now horizon" "now horizon";
+}
+
+/*
+ * A short landscape screen — a 10" tablet on its side, say.
+ *
+ * Six day rows plus a five week grid genuinely does not fit, and the honest
+ * response is to show fewer rows well rather than all of them clipped. The
+ * view model still built them; this is the one place the CSS is allowed an
+ * opinion, because it is the only layer that knows the height.
+ */
+@media (max-height: 700px) {
+  :root[data-layout="landscape"] .day-row:nth-child(n + 6) { display: none; }
+  :root[data-layout="landscape"] .today-events .te:nth-child(n + 7) { display: none; }
+}

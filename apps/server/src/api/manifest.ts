@@ -26,6 +26,31 @@ import {
 
 export const MANIFEST_VERSION = 1;
 
+/** The three things a wall can show. Order is the household's to choose. */
+export type DisplayBlock = 'now' | 'next' | 'horizon';
+
+const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'next', 'horizon'];
+
+/**
+ * Read the stored order, and never return nothing.
+ *
+ * Duplicates are dropped and unknown names ignored, so a hand-edited row
+ * cannot make a block render twice or make the display defend against a name
+ * it has no renderer for. An empty result falls back to all three: a wall that
+ * draws nothing is the one outcome rule nine forbids, and an empty list is far
+ * more likely to be a mistake than a household asking for a blank screen.
+ */
+export function parseBlocks(stored: string | undefined): DisplayBlock[] {
+  const seen: DisplayBlock[] = [];
+  for (const raw of (stored ?? '').split(',')) {
+    const name = raw.trim().toLowerCase();
+    if (!ALL_BLOCKS.includes(name as DisplayBlock)) continue;
+    if (seen.includes(name as DisplayBlock)) continue;
+    seen.push(name as DisplayBlock);
+  }
+  return seen.length === 0 ? [...ALL_BLOCKS] : seen;
+}
+
 export interface ManifestEvent {
   readonly id: string;
   readonly uid: string;
@@ -63,6 +88,7 @@ export interface ManifestPersonShift extends ManifestShift {
   readonly personId: string;
   readonly personName: string;
   readonly personColor: string;
+  readonly personAvatarUrl: string | null;
 }
 
 export interface ManifestPerson {
@@ -70,6 +96,13 @@ export interface ManifestPerson {
   readonly name: string;
   readonly color: string;
   readonly hasShiftRotation: boolean;
+  /**
+   * Where the display can fetch their picture, or null.
+   *
+   * A path on this server, never an external address — rule three, and the
+   * wall has to work with no internet beyond the calendar feeds.
+   */
+  readonly avatarUrl: string | null;
 }
 
 export interface ManifestDay {
@@ -119,6 +152,31 @@ export interface Manifest {
     readonly daytimeEndsAt?: string;
   };
   readonly window: { readonly from: CivilDate; readonly to: CivilDate };
+  /**
+   * How much to show, chosen by the household.
+   *
+   * In the manifest rather than the bundle so it can be changed from the admin
+   * screen by somebody standing in the room, which is the only place the right
+   * answer is knowable.
+   */
+  readonly display: {
+    readonly todayEvents: number;
+    readonly nextDays: number;
+    readonly horizonWeeks: number;
+    /** In drawing order. A block missing from this list is not drawn at all. */
+    readonly blocks: readonly DisplayBlock[];
+  };
+  /**
+   * How this particular screen is hung.
+   *
+   * Per screen rather than per household: a tablet in the kitchen and a
+   * television in the hall are mounted differently, and one of them is
+   * probably on its side.
+   */
+  readonly screen: {
+    readonly orientation: 'auto' | 'portrait' | 'landscape';
+    readonly rotation: number;
+  };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
   readonly people: readonly ManifestPerson[];
@@ -164,6 +222,10 @@ export interface HouseholdRow {
   readonly daytimeStartsAt: string | null;
   readonly daytimeEndsAt: string | null;
   readonly shiftEnabled: number;
+  readonly displayTodayEvents: number;
+  readonly displayNextDays: number;
+  readonly displayHorizonWeeks: number;
+  readonly displayBlocks: string;
 }
 
 export interface PersonRow {
@@ -172,6 +234,7 @@ export interface PersonRow {
   readonly color: string;
   readonly hasShiftRotation: number;
   readonly sortOrder: number;
+  readonly avatarPath: string | null;
 }
 
 export interface BuildManifestInput {
@@ -187,15 +250,75 @@ export interface BuildManifestInput {
   readonly daysAfter: number;
   readonly now: number;
   readonly appVersion: string;
+  /**
+   * The screen this document is for, when it is being served to one.
+   *
+   * Its overrides win over the household's. Null on any of them means "follow
+   * the household", which is the common case and the one that must stay easy.
+   */
+  readonly screen?: {
+    readonly orientation: string;
+    readonly rotation: number;
+    readonly theme?: string | null;
+    readonly timezone?: string | null;
+    readonly daytimeTheme?: string | null;
+    readonly daytimeStartsAt?: string | null;
+    readonly daytimeEndsAt?: string | null;
+  };
   /** Anything the caller already knows is wrong: a failed migration, say. */
   readonly notices?: readonly ManifestNotice[];
 }
+
+/**
+ * A rest day the rotation resolved deliberately.
+ *
+ * Not a shift type — there is no row for it and there should not be, because a
+ * household defines the shifts they work rather than the ones they do not. It
+ * exists so the display can tell "the rota says he is off" from "the rota says
+ * nothing about this day", which are different facts and look different: the
+ * design gives the first its own hue and leaves the second plain.
+ */
+/**
+ * The display's path to a stored picture.
+ *
+ * Under `/d/`, so it is behind the same display token as the manifest itself.
+ * A family's photographs must not be readable by anything on the network that
+ * happens to know a filename.
+ */
+function avatarUrl(path: string | null | undefined): string | null {
+  // `undefined` as well as null: a row read by an older query, or a caller
+  // that predates the column, would otherwise produce `/d/media/undefined`
+  // and a broken image on the wall.
+  return path === null || path === undefined || path === '' ? null : `/d/media/${path}`;
+}
+
+/** A whole number inside a range, or the default when it is not one at all. */
+function clamp(value: number, low: number, high: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(high, Math.max(low, Math.round(value)));
+}
+
+const BREAK_SHIFT = {
+  key: 'break',
+  label: 'Off',
+  shortCode: 'B',
+  colorToken: '--s-break',
+  isWorking: false,
+} as const;
 
 function shiftFor(
   resolved: ResolvedShift | undefined,
   types: readonly ShiftType[],
 ): ManifestShift | undefined {
-  if (!resolved || resolved.shiftTypeKey === null) return undefined;
+  if (!resolved) return undefined;
+
+  if (resolved.shiftTypeKey === null) {
+    // `none` means the rotation had nothing to say — no plan covers the day,
+    // or the cycle is empty. Anything else is an explicit "not working", which
+    // the wall should show.
+    return resolved.source === 'none' ? undefined : { ...BREAK_SHIFT, source: resolved.source };
+  }
+
   const type = types.find((candidate) => candidate.key === resolved.shiftTypeKey);
   if (!type) return undefined;
   return {
@@ -316,6 +439,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
           personId: person.id,
           personName: person.name,
           personColor: person.color,
+          personAvatarUrl: avatarUrl(person.avatarPath),
         });
         shiftsByDate.set(resolved.date, bucket);
       }
@@ -387,30 +511,68 @@ export function buildManifest(input: BuildManifestInput): Manifest {
     return { date, shifts: shiftsByDate.get(date) ?? [], events };
   });
 
+  /*
+   * The screen's own look, falling back to the household's.
+   *
+   * Resolved here rather than on the display, because the display should not
+   * have to know there are two places a theme can come from — and because a
+   * screen that overrides the theme but not the schedule wants the household's
+   * schedule applied to its own themes, which is fiddly to express twice.
+   */
+  const pick = (screenValue: string | null | undefined, householdValue: string | null): string | null =>
+    screenValue === undefined || screenValue === null || screenValue === '' ? householdValue : screenValue;
+
+  const activeTheme = pick(input.screen?.theme, input.household.theme) ?? input.household.theme;
+  const daytimeTheme = pick(input.screen?.daytimeTheme, input.household.daytimeTheme);
+  const daytimeStartsAt = pick(input.screen?.daytimeStartsAt, input.household.daytimeStartsAt);
+  const daytimeEndsAt = pick(input.screen?.daytimeEndsAt, input.household.daytimeEndsAt);
+
   const theme = {
-    active: input.household.theme,
-    ...(input.household.daytimeTheme !== null ? { daytime: input.household.daytimeTheme } : {}),
-    ...(input.household.daytimeStartsAt !== null
-      ? { daytimeStartsAt: input.household.daytimeStartsAt }
-      : {}),
-    ...(input.household.daytimeEndsAt !== null
-      ? { daytimeEndsAt: input.household.daytimeEndsAt }
-      : {}),
+    active: activeTheme,
+    ...(daytimeTheme !== null ? { daytime: daytimeTheme } : {}),
+    ...(daytimeStartsAt !== null ? { daytimeStartsAt } : {}),
+    ...(daytimeEndsAt !== null ? { daytimeEndsAt } : {}),
   };
 
   return {
     manifestVersion: MANIFEST_VERSION,
     appVersion: input.appVersion,
     generatedAt: input.now,
-    timezone: input.household.timezone,
+    // A holiday home on another clock is a real case, and the whole grid is
+    // anchored on this.
+    timezone: pick(input.screen?.timezone, input.household.timezone) ?? input.household.timezone,
     theme,
     window: { from, to },
+    /*
+     * Clamped on the way out, not trusted from the row.
+     *
+     * These reach the database through a form, and a display asked for two
+     * hundred weeks of horizon would render nothing usable. The bounds are the
+     * range the layout is known to hold, so a bad value degrades to the
+     * nearest sane one rather than to a broken wall.
+     */
+    screen: {
+      orientation:
+        input.screen?.orientation === 'portrait' || input.screen?.orientation === 'landscape'
+          ? input.screen.orientation
+          : 'auto',
+      // Quarter turns only, and normalised here so a hand-edited row cannot
+      // hand the display something it has to defend against.
+      rotation: ((Math.round((input.screen?.rotation ?? 0) / 90) % 4) + 4) % 4 * 90,
+    },
+    display: {
+      todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),
+      nextDays: clamp(input.household.displayNextDays, 0, 14, 6),
+      horizonWeeks: clamp(input.household.displayHorizonWeeks, 1, 8, 5),
+      blocks: parseBlocks(input.household.displayBlocks),
+    },
     days,
     people: people.map((person) => ({
       id: person.id,
       name: person.name,
       color: person.color,
       hasShiftRotation: person.hasShiftRotation === 1,
+      avatarUrl: avatarUrl(person.avatarPath),
     })),
     sources: input.sources.map((source) => ({
       id: source.id,
