@@ -75,7 +75,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Weather alerts — Maverick Wall',
       heading: 'Weather alerts',
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
 
         // First, before the switch. Somebody deciding whether to rely on this
@@ -83,7 +83,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         `<div class="error"><strong>Not a life-safety system.</strong>` +
         `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
 
-        `<form method="post" action="/admin/alerts">` +
+        `<form method="post" action="admin/alerts">` +
         `<div class="checks"><label>` +
         `<input type="checkbox" name="alerts_enabled" value="1"${enabled ? ' checked' : ''}> ` +
         `Show National Weather Service alerts on the wall</label></div>` +
@@ -95,7 +95,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         (located
           ? ''
           : `<p class="hint">Set your latitude and longitude on the ` +
-            `<a class="link" href="/admin/display">Display</a> screen first — the zones ` +
+            `<a class="link" href="admin/display">Display</a> screen first — the zones ` +
             `are worked out from them.</p>`) +
 
         `<h2 class="add">Zones being watched</h2>` +
@@ -152,7 +152,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           `<p>${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +
           `${row.piercesNightMode === 1 ? ' · may wake a dark screen' : ''}` +
           `${row.dismissible === 0 ? ' · cannot be cleared from the wall' : ''}</p>` +
-          `<form method="post" action="/admin/alerts/rules/${encodeURIComponent(row.id)}">` +
+          `<form method="post" action="admin/alerts/rules/${encodeURIComponent(row.id)}">` +
           `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +
           `<button class="secondary" type="submit">` +
           `${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +

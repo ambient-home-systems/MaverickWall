@@ -1,0 +1,84 @@
+# Tag → build for both architectures → sign → push → SBOM.
+#
+# Signing and the bill of materials are not ceremony here: this ships code to
+# other people's machines, on hardware nobody can reach, and there is no way to
+# patch a household remotely. Somebody has to be able to check that the image
+# they pulled is the one this repository built.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  # Required for keyless signing: cosign exchanges this for a short-lived
+  # certificate, so there is no long-lived key to leak or rotate.
+  id-token: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/maverick-wall
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@v3
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # `stable` moves only for a real release, never for a pre-release —
+          # it is what docker-compose.yml points at, so a household that never
+          # thinks about tags gets releases and not release candidates.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
+            type=raw,value=stable,enable=${{ !contains(github.ref, '-') }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # arm64 is not an afterthought: a Raspberry Pi and a Synology are the
+          # two likeliest machines this ever runs on.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Signed by digest rather than by tag: a tag can be moved afterwards and
+      # a digest cannot, so this is a signature over the bytes somebody pulls.
+      - name: Sign
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Attach the bill of materials
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          upload-artifact: true

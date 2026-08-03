@@ -17,6 +17,7 @@ import {
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir } from './static.js';
+import { ingress, ingressPath } from './ingress.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { weatherModule } from '../modules/weather/index.js';
@@ -241,8 +242,28 @@ export function createApp(deps: AppDeps): Hono {
    * supervisor's, and this compares against the address the request arrived
    * on. That needs handling here at the same time.
    */
+  /*
+   * Registered before the guard below, because it decides what that guard sees
+   * and because every response it rewrites has to be rewritten on the way out.
+   */
+  app.use('*', ingress());
+
   app.use('*', async (c: Context, next: Next): Promise<Response | void> => {
     if (c.req.method === 'GET' || c.req.method === 'HEAD') {
+      await next();
+      return;
+    }
+    /*
+     * Under ingress the browser's origin is Home Assistant's, not ours, so
+     * this guard would refuse every form post in the add-on.
+     *
+     * The supervisor is the trust boundary there: it will not forward a
+     * request that does not already carry a valid Home Assistant session, and
+     * it is the only thing that can set this header on the way in — nothing
+     * outside the container's network can reach the port it forwards from.
+     * The `SameSite=Lax` cookie is still the primary mitigation in both cases.
+     */
+    if (ingressPath(c) !== '') {
       await next();
       return;
     }
@@ -640,6 +661,16 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.get('/', (c: Context) => {
+    /*
+     * Under ingress, the root means the admin screens.
+     *
+     * A wall display never comes through ingress — it has no Home Assistant
+     * session and connects to the add-on's port directly with a display token.
+     * So somebody arriving here has clicked the add-on in the sidebar, and
+     * what they want is the settings, not a calendar that cannot pair itself.
+     */
+    if (ingressPath(c) !== '') return c.redirect('/admin', 302);
+
     const shell = staticFiles.read('index.html');
     if (shell !== undefined) {
       c.header('content-type', 'text/html; charset=utf-8');
@@ -689,7 +720,7 @@ function signInPage(error?: string, email = ''): string {
     heading: 'Sign in',
     body:
       (error === undefined ? '' : errorBlock(error)) +
-      `<form method="post" action="/admin/sign-in">` +
+      `<form method="post" action="admin/sign-in">` +
       `<label for="email">Email address</label>` +
       `<input id="email" name="email" type="email" required autocomplete="username" value="${escapeHtml(email)}">` +
       `<label for="password">Password</label>` +

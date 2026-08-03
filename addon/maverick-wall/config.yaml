@@ -1,0 +1,68 @@
+# The add-on manifest.
+#
+# Two ways in, and they are not interchangeable:
+#
+#   - **Ingress** puts the settings in the Home Assistant sidebar, and Home
+#     Assistant does the authentication. That is for a person on a phone or a
+#     laptop who is already signed in.
+#   - **The port** is for the wall displays. A screen screwed to a wall has no
+#     Home Assistant session and cannot get one, so it connects straight to
+#     8080 with its own display token. This is why `ports` is mapped at all;
+#     without it there is a beautiful settings page and nothing to look at.
+name: Maverick Wall
+slug: maverick_wall
+version: "0.1.0"
+description: A family calendar for a wall display, with your Home Assistant calendars and sensors.
+url: https://github.com/ambient-home-systems/MaverickWall
+image: ghcr.io/ambient-home-systems/maverick-wall
+arch:
+  - aarch64
+  - amd64
+  - armv7
+
+# Read-only, and that is a security property rather than a missing feature: a
+# long-lived token cannot be scoped, so the limit lives on this side. Nothing
+# in this application writes to Home Assistant.
+homeassistant_api: true
+
+ingress: true
+ingress_port: 8080
+# REQUIRED. The ingress proxy will not carry a WebSocket upgrade without it,
+# and the display's push channel is a WebSocket. Without this the settings load
+# and then quietly stop updating.
+ingress_stream: true
+panel_icon: mdi:calendar-month
+panel_title: Wall
+
+# The displays. Left null so Home Assistant asks rather than assuming 8080 is
+# free — a household with something already on it should not have a failed
+# start with no explanation.
+ports:
+  8080/tcp: null
+ports_description:
+  8080/tcp: Wall displays connect here. Not needed for the settings, which use the sidebar.
+
+# No `map` entry, deliberately.
+#
+# The supervisor already gives every add-on a persistent `/data`, which is
+# exactly where this image keeps the database and the key — so the image's own
+# DATA_DIR needs no override and the add-on's storage is included in a Home
+# Assistant backup for free. Adding `addon_config` here would mount a second
+# directory that nothing writes to, and leave whoever comes next wondering
+# which of the two holds the calendar.
+#
+# The supervisor's own `/data/options.json` lives alongside `wall.db`. They are
+# different files and neither touches the other.
+
+# The image brings tini as its entrypoint, so the supervisor should not add its
+# own init on top.
+init: false
+
+options:
+  base_url: ""
+  log_level: info
+schema:
+  # Only what somebody would actually change. Everything else belongs on a
+  # settings screen, where it can be explained next to the thing it affects.
+  base_url: "str?"
+  log_level: "list(trace|debug|info|notice|warning|error|fatal)?"

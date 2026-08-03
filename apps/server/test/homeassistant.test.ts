@@ -781,7 +781,9 @@ describe('the shipped templates, through the form', () => {
 
     // The list offers each one as a link; following it re-renders the form.
     const listing = await (await h.call('/admin/home-assistant')).text();
-    expect(listing).toContain('/admin/home-assistant?template=garage');
+    // Relative, so the `<base>` decides where it points — which is what lets
+    // the same markup work under a Home Assistant ingress prefix.
+    expect(listing).toContain('href="admin/home-assistant?template=garage"');
 
     const html = await (await h.call('/admin/home-assistant?template=garage')).text();
     expect(html).toContain('value="Garage door open late"');

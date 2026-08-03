@@ -475,7 +475,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Home Assistant — Maverick Wall',
       heading: 'Home Assistant',
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         boundary() +
         status(live, settings.lastSyncAt) +
@@ -531,7 +531,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="host">${escapeHtml(live.host ?? '')} · ${live.entities.length} readable ` +
         `entities · ${live.calendars.length} calendars` +
         `${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(agoOf(lastSyncAt))}</p>` +
-        `<form method="post" action="/admin/home-assistant/disconnect">` +
+        `<form method="post" action="admin/home-assistant/disconnect">` +
         `<button class="secondary" type="submit">Disconnect</button></form>` +
         `<p class="hint">Disconnecting deletes the stored token, the readings on the ` +
         `wall, and any rules about your house. Calendars you added stay, and stop ` +
@@ -554,7 +554,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   function connectionForm(settings: ReturnType<typeof readHaSettings>): string {
     return (
       `<h2 class="add">Connect</h2>` +
-      `<form method="post" action="/admin/home-assistant/connect">` +
+      `<form method="post" action="admin/home-assistant/connect">` +
       `<label for="base_url">Address of Home Assistant</label>` +
       `<input id="base_url" name="base_url" type="text" required ` +
       `placeholder="http://192.168.1.10:8123" ` +
@@ -608,7 +608,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
           `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(agoOf(row.fetchedAt))}</p>` +
           `<p class="host">${escapeHtml(row.entityId)}</p>` +
-          `<form method="post" action="/admin/home-assistant/entities/remove">` +
+          `<form method="post" action="admin/home-assistant/entities/remove">` +
           `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
           `<button class="secondary" type="submit">Remove</button></form>` +
           `</article>`,
@@ -620,7 +620,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">A few readings beside the calendar. This is deliberately not a ` +
       `dashboard — Home Assistant already has one, and it is better at it.</p>` +
       (rows === '' ? `<p>Nothing yet.</p>` : rows) +
-      `<form method="post" action="/admin/home-assistant/entities">` +
+      `<form method="post" action="admin/home-assistant/entities">` +
       `<label for="entity_id">Entity</label>` +
       `<input id="entity_id" name="entity_id" type="text" required list="ha-entities" ` +
       `autocomplete="off" placeholder="Start typing a name">` +
@@ -656,7 +656,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `coloured and assigned to a person there.</p>` +
       (available.length === 0
         ? `<p>${already.size === 0 ? 'Home Assistant has no calendar entities.' : 'All of them have been added.'}</p>`
-        : `<form method="post" action="/admin/home-assistant/calendars">` +
+        : `<form method="post" action="admin/home-assistant/calendars">` +
           `<label for="cal_entity">Calendar</label>` +
           `<select id="cal_entity" name="entity_id">${options}</select>` +
           `<label for="cal_name">Call it</label>` +
@@ -689,11 +689,11 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `${escapeHtml(wait)}${escapeHtml(window)}</p>` +
           `<p>${escapeHtml(ACTIONS.find((a) => a.key === row.action)?.label ?? row.action)}</p>` +
           `<div class="row">` +
-          `<form method="post" action="/admin/home-assistant/rules/${encodeURIComponent(row.id)}/toggle">` +
+          `<form method="post" action="admin/home-assistant/rules/${encodeURIComponent(row.id)}/toggle">` +
           `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +
           `<button class="secondary" type="submit">${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button>` +
           `</form>` +
-          `<form method="post" action="/admin/home-assistant/rules/${encodeURIComponent(row.id)}/delete">` +
+          `<form method="post" action="admin/home-assistant/rules/${encodeURIComponent(row.id)}/delete">` +
           `<button class="secondary" type="submit">Delete</button></form>` +
           `</div></article>`
         );
@@ -708,7 +708,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
      */
     const templates = RULE_TEMPLATES.map(
       (entry) =>
-        `<li><a class="link" href="/admin/home-assistant?template=${encodeURIComponent(entry.key)}">` +
+        `<li><a class="link" href="admin/home-assistant?template=${encodeURIComponent(entry.key)}">` +
         `${escapeHtml(entry.name)}</a> — ${escapeHtml(entry.hint)}</li>`,
     ).join('');
 
@@ -726,7 +726,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `Everything else belongs in a Home Assistant notification.</p>` +
       (existing === '' ? '' : existing) +
       `<ul class="plain">${templates}</ul>` +
-      `<form method="post" action="/admin/home-assistant/rules">` +
+      `<form method="post" action="admin/home-assistant/rules">` +
       `<label for="rule_name">What to say</label>` +
       `<input id="rule_name" name="name" type="text" required maxlength="60" ` +
       `value="${escapeHtml(template?.name ?? '')}" ` +

@@ -11,6 +11,9 @@ import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
 import { createApp, MODULES } from './http/app.js';
+import { defaultDisplayDir } from './http/static.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
 import { createSetupTokenHolder } from './http/setup.js';
@@ -241,6 +244,27 @@ async function main(): Promise<void> {
     startedAt,
     log,
   });
+  /*
+   * Said out loud, like the database path.
+   *
+   * A wall with no bundle draws "the bundle is missing" and nothing else, and
+   * the cause is always a layout the relative fallback did not expect. One
+   * line here turns that from a puzzle into a fact — rule eleven, since
+   * nobody can reach the household's machine.
+   */
+  const displayDir = defaultDisplayDir();
+  if (!existsSync(join(displayDir, 'index.html'))) {
+    console.warn(`[boot] no display bundle at ${displayDir}`);
+    console.warn('[boot] set DISPLAY_DIR to where index.html and assets/ live');
+    notices.push({
+      level: 'error',
+      code: 'display-missing',
+      message: 'The wall bundle is missing from this installation.',
+    });
+  } else {
+    console.log(`[boot] display bundle ${displayDir}`);
+  }
+
   const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
 
   // Reported only once the socket is actually bound. Announcing it before

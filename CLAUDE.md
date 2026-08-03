@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **thirty-eight real bugs**, and the pattern in how is the most
+This project has found **forty-two real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -116,6 +116,10 @@ useful thing in this document:
 | **Acknowledging a warning just promoted the next rule** | Pressing OK on a wall and watching nothing happen |
 | `autofocus` on a scripted node does nothing, silently | Measuring `document.activeElement` |
 | **A refused connection put the HA address on the wall** | Killing the fake outright instead of returning 502 |
+| **Every redirect dropped the ingress prefix** | A proxy that mounts the app the way the supervisor does |
+| **A cookie the wizard could never receive under ingress** | Reading `Set-Cookie` on the first-run path |
+| `pnpm deploy --legacy` is not an option in pnpm 9 | Running the Dockerfile's own command |
+| **The display bundle resolves outside a deployed tree** | Booting from the pruned directory the image copies |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -203,7 +207,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**918 tests passing.** calendar 153 · core 266 · server 421 · display 78.
+**932 tests passing.** calendar 153 · core 266 · server 435 · display 78.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -217,9 +221,17 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Not started:** weather alerts as an interrupt source · ws push · Docker image ·
-HA add-on packaging (the code path exists and is auto-detected; nothing builds
-the add-on yet).
+**Not started:** ws push · a published docs site · the Android app.
+
+**Packaging is written but unbuilt.** `Dockerfile`, `docker-compose.yml` and
+the add-on repository under `addon/` exist; Docker is not installed on the
+machine this was developed on, so **the image has never been built or run**.
+What *was* verified is everything the image depends on that does not need
+Docker: the pruned `pnpm deploy --prod` tree boots, serves `/healthz`, serves
+the display assets and lands a clean volume on the wizard. Three defects came
+out of that simulation, which is three more than reading it would have found.
+The CI job in `.github/workflows/ci.yml` runs the README's one-liner against a
+clean volume and is the thing that will actually prove the image.
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and
@@ -573,6 +585,36 @@ eighteen hundred lines. No build
 step and no bundle that can fail to load, which is the same reason the wizard
 is. `apps/admin` has not been started and may never need to be — that is worth
 deciding deliberately before the Shifts screen rather than by drift.
+
+**Home Assistant ingress is one middleware, and nothing else knows about it.**
+The supervisor mounts the add-on under a per-session path, strips it, and says
+what it stripped in `X-Ingress-Path`. Three things move: redirects get the
+prefix back on the way out, one `<base>` element decides where every relative
+link resolves, and the cross-origin guard stands down because the supervisor is
+the trust boundary there and will not forward a request without a valid Home
+Assistant session. Every link and form action in the server-rendered pages is
+now **relative** — that is what makes the single `<base>` enough, instead of a
+prefix threaded through forty call sites.
+
+**The token in that path changes every session**, so nothing may be stored
+against it: no absolute URL in the database, no service worker registered under
+it. Wall displays never come through ingress at all — a screen screwed to a
+wall has no Home Assistant session, so it connects to the add-on's port with a
+display token. That is why `ports` is mapped in `config.yaml`; without it there
+is a beautiful settings page and nothing to look at.
+
+**A cookie scoped to `/setup` is never sent to `/api/hassio_ingress/x/setup`.**
+The wizard bounced back to "enter the setup code" for ever: the code was right,
+the cookie was set, and the very next request could not carry it. Cookie paths
+follow the prefix now. Found by driving a real proxy, not by reading — the code
+looks correct at every line.
+
+**`defaultDisplayDir()` is a fact about the repository, not about the image.**
+`pnpm deploy` flattens the server package to the root, so
+`../../../display/dist` resolves outside the application directory: every asset
+404s and the wall draws "the bundle is missing", on the one screen the whole
+product exists for. `DISPLAY_DIR` overrides it and boot logs which directory it
+opened, the way it already does for the database.
 
 **`trustedOrigins` includes the address the request arrived on.** `BASE_URL`
 defaults to localhost and nobody browses to localhost from the sofa; without
