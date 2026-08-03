@@ -9,6 +9,39 @@ import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
 import { ingressPath } from './ingress.js';
+import { checkbox, optionalText, parse, text, z } from '../validation.js';
+
+/**
+ * The wizard's three forms, as schemas.
+ *
+ * Stated here rather than checked field by field in the handlers, so that the
+ * rules a household has to satisfy are readable in one place — and so the
+ * handler below is about *what happens next* rather than about whether a
+ * string is empty.
+ */
+const accountBody = z.object({
+  name: text('Your name', 80),
+  email: text('An email address', 200),
+  // Ten, and no upper bound worth having: this is the only account, there is
+  // no second factor, and the box it protects is often on a home network
+  // somebody has forwarded a port to.
+  password: z
+    .string({ error: () => 'Choose a password.' })
+    .min(10, { error: () => 'Use a password of at least 10 characters.' }),
+  confirm: z.string({ error: () => 'Type the password again.' }),
+}).refine((body) => body.password === body.confirm, {
+  error: () => 'Those passwords do not match.',
+  path: ['confirm'],
+});
+
+const calendarBody = z.object({
+  name: text('A name for the calendar', 80),
+  url: text('The calendar address', 2048),
+  allow_lan: checkbox(),
+  allow_loopback: checkbox(),
+  allow_http: checkbox(),
+  test: optionalText(20),
+});
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 
 /**
@@ -103,10 +136,6 @@ export interface SetupDeps {
 function field(body: Record<string, unknown>, name: string): string {
   const value = body[name];
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function checked(body: Record<string, unknown>, name: string): boolean {
-  return typeof body[name] === 'string';
 }
 
 function hasSetupCookie(c: Context, holder: SetupTokenHolder, now: number): boolean {
@@ -213,23 +242,20 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     }
 
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const name = field(body, 'name');
-    const email = field(body, 'email');
-    const password = field(body, 'password');
-    const confirm = field(body, 'confirm');
-
-    if (name === '' || email === '') {
-      return c.html(accountForm('Enter a name and an email address.', { name, email }), 400);
-    }
-    if (password.length < 10) {
+    const shaped = parse(accountBody, body);
+    if (!shaped.ok) {
+      // The values are echoed back so nobody retypes what was already right.
       return c.html(
-        accountForm('Use a password of at least 10 characters.', { name, email }),
+        accountForm(shaped.message, {
+          name: typeof body['name'] === 'string' ? body['name'] : '',
+          email: typeof body['email'] === 'string' ? body['email'] : '',
+        }),
         400,
       );
     }
-    if (password !== confirm) {
-      return c.html(accountForm('Those passwords do not match.', { name, email }), 400);
-    }
+    // Length and confirmation are both in `accountBody`; there is nothing left
+    // to check here that the schema has not already refused.
+    const { name, email, password } = shaped.value;
 
     const created = await deps.signUp(c, { name, email, password });
 
@@ -267,17 +293,23 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     if (!(await signedIn(c))) return c.redirect('/admin/sign-in', 302);
 
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const timezone = field(body, 'timezone');
-
-    // Membership, not a pattern. A zone `Intl` does not know is one the
-    // recurrence code cannot anchor against, and it would fail later at the
-    // point where it is hardest to connect to this form.
-    if (!supportedTimezones().includes(timezone)) {
-      return c.html(
-        timezoneForm(serverTimezone(), 'Choose a timezone from the list.'),
-        400,
-      );
+    /*
+     * Membership, not a pattern.
+     *
+     * A zone `Intl` does not know is one the recurrence code cannot anchor
+     * against, and it would fail later at the point where it is hardest to
+     * connect back to this form.
+     */
+    const shapedZone = parse(
+      z.string().refine((value) => supportedTimezones().includes(value), {
+        error: () => 'Choose a timezone from the list.',
+      }),
+      body['timezone'],
+    );
+    if (!shapedZone.ok) {
+      return c.html(timezoneForm(serverTimezone(), shapedZone.message), 400);
     }
+    const timezone = shapedZone.value;
 
     const at = now();
     deps.db
@@ -304,16 +336,30 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     if (!(await signedIn(c))) return c.redirect('/admin/sign-in', 302);
 
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const name = field(body, 'name');
-    const url = field(body, 'url');
-    const allowPrivateNetwork = checked(body, 'allow_lan');
-    const allowLoopback = checked(body, 'allow_loopback');
-    const allowHttp = checked(body, 'allow_http');
-    const values = { name, url, allowPrivateNetwork, allowLoopback, allowHttp };
-
-    if (name === '' || url === '') {
-      return c.html(calendarForm(values, { message: 'Enter a name and an address.' }), 400);
+    const shapedFeed = parse(calendarBody, body);
+    if (!shapedFeed.ok) {
+      // Echoed back, so a bad address does not also cost the name above it.
+      return c.html(
+        calendarForm(
+          {
+            name: typeof body['name'] === 'string' ? body['name'] : '',
+            url: typeof body['url'] === 'string' ? body['url'] : '',
+            allowPrivateNetwork: typeof body['allow_lan'] === 'string',
+            allowLoopback: typeof body['allow_loopback'] === 'string',
+            allowHttp: typeof body['allow_http'] === 'string',
+          },
+          { message: shapedFeed.message },
+        ),
+        400,
+      );
     }
+
+    const name = shapedFeed.value.name;
+    const url = shapedFeed.value.url;
+    const allowPrivateNetwork = shapedFeed.value.allow_lan;
+    const allowLoopback = shapedFeed.value.allow_loopback;
+    const allowHttp = shapedFeed.value.allow_http;
+    const values = { name, url, allowPrivateNetwork, allowLoopback, allowHttp };
 
     /*
      * Fetched and parsed before it is stored.

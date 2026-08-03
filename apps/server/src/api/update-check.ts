@@ -1,4 +1,5 @@
 import { FETCH_LIMITS, type Fetcher } from '@maverick-wall/core';
+import { parseJson, z } from '../validation.js';
 
 /**
  * The update check: the only thing in this product that contacts anybody.
@@ -68,12 +69,20 @@ export type UpdateCheckResult =
   /** Reached somebody, but not something we understood. */
   | { readonly status: 'failed'; readonly message: string };
 
-interface ReleasePayload {
-  readonly tag_name?: unknown;
-  readonly name?: unknown;
-  readonly draft?: unknown;
-  readonly prerelease?: unknown;
-}
+/**
+ * A GitHub release, of which four fields matter.
+ *
+ * Loose: this is somebody else's API and it returns forty fields. `catch` on
+ * the booleans rather than `optional`, because "we could not tell whether this
+ * is a draft" should read as "not a draft" and not as a parse failure — the
+ * worst case is telling a household about a version that exists.
+ */
+const releasePayload = z.looseObject({
+  tag_name: z.string().optional(),
+  name: z.string().optional(),
+  draft: z.boolean().catch(false),
+  prerelease: z.boolean().catch(false),
+});
 
 /**
  * Ask once, and never throw.
@@ -105,27 +114,24 @@ export async function checkForUpdate(
     return { status: 'failed', message: 'The release feed answered with nothing.' };
   }
 
-  let payload: ReleasePayload;
-  try {
-    const parsed: unknown = JSON.parse(response.body);
-    // `JSON.parse('null')` is valid JSON and is not an object. Reading a field
-    // off it throws, and nothing in this file is allowed to throw at a caller
-    // that is a scheduled job on somebody's kitchen wall.
-    if (typeof parsed !== 'object' || parsed === null) {
-      return { status: 'failed', message: 'The release feed did not answer with a version.' };
-    }
-    payload = parsed as ReleasePayload;
-  } catch {
+  /*
+   * `JSON.parse('null')` is valid JSON and is not an object, which used to be
+   * a hand-written guard here — the schema covers it, and nothing in this file
+   * is allowed to throw at a caller that is a scheduled job on a kitchen wall.
+   */
+  const shaped = parseJson(releasePayload, response.body);
+  if (!shaped.ok) {
     return { status: 'failed', message: 'The release feed did not answer with a version.' };
   }
+  const payload = shaped.value;
 
   // A draft or pre-release is not something to tell a kitchen about.
-  if (payload.draft === true || payload.prerelease === true) {
+  if (payload.draft || payload.prerelease) {
     return { status: 'ok', latest: currentVersion, newer: false };
   }
 
-  const tag = typeof payload.tag_name === 'string' ? payload.tag_name : payload.name;
-  if (typeof tag !== 'string' || parseVersion(tag) === undefined) {
+  const tag = payload.tag_name ?? payload.name;
+  if (tag === undefined || parseVersion(tag) === undefined) {
     return { status: 'failed', message: 'The release feed did not answer with a version.' };
   }
 

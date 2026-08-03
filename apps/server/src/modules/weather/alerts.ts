@@ -1,4 +1,5 @@
 import { FETCH_LIMITS, type Fetcher, type Severity, type Urgency, type Certainty } from '@maverick-wall/core';
+import { parseJsonOr, z } from '../../validation.js';
 
 /**
  * National Weather Service alerts, parsed from CAP v1.2.
@@ -53,11 +54,6 @@ export interface CapAlert {
   readonly zoneCode: string | null;
 }
 
-const SEVERITIES: readonly string[] = ['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown'];
-const URGENCIES: readonly string[] = ['Immediate', 'Expected', 'Future', 'Past', 'Unknown'];
-const CERTAINTIES: readonly string[] = ['Observed', 'Likely', 'Possible', 'Unlikely', 'Unknown'];
-const MESSAGE_TYPES: readonly string[] = ['Alert', 'Update', 'Cancel', 'Ack', 'Error'];
-
 /**
  * Cap the length of anything a stranger wrote.
  *
@@ -107,19 +103,55 @@ export function clean(value: unknown, limit: number): string | null {
   return stripped.length <= limit ? stripped : `${stripped.slice(0, limit - 1).trimEnd()}…`;
 }
 
-function oneOf(value: unknown, allowed: readonly string[], fallback: string): string {
-  return typeof value === 'string' && allowed.includes(value) ? value : fallback;
-}
-
 function instant(value: unknown): number | null {
   if (typeof value !== 'string') return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-interface RawFeature {
-  readonly properties?: unknown;
-}
+/**
+ * A CAP feature, as api.weather.gov sends it.
+ *
+ * Every field is optional in practice — this is a public feed and the shape
+ * that arrives during a large outbreak is not always the shape in the
+ * documentation. What is *not* optional is `id` and `event`: without an
+ * identifier nothing can be deduplicated, and without an event name there is
+ * nothing to draw. A feature missing either is dropped rather than defaulted,
+ * because inventing a name for a warning is worse than not showing it.
+ *
+ * `catchall` on the object rather than `strict`: a new field NWS adds must
+ * never cost a household their warnings.
+ */
+const capProperties = z.looseObject({
+  id: z.string().min(1),
+  sent: z.string().optional(),
+  messageType: z.enum(['Alert', 'Update', 'Cancel', 'Ack', 'Error']).catch('Alert'),
+  references: z.string().optional(),
+  event: z.string().min(1),
+  headline: z.unknown().optional(),
+  description: z.unknown().optional(),
+  instruction: z.unknown().optional(),
+  areaDesc: z.unknown().optional(),
+  senderName: z.unknown().optional(),
+  severity: z.enum(['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown']).catch('Unknown'),
+  urgency: z.enum(['Immediate', 'Expected', 'Future', 'Past', 'Unknown']).catch('Unknown'),
+  certainty: z.enum(['Observed', 'Likely', 'Possible', 'Unlikely', 'Unknown']).catch('Unknown'),
+  onset: z.string().optional(),
+  effective: z.string().optional(),
+  expires: z.string().optional(),
+  ends: z.string().optional(),
+});
+
+/**
+ * The collection.
+ *
+ * One unreadable feature is skipped, not fatal — the same rule as one
+ * malformed VEVENT in a feed. `z.array(...).catch([])` would throw the lot
+ * away, so each entry is parsed on its own and the failures fall out.
+ */
+const capCollection = z.looseObject({
+  features: z.array(z.unknown()).catch([]),
+});
 
 /**
  * Parse an alerts collection.
@@ -130,59 +162,52 @@ interface RawFeature {
  * is precisely when losing the other nine matters.
  */
 export function parseAlerts(body: string, zoneCode: string | null): CapAlert[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return [];
-  }
-  if (typeof parsed !== 'object' || parsed === null) return [];
-
-  const features = (parsed as { features?: unknown }).features;
-  if (!Array.isArray(features)) return [];
+  const collection = parseJsonOr(capCollection, body, { features: [] });
 
   const alerts: CapAlert[] = [];
-  for (const feature of features as RawFeature[]) {
-    if (typeof feature !== 'object' || feature === null) continue;
-    const properties = feature.properties;
-    if (typeof properties !== 'object' || properties === null) continue;
-    const record = properties as Record<string, unknown>;
+  for (const feature of collection.features) {
+    const shaped = capProperties.safeParse(
+      (feature as { properties?: unknown } | null)?.properties,
+    );
+    // One bad entry costs itself. During a severe weather outbreak the
+    // collection is at its largest and the chance of one odd entry highest,
+    // which is precisely when losing the other nine matters.
+    if (!shaped.success) continue;
+    const record = shaped.data;
 
-    const id = record['id'];
-    const event = clean(record['event'], 120);
-    if (typeof id !== 'string' || id === '' || event === null) continue;
+    const event = clean(record.event, 120);
+    if (event === null) continue;
 
     /*
      * `references` arrives as a single string of comma-separated triples
      * (`sender,identifier,sent`). Only the identifier is useful, and pulling
      * it out here means the Update path downstream is a set lookup.
      */
-    const rawReferences = record['references'];
     const references =
-      typeof rawReferences === 'string'
-        ? rawReferences
+      record.references === undefined
+        ? []
+        : record.references
             .split(',')
             .map((part) => part.trim())
-            .filter((part) => part.startsWith('urn:oid:') || part.includes('NWS'))
-        : [];
+            .filter((part) => part.startsWith('urn:oid:') || part.includes('NWS'));
 
     alerts.push({
-      id,
-      sent: typeof record['sent'] === 'string' ? record['sent'] : '',
-      messageType: oneOf(record['messageType'], MESSAGE_TYPES, 'Alert') as CapAlert['messageType'],
+      id: record.id,
+      sent: record.sent ?? '',
+      messageType: record.messageType,
       references,
       event,
       // Limits sized to what the design can actually draw at a legible size
       // from across a room, not to what CAP permits.
-      headline: clean(record['headline'], 240),
-      description: clean(record['description'], 1200),
-      instruction: clean(record['instruction'], 600),
-      areaDesc: clean(record['areaDesc'], 300),
-      senderName: clean(record['senderName'], 120),
-      severity: oneOf(record['severity'], SEVERITIES, 'Unknown') as Severity,
-      urgency: oneOf(record['urgency'], URGENCIES, 'Unknown') as Urgency,
-      certainty: oneOf(record['certainty'], CERTAINTIES, 'Unknown') as Certainty,
-      onsetAt: instant(record['onset'] ?? record['effective']),
+      headline: clean(record.headline, 240),
+      description: clean(record.description, 1200),
+      instruction: clean(record.instruction, 600),
+      areaDesc: clean(record.areaDesc, 300),
+      senderName: clean(record.senderName, 120),
+      severity: record.severity,
+      urgency: record.urgency,
+      certainty: record.certainty,
+      onsetAt: instant(record.onset ?? record.effective),
       /*
        * `expires`, falling back to `ends`.
        *
@@ -192,7 +217,7 @@ export function parseAlerts(body: string, zoneCode: string | null): CapAlert[] {
        * client-side clear correct — a wall that has lost its connection should
        * drop a message it can no longer refresh.
        */
-      expiresAt: instant(record['expires']) ?? instant(record['ends']),
+      expiresAt: instant(record.expires) ?? instant(record.ends),
       zoneCode,
     });
   }
@@ -264,24 +289,34 @@ export type ZonesResult =
   | { readonly ok: false; readonly message: string; readonly suggestion?: string };
 
 /** Both zone identifiers for a location, from the points document. */
+/**
+ * A zone URL, reduced to the code at the end of it.
+ *
+ * The pattern is the whole validation: `MDZ011` and `MDC027` are the only
+ * shapes a zone code takes, and anything else in that position is a URL that
+ * does not mean what this expects.
+ */
+const zoneCode = z.preprocess((value) => {
+  if (typeof value !== 'string') return undefined;
+  const code = value.split('/').pop();
+  return code !== undefined && /^[A-Z]{2}[CZ][0-9]{3}$/.test(code) ? code : undefined;
+}, z.string().optional());
+
+const pointsZones = z.looseObject({
+  properties: z
+    .looseObject({ forecastZone: zoneCode, county: zoneCode })
+    .catch({ forecastZone: undefined, county: undefined }),
+});
+
 export function parseZones(body: string): Zones | undefined {
-  try {
-    const parsed = JSON.parse(body) as {
-      properties?: { forecastZone?: unknown; county?: unknown };
-    };
-    const lastSegment = (value: unknown): string | null => {
-      if (typeof value !== 'string') return null;
-      const parts = value.split('/');
-      const code = parts[parts.length - 1];
-      return code !== undefined && /^[A-Z]{2}[CZ][0-9]{3}$/.test(code) ? code : null;
-    };
-    const forecast = lastSegment(parsed.properties?.forecastZone);
-    const county = lastSegment(parsed.properties?.county);
-    if (forecast === null && county === null) return undefined;
-    return { forecast, county };
-  } catch {
-    return undefined;
-  }
+  const document = parseJsonOr(pointsZones, body, null);
+  if (document === null) return undefined;
+  const forecast = document.properties.forecastZone ?? null;
+  const county = document.properties.county ?? null;
+  // Neither means the location is outside NWS coverage, which is a different
+  // answer from "the document was unreadable" only to a log reader.
+  if (forecast === null && county === null) return undefined;
+  return { forecast, county };
 }
 
 export type AlertsFetch =

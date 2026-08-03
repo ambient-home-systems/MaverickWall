@@ -1,5 +1,6 @@
 import { FETCH_LIMITS, type Fetcher } from '@maverick-wall/core';
 import { DEFAULT_USER_AGENT } from '../../net/fetcher.js';
+import { parseJsonOr, z } from '../../validation.js';
 
 /**
  * The National Weather Service.
@@ -93,14 +94,32 @@ export function iconFor(summary: string): string {
   return '·';
 }
 
-interface NwsPeriod {
-  readonly name?: unknown;
-  readonly isDaytime?: unknown;
-  readonly temperature?: unknown;
-  readonly temperatureUnit?: unknown;
-  readonly shortForecast?: unknown;
-  readonly startTime?: unknown;
-}
+/**
+ * One forecast period.
+ *
+ * `name` is the only required field: it is what the row is labelled with, and
+ * a period nobody can name is a column of numbers with no heading. Everything
+ * else falls back rather than failing — a missing temperature is an em dash on
+ * the wall, not a missing forecast.
+ */
+const nwsPeriod = z.looseObject({
+  name: z.string().min(1),
+  isDaytime: z.boolean().catch(false),
+  temperature: z.number().nullish().catch(null),
+  temperatureUnit: z.string().catch('F'),
+  shortForecast: z.string().catch(''),
+});
+
+type NwsPeriod = z.infer<typeof nwsPeriod>;
+
+const forecastDocument = z.looseObject({
+  properties: z.looseObject({ periods: z.array(z.unknown()).catch([]) }).catch({ periods: [] }),
+});
+
+/** The forecast URL for a location, from `/points`. */
+const pointsDocument = z.looseObject({
+  properties: z.looseObject({ forecast: z.url() }),
+});
 
 /**
  * Fold the provider's alternating day and night periods into days.
@@ -110,25 +129,28 @@ interface NwsPeriod {
  * numbers, and the first period may be a night, because the forecast starts
  * whenever it is now.
  */
-export function foldPeriods(periods: readonly NwsPeriod[], limit: number): ForecastDay[] {
+export function foldPeriods(periods: readonly unknown[], limit: number): ForecastDay[] {
+  // Parsed one at a time: one odd period must not cost the other six.
+  const shaped: NwsPeriod[] = [];
+  for (const raw of periods) {
+    const one = nwsPeriod.safeParse(raw);
+    if (one.success) shaped.push(one.data);
+  }
+
   const days: ForecastDay[] = [];
 
-  for (let index = 0; index < periods.length && days.length < limit; index++) {
-    const period = periods[index] as NwsPeriod;
-    if (typeof period.name !== 'string') continue;
+  for (let index = 0; index < shaped.length && days.length < limit; index++) {
+    const period = shaped[index] as NwsPeriod;
 
-    const daytime = period.isDaytime === true;
-    const temperature = typeof period.temperature === 'number' ? period.temperature : null;
-    const unit = typeof period.temperatureUnit === 'string' ? period.temperatureUnit : 'F';
-    const summary = typeof period.shortForecast === 'string' ? period.shortForecast : '';
+    const daytime = period.isDaytime;
+    const temperature = period.temperature ?? null;
+    const unit = period.temperatureUnit;
+    const summary = period.shortForecast;
 
     if (daytime) {
       // The night that follows carries the low.
-      const next = periods[index + 1] as NwsPeriod | undefined;
-      const low =
-        next !== undefined && next.isDaytime === false && typeof next.temperature === 'number'
-          ? next.temperature
-          : null;
+      const next = shaped[index + 1];
+      const low = next !== undefined && !next.isDaytime ? (next.temperature ?? null) : null;
       days.push({ name: period.name, high: temperature, low, unit, summary, icon: iconFor(summary) });
       index++;
       continue;
@@ -149,18 +171,8 @@ export function foldPeriods(periods: readonly NwsPeriod[], limit: number): Forec
 
 /** Parse a forecast document. Undefined when it is not one. */
 export function parseForecast(body: string, at: number, limit: number): Forecast | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return undefined;
-  }
-  if (typeof parsed !== 'object' || parsed === null) return undefined;
-
-  const periods = (parsed as { properties?: { periods?: unknown } }).properties?.periods;
-  if (!Array.isArray(periods)) return undefined;
-
-  const days = foldPeriods(periods as NwsPeriod[], limit);
+  const document = parseJsonOr(forecastDocument, body, { properties: { periods: [] } });
+  const days = foldPeriods(document.properties.periods, limit);
   return days.length === 0 ? undefined : { days, fetchedAt: at };
 }
 
@@ -187,14 +199,9 @@ export async function resolveForecastUrl(
       : { message: describe(response) };
   }
 
-  try {
-    const parsed = JSON.parse(response.body) as { properties?: { forecast?: unknown } };
-    const url = parsed.properties?.forecast;
-    if (typeof url !== 'string') return { message: 'That location did not resolve to a forecast.' };
-    return { url };
-  } catch {
-    return { message: 'The weather service answered with something unreadable.' };
-  }
+  const document = parseJsonOr(pointsDocument, response.body, null);
+  if (document === null) return { message: 'That location did not resolve to a forecast.' };
+  return { url: document.properties.forecast };
 }
 
 export async function fetchForecast(

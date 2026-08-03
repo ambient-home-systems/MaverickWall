@@ -1,4 +1,5 @@
 import { zonedWallClockToUtcMs, type NormalizedEvent } from '@maverick-wall/calendar';
+import { blankIsAbsent, parseJsonOr, z } from '../../validation.js';
 
 /**
  * Home Assistant calendar entities, normalised into the ICS shape.
@@ -22,44 +23,50 @@ export interface CalendarEntity {
 }
 
 /** Parse `/api/calendars`, which is a flat list of the calendar entities. */
-export function parseCalendarList(body: string): CalendarEntity[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
+const calendarEntity = z.looseObject({
+  // Only `calendar.*`. Home Assistant answers this endpoint with calendars,
+  // but a rule that says so is one fewer thing to assume.
+  entity_id: z.string().startsWith('calendar.'),
+  name: blankIsAbsent(),
+});
 
+export function parseCalendarList(body: string): CalendarEntity[] {
   const entities: CalendarEntity[] = [];
-  for (const entry of parsed as { entity_id?: unknown; name?: unknown }[]) {
-    if (typeof entry !== 'object' || entry === null) continue;
-    const entityId = entry.entity_id;
-    if (typeof entityId !== 'string' || !entityId.startsWith('calendar.')) continue;
+  for (const entry of parseJsonOr(z.array(z.unknown()).catch([]), body, [])) {
+    const shaped = calendarEntity.safeParse(entry);
+    if (!shaped.success) continue;
     entities.push({
-      entityId,
-      name: typeof entry.name === 'string' && entry.name !== '' ? entry.name : entityId,
+      entityId: shaped.data.entity_id,
+      name: shaped.data.name ?? shaped.data.entity_id,
     });
   }
   return entities;
 }
 
-interface RawEndpoint {
-  readonly date?: unknown;
-  readonly dateTime?: unknown;
-}
-
-interface RawEvent {
-  readonly uid?: unknown;
-  readonly summary?: unknown;
-  readonly description?: unknown;
-  readonly location?: unknown;
-  readonly start?: unknown;
-  readonly end?: unknown;
-  readonly recurrence_id?: unknown;
-}
-
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * One boundary of an event.
+ *
+ * Two shapes, exactly as ICS has two — and the schema says "one of them must
+ * be there", which the hand-rolled version expressed as a pair of `typeof`
+ * checks and an implicit `undefined`.
+ */
+const endpointShape = z.looseObject({
+  date: z.string().regex(DATE_ONLY).optional(),
+  dateTime: z.string().optional(),
+});
+
+const calendarEvent = z.looseObject({
+  // Every one of these arrives as `""` from some integration or other, which
+  // is a value meaning "nothing" rather than a value that fails a minimum.
+  uid: blankIsAbsent(),
+  summary: z.string().min(1),
+  location: blankIsAbsent(),
+  recurrence_id: blankIsAbsent(),
+  start: endpointShape,
+  end: endpointShape,
+});
 
 /**
  * One endpoint of an event, as an instant.
@@ -68,11 +75,11 @@ const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
  * a local midnight and has to be anchored in the household's zone, and
  * `dateTime` for an instant, which carries its own offset and does not.
  */
-function endpoint(raw: unknown, timezone: string): { ms: number; allDay: boolean } | undefined {
-  if (typeof raw !== 'object' || raw === null) return undefined;
-  const value = raw as RawEndpoint;
-
-  if (typeof value.date === 'string') {
+function endpoint(
+  value: z.infer<typeof endpointShape>,
+  timezone: string,
+): { ms: number; allDay: boolean } | undefined {
+  if (value.date !== undefined) {
     const match = DATE_ONLY.exec(value.date);
     if (match === null) return undefined;
     return {
@@ -91,7 +98,7 @@ function endpoint(raw: unknown, timezone: string): { ms: number; allDay: boolean
     };
   }
 
-  if (typeof value.dateTime === 'string') {
+  if (value.dateTime !== undefined) {
     const ms = Date.parse(value.dateTime);
     return Number.isFinite(ms) ? { ms, allDay: false } : undefined;
   }
@@ -121,27 +128,20 @@ export interface ParseEventsInput {
  * entry must not cost a household the rest of their calendar.
  */
 export function parseCalendarEvents(input: ParseEventsInput): NormalizedEvent[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input.body);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-
   const events: NormalizedEvent[] = [];
   let index = 0;
 
-  for (const entry of parsed as RawEvent[]) {
+  for (const raw of parseJsonOr(z.array(z.unknown()).catch([]), input.body, [])) {
     index++;
-    if (typeof entry !== 'object' || entry === null) continue;
+    const shaped = calendarEvent.safeParse(raw);
+    if (!shaped.success) continue;
+    const entry = shaped.data;
 
     const start = endpoint(entry.start, input.timezone);
     const end = endpoint(entry.end, input.timezone);
     if (start === undefined || end === undefined) continue;
 
-    const title = typeof entry.summary === 'string' ? entry.summary : '';
-    if (title === '') continue;
+    const title = entry.summary;
 
     /*
      * A uid, invented if Home Assistant did not supply one.
@@ -152,15 +152,8 @@ export function parseCalendarEvents(input: ParseEventsInput): NormalizedEvent[] 
      * distinct, and keeps it stable across a re-fetch of an unchanged
      * calendar, which is the property that matters.
      */
-    const uid =
-      typeof entry.uid === 'string' && entry.uid !== ''
-        ? entry.uid
-        : `${input.entityId}#${index}@maverick-wall`;
-
-    const recurrenceId =
-      typeof entry.recurrence_id === 'string' && entry.recurrence_id !== ''
-        ? entry.recurrence_id
-        : undefined;
+    const uid = entry.uid ?? `${input.entityId}#${index}@maverick-wall`;
+    const recurrenceId = entry.recurrence_id;
 
     events.push({
       uid,
@@ -182,9 +175,7 @@ export function parseCalendarEvents(input: ParseEventsInput): NormalizedEvent[] 
        * times in the ICS path too.
        */
       sourceTzid: input.timezone,
-      ...(typeof entry.location === 'string' && entry.location !== ''
-        ? { location: entry.location }
-        : {}),
+      ...(entry.location !== undefined ? { location: entry.location } : {}),
       // Home Assistant filters cancelled instances out before answering, so
       // anything that arrives here is on.
       status: 'CONFIRMED',

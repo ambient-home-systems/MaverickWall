@@ -1,3 +1,5 @@
+import { parseJsonOr, z } from '../../validation.js';
+
 /**
  * Entity readings: parsing what Home Assistant says, and deciding how it reads.
  *
@@ -60,19 +62,39 @@ export function isSupported(entityId: string): boolean {
   return (SUPPORTED_DOMAINS as readonly string[]).includes(domainOf(entityId));
 }
 
-interface RawState {
-  readonly entity_id?: unknown;
-  readonly state?: unknown;
-  readonly last_changed?: unknown;
-  readonly attributes?: unknown;
-}
+/**
+ * An attribute, as some integration wrote it.
+ *
+ * Numbers are accepted and stringified because a unit or a friendly name
+ * arriving as a number is a thing that happens, and refusing it would lose a
+ * reading over a type. Anything else is absent.
+ */
+const attributeValue = z
+  .union([z.string(), z.number().transform((n) => String(n))])
+  .nullable()
+  .catch(null);
 
-function attribute(attributes: unknown, name: string): string | null {
-  if (typeof attributes !== 'object' || attributes === null) return null;
-  const value = (attributes as Record<string, unknown>)[name];
-  if (typeof value === 'string') return value;
-  return typeof value === 'number' ? String(value) : null;
-}
+/**
+ * One entity from `/api/states`.
+ *
+ * Loose, because a house has integrations nobody here has heard of and every
+ * one of them adds fields. `entity_id` is the only thing that must be present:
+ * without it there is nothing to match a rule or a watch against.
+ */
+const haState = z.looseObject({
+  entity_id: z.string().min(1),
+  state: z.string().catch(''),
+  last_changed: z.string().optional(),
+  attributes: z
+    .looseObject({
+      friendly_name: attributeValue,
+      unit_of_measurement: attributeValue,
+      device_class: attributeValue,
+    })
+    .catch({ friendly_name: null, unit_of_measurement: null, device_class: null }),
+});
+
+const haStates = z.array(z.unknown()).catch([]);
 
 /**
  * Parse `/api/states`, keeping only what a wall can draw.
@@ -83,29 +105,25 @@ function attribute(attributes: unknown, name: string): string | null {
  * ninety-nine — the same lesson as one malformed VEVENT killing a feed.
  */
 export function parseStates(body: string): HaState[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-
   const states: HaState[] = [];
-  for (const entry of parsed as RawState[]) {
-    if (typeof entry !== 'object' || entry === null) continue;
-    const entityId = entry.entity_id;
-    if (typeof entityId !== 'string' || !isSupported(entityId)) continue;
 
-    const changed = typeof entry.last_changed === 'string' ? Date.parse(entry.last_changed) : NaN;
+  for (const entry of parseJsonOr(haStates, body, [])) {
+    const shaped = haState.safeParse(entry);
+    // One entity with a surprising shape must not cost the other three
+    // hundred and ninety-nine in a real house.
+    if (!shaped.success) continue;
+    const record = shaped.data;
+    if (!isSupported(record.entity_id)) continue;
+
+    const changed = record.last_changed === undefined ? NaN : Date.parse(record.last_changed);
 
     states.push({
-      entityId,
-      domain: domainOf(entityId),
-      state: typeof entry.state === 'string' ? entry.state : '',
-      friendlyName: attribute(entry.attributes, 'friendly_name') ?? entityId,
-      unit: attribute(entry.attributes, 'unit_of_measurement'),
-      deviceClass: attribute(entry.attributes, 'device_class'),
+      entityId: record.entity_id,
+      domain: domainOf(record.entity_id),
+      state: record.state,
+      friendlyName: record.attributes.friendly_name ?? record.entity_id,
+      unit: record.attributes.unit_of_measurement,
+      deviceClass: record.attributes.device_class,
       lastChangedAt: Number.isFinite(changed) ? changed : null,
     });
   }

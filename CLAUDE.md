@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **forty-seven real bugs**, and the pattern in how is the most
+This project has found **forty-nine real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -125,6 +125,8 @@ useful thing in this document:
 | Add-on options a household could set that did nothing | Grepping for who reads `options.json` |
 | The performance budget failed on any machine but mine | Letting CI run the suite for the first time |
 | Nine stray `… 2.sql` migrations in the working tree | The journal-parity check, which exists for exactly that |
+| **A Zod schema that refused every unticked checkbox** | Running the wizard's own tests after the rewrite |
+| **`"location": ""` dropped every Home Assistant event** | A fixture with the empty strings a real HA sends |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -226,7 +228,7 @@ verify` passes and names `release.yml@refs/tags/v0.1.1`. The manifest carries
 an ancestor of `main`** — the PRs were merged with merge commits rather than
 squashed precisely so that stayed true.
 
-**932 tests passing.** calendar 153 · core 266 · server 435 · display 78. CI
+**943 tests passing.** calendar 153 · core 266 · server 446 · display 78. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -577,6 +579,20 @@ list of suggestions rather than templates.
 wall" and "do not tell me when the house is flooding" are different requests,
 and conflating them would silently disarm a rule.
 
+**Zod lives in `apps/server` and nowhere else.** Rule one keeps
+`packages/core` and `packages/calendar` free of any vendor library, so their
+inputs are validated one layer out, on the way in. That is not an exception to
+rule five — it is where rule one wins, and the validation still happens.
+
+**`z.unknown().transform(...)` makes an object key *required* in Zod 4.** Two
+bugs came from writing past that, and both read as obviously correct. An
+unticked checkbox is not sent by a browser at all, so `checkbox()` spelled that
+way refused *most submissions of most forms*; and `z.string().min(1).optional()`
+refuses `""`, which is what Home Assistant sends for `location` on most
+calendar events — taking the whole event with it. `z.preprocess(...)` is the
+spelling that means what both of those wanted. Anything reading a field
+somebody else populates wants `blankIsAbsent()` rather than `.optional()`.
+
 **A generated migration can corrupt every calendar and report success.**
 drizzle-kit's table-recreate output listed the *new* columns in its
 `INSERT ... SELECT`, and SQLite resolves a double-quoted name matching no column
@@ -764,15 +780,15 @@ distinct address.
 - **Display density.** A work feed marks *every* day. Matched shift events are
   consumed out of the agenda, but a NEXT row still needs an opinion about how
   many events per day it can show before it stops being readable.
-- **Rule five, and whether it is still the rule.** It says "Zod at every
-  boundary. Reject, do not coerce." Zod is not a dependency anywhere, and there
-  are now around a dozen hand-validated forms plus the parsers for CAP, Home
-  Assistant states and calendar payloads. The *behaviour* the rule asks for is
-  there — everything rejects rather than coerces, and there are tests for it —
-  but the named tool is not, and the gap has been carried long enough that it
-  should be closed deliberately in one direction. Either adopt Zod at the
-  boundaries that are still hand-rolled, or rewrite the rule to say what the
-  code actually does. Drifting is the only wrong answer.
+- **Rule five, part done.** Every boundary where bytes arrive from *outside*
+  is on Zod now — CAP, Home Assistant states and calendars, the NWS forecast
+  and points documents, the GitHub release feed, the stored rule conditions,
+  and the whole first-run wizard. What is left is admin form bodies: roughly
+  sixty `field()`/`checked()` calls across thirteen handlers in `admin.ts` and
+  six in `admin-ha.ts`. They are session-gated, same-origin and already
+  centralised, so the remaining risk is low and the remaining work is
+  mechanical — but it is still hand-rolled, and finishing it is what closes the
+  rule rather than narrowing it.
 - **The image is ~482MB.** About 50MB of it is `esbuild` and `vitest` in the
   production tree, pulled in because `better-auth` declares `drizzle-kit` and
   `vitest` as peer dependencies. Fixing it means changing peer resolution,

@@ -62,6 +62,7 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
+import { bounded, oneOf, optionalText, parse, z } from '../validation.js';
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
@@ -167,6 +168,53 @@ function blockOrder(
   return { blocks: chosen.join(',') };
 }
 
+/**
+ * The Display screen, as one schema.
+ *
+ * The daylight window is the interesting part: three fields that are only
+ * required *together*, and only when a second theme was chosen. Expressing
+ * that as a `superRefine` puts the rule beside the fields rather than three
+ * `if` statements down the handler, and the message stays the one a household
+ * would want — a window of no length is the mistake people actually make.
+ */
+const themeKeys = ['board', 'slate', 'almanac', 'glance'] as const;
+
+const displayBody = z
+  .object({
+    theme: oneOf('a theme', themeKeys),
+    daytime_theme: optionalText(20),
+    daytime_starts_at: optionalText(5),
+    daytime_ends_at: optionalText(5),
+    today_events: bounded('Events listed for today', 1, 20),
+    next_days: bounded('Days in the week ahead', 0, 14),
+    horizon_weeks: bounded('Weeks in the month grid', 1, 8),
+  })
+  .superRefine((value, ctx) => {
+    const chosen = value.daytime_theme;
+    if (chosen === undefined || chosen === 'none') return;
+
+    if (!(themeKeys as readonly string[]).includes(chosen)) {
+      ctx.addIssue({ code: 'custom', message: 'Choose a daylight theme from the list.' });
+      return;
+    }
+    const from = value.daytime_starts_at;
+    const to = value.daytime_ends_at;
+    if (from === undefined || to === undefined || !HHMM_SHAPE.test(from) || !HHMM_SHAPE.test(to)) {
+      ctx.addIssue({ code: 'custom', message: 'Enter the daylight hours as HH:MM.' });
+      return;
+    }
+    if (from === to) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'The daylight hours start and end at the same time. A window of no length ' +
+          'would never switch — set them apart, or turn the schedule off.',
+      });
+    }
+  });
+
+const HHMM_SHAPE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
 const THEMES = [
   { key: 'board', label: 'Board — dark, amber' },
   { key: 'slate', label: 'Kitchen Slate — warm, calm at night' },
@@ -208,18 +256,6 @@ function isHhmm(value: string): boolean {
   return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
 }
 
-/** A whole number inside a range, or undefined so the caller can say so. */
-function counted(
-  body: Record<string, unknown>,
-  name: string,
-  low: number,
-  high: number,
-): number | undefined {
-  const raw = field(body, name);
-  if (!/^[0-9]+$/.test(raw)) return undefined;
-  const value = Number(raw);
-  return value >= low && value <= high ? value : undefined;
-}
 
 /**
  * Relative rather than absolute, deliberately.
@@ -935,10 +971,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/display', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
-    const theme = field(body, 'theme');
-    if (!THEMES.some((candidate) => candidate.key === theme)) {
-      return c.html(displayPage({ message: 'Choose a theme from the list.' }), 400);
-    }
+    const shaped = parse(displayBody, body);
+    if (!shaped.ok) return c.html(displayPage({ message: shaped.message }), 400);
 
     /*
      * "Same theme all day" is a choice, not a missing value.
@@ -947,52 +981,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * household with one theme should not have to think about a time window
      * that does nothing.
      */
-    const daytimeRaw = field(body, 'daytime_theme');
-    const scheduled = daytimeRaw !== '' && daytimeRaw !== 'none';
-    if (scheduled && !THEMES.some((candidate) => candidate.key === daytimeRaw)) {
-      return c.html(displayPage({ message: 'Choose a daylight theme from the list.' }), 400);
-    }
-
-    const startsAt = field(body, 'daytime_starts_at');
-    const endsAt = field(body, 'daytime_ends_at');
-    if (scheduled && (!isHhmm(startsAt) || !isHhmm(endsAt))) {
-      return c.html(displayPage({ message: 'Enter the daylight hours as HH:MM.' }), 400);
-    }
-    if (scheduled && startsAt === endsAt) {
-      return c.html(
-        displayPage({
-          message: 'The daylight hours start and end at the same time.',
-          suggestion: 'A window of no length would never switch. Set them apart, or turn the schedule off.',
-        }),
-        400,
-      );
-    }
+    const daytimeRaw = shaped.value.daytime_theme;
+    const scheduled = daytimeRaw !== undefined && daytimeRaw !== 'none';
 
     const order = blockOrder(body, readHousehold(deps.db).displayBlocks);
     if ('error' in order) return c.html(displayPage({ message: order.error }), 400);
 
-    const todayEvents = counted(body, 'today_events', 1, 20);
-    const nextDays = counted(body, 'next_days', 0, 14);
-    const horizonWeeks = counted(body, 'horizon_weeks', 1, 8);
-    if (todayEvents === undefined || nextDays === undefined || horizonWeeks === undefined) {
-      return c.html(
-        displayPage({
-          message: 'Those amounts are outside what the wall can lay out.',
-          suggestion:
-            'Today takes 1 to 20 events, the week ahead 0 to 14 days, and the month 1 to 8 weeks.',
-        }),
-        400,
-      );
-    }
-
     writeDisplaySettings(deps.db, {
-      theme,
+      theme: shaped.value.theme,
       daytimeTheme: scheduled ? daytimeRaw : null,
-      daytimeStartsAt: scheduled ? startsAt : null,
-      daytimeEndsAt: scheduled ? endsAt : null,
-      todayEvents,
-      nextDays,
-      horizonWeeks,
+      // `?? null` because the schema only guarantees these are present when a
+      // daylight theme was chosen, and `scheduled` is exactly that condition —
+      // but the type does not know the two are linked.
+      daytimeStartsAt: scheduled ? (shaped.value.daytime_starts_at ?? null) : null,
+      daytimeEndsAt: scheduled ? (shaped.value.daytime_ends_at ?? null) : null,
+      todayEvents: shaped.value.today_events,
+      nextDays: shaped.value.next_days,
+      horizonWeeks: shaped.value.horizon_weeks,
       blocks: order.blocks,
     });
 

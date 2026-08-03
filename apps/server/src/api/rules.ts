@@ -1,15 +1,12 @@
 import {
   DEFAULT_ALERT_RULES,
-  type EntityCondition,
   type InterruptAction,
   type InterruptRule,
   type InterruptSource,
   type RuleMatch,
-  type Severity,
-  type TimeWindow,
-  type Urgency,
 } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
+import { parseOr, z } from '../validation.js';
 
 /**
  * Interrupt rules, between the database and the pure evaluator.
@@ -22,10 +19,59 @@ import type { SqliteDatabase } from '../db/open.js';
  * is a column.
  */
 
-const SEVERITIES: readonly string[] = ['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown'];
-const URGENCIES: readonly string[] = ['Immediate', 'Expected', 'Future', 'Past', 'Unknown'];
 const ACTIONS: readonly string[] = ['none', 'banner', 'takeover', 'takeover_and_wake'];
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+/**
+ * A stored rule's `conditions` column.
+ *
+ * This is a boundary like any other, and an unusual one: the value did not
+ * come from a person or a server but from *an older version of this code*, or
+ * from somebody with a SQLite client. Both are outside this process, so both
+ * get validated.
+ *
+ * Two shapes are accepted on purpose. The nested one is what is written today;
+ * the flat one is what rules written before the model gained severity look
+ * like, and converting them here rather than migrating the rows keeps the
+ * upgrade to `ADD COLUMN` statements, which cannot lose anything.
+ */
+const timeWindow = z
+  .object({ from: z.string().regex(HHMM), to: z.string().regex(HHMM) })
+  // Both the same is a zero-length window that could never match. Somebody who
+  // did that meant a whole day far more often than no day at all.
+  .refine((w) => w.from !== w.to)
+  .nullish()
+  .catch(null)
+  .transform((w) => w ?? null);
+
+const conditionKind = z.enum(['equals', 'above', 'below', 'changed_to']);
+
+/** `value` arrives as a number from `<input type=number>` and a hand edit. */
+const conditionValue = z.union([z.string(), z.number().transform(String)]);
+
+const nestedCondition = z.object({
+  kind: conditionKind,
+  value: conditionValue,
+  between: timeWindow,
+});
+
+const flatCondition = z.looseObject({
+  entityId: z.string().min(1).optional(),
+  key: z.string().min(1).optional(),
+  condition: conditionKind,
+  value: conditionValue,
+  between: timeWindow,
+  forSeconds: z.number().nullish().catch(null),
+});
+
+const nestedMatch = z.looseObject({
+  eventTypes: z.array(z.string().min(1)).min(1).optional(),
+  minSeverity: z.enum(['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown']).optional(),
+  minUrgency: z.enum(['Immediate', 'Expected', 'Future', 'Past', 'Unknown']).optional(),
+  entityId: z.string().min(1).optional(),
+  condition: nestedCondition.optional(),
+  startsWithinSec: z.number().positive().optional(),
+});
 
 /**
  * The stored source name, tolerating the older spellings.
@@ -54,30 +100,6 @@ export function readSource(stored: string): InterruptSource | undefined {
   }
 }
 
-function window(raw: unknown): TimeWindow | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const record = raw as Record<string, unknown>;
-  const from = record['from'];
-  const to = record['to'];
-  if (typeof from !== 'string' || typeof to !== 'string') return null;
-  if (!HHMM.test(from) || !HHMM.test(to)) return null;
-  // Both the same is a zero-length window that could never match. Somebody who
-  // did that meant a whole day far more often than no day at all.
-  return from === to ? null : { from, to };
-}
-
-function condition(raw: unknown): EntityCondition | undefined {
-  if (typeof raw !== 'object' || raw === null) return undefined;
-  const record = raw as Record<string, unknown>;
-  const kind = record['kind'] ?? record['condition'];
-  if (kind !== 'equals' && kind !== 'above' && kind !== 'below' && kind !== 'changed_to') {
-    return undefined;
-  }
-  const value = record['value'];
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  return { kind, value: String(value), between: window(record['between']) };
-}
-
 /**
  * Read the stored match, in either shape.
  *
@@ -87,56 +109,43 @@ function condition(raw: unknown): EntityCondition | undefined {
  * which cannot lose anything.
  */
 export function readMatch(raw: unknown): { match: RuleMatch; legacyDwellSec: number } | undefined {
-  if (typeof raw !== 'object' || raw === null) return undefined;
-  const record = raw as Record<string, unknown>;
-
-  // The old flat shape: a condition at the top level rather than under `match`.
-  if (typeof record['condition'] === 'string') {
-    const entityId = record['entityId'] ?? record['key'];
-    const parsed = condition(record);
-    if (typeof entityId !== 'string' || parsed === undefined) return undefined;
-    const forSeconds = record['forSeconds'];
+  // The older flat shape first: it is recognised by a `condition` that is a
+  // string rather than an object.
+  const flat = flatCondition.safeParse(raw);
+  if (flat.success) {
+    const entityId = flat.data.entityId ?? flat.data.key;
+    if (entityId === undefined) return undefined;
+    const legacy = flat.data.forSeconds;
     return {
-      match: { entityId, condition: parsed },
-      legacyDwellSec: typeof forSeconds === 'number' && forSeconds > 0 ? Math.round(forSeconds) : 0,
+      match: {
+        entityId,
+        condition: { kind: flat.data.condition, value: flat.data.value, between: flat.data.between },
+      },
+      legacyDwellSec: typeof legacy === 'number' && legacy > 0 ? Math.round(legacy) : 0,
     };
   }
 
-  const match: {
-    eventTypes?: readonly string[];
-    minSeverity?: Severity;
-    minUrgency?: Urgency;
-    entityId?: string;
-    condition?: EntityCondition;
-    startsWithinSec?: number;
-  } = {};
+  const shaped = nestedMatch.safeParse(raw);
+  if (!shaped.success) return undefined;
+  const data = shaped.data;
 
-  const eventTypes = record['eventTypes'];
-  if (Array.isArray(eventTypes)) {
-    const names = eventTypes.filter((name): name is string => typeof name === 'string' && name !== '');
-    if (names.length > 0) match.eventTypes = names;
-  }
-
-  const minSeverity = record['minSeverity'];
-  if (typeof minSeverity === 'string' && SEVERITIES.includes(minSeverity)) {
-    match.minSeverity = minSeverity as Severity;
-  }
-
-  const minUrgency = record['minUrgency'];
-  if (typeof minUrgency === 'string' && URGENCIES.includes(minUrgency)) {
-    match.minUrgency = minUrgency as Urgency;
-  }
-
-  const entityId = record['entityId'];
-  if (typeof entityId === 'string' && entityId !== '') match.entityId = entityId;
-
-  const nested = condition(record['condition']);
-  if (nested !== undefined) match.condition = nested;
-
-  const startsWithin = record['startsWithinSec'];
-  if (typeof startsWithin === 'number' && startsWithin > 0) {
-    match.startsWithinSec = Math.round(startsWithin);
-  }
+  /*
+   * Rebuilt field by field rather than passed through.
+   *
+   * `exactOptionalPropertyTypes` is on, so an explicit `undefined` is not the
+   * same as an absent key — and `matches` in core decides "this rule says
+   * nothing" by counting which clauses are present.
+   */
+  const match: RuleMatch = {
+    ...(data.eventTypes !== undefined ? { eventTypes: data.eventTypes } : {}),
+    ...(data.minSeverity !== undefined ? { minSeverity: data.minSeverity } : {}),
+    ...(data.minUrgency !== undefined ? { minUrgency: data.minUrgency } : {}),
+    ...(data.entityId !== undefined ? { entityId: data.entityId } : {}),
+    ...(data.condition !== undefined ? { condition: data.condition } : {}),
+    ...(data.startsWithinSec !== undefined
+      ? { startsWithinSec: Math.round(data.startsWithinSec) }
+      : {}),
+  };
 
   return { match, legacyDwellSec: 0 };
 }
@@ -173,13 +182,7 @@ export function readRules(db: SqliteDatabase): InterruptRule[] {
     const source = readSource(row.trigger);
     if (source === undefined) continue;
 
-    let raw: unknown;
-    try {
-      raw = row.conditions === null ? null : JSON.parse(row.conditions);
-    } catch {
-      continue;
-    }
-    const parsed = readMatch(raw);
+    const parsed = readMatch(parseOr(z.unknown(), safeJson(row.conditions), null));
     if (parsed === undefined) continue;
 
     const action = ACTIONS.includes(row.action) ? (row.action as InterruptAction) : 'banner';
@@ -241,6 +244,16 @@ export function writeRule(db: SqliteDatabase, rule: InterruptRule): void {
     at,
     at,
   );
+}
+
+/** JSON from a column, which may not be JSON at all. */
+function safeJson(value: string | null): unknown {
+  if (value === null) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 export function deleteRule(db: SqliteDatabase, id: string): boolean {
