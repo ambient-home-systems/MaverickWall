@@ -97,7 +97,20 @@ export interface Manifest {
   readonly notices: readonly ManifestNotice[];
   /** Panel slices keyed by block. Data only — never anything to execute. */
   readonly panels?: Readonly<Record<string, unknown>>;
-  readonly interrupts: readonly never[];
+  /**
+   * Anything to say over the top of the calendar, highest priority first.
+   *
+   * Already evaluated by the server. The display decides only how loudly to
+   * draw one — the rules, the thresholds and the entities that produced it
+   * never leave the server.
+   */
+  readonly interrupts?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly message: string;
+    readonly action: string;
+    readonly priority: number;
+  }[];
 }
 
 /**

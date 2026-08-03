@@ -1,5 +1,7 @@
 import type { Fetcher } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
+import type { Keyring } from '../secrets/keyring.js';
+import type { Signal } from '../api/interrupts.js';
 
 /**
  * Panel modules.
@@ -29,6 +31,14 @@ export interface ModuleContext {
   readonly now: number;
   /** The household's zone, for anything that has to name a day. */
   readonly timezone: string;
+  /**
+   * For a module whose upstream needs a credential.
+   *
+   * Only the module's own job touches this. Nothing a module returns carries a
+   * secret: the manifest gets resolved values, and rule six is a test rather
+   * than an intention.
+   */
+  readonly keyring: Keyring;
 }
 
 export interface ModuleJob {
@@ -66,6 +76,19 @@ export interface PanelModule {
    */
   contribute(context: ModuleContext): unknown;
   readonly job?: ModuleJob;
+
+  /**
+   * Facts this module can offer the interrupt evaluator, if any.
+   *
+   * Separate from `contribute` because an interrupt is not a panel: it is not
+   * ordered, it is not switched off with a block, and it draws over everything
+   * rather than in a row. A module that only puts a panel on the wall does not
+   * implement this, and a source of signals that has no panel — weather alerts
+   * are the likely next one — would implement only this.
+   *
+   * Never throws, same as everything else here.
+   */
+  signals?(context: ModuleContext): readonly Signal[];
 }
 
 /**
@@ -91,4 +114,32 @@ export function collectPanels(
     }
   }
   return panels;
+}
+
+/**
+ * Every signal every module can offer, for the interrupt rules to match on.
+ *
+ * Deliberately not gated on `ready`. A module can be switched off as a *panel*
+ * and still be the thing that knows the freezer door is open — "do not draw
+ * this on the wall" and "do not tell me when the house is flooding" are
+ * different requests, and conflating them would silently disarm a rule.
+ *
+ * Caught per module, for the same reason as panels.
+ */
+export function collectSignals(
+  modules: readonly PanelModule[],
+  context: ModuleContext,
+): Signal[] {
+  const signals: Signal[] = [];
+  for (const module of modules) {
+    if (module.signals === undefined) continue;
+    try {
+      signals.push(...module.signals(context));
+    } catch {
+      // A module that cannot say is not the same as a module saying nothing is
+      // wrong — but there is no honest way to express that here, and taking the
+      // wall down is not it. Its own health surfaces on its own screen.
+    }
+  }
+  return signals;
 }

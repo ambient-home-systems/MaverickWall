@@ -112,9 +112,30 @@ body {
  * from the doorway. The day list is the only part that degrades gracefully by
  * showing four days instead of six.
  */
-.screen > .now { flex: 0 1 auto; }
+/*
+ * `flex-shrink: 0`, and it has to be. This read `0 1 auto` and the comment
+ * above was already true of the intent and false of the rule — with three
+ * blocks there was slack, so nothing ever pressed on it. A fourth block
+ * (readings from the house) pushed the column past the viewport, flexbox
+ * shrank today along with the week ahead, and "Mon 3 Aug" came out sliced in
+ * half under `overflow: hidden`. Only measuring found it; it reads as a
+ * cropped screenshot rather than as a bug.
+ */
+.screen > .now { flex: 0 0 auto; }
 .screen > .next { flex: 1 1 auto; }
 .screen > .horizon { flex: 0 0 auto; }
+/* Ambient context, and it must not grow at the expense of anything. */
+.screen > .house { flex: 0 0 auto; }
+/*
+ * Nor may a banner be the thing that gives.
+ *
+ * Flexbox spreads a shortfall across everything that will shrink, so pinning
+ * today simply moved the slicing up here — and a leak warning cut off halfway
+ * through its own sentence is worse than no warning at all. Every block in
+ * this column now holds its size except the week ahead, which is the one that
+ * degrades into something still true: four days instead of six.
+ */
+.screen > .banners { flex: 0 0 auto; }
 /*
  * With no week ahead there is nothing left to absorb the slack, so the month
  * takes it. The rows stretch rather than the wall ending halfway down with a
@@ -148,6 +169,46 @@ body {
 }
 .banner-warn { border-left-color: var(--accent); }
 .banner-error { border-left-color: var(--accent); color: var(--ink); }
+/* An interrupt is not housekeeping. It reads at full weight, not muted. */
+.banner-alert {
+  border-left-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 1.7rem;
+}
+
+/* --- the takeover ----------------------------------------------------- */
+
+/*
+ * The whole wall, for the small number of things worth losing a calendar over.
+ *
+ * Type first and colour second: a wall is read from across a room and often at
+ * an angle, and a household who chose a light theme did so because their
+ * kitchen is bright. Filling the screen with the accent would be unreadable in
+ * exactly the room this is for.
+ */
+.screen-alert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0.5rem solid var(--accent);
+}
+.alert { text-align: center; max-width: 88%; }
+.alert-line {
+  font-family: var(--disp);
+  font-size: 4.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+}
+.alert-line + .alert-line { margin-top: 2.4rem; }
+/* Kept because somebody reading this needs to know whether it is now or 4am. */
+.alert-clock {
+  margin-top: 3.2rem;
+  font-size: 2.2rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* --- BLOCK 1 — NOW ---------------------------------------------------- */
 
@@ -256,6 +317,47 @@ body {
   text-align: center;
 }
 :root[data-theme="glance"] .wx { display: none; }
+
+/* --- THE HOUSE -------------------------------------------------------- */
+
+/*
+ * A few readings, and deliberately not a dashboard.
+ *
+ * The same strip shape as the forecast rather than a grid of tiles: this is
+ * ambient context beside a calendar, and Home Assistant already has a
+ * dashboard that is better than anything that would fit here. Flex rather
+ * than a fixed column count, because a household picks how many readings
+ * there are and five equal columns holding two of them looks broken.
+ */
+.house {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 2.2rem;
+  border-bottom: 1px solid var(--rule);
+  padding: 1rem 0 1.15rem;
+  flex: 0 0 auto;
+}
+.hs-item { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.hs-ico { font-size: 1.6rem; }
+.hs-label {
+  font-size: 1.25rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hs-value { font-size: 1.75rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* A reading nobody has been able to refresh is dimmed rather than removed —
+   an empty space says nothing, and a faded one says "this is old". */
+.hs-stale .hs-value { color: var(--muted); }
+.hs-note {
+  flex: 1 0 100%;
+  padding-top: 0.5rem;
+  font-size: 1.2rem;
+  color: var(--faint);
+}
+/* Glance is one status at a distance; a row of readings is the opposite of it. */
+:root[data-theme="glance"] .house { display: none; }
 
 /* --- BLOCK 2 — NEXT --------------------------------------------------- */
 
@@ -426,6 +528,26 @@ body {
   align-content: start;
   padding: 2.6rem 2.8rem 2.2rem;
   gap: 1.8rem 2.8rem;
+}
+
+/*
+ * The two screens that are one thing, not a calendar.
+ *
+ * A takeover and the pre-pairing message both want the whole screen with
+ * something centred in it, and the rule above turns every `.screen` into a
+ * two-column grid — so in landscape they were being placed in the left-hand
+ * column, sitting in the top corner with the right half of a television
+ * empty. Found by measuring rather than by looking: the message screen reads
+ * as merely "left aligned" until the numbers say it stops at 980 of 1920.
+ *
+ * Written as a separate rule rather than by scoping the one above, because
+ * `:has()` is out under rule two and this is what says the intent.
+ */
+:root[data-layout="landscape"] .screen.screen-alert,
+:root[data-layout="landscape"] .screen.screen-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /*

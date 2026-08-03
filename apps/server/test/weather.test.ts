@@ -103,13 +103,14 @@ describe('the icon', () => {
 
 describe('the module seam', () => {
   const db = {} as never;
+  const context = { db, fetcher: {} as never, keyring: {} as never, now: AT, timezone: 'UTC' };
 
   it('collects a slice from every ready module', () => {
     const modules: PanelModule[] = [
       { key: 'a', label: 'A', ready: () => true, contribute: () => ({ v: 1 }) },
       { key: 'b', label: 'B', ready: () => true, contribute: () => ({ v: 2 }) },
     ];
-    expect(collectPanels(modules, { db, fetcher: {} as never, now: AT, timezone: 'UTC' })).toEqual({
+    expect(collectPanels(modules, context)).toEqual({
       a: { v: 1 },
       b: { v: 2 },
     });
@@ -120,7 +121,7 @@ describe('the module seam', () => {
       { key: 'off', label: 'Off', ready: () => false, contribute: () => ({ v: 1 }) },
       { key: 'quiet', label: 'Quiet', ready: () => true, contribute: () => null },
     ];
-    expect(collectPanels(modules, { db, fetcher: {} as never, now: AT, timezone: 'UTC' })).toEqual({});
+    expect(collectPanels(modules, context)).toEqual({});
   });
 
   it('lets one module fail without costing the others', () => {
@@ -133,7 +134,7 @@ describe('the module seam', () => {
       },
       { key: 'fine', label: 'Fine', ready: () => true, contribute: () => ({ v: 'ok' }) },
     ];
-    expect(collectPanels(modules, { db, fetcher: {} as never, now: AT, timezone: 'UTC' })).toEqual({
+    expect(collectPanels(modules, context)).toEqual({
       fine: { v: 'ok' },
     });
   });

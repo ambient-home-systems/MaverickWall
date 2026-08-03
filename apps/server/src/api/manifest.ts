@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { ManifestInterrupt } from './interrupts.js';
 import {
   addDays,
   eachDate,
@@ -26,10 +27,10 @@ import {
 
 export const MANIFEST_VERSION = 1;
 
-/** The three things a wall can show. Order is the household's to choose. */
-export type DisplayBlock = 'now' | 'weather' | 'next' | 'horizon';
+/** Everything a wall can show. Order is the household's to choose. */
+export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon';
 
-const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'next', 'horizon'];
+const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'home', 'next', 'horizon'];
 
 /**
  * Read the stored order, and never return nothing.
@@ -192,8 +193,14 @@ export interface Manifest {
    * household orders.
    */
   readonly panels: Readonly<Record<string, unknown>>;
-  /** Interrupts are not built yet; the field exists so the contract holds. */
-  readonly interrupts: readonly never[];
+  /**
+   * Anything the wall should say over the top of the calendar.
+   *
+   * Highest priority first, already evaluated — the display decides how loudly
+   * to draw one and nothing else. Empty in the healthy case, which is almost
+   * always.
+   */
+  readonly interrupts: readonly ManifestInterrupt[];
 }
 
 /** Row shapes as they come out of the database, before assembly. */
@@ -264,6 +271,11 @@ export interface BuildManifestInput {
    * I/O — every module reads its own cache, which its own job fills.
    */
   readonly panels?: Readonly<Record<string, unknown>>;
+  /**
+   * Interrupts already evaluated, for the same reason panels are already
+   * collected: assembly is pure and reads no cache of its own.
+   */
+  readonly interrupts?: readonly ManifestInterrupt[];
   /**
    * The screen this document is for, when it is being served to one.
    *
@@ -599,7 +611,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
     })),
     notices: [...(input.notices ?? []), ...healthNotices(input.sources, input.now)],
     panels: input.panels ?? {},
-    interrupts: [],
+    interrupts: input.interrupts ?? [],
   };
 }
 

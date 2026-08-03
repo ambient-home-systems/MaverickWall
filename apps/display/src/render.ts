@@ -141,6 +141,42 @@ function renderWeather(model: DisplayModel): HTMLElement | undefined {
   return strip;
 }
 
+/* -------------------------------------------------------------- HOUSE ---- */
+
+/**
+ * A few readings from the house, drawn typographically.
+ *
+ * Four display modes and no tiles. The brief is explicit that this is ambient
+ * context on a family calendar rather than a dashboard, and the difference
+ * shows up here: a grid of cards would be competing with Lovelace, badly.
+ *
+ * Note what this function receives — a label, a value, a character. There is
+ * no entity id in the model and no way to ask for one. That boundary is what
+ * keeps a compromised wall from being a way into somebody's house.
+ */
+function renderHouse(model: DisplayModel): HTMLElement | undefined {
+  if (model.house.length === 0) return undefined;
+
+  const strip = el('section', 'house');
+  for (const reading of model.house) {
+    const cell = el('div', `hs-item hs-${reading.mode}${reading.stale ? ' hs-stale' : ''}`);
+
+    if (reading.mode === 'icon_state' || reading.mode === 'presence') {
+      cell.appendChild(el('span', 'hs-ico', reading.icon));
+    }
+    if (reading.mode !== 'value') {
+      cell.appendChild(el('span', 'hs-label', reading.label));
+    }
+    cell.appendChild(el('span', 'hs-value', reading.value));
+    strip.appendChild(cell);
+  }
+
+  if (model.houseNote !== undefined) {
+    strip.appendChild(el('div', 'hs-note', model.houseNote));
+  }
+  return strip;
+}
+
 /* --------------------------------------------------------------- NEXT ---- */
 
 function renderNext(model: DisplayModel): HTMLElement {
@@ -258,7 +294,17 @@ function legendFor(model: DisplayModel): HTMLElement | undefined {
 /* ------------------------------------------------------------- banners --- */
 
 function renderBanners(model: DisplayModel): HTMLElement | undefined {
-  const messages: { level: string; message: string }[] = [...model.notices];
+  /*
+   * Interrupts lead, above the housekeeping notices.
+   *
+   * A stale feed and a water leak are both "things the wall wants to say", and
+   * only one of them is worth reading first. They are already sorted by the
+   * server; this only has to not bury them.
+   */
+  const messages: { level: string; message: string }[] = [
+    ...model.interrupts.map((interrupt) => ({ level: 'alert', message: interrupt.message })),
+    ...model.notices,
+  ];
   if (model.staleness.level !== 'fresh') {
     messages.unshift({
       level: model.staleness.level === 'offline' ? 'warn' : 'info',
@@ -282,6 +328,32 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
  * every minute is the sort of thing that makes a household unplug it.
  */
 export function render(root: HTMLElement, model: DisplayModel): void {
+  /*
+   * A takeover replaces the wall, and is drawn before anything else is built.
+   *
+   * The calendar is the product, so losing it is a real cost and the rule for
+   * paying it has to be narrow: water on the floor, a garage open overnight.
+   * A household chooses which of their rules is worth this, on the Home
+   * Assistant screen, and everything else is a banner over a calendar that
+   * still works.
+   */
+  const takeover = model.interrupts.filter((interrupt) => interrupt.takeover);
+  if (takeover.length > 0) {
+    const screen = el('div', 'screen screen-alert');
+    const panel = el('section', 'alert');
+    for (const interrupt of takeover) {
+      panel.appendChild(el('p', 'alert-line', interrupt.message));
+    }
+    // The time stays. Somebody looking at a wall that has stopped being a
+    // calendar still needs to know whether they are looking at something that
+    // happened just now or at four in the morning.
+    panel.appendChild(el('p', 'alert-clock', model.clock));
+    screen.appendChild(panel);
+    root.textContent = '';
+    root.appendChild(screen);
+    return;
+  }
+
   const screen = el('div', 'screen');
   const banners = renderBanners(model);
   if (banners !== undefined) {
@@ -319,6 +391,11 @@ export function render(root: HTMLElement, model: DisplayModel): void {
       // dashes is worse than no strip.
       const strip = renderWeather(model);
       if (strip !== undefined) screen.appendChild(strip);
+    } else if (block === 'home') {
+      // Absent rather than empty, same as the forecast: a row of dashes where
+      // a reading should be is worse than no row.
+      const readings = renderHouse(model);
+      if (readings !== undefined) screen.appendChild(readings);
     } else if (block === 'next') {
       screen.appendChild(renderNext(model));
     } else if (block === 'horizon') {

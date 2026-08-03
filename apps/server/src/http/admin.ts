@@ -62,6 +62,9 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
+import { registerHaRoutes } from './admin-ha.js';
+import { readHaSettings } from '../modules/homeassistant/store.js';
+import { resolveConnection } from '../modules/homeassistant/client.js';
 
 /**
  * The admin screens.
@@ -117,6 +120,7 @@ function checked(body: Record<string, unknown>, name: string): boolean {
 const BLOCKS = [
   { key: 'now', label: 'Today' },
   { key: 'weather', label: 'Weather' },
+  { key: 'home', label: 'The house' },
   { key: 'next', label: 'The week ahead' },
   { key: 'horizon', label: 'The month' },
 ] as const;
@@ -237,6 +241,28 @@ export function ago(from: number | null, now: number): string {
 export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
+  registerHaRoutes(app, deps);
+
+  /**
+   * What the index says about Home Assistant.
+   *
+   * The link is always there, because path B — a household running Home
+   * Assistant separately — has to be able to reach the form to configure it.
+   * What is conditional is everything the connection unlocks: no entity
+   * picker, no calendar list, no rule builder, and no block on the wall until
+   * there is something to read.
+   *
+   * Resolved rather than read from the settings row, so an add-on installation
+   * says "connected" on the index without anybody having configured anything.
+   */
+  const haSummary = (): string => {
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) return 'not connected';
+    if (resolved.connection.mode === 'supervisor') return 'connected as an add-on';
+    const settings = readHaSettings(deps.db);
+    return settings.lastError === null ? 'connected' : 'connected, with a problem';
+  };
+
   app.get('/admin', (c: Context) => {
     const user = currentUser(c);
     const household = readHousehold(deps.db);
@@ -266,6 +292,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `${screens.length} paired</p>` +
           `<p><a class="link" href="/admin/system">System</a> — ` +
           `version, backup, diagnostics</p>` +
+          `<p><a class="link" href="/admin/home-assistant">Home Assistant</a> — ` +
+          `${haSummary()}</p>` +
 
           `<form method="post" action="/admin/sign-out">` +
           `<button class="secondary" type="submit">Sign out</button></form>`,

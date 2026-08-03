@@ -677,6 +677,8 @@ export interface AdminSourceRow {
   readonly allowHttp: number;
   readonly color: string;
   readonly personId: string | null;
+  readonly kind: string;
+  readonly haEntityId: string | null;
 }
 
 /**
@@ -695,7 +697,7 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
               event_count AS eventCount,
               allow_private_network AS allowPrivateNetwork,
               allow_loopback AS allowLoopback, allow_http AS allowHttp,
-              color, person_id AS personId
+              color, person_id AS personId, kind, ha_entity_id AS haEntityId
          FROM calendar_sources
         ORDER BY name`,
     )
@@ -712,7 +714,12 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
  */
 export function deleteSource(db: SqliteDatabase, id: string): boolean {
   const remove = db.transaction((sourceId: string): boolean => {
+    // Both kinds. A source only ever has one of these, but deleting by kind
+    // would mean reading the row first to find out which — and getting that
+    // wrong leaves a job fetching a source that no longer exists, on every
+    // tick, forever.
     db.prepare('DELETE FROM job_state WHERE key = ?').run(`ics-sync:${sourceId}`);
+    db.prepare('DELETE FROM job_state WHERE key = ?').run(`ha-calendar-sync:${sourceId}`);
     return db.prepare('DELETE FROM calendar_sources WHERE id = ?').run(sourceId).changes > 0;
   });
   return remove(id);
@@ -723,8 +730,8 @@ export function requestSyncNow(db: SqliteDatabase, id: string): void {
   db.prepare(
     `UPDATE job_state
         SET next_run_at = 0, consecutive_failures = 0, running_since = NULL
-      WHERE key = ?`,
-  ).run(`ics-sync:${id}`);
+      WHERE key IN (?, ?)`,
+  ).run(`ics-sync:${id}`, `ha-calendar-sync:${id}`);
 }
 
 export function readSetupState(db: SqliteDatabase): SetupState {

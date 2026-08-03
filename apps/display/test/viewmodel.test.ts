@@ -405,7 +405,7 @@ describe('which blocks are drawn, and in what order', () => {
   it('falls back to every block rather than drawing nothing', () => {
     // Rule nine. An empty list is far more likely to be a mistake than a
     // household asking for a blank wall.
-    const all = ['now', 'weather', 'next', 'horizon'];
+    const all = ['now', 'weather', 'home', 'next', 'horizon'];
     expect(withBlocks([]).blocks).toEqual(all);
     expect(withBlocks(['nonsense']).blocks).toEqual(all);
     expect(withBlocks(undefined).blocks).toEqual(all);

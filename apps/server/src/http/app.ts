@@ -18,8 +18,11 @@ import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } fr
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir } from './static.js';
 import { readImage } from '../api/media.js';
-import { collectPanels } from '../modules/registry.js';
+import { collectPanels, collectSignals } from '../modules/registry.js';
 import { weatherModule } from '../modules/weather/index.js';
+import { haModule } from '../modules/homeassistant/index.js';
+import { readActiveRules } from '../modules/homeassistant/store.js';
+import { evaluateInterrupts } from '../api/interrupts.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { errorBlock, escapeHtml, page } from './html.js';
 import type { Fetcher } from '@maverick-wall/core';
@@ -169,7 +172,7 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
  * same list, and the Display screen offers their blocks from it too — so
  * adding a module is one entry rather than three edits in three files.
  */
-export const MODULES = [weatherModule];
+export const MODULES = [weatherModule, haModule];
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -299,6 +302,17 @@ export function createApp(deps: AppDeps): Hono {
     const from = shiftDate(today, -DEFAULT_DAYS_BEFORE);
     const to = shiftDate(today, DEFAULT_DAYS_AFTER);
 
+    // Built once and shared: the panels and the signals come from the same
+    // instant, so a wall never draws a reading from one poll beside an
+    // interrupt evaluated against another.
+    const moduleContext = {
+      db: deps.db,
+      fetcher: deps.fetcher,
+      keyring: deps.keyring,
+      now: at,
+      timezone: household.timezone,
+    };
+
     const manifest = buildManifest({
       household,
       events: readEvents(deps.db, from, to),
@@ -314,11 +328,19 @@ export function createApp(deps: AppDeps): Hono {
       appVersion: deps.appVersion,
       // Collected here rather than inside assembly, which stays pure and does
       // no I/O: every module reads its own cache, filled by its own job.
-      panels: collectPanels(MODULES, {
-        db: deps.db,
-        fetcher: deps.fetcher,
+      panels: collectPanels(MODULES, moduleContext),
+      /*
+       * Evaluated per poll, from cached state and stored rules.
+       *
+       * There is no record of which interrupts a screen has already shown, and
+       * deliberately none: a household with a kitchen tablet and a hall
+       * television would otherwise get two different answers about whether the
+       * garage is open. Every wall reads the same document.
+       */
+      interrupts: evaluateInterrupts({
+        rules: readActiveRules(deps.db),
+        signals: collectSignals(MODULES, moduleContext),
         now: at,
-        timezone: household.timezone,
       }),
       // The document is already screen-specific — it is served behind a
       // display token — so how that screen is hung travels with it.

@@ -33,9 +33,15 @@ export const NEXT_EVENT_LIMIT = 4;
 /** Five weeks of horizon, not six: the design gives the rest to the day itself. */
 export const HORIZON_WEEKS = 5;
 
-/** The three things a wall can show, and the order it shows them in by default. */
-export type DisplayBlock = 'now' | 'weather' | 'next' | 'horizon';
-export const DEFAULT_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'next', 'horizon'];
+/** Everything a wall can show, and the order it shows them in by default. */
+export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon';
+export const DEFAULT_BLOCKS: readonly DisplayBlock[] = [
+  'now',
+  'weather',
+  'home',
+  'next',
+  'horizon',
+];
 
 /**
  * The order to draw in, from whatever the manifest said.
@@ -149,6 +155,94 @@ export interface DisplayModel {
   readonly weather: readonly WeatherDayModel[];
   /** Something quiet to say about the forecast, such as its age. */
   readonly weatherNote: string | undefined;
+  /** Readings from the house, when a module contributed any. */
+  readonly house: readonly HouseReadingModel[];
+  /** Something quiet to say about them, such as a connection that is failing. */
+  readonly houseNote: string | undefined;
+  /**
+   * Anything drawn over the calendar, most important first.
+   *
+   * Already decided by the server; nothing here re-evaluates a rule. A
+   * `takeover` replaces the wall, a `banner` sits above it.
+   */
+  readonly interrupts: readonly InterruptModel[];
+}
+
+export interface HouseReadingModel {
+  readonly label: string;
+  readonly value: string;
+  readonly icon: string;
+  readonly mode: string;
+  readonly stale: boolean;
+}
+
+export interface InterruptModel {
+  readonly message: string;
+  readonly takeover: boolean;
+}
+
+/**
+ * The house panel, read defensively.
+ *
+ * Same contract as the forecast: a module's slice arrives as `unknown` and is
+ * shaped here rather than trusted, so a server one version ahead costs this
+ * panel and nothing else.
+ */
+export function houseFrom(panel: unknown): {
+  readings: HouseReadingModel[];
+  note: string | undefined;
+} {
+  if (typeof panel !== 'object' || panel === null) return { readings: [], note: undefined };
+  const raw = (panel as { readings?: unknown }).readings;
+  if (!Array.isArray(raw)) return { readings: [], note: undefined };
+
+  const readings: HouseReadingModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const reading = entry as {
+      label?: unknown; value?: unknown; unit?: unknown; icon?: unknown;
+      mode?: unknown; stale?: unknown;
+    };
+    if (typeof reading.label !== 'string' || typeof reading.value !== 'string') continue;
+    const unit = typeof reading.unit === 'string' ? reading.unit : '';
+    readings.push({
+      label: reading.label,
+      // The unit is joined here rather than kept apart, because every mode
+      // that shows a value shows it with its unit and nothing styles them
+      // differently. A degree sign gets no space; a word does.
+      value: unit === '' ? reading.value : `${reading.value}${unit.startsWith('°') ? '' : ' '}${unit}`,
+      icon: typeof reading.icon === 'string' ? reading.icon : '·',
+      mode: typeof reading.mode === 'string' ? reading.mode : 'label_value',
+      stale: reading.stale === true,
+    });
+  }
+
+  const note = (panel as { note?: unknown }).note;
+  return { readings, note: typeof note === 'string' && note !== '' ? note : undefined };
+}
+
+/**
+ * Interrupts, read defensively and capped.
+ *
+ * Two is the limit, and it is not arbitrary: a wall with five things shouting
+ * at it has communicated nothing, and the server has already sorted them by
+ * priority so the two that survive are the two that matter. The rest are still
+ * true — they are just not what somebody walking past needs to be told first.
+ */
+export function interruptsFrom(raw: unknown): InterruptModel[] {
+  if (!Array.isArray(raw)) return [];
+  const model: InterruptModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const interrupt = entry as { message?: unknown; action?: unknown };
+    if (typeof interrupt.message !== 'string' || interrupt.message === '') continue;
+    model.push({
+      message: interrupt.message,
+      takeover: interrupt.action === 'takeover' || interrupt.action === 'takeover_and_wake',
+    });
+    if (model.length === 2) break;
+  }
+  return model;
 }
 
 /**
@@ -408,6 +502,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
   }
 
   const weather = weatherFrom(manifest.panels?.['weather']);
+  const house = houseFrom(manifest.panels?.['home']);
 
   const { weekday, day: dayNumber, month } = parts(today, timezone);
 
@@ -429,6 +524,9 @@ export function buildModel(options: BuildOptions): DisplayModel {
     horizon: intoWeeks(cells),
     weather: weather.days,
     weatherNote: weather.note,
+    house: house.readings,
+    houseNote: house.note,
+    interrupts: interruptsFrom(manifest.interrupts),
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,

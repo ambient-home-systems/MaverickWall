@@ -55,6 +55,8 @@ The admin UI is also **no framework** — vanilla TS plus a small hash router.
 packages/calendar/   Pure ICS parsing + recurrence expansion. MIT, own repo later.
 packages/core/       Pure domain: SSRF guards, civil dates, shift, scheduler, ports.
 apps/server/         Hono + SQLite + scheduler + jobs. The single process.
+apps/server/src/modules/   Panel modules: weather, homeassistant. One block, one
+                           manifest slice, one job, one corner of the settings.
 apps/display/        Vanilla TS wall renderer. Draws offline from a stored manifest.
 apps/admin/          Does not exist. The admin screens are server-rendered — see below.
 ```
@@ -70,7 +72,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **twenty-six real bugs**, and the pattern in how is the most
+This project has found **thirty-two real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -101,6 +103,12 @@ useful thing in this document:
 | **A banner in landscape drew the month on top of itself** | Killing the server, which is the only way to get a banner |
 | A fourth block drew a second month grid | Adding one, and reading the `else` that caught it |
 | **A new block could never appear on an existing wall** | Turning weather on and watching nothing happen |
+| **A generated migration that silently corrupts every calendar** | Applying it to a database that already had one |
+| Every Home Assistant request went to the wrong path | A fake HA that answers 404 like the real one |
+| The wall said "Garage · on" where the panel said "Open" | Reading the sentence a household would read |
+| A person's presence read `home`, not `Home` | Looking at the strip after measuring it |
+| The takeover drew in the left half of a television | Measuring, after the layout looked merely left-aligned |
+| **Today's date sliced in half by a fourth block** | Measuring `scrollHeight` against `clientHeight` |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -188,7 +196,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**809 tests passing.** calendar 153 · core 238 · server 344 · display 74.
+**860 tests passing.** calendar 153 · core 238 · server 395 · display 74.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -202,7 +210,9 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Not started:** interrupts and alerts · ws push · Docker image · HA add-on.
+**Not started:** weather alerts as an interrupt source · ws push · Docker image ·
+HA add-on packaging (the code path exists and is auto-detected; nothing builds
+the add-on yet).
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and
@@ -306,6 +316,72 @@ HTTP, through the SSRF-guarded fetcher exactly like a calendar feed. In-process
 plugins are the version to refuse — they would read the master key, bypass the
 guard, and take the wall down when they throw.
 
+**Home Assistant is read-only, and that is a security property.** A long-lived
+access token has full control of a house and cannot be scoped, so the limit is
+on this side: nothing in the repository issues a POST to Home Assistant, and the
+display receives resolved *values* — "19.4 °C", "Open" — never an entity id,
+never a proxy endpoint, never the token. A test asserts the manifest contains no
+entity id and no base URL. If a wall tablet in a hallway is ever compromised,
+the blast radius has to be "somebody saw my indoor temperature".
+
+**Two credential paths, one client.** `SUPERVISOR_TOKEN` in the environment
+means the add-on, and `http://supervisor/core/api` — plain http to a bare
+hostname, both refused by default, permitted here because that URL is a
+constant in `client.ts` rather than anything a household typed. Otherwise a
+pasted token against an address they gave. The supervisor wins when both exist:
+a stale token must never outrank the live connection. The manual base is
+normalised to end in `/api`, which is the whole of one bug — without it every
+request 404s and reads exactly like a Home Assistant with nothing in it.
+
+**A calendar entity is a `calendar_sources` row with `kind = 'homeassistant'`.**
+No address of its own; it is reached through the one connection. Same writer,
+same cache, same manifest, same renderer — so colour, ownership, visibility and
+health come free and nothing downstream knows the difference. `end.date` is
+exclusive exactly as `DTEND` is, and the test asserts the day *after* a bin day
+is empty rather than only that the bin day is right.
+
+**Polling is the implementation, deliberately.** Home Assistant's WebSocket API
+would cost less, but its auth handshake is reported to behave differently
+through the supervisor proxy, and a subscription that cannot authenticate must
+not be why a wall stops knowing anything. Thirty-second REST is the baseline; a
+subscription would be an optimisation on top and is not built.
+
+**Interrupts match a *signal*, not an entity.** `api/interrupts.ts` knows
+nothing about Home Assistant: a signal is a key, a state, a number and when it
+last changed, and a module offers them through `signals()` on the same registry
+that offers panels. Weather alerts are the obvious second source and are a
+function that emits signals, not a second evaluator. `changed_to` is read as
+"is X, and became X within five minutes", because there is no store of previous
+states and a timestamp already answers it — the cost, stated rather than
+hidden, is that a wall unreachable for the whole window misses the edge.
+
+**`signals()` is deliberately not gated on `ready`.** "Do not draw this on the
+wall" and "do not tell me when the house is flooding" are different requests,
+and conflating them would silently disarm a rule.
+
+**A generated migration can corrupt every calendar and report success.**
+drizzle-kit's table-recreate output listed the *new* columns in its
+`INSERT ... SELECT`, and SQLite resolves a double-quoted name matching no column
+as a **string literal** rather than erroring — so `SELECT "kind" FROM
+calendar_sources` on a table with no `kind` yields the text `'kind'` for every
+row. Applied as generated, every household's calendars would have come out with
+`kind = 'kind'`, matched neither sync path and never fetched again. `0009` is
+the one migration in this repository that has been edited after generation, and
+the reason is written in it. **Any future migration that recreates a table needs
+the same check**, and `test/migration-upgrade.test.ts` is the guard: it walks
+every migration in order against a database that already has a calendar in it.
+Every other test starts from empty, which is the one path where a migration
+cannot destroy anything.
+
+**Flexbox spreads a shortfall across everything that will shrink.** The portrait
+column's comment said "today and the month are whole" and the rule said
+`flex: 0 1 auto` — true of the intent, false of the code, and with three blocks
+there was always slack so nothing pressed on it. A fourth block sliced the date
+in half; pinning today then sliced the *banner* in half instead. Everything in
+that column now holds its size except the week ahead, which degrades into
+something still true. Found by comparing `scrollHeight` to `clientHeight`, never
+by looking.
+
 **NWS covers the United States only**, and the settings page says so rather
 than leaving somebody to debug an empty strip. A second provider is the obvious
 second module.
@@ -385,7 +461,9 @@ readers attached, is how a restore becomes a corruption — and the `-wal` and
 `-shm` sidecars have to move with the file they belong to or SQLite replays
 them over the restored database.
 
-**The admin screens are server-rendered too**, in `http/admin.ts`. No build
+**The admin screens are server-rendered too**, in `http/admin.ts` — and
+`http/admin-ha.ts`, which is its own file because `admin.ts` had reached
+eighteen hundred lines. No build
 step and no bundle that can fail to load, which is the same reason the wizard
 is. `apps/admin` has not been started and may never need to be — that is worth
 deciding deliberately before the Shifts screen rather than by drift.
@@ -417,9 +495,14 @@ distinct address.
 
 ## Open decisions
 
-- **HA calendar entities as a source type.** Distinct from ingress. If the
-  household already has calendars in Home Assistant, re-syncing the same ICS is
-  wasteful. Needs a new source kind with its own fetch path.
+- **A second weather provider.** NWS is the United States only, and the module
+  seam is where one would go. Not built speculatively — that would be a second
+  implementation to keep correct before anybody had asked for it.
+- **Whether an interrupt should be dismissable from the wall.** Auto-dismiss is
+  measured from when the state was entered, so there is no per-screen record of
+  what has already been shown — which is what keeps a kitchen tablet and a hall
+  television saying the same thing. A dismiss button would break that, or need
+  to be household-wide.
 - **Display density.** A work feed marks *every* day. Matched shift events are
   consumed out of the agenda, but a NEXT row still needs an opinion about how
   many events per day it can show before it stops being readable.

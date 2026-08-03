@@ -7,6 +7,7 @@ import { createFetcher } from './net/fetcher.js';
 import { createJobStore, ensureJob, removeJobsNotIn } from './jobs/store.js';
 import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
+import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createApp, MODULES } from './http/app.js';
 import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
@@ -114,6 +115,19 @@ async function main(): Promise<void> {
         keyring,
         timezone: () => readHousehold(db).timezone,
       }),
+      /*
+       * The same job with a different way of getting the bytes.
+       *
+       * Its own kind rather than a branch inside `ics-sync`, so the two back
+       * off independently: a Home Assistant that is rebooting must not push
+       * a household's Google feed into an hour-long retry.
+       */
+      'ha-calendar-sync': createHaCalendarSyncHandler({
+        db,
+        fetcher,
+        keyring,
+        timezone: () => readHousehold(db).timezone,
+      }),
       optimize: async () => {
         optimize(db);
         return { status: 'ok' };
@@ -139,6 +153,7 @@ async function main(): Promise<void> {
             await (module.job as { run: (c: unknown) => Promise<void> }).run({
               db,
               fetcher,
+              keyring,
               now: Date.now(),
               timezone: readHousehold(db).timezone,
             });
@@ -287,17 +302,29 @@ function seedDefaults(db: SqliteDatabase): void {
  * them all at once.
  */
 function registerJobs(db: SqliteDatabase): void {
-  const sources = db.prepare('SELECT id FROM calendar_sources WHERE enabled = 1').all() as {
+  const sources = db.prepare('SELECT id, kind FROM calendar_sources WHERE enabled = 1').all() as {
     id: string;
+    kind: string;
   }[];
 
-  const keys: string[] = [];
+  // One list per kind, because `removeJobsNotIn` reconciles a kind at a time —
+  // reconciling both against one list would delete every job of the other.
+  const icsKeys: string[] = [];
+  const haKeys: string[] = [];
   sources.forEach((source, index) => {
-    const key = `ics-sync:${source.id}`;
-    keys.push(key);
-    ensureJob(db, key, 'ics-sync', Date.now() + 5_000 + index * 2_000);
+    const at = Date.now() + 5_000 + index * 2_000;
+    if (source.kind === 'homeassistant') {
+      const key = `ha-calendar-sync:${source.id}`;
+      haKeys.push(key);
+      ensureJob(db, key, 'ha-calendar-sync', at);
+    } else {
+      const key = `ics-sync:${source.id}`;
+      icsKeys.push(key);
+      ensureJob(db, key, 'ics-sync', at);
+    }
   });
-  removeJobsNotIn(db, 'ics-sync', keys);
+  removeJobsNotIn(db, 'ics-sync', icsKeys);
+  removeJobsNotIn(db, 'ha-calendar-sync', haKeys);
 
   ensureJob(db, 'optimize', 'optimize', Date.now() + 60_000);
   // Registered always, gated by the setting when it fires. Ten minutes out so
