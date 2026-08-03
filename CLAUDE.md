@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **thirty-five real bugs**, and the pattern in how is the most
+This project has found **thirty-eight real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -113,6 +113,9 @@ useful thing in this document:
 | **Every NWS instruction came out with words glued together** | A fixture copied from a real CAP message |
 | One tornado warning drew a takeover *and* a banner repeating it | Reading the manifest after seeding a real alert |
 | Disconnecting HA stopped deleting its own rules | A test asserting a count, after the source name moved |
+| **Acknowledging a warning just promoted the next rule** | Pressing OK on a wall and watching nothing happen |
+| `autofocus` on a scripted node does nothing, silently | Measuring `document.activeElement` |
+| **A refused connection put the HA address on the wall** | Killing the fake outright instead of returning 502 |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -200,7 +203,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**907 tests passing.** calendar 153 · core 264 · server 416 · display 74.
+**914 tests passing.** calendar 153 · core 266 · server 421 · display 74.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -376,12 +379,35 @@ which is how a wall teaches a household that its banners are noise. Severity
 also outranks priority, permanently: a Moderate banner with a high priority must
 never beat an Extreme takeover.
 
-**Dismissal is household-wide**, which settles the question left open when
-interrupts were sketched. One row keyed `ruleId:signalKey`, so a kitchen tablet
-and a hall television never disagree, and `reassertAfterSec` is what stops "yes,
-I know" meaning "never mention it again" while the storm is still overhead. An
-Extreme warning ships non-dismissible: somebody woken at three in the morning
-reaches for the nearest button.
+**Acknowledgement is keyed on the signal, and it is household-wide.** Keyed on
+the *rule* it looked right and did nothing: the shipped weather rules are a
+ladder, so one warning matches several, and clearing the loudest simply promoted
+the next one down — a household presses OK and the wall carries on. A household
+acknowledges a *thing*. Only a rule that permits it ever consults the record, so
+clearing a Moderate advisory cannot silence the Extreme rule that matched the
+same warning. Household-wide so a kitchen tablet and a hall television never
+disagree, and `reassertAfterSec` is what stops "yes, I know" meaning "never
+mention it again" while the storm is still overhead. An Extreme warning ships
+non-dismissible: somebody woken at three in the morning reaches for the nearest
+button.
+
+**Whether a screen offers the control is per screen, and off by default.** It is
+a fact about hardware rather than about the household — a hall television has a
+remote, a panel screwed to a wall has no input at all, and a kitchen tablet has
+a touchscreen a passing sleeve can press. `screens.allow_dismiss`, on the
+Screens page. The *effect* stays household-wide: one screen acknowledges and
+every wall goes quiet.
+
+**The remote's OK key is the input, not focus navigation.** A television remote
+sends `Enter`; D-pad focus navigation is inconsistent across the WebViews that
+end up bolted to walls, so depending on it would mean a remote that works on one
+television and not the next. The handler acknowledges whatever is showing —
+"point at the wall, press OK" — and the control is still a real `<button>`, so a
+touchscreen and a keyboard work too. `Escape` is deliberately not bound: Android
+BACK sends it, and BACK must not clear a warning nobody has read. `autofocus`
+does nothing on a node built in script, so `main.ts` focuses the control when
+its target changes — the focus ring is the only affordance on a wall with
+`cursor: none`.
 
 **CAP is a message stream, not a state document.** `reconcile` is where it
 becomes state: `Cancel` withdraws what it references, `Update` supersedes, later
@@ -573,10 +599,10 @@ distinct address.
 - **The WebSocket.** The contract is fixed (`api/push.ts`) and tested; nothing
   sends one. Polling carries interrupts in the manifest today, which is why a
   reconnecting display gets them at all.
-- **Whether the wall should draw a dismiss control.** The endpoint exists and
-  refuses a rule that said it may not be cleared; the renderer draws no button,
-  because a wall has no pointer (`cursor: none`) and the touch target has not
-  been designed. That is a design question, not a plumbing one.
+- **Whether a second screen kind needs its own acknowledge affordance.** The
+  control is a real button plus a global `Enter` handler, which covers a
+  remote, a touchscreen and a keyboard. A voice assistant or a wall switch
+  would be a third path and is not built.
 - **Display density.** A work feed marks *every* day. Matched shift events are
   consumed out of the agenda, but a NEXT row still needs an opinion about how
   many events per day it can show before it stops being readable.

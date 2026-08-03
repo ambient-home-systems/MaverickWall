@@ -352,7 +352,15 @@ export function createApp(deps: AppDeps): Hono {
       return c.json({ error: 'not-dismissible' }, 403);
     }
 
-    dismissInterrupt(deps.db, key, now());
+    /*
+     * Stored under the signal, not the rule.
+     *
+     * The wire format names both because the rule is what decides whether this
+     * may be cleared at all — but a household acknowledges a *thing*, and
+     * several rules match one warning. Storing per rule meant pressing OK
+     * promoted the next rule down and the wall carried on regardless.
+     */
+    dismissInterrupt(deps.db, key.slice(key.indexOf(':') + 1), now());
     return c.json({ ok: true });
   });
 
@@ -423,6 +431,7 @@ export function createApp(deps: AppDeps): Hono {
       screen: {
         orientation: screen.orientation,
         rotation: screen.rotation,
+        allowDismiss: screen.allowDismiss === 1,
         theme: screen.theme,
         timezone: screen.timezone,
         daytimeTheme: screen.daytimeTheme,

@@ -188,6 +188,8 @@ async function fakeHomeAssistant(): Promise<FakeHa> {
 interface Harness {
   readonly db: SqliteDatabase;
   readonly keyring: Keyring;
+  /** The paired screen's token, for the routes behind `/d/`. */
+  readonly displayToken: string;
   readonly call: (path: string, init?: RequestInit) => Promise<Response>;
   readonly form: (path: string, fields: Record<string, string>) => Promise<Response>;
   readonly manifest: () => Promise<ManifestShape>;
@@ -197,8 +199,11 @@ interface Harness {
 
 interface ManifestShape {
   readonly display: { readonly blocks: string[] };
+  readonly screen: { readonly allowDismiss: boolean };
   readonly panels: Record<string, unknown>;
   readonly interrupts: {
+    ruleId: string;
+    key: string;
     title: string;
     headline?: string;
     action: string;
@@ -294,6 +299,7 @@ async function harness(): Promise<Harness> {
   return {
     db,
     keyring,
+    displayToken: issued.token,
     call,
     form,
     manifest,
@@ -542,6 +548,38 @@ describe('readings on the wall', () => {
     // `on` means open, and only the device class knows that.
     expect(panel.readings[0]?.value).toBe('Open');
     expect(panel.readings[0]?.icon).toBe('🚪');
+  });
+
+  it('never puts the address on the wall, even when the connection is refused', async () => {
+    /*
+     * The failure mode that broke this once. The fetcher's own message for a
+     * refused connection is the Node errno — "connect ECONNREFUSED
+     * 127.0.0.1:8123" — and that string is stored as the connection's last
+     * error, which the panel carries to the display as a note. So the raw
+     * message put the household's Home Assistant address on a screen in their
+     * hallway, which is the one thing this integration promises it does not do.
+     */
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await h.form('/admin/home-assistant/entities', {
+      entity_id: 'sensor.kitchen_temperature',
+      label: 'Kitchen',
+      display_mode: 'label_value',
+    });
+    await h.pollHa();
+
+    // Not "down" — gone. A 502 comes from a server; this is no server at all.
+    await new Promise<void>((resolve) => servers[servers.length - 1]?.close(() => resolve()));
+    await h.pollHa();
+
+    const document = JSON.stringify(await h.manifest());
+    expect(document).not.toContain(ha.base);
+    expect(document).not.toContain('ECONNREFUSED');
+    expect(document).not.toContain('127.0.0.1');
+    // And it still says something a person can act on.
+    const panel = (await h.manifest()).panels['home'] as { note: string | null };
+    expect(panel.note).toContain('Could not reach Home Assistant');
   });
 
   it('keeps showing the last reading when Home Assistant goes away', async () => {
@@ -812,6 +850,91 @@ describe('the shipped templates, through the form', () => {
     // exactly like the one they meant to write.
     expect(response.status).toBe(400);
     expect(await response.text()).toContain('both times, or neither');
+  });
+});
+
+describe('acknowledging from the wall', () => {
+  async function firing(): Promise<{ h: Harness; token: string }> {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await h.form('/admin/home-assistant/rules', {
+      name: 'Freezer door open',
+      entity_id: 'binary_sensor.freezer_door',
+      condition: 'equals',
+      value: 'on',
+      for_minutes: '5',
+      action: 'banner',
+    });
+    await h.pollHa();
+    return { h, token: h.displayToken };
+  }
+
+  it('clears an interrupt, and every screen goes quiet together', async () => {
+    const { h, token } = await firing();
+    const before = await h.manifest();
+    expect(before.interrupts).toHaveLength(1);
+
+    const key = `${before.interrupts[0]?.ruleId}:${before.interrupts[0]?.key}`;
+    const response = await h.call('/d/interrupts/dismiss', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', authorization: `Bearer ${token}` },
+      body: new URLSearchParams({ key }).toString(),
+    });
+    expect(response.status).toBe(200);
+
+    /*
+     * Household-wide, deliberately. The hall television acknowledges on behalf
+     * of everybody — a kitchen tablet and a hall television disagreeing about
+     * whether the freezer is still worth mentioning is worse than either
+     * answer.
+     */
+    expect((await h.manifest()).interrupts).toHaveLength(0);
+  });
+
+  it('refuses to clear something the rule said may not be cleared', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    /*
+     * The wall draws no button for these, but the button is not the control.
+     * A display token is on a screen in a hallway, and an Extreme warning must
+     * not be clearable by anything that can reach the endpoint.
+     */
+    const response = await h.call('/d/interrupts/dismiss', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        authorization: `Bearer ${h.displayToken}`,
+      },
+      body: new URLSearchParams({ key: 'nws-default-extreme:urn:oid:whatever' }).toString(),
+    });
+    expect(response.status).toBe(403);
+  });
+
+  it('refuses a key that is not one', async () => {
+    const h = await harness();
+    for (const key of ['', 'no-colon-here', 'x'.repeat(500)]) {
+      const response = await h.call('/d/interrupts/dismiss', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          authorization: `Bearer ${h.displayToken}`,
+        },
+        body: new URLSearchParams({ key }).toString(),
+      });
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it('offers the control only on a screen that was told it has input', async () => {
+    const { h } = await firing();
+    // Default is off: most screens are a panel on a wall with nothing to press.
+    expect((await h.manifest()).screen.allowDismiss).toBe(false);
+
+    h.db.prepare(`UPDATE screens SET allow_dismiss = 1`).run();
+    expect((await h.manifest()).screen.allowDismiss).toBe(true);
   });
 });
 

@@ -159,7 +159,43 @@ describe('dwell, edges and hours', () => {
 });
 
 describe('dismissal', () => {
-  const dismissKey = 'r1:urn:oid:2.49.0.1.840.0.abc';
+  const dismissKey = 'urn:oid:2.49.0.1.840.0.abc';
+
+  it('acknowledges the warning, not one rule about it', () => {
+    /*
+     * The bug this exists for. The shipped rules are a ladder, so one warning
+     * matches several — keyed by rule, acknowledging the loudest promoted the
+     * next one down and the wall carried on as if nobody had pressed anything.
+     * A household acknowledges a *thing*.
+     */
+    const ladder = [
+      rule({ id: 'immediate', action: 'takeover', priority: 80, reassertAfterSec: 600 }),
+      rule({ id: 'severe', action: 'takeover', priority: 60, reassertAfterSec: 1800 }),
+      rule({ id: 'moderate', match: { minSeverity: 'Moderate' }, action: 'banner', priority: 40 }),
+    ];
+    expect(evaluateRules({ ...base, rules: ladder, signals: [alert()] })).toHaveLength(3);
+
+    const acknowledged = { [dismissKey]: NOW - 1000 };
+    expect(
+      evaluateRules({ ...base, rules: ladder, signals: [alert()], dismissedAt: acknowledged }),
+    ).toEqual([]);
+  });
+
+  it('never lets an acknowledgement silence a rule that forbids one', () => {
+    // The ladder means an Extreme rule and a Moderate rule match the same
+    // warning. Clearing the advisory must not clear the warning.
+    const both = [
+      rule({ id: 'extreme', match: { minSeverity: 'Extreme' }, action: 'takeover_and_wake', dismissible: false }),
+      rule({ id: 'moderate', match: { minSeverity: 'Moderate' }, action: 'banner' }),
+    ];
+    const firing = evaluateRules({
+      ...base,
+      rules: both,
+      signals: [alert()],
+      dismissedAt: { [dismissKey]: NOW - 1000 },
+    });
+    expect(firing.map((entry) => entry.ruleId)).toEqual(['extreme']);
+  });
 
   it('stays quiet once cleared, and comes back when told to', () => {
     const clearable = rule({ reassertAfterSec: 600 });

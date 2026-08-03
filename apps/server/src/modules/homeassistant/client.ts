@@ -272,10 +272,34 @@ function describe(
     }
   }
 
-  if (response.code === 'timeout') {
-    return { message: `${connection.host} did not answer in time.` };
+  /*
+   * Written here, never passed through.
+   *
+   * The fetcher's own message for a refused connection is the Node errno —
+   * "connect ECONNREFUSED 127.0.0.1:8123" — and this string is stored on
+   * `ha_settings.last_error`, which the panel carries to the wall as a note.
+   * So the raw message put the household's Home Assistant address on a screen
+   * in their hallway, which is the one thing this integration promises it does
+   * not do. It also tells nobody standing in a kitchen anything.
+   */
+  switch (response.code) {
+    case 'timeout':
+      return { message: `${connection.host} did not answer in time.` };
+    case 'network-error':
+      return {
+        message: 'Could not reach Home Assistant.',
+        suggestion: 'Check it is running, and that the address on this page is still right.',
+      };
+    case 'too-large':
+      return { message: 'Home Assistant answered with more than we will read.' };
+    case 'unacceptable-content-type':
+      return {
+        message: 'That address answered, but not with the Home Assistant API.',
+        suggestion: 'Give the address of Home Assistant itself, for example http://192.168.1.10:8123',
+      };
+    default:
+      return { message: `Home Assistant returned an error (${response.code}).` };
   }
-  return { message: response.message };
 }
 
 /**

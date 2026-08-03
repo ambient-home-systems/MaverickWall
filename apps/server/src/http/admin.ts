@@ -824,6 +824,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.html(screensPage('Rotation has to be a quarter turn.'), 400);
     }
 
+    const allowDismiss = checked(body, 'allow_dismiss');
+
     // Empty means "follow the household", which is a real answer rather than
     // a missing one, so it is stored as null instead of rejected.
     const theme = field(body, 'theme');
@@ -860,6 +862,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         daytimeTheme: scheduled ? daytimeTheme : null,
         daytimeStartsAt: scheduled ? startsAt : null,
         daytimeEndsAt: scheduled ? endsAt : null,
+        allowDismiss,
       })
     ) {
       return c.html(screensPage('That screen is no longer there.'), 404);
@@ -1567,6 +1570,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `value="${escapeHtml(screen.daytimeEndsAt ?? '21:00')}"></span>` +
       `</div>` +
       `<p class="hint">Only used when this screen sets its own daylight theme.</p>` +
+
+      `<div class="checks"><label>` +
+      `<input type="checkbox" name="allow_dismiss" value="1"` +
+      `${screen.allowDismiss === 1 ? ' checked' : ''}> ` +
+      `This screen can acknowledge alerts</label></div>` +
+      `<p class="hint">Turn on for a television with a remote, or a tablet somebody ` +
+      `can reach — the OK button on a remote clears whatever the wall is showing. ` +
+      `Leave off for a screen with no input, and for one that gets brushed against. ` +
+      `Acknowledging is household-wide: one screen clears it and every wall goes ` +
+      `quiet. Some alerts cannot be cleared at all, and no screen overrides that.</p>` +
 
       `<label for="tz-${screen.id}">Timezone</label>` +
       `<select id="tz-${screen.id}" name="timezone">` +

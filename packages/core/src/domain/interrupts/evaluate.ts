@@ -46,9 +46,15 @@ export interface EvaluateInput {
    */
   readonly localHhmm: string;
   /**
-   * When each key was last dismissed, epoch ms.
+   * When each **signal** was last acknowledged, epoch ms.
    *
-   * Household-wide rather than per screen, and that is the point: a kitchen
+   * Keyed on the signal rather than on the rule that happened to be showing,
+   * and that is not a detail. The shipped weather rules are a ladder, so one
+   * warning matches several of them — keyed by rule, acknowledging the loudest
+   * simply promoted the next one down and the wall carried on as if nobody had
+   * pressed anything.
+   *
+   * Household-wide rather than per screen, for the same reason: a kitchen
    * tablet and a hall television must not disagree about whether the garage is
    * still worth mentioning.
    */
@@ -196,18 +202,23 @@ export function evaluateRules(input: EvaluateInput): Interrupt[] {
       }
 
       /*
-       * Dismissal, and coming back.
+       * Acknowledgement, and coming back.
        *
-       * Keyed on the rule *and* the signal, so dismissing one warning does not
-       * silence the next one a different county gets. Without
-       * `reassertAfterSec` a dismissal lasts until the signal stops — which is
-       * what somebody means by "yes, I know" about a thing that will end.
+       * Only a rule that said it may be cleared ever consults the record. That
+       * is what stops an acknowledgement of a Moderate advisory silencing the
+       * Extreme rule that matched the same warning — the ladder means both
+       * match, and only one of them is allowed to be dismissed.
+       *
+       * Without `reassertAfterSec` an acknowledgement lasts until the signal
+       * stops, which is what somebody means by "yes, I know" about a thing
+       * that will end on its own.
        */
-      const dismissKey = `${rule.id}:${signal.key}`;
-      const clearedAt = dismissed[dismissKey];
-      if (clearedAt !== undefined) {
-        if (rule.reassertAfterSec === undefined) continue;
-        if (input.now - clearedAt < rule.reassertAfterSec * 1000) continue;
+      if (rule.dismissible) {
+        const clearedAt = dismissed[signal.key];
+        if (clearedAt !== undefined) {
+          if (rule.reassertAfterSec === undefined) continue;
+          if (input.now - clearedAt < rule.reassertAfterSec * 1000) continue;
+        }
       }
 
       firing.push({

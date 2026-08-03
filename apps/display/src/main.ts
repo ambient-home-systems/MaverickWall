@@ -109,6 +109,7 @@ function start(): void {
   const safely = (work: () => void): void => {
     try {
       work();
+      focusControl();
     } catch {
       // Swallowed deliberately. The watchdog below is what notices that draws
       // have stopped landing, and it can act where a thrown error cannot.
@@ -148,8 +149,91 @@ function start(): void {
         offline = true;
         break;
     }
-    draw();
+    // Through `safely`, like the tick does: a poll-driven draw gets the same
+    // protection, and the focus that follows a redraw is applied in one place.
+    safely(draw);
   };
+
+  /*
+   * Acknowledging an interrupt, from a remote or a fingertip.
+   *
+   * The keys are the ones a television remote's OK actually produces across
+   * the WebViews that end up bolted to walls: `Enter` almost always, and
+   * `NumpadEnter` on a few. `Escape` is deliberately *not* one of them — an
+   * Android BACK press sends it, and BACK should not silently clear a warning
+   * somebody has not read.
+   *
+   * The key acknowledges whatever is showing rather than whatever has focus.
+   * D-pad focus navigation is inconsistent enough across those WebViews that
+   * depending on it would mean a remote that works on one television and not
+   * the next; "point at the wall, press OK" works on all of them. The button
+   * is still a real button, so a touchscreen and a keyboard both work.
+   */
+  const acknowledge = async (key: string): Promise<void> => {
+    try {
+      const response = await fetch('/d/interrupts/dismiss', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        // The display token is an HttpOnly cookie set at pairing.
+        credentials: 'same-origin',
+        body: new URLSearchParams({ key }).toString(),
+      });
+      // A 403 means the rule said it may not be cleared. The server is the
+      // authority on that, not the button — so nothing happens, deliberately.
+      if (!response.ok) return;
+    } catch {
+      // Offline. The interrupt stays up, which is the honest outcome: nothing
+      // has been acknowledged as far as the household is concerned.
+      return;
+    }
+    // Straight back to the server rather than waiting out the poll interval,
+    // so the wall reacts to a button press the way a person expects.
+    await poll();
+  };
+
+  /** The control currently on screen, or nothing. */
+  const dismissTarget = (): string | undefined => {
+    const button = root.querySelector('[data-dismiss]');
+    const key = button?.getAttribute('data-dismiss') ?? '';
+    return key === '' ? undefined : key;
+  };
+
+  /*
+   * Focus the control when what it acknowledges changes, and only then.
+   *
+   * On a wall `cursor: none` is set, so the focus ring is the only thing that
+   * says which control the OK key will hit — and the whole screen is rebuilt
+   * on every draw, which is once a second. Refocusing every time would fight
+   * anybody using a keyboard and burn work for nothing, so it is keyed on the
+   * target rather than on the redraw.
+   */
+  let focusedKey: string | undefined;
+  const focusControl = (): void => {
+    const key = dismissTarget();
+    if (key === undefined) {
+      focusedKey = undefined;
+      return;
+    }
+    if (key === focusedKey) return;
+    focusedKey = key;
+    const button = root.querySelector('[data-dismiss]');
+    if (button instanceof HTMLElement) button.focus();
+  };
+
+  document.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key !== 'Enter') return;
+    const key = dismissTarget();
+    if (key === undefined) return;
+    event.preventDefault();
+    void acknowledge(key);
+  });
+
+  root.addEventListener('click', (event: Event) => {
+    const target = event.target as Element | null;
+    const key = target?.closest?.('[data-dismiss]')?.getAttribute('data-dismiss');
+    if (key === null || key === undefined || key === '') return;
+    void acknowledge(key);
+  });
 
   // A wall does not usually get resized, but a kiosk browser reports its size
   // late often enough that assuming one measurement is wrong.

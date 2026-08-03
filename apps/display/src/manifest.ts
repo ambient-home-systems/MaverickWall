@@ -90,6 +90,8 @@ export interface Manifest {
   readonly screen?: {
     readonly orientation?: string;
     readonly rotation?: number;
+    /** Whether this screen may offer a way to acknowledge an interrupt. */
+    readonly allowDismiss?: boolean;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

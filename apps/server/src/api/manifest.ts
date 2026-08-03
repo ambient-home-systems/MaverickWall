@@ -178,6 +178,14 @@ export interface Manifest {
   readonly screen: {
     readonly orientation: 'auto' | 'portrait' | 'landscape';
     readonly rotation: number;
+    /**
+     * Whether this screen may offer a way to acknowledge an interrupt.
+     *
+     * A property of the hardware, not the household — a hall television has a
+     * remote and a panel screwed to a wall has nothing. The *effect* of
+     * acknowledging stays household-wide.
+     */
+    readonly allowDismiss: boolean;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -286,6 +294,7 @@ export interface BuildManifestInput {
   readonly screen?: {
     readonly orientation: string;
     readonly rotation: number;
+    readonly allowDismiss?: boolean;
     readonly theme?: string | null;
     readonly timezone?: string | null;
     readonly daytimeTheme?: string | null;
@@ -586,6 +595,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // Quarter turns only, and normalised here so a hand-edited row cannot
       // hand the display something it has to defend against.
       rotation: ((Math.round((input.screen?.rotation ?? 0) / 90) % 4) + 4) % 4 * 90,
+      allowDismiss: input.screen?.allowDismiss === true,
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

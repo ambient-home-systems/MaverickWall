@@ -173,6 +173,14 @@ export interface DisplayModel {
    * `takeover` replaces the wall, a `banner` sits above it.
    */
   readonly interrupts: readonly InterruptModel[];
+  /**
+   * Whether this screen may offer a way to acknowledge an interrupt.
+   *
+   * A fact about the hardware: a hall television has a remote, a panel screwed
+   * to a wall has no input at all, and a kitchen tablet has a touchscreen a
+   * passing sleeve can press.
+   */
+  readonly allowDismiss: boolean;
 }
 
 export interface HouseReadingModel {
@@ -585,6 +593,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     houseNote: house.note,
     now,
     interrupts: interruptsFrom(manifest.interrupts),
+    allowDismiss: manifest.screen?.allowDismiss === true,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,

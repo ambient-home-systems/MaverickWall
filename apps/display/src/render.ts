@@ -327,6 +327,10 @@ function renderAlert(interrupt: InterruptModel, model: DisplayModel): HTMLElemen
     panel.appendChild(el('p', 'alert-area', interrupt.area));
   }
 
+  if (model.allowDismiss && interrupt.dismissible) {
+    panel.appendChild(acknowledgeButton(interrupt));
+  }
+
   const foot = el('div', 'alert-foot');
   // The time stays. Somebody looking at a wall that has stopped being a
   // calendar still needs to know whether this is now or four in the morning.
@@ -341,6 +345,35 @@ function renderAlert(interrupt: InterruptModel, model: DisplayModel): HTMLElemen
 
   screen.appendChild(panel);
   return screen;
+}
+
+/**
+ * The acknowledge control.
+ *
+ * A real `<button>`, so a touchscreen works and so the browser gives it focus
+ * behaviour for free — but the button is not really how this gets pressed. A
+ * television remote's OK key arrives as `Enter`, and D-pad focus navigation is
+ * inconsistent across the WebViews that end up on walls. So `main.ts` also
+ * listens for the key directly and acknowledges the loudest thing showing,
+ * which is the one mental model that works with every remote: point at the
+ * wall, press OK.
+ *
+ * `data-dismiss` carries the key rather than a closure, because the whole
+ * screen is rebuilt on every draw and a listener per render would leak.
+ */
+function acknowledgeButton(interrupt: InterruptModel, compact = false): HTMLElement {
+  // The long form only where there is room for it. A banner is already the
+  // smaller statement and does not need a sentence explaining its own button.
+  const button = el('button', 'alert-ack', compact ? 'OK' : 'OK · press the remote to acknowledge');
+  button.setAttribute('type', 'button');
+  button.setAttribute('data-dismiss', interrupt.key);
+  /*
+   * Not `autofocus`. That attribute only applies while the browser is parsing
+   * the document, and every node here is built in script and appended after
+   * load — so it did nothing at all, silently. `main.ts` focuses the control
+   * once, when the thing being acknowledged changes.
+   */
+  return button;
 }
 
 /**
@@ -373,7 +406,7 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
    * only one of them is worth reading first. They are already sorted by the
    * server; this only has to not bury them.
    */
-  const messages: { level: string; message: string }[] = [
+  const messages: { level: string; message: string; dismissKey?: string }[] = [
     ...model.interrupts
       .filter((interrupt) => !interrupt.takeover)
       .map((interrupt) => ({
@@ -382,6 +415,9 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
           interrupt.headline === undefined
             ? interrupt.title
             : `${interrupt.title} — ${interrupt.headline}`,
+        // Only where the screen has something to press with, and only where
+        // the rule said it may be cleared at all.
+        ...(model.allowDismiss && interrupt.dismissible ? { dismissKey: interrupt.key } : {}),
       })),
     ...model.notices,
   ];
@@ -395,7 +431,11 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 
   const wrap = el('div', 'banners');
   for (const entry of messages) {
-    wrap.appendChild(el('div', `banner banner-${entry.level}`, entry.message));
+    const banner = el('div', `banner banner-${entry.level}`, entry.message);
+    if (entry.dismissKey !== undefined) {
+      banner.appendChild(acknowledgeButton({ key: entry.dismissKey } as InterruptModel, true));
+    }
+    wrap.appendChild(banner);
   }
   return wrap;
 }

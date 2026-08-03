@@ -232,6 +232,22 @@ export const screens = sqliteTable(
      */
     rotation: integer('rotation', { mode: 'number' }).notNull().default(0),
 
+    /**
+     * Whether this screen offers a way to acknowledge an interrupt.
+     *
+     * Per screen, and off by default, because it is a fact about the hardware
+     * rather than about the household: a television in a hall has a remote, a
+     * panel screwed to a wall in a hallway has no input at all, and a kitchen
+     * tablet has a touchscreen that a passing sleeve can press. Offering a
+     * control on the screen that cannot be pressed is clutter; offering one on
+     * the screen that gets brushed against is worse.
+     *
+     * What it does *not* change is the effect. Dismissal stays household-wide
+     * — the hall television acknowledges on behalf of everybody, and every wall
+     * goes quiet together. This only decides which screens can do the asking.
+     */
+    allowDismiss: integer('allow_dismiss', { mode: 'boolean' }).notNull().default(false),
+
     /** Rotated when the token is regenerated, invalidating old sessions. */
     tokenIssuedAt: integer('token_issued_at', { mode: 'number' }).notNull().$defaultFn(now),
     revokedAt: integer('revoked_at', { mode: 'number' }),

@@ -331,11 +331,9 @@ export function pruneDismissals(db: SqliteDatabase, liveKeys: readonly string[])
   const live = new Set(liveKeys);
   const remove = db.prepare('DELETE FROM interrupt_dismissals WHERE key = ?');
   const prune = db.transaction(() => {
+    // The stored key *is* the signal key, so this is a direct comparison.
     for (const row of rows) {
-      // The stored key is `ruleId:signalKey`; the signal key is what expires.
-      const separator = row.key.indexOf(':');
-      const signalKey = separator < 0 ? row.key : row.key.slice(separator + 1);
-      if (!live.has(signalKey)) remove.run(row.key);
+      if (!live.has(row.key)) remove.run(row.key);
     }
   });
   prune();

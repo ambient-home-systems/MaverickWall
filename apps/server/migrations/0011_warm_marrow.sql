@@ -1,0 +1,1 @@
+ALTER TABLE `screens` ADD `allow_dismiss` integer DEFAULT false NOT NULL;
