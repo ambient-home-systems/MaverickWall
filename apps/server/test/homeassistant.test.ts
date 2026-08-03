@@ -728,6 +728,85 @@ describe('interrupts', () => {
   });
 });
 
+describe('the shipped templates, through the form', () => {
+  it('fills the rule form in from a link, with no script involved', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    // The list offers each one as a link; following it re-renders the form.
+    const listing = await (await h.call('/admin/home-assistant')).text();
+    expect(listing).toContain('/admin/home-assistant?template=garage');
+
+    const html = await (await h.call('/admin/home-assistant?template=garage')).text();
+    expect(html).toContain('value="Garage door open late"');
+    // The window the brief names, prefilled rather than described.
+    expect(html).toContain('name="from_time" type="time" value="23:00"');
+    expect(html).toContain('name="to_time" type="time" value="06:00"');
+    expect(html).toContain('value="10"');
+    expect(html).toContain('<option value="takeover" selected>');
+  });
+
+  it('stores the window, and does not fire in the afternoon', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    const response = await h.form('/admin/home-assistant/rules', {
+      name: 'Garage door open late',
+      entity_id: 'binary_sensor.freezer_door',
+      condition: 'equals',
+      value: 'on',
+      for_minutes: '5',
+      from_time: '23:00',
+      to_time: '06:00',
+      action: 'takeover',
+    });
+    expect(response.status).toBe(302);
+    await h.pollHa();
+
+    const stored = h.db
+      .prepare(`SELECT conditions FROM interrupt_rules`)
+      .get() as { conditions: string };
+    expect(JSON.parse(stored.conditions)).toMatchObject({
+      between: { from: '23:00', to: '06:00' },
+    });
+
+    /*
+     * The household is Europe/London and this test runs whenever it runs, so
+     * the assertion is about agreement rather than about a fixed answer: the
+     * rule fires exactly when the wall clock is inside the window it stored.
+     */
+    const manifest = await h.manifest();
+    const hhmm = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date());
+    const overnight = hhmm >= '23:00' || hhmm < '06:00';
+    expect(manifest.interrupts.length).toBe(overnight ? 1 : 0);
+  });
+
+  it('refuses half a window rather than quietly ignoring it', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    const response = await h.form('/admin/home-assistant/rules', {
+      name: 'Garage door open late',
+      entity_id: 'binary_sensor.freezer_door',
+      condition: 'equals',
+      value: 'on',
+      for_minutes: '',
+      from_time: '23:00',
+      to_time: '',
+      action: 'banner',
+    });
+    // Ignoring it would give somebody a rule that fires at noon and looks
+    // exactly like the one they meant to write.
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain('both times, or neither');
+  });
+});
+
 describe('disconnecting', () => {
   it('forgets the token, the readings and the rules', async () => {
     const h = await harness();

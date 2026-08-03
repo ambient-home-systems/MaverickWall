@@ -66,6 +66,24 @@ export interface Condition {
    * has been open for five minutes" is the whole point. Measured from `since`.
    */
   readonly forSeconds: number | null;
+  /**
+   * Only between these times of day, in the household's own zone.
+   *
+   * "The garage is open" is not news at four in the afternoon; "the garage is
+   * open at midnight" is the rule somebody actually wants. Without this the
+   * only way to express it is a duration, which fires just as readily at noon.
+   *
+   * Wraps past midnight, because every rule anybody writes with this does:
+   * 23:00 to 06:00 means the night, not an empty window.
+   */
+  readonly between: TimeWindow | null;
+}
+
+export interface TimeWindow {
+  /** `HH:MM`, 24 hour. */
+  readonly from: string;
+  /** `HH:MM`, exclusive. */
+  readonly to: string;
 }
 
 /**
@@ -104,7 +122,56 @@ export function parseCondition(raw: unknown): Condition | undefined {
     kind,
     value: String(value),
     forSeconds: typeof forSeconds === 'number' && forSeconds > 0 ? Math.round(forSeconds) : null,
+    between: parseWindow(record['between']),
   };
+}
+
+const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+/** A stored time window, or null — which means "at any hour", not "never". */
+export function parseWindow(raw: unknown): TimeWindow | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  const from = record['from'];
+  const to = record['to'];
+  if (typeof from !== 'string' || typeof to !== 'string') return null;
+  if (!HHMM.test(from) || !HHMM.test(to)) return null;
+  // A zero-length window would never match and reads as deliberate. Somebody
+  // who set both the same meant a whole day far more often than no day.
+  return from === to ? null : { from, to };
+}
+
+/**
+ * The wall clock in a zone, as `HH:MM`.
+ *
+ * From `Intl` rather than arithmetic, for the same reason recurrence is: the
+ * offset on a given night is a fact about a timezone database, and a household
+ * on the wrong side of a clock change would otherwise get their overnight rule
+ * an hour late twice a year.
+ */
+export function localHhmm(at: number, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(at));
+  } catch {
+    // An unusable zone must not disarm every rule that has a window. UTC is
+    // wrong by hours; refusing to evaluate is wrong always.
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(at));
+  }
+}
+
+/** True when `now` is inside the window, which may wrap past midnight. */
+export function withinWindow(window: TimeWindow, nowHhmm: string): boolean {
+  return window.from <= window.to
+    ? nowHhmm >= window.from && nowHhmm < window.to
+    : // Wrapped: 23:00–06:00 is "at or after 23:00, or before 06:00".
+      nowHhmm >= window.from || nowHhmm < window.to;
 }
 
 function numeric(value: string): number | null {
@@ -145,6 +212,8 @@ export interface EvaluateInput {
   readonly rules: readonly InterruptRule[];
   readonly signals: readonly Signal[];
   readonly now: number;
+  /** The household's zone. Only `between` needs it; it is always supplied. */
+  readonly timezone: string;
 }
 
 /**
@@ -159,11 +228,17 @@ export interface EvaluateInput {
 export function evaluateInterrupts(input: EvaluateInput): ManifestInterrupt[] {
   const byKey = new Map(input.signals.map((signal) => [signal.key, signal]));
   const firing: ManifestInterrupt[] = [];
+  // Once per evaluation rather than once per rule: every rule with a window
+  // asks the same question of the same instant.
+  const nowHhmm = localHhmm(input.now, input.timezone);
 
   for (const rule of input.rules) {
     const signal = byKey.get(rule.condition.key);
     if (signal === undefined) continue;
     if (!matches(rule.condition, signal)) continue;
+    if (rule.condition.between !== null && !withinWindow(rule.condition.between, nowHhmm)) {
+      continue;
+    }
 
     const heldFor = signal.since === null ? null : input.now - signal.since;
 
@@ -240,25 +315,38 @@ export const RULE_TEMPLATES: readonly RuleTemplate[] = [
     key: 'leak',
     name: 'Water leak',
     domains: ['binary_sensor'],
-    condition: { kind: 'equals', value: 'on', forSeconds: null },
+    condition: { kind: 'equals', value: 'on', forSeconds: null, between: null },
     action: 'takeover_and_wake',
     priority: 100,
-    hint: 'The whole wall, immediately, and it lights a screen that has gone dark. Water does not wait.',
+    hint: 'The whole wall, the moment it is wet, and it lights a screen that has gone dark. Water does not wait.',
   },
   {
     key: 'garage',
-    name: 'Garage door left open',
+    name: 'Garage door open late',
     domains: ['binary_sensor', 'sensor'],
-    condition: { kind: 'equals', value: 'on', forSeconds: 30 * 60 },
+    /*
+     * The window is the rule, not the duration.
+     *
+     * A garage open at four in the afternoon is somebody unloading shopping.
+     * The same sensor at midnight is the thing worth walking downstairs for,
+     * and only the hour tells them apart. Ten minutes on top so that coming
+     * home late does not set it off on the driveway.
+     */
+    condition: {
+      kind: 'equals',
+      value: 'on',
+      forSeconds: 10 * 60,
+      between: { from: '23:00', to: '06:00' },
+    },
     action: 'takeover',
     priority: 60,
-    hint: 'Open for half an hour. Long enough that somebody carrying shopping in does not trigger it.',
+    hint: 'Open after 23:00, for ten minutes. Overnight only — the same sensor at teatime is somebody carrying shopping in.',
   },
   {
     key: 'freezer',
     name: 'Freezer door open',
     domains: ['binary_sensor'],
-    condition: { kind: 'equals', value: 'on', forSeconds: 5 * 60 },
+    condition: { kind: 'equals', value: 'on', forSeconds: 5 * 60, between: null },
     action: 'banner',
     priority: 40,
     hint: 'Five minutes. A banner rather than a takeover — worth knowing, not worth losing the calendar over.',

@@ -302,6 +302,16 @@ export function createApp(deps: AppDeps): Hono {
     const from = shiftDate(today, -DEFAULT_DAYS_BEFORE);
     const to = shiftDate(today, DEFAULT_DAYS_AFTER);
 
+    /*
+     * The zone this particular screen is in.
+     *
+     * The same resolution the manifest does, hoisted because an interrupt
+     * limited to the night has to mean night where the screen is hanging — a
+     * holiday home on another clock is a case this product already supports.
+     */
+    const timezone =
+      screen.timezone !== null && screen.timezone !== '' ? screen.timezone : household.timezone;
+
     // Built once and shared: the panels and the signals come from the same
     // instant, so a wall never draws a reading from one poll beside an
     // interrupt evaluated against another.
@@ -310,7 +320,7 @@ export function createApp(deps: AppDeps): Hono {
       fetcher: deps.fetcher,
       keyring: deps.keyring,
       now: at,
-      timezone: household.timezone,
+      timezone,
     };
 
     const manifest = buildManifest({
@@ -341,6 +351,9 @@ export function createApp(deps: AppDeps): Hono {
         rules: readActiveRules(deps.db),
         signals: collectSignals(MODULES, moduleContext),
         now: at,
+        // The screen's zone if it has one, so a rule limited to the night
+        // means night where that screen is hanging.
+        timezone,
       }),
       // The document is already screen-specific — it is served behind a
       // display token — so how that screen is hung travels with it.

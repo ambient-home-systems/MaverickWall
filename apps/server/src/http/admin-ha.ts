@@ -24,7 +24,12 @@ import {
   watchEntity,
   writeHaSettings,
 } from '../modules/homeassistant/store.js';
-import { RULE_TEMPLATES, type InterruptAction } from '../api/interrupts.js';
+import {
+  parseWindow,
+  RULE_TEMPLATES,
+  type InterruptAction,
+  type RuleTemplate,
+} from '../api/interrupts.js';
 import type { AdminDeps } from './admin.js';
 
 /**
@@ -53,6 +58,14 @@ function field(body: Record<string, unknown>, name: string): string {
 
 function checked(body: Record<string, unknown>, name: string): boolean {
   return typeof body[name] === 'string';
+}
+
+/** One `<option>`, selected when it is the one a template chose. */
+function option(value: string, label: string, selected?: string): string {
+  return (
+    `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>` +
+    `${escapeHtml(label)}</option>`
+  );
 }
 
 interface PageError {
@@ -129,16 +142,32 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     };
   }
 
-  async function render(error?: PageError, status?: number): Promise<Response> {
+  async function render(
+    error?: PageError,
+    status?: number,
+    template?: RuleTemplate,
+  ): Promise<Response> {
     const live = await look();
     const shown = error ?? live.problem ?? undefined;
-    return new Response(haPage(live, shown), {
+    return new Response(haPage(live, shown, template), {
       status: status ?? 200,
       headers: { 'content-type': 'text/html; charset=UTF-8' },
     });
   }
 
-  app.get('/admin/home-assistant', async () => render());
+  /**
+   * A template is a query parameter, not a script.
+   *
+   * Choosing one re-renders the form with its fields already filled in, which
+   * is the whole of "prefill" without a line of JavaScript. The household can
+   * change every one of them before saving — a template is a starting point,
+   * and the hard part of a rule builder is not the fields but knowing that a
+   * freezer door is worth five minutes and a leak is worth none.
+   */
+  app.get('/admin/home-assistant', async (c: Context) => {
+    const chosen = RULE_TEMPLATES.find((entry) => entry.key === c.req.query('template'));
+    return render(undefined, undefined, chosen);
+  });
 
   /**
    * Save the address and the token, but only if they work.
@@ -342,6 +371,36 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       return render({ message: 'Enter the wait in whole minutes, or leave it empty.' }, 400);
     }
 
+    /*
+     * The overnight window, which is optional and all-or-nothing.
+     *
+     * One time without the other is somebody who filled in half a thought, and
+     * silently ignoring it would give them a rule that fires at noon.
+     */
+    const from = field(body, 'from_time');
+    const to = field(body, 'to_time');
+    if ((from === '') !== (to === '')) {
+      return render(
+        {
+          message: 'Give both times, or neither.',
+          suggestion:
+            'Leaving them empty means the rule applies at any hour. To limit it to the ' +
+            'night, set from 23:00 to 06:00.',
+        },
+        400,
+      );
+    }
+    const between = from === '' ? null : parseWindow({ from, to });
+    if (from !== '' && between === null) {
+      return render(
+        {
+          message: 'Those times are not a window.',
+          suggestion: 'Use HH:MM, and make them different from each other.',
+        },
+        400,
+      );
+    }
+
     const action = field(body, 'action');
     if (!ACTIONS.some((candidate) => candidate.key === action)) {
       return render({ message: 'Choose how loudly this should be shown.' }, 400);
@@ -353,6 +412,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       condition,
       value,
       forSeconds: minutes === '' || minutes === '0' ? null : Number(minutes) * 60,
+      between,
       action: action as InterruptAction,
       // Ordering matters only when two fire at once, which is rare enough that
       // asking about it would be a field nobody could answer. A takeover
@@ -377,7 +437,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   // The page
   // -------------------------------------------------------------------------
 
-  function haPage(live: LiveState, error?: PageError): string {
+  function haPage(live: LiveState, error?: PageError, template?: RuleTemplate): string {
     const settings = readHaSettings(deps.db);
     const connected = live.mode !== null;
 
@@ -392,7 +452,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         (live.mode === 'supervisor' ? '' : connectionForm(settings)) +
         (connected ? readings(live) : '') +
         (connected ? calendars(live) : '') +
-        (connected ? rules(live) : ''),
+        (connected ? rules(live, template) : ''),
     });
   }
 
@@ -576,7 +636,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function rules(live: LiveState): string {
+  function rules(live: LiveState, template?: RuleTemplate): string {
     const stored = readRuleRows(deps.db).filter((row) => row.trigger === 'ha_entity');
 
     const existing = stored
@@ -612,9 +672,16 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       })
       .join('');
 
+    /*
+     * A link per template, which fills the form in below.
+     *
+     * Links rather than buttons because choosing one changes nothing — it is a
+     * different view of an empty form, and a GET is what that is.
+     */
     const templates = RULE_TEMPLATES.map(
-      (template) =>
-        `<li><strong>${escapeHtml(template.name)}</strong> — ${escapeHtml(template.hint)}</li>`,
+      (entry) =>
+        `<li><a class="link" href="/admin/home-assistant?template=${encodeURIComponent(entry.key)}">` +
+        `${escapeHtml(entry.name)}</a> — ${escapeHtml(entry.hint)}</li>`,
     ).join('');
 
     const options = live.entities
@@ -634,6 +701,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<form method="post" action="/admin/home-assistant/rules">` +
       `<label for="rule_name">What to say</label>` +
       `<input id="rule_name" name="name" type="text" required maxlength="60" ` +
+      `value="${escapeHtml(template?.name ?? '')}" ` +
       `placeholder="Water under the sink">` +
       `<p class="hint">This is the sentence the wall shows, so write it as one.</p>` +
 
@@ -645,25 +713,42 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="row-fields">` +
       `<span><label for="rule_condition">When it is</label>` +
       `<select id="rule_condition" name="condition">` +
-      `<option value="equals">exactly</option>` +
-      `<option value="above">above</option>` +
-      `<option value="below">below</option>` +
-      `<option value="changed_to">has just become</option>` +
+      option('equals', 'exactly', template?.condition.kind) +
+      option('above', 'above', template?.condition.kind) +
+      option('below', 'below', template?.condition.kind) +
+      option('changed_to', 'has just become', template?.condition.kind) +
       `</select></span>` +
       `<span><label for="rule_value">This</label>` +
-      `<input id="rule_value" name="value" type="text" required value="on"></span>` +
+      `<input id="rule_value" name="value" type="text" required ` +
+      `value="${escapeHtml(template?.condition.value ?? 'on')}"></span>` +
       `<span><label for="rule_for">For (minutes)</label>` +
       `<input id="rule_for" name="for_minutes" type="number" min="0" max="1440" ` +
-      `inputmode="numeric" placeholder="0"></span>` +
+      `inputmode="numeric" placeholder="0" ` +
+      `value="${template?.condition.forSeconds ? Math.round(template.condition.forSeconds / 60) : ''}"></span>` +
       `</div>` +
       `<p class="hint">A door sensor reads <span class="code">on</span> when it is open. ` +
       `The wait is what separates “somebody is carrying shopping in” from “it has been ` +
       `open all night”.</p>` +
 
+      `<div class="row-fields">` +
+      `<span><label for="from_time">Only after</label>` +
+      `<input id="from_time" name="from_time" type="time" ` +
+      `value="${escapeHtml(template?.condition.between?.from ?? '')}"></span>` +
+      `<span><label for="to_time">And before</label>` +
+      `<input id="to_time" name="to_time" type="time" ` +
+      `value="${escapeHtml(template?.condition.between?.to ?? '')}"></span>` +
+      `</div>` +
+      `<p class="hint">Leave both empty and the rule applies at any hour. A garage door ` +
+      `open at teatime is somebody carrying shopping in; the same sensor at midnight is ` +
+      `worth walking downstairs for, and only the hour tells them apart. Times wrap past ` +
+      `midnight, so 23:00 until 06:00 means the night.</p>` +
+
       `<label for="rule_action">Show it as</label>` +
       `<select id="rule_action" name="action">` +
       ACTIONS.map(
-        (option) => `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
+        (entry) =>
+          `<option value="${escapeHtml(entry.key)}"` +
+          `${entry.key === template?.action ? ' selected' : ''}>${escapeHtml(entry.label)}</option>`,
       ).join('') +
       `</select>` +
       `<button type="submit">Add rule</button></form>`

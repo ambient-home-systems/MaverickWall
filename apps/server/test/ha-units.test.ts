@@ -15,8 +15,11 @@ import {
 import {
   EDGE_WINDOW_MS,
   evaluateInterrupts,
+  localHhmm,
   parseCondition,
+  parseWindow,
   RULE_TEMPLATES,
+  withinWindow,
   type InterruptRule,
   type Signal,
 } from '../src/api/interrupts.js';
@@ -30,6 +33,8 @@ import {
  */
 
 const NOW = Date.parse('2026-08-02T12:00:00Z');
+/** Noon UTC is 13:00 here, which is what the window tests are written against. */
+const ZONE = 'Europe/London';
 
 function state(over: Partial<HaState> = {}): HaState {
   return {
@@ -245,30 +250,32 @@ describe('the interrupt evaluator', () => {
       action: 'banner',
       priority: 40,
       dismissAfterSeconds: null,
-      condition: { key: 'binary_sensor.door', kind: 'equals', value: 'on', forSeconds: null },
+      condition: { key: 'binary_sensor.door', kind: 'equals', value: 'on', forSeconds: null, between: null },
       ...over,
     };
   }
 
   it('matches a state regardless of how it was typed', () => {
     const fired = evaluateInterrupts({
-      rules: [rule({ condition: { key: 'binary_sensor.door', kind: 'equals', value: 'On', forSeconds: null } })],
+      rules: [rule({ condition: { key: 'binary_sensor.door', kind: 'equals', value: 'On', forSeconds: null, between: null } })],
       signals: [signal()],
       now: NOW,
+      timezone: ZONE,
     });
     expect(fired).toHaveLength(1);
   });
 
   it('holds a rule until its wait is up, then names the duration', () => {
     const held = rule({
-      condition: { key: 'binary_sensor.door', kind: 'equals', value: 'on', forSeconds: 15 * 60 },
+      condition: { key: 'binary_sensor.door', kind: 'equals', value: 'on', forSeconds: 15 * 60, between: null },
     });
-    expect(evaluateInterrupts({ rules: [held], signals: [signal()], now: NOW })).toHaveLength(0);
+    expect(evaluateInterrupts({ rules: [held], signals: [signal()], now: NOW, timezone: ZONE })).toHaveLength(0);
 
     const fired = evaluateInterrupts({
       rules: [held],
       signals: [signal({ since: NOW - 20 * 60_000 })],
       now: NOW,
+      timezone: ZONE,
     });
     // "Open", not "on" — the same wording the panel uses, because this is the
     // one string a household actually reads.
@@ -277,25 +284,25 @@ describe('the interrupt evaluator', () => {
 
   it('compares numbers, and only when there is one on both sides', () => {
     const above = rule({
-      condition: { key: 'sensor.t', kind: 'above', value: '25', forSeconds: null },
+      condition: { key: 'sensor.t', kind: 'above', value: '25', forSeconds: null, between: null },
     });
     const hot = signal({ key: 'sensor.t', state: '28.3', numeric: 28.3 });
-    expect(evaluateInterrupts({ rules: [above], signals: [hot], now: NOW })).toHaveLength(1);
+    expect(evaluateInterrupts({ rules: [above], signals: [hot], now: NOW, timezone: ZONE })).toHaveLength(1);
 
     const cool = signal({ key: 'sensor.t', state: '19.0', numeric: 19 });
-    expect(evaluateInterrupts({ rules: [above], signals: [cool], now: NOW })).toHaveLength(0);
+    expect(evaluateInterrupts({ rules: [above], signals: [cool], now: NOW, timezone: ZONE })).toHaveLength(0);
 
     // `unavailable` is not a number and must not compare as one.
     const gone = signal({ key: 'sensor.t', state: 'unavailable', numeric: null });
-    expect(evaluateInterrupts({ rules: [above], signals: [gone], now: NOW })).toHaveLength(0);
+    expect(evaluateInterrupts({ rules: [above], signals: [gone], now: NOW, timezone: ZONE })).toHaveLength(0);
   });
 
   it('treats changed_to as an edge, read from a timestamp', () => {
     const edge = rule({
-      condition: { key: 'binary_sensor.door', kind: 'changed_to', value: 'on', forSeconds: null },
+      condition: { key: 'binary_sensor.door', kind: 'changed_to', value: 'on', forSeconds: null, between: null },
     });
     const justNow = signal({ since: NOW - 30_000 });
-    expect(evaluateInterrupts({ rules: [edge], signals: [justNow], now: NOW })).toHaveLength(1);
+    expect(evaluateInterrupts({ rules: [edge], signals: [justNow], now: NOW, timezone: ZONE })).toHaveLength(1);
 
     /*
      * Still 'on', but it became 'on' hours ago. There is no store of previous
@@ -303,16 +310,16 @@ describe('the interrupt evaluator', () => {
      * entered, and an edge outside the window is over.
      */
     const stale = signal({ since: NOW - EDGE_WINDOW_MS - 1 });
-    expect(evaluateInterrupts({ rules: [edge], signals: [stale], now: NOW })).toHaveLength(0);
+    expect(evaluateInterrupts({ rules: [edge], signals: [stale], now: NOW, timezone: ZONE })).toHaveLength(0);
   });
 
   it('stops showing one that has auto-dismissed', () => {
     const brief = rule({ dismissAfterSeconds: 60 });
     expect(
-      evaluateInterrupts({ rules: [brief], signals: [signal({ since: NOW - 30_000 })], now: NOW }),
+      evaluateInterrupts({ rules: [brief], signals: [signal({ since: NOW - 30_000 })], now: NOW, timezone: ZONE }),
     ).toHaveLength(1);
     expect(
-      evaluateInterrupts({ rules: [brief], signals: [signal({ since: NOW - 120_000 })], now: NOW }),
+      evaluateInterrupts({ rules: [brief], signals: [signal({ since: NOW - 120_000 })], now: NOW, timezone: ZONE }),
     ).toHaveLength(0);
   });
 
@@ -325,6 +332,7 @@ describe('the interrupt evaluator', () => {
       ],
       signals: [signal()],
       now: NOW,
+      timezone: ZONE,
     });
     // Sorted, and stable — an order that changed between polls would make the
     // wall flicker between two equal interrupts.
@@ -333,14 +341,101 @@ describe('the interrupt evaluator', () => {
 
   it('ignores a rule about an entity nothing is reading', () => {
     const orphan = rule({
-      condition: { key: 'binary_sensor.gone', kind: 'equals', value: 'on', forSeconds: null },
+      condition: { key: 'binary_sensor.gone', kind: 'equals', value: 'on', forSeconds: null, between: null },
     });
-    expect(evaluateInterrupts({ rules: [orphan], signals: [signal()], now: NOW })).toEqual([]);
+    expect(evaluateInterrupts({ rules: [orphan], signals: [signal()], now: NOW, timezone: ZONE })).toEqual([]);
   });
 
   it('never puts an entity id in what the wall shows', () => {
-    const fired = evaluateInterrupts({ rules: [rule()], signals: [signal()], now: NOW });
+    const fired = evaluateInterrupts({ rules: [rule()], signals: [signal()], now: NOW, timezone: ZONE });
     expect(JSON.stringify(fired)).not.toContain('binary_sensor');
+  });
+});
+
+describe('only at certain hours', () => {
+  function at(hhmm: string): number {
+    // Built in the same zone the rules are evaluated in, so the test is about
+    // the window rather than about an offset.
+    return Date.parse(`2026-08-02T${hhmm}:00+01:00`);
+  }
+
+  function rule(between: { from: string; to: string } | null): InterruptRule {
+    return {
+      id: 'r1',
+      name: 'Garage door open late',
+      trigger: 'ha_entity',
+      action: 'takeover',
+      priority: 60,
+      dismissAfterSeconds: null,
+      condition: { key: 'binary_sensor.garage', kind: 'equals', value: 'on', forSeconds: null, between },
+    };
+  }
+
+  const open = (since: number): Signal => ({
+    source: 'ha_entity',
+    key: 'binary_sensor.garage',
+    state: 'on',
+    reading: 'Open',
+    numeric: null,
+    since,
+    label: 'Garage',
+  });
+
+  it('reads the wall clock in the household zone, not UTC', () => {
+    // 23:30 in London in August is 22:30 UTC. A rule about the night has to
+    // mean the night where the screen is hanging.
+    expect(localHhmm(Date.parse('2026-08-02T22:30:00Z'), 'Europe/London')).toBe('23:30');
+    expect(localHhmm(Date.parse('2026-08-02T22:30:00Z'), 'UTC')).toBe('22:30');
+    // An unusable zone must not disarm every rule that has a window.
+    expect(localHhmm(Date.parse('2026-08-02T22:30:00Z'), 'Mars/Olympus')).toBe('22:30');
+  });
+
+  it('wraps past midnight, because every overnight rule does', () => {
+    const night = { from: '23:00', to: '06:00' };
+    expect(withinWindow(night, '23:30')).toBe(true);
+    expect(withinWindow(night, '02:00')).toBe(true);
+    expect(withinWindow(night, '05:59')).toBe(true);
+    expect(withinWindow(night, '06:00')).toBe(false);
+    expect(withinWindow(night, '16:00')).toBe(false);
+
+    // A window inside one day behaves the ordinary way.
+    const afternoon = { from: '12:00', to: '17:00' };
+    expect(withinWindow(afternoon, '13:00')).toBe(true);
+    expect(withinWindow(afternoon, '23:00')).toBe(false);
+  });
+
+  it('fires overnight and stays quiet at teatime', () => {
+    const night = rule({ from: '23:00', to: '06:00' });
+
+    // The one the brief asks for: a garage open at teatime is somebody
+    // carrying shopping in, and the same sensor at midnight is not.
+    const teatime = at('16:30');
+    expect(
+      evaluateInterrupts({ rules: [night], signals: [open(teatime - 3_600_000)], now: teatime, timezone: ZONE }),
+    ).toHaveLength(0);
+
+    const midnight = at('23:45');
+    expect(
+      evaluateInterrupts({ rules: [night], signals: [open(midnight - 3_600_000)], now: midnight, timezone: ZONE }),
+    ).toHaveLength(1);
+  });
+
+  it('applies at any hour when no window is set', () => {
+    const teatime = at('16:30');
+    expect(
+      evaluateInterrupts({ rules: [rule(null)], signals: [open(teatime - 60_000)], now: teatime, timezone: ZONE }),
+    ).toHaveLength(1);
+  });
+
+  it('refuses a window it cannot act on, rather than one that never fires', () => {
+    expect(parseWindow({ from: '23:00', to: '06:00' })).toEqual({ from: '23:00', to: '06:00' });
+    expect(parseWindow(null)).toBeNull();
+    expect(parseWindow({ from: '23:00' })).toBeNull();
+    expect(parseWindow({ from: '25:00', to: '06:00' })).toBeNull();
+    expect(parseWindow({ from: '2300', to: '0600' })).toBeNull();
+    // Both the same is a zero-length window that could never match. Somebody
+    // who did that meant a whole day far more often than no day at all.
+    expect(parseWindow({ from: '23:00', to: '23:00' })).toBeNull();
   });
 });
 
@@ -348,7 +443,9 @@ describe('reading a stored condition', () => {
   it('accepts what the form writes, and both key spellings', () => {
     expect(
       parseCondition({ entityId: 'binary_sensor.door', condition: 'equals', value: 'on', forSeconds: 300 }),
-    ).toEqual({ key: 'binary_sensor.door', kind: 'equals', value: 'on', forSeconds: 300 });
+    ).toEqual({
+      key: 'binary_sensor.door', kind: 'equals', value: 'on', forSeconds: 300, between: null,
+    });
 
     // `key` rather than `entityId`, for a source that is not an entity.
     expect(parseCondition({ key: 'MDC013', condition: 'equals', value: 'Flood Warning' })).toEqual({
@@ -356,6 +453,7 @@ describe('reading a stored condition', () => {
       kind: 'equals',
       value: 'Flood Warning',
       forSeconds: null,
+      between: null,
     });
   });
 
@@ -385,7 +483,13 @@ describe('the shipped templates', () => {
     expect(byKey.get('leak')?.condition.forSeconds).toBeNull();
     expect(byKey.get('freezer')?.action).toBe('banner');
     expect(byKey.get('freezer')?.condition.forSeconds).toBe(300);
-    expect(byKey.get('garage')?.condition.forSeconds).toBe(1800);
+  });
+
+  it('makes the garage template about the hour, as the brief asks', () => {
+    // "Garage door open after 23:00" is one of the three named examples, and
+    // a duration alone cannot express it — it fires just as readily at noon.
+    const garage = RULE_TEMPLATES.find((template) => template.key === 'garage');
+    expect(garage?.condition.between).toEqual({ from: '23:00', to: '06:00' });
   });
 
   it('orders them so a leak outranks a door', () => {

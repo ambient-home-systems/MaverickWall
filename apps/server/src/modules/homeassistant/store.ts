@@ -1,7 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { Keyring } from '../../secrets/keyring.js';
-import { parseCondition, type InterruptAction, type InterruptRule } from '../../api/interrupts.js';
+import {
+  parseCondition,
+  type InterruptAction,
+  type InterruptRule,
+  type TimeWindow,
+} from '../../api/interrupts.js';
 import { HOME_BLOCK } from './index.js';
 import type { DisplayMode } from './entities.js';
 
@@ -280,6 +285,8 @@ export interface SaveRuleInput {
   readonly condition: 'equals' | 'above' | 'below' | 'changed_to';
   readonly value: string;
   readonly forSeconds: number | null;
+  /** Only between these times of day, in the household's zone. */
+  readonly between: TimeWindow | null;
   readonly action: InterruptAction;
   readonly priority: number;
 }
@@ -315,6 +322,7 @@ export function saveRule(db: SqliteDatabase, input: SaveRuleInput): string {
         condition: input.condition,
         value: input.value,
         forSeconds: input.forSeconds,
+        between: input.between,
       }),
       input.action,
       input.priority,

@@ -196,7 +196,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**860 tests passing.** calendar 153 · core 238 · server 395 · display 74.
+**869 tests passing.** calendar 153 · core 238 · server 404 · display 74.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -354,6 +354,20 @@ function that emits signals, not a second evaluator. `changed_to` is read as
 "is X, and became X within five minutes", because there is no store of previous
 states and a timestamp already answers it — the cost, stated rather than
 hidden, is that a wall unreachable for the whole window misses the edge.
+
+**An interrupt can be limited to an hour of the day, and the garage rule is why.**
+A duration alone cannot express "open after 23:00" — it fires just as readily
+at noon, and a garage open at teatime is somebody carrying shopping in. The
+window is evaluated against the *screen's* zone, wraps past midnight because
+every rule anybody writes with it does, and is all-or-nothing on the form: one
+time without the other is half a thought, and honouring it silently would give
+somebody a rule that fires in the afternoon.
+
+**A template is a query parameter, not a script.** `?template=garage` re-renders
+the rule form with its fields filled in, which is the whole of "prefill" with no
+JavaScript on a page that has none. They were prose in the first cut — the data
+was in `RULE_TEMPLATES` and the form ignored it, which is a rule builder with a
+list of suggestions rather than templates.
 
 **`signals()` is deliberately not gated on `ready`.** "Do not draw this on the
 wall" and "do not tell me when the house is flooding" are different requests,
