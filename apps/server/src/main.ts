@@ -30,7 +30,7 @@ import type { ManifestNotice } from './api/manifest.js';
  * becomes a notice on screen rather than a non-zero exit.
  */
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.1.1';
 
 function env(name: string, fallback: string): string {
   const value = process.env[name];
