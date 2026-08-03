@@ -277,9 +277,23 @@ than silence. The workflow states the labels explicitly now.
 **A tag of `v0.1.0` publishes an image tagged `0.1.0`.** `type=semver` strips
 the `v`. Worth knowing before writing `docker pull ...:v0.1.0` anywhere.
 
-**The GHCR package is private**, which is the default and is not something the
-workflow can change. Until it is made public in the repository's package
-settings, every command in the README returns 403.
+**v0.1.1 is the first release that can actually be installed.** v0.1.0 was
+published, public and signed, and stopped on its first line: the image's data
+directory belonged to root while the application runs as uid 1000, so the
+documented `docker run` exited immediately. The fix was already committed when
+the tag was cut and simply never reached a release — which is its own lesson
+about tagging before the branch is finished.
+
+Verified against the registry with nothing local and nobody logged in: pull,
+`docker run` exactly as the README writes it, healthy in eight seconds, wizard
+at `/`, assets served, uid 1000. `cosign verify` passes and names
+`release.yml@refs/tags/v0.1.1`; the manifest carries both architectures and two
+attestations. **That is the first time the install has been proven from the
+outside rather than from a local build.**
+
+**GHCR packages are private by default**, and visibility is a web-UI setting —
+there is no REST endpoint for it, so no workflow can do it. Worth knowing
+before the next package.
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and

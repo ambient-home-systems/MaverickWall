@@ -2,11 +2,6 @@
 
 ## Docker
 
-> **The published package is private** until somebody makes it public in the
-> repository's package settings, so a pull returns `403 Forbidden`. Until then,
-> clone the repository and `docker build -t maverick-wall .`, then use
-> `maverick-wall` in place of the `ghcr.io/...` name below.
-
 ```bash
 docker run -d \
   --name maverick-wall \
