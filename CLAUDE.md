@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **forty-six real bugs**, and the pattern in how is the most
+This project has found **forty-seven real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -124,6 +124,7 @@ useful thing in this document:
 | **The README's one-liner does not work on Linux** | CI, which is Linux; macOS hides it entirely |
 | Add-on options a household could set that did nothing | Grepping for who reads `options.json` |
 | The performance budget failed on any machine but mine | Letting CI run the suite for the first time |
+| Nine stray `… 2.sql` migrations in the working tree | The journal-parity check, which exists for exactly that |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -211,7 +212,23 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**932 tests passing.** calendar 153 · core 266 · server 435 · display 78.
+**v0.1.1 is released and installable.** One branch (`main`), one tag, one
+published image, and all three agree with each other.
+
+```bash
+docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
+```
+
+That is verified rather than asserted: pulled anonymously with nothing cached,
+healthy in eight seconds, wizard at `/`, assets served, uid 1000. `cosign
+verify` passes and names `release.yml@refs/tags/v0.1.1`. The manifest carries
+`linux/amd64` and `linux/arm64` plus two attestations. **The v0.1.1 commit is
+an ancestor of `main`** — the PRs were merged with merge commits rather than
+squashed precisely so that stayed true.
+
+**932 tests passing.** calendar 153 · core 266 · server 435 · display 78. CI
+runs the whole suite and then the README's one-liner against a clean volume on
+Linux, which is the only place the install has ever been wrong.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -225,7 +242,20 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Not started:** ws push · a published docs site · the Android app.
+**Not started:** ws push · a published docs site · the Android app · a second
+weather provider.
+
+**Never run against the real thing:** the Home Assistant add-on. Ingress is
+verified against a proxy written to imitate the supervisor — prefix stripped,
+`X-Ingress-Path` set, `Origin` rewritten — and that found two real bugs. But no
+supervisor has ever started this, and `ingress_stream: true` is set on
+reasoning rather than observation. It is the highest-value unproven thing left,
+and the distribution path that matters most.
+
+**Before anybody is told about it:** the README's screenshots (a photograph of
+a real wall, which is the one thing on that page that cannot be written), the
+maintainer address in `addon/repository.yaml`, and whether
+`packages/calendar` moves to its own MIT repository now or later.
 
 **A bind mount is not a named volume, and macOS hides the difference.** The
 README said `-v ./data:/data`; on Linux a folder the host just created belongs
@@ -260,13 +290,18 @@ correctly. `docker ps` said unhealthy and `curl` said 200. It probes with
 it was tried and reverted rather than left in place implying a fix it did not
 make. Worth another look, and not worth blocking on.
 
-**v0.1.0 is released.** The tag was cut on `feat/display-offline` rather than
-`main` — a deliberate choice, and it means the released commit is not an
-ancestor of the default branch until those PRs land. The workflow built both
-architectures, pushed `0.1.0`, `0.1`, `latest` and `stable`, signed the digest
-with cosign keylessly, and attached an SPDX bill of materials.
+**v0.1.0 was cut, published, and then withdrawn**, and the reason is worth
+keeping. It was tagged on a feature branch before that branch was finished —
+so a fix that was already committed simply never reached a release. It went out
+public and signed and stopped on its first line. Both the tag and the package
+version are gone; the commit remains on `main` and nothing else references it.
 
-Two things the first release taught, both about metadata rather than code:
+The lesson is not "do not tag a branch". It is that **a tag is a photograph,
+not a pointer**: anything committed after it, however obviously correct, is in
+the next release and not this one.
+
+Three things the first release taught, all about metadata and process rather
+than code:
 
 **`metadata-action` labels beat the Dockerfile's.** It derives them from the
 GitHub repository API and passes them to the build, where they win — so v0.1.0
@@ -276,6 +311,11 @@ than silence. The workflow states the labels explicitly now.
 
 **A tag of `v0.1.0` publishes an image tagged `0.1.0`.** `type=semver` strips
 the `v`. Worth knowing before writing `docker pull ...:v0.1.0` anywhere.
+
+**GHCR packages are private by default**, and visibility is a web-UI setting
+with no REST endpoint behind it — no workflow can flip it, and nothing in a
+release run will tell you it is still shut. The first release was invisible to
+everybody, including its author, until somebody clicked.
 
 **v0.1.1 is the first release that can actually be installed.** v0.1.0 was
 published, public and signed, and stopped on its first line: the image's data
@@ -291,9 +331,7 @@ at `/`, assets served, uid 1000. `cosign verify` passes and names
 attestations. **That is the first time the install has been proven from the
 outside rather than from a local build.**
 
-**GHCR packages are private by default**, and visibility is a web-UI setting —
-there is no REST endpoint for it, so no workflow can do it. Worth knowing
-before the next package.
+
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and
@@ -579,6 +617,14 @@ plain http**, because a service worker needs a secure context and a LAN address
 is not one. On http the stored manifest still covers the commoner case: a wall
 that stays loaded for months while the server comes and goes underneath it.
 
+**A migration file the journal does not list never runs, and looks like it
+did.** `migration-upgrade.test.ts` asserts the two agree in both directions,
+and it earned that assertion: a file-sync collision left nine `… 2.sql`
+duplicates in the working tree, untracked, byte-identical, and invisible to
+every other check. drizzle would have ignored them and a person reading the
+directory would not have. Parity in *both* directions is the point — a journal
+entry with no file is a container that starts and cannot migrate.
+
 **`grid-row: 1 / -1` means the end of the *explicit* grid.** With only
 `grid-auto-rows` there are no explicit row lines, so the landscape month's
 "span the whole column" silently resolved to a single row — and a banner landed
@@ -718,6 +764,20 @@ distinct address.
 - **Display density.** A work feed marks *every* day. Matched shift events are
   consumed out of the agenda, but a NEXT row still needs an opinion about how
   many events per day it can show before it stops being readable.
+- **Rule five, and whether it is still the rule.** It says "Zod at every
+  boundary. Reject, do not coerce." Zod is not a dependency anywhere, and there
+  are now around a dozen hand-validated forms plus the parsers for CAP, Home
+  Assistant states and calendar payloads. The *behaviour* the rule asks for is
+  there — everything rejects rather than coerces, and there are tests for it —
+  but the named tool is not, and the gap has been carried long enough that it
+  should be closed deliberately in one direction. Either adopt Zod at the
+  boundaries that are still hand-rolled, or rewrite the rule to say what the
+  code actually does. Drifting is the only wrong answer.
+- **The image is ~482MB.** About 50MB of it is `esbuild` and `vitest` in the
+  production tree, pulled in because `better-auth` declares `drizzle-kit` and
+  `vitest` as peer dependencies. Fixing it means changing peer resolution,
+  which is a dependency-graph change to verify on its own rather than tack on
+  to something else.
 
 ---
 
