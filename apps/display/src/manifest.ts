@@ -90,13 +90,29 @@ export interface Manifest {
   readonly screen?: {
     readonly orientation?: string;
     readonly rotation?: number;
+    /** Whether this screen may offer a way to acknowledge an interrupt. */
+    readonly allowDismiss?: boolean;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];
   readonly sources: readonly ManifestSourceHealth[];
   readonly notices: readonly ManifestNotice[];
-  readonly weather: null;
-  readonly interrupts: readonly never[];
+  /** Panel slices keyed by block. Data only — never anything to execute. */
+  readonly panels?: Readonly<Record<string, unknown>>;
+  /**
+   * Anything to say over the top of the calendar, highest priority first.
+   *
+   * Already evaluated by the server. The display decides only how loudly to
+   * draw one — the rules, the thresholds and the entities that produced it
+   * never leave the server.
+   */
+  readonly interrupts?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly message: string;
+    readonly action: string;
+    readonly priority: number;
+  }[];
 }
 
 /**

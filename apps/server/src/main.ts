@@ -7,7 +7,13 @@ import { createFetcher } from './net/fetcher.js';
 import { createJobStore, ensureJob, removeJobsNotIn } from './jobs/store.js';
 import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
-import { createApp } from './http/app.js';
+import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
+import { createAlertJobHandler } from './modules/weather/alert-job.js';
+import { seedDefaultRules } from './api/rules.js';
+import { createApp, MODULES } from './http/app.js';
+import { defaultDisplayDir } from './http/static.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
 import { createSetupTokenHolder } from './http/setup.js';
@@ -24,7 +30,7 @@ import type { ManifestNotice } from './api/manifest.js';
  * becomes a notice on screen rather than a non-zero exit.
  */
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.1.1';
 
 function env(name: string, fallback: string): string {
   const value = process.env[name];
@@ -100,6 +106,14 @@ async function main(): Promise<void> {
   const keyring = createKeyring(master.key);
 
   seedDefaults(db);
+  /*
+   * The shipped weather rules, inserted once and never overwritten.
+   *
+   * A household who turned the Extreme rule off keeps that decision across
+   * every future restart — a seed that overwrote would quietly undo somebody's
+   * settings on upgrade and they would have no way to know why.
+   */
+  seedDefaultRules(db);
 
   const fetcher = createFetcher();
   const household = readHousehold(db);
@@ -114,6 +128,28 @@ async function main(): Promise<void> {
         keyring,
         timezone: () => readHousehold(db).timezone,
       }),
+      /*
+       * The same job with a different way of getting the bytes.
+       *
+       * Its own kind rather than a branch inside `ics-sync`, so the two back
+       * off independently: a Home Assistant that is rebooting must not push
+       * a household's Google feed into an hour-long retry.
+       */
+      'ha-calendar-sync': createHaCalendarSyncHandler({
+        db,
+        fetcher,
+        keyring,
+        timezone: () => readHousehold(db).timezone,
+      }),
+      /*
+       * Every sixty seconds, conditionally.
+       *
+       * Its own job rather than part of the weather module's, because the
+       * forecast is hourly and this is not — and because during the weather
+       * that makes it matter, a failing forecast must not carry the alerts
+       * into backoff with it.
+       */
+      'alerts-sync': createAlertJobHandler({ db, fetcher }),
       optimize: async () => {
         optimize(db);
         return { status: 'ok' };
@@ -126,6 +162,27 @@ async function main(): Promise<void> {
        * registers a job would leave a stale one running after somebody turned
        * it off, and the thing being turned off is a request to a third party.
        */
+      /*
+       * One handler per module job, from the same list the manifest reads.
+       *
+       * Spread in rather than listed, so a new module is a single entry in
+       * MODULES and not a second edit here that somebody forgets.
+       */
+      ...Object.fromEntries(
+        MODULES.filter((module) => module.job !== undefined).map((module) => [
+          (module.job as { kind: string }).kind,
+          async () => {
+            await (module.job as { run: (c: unknown) => Promise<void> }).run({
+              db,
+              fetcher,
+              keyring,
+              now: Date.now(),
+              timezone: readHousehold(db).timezone,
+            });
+            return { status: 'ok' as const };
+          },
+        ]),
+      ),
       'update-check': async () => {
         if (!readUpdateState(db).enabled) return { status: 'ok' };
         const result = await checkForUpdate(fetcher, APP_VERSION);
@@ -187,6 +244,27 @@ async function main(): Promise<void> {
     startedAt,
     log,
   });
+  /*
+   * Said out loud, like the database path.
+   *
+   * A wall with no bundle draws "the bundle is missing" and nothing else, and
+   * the cause is always a layout the relative fallback did not expect. One
+   * line here turns that from a puzzle into a fact — rule eleven, since
+   * nobody can reach the household's machine.
+   */
+  const displayDir = defaultDisplayDir();
+  if (!existsSync(join(displayDir, 'index.html'))) {
+    console.warn(`[boot] no display bundle at ${displayDir}`);
+    console.warn('[boot] set DISPLAY_DIR to where index.html and assets/ live');
+    notices.push({
+      level: 'error',
+      code: 'display-missing',
+      message: 'The wall bundle is missing from this installation.',
+    });
+  } else {
+    console.log(`[boot] display bundle ${displayDir}`);
+  }
+
   const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
 
   // Reported only once the socket is actually bound. Announcing it before
@@ -267,22 +345,43 @@ function seedDefaults(db: SqliteDatabase): void {
  * them all at once.
  */
 function registerJobs(db: SqliteDatabase): void {
-  const sources = db.prepare('SELECT id FROM calendar_sources WHERE enabled = 1').all() as {
+  const sources = db.prepare('SELECT id, kind FROM calendar_sources WHERE enabled = 1').all() as {
     id: string;
+    kind: string;
   }[];
 
-  const keys: string[] = [];
+  // One list per kind, because `removeJobsNotIn` reconciles a kind at a time —
+  // reconciling both against one list would delete every job of the other.
+  const icsKeys: string[] = [];
+  const haKeys: string[] = [];
   sources.forEach((source, index) => {
-    const key = `ics-sync:${source.id}`;
-    keys.push(key);
-    ensureJob(db, key, 'ics-sync', Date.now() + 5_000 + index * 2_000);
+    const at = Date.now() + 5_000 + index * 2_000;
+    if (source.kind === 'homeassistant') {
+      const key = `ha-calendar-sync:${source.id}`;
+      haKeys.push(key);
+      ensureJob(db, key, 'ha-calendar-sync', at);
+    } else {
+      const key = `ics-sync:${source.id}`;
+      icsKeys.push(key);
+      ensureJob(db, key, 'ics-sync', at);
+    }
   });
-  removeJobsNotIn(db, 'ics-sync', keys);
+  removeJobsNotIn(db, 'ics-sync', icsKeys);
+  removeJobsNotIn(db, 'ha-calendar-sync', haKeys);
 
   ensureJob(db, 'optimize', 'optimize', Date.now() + 60_000);
+  // Soon, but not instantly: a restart during a storm should get back into
+  // rhythm rather than stampede.
+  ensureJob(db, 'alerts-sync', 'alerts-sync', Date.now() + 15_000);
   // Registered always, gated by the setting when it fires. Ten minutes out so
   // a restart is never the thing that makes an outbound request.
   ensureJob(db, 'update-check', 'update-check', Date.now() + 10 * 60_000);
+  // Module jobs, a minute out so a restart never stampedes an upstream.
+  for (const module of MODULES) {
+    if (module.job !== undefined) {
+      ensureJob(db, module.job.kind, module.job.kind, Date.now() + 60_000);
+    }
+  }
 }
 
 main().catch((error: unknown) => {

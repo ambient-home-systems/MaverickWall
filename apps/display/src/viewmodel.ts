@@ -33,9 +33,15 @@ export const NEXT_EVENT_LIMIT = 4;
 /** Five weeks of horizon, not six: the design gives the rest to the day itself. */
 export const HORIZON_WEEKS = 5;
 
-/** The three things a wall can show, and the order it shows them in by default. */
-export type DisplayBlock = 'now' | 'next' | 'horizon';
-export const DEFAULT_BLOCKS: readonly DisplayBlock[] = ['now', 'next', 'horizon'];
+/** Everything a wall can show, and the order it shows them in by default. */
+export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon';
+export const DEFAULT_BLOCKS: readonly DisplayBlock[] = [
+  'now',
+  'weather',
+  'home',
+  'next',
+  'horizon',
+];
 
 /**
  * The order to draw in, from whatever the manifest said.
@@ -117,6 +123,13 @@ export interface HorizonCell {
   readonly eventCount: number;
 }
 
+export interface WeatherDayModel {
+  readonly name: string;
+  readonly icon: string;
+  readonly high: string;
+  readonly low: string;
+}
+
 export type Staleness =
   | { readonly level: 'fresh' }
   | { readonly level: 'stale'; readonly message: string }
@@ -138,6 +151,215 @@ export interface DisplayModel {
   readonly staleness: Staleness;
   /** Which blocks to draw, in order. The renderer walks this and nothing else. */
   readonly blocks: readonly DisplayBlock[];
+  /** The weather panel, when a module contributed one. */
+  readonly weather: readonly WeatherDayModel[];
+  /** Something quiet to say about the forecast, such as its age. */
+  readonly weatherNote: string | undefined;
+  /** Readings from the house, when a module contributed any. */
+  readonly house: readonly HouseReadingModel[];
+  /** Something quiet to say about them, such as a connection that is failing. */
+  readonly houseNote: string | undefined;
+  /**
+   * Server time for this document, so a countdown does not trust the device.
+   *
+   * A wall tablet's clock drifts and some never get NTP at all. "42 minutes
+   * left" computed against a clock two hours out is worse than no countdown.
+   */
+  readonly now: number;
+  /**
+   * Anything drawn over the calendar, most important first.
+   *
+   * Already decided by the server; nothing here re-evaluates a rule. A
+   * `takeover` replaces the wall, a `banner` sits above it.
+   */
+  readonly interrupts: readonly InterruptModel[];
+  /**
+   * Whether this screen may offer a way to acknowledge an interrupt.
+   *
+   * A fact about the hardware: a hall television has a remote, a panel screwed
+   * to a wall has no input at all, and a kitchen tablet has a touchscreen a
+   * passing sleeve can press.
+   */
+  readonly allowDismiss: boolean;
+}
+
+export interface HouseReadingModel {
+  readonly label: string;
+  readonly value: string;
+  readonly icon: string;
+  readonly mode: string;
+  readonly stale: boolean;
+}
+
+export interface InterruptModel {
+  /** The event name. Drawn largest. */
+  readonly title: string;
+  /** What to actually do, when the source said. */
+  readonly headline: string | undefined;
+  /** Which counties or rooms it covers. */
+  readonly area: string | undefined;
+  /** Who said so — the issuing office. */
+  readonly sender: string | undefined;
+  readonly takeover: boolean;
+  readonly severity: string;
+  readonly expiresAt: number | undefined;
+  readonly dismissible: boolean;
+  /** `ruleId:signalKey`, the only thing the dismiss endpoint accepts. */
+  readonly key: string;
+}
+
+/**
+ * The house panel, read defensively.
+ *
+ * Same contract as the forecast: a module's slice arrives as `unknown` and is
+ * shaped here rather than trusted, so a server one version ahead costs this
+ * panel and nothing else.
+ */
+export function houseFrom(panel: unknown): {
+  readings: HouseReadingModel[];
+  note: string | undefined;
+} {
+  if (typeof panel !== 'object' || panel === null) return { readings: [], note: undefined };
+  const raw = (panel as { readings?: unknown }).readings;
+  if (!Array.isArray(raw)) return { readings: [], note: undefined };
+
+  const readings: HouseReadingModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const reading = entry as {
+      label?: unknown; value?: unknown; unit?: unknown; icon?: unknown;
+      mode?: unknown; stale?: unknown;
+    };
+    /*
+     * Through the same sanitiser the alert text uses.
+     *
+     * These are Home Assistant *attributes* — a friendly name and a state that
+     * some integration wrote, and that a household may have typed. The same
+     * rule applies as to a CAP headline: capped, and stripped of the invisible
+     * characters that would otherwise let a device name reverse the reading
+     * order of the line it sits in. `textContent` is what prevents injection;
+     * this is what keeps a reading legible.
+     */
+    const label = text(reading.label, 60);
+    const value = text(reading.value, 60);
+    if (label === undefined || value === undefined) continue;
+    const unit = text(reading.unit, 16) ?? '';
+    readings.push({
+      label,
+      // The unit is joined here rather than kept apart, because every mode
+      // that shows a value shows it with its unit and nothing styles them
+      // differently. A degree sign gets no space; a word does.
+      value: unit === '' ? value : `${value}${unit.startsWith('°') ? '' : ' '}${unit}`,
+      // One character, and one this bundle chose. A glyph is a token rather
+      // than a sentence, so a long "icon" is a mistake rather than a reading.
+      icon: text(reading.icon, 4) ?? '·',
+      mode: typeof reading.mode === 'string' ? reading.mode : 'label_value',
+      stale: reading.stale === true,
+    });
+  }
+
+  return { readings, note: text((panel as { note?: unknown }).note, 200) };
+}
+
+/**
+ * Interrupts, read defensively and capped.
+ *
+ * Two is the limit, and it is not arbitrary: a wall with five things shouting
+ * at it has communicated nothing, and the server has already sorted them by
+ * priority so the two that survive are the two that matter. The rest are still
+ * true — they are just not what somebody walking past needs to be told first.
+ */
+export function interruptsFrom(raw: unknown): InterruptModel[] {
+  if (!Array.isArray(raw)) return [];
+  const model: InterruptModel[] = [];
+
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const interrupt = entry as Record<string, unknown>;
+    const title = text(interrupt['title'], 120);
+    if (title === undefined) continue;
+
+    const ruleId = typeof interrupt['ruleId'] === 'string' ? interrupt['ruleId'] : '';
+    const key = typeof interrupt['key'] === 'string' ? interrupt['key'] : '';
+
+    model.push({
+      title,
+      headline: text(interrupt['headline'], 600),
+      area: text(interrupt['area'], 300),
+      sender: text(interrupt['sender'], 120),
+      takeover:
+        interrupt['action'] === 'takeover' || interrupt['action'] === 'takeover_and_wake',
+      severity: typeof interrupt['severity'] === 'string' ? interrupt['severity'] : 'Unknown',
+      expiresAt: typeof interrupt['expiresAt'] === 'number' ? interrupt['expiresAt'] : undefined,
+      dismissible: interrupt['dismissible'] === true && ruleId !== '' && key !== '',
+      key: `${ruleId}:${key}`,
+    });
+    if (model.length === 3) break;
+  }
+  return model;
+}
+
+/**
+ * Text from somebody else, made safe to draw.
+ *
+ * The server already strips and caps what it stores, and this does it again on
+ * the way out. Not belt and braces for its own sake: the display also draws
+ * Home Assistant attributes and a manifest it read out of IndexedDB months
+ * ago, and neither of those went through the alert parser. The rule that
+ * actually prevents injection is `textContent` in the renderer — this is about
+ * a headline being *legible*, which a string of zero-width marks is not.
+ */
+function text(value: unknown, limit: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  // Whitespace collapses first: a newline is a control character, and
+  // stripping before collapsing joins the words either side of a line break.
+  const cleaned = value
+    .replace(/\s+/g, ' ')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (cleaned === '') return undefined;
+  return cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit - 1)}…`;
+}
+
+/**
+ * The weather panel, read defensively.
+ *
+ * A module's slice arrives as `unknown` and is shaped here rather than trusted:
+ * a server one version ahead, or a provider that changed a field, must cost
+ * the panel and nothing else.
+ */
+export function weatherFrom(panel: unknown): {
+  days: WeatherDayModel[];
+  note: string | undefined;
+} {
+  if (typeof panel !== 'object' || panel === null) return { days: [], note: undefined };
+  const raw = (panel as { days?: unknown }).days;
+  if (!Array.isArray(raw)) return { days: [], note: undefined };
+
+  const days: WeatherDayModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const day = entry as {
+      name?: unknown; icon?: unknown; high?: unknown; low?: unknown; unit?: unknown;
+    };
+    if (typeof day.name !== 'string') continue;
+    const unit = typeof day.unit === 'string' ? day.unit : '';
+    const degrees = (value: unknown): string =>
+      typeof value === 'number' ? `${Math.round(value)}°` : '—';
+    days.push({
+      name: day.name,
+      icon: typeof day.icon === 'string' ? day.icon : '·',
+      high: degrees(day.high),
+      // The unit rides on the low so the row reads "84° 69°F" rather than
+      // repeating itself five times across the strip.
+      low: `${degrees(day.low)}${unit === '' ? '' : unit}`,
+    });
+  }
+
+  const note = (panel as { note?: unknown }).note;
+  return { days, note: typeof note === 'string' && note !== '' ? note : undefined };
 }
 
 /** A whole number inside a range, or the fallback when it is not one at all. */
@@ -357,6 +579,9 @@ export function buildModel(options: BuildOptions): DisplayModel {
     staleness = { level: 'stale', message: `Last updated ${describeAge(age)}.` };
   }
 
+  const weather = weatherFrom(manifest.panels?.['weather']);
+  const house = houseFrom(manifest.panels?.['home']);
+
   const { weekday, day: dayNumber, month } = parts(today, timezone);
 
   return {
@@ -375,6 +600,13 @@ export function buildModel(options: BuildOptions): DisplayModel {
     shiftRun: todayDay === undefined ? undefined : describeRun(byDate, today, timezone),
     next,
     horizon: intoWeeks(cells),
+    weather: weather.days,
+    weatherNote: weather.note,
+    house: house.readings,
+    houseNote: house.note,
+    now,
+    interrupts: interruptsFrom(manifest.interrupts),
+    allowDismiss: manifest.screen?.allowDismiss === true,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,

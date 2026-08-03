@@ -516,13 +516,15 @@ describe('screens', () => {
     const manifestFor = async (token: string) =>
       (await (
         await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
-      ).json()) as { screen: { orientation: string; rotation: number } };
+      ).json()) as {
+        screen: { orientation: string; rotation: number; allowDismiss: boolean };
+      };
 
     expect(await manifestFor(kitchen.token)).toHaveProperty('screen', {
-      orientation: 'portrait', rotation: 90,
+      orientation: 'portrait', rotation: 90, allowDismiss: false,
     });
     expect(await manifestFor(hall.token)).toHaveProperty('screen', {
-      orientation: 'auto', rotation: 0,
+      orientation: 'auto', rotation: 0, allowDismiss: false,
     });
   });
 

@@ -125,7 +125,21 @@ export interface PageOptions {
 
 export function page(options: PageOptions): string {
   return (
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+    `<!doctype html><html lang="en"><head>` +
+    /*
+     * The base, and it is load-bearing.
+     *
+     * Every link and form action on these pages is relative, so that one tag
+     * decides where the application's root is. `/` here; under Home Assistant
+     * ingress the middleware replaces it with the per-session prefix, which is
+     * what lets the same markup work in both places without a prefix threaded
+     * through forty call sites.
+     *
+     * It sits before anything that could resolve a URL, because a `<base>`
+     * only governs what follows it.
+     */
+    `<base href="/">` +
+    `<meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<title>${escapeHtml(options.title)}</title><style>${STYLE}</style></head><body><main>` +
     (options.step === undefined ? '' : `<p class="steps">${escapeHtml(options.step)}</p>`) +

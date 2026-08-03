@@ -1,0 +1,20 @@
+# Everything the image does not need, and two things it must never contain.
+#
+# `data/` holds a household's calendar and the key that decrypts their feed
+# addresses; `.env` holds whatever they put in it. Neither belongs in a layer
+# that gets pushed to a public registry.
+data/
+**/.secret
+.env
+.env.*
+!.env.example
+
+.git/
+.github/
+node_modules/
+**/node_modules/
+**/dist/
+docs/
+*.md
+!README.md
+.DS_Store

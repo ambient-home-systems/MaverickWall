@@ -1,0 +1,5 @@
+# The add-on repository, added in Home Assistant under
+# Settings → Add-ons → Add-on Store → ⋮ → Repositories.
+name: Maverick Wall
+url: https://github.com/ambient-home-systems/MaverickWall
+maintainer: Ambient Home Systems <hello@example.invalid>

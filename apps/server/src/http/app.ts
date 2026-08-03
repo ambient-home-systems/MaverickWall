@@ -17,7 +17,14 @@ import {
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir } from './static.js';
+import { ingress, ingressPath } from './ingress.js';
 import { readImage } from '../api/media.js';
+import { collectPanels, collectSignals } from '../modules/registry.js';
+import { weatherModule } from '../modules/weather/index.js';
+import { haModule } from '../modules/homeassistant/index.js';
+import { calendarModule } from '../modules/calendar/index.js';
+import { evaluateInterrupts } from '@maverick-wall/core';
+import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { errorBlock, escapeHtml, page } from './html.js';
 import type { Fetcher } from '@maverick-wall/core';
@@ -160,6 +167,42 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
   return screens.find((screen) => verifyDisplayToken(presented, screen.tokenHash));
 }
 
+/**
+ * Every panel module, in one list.
+ *
+ * The manifest asks each for its slice, boot registers their jobs from the
+ * same list, and the Display screen offers their blocks from it too — so
+ * adding a module is one entry rather than three edits in three files.
+ */
+export const MODULES = [weatherModule, haModule, calendarModule];
+
+/**
+ * The wall clock in a zone, as `HH:MM`.
+ *
+ * Lives here rather than in core, because core may not reach for `Intl` — rule
+ * one, and `globals.d.ts` is the complete list of what it may use. From `Intl`
+ * rather than arithmetic for the same reason recurrence is: the offset on a
+ * given night is a fact about a timezone database, and a household on the wrong
+ * side of a clock change would otherwise get their overnight rules an hour late
+ * twice a year.
+ */
+export function localClock(at: number, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(at));
+  } catch {
+    // An unusable zone must not disarm every rule that has a window. UTC is
+    // wrong by hours; refusing to evaluate is wrong always.
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(at));
+  }
+}
+
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   const now = deps.now ?? (() => Date.now());
@@ -199,8 +242,28 @@ export function createApp(deps: AppDeps): Hono {
    * supervisor's, and this compares against the address the request arrived
    * on. That needs handling here at the same time.
    */
+  /*
+   * Registered before the guard below, because it decides what that guard sees
+   * and because every response it rewrites has to be rewritten on the way out.
+   */
+  app.use('*', ingress());
+
   app.use('*', async (c: Context, next: Next): Promise<Response | void> => {
     if (c.req.method === 'GET' || c.req.method === 'HEAD') {
+      await next();
+      return;
+    }
+    /*
+     * Under ingress the browser's origin is Home Assistant's, not ours, so
+     * this guard would refuse every form post in the add-on.
+     *
+     * The supervisor is the trust boundary there: it will not forward a
+     * request that does not already carry a valid Home Assistant session, and
+     * it is the only thing that can set this header on the way in — nothing
+     * outside the container's network can reach the port it forwards from.
+     * The `SameSite=Lax` cookie is still the primary mitigation in both cases.
+     */
+    if (ingressPath(c) !== '') {
       await next();
       return;
     }
@@ -279,6 +342,49 @@ export function createApp(deps: AppDeps): Hono {
     return c.body(bytesOf(image.bytes));
   });
 
+  /**
+   * Clearing an interrupt from the wall.
+   *
+   * Behind the display token, and household-wide rather than per screen — a
+   * kitchen tablet and a hall television must not disagree about whether the
+   * garage is still worth mentioning. That was the open question when
+   * interrupts were first sketched, and this is the answer: one record, every
+   * screen, and `reassertAfterSec` is what stops "yes, I know" meaning "never
+   * mention it again" while the storm is still overhead.
+   */
+  app.post('/d/interrupts/dismiss', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const key = typeof body['key'] === 'string' ? body['key'].trim() : '';
+    // `ruleId:signalKey`, and nothing longer than the ids that make it up.
+    if (key === '' || key.length > 400 || !key.includes(':')) {
+      return c.json({ error: 'bad-key' }, 400);
+    }
+
+    /*
+     * Only a rule that said it may be dismissed.
+     *
+     * The wall hides the button for the rest, but the button is not the
+     * control — an Extreme warning must not be clearable by anything that can
+     * reach this endpoint, and the display token is on the wall.
+     */
+    const ruleId = key.slice(0, key.indexOf(':'));
+    const rule = readRules(deps.db).find((candidate) => candidate.id === ruleId);
+    if (rule === undefined || !rule.dismissible) {
+      return c.json({ error: 'not-dismissible' }, 403);
+    }
+
+    /*
+     * Stored under the signal, not the rule.
+     *
+     * The wire format names both because the rule is what decides whether this
+     * may be cleared at all — but a household acknowledges a *thing*, and
+     * several rules match one warning. Storing per rule meant pressing OK
+     * promoted the next rule down and the wall carried on regardless.
+     */
+    dismissInterrupt(deps.db, key.slice(key.indexOf(':') + 1), now());
+    return c.json({ ok: true });
+  });
+
   app.get('/d/manifest', (c: Context) => {
     const screen = c.get('screen') as ScreenRow;
     const at = now();
@@ -287,6 +393,27 @@ export function createApp(deps: AppDeps): Hono {
 
     const from = shiftDate(today, -DEFAULT_DAYS_BEFORE);
     const to = shiftDate(today, DEFAULT_DAYS_AFTER);
+
+    /*
+     * The zone this particular screen is in.
+     *
+     * The same resolution the manifest does, hoisted because an interrupt
+     * limited to the night has to mean night where the screen is hanging — a
+     * holiday home on another clock is a case this product already supports.
+     */
+    const timezone =
+      screen.timezone !== null && screen.timezone !== '' ? screen.timezone : household.timezone;
+
+    // Built once and shared: the panels and the signals come from the same
+    // instant, so a wall never draws a reading from one poll beside an
+    // interrupt evaluated against another.
+    const moduleContext = {
+      db: deps.db,
+      fetcher: deps.fetcher,
+      keyring: deps.keyring,
+      now: at,
+      timezone,
+    };
 
     const manifest = buildManifest({
       household,
@@ -301,11 +428,31 @@ export function createApp(deps: AppDeps): Hono {
       daysAfter: DEFAULT_DAYS_AFTER,
       now: at,
       appVersion: deps.appVersion,
+      // Collected here rather than inside assembly, which stays pure and does
+      // no I/O: every module reads its own cache, filled by its own job.
+      panels: collectPanels(MODULES, moduleContext),
+      /*
+       * Evaluated per poll, from stored signals and stored rules.
+       *
+       * Every wall reads the same document, including which interrupts have
+       * been cleared — that is what keeps a kitchen tablet and a hall
+       * television saying the same thing.
+       */
+      interrupts: evaluateInterrupts({
+        rules: readRules(deps.db),
+        signals: collectSignals(MODULES, moduleContext),
+        now: at,
+        // Worked out here because core may not reach for `Intl` — rule one.
+        // The evaluator is told what time it is, exactly as it is told `now`.
+        localHhmm: localClock(at, timezone),
+        dismissedAt: readDismissals(deps.db),
+      }).active,
       // The document is already screen-specific — it is served behind a
       // display token — so how that screen is hung travels with it.
       screen: {
         orientation: screen.orientation,
         rotation: screen.rotation,
+        allowDismiss: screen.allowDismiss === 1,
         theme: screen.theme,
         timezone: screen.timezone,
         daytimeTheme: screen.daytimeTheme,
@@ -496,7 +643,34 @@ export function createApp(deps: AppDeps): Hono {
     return c.body(bytesOf(file.body));
   });
 
+  /**
+   * The service worker, at the root and only at the root.
+   *
+   * A worker's scope is the path it is served from, so one delivered from
+   * `/assets/` could only ever control `/assets/` — which is not where the
+   * page is. Same-origin, no cache: an old worker that outlives its bundle is
+   * a wall serving a shell nobody can update.
+   */
+  app.get('/sw.js', (c: Context) => {
+    const worker = staticFiles.read('sw.js');
+    if (worker === undefined) return c.json({ error: 'not-found' }, 404);
+    c.header('content-type', 'text/javascript; charset=utf-8');
+    c.header('cache-control', 'no-cache');
+    c.header('service-worker-allowed', '/');
+    return c.body(bytesOf(worker.body));
+  });
+
   app.get('/', (c: Context) => {
+    /*
+     * Under ingress, the root means the admin screens.
+     *
+     * A wall display never comes through ingress — it has no Home Assistant
+     * session and connects to the add-on's port directly with a display token.
+     * So somebody arriving here has clicked the add-on in the sidebar, and
+     * what they want is the settings, not a calendar that cannot pair itself.
+     */
+    if (ingressPath(c) !== '') return c.redirect('/admin', 302);
+
     const shell = staticFiles.read('index.html');
     if (shell !== undefined) {
       c.header('content-type', 'text/html; charset=utf-8');
@@ -546,7 +720,7 @@ function signInPage(error?: string, email = ''): string {
     heading: 'Sign in',
     body:
       (error === undefined ? '' : errorBlock(error)) +
-      `<form method="post" action="/admin/sign-in">` +
+      `<form method="post" action="admin/sign-in">` +
       `<label for="email">Email address</label>` +
       `<input id="email" name="email" type="email" required autocomplete="username" value="${escapeHtml(email)}">` +
       `<label for="password">Password</label>` +

@@ -1,4 +1,10 @@
-import type { DayModel, DisplayModel, EventModel, HorizonCell } from './viewmodel.js';
+import type {
+  DayModel,
+  DisplayModel,
+  EventModel,
+  HorizonCell,
+  InterruptModel,
+} from './viewmodel.js';
 
 /**
  * The DOM, and no decisions.
@@ -109,6 +115,72 @@ function renderTodayEvent(event: EventModel): HTMLElement {
   }
   row.appendChild(title);
   return row;
+}
+
+/* ------------------------------------------------------------ WEATHER ---- */
+
+/**
+ * The forecast strip, in the design's own markup.
+ *
+ * The icon is a character rather than an image: the provider offers an icon
+ * URL and rule three forbids the wall from fetching one, so the server maps
+ * the forecast wording to a glyph the device already has.
+ */
+function renderWeather(model: DisplayModel): HTMLElement | undefined {
+  if (model.weather.length === 0) return undefined;
+
+  const strip = el('section', 'wx');
+  for (const day of model.weather) {
+    const cell = el('div', 'wx-day');
+    cell.appendChild(el('div', 'wx-name', day.name));
+    cell.appendChild(el('div', 'wx-ico', day.icon));
+    const temp = el('div', 'wx-temp');
+    temp.appendChild(document.createTextNode(`${day.high} `));
+    temp.appendChild(el('span', 'lo', day.low));
+    cell.appendChild(temp);
+    strip.appendChild(cell);
+  }
+
+  if (model.weatherNote !== undefined) {
+    strip.appendChild(el('div', 'wx-note', model.weatherNote));
+  }
+  return strip;
+}
+
+/* -------------------------------------------------------------- HOUSE ---- */
+
+/**
+ * A few readings from the house, drawn typographically.
+ *
+ * Four display modes and no tiles. The brief is explicit that this is ambient
+ * context on a family calendar rather than a dashboard, and the difference
+ * shows up here: a grid of cards would be competing with Lovelace, badly.
+ *
+ * Note what this function receives — a label, a value, a character. There is
+ * no entity id in the model and no way to ask for one. That boundary is what
+ * keeps a compromised wall from being a way into somebody's house.
+ */
+function renderHouse(model: DisplayModel): HTMLElement | undefined {
+  if (model.house.length === 0) return undefined;
+
+  const strip = el('section', 'house');
+  for (const reading of model.house) {
+    const cell = el('div', `hs-item hs-${reading.mode}${reading.stale ? ' hs-stale' : ''}`);
+
+    if (reading.mode === 'icon_state' || reading.mode === 'presence') {
+      cell.appendChild(el('span', 'hs-ico', reading.icon));
+    }
+    if (reading.mode !== 'value') {
+      cell.appendChild(el('span', 'hs-label', reading.label));
+    }
+    cell.appendChild(el('span', 'hs-value', reading.value));
+    strip.appendChild(cell);
+  }
+
+  if (model.houseNote !== undefined) {
+    strip.appendChild(el('div', 'hs-note', model.houseNote));
+  }
+  return strip;
 }
 
 /* --------------------------------------------------------------- NEXT ---- */
@@ -225,10 +297,130 @@ function legendFor(model: DisplayModel): HTMLElement | undefined {
   return legend;
 }
 
+/* -------------------------------------------------------------- ALERT --- */
+
+/**
+ * The takeover: one warning, the whole wall.
+ *
+ * Every string here goes in through `el`, which uses `textContent` — never
+ * `innerHTML`, anywhere, at any prominence. That is not a general hygiene note:
+ * this is the one place in the product where text a stranger wrote is drawn at
+ * maximum size, and a headline is exactly the field somebody would try it in.
+ *
+ * What is drawn, and why in this order: the event name, because it is what
+ * somebody reads from the doorway; the instruction, because "move to an
+ * interior room on the lowest floor" is the only line that tells them what to
+ * do; the area, so they know whether it is them; then the countdown and the
+ * office, small, because those answer "should I still care" rather than "what
+ * is happening".
+ */
+function renderAlert(interrupt: InterruptModel, model: DisplayModel): HTMLElement {
+  const screen = el('div', `screen screen-alert alert-${interrupt.severity.toLowerCase()}`);
+  const panel = el('section', 'alert');
+
+  panel.appendChild(el('p', 'alert-kind', interrupt.severity));
+  panel.appendChild(el('h1', 'alert-line', interrupt.title));
+  if (interrupt.headline !== undefined) {
+    panel.appendChild(el('p', 'alert-what', interrupt.headline));
+  }
+  if (interrupt.area !== undefined) {
+    panel.appendChild(el('p', 'alert-area', interrupt.area));
+  }
+
+  if (model.allowDismiss && interrupt.dismissible) {
+    panel.appendChild(acknowledgeButton(interrupt));
+  }
+
+  const foot = el('div', 'alert-foot');
+  // The time stays. Somebody looking at a wall that has stopped being a
+  // calendar still needs to know whether this is now or four in the morning.
+  foot.appendChild(el('span', 'alert-clock', model.clock));
+  if (interrupt.expiresAt !== undefined) {
+    foot.appendChild(el('span', 'alert-until', untilText(interrupt.expiresAt, model.now)));
+  }
+  if (interrupt.sender !== undefined) {
+    foot.appendChild(el('span', 'alert-office', interrupt.sender));
+  }
+  panel.appendChild(foot);
+
+  screen.appendChild(panel);
+  return screen;
+}
+
+/**
+ * The acknowledge control.
+ *
+ * A real `<button>`, so a touchscreen works and so the browser gives it focus
+ * behaviour for free — but the button is not really how this gets pressed. A
+ * television remote's OK key arrives as `Enter`, and D-pad focus navigation is
+ * inconsistent across the WebViews that end up on walls. So `main.ts` also
+ * listens for the key directly and acknowledges the loudest thing showing,
+ * which is the one mental model that works with every remote: point at the
+ * wall, press OK.
+ *
+ * `data-dismiss` carries the key rather than a closure, because the whole
+ * screen is rebuilt on every draw and a listener per render would leak.
+ */
+function acknowledgeButton(interrupt: InterruptModel, compact = false): HTMLElement {
+  // The long form only where there is room for it. A banner is already the
+  // smaller statement and does not need a sentence explaining its own button.
+  const button = el('button', 'alert-ack', compact ? 'OK' : 'OK · press the remote to acknowledge');
+  button.setAttribute('type', 'button');
+  button.setAttribute('data-dismiss', interrupt.key);
+  /*
+   * Not `autofocus`. That attribute only applies while the browser is parsing
+   * the document, and every node here is built in script and appended after
+   * load — so it did nothing at all, silently. `main.ts` focuses the control
+   * once, when the thing being acknowledged changes.
+   */
+  return button;
+}
+
+/**
+ * "Until 14:35 · 42 minutes left", as one string.
+ *
+ * A countdown rather than a timestamp, because the question is "is this still
+ * happening" and a household should not have to do the arithmetic from across
+ * a room. It re-renders on the same tick as the clock, so it stays honest
+ * without a timer of its own.
+ */
+export function untilText(expiresAt: number, now: number): string {
+  const remaining = expiresAt - now;
+  if (remaining <= 0) return 'Ending now';
+  const minutes = Math.round(remaining / 60_000);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} left`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0
+    ? `${hours} hour${hours === 1 ? '' : 's'} left`
+    : `${hours}h ${rest}m left`;
+}
+
 /* ------------------------------------------------------------- banners --- */
 
 function renderBanners(model: DisplayModel): HTMLElement | undefined {
-  const messages: { level: string; message: string }[] = [...model.notices];
+  /*
+   * Interrupts lead, above the housekeeping notices.
+   *
+   * A stale feed and a water leak are both "things the wall wants to say", and
+   * only one of them is worth reading first. They are already sorted by the
+   * server; this only has to not bury them.
+   */
+  const messages: { level: string; message: string; dismissKey?: string }[] = [
+    ...model.interrupts
+      .filter((interrupt) => !interrupt.takeover)
+      .map((interrupt) => ({
+        level: 'alert',
+        message:
+          interrupt.headline === undefined
+            ? interrupt.title
+            : `${interrupt.title} — ${interrupt.headline}`,
+        // Only where the screen has something to press with, and only where
+        // the rule said it may be cleared at all.
+        ...(model.allowDismiss && interrupt.dismissible ? { dismissKey: interrupt.key } : {}),
+      })),
+    ...model.notices,
+  ];
   if (model.staleness.level !== 'fresh') {
     messages.unshift({
       level: model.staleness.level === 'offline' ? 'warn' : 'info',
@@ -239,7 +431,11 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 
   const wrap = el('div', 'banners');
   for (const entry of messages) {
-    wrap.appendChild(el('div', `banner banner-${entry.level}`, entry.message));
+    const banner = el('div', `banner banner-${entry.level}`, entry.message);
+    if (entry.dismissKey !== undefined) {
+      banner.appendChild(acknowledgeButton({ key: entry.dismissKey } as InterruptModel, true));
+    }
+    wrap.appendChild(banner);
   }
   return wrap;
 }
@@ -252,9 +448,37 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
  * every minute is the sort of thing that makes a household unplug it.
  */
 export function render(root: HTMLElement, model: DisplayModel): void {
+  /*
+   * A takeover replaces the wall, and is drawn before anything else is built.
+   *
+   * The calendar is the product, so losing it is a real cost and the rule for
+   * paying it has to be narrow: water on the floor, a garage open overnight.
+   * A household chooses which of their rules is worth this, on the Home
+   * Assistant screen, and everything else is a banner over a calendar that
+   * still works.
+   */
+  const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
+  if (takeover !== undefined) {
+    root.textContent = '';
+    root.appendChild(renderAlert(takeover, model));
+    return;
+  }
+
   const screen = el('div', 'screen');
   const banners = renderBanners(model);
-  if (banners !== undefined) screen.appendChild(banners);
+  if (banners !== undefined) {
+    /*
+     * Stated as a class rather than left for CSS to infer.
+     *
+     * The landscape layout pins the month to the full height of the second
+     * column, so an auto-placed banner has nowhere to go but underneath it —
+     * the wall came out with the month above the notice and today's list
+     * squeezed to nothing. Which row things start on depends on whether a
+     * banner exists, and only the renderer knows that.
+     */
+    screen.classList.add('has-banners');
+    screen.appendChild(banners);
+  }
   /*
    * Drawn in the order the household asked for, and only the blocks they asked
    * for. DOM order is visual order in both layouts — portrait stacks these
@@ -262,11 +486,44 @@ export function render(root: HTMLElement, model: DisplayModel): void {
    * fall in beside it — so there is one list to reason about rather than an
    * ordering rule per layout.
    */
+  /*
+   * Each block named, and nothing drawn for a name this bundle does not know.
+   *
+   * The trailing `else` this replaced drew the month for anything that was not
+   * `now` or `next` — so the moment a fourth block existed, asking for weather
+   * would have produced a second month grid.
+   */
   for (const block of model.blocks) {
-    if (block === 'now') screen.appendChild(renderNow(model));
-    else if (block === 'next') screen.appendChild(renderNext(model));
-    else screen.appendChild(renderHorizon(model));
+    if (block === 'now') {
+      screen.appendChild(renderNow(model));
+    } else if (block === 'weather') {
+      // Absent rather than empty when no module contributed one: a strip of
+      // dashes is worse than no strip.
+      const strip = renderWeather(model);
+      if (strip !== undefined) screen.appendChild(strip);
+    } else if (block === 'home') {
+      // Absent rather than empty, same as the forecast: a row of dashes where
+      // a reading should be is worse than no row.
+      const readings = renderHouse(model);
+      if (readings !== undefined) screen.appendChild(readings);
+    } else if (block === 'next') {
+      screen.appendChild(renderNext(model));
+    } else if (block === 'horizon') {
+      screen.appendChild(renderHorizon(model));
+    }
   }
+
+  /*
+   * How many rows the left column needs, stated for the stylesheet.
+   *
+   * Landscape pins the month to `grid-row: 1 / -1`, and `-1` only means the
+   * end of the grid when the rows are explicit — so the template has to match
+   * the number of blocks actually drawn. Hard-coding two rows was fine until a
+   * third block existed, at which point the week ahead and the forecast were
+   * drawn on top of each other.
+   */
+  const stacked = screen.querySelectorAll(':scope > *:not(.horizon)').length;
+  screen.setAttribute('data-rows', String(Math.max(2, Math.min(5, stacked))));
 
   root.textContent = '';
   root.appendChild(screen);

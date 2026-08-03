@@ -8,6 +8,8 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
+import { ingressPath } from './ingress.js';
+import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 
 /**
  * The first-run wizard.
@@ -26,8 +28,21 @@ import { errorBlock, escapeHtml, page } from './html.js';
  */
 
 const SETUP_COOKIE = 'mw_setup';
-/** Scoped to the wizard, so it is not sent to any other route. */
-const SETUP_COOKIE_ATTRS = 'Path=/setup; HttpOnly; SameSite=Lax; Max-Age=1800';
+
+/**
+ * Scoped to the wizard, so it is not sent to any other route — and scoped to
+ * where the wizard *actually is*, which is not always the root.
+ *
+ * Under Home Assistant ingress the browser sits at
+ * `/api/hassio_ingress/<token>/setup`, and a cookie with `Path=/setup` is
+ * never sent back to it. The wizard then bounces to "enter the setup code" for
+ * ever: the code is right, the cookie is set, and the very next request cannot
+ * carry it. The first-run screen is the one that has to work before anything
+ * else does, so the path follows the prefix.
+ */
+function setupCookieAttrs(prefix: string): string {
+  return `Path=${prefix}/setup; HttpOnly; SameSite=Lax; Max-Age=1800`;
+}
 
 export interface SetupTokenHolder {
   /** The live token, re-issued if the last one expired. */
@@ -155,7 +170,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
        */
       const fromUrl = c.req.query('token');
       if (fromUrl !== undefined && setupTokenValid(deps.setupToken.current(), fromUrl, now())) {
-        c.header('set-cookie', `${SETUP_COOKIE}=${fromUrl}; ${SETUP_COOKIE_ATTRS}`);
+        c.header('set-cookie', `${SETUP_COOKIE}=${fromUrl}; ${setupCookieAttrs(ingressPath(c))}`);
         return c.redirect('/setup', 302);
       }
       if (hasSetupCookie(c, deps.setupToken, now())) return c.html(accountForm());
@@ -183,7 +198,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     if (!shortCodeMatches(token.token, presented)) {
       return c.html(codeForm('That code is not right, or it has expired.'), 400);
     }
-    c.header('set-cookie', `${SETUP_COOKIE}=${token.token}; ${SETUP_COOKIE_ATTRS}`);
+    c.header('set-cookie', `${SETUP_COOKIE}=${token.token}; ${setupCookieAttrs(ingressPath(c))}`);
     return c.redirect('/setup', 302);
   });
 
@@ -369,7 +384,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         'Find it there and enter it below. It changes every 30 minutes.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<form method="post" action="/setup/token">` +
+        `<form method="post" action="setup/token">` +
         `<label for="code">Setup code</label>` +
         `<input id="code" name="code" type="text" autocomplete="off" autocapitalize="characters" required>` +
         `<button type="submit">Continue</button></form>`,
@@ -384,7 +399,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       intro: 'This is the only account. There is no public sign-up.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<form method="post" action="/setup/account">` +
+        `<form method="post" action="setup/account">` +
         `<label for="name">Your name</label>` +
         `<input id="name" name="name" type="text" required value="${escapeHtml(values.name ?? '')}">` +
         `<label for="email">Email address</label>` +
@@ -413,10 +428,26 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         'zone. Getting it wrong puts birthdays on the wrong day.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<form method="post" action="/setup/household">` +
+        `<form method="post" action="setup/household">` +
         `<label for="timezone">Timezone</label>` +
         `<select id="timezone" name="timezone" required>${options}</select>` +
-        `<button type="submit">Save and continue</button></form>`,
+        `<button type="submit">Save and continue</button></form>` +
+
+        /*
+         * The disclaimer, in the wizard.
+         *
+         * Here rather than on a settings screen nobody visits, because this is
+         * the one moment every household passes through. Weather alerts are on
+         * by default in the United States, so somebody who never opens the
+         * alerts screen would otherwise have a wall that shows tornado
+         * warnings and never be told what it does not promise.
+         */
+        `<div class="error" style="margin-top:2rem">` +
+        `<strong>About weather alerts</strong>` +
+        `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
+        `<p class="hint">National Weather Service alerts are shown in the United ` +
+        `States. You can change what each level does, or switch them off, on the ` +
+        `Weather alerts screen.</p>`,
     });
   }
 
@@ -442,7 +473,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         'and add calendars later.',
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
-        `<form method="post" action="/setup/calendar">` +
+        `<form method="post" action="setup/calendar">` +
         `<label for="name">Name</label>` +
         `<input id="name" name="name" type="text" required placeholder="Family" value="${escapeHtml(values.name ?? '')}">` +
         `<label for="url">Address</label>` +
@@ -453,7 +484,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         box('allow_http', 'Allow plain http for this feed', values.allowHttp === true) +
         `</div>` +
         `<button type="submit">Test and add</button></form>` +
-        `<form method="get" action="/setup/done">` +
+        `<form method="get" action="setup/done">` +
         `<button class="secondary" type="submit">Skip for now</button></form>`,
     });
   }
@@ -471,7 +502,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         `<p>Pair a display by running <span class="code">add-screen "Kitchen"</span> ` +
         `and opening the link it prints on the screen itself.</p>` +
         `<p>The admin interface is not built yet. ` +
-        `<a style="color:#E0A33E" href="/healthz">Check the server status</a>.</p>`,
+        `<a style="color:#E0A33E" href="healthz">Check the server status</a>.</p>`,
     });
   }
 }

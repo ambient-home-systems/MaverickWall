@@ -432,7 +432,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
   return db
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
-              orientation, rotation, timezone, daytime_theme AS daytimeTheme,
+              orientation, rotation, allow_dismiss AS allowDismiss, timezone,
+              daytime_theme AS daytimeTheme,
               daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt,
               last_seen_at AS lastSeenAt, app_version AS appVersion
          FROM screens ORDER BY name`,
@@ -450,6 +451,8 @@ export interface ScreenSettings {
   readonly daytimeTheme: string | null;
   readonly daytimeStartsAt: string | null;
   readonly daytimeEndsAt: string | null;
+  /** Whether this screen offers a way to acknowledge an interrupt. */
+  readonly allowDismiss: boolean;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -458,12 +461,14 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
       .prepare(
         `UPDATE screens
             SET name = ?, orientation = ?, rotation = ?, theme = ?, timezone = ?,
-                daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?, updated_at = ?
+                daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
+                allow_dismiss = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
         s.name, s.orientation, s.rotation, s.theme, s.timezone,
-        s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt, Date.now(), id,
+        s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt,
+        s.allowDismiss ? 1 : 0, Date.now(), id,
       ).changes > 0
   );
 }
@@ -494,6 +499,76 @@ export function revokeScreen(db: SqliteDatabase, id: string): boolean {
     db.prepare(`UPDATE screens SET revoked_at = ?, updated_at = ? WHERE id = ? AND revoked_at IS NULL`)
       .run(Date.now(), Date.now(), id).changes > 0
   );
+}
+
+export interface WeatherSettings {
+  readonly enabled: boolean;
+  readonly latitude: number | null;
+  readonly longitude: number | null;
+}
+
+export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
+  const row = db
+    .prepare(
+      `SELECT weather_enabled AS enabled, latitude, longitude
+         FROM household_settings WHERE id = 'singleton'`,
+    )
+    .get() as { enabled: number; latitude: number | null; longitude: number | null } | undefined;
+  return {
+    enabled: row?.enabled === 1,
+    latitude: row?.latitude ?? null,
+    longitude: row?.longitude ?? null,
+  };
+}
+
+/**
+ * Save the weather settings, and clear the cache when the location moves.
+ *
+ * A forecast for where the household used to live is worse than no forecast:
+ * it is wrong and looks right. The resolved gridpoint goes with it, since that
+ * is what pins the old location.
+ */
+export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettings): void {
+  const previous = readWeatherSettings(db);
+  const moved =
+    previous.latitude !== settings.latitude || previous.longitude !== settings.longitude;
+
+  const write = db.transaction(() => {
+    db.prepare(
+      `UPDATE household_settings
+          SET weather_enabled = ?, latitude = ?, longitude = ?, updated_at = ?
+        WHERE id = 'singleton'`,
+    ).run(settings.enabled ? 1 : 0, settings.latitude, settings.longitude, Date.now());
+
+    if (moved) db.prepare('DELETE FROM weather_cache').run();
+
+    /*
+     * Switching a module on puts its block on the wall.
+     *
+     * The block order is stored, so a block that did not exist when a
+     * household first saved their order can never appear in it — they would
+     * turn weather on, wait an hour, and see nothing. Enabling is the moment
+     * they asked for it, so that is the moment to add it. The order is still
+     * theirs to change afterwards, and turning it off leaves the list alone.
+     */
+    if (settings.enabled) {
+      const row = db
+        .prepare(`SELECT display_blocks AS blocks FROM household_settings WHERE id = 'singleton'`)
+        .get() as { blocks: string | null } | undefined;
+      const blocks = (row?.blocks ?? '').split(',').map((b) => b.trim()).filter((b) => b !== '');
+      if (!blocks.includes('weather')) {
+        // After today, which is where the design puts the strip.
+        const at = blocks.indexOf('now');
+        blocks.splice(at < 0 ? blocks.length : at + 1, 0, 'weather');
+        db.prepare(
+          `UPDATE household_settings SET display_blocks = ?, updated_at = ? WHERE id = 'singleton'`,
+        ).run(blocks.join(','), Date.now());
+      }
+    }
+    // Bring the refresh forward so the panel fills in without a wait.
+    db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'weather-sync'`).run();
+  });
+  write();
 }
 
 export interface UpdateState {
@@ -607,6 +682,8 @@ export interface AdminSourceRow {
   readonly allowHttp: number;
   readonly color: string;
   readonly personId: string | null;
+  readonly kind: string;
+  readonly haEntityId: string | null;
 }
 
 /**
@@ -625,7 +702,7 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
               event_count AS eventCount,
               allow_private_network AS allowPrivateNetwork,
               allow_loopback AS allowLoopback, allow_http AS allowHttp,
-              color, person_id AS personId
+              color, person_id AS personId, kind, ha_entity_id AS haEntityId
          FROM calendar_sources
         ORDER BY name`,
     )
@@ -642,7 +719,12 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
  */
 export function deleteSource(db: SqliteDatabase, id: string): boolean {
   const remove = db.transaction((sourceId: string): boolean => {
+    // Both kinds. A source only ever has one of these, but deleting by kind
+    // would mean reading the row first to find out which — and getting that
+    // wrong leaves a job fetching a source that no longer exists, on every
+    // tick, forever.
     db.prepare('DELETE FROM job_state WHERE key = ?').run(`ics-sync:${sourceId}`);
+    db.prepare('DELETE FROM job_state WHERE key = ?').run(`ha-calendar-sync:${sourceId}`);
     return db.prepare('DELETE FROM calendar_sources WHERE id = ?').run(sourceId).changes > 0;
   });
   return remove(id);
@@ -653,8 +735,8 @@ export function requestSyncNow(db: SqliteDatabase, id: string): void {
   db.prepare(
     `UPDATE job_state
         SET next_run_at = 0, consecutive_failures = 0, running_since = NULL
-      WHERE key = ?`,
-  ).run(`ics-sync:${id}`);
+      WHERE key IN (?, ?)`,
+  ).run(`ics-sync:${id}`, `ha-calendar-sync:${id}`);
 }
 
 export function readSetupState(db: SqliteDatabase): SetupState {
@@ -683,13 +765,15 @@ export interface ScreenRow {
   readonly daytimeTheme: string | null;
   readonly daytimeStartsAt: string | null;
   readonly daytimeEndsAt: string | null;
+  readonly allowDismiss: number;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
   return db
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
-              orientation, rotation, timezone, daytime_theme AS daytimeTheme,
+              orientation, rotation, allow_dismiss AS allowDismiss, timezone,
+              daytime_theme AS daytimeTheme,
               daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt
          FROM screens WHERE revoked_at IS NULL`,
     )

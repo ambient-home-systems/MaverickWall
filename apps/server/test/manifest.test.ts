@@ -91,9 +91,11 @@ describe('shape', () => {
   });
 
   it('reserves the fields for features not yet built', () => {
-    // So the display contract does not change when weather and interrupts land.
+    // So the display contract does not change when interrupts land. Weather
+    // has arrived and is a panel now; with no modules registered here, the
+    // collection is simply empty.
     const manifest = buildManifest(BASE);
-    expect(manifest.weather).toBe(null);
+    expect(manifest.panels).toEqual({});
     expect(manifest.interrupts).toEqual([]);
   });
 });

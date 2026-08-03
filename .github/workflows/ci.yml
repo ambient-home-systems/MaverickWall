@@ -1,0 +1,129 @@
+# What has to pass before anything ships.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Builds first, then tests. `vitest` only transpiles — it never resolves
+      # a dependency's declarations, and packages/calendar passed 153 tests for
+      # days over imports that `tsc` rejects outright.
+      # The expansion budget is an algorithmic guard, not a benchmark of the
+      # runner. A shared CI box is roughly twice as slow as a laptop, and the
+      # thing this catches — a change that makes recurrence quadratic — is an
+      # order of magnitude, not a factor of two.
+      - run: pnpm test
+        env:
+          CALENDAR_BENCH_BUDGET_MS: 5000
+
+  # The one-liner from the README, run exactly as written against a clean
+  # volume. It is the first thing a stranger does and the only claim on the
+  # front page, so it is the one thing that must never be broken by a change
+  # nobody thought was about packaging.
+  one-liner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: maverick-wall:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Exactly the README's command, including the named volume. This runs on
+      # Linux, which is the point: macOS Docker Desktop maps ownership across
+      # its file sharing layer and hides the one failure that matters here.
+      - name: Start it from nothing
+        run: |
+          docker run -d --name wall \
+            -v maverick-wall:/data \
+            -p 8080:8080 \
+            maverick-wall:ci
+
+      - name: Wait for the healthcheck to go green
+        run: |
+          for i in $(seq 1 60); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' wall 2>/dev/null || echo starting)
+            [ "$state" = "healthy" ] && exit 0
+            [ "$(docker inspect -f '{{.State.Running}}' wall)" = "false" ] && break
+            sleep 2
+          done
+          echo "never became healthy"; docker logs wall; exit 1
+
+      - name: The wizard renders
+        run: |
+          set -e
+          # A fresh volume must land on the first-run wizard, not an error and
+          # not a blank page.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -L http://127.0.0.1:8080/)
+          [ "$code" = "200" ] || { echo "root was $code"; docker logs wall; exit 1; }
+
+          body=$(curl -sL http://127.0.0.1:8080/)
+          echo "$body" | grep -q "Set up Maverick Wall" \
+            || { echo "no wizard in the response"; echo "$body" | head -40; exit 1; }
+
+          # And the bundle the wall needs is actually in the image — the asset
+          # path resolves differently in a deployed tree than in a checkout,
+          # and getting it wrong shows up as a wall that never draws.
+          for asset in /assets/main.js /assets/display.css; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${asset}")
+            [ "$code" = "200" ] || { echo "$asset was $code"; exit 1; }
+          done
+
+          # The setup code is the only way in, and it has to reach the log.
+          docker logs wall 2>&1 | grep -q "Nobody has set this up yet" \
+            || { echo "no setup code in the log"; docker logs wall; exit 1; }
+
+      - name: It runs as nobody in particular
+        run: |
+          user=$(docker exec wall id -u)
+          [ "$user" != "0" ] || { echo "running as root"; exit 1; }
+
+      # The other half of the install instructions, and the half that broke.
+      # A folder the host just created is owned by the host user, and the
+      # container is uid 1000 — so without the chown it cannot write, and with
+      # it everything works. Both halves are asserted because only one of them
+      # was ever exercised, and it was the one that hides the problem.
+      - name: A bind mount fails loudly without a chown
+        run: |
+          mkdir -p "${RUNNER_TEMP}/bind"
+          out=$(docker run --rm -v "${RUNNER_TEMP}/bind:/data" maverick-wall:ci 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -q "not writable by this container" \
+            || { echo "expected the entrypoint's message, got something else"; exit 1; }
+          echo "$out" | grep -q "chown -R 1000:1000" \
+            || { echo "the message did not say how to fix it"; exit 1; }
+
+      - name: A bind mount works once it is chowned
+        run: |
+          mkdir -p "${RUNNER_TEMP}/bind2"
+          sudo chown -R 1000:1000 "${RUNNER_TEMP}/bind2"
+          docker run -d --name wall2 -v "${RUNNER_TEMP}/bind2:/data" -p 8081:8080 maverick-wall:ci
+          for i in $(seq 1 40); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' wall2)" = "healthy" ] && exit 0
+            sleep 2
+          done
+          echo "bind mount never became healthy"; docker logs wall2; exit 1
+
+      - name: Show the logs either way
+        if: always()
+        run: |
+          docker logs wall || true
+          docker logs wall2 || true

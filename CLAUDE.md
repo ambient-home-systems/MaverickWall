@@ -53,9 +53,12 @@ The admin UI is also **no framework** — vanilla TS plus a small hash router.
 
 ```
 packages/calendar/   Pure ICS parsing + recurrence expansion. MIT, own repo later.
-packages/core/       Pure domain: SSRF guards, civil dates, shift, scheduler, ports.
+packages/core/       Pure domain: SSRF guards, civil dates, shift, scheduler,
+                     interrupts, ports.
 apps/server/         Hono + SQLite + scheduler + jobs. The single process.
-apps/display/        Vanilla TS wall renderer. Drawing real data; no offline store yet.
+apps/server/src/modules/   Panel modules: weather, homeassistant. One block, one
+                           manifest slice, one job, one corner of the settings.
+apps/display/        Vanilla TS wall renderer. Draws offline from a stored manifest.
 apps/admin/          Does not exist. The admin screens are server-rendered — see below.
 ```
 
@@ -70,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **twenty-three real bugs**, and the pattern in how is the most
+This project has found **forty-six real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -98,6 +101,29 @@ useful thing in this document:
 | The landscape two-column rule had been dead CSS | Measuring `gridTemplateColumns` and getting `none` |
 | **A QR that passed every structural test and scanned as nothing** | Decoding one with a real detector |
 | A required dep missing from four test harnesses | **Finally typechecking the test files** |
+| **A banner in landscape drew the month on top of itself** | Killing the server, which is the only way to get a banner |
+| A fourth block drew a second month grid | Adding one, and reading the `else` that caught it |
+| **A new block could never appear on an existing wall** | Turning weather on and watching nothing happen |
+| **A generated migration that silently corrupts every calendar** | Applying it to a database that already had one |
+| Every Home Assistant request went to the wrong path | A fake HA that answers 404 like the real one |
+| The wall said "Garage · on" where the panel said "Open" | Reading the sentence a household would read |
+| A person's presence read `home`, not `Home` | Looking at the strip after measuring it |
+| The takeover drew in the left half of a television | Measuring, after the layout looked merely left-aligned |
+| **Today's date sliced in half by a fourth block** | Measuring `scrollHeight` against `clientHeight` |
+| **Every NWS instruction came out with words glued together** | A fixture copied from a real CAP message |
+| One tornado warning drew a takeover *and* a banner repeating it | Reading the manifest after seeding a real alert |
+| Disconnecting HA stopped deleting its own rules | A test asserting a count, after the source name moved |
+| **Acknowledging a warning just promoted the next rule** | Pressing OK on a wall and watching nothing happen |
+| `autofocus` on a scripted node does nothing, silently | Measuring `document.activeElement` |
+| **A refused connection put the HA address on the wall** | Killing the fake outright instead of returning 502 |
+| **Every redirect dropped the ingress prefix** | A proxy that mounts the app the way the supervisor does |
+| **A cookie the wizard could never receive under ingress** | Reading `Set-Cookie` on the first-run path |
+| `pnpm deploy --legacy` is not an option in pnpm 9 | Running the Dockerfile's own command |
+| **The display bundle resolves outside a deployed tree** | Booting from the pruned directory the image copies |
+| **A container that ran perfectly and reported itself unhealthy** | Building the image and reading `docker inspect` |
+| **The README's one-liner does not work on Linux** | CI, which is Linux; macOS hides it entirely |
+| Add-on options a household could set that did nothing | Grepping for who reads `options.json` |
+| The performance budget failed on any machine but mine | Letting CI run the suite for the first time |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -185,7 +211,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**787 tests passing.** calendar 153 · core 238 · server 332 · display 64.
+**932 tests passing.** calendar 153 · core 266 · server 435 · display 78.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -199,8 +225,75 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Not started:** display offline store (IndexedDB, service worker, watchdog) ·
-weather (NWS) · interrupts and alerts · ws push · Docker image · HA add-on.
+**Not started:** ws push · a published docs site · the Android app.
+
+**A bind mount is not a named volume, and macOS hides the difference.** The
+README said `-v ./data:/data`; on Linux a folder the host just created belongs
+to the host user, and the container is uid 1000, so it cannot write its own
+database. Docker Desktop maps ownership across its file sharing layer and made
+this invisible on the machine it was written on — it took a CI run, on Linux,
+to see it. The image now creates `/data` owned by `node`, which is what makes a
+*named* volume work with no configuration anywhere; the documented one-liner
+uses one, and the bind-mount path is documented with its `chown`. CI asserts
+both, because only one of them was ever exercised and it was the one that hides
+the problem.
+
+**The image is built and run.** Both architectures: `linux/arm64` natively and
+`linux/amd64` under emulation, each with `better-sqlite3` compiled for its own
+platform — which is the only genuinely risky part of a multi-arch build with a
+native module. The README's one-liner was run exactly as written against a
+clean directory: healthy in eight seconds, wizard at `/`, `/assets/*` served,
+uid 1000. `docker compose up -d` works from the committed file. An unwritable
+volume produces the entrypoint's message and exit 1 rather than an EACCES
+trace.
+
+Four defects came out of packaging, and the last one only appeared once there
+was a real container: **`wget` is not in `node:22-bookworm-slim`**, so the
+HEALTHCHECK failed for ever while the application served every request
+correctly. `docker ps` said unhealthy and `curl` said 200. It probes with
+`node` now — already present, nothing to install and nothing to keep patched.
+
+**The image is ~482MB uncompressed**, of which about 50MB is `esbuild` and
+`vitest` pulled into the *production* tree because `better-auth` declares
+`drizzle-kit` and `vitest` as peer dependencies and pnpm resolves peers into a
+`deploy --prod` tree. `peerDependencyRules.ignoreMissing` does not remove them;
+it was tried and reverted rather than left in place implying a fix it did not
+make. Worth another look, and not worth blocking on.
+
+**v0.1.0 is released.** The tag was cut on `feat/display-offline` rather than
+`main` — a deliberate choice, and it means the released commit is not an
+ancestor of the default branch until those PRs land. The workflow built both
+architectures, pushed `0.1.0`, `0.1`, `latest` and `stable`, signed the digest
+with cosign keylessly, and attached an SPDX bill of materials.
+
+Two things the first release taught, both about metadata rather than code:
+
+**`metadata-action` labels beat the Dockerfile's.** It derives them from the
+GitHub repository API and passes them to the build, where they win — so v0.1.0
+went out with `org.opencontainers.image.licenses=` empty, because the API had
+not detected the licence yet. On an AGPL project a blank licence field is worse
+than silence. The workflow states the labels explicitly now.
+
+**A tag of `v0.1.0` publishes an image tagged `0.1.0`.** `type=semver` strips
+the `v`. Worth knowing before writing `docker pull ...:v0.1.0` anywhere.
+
+**v0.1.1 is the first release that can actually be installed.** v0.1.0 was
+published, public and signed, and stopped on its first line: the image's data
+directory belonged to root while the application runs as uid 1000, so the
+documented `docker run` exited immediately. The fix was already committed when
+the tag was cut and simply never reached a release — which is its own lesson
+about tagging before the branch is finished.
+
+Verified against the registry with nothing local and nobody logged in: pull,
+`docker run` exactly as the README writes it, healthy in eight seconds, wizard
+at `/`, assets served, uid 1000. `cosign verify` passes and names
+`release.yml@refs/tags/v0.1.1`; the manifest carries both architectures and two
+attestations. **That is the first time the install has been proven from the
+outside rather than from a local build.**
+
+**GHCR packages are private by default**, and visibility is a web-UI setting —
+there is no REST endpoint for it, so no workflow can do it. Worth knowing
+before the next package.
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and
@@ -290,6 +383,207 @@ the rota says nothing about plain. Before this the two were identical in the
 manifest, and a test named "treats an explicit rest day as not working, not as
 unknown" asserted the empty list that proved they were not.
 
+**Panels are modules, and weather is the first.** `src/modules/` holds a
+registry: a module owns a block key, a slice of the manifest, usually a job,
+and a corner of the settings. `collectPanels` catches per module, so a provider
+that changes a field name costs its own panel and not the calendar.
+
+**A module contributes data, never code.** Rule three forbids third-party
+origins in the display bundle, so nothing a module supplies is executed or
+fetched by the wall — it says what it wants shown and a first-party renderer
+draws it. That is what would let a third-party add-on work later with no new
+trust: it would run as its own process and answer with the same shape over
+HTTP, through the SSRF-guarded fetcher exactly like a calendar feed. In-process
+plugins are the version to refuse — they would read the master key, bypass the
+guard, and take the wall down when they throw.
+
+**Home Assistant is read-only, and that is a security property.** A long-lived
+access token has full control of a house and cannot be scoped, so the limit is
+on this side: nothing in the repository issues a POST to Home Assistant, and the
+display receives resolved *values* — "19.4 °C", "Open" — never an entity id,
+never a proxy endpoint, never the token. A test asserts the manifest contains no
+entity id and no base URL. If a wall tablet in a hallway is ever compromised,
+the blast radius has to be "somebody saw my indoor temperature".
+
+**Two credential paths, one client.** `SUPERVISOR_TOKEN` in the environment
+means the add-on, and `http://supervisor/core/api` — plain http to a bare
+hostname, both refused by default, permitted here because that URL is a
+constant in `client.ts` rather than anything a household typed. Otherwise a
+pasted token against an address they gave. The supervisor wins when both exist:
+a stale token must never outrank the live connection. The manual base is
+normalised to end in `/api`, which is the whole of one bug — without it every
+request 404s and reads exactly like a Home Assistant with nothing in it.
+
+**A calendar entity is a `calendar_sources` row with `kind = 'homeassistant'`.**
+No address of its own; it is reached through the one connection. Same writer,
+same cache, same manifest, same renderer — so colour, ownership, visibility and
+health come free and nothing downstream knows the difference. `end.date` is
+exclusive exactly as `DTEND` is, and the test asserts the day *after* a bin day
+is empty rather than only that the bin day is right.
+
+**Polling is the implementation, deliberately.** Home Assistant's WebSocket API
+would cost less, but its auth handshake is reported to behave differently
+through the supervisor proxy, and a subscription that cannot authenticate must
+not be why a wall stops knowing anything. Thirty-second REST is the baseline; a
+subscription would be an optimisation on top and is not built.
+
+**Interrupts match a *signal*, not an entity**, and the model lives in
+`packages/core/domain/interrupts` — pure, with no `Intl`, so even the wall-clock
+reading a night-hours rule needs is passed in the way `now` is. A signal is a
+key, a title, and whichever of severity / state / start time its source
+happens to have; a module offers them through `signals()` on the same registry
+that offers panels. `changed_to` is read as "is X, and became X within five
+minutes", because there is no store of previous states and a timestamp already
+answers it — the cost, stated rather than hidden, is that a wall unreachable for
+the whole window misses the edge.
+
+**Three sources is the proof, and the calendar one is the proof that counts.**
+NWS alerts have severity and no state; Home Assistant entities have state and no
+severity; a calendar event has neither and matches on a time that has not
+happened yet. `startsWithinSec` is one clause in `RuleMatch` and one branch in
+`matches`, and everything after — ordering, dwell, dismissal, re-assertion,
+night mode, the renderer — is shared. If the model had been quietly shaped
+around weather alerts, the third source would have needed a third code path.
+
+**`resolveConflicts` collapses to one interrupt per signal**, and that is not
+tidiness. The shipped rules are a ladder of `minSeverity` bars, so an Extreme
+warning clears every one of them — without the collapse, one tornado warning
+came out as a takeover with a banner underneath repeating the same sentence,
+which is how a wall teaches a household that its banners are noise. Severity
+also outranks priority, permanently: a Moderate banner with a high priority must
+never beat an Extreme takeover.
+
+**Acknowledgement is keyed on the signal, and it is household-wide.** Keyed on
+the *rule* it looked right and did nothing: the shipped weather rules are a
+ladder, so one warning matches several, and clearing the loudest simply promoted
+the next one down — a household presses OK and the wall carries on. A household
+acknowledges a *thing*. Only a rule that permits it ever consults the record, so
+clearing a Moderate advisory cannot silence the Extreme rule that matched the
+same warning. Household-wide so a kitchen tablet and a hall television never
+disagree, and `reassertAfterSec` is what stops "yes, I know" meaning "never
+mention it again" while the storm is still overhead. An Extreme warning ships
+non-dismissible: somebody woken at three in the morning reaches for the nearest
+button.
+
+**Whether a screen offers the control is per screen, and off by default.** It is
+a fact about hardware rather than about the household — a hall television has a
+remote, a panel screwed to a wall has no input at all, and a kitchen tablet has
+a touchscreen a passing sleeve can press. `screens.allow_dismiss`, on the
+Screens page. The *effect* stays household-wide: one screen acknowledges and
+every wall goes quiet.
+
+**The remote's OK key is the input, not focus navigation.** A television remote
+sends `Enter`; D-pad focus navigation is inconsistent across the WebViews that
+end up bolted to walls, so depending on it would mean a remote that works on one
+television and not the next. The handler acknowledges whatever is showing —
+"point at the wall, press OK" — and the control is still a real `<button>`, so a
+touchscreen and a keyboard work too. `Escape` is deliberately not bound: Android
+BACK sends it, and BACK must not clear a warning nobody has read. `autofocus`
+does nothing on a node built in script, so `main.ts` focuses the control when
+its target changes — the focus ring is the only affordance on a wall with
+`cursor: none`.
+
+**CAP is a message stream, not a state document.** `reconcile` is where it
+becomes state: `Cancel` withdraws what it references, `Update` supersedes, later
+`sent` wins for the same id so an out-of-order poll cannot resurrect a stale
+copy, and anything the zone stops listing is over — which is the only signal for
+an alert cancelled while the wall was offline. Both zones are watched, forecast
+*and* county, because flood warnings are issued by county and watching one
+silently misses a category.
+
+**The sanitiser applies to every string a stranger wrote, not just to CAP.**
+Home Assistant attributes are a friendly name and a state that some integration
+wrote and a household may have typed, and they go on the wall beside the
+warnings — so they get the same cap and the same strip. `textContent` in the
+renderer is what prevents injection and there is no `innerHTML` anywhere in the
+bundle; the sanitiser is about a reading staying *legible*, which a device name
+carrying a bidi override does not.
+
+**Collapse whitespace before stripping control characters.** A newline *is* a
+control character, so stripping first deleted it and CAP's teletype-width
+wrapping came out as "on the lowestfloor of a sturdy building" — every
+instruction NWS issues, joined at every line break, on the highest-prominence
+text in the product. Found by a fixture copied from a real message; invented
+text has no hard wrapping in it.
+
+**The push contract exists before the socket does.** There is no WebSocket
+server yet, but `api/push.ts` fixes the message shape now, because adding
+`wakeScreen` after an Android app has shipped means a tablet in somebody's
+hallway that never wakes for a tornado warning until they update it. Web clients
+ignore it — a browser cannot turn a screen on, and a tab pretending otherwise is
+a wall that looks like it woke and did not.
+
+**The disclaimer is one constant in three places.** `api/disclaimer.ts`, shown
+in the alerts screen, the wizard and the README, because a copy per screen is
+how three of them end up saying different things — and this is the one piece of
+text in the product where that matters. It is in the *wizard* because weather
+alerts are on by default in the United States, so a household who never opens
+the alerts screen would otherwise have a wall that shows tornado warnings and
+never be told what it does not promise.
+
+**An interrupt can be limited to an hour of the day, and the garage rule is why.**
+A duration alone cannot express "open after 23:00" — it fires just as readily
+at noon, and a garage open at teatime is somebody carrying shopping in. The
+window is evaluated against the *screen's* zone, wraps past midnight because
+every rule anybody writes with it does, and is all-or-nothing on the form: one
+time without the other is half a thought, and honouring it silently would give
+somebody a rule that fires in the afternoon.
+
+**A template is a query parameter, not a script.** `?template=garage` re-renders
+the rule form with its fields filled in, which is the whole of "prefill" with no
+JavaScript on a page that has none. They were prose in the first cut — the data
+was in `RULE_TEMPLATES` and the form ignored it, which is a rule builder with a
+list of suggestions rather than templates.
+
+**`signals()` is deliberately not gated on `ready`.** "Do not draw this on the
+wall" and "do not tell me when the house is flooding" are different requests,
+and conflating them would silently disarm a rule.
+
+**A generated migration can corrupt every calendar and report success.**
+drizzle-kit's table-recreate output listed the *new* columns in its
+`INSERT ... SELECT`, and SQLite resolves a double-quoted name matching no column
+as a **string literal** rather than erroring — so `SELECT "kind" FROM
+calendar_sources` on a table with no `kind` yields the text `'kind'` for every
+row. Applied as generated, every household's calendars would have come out with
+`kind = 'kind'`, matched neither sync path and never fetched again. `0009` is
+the one migration in this repository that has been edited after generation, and
+the reason is written in it. **Any future migration that recreates a table needs
+the same check**, and `test/migration-upgrade.test.ts` is the guard: it walks
+every migration in order against a database that already has a calendar in it.
+Every other test starts from empty, which is the one path where a migration
+cannot destroy anything.
+
+**Flexbox spreads a shortfall across everything that will shrink.** The portrait
+column's comment said "today and the month are whole" and the rule said
+`flex: 0 1 auto` — true of the intent, false of the code, and with three blocks
+there was always slack so nothing pressed on it. A fourth block sliced the date
+in half; pinning today then sliced the *banner* in half instead. Everything in
+that column now holds its size except the week ahead, which degrades into
+something still true. Found by comparing `scrollHeight` to `clientHeight`, never
+by looking.
+
+**NWS covers the United States only**, and the settings page says so rather
+than leaving somebody to debug an empty strip. A second provider is the obvious
+second module.
+
+**Adding a block does not put it on existing walls.** The order is stored per
+household, so a block that did not exist when they last saved can never appear
+in it. Enabling a module is the moment somebody asked for it, so that is where
+its block gets inserted.
+
+**The wall remembers.** The last good manifest is kept in IndexedDB and drawn
+*before* the first request is sent, so a wall coming back from a power cut
+paints a calendar in milliseconds and says how old it is. A service worker
+caches the shell so the reload itself works — but **it will not register over
+plain http**, because a service worker needs a secure context and a LAN address
+is not one. On http the stored manifest still covers the commoner case: a wall
+that stays loaded for months while the server comes and goes underneath it.
+
+**`grid-row: 1 / -1` means the end of the *explicit* grid.** With only
+`grid-auto-rows` there are no explicit row lines, so the landscape month's
+"span the whole column" silently resolved to a single row — and a banner landed
+on top of it. Naming the rows is what makes the rule mean what it reads as.
+
 **Layout is verified by measuring the DOM, not by looking.** The wall must
 never exceed the viewport: `overflow: hidden` means anything that does is
 silently gone, and a month grid missing its last week looks deliberate. Two
@@ -347,10 +641,42 @@ readers attached, is how a restore becomes a corruption — and the `-wal` and
 `-shm` sidecars have to move with the file they belong to or SQLite replays
 them over the restored database.
 
-**The admin screens are server-rendered too**, in `http/admin.ts`. No build
+**The admin screens are server-rendered too**, in `http/admin.ts` — and
+`http/admin-ha.ts`, which is its own file because `admin.ts` had reached
+eighteen hundred lines. No build
 step and no bundle that can fail to load, which is the same reason the wizard
 is. `apps/admin` has not been started and may never need to be — that is worth
 deciding deliberately before the Shifts screen rather than by drift.
+
+**Home Assistant ingress is one middleware, and nothing else knows about it.**
+The supervisor mounts the add-on under a per-session path, strips it, and says
+what it stripped in `X-Ingress-Path`. Three things move: redirects get the
+prefix back on the way out, one `<base>` element decides where every relative
+link resolves, and the cross-origin guard stands down because the supervisor is
+the trust boundary there and will not forward a request without a valid Home
+Assistant session. Every link and form action in the server-rendered pages is
+now **relative** — that is what makes the single `<base>` enough, instead of a
+prefix threaded through forty call sites.
+
+**The token in that path changes every session**, so nothing may be stored
+against it: no absolute URL in the database, no service worker registered under
+it. Wall displays never come through ingress at all — a screen screwed to a
+wall has no Home Assistant session, so it connects to the add-on's port with a
+display token. That is why `ports` is mapped in `config.yaml`; without it there
+is a beautiful settings page and nothing to look at.
+
+**A cookie scoped to `/setup` is never sent to `/api/hassio_ingress/x/setup`.**
+The wizard bounced back to "enter the setup code" for ever: the code was right,
+the cookie was set, and the very next request could not carry it. Cookie paths
+follow the prefix now. Found by driving a real proxy, not by reading — the code
+looks correct at every line.
+
+**`defaultDisplayDir()` is a fact about the repository, not about the image.**
+`pnpm deploy` flattens the server package to the root, so
+`../../../display/dist` resolves outside the application directory: every asset
+404s and the wall draws "the bundle is missing", on the one screen the whole
+product exists for. `DISPLAY_DIR` overrides it and boot logs which directory it
+opened, the way it already does for the database.
 
 **`trustedOrigins` includes the address the request arrived on.** `BASE_URL`
 defaults to localhost and nobody browses to localhost from the sofa; without
@@ -379,9 +705,16 @@ distinct address.
 
 ## Open decisions
 
-- **HA calendar entities as a source type.** Distinct from ingress. If the
-  household already has calendars in Home Assistant, re-syncing the same ICS is
-  wasteful. Needs a new source kind with its own fetch path.
+- **A second weather provider.** NWS is the United States only, and the module
+  seam is where one would go. Not built speculatively — that would be a second
+  implementation to keep correct before anybody had asked for it.
+- **The WebSocket.** The contract is fixed (`api/push.ts`) and tested; nothing
+  sends one. Polling carries interrupts in the manifest today, which is why a
+  reconnecting display gets them at all.
+- **Whether a second screen kind needs its own acknowledge affordance.** The
+  control is a real button plus a global `Enter` handler, which covers a
+  remote, a touchscreen and a keyboard. A voice assistant or a wall switch
+  would be a third path and is not built.
 - **Display density.** A work feed marks *every* day. Matched shift events are
   consumed out of the agenda, but a NEXT row still needs an opinion about how
   many events per day it can show before it stops being readable.

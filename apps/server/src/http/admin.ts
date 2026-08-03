@@ -16,7 +16,9 @@ import {
   readAdminScreens,
   readAdminSources,
   readUpdateState,
+  readWeatherSettings,
   recordUpdateCheck,
+  writeWeatherSettings,
   setPersonAvatar,
   setUpdateCheckEnabled,
   readHousehold,
@@ -60,6 +62,10 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
+import { registerHaRoutes } from './admin-ha.js';
+import { registerAlertRoutes } from './admin-alerts.js';
+import { readHaSettings } from '../modules/homeassistant/store.js';
+import { resolveConnection } from '../modules/homeassistant/client.js';
 
 /**
  * The admin screens.
@@ -114,6 +120,8 @@ function checked(body: Record<string, unknown>, name: string): boolean {
  */
 const BLOCKS = [
   { key: 'now', label: 'Today' },
+  { key: 'weather', label: 'Weather' },
+  { key: 'home', label: 'The house' },
   { key: 'next', label: 'The week ahead' },
   { key: 'horizon', label: 'The month' },
 ] as const;
@@ -185,6 +193,13 @@ function formatBytes(bytes: number): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} kB`;
 }
 
+/** A coordinate, or undefined when it is not one. */
+function coordinate(raw: string, limit: number): number | undefined {
+  if (!/^-?\d{1,3}(\.\d+)?$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && Math.abs(value) <= limit ? value : undefined;
+}
+
 function isColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value);
 }
@@ -227,6 +242,40 @@ export function ago(from: number | null, now: number): string {
 export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
+  registerHaRoutes(app, deps);
+  registerAlertRoutes(app, deps);
+
+  /**
+   * What the index says about Home Assistant.
+   *
+   * The link is always there, because path B — a household running Home
+   * Assistant separately — has to be able to reach the form to configure it.
+   * What is conditional is everything the connection unlocks: no entity
+   * picker, no calendar list, no rule builder, and no block on the wall until
+   * there is something to read.
+   *
+   * Resolved rather than read from the settings row, so an add-on installation
+   * says "connected" on the index without anybody having configured anything.
+   */
+  const alertSummary = (): string => {
+    const row = deps.db
+      .prepare(`SELECT alerts_enabled AS enabled FROM household_settings WHERE id = 'singleton'`)
+      .get() as { enabled: number } | undefined;
+    if (row?.enabled !== 1) return 'off';
+    const zones = deps.db
+      .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
+      .get() as { n: number } | undefined;
+    return (zones?.n ?? 0) === 0 ? 'on, working out your zones' : `watching ${zones?.n} zones`;
+  };
+
+  const haSummary = (): string => {
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) return 'not connected';
+    if (resolved.connection.mode === 'supervisor') return 'connected as an add-on';
+    const settings = readHaSettings(deps.db);
+    return settings.lastError === null ? 'connected' : 'connected, with a problem';
+  };
+
   app.get('/admin', (c: Context) => {
     const user = currentUser(c);
     const household = readHousehold(deps.db);
@@ -241,23 +290,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         intro: `Signed in as ${user.name}.`,
         body:
           `<p>Timezone <strong>${escapeHtml(household.timezone)}</strong>.</p>` +
-          `<p><a class="link" href="/admin/calendars">Calendars</a> — ` +
+          `<p><a class="link" href="admin/calendars">Calendars</a> — ` +
           `${sources.length} configured` +
           (failing === 0 ? '' : `, <strong>${failing} failing</strong>`) +
           `</p>` +
-          `<p><a class="link" href="/admin/display">Display</a> — ` +
+          `<p><a class="link" href="admin/display">Display</a> — ` +
           `theme, and how much the wall shows</p>` +
-          `<p><a class="link" href="/admin/people">People</a> — ` +
+          `<p><a class="link" href="admin/people">People</a> — ` +
           `${readPeopleAdmin(deps.db).length} added</p>` +
-          `<p><a class="link" href="/admin/shifts">Shifts</a> — ` +
+          `<p><a class="link" href="admin/shifts">Shifts</a> — ` +
           `${readShiftPlansAdmin(deps.db).length} rotation` +
           `${readShiftPlansAdmin(deps.db).length === 1 ? '' : 's'}</p>` +
-          `<p><a class="link" href="/admin/screens">Screens</a> — ` +
+          `<p><a class="link" href="admin/screens">Screens</a> — ` +
           `${screens.length} paired</p>` +
-          `<p><a class="link" href="/admin/system">System</a> — ` +
+          `<p><a class="link" href="admin/system">System</a> — ` +
           `version, backup, diagnostics</p>` +
+          `<p><a class="link" href="admin/home-assistant">Home Assistant</a> — ` +
+          `${haSummary()}</p>` +
+          `<p><a class="link" href="admin/alerts">Weather alerts</a> — ` +
+          `${alertSummary()}</p>` +
 
-          `<form method="post" action="/admin/sign-out">` +
+          `<form method="post" action="admin/sign-out">` +
           `<button class="secondary" type="submit">Sign out</button></form>`,
       }),
     );
@@ -393,9 +446,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'Its events disappear from the wall immediately. The calendar itself ' +
           'is untouched — this only stops Maverick Wall reading it.',
         body:
-          `<form method="post" action="/admin/calendars/${encodeURIComponent(id)}/delete">` +
+          `<form method="post" action="admin/calendars/${encodeURIComponent(id)}/delete">` +
           `<button type="submit">Remove it</button></form>` +
-          `<form method="get" action="/admin/calendars">` +
+          `<form method="get" action="admin/calendars">` +
           `<button class="secondary" type="submit">Keep it</button></form>`,
       }),
     );
@@ -553,7 +606,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         body:
           `<p>If your calendars come back but show no events, the encryption key ` +
           `does not match this database. Restore the key file too.</p>` +
-          `<p><a class="link" href="/admin/system">← Back</a></p>`,
+          `<p><a class="link" href="admin/system">← Back</a></p>`,
       }),
     );
   });
@@ -643,9 +696,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               `${person.sourceCount === 1 ? '' : 's'} will stay subscribed but stop being ` +
               'attributed to anyone.',
         body:
-          `<form method="post" action="/admin/people/${encodeURIComponent(id)}/delete">` +
+          `<form method="post" action="admin/people/${encodeURIComponent(id)}/delete">` +
           `<button type="submit">Remove them</button></form>` +
-          `<form method="get" action="/admin/people">` +
+          `<form method="get" action="admin/people">` +
           `<button class="secondary" type="submit">Keep them</button></form>`,
       }),
     );
@@ -771,6 +824,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.html(screensPage('Rotation has to be a quarter turn.'), 400);
     }
 
+    const allowDismiss = checked(body, 'allow_dismiss');
+
     // Empty means "follow the household", which is a real answer rather than
     // a missing one, so it is stored as null instead of rejected.
     const theme = field(body, 'theme');
@@ -807,6 +862,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         daytimeTheme: scheduled ? daytimeTheme : null,
         daytimeStartsAt: scheduled ? startsAt : null,
         daytimeEndsAt: scheduled ? endsAt : null,
+        allowDismiss,
       })
     ) {
       return c.html(screensPage('That screen is no longer there.'), 404);
@@ -842,6 +898,39 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // -------------------------------------------------------------------------
 
   app.get('/admin/display', (c: Context) => c.html(displayPage()));
+
+  /**
+   * Weather: the first panel module's own corner of the settings.
+   *
+   * Beside the block order rather than on its own screen, because the question
+   * a household is answering — "do I want this on the wall, and where" — is
+   * the same question.
+   */
+  app.post('/admin/display/weather', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const enabled = checked(body, 'weather_enabled');
+
+    const latitude = coordinate(field(body, 'latitude'), 90);
+    const longitude = coordinate(field(body, 'longitude'), 180);
+    if (enabled && (latitude === undefined || longitude === undefined)) {
+      return c.html(
+        displayPage({
+          message: 'Weather needs a location.',
+          suggestion:
+            'Latitude between -90 and 90, longitude between -180 and 180. Your phone’s map app ' +
+            'will show both if you press and hold on your house.',
+        }),
+        400,
+      );
+    }
+
+    writeWeatherSettings(deps.db, {
+      enabled,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
+    });
+    return c.redirect('/admin/display', 302);
+  });
 
   app.post('/admin/display', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
@@ -1030,7 +1119,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? 'A repeating pattern. Preview it before saving — four weeks is enough to recognise.'
           : 'Read from a calendar. Preview it before saving — four weeks is enough to recognise.',
       body:
-        `<p><a class="link" href="/admin/shifts">← Back</a></p>` +
+        `<p><a class="link" href="admin/shifts">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         (plan === undefined || 'message' in plan
           ? ''
@@ -1047,8 +1136,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             )) +
         `<form method="post">${hidden}${fields}` +
         `<div class="row">` +
-        `<button type="submit" formaction="/admin/shifts/preview">Preview four weeks</button>` +
-        `<button class="secondary" type="submit" formaction="/admin/shifts/save">Save</button>` +
+        `<button type="submit" formaction="admin/shifts/preview">Preview four weeks</button>` +
+        `<button class="secondary" type="submit" formaction="admin/shifts/save">Save</button>` +
         `</div></form>`,
     });
   }
@@ -1066,7 +1155,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
         : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
       `</p>` +
-      `<form method="post" action="/admin/shifts/${encodeURIComponent(plan.id)}/delete">` +
+      `<form method="post" action="admin/shifts/${encodeURIComponent(plan.id)}/delete">` +
       `<button class="secondary" type="submit">Remove this rotation</button></form>` +
       `</article>`;
 
@@ -1079,12 +1168,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'from a calendar that already has the shifts in it, or set as a pattern ' +
         'that repeats.',
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         plans.map(card).join('') +
         (canAdd
           ? `<h2 class="add">Add a rotation</h2>` +
-            `<form method="post" action="/admin/shifts/new">` +
+            `<form method="post" action="admin/shifts/new">` +
             `<label for="who">Who</label>` +
             `<select id="who" name="person_id">` +
             people
@@ -1111,7 +1200,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             `</select>` +
             `<p class="hint">Only needed when the shifts come from a calendar.</p>` +
             `<button type="submit">Continue</button></form>`
-          : `<p>Add someone on the <a class="link" href="/admin/people">People</a> screen first — ` +
+          : `<p>Add someone on the <a class="link" href="admin/people">People</a> screen first — ` +
             `a rotation belongs to a person.</p>`),
     });
   }
@@ -1155,7 +1244,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'System — Maverick Wall',
       heading: 'System',
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
 
         `<article class="card">` +
@@ -1168,7 +1257,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add">Timezone</h2>` +
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
         `anchored to this. A screen somewhere else can override it on its own card.</p>` +
-        `<form method="post" action="/admin/system/timezone">` +
+        `<form method="post" action="admin/system/timezone">` +
         `<label for="tz">Household timezone</label>` +
         `<select id="tz" name="timezone">` +
         supportedTimezones()
@@ -1188,9 +1277,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `database holds your calendars and settings; the key is what decrypts the ` +
         `calendar addresses inside it.</p>` +
         `<div class="row">` +
-        `<form method="get" action="/admin/system/backup">` +
+        `<form method="get" action="admin/system/backup">` +
         `<button type="submit">Download database</button></form>` +
-        `<form method="get" action="/admin/system/key">` +
+        `<form method="get" action="admin/system/key">` +
         `<button class="secondary" type="submit">Download key</button></form>` +
         `</div>` +
         errorBlock(
@@ -1202,7 +1291,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add">Restore</h2>` +
         `<p class="hint">Upload a database backup. It is checked and put aside, ` +
         `then applied when Maverick Wall next starts.</p>` +
-        `<form method="post" action="/admin/system/restore" enctype="multipart/form-data">` +
+        `<form method="post" action="admin/system/restore" enctype="multipart/form-data">` +
         `<label for="backup">Backup file</label>` +
         `<input id="backup" name="backup" type="file" required>` +
         `<button type="submit">Stage restore</button></form>` +
@@ -1211,7 +1300,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Safe to attach to a bug report: it carries no calendar ` +
         `addresses, no event titles and no email addresses — only hostnames, ` +
         `counts and the log below.</p>` +
-        `<form method="get" action="/admin/system/diagnostics">` +
+        `<form method="get" action="admin/system/diagnostics">` +
         `<button type="submit">Download diagnostics</button></form>` +
 
         `<h2 class="add">Recent log</h2>` +
@@ -1264,7 +1353,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">The exact address it asks: ` +
       `<span class="code">${escapeHtml(RELEASE_URL)}</span></p>` +
 
-      `<form method="post" action="/admin/system/updates">` +
+      `<form method="post" action="admin/system/updates">` +
       `<div class="checks"><label>` +
       `<input type="checkbox" name="update_check_enabled" value="1"` +
       `${state.enabled ? ' checked' : ''}> Check for updates once a day</label></div>` +
@@ -1273,9 +1362,45 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
       status +
       (state.enabled
-        ? `<form method="post" action="/admin/system/check-now">` +
+        ? `<form method="post" action="admin/system/check-now">` +
           `<button class="secondary" type="submit">Check now</button></form>`
         : '')
+    );
+  }
+
+  /**
+   * The weather settings, and the honest bit about coverage.
+   *
+   * The provider is the US National Weather Service and covers nowhere else.
+   * Saying so on the form is the difference between "this is not for me" and
+   * an empty panel somebody spends an evening debugging.
+   */
+  function weatherSection(): string {
+    const weather = readWeatherSettings(deps.db);
+    const value = (n: number | null): string => (n === null ? '' : String(n));
+
+    return (
+      `<p class="hint">A five-day forecast strip. Put it where you want it in the ` +
+      `list above — it is a block like any other.</p>` +
+      `<form method="post" action="admin/display/weather">` +
+      `<div class="checks"><label>` +
+      `<input type="checkbox" name="weather_enabled" value="1"` +
+      `${weather.enabled ? ' checked' : ''}> Show the forecast</label></div>` +
+      `<div class="row-fields">` +
+      `<span><label for="latitude">Latitude</label>` +
+      `<input id="latitude" name="latitude" type="text" inputmode="decimal" ` +
+      `placeholder="38.8894" value="${escapeHtml(value(weather.latitude))}"></span>` +
+      `<span><label for="longitude">Longitude</label>` +
+      `<input id="longitude" name="longitude" type="text" inputmode="decimal" ` +
+      `placeholder="-77.0352" value="${escapeHtml(value(weather.longitude))}"></span>` +
+      `</div>` +
+      `<p class="hint">Press and hold your house in a phone map app to get both numbers.</p>` +
+      errorBlock(
+        'The forecast comes from the US National Weather Service.',
+        'It covers the United States only. Elsewhere, leave this off — a second ' +
+          'provider is the obvious next module.',
+      ) +
+      `<button type="submit">Save</button></form>`
     );
   }
 
@@ -1305,7 +1430,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         : `${person.sourceCount} calendar${person.sourceCount === 1 ? '' : 's'}`) +
       (person.hasShiftRotation === 1 ? ' · has a shift rotation' : '') +
       `</p>` +
-      `<form method="post" action="/admin/people/${encodeURIComponent(person.id)}">` +
+      `<form method="post" action="admin/people/${encodeURIComponent(person.id)}">` +
       `<div class="row-fields">` +
       `<span><label for="name-${person.id}">Name</label>` +
       `<input id="name-${person.id}" name="name" type="text" required ` +
@@ -1317,7 +1442,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<button type="submit">Save</button></form>` +
 
       `<form method="post" enctype="multipart/form-data" ` +
-      `action="/admin/people/${encodeURIComponent(person.id)}/avatar">` +
+      `action="admin/people/${encodeURIComponent(person.id)}/avatar">` +
       `<label for="avatar-${person.id}">Picture</label>` +
       `<input id="avatar-${person.id}" name="avatar" type="file" ` +
       `accept="image/png,image/jpeg,image/gif,image/webp">` +
@@ -1326,7 +1451,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<button class="secondary" type="submit">` +
       `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
 
-      `<form method="get" action="/admin/people/${encodeURIComponent(person.id)}/delete">` +
+      `<form method="get" action="admin/people/${encodeURIComponent(person.id)}/delete">` +
       `<button class="secondary" type="submit">Remove</button></form>` +
       `</article>`;
 
@@ -1337,11 +1462,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'Everyone the wall knows about. Their colour marks their events and ' +
         'their shifts, so pick ones that are easy to tell apart from across a room.',
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error, suggestion)) +
         people.map(card).join('') +
         `<h2 class="add">Add someone</h2>` +
-        `<form method="post" action="/admin/people">` +
+        `<form method="post" action="admin/people">` +
         `<div class="row-fields">` +
         `<span><label for="new-name">Name</label>` +
         `<input id="new-name" name="name" type="text" required placeholder="Sam"></span>` +
@@ -1381,7 +1506,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p><span class="code">${escapeHtml(url)}</span></p>` +
         `<p class="hint">Pairing code, if the screen asks for one: ` +
         `<span class="code">${escapeHtml(shortCode)}</span></p>` +
-        `<p><a class="link" href="/admin/screens">← Back to screens</a></p>`,
+        `<p><a class="link" href="admin/screens">← Back to screens</a></p>`,
     });
   }
 
@@ -1446,6 +1571,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</div>` +
       `<p class="hint">Only used when this screen sets its own daylight theme.</p>` +
 
+      `<div class="checks"><label>` +
+      `<input type="checkbox" name="allow_dismiss" value="1"` +
+      `${screen.allowDismiss === 1 ? ' checked' : ''}> ` +
+      `This screen can acknowledge alerts</label></div>` +
+      `<p class="hint">Turn on for a television with a remote, or a tablet somebody ` +
+      `can reach — the OK button on a remote clears whatever the wall is showing. ` +
+      `Leave off for a screen with no input, and for one that gets brushed against. ` +
+      `Acknowledging is household-wide: one screen clears it and every wall goes ` +
+      `quiet. Some alerts cannot be cleared at all, and no screen overrides that.</p>` +
+
       `<label for="tz-${screen.id}">Timezone</label>` +
       `<select id="tz-${screen.id}" name="timezone">` +
       option('', 'Follow the household', screen.timezone === null) +
@@ -1480,7 +1615,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? { intro: 'No screens paired yet. Pair one with the add-screen tool.' }
         : {}),
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         active.map((screen) => screenCard(screen, at)).join('') +
         (revoked === 0
@@ -1538,9 +1673,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       heading: 'Display',
       intro: 'The wall picks these up within a minute. No need to touch the screen.',
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
-        `<form method="post" action="/admin/display">` +
+        `<form method="post" action="admin/display">` +
         `<label for="theme">Theme</label>` +
         `<select id="theme" name="theme">${themeOptions(household.theme, false)}</select>` +
         `<p class="hint">Board separates the shift colours best from across a room.</p>` +
@@ -1563,6 +1698,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Top to bottom in portrait. In landscape the month takes ` +
         `its own column and the rest stack beside it, in this order.</p>` +
         blockRows(parseBlocks(household.displayBlocks)) +
+
+        `<h2 class="add">Weather</h2>` +
+        weatherSection() +
 
         `<h2 class="add">How much to show</h2>` +
         number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
@@ -1607,7 +1745,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="host">${escapeHtml(source.urlHost ?? 'unknown host')}</p>` +
       status +
 
-      `<form method="post" action="/admin/calendars/${id}/settings">` +
+      `<form method="post" action="admin/calendars/${id}/settings">` +
       `<div class="row-fields">` +
       `<span><label for="n-${source.id}">Name</label>` +
       `<input id="n-${source.id}" name="name" type="text" required ` +
@@ -1631,9 +1769,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<button type="submit">Save</button></form>` +
 
       `<div class="row">` +
-      `<form method="post" action="/admin/calendars/${id}/sync">` +
+      `<form method="post" action="admin/calendars/${id}/sync">` +
       `<button class="secondary" type="submit">Sync now</button></form>` +
-      `<form method="get" action="/admin/calendars/${id}/delete">` +
+      `<form method="get" action="admin/calendars/${id}/delete">` +
       `<button class="secondary" type="submit">Remove</button></form>` +
       `</div></article>`
     );
@@ -1700,12 +1838,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }
         : {}),
       body:
-        `<p><a class="link" href="/admin">← Back</a></p>` +
+        `<p><a class="link" href="admin">← Back</a></p>` +
         sources.map((source) => sourceRow(source, at, people)).join('') +
         `<h2 class="add">Add a calendar</h2>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         (tested === undefined ? '' : previewPanel(tested)) +
-        `<form method="post" action="/admin/calendars">` +
+        `<form method="post" action="admin/calendars">` +
         `<label for="name">Name</label>` +
         `<input id="name" name="name" type="text" required placeholder="Family" value="${escapeHtml(values.name ?? '')}">` +
         `<label for="url">Address</label>` +

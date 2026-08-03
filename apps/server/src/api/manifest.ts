@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+
 import {
   addDays,
   eachDate,
@@ -9,6 +10,7 @@ import {
   type ShiftOverride,
   type ShiftPlan,
   type ShiftType,
+  type Interrupt,
 } from '@maverick-wall/core';
 
 /**
@@ -26,10 +28,10 @@ import {
 
 export const MANIFEST_VERSION = 1;
 
-/** The three things a wall can show. Order is the household's to choose. */
-export type DisplayBlock = 'now' | 'next' | 'horizon';
+/** Everything a wall can show. Order is the household's to choose. */
+export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon';
 
-const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'next', 'horizon'];
+const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'home', 'next', 'horizon'];
 
 /**
  * Read the stored order, and never return nothing.
@@ -176,6 +178,14 @@ export interface Manifest {
   readonly screen: {
     readonly orientation: 'auto' | 'portrait' | 'landscape';
     readonly rotation: number;
+    /**
+     * Whether this screen may offer a way to acknowledge an interrupt.
+     *
+     * A property of the hardware, not the household — a hall television has a
+     * remote and a panel screwed to a wall has nothing. The *effect* of
+     * acknowledging stays household-wide.
+     */
+    readonly allowDismiss: boolean;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -183,10 +193,23 @@ export interface Manifest {
   readonly sources: readonly ManifestSourceHealth[];
   /** Empty in the healthy case. Anything here gets a banner on screen. */
   readonly notices: readonly ManifestNotice[];
-  /** Weather and interrupts are not built yet; the fields exist so the
-   *  display contract does not change when they arrive. */
-  readonly weather: null;
-  readonly interrupts: readonly never[];
+  /**
+   * What each panel module had to say, keyed by its block key.
+   *
+   * A module contributes data and never code — rule three forbids the display
+   * from executing or fetching anything a module supplies, so the wall draws
+   * these with first-party renderers keyed off the same block list the
+   * household orders.
+   */
+  readonly panels: Readonly<Record<string, unknown>>;
+  /**
+   * Anything the wall should say over the top of the calendar.
+   *
+   * Highest priority first, already evaluated — the display decides how loudly
+   * to draw one and nothing else. Empty in the healthy case, which is almost
+   * always.
+   */
+  readonly interrupts: readonly Interrupt[];
 }
 
 /** Row shapes as they come out of the database, before assembly. */
@@ -251,6 +274,18 @@ export interface BuildManifestInput {
   readonly now: number;
   readonly appVersion: string;
   /**
+   * What each panel module had to say, already collected.
+   *
+   * Passed in rather than gathered here, because assembly is pure and does no
+   * I/O — every module reads its own cache, which its own job fills.
+   */
+  readonly panels?: Readonly<Record<string, unknown>>;
+  /**
+   * Interrupts already evaluated, for the same reason panels are already
+   * collected: assembly is pure and reads no cache of its own.
+   */
+  readonly interrupts?: readonly Interrupt[];
+  /**
    * The screen this document is for, when it is being served to one.
    *
    * Its overrides win over the household's. Null on any of them means "follow
@@ -259,6 +294,7 @@ export interface BuildManifestInput {
   readonly screen?: {
     readonly orientation: string;
     readonly rotation: number;
+    readonly allowDismiss?: boolean;
     readonly theme?: string | null;
     readonly timezone?: string | null;
     readonly daytimeTheme?: string | null;
@@ -559,6 +595,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // Quarter turns only, and normalised here so a hand-edited row cannot
       // hand the display something it has to defend against.
       rotation: ((Math.round((input.screen?.rotation ?? 0) / 90) % 4) + 4) % 4 * 90,
+      allowDismiss: input.screen?.allowDismiss === true,
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),
@@ -584,8 +621,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       eventCount: source.eventCount,
     })),
     notices: [...(input.notices ?? []), ...healthNotices(input.sources, input.now)],
-    weather: null,
-    interrupts: [],
+    panels: input.panels ?? {},
+    interrupts: input.interrupts ?? [],
   };
 }
 

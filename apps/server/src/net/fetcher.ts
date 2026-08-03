@@ -41,7 +41,16 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 3;
-const DEFAULT_USER_AGENT = 'MaverickWall/0.1 (+https://github.com/ambient-home-systems/MaverickWall)';
+/**
+ * Sent on every outbound request unless a call site overrides it.
+ *
+ * Exported because api.weather.gov *rejects* a request with no descriptive
+ * agent naming the application and a contact — so this is a functional
+ * requirement rather than politeness, and a second copy of the string
+ * somewhere else is a version bump away from one of them being wrong.
+ */
+export const DEFAULT_USER_AGENT =
+  'MaverickWall/0.1 (+https://github.com/ambient-home-systems/MaverickWall)';
 
 /** Headers that must not survive a hop to another origin. */
 const SENSITIVE_HEADERS = ['authorization', 'cookie', 'proxy-authorization', 'x-api-key'];

@@ -1,0 +1,35 @@
+Maverick Wall
+Copyright (c) 2026 Ambient Home Systems
+
+This project is licensed in two parts, on purpose.
+
+## The application — AGPL-3.0-or-later
+
+Everything except `packages/calendar` is under the GNU Affero General Public
+License, version 3 or later. The full text is in LICENSE.
+
+Why AGPL rather than GPL: this is self-hosted software, and the obvious way to
+take it without giving anything back is to run a modified copy as a service.
+The AGPL's network clause is the whole reason it was chosen. Running it
+unmodified for your own household — which is what it is for — carries no
+obligation at all. You do not have to publish anything, register anything, or
+tell anybody.
+
+## The ICS engine — MIT
+
+`packages/calendar` is under the MIT License; its text is in
+packages/calendar/LICENSE.
+
+It parses iCalendar and expands recurrence, and it is deliberately free of
+anything specific to this product: no I/O, no vendor SDK, no framework. That is
+so it can be lifted out into its own repository and used by anybody, including
+in software that would never be able to take the AGPL. Correct RFC 5545
+handling is scarce enough that keeping it behind a copyleft licence would help
+nobody.
+
+If you take one thing from this repository, take that.
+
+## Third-party
+
+Dependencies keep their own licences. `pnpm licenses list` will print them, and
+the container image ships a software bill of materials alongside it.

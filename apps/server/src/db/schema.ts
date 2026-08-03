@@ -232,6 +232,22 @@ export const screens = sqliteTable(
      */
     rotation: integer('rotation', { mode: 'number' }).notNull().default(0),
 
+    /**
+     * Whether this screen offers a way to acknowledge an interrupt.
+     *
+     * Per screen, and off by default, because it is a fact about the hardware
+     * rather than about the household: a television in a hall has a remote, a
+     * panel screwed to a wall in a hallway has no input at all, and a kitchen
+     * tablet has a touchscreen that a passing sleeve can press. Offering a
+     * control on the screen that cannot be pressed is clutter; offering one on
+     * the screen that gets brushed against is worse.
+     *
+     * What it does *not* change is the effect. Dismissal stays household-wide
+     * — the hall television acknowledges on behalf of everybody, and every wall
+     * goes quiet together. This only decides which screens can do the asking.
+     */
+    allowDismiss: integer('allow_dismiss', { mode: 'boolean' }).notNull().default(false),
+
     /** Rotated when the token is regenerated, invalidating old sessions. */
     tokenIssuedAt: integer('token_issued_at', { mode: 'number' }).notNull().$defaultFn(now),
     revokedAt: integer('revoked_at', { mode: 'number' }),
@@ -254,20 +270,55 @@ export const screens = sqliteTable(
 // ---------------------------------------------------------------------------
 
 /**
- * A subscribed ICS feed.
+ * A calendar the household has subscribed to, by whatever route.
  *
- * `urlEncrypted` holds a keyring envelope, never a URL. A Google private iCal
- * address is a bearer credential that never expires, and `/data` is exactly
- * what people copy to a NAS and attach to bug reports.
+ * Started as "a subscribed ICS feed" and grew a `kind` when Home Assistant
+ * calendar entities arrived. Everything below the sync job is identical for
+ * both, which is the whole reason they share a table.
  */
 export const calendarSources = sqliteTable(
   'calendar_sources',
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    urlEncrypted: text('url_encrypted').notNull(),
+
+    /**
+     * Where the events come from.
+     *
+     * `ics` is a subscribed feed with its own address. `homeassistant` is a
+     * calendar entity on the household's own Home Assistant, which has no
+     * address of its own — it is reached through the one connection configured
+     * on the Home Assistant screen, with that connection's credential.
+     *
+     * A kind rather than a second table, so everything downstream is
+     * identical: colour, whose calendar it is, visibility, health, and the
+     * same expanded rows in the same cache. A separate table would mean a
+     * second code path through the manifest, and the manifest is the one
+     * document the wall depends on.
+     */
+    kind: text('kind', { enum: ['ics', 'homeassistant'] })
+      .notNull()
+      .default('ics'),
+
+    /**
+     * The address, for an `ics` source. Null for any other kind.
+     *
+     * A keyring envelope, never a URL in clear. A Google private iCal address
+     * is a bearer credential that never expires, and `/data` is exactly what
+     * people copy to a NAS and attach to bug reports.
+     */
+    urlEncrypted: text('url_encrypted'),
     /** Host only, for display and diagnostics. Never the path or the token. */
     urlHost: text('url_host'),
+
+    /**
+     * The calendar entity, for a `homeassistant` source. Null otherwise.
+     *
+     * In clear, deliberately: `calendar.bin_collection` is a name, not a
+     * credential, and the admin screen has to show which entity a source is.
+     * The credential is the token, and it lives in one place.
+     */
+    haEntityId: text('ha_entity_id'),
 
     color: text('color').notNull().default('#4C7FD1'),
     /**
@@ -481,17 +532,72 @@ export const interruptRules = sqliteTable(
     name: text('name').notNull(),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
 
-    /** What can trigger this. Weather alerts first; more sources later. */
-    trigger: text('trigger', { enum: ['weather_alert', 'calendar_event', 'ha_entity'] }).notNull(),
-    /** Trigger-specific matching, as JSON. Never queried by contents. */
+    /**
+     * Which source's signals this rule matches.
+     *
+     * Still called `trigger` because renaming a column means rebuilding the
+     * table, and a rebuild on a live database is the one migration that can
+     * destroy something. The *values* are the source names from the model —
+     * `nws`, `homeassistant`, `calendar`, `manual` — and `readSource` accepts
+     * the older spellings on the way in so nothing has to be rewritten.
+     */
+    trigger: text('trigger', {
+      enum: ['nws', 'homeassistant', 'calendar', 'manual'],
+    }).notNull(),
+    /**
+     * The `RuleMatch` from core, as JSON. Never queried by contents.
+     *
+     * One opaque column rather than a column per clause, because the clauses
+     * differ per source and a table with `min_severity` and `entity_id` and
+     * `starts_within_sec` side by side is a table where most cells are null.
+     */
     conditions: text('conditions', { mode: 'json' }).$type<unknown>(),
 
-    /** Higher wins when two interrupts fire at once. */
+    /**
+     * How loudly to say it.
+     *
+     * `banner` is a strip above the calendar and is the right answer for
+     * almost everything. `takeover` covers the wall, and is for the small set
+     * of facts that are worth losing the calendar over — water on the floor,
+     * a garage left open overnight. `takeover_and_wake` also lights a screen
+     * that has gone dark.
+     *
+     * `wakeScreen` below predates this and is kept in step with it rather than
+     * dropped: removing a column means rebuilding the table, and a rebuild on
+     * a household's live database is a worse risk than a redundant flag.
+     */
+    action: text('action', { enum: ['banner', 'takeover', 'takeover_and_wake'] })
+      .notNull()
+      .default('banner'),
+
+    /** Breaks ties before severity does. Higher wins. */
     priority: integer('priority', { mode: 'number' }).notNull().default(0),
-    /** Whether this is allowed to wake a sleeping screen. */
+    /** Whether this is allowed to wake a sleeping screen. Follows `action`. */
     wakeScreen: integer('wake_screen', { mode: 'boolean' }).notNull().default(false),
     /** Auto-dismiss after this many seconds. Null means it stays until cleared. */
     dismissAfterSeconds: integer('dismiss_after_seconds', { mode: 'number' }),
+
+    /**
+     * May this light a screen that has gone dark for the night.
+     *
+     * Separate from `action` because they are different questions. A household
+     * may want a tornado warning to cover the wall *and* wake it, and a bin
+     * reminder to cover the wall and absolutely not.
+     */
+    piercesNightMode: integer('pierces_night_mode', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    /** The signal must have held this long before the rule counts. */
+    minDwellSec: integer('min_dwell_sec', { mode: 'number' }).notNull().default(0),
+    /**
+     * Whether somebody can clear this from the wall.
+     *
+     * False for the things that must not be cleared by a hand moving before
+     * its owner is awake.
+     */
+    dismissible: integer('dismissible', { mode: 'boolean' }).notNull().default(true),
+    /** Come back this long after a dismissal. Null means stay dismissed. */
+    reassertAfterSec: integer('reassert_after_sec', { mode: 'number' }),
 
     ...timestamps,
   },
@@ -499,6 +605,19 @@ export const interruptRules = sqliteTable(
     byEnabled: index('interrupt_rules_enabled_idx').on(table.enabled, table.trigger),
   }),
 );
+
+/**
+ * What somebody has cleared from the wall.
+ *
+ * Household-wide rather than per screen, and that is the whole design: a
+ * kitchen tablet and a hall television must not disagree about whether the
+ * garage is still worth mentioning. Keyed `ruleId:signalKey`, so dismissing one
+ * warning does not silence the next one a different county gets.
+ */
+export const interruptDismissals = sqliteTable('interrupt_dismissals', {
+  key: text('key').primaryKey(),
+  dismissedAt: integer('dismissed_at', { mode: 'number' }).notNull().$defaultFn(now),
+});
 
 /** NWS zones or points to watch. */
 export const alertZones = sqliteTable('alert_zones', {
@@ -508,6 +627,18 @@ export const alertZones = sqliteTable('alert_zones', {
   label: text('label').notNull(),
   provider: text('provider').notNull().default('nws'),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * Forecast zone or county.
+   *
+   * A household needs both. Most alerts are issued against the forecast zone;
+   * flood warnings in particular are issued by county, and watching only one
+   * silently misses a category of warning.
+   */
+  kind: text('kind', { enum: ['forecast', 'county'] }).notNull().default('forecast'),
+  /** Conditional GET state, so a quiet zone costs one 304 a minute. */
+  etag: text('etag'),
+  lastPolledAt: integer('last_polled_at', { mode: 'number' }),
+  lastError: text('last_error'),
   ...timestamps,
 });
 
@@ -526,8 +657,26 @@ export const activeAlerts = sqliteTable(
     externalId: text('external_id').notNull(),
     zoneCode: text('zone_code'),
 
+    /**
+     * When this message was sent. With `external_id`, the dedupe key.
+     *
+     * CAP is a stream of messages rather than a state document: the same event
+     * arrives repeatedly as it is updated, and only `sent` orders them. Without
+     * it an out-of-order poll can put a superseded copy back on the wall.
+     */
+    sent: text('sent'),
+    messageType: text('message_type').notNull().default('Alert'),
+
     event: text('event').notNull(),
     headline: text('headline'),
+    /** The body. Capped and stripped of control characters before it lands. */
+    description: text('description'),
+    /** What to actually do. The most useful line, and often the longest. */
+    instruction: text('instruction'),
+    /** Which counties or zones it covers, in the office's own words. */
+    areaDesc: text('area_desc'),
+    /** The issuing office, e.g. `NWS Baltimore/Washington`. */
+    senderName: text('sender_name'),
     severity: text('severity'),
     urgency: text('urgency'),
     certainty: text('certainty'),
@@ -607,6 +756,27 @@ export const haEntityCache = sqliteTable(
     fetchedAt: integer('fetched_at', { mode: 'number' }).notNull().$defaultFn(now),
     /** Whether the display is currently showing this one. */
     watched: integer('watched', { mode: 'boolean' }).notNull().default(false),
+
+    /**
+     * How to draw it.
+     *
+     * One widget with four shapes rather than four widgets: the design is
+     * typographic, and a grid of tiles is the Lovelace this integration is
+     * deliberately not competing with.
+     */
+    displayMode: text('display_mode', {
+      enum: ['value', 'label_value', 'icon_state', 'presence'],
+    })
+      .notNull()
+      .default('label_value'),
+    /**
+     * What the household calls it, when the entity's own name is wrong.
+     *
+     * "Sensor Temperature Kitchen 2" is what an integration named it; "Kitchen"
+     * is what it is. Null means use the friendly name.
+     */
+    label: text('label'),
+    sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
   },
   (table) => ({
     byWatched: index('ha_entity_watched_idx').on(table.watched),

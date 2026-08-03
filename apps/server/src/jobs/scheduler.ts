@@ -109,6 +109,53 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     jitterRatio: 0.05,
     backoffMaxMs: 60 * 60_000,
   },
+  'weather-sync': {
+    // NWS updates about hourly and asks clients not to poll harder.
+    intervalMs: 60 * 60_000,
+    jitterRatio: 0.2,
+    backoffInitialMs: 5 * 60_000,
+    backoffMaxMs: 6 * 60 * 60_000,
+  },
+  'ha-calendar-sync': {
+    // More often than an ICS feed: this is the household's own machine on
+    // their own network, so politeness to a stranger's server is not the
+    // constraint. Five minutes is what makes an event added on a phone show up
+    // on the wall while somebody is still standing there.
+    intervalMs: 5 * 60_000,
+    jitterRatio: 0.15,
+    backoffInitialMs: 60_000,
+    backoffMaxMs: 30 * 60_000,
+  },
+  'ha-sync': {
+    /*
+     * Thirty seconds, which the tick then bounds.
+     *
+     * The scheduler ticks every thirty seconds too, so a reading is in
+     * practice between thirty and sixty seconds old. Backoff is short and
+     * capped low: a Home Assistant that comes back after a reboot should be
+     * noticed in minutes, not after an hour of exponential patience.
+     */
+    intervalMs: 30_000,
+    jitterRatio: 0.1,
+    backoffInitialMs: 60_000,
+    backoffMaxMs: 10 * 60_000,
+  },
+  'alerts-sync': {
+    /*
+     * Sixty seconds, conditionally.
+     *
+     * A quiet zone costs one 304, which is what makes a minute defensible
+     * against a public service. Backoff starts at five minutes and is allowed
+     * to climb to thirty: NWS reliability varies during major events, which is
+     * exactly when this matters, and a thousand kitchen walls retrying every
+     * sixty seconds is a small part of why it was struggling. The alerts
+     * already on the wall stay up throughout.
+     */
+    intervalMs: 60_000,
+    jitterRatio: 0.2,
+    backoffInitialMs: 5 * 60_000,
+    backoffMaxMs: 30 * 60_000,
+  },
   'update-check': {
     // Once a day. Anything more often is a household's address book of
     // requests to somebody else's server for a number that changes monthly.

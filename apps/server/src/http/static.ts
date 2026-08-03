@@ -50,7 +50,22 @@ export interface StaticFiles {
 }
 
 /** Where the display bundle lands relative to the compiled server. */
+/**
+ * Where the wall's bundle is.
+ *
+ * `DISPLAY_DIR` first, because the relative fallback below is a fact about the
+ * *repository* layout and the image does not have that layout: `pnpm deploy`
+ * flattens the server package to the root, so `../../../display/dist` resolves
+ * outside the application directory entirely. Every asset 404s, the shell is
+ * not found either, and the wall shows "the bundle is missing" — on the one
+ * screen the whole product exists to draw.
+ *
+ * The fallback stays for `node apps/server/dist/main.js` from a checkout,
+ * which is how this is run in development and in the docs.
+ */
 export function defaultDisplayDir(): string {
+  const configured = globalThis.process?.env?.['DISPLAY_DIR'];
+  if (configured !== undefined && configured !== '') return configured;
   // apps/server/dist/http/static.js → apps/display/dist
   return new URL('../../../display/dist', import.meta.url).pathname;
 }
