@@ -246,10 +246,26 @@ correctly. `docker ps` said unhealthy and `curl` said 200. It probes with
 it was tried and reverted rather than left in place implying a fix it did not
 make. Worth another look, and not worth blocking on.
 
-**Still unpublished.** Nothing is pushed to GHCR, so no image has been signed
-and no SBOM has been generated — the release workflow is written and has never
-run. `cosign verify` in the README describes what a release will do, not what
-has happened.
+**v0.1.0 is released.** The tag was cut on `feat/display-offline` rather than
+`main` — a deliberate choice, and it means the released commit is not an
+ancestor of the default branch until those PRs land. The workflow built both
+architectures, pushed `0.1.0`, `0.1`, `latest` and `stable`, signed the digest
+with cosign keylessly, and attached an SPDX bill of materials.
+
+Two things the first release taught, both about metadata rather than code:
+
+**`metadata-action` labels beat the Dockerfile's.** It derives them from the
+GitHub repository API and passes them to the build, where they win — so v0.1.0
+went out with `org.opencontainers.image.licenses=` empty, because the API had
+not detected the licence yet. On an AGPL project a blank licence field is worse
+than silence. The workflow states the labels explicitly now.
+
+**A tag of `v0.1.0` publishes an image tagged `0.1.0`.** `type=semver` strips
+the `v`. Worth knowing before writing `docker pull ...:v0.1.0` anywhere.
+
+**The GHCR package is private**, which is the default and is not something the
+workflow can change. Until it is made public in the repository's package
+settings, every command in the README returns 403.
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and

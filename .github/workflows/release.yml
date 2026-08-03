@@ -50,6 +50,19 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
             type=raw,value=stable,enable=${{ !contains(github.ref, '-') }}
+          # Stated here, not left to be derived.
+          #
+          # This action builds its labels from the GitHub repository API and
+          # passes them to the build, where they override the `LABEL` lines in
+          # the Dockerfile. v0.1.0 went out with
+          # `org.opencontainers.image.licenses=` — empty — because the API had
+          # not detected the licence yet. That is the field scanners and
+          # registries read, and a blank one on an AGPL image is worse than
+          # silence: it reads as "no licence stated".
+          labels: |
+            org.opencontainers.image.title=Maverick Wall
+            org.opencontainers.image.description=A self-hosted family calendar for a wall display.
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
 
       - id: build
         uses: docker/build-push-action@v6
