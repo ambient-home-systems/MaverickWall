@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **forty-two real bugs**, and the pattern in how is the most
+This project has found **forty-three real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -120,6 +120,7 @@ useful thing in this document:
 | **A cookie the wizard could never receive under ingress** | Reading `Set-Cookie` on the first-run path |
 | `pnpm deploy --legacy` is not an option in pnpm 9 | Running the Dockerfile's own command |
 | **The display bundle resolves outside a deployed tree** | Booting from the pruned directory the image copies |
+| **A container that ran perfectly and reported itself unhealthy** | Building the image and reading `docker inspect` |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -223,15 +224,32 @@ feed test, sync now, remove) · **the wall itself, drawing real data**.
 
 **Not started:** ws push · a published docs site · the Android app.
 
-**Packaging is written but unbuilt.** `Dockerfile`, `docker-compose.yml` and
-the add-on repository under `addon/` exist; Docker is not installed on the
-machine this was developed on, so **the image has never been built or run**.
-What *was* verified is everything the image depends on that does not need
-Docker: the pruned `pnpm deploy --prod` tree boots, serves `/healthz`, serves
-the display assets and lands a clean volume on the wizard. Three defects came
-out of that simulation, which is three more than reading it would have found.
-The CI job in `.github/workflows/ci.yml` runs the README's one-liner against a
-clean volume and is the thing that will actually prove the image.
+**The image is built and run.** Both architectures: `linux/arm64` natively and
+`linux/amd64` under emulation, each with `better-sqlite3` compiled for its own
+platform — which is the only genuinely risky part of a multi-arch build with a
+native module. The README's one-liner was run exactly as written against a
+clean directory: healthy in eight seconds, wizard at `/`, `/assets/*` served,
+uid 1000. `docker compose up -d` works from the committed file. An unwritable
+volume produces the entrypoint's message and exit 1 rather than an EACCES
+trace.
+
+Four defects came out of packaging, and the last one only appeared once there
+was a real container: **`wget` is not in `node:22-bookworm-slim`**, so the
+HEALTHCHECK failed for ever while the application served every request
+correctly. `docker ps` said unhealthy and `curl` said 200. It probes with
+`node` now — already present, nothing to install and nothing to keep patched.
+
+**The image is ~482MB uncompressed**, of which about 50MB is `esbuild` and
+`vitest` pulled into the *production* tree because `better-auth` declares
+`drizzle-kit` and `vitest` as peer dependencies and pnpm resolves peers into a
+`deploy --prod` tree. `peerDependencyRules.ignoreMissing` does not remove them;
+it was tried and reverted rather than left in place implying a fix it did not
+make. Worth another look, and not worth blocking on.
+
+**Still unpublished.** Nothing is pushed to GHCR, so no image has been signed
+and no SBOM has been generated — the release workflow is written and has never
+run. `cosign verify` in the README describes what a release will do, not what
+has happened.
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and

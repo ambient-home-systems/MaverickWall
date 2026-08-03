@@ -2,6 +2,10 @@
 
 ## Docker
 
+> **Before the first release**, the published image does not exist yet. Clone
+> the repository and `docker build -t maverick-wall .`, then use
+> `maverick-wall` in place of the `ghcr.io/...` name below.
+
 ```bash
 docker run -d \
   --name maverick-wall \

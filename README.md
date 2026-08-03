@@ -77,6 +77,11 @@ optional.
 Images are built for **amd64 and arm64**, signed with cosign, and published
 with a software bill of materials.
 
+> **Not published yet.** The image builds and runs on both architectures, and
+> the release workflow is written — but nothing has been pushed to GHCR, so the
+> `docker run` line above will not find anything until the first tag. Build it
+> yourself in the meantime: `docker build -t maverick-wall .`
+
 ```bash
 cosign verify ghcr.io/ambient-home-systems/maverick-wall:stable \
   --certificate-identity-regexp 'https://github.com/ambient-home-systems/MaverickWall/.*' \

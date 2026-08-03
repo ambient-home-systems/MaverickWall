@@ -57,7 +57,10 @@ RUN pnpm -r build
 # different workspace package — so it is copied beside it and named by
 # DISPLAY_DIR below.
 RUN pnpm --filter @maverick-wall/server deploy --prod /out \
- && cp -r apps/display/dist /out/display
+ && cp -r apps/display/dist /out/display \
+ # `deploy` copies the whole package, sources and test harness included. None
+ # of it is read at runtime and all of it ends up in a layer somebody pulls.
+ && rm -rf /out/src /out/test /out/tsconfig*.json /out/vitest.config.ts /out/drizzle.config.ts
 
 # ---------------------------------------------------------------------------
 # Runtime
@@ -65,8 +68,11 @@ RUN pnpm --filter @maverick-wall/server deploy --prod /out \
 FROM node:22-bookworm-slim AS runtime
 
 # tini reaps zombies and forwards signals, so `docker stop` reaches the
-# shutdown handler rather than being killed ten seconds later. wget is for the
-# healthcheck and is already in the base.
+# shutdown handler rather than being killed ten seconds later.
+#
+# Nothing else is installed. The healthcheck below uses node, which is already
+# here — an earlier version reached for wget, which this base does not have,
+# and the container ran perfectly while reporting itself unhealthy for ever.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tini \
  && rm -rf /var/lib/apt/lists/*
@@ -103,8 +109,12 @@ EXPOSE 8080
 
 # Unauthenticated on purpose, and it reveals nothing about a household. A
 # monitoring check that needs a credential is one nobody sets up.
+#
+# Probed with node rather than wget or curl: neither is in this base, and
+# adding a package to a container purely to make an HTTP request is a thing to
+# keep patched in exchange for nothing. `fetch` is global from Node 18.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:${PORT}/healthz >/dev/null || exit 1
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
 # Flattened by `pnpm deploy`: the server package is the root of /app.
