@@ -203,7 +203,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**914 tests passing.** calendar 153 · core 266 · server 421 · display 74.
+**918 tests passing.** calendar 153 · core 266 · server 421 · display 78.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -416,6 +416,14 @@ copy, and anything the zone stops listing is over — which is the only signal f
 an alert cancelled while the wall was offline. Both zones are watched, forecast
 *and* county, because flood warnings are issued by county and watching one
 silently misses a category.
+
+**The sanitiser applies to every string a stranger wrote, not just to CAP.**
+Home Assistant attributes are a friendly name and a state that some integration
+wrote and a household may have typed, and they go on the wall beside the
+warnings — so they get the same cap and the same strip. `textContent` in the
+renderer is what prevents injection and there is no `innerHTML` anywhere in the
+bundle; the sanitiser is about a reading staying *legible*, which a device name
+carrying a bidi override does not.
 
 **Collapse whitespace before stripping control characters.** A newline *is* a
 control character, so stripping first deleted it and CAP's teletype-width

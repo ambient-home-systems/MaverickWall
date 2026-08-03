@@ -5,6 +5,8 @@ import {
   localDate,
   NEXT_DAY_COUNT,
   TODAY_EVENT_LIMIT,
+  houseFrom,
+  interruptsFrom,
 } from '../src/viewmodel.js';
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/manifest.js';
 
@@ -409,5 +411,57 @@ describe('which blocks are drawn, and in what order', () => {
     expect(withBlocks([]).blocks).toEqual(all);
     expect(withBlocks(['nonsense']).blocks).toEqual(all);
     expect(withBlocks(undefined).blocks).toEqual(all);
+  });
+});
+
+describe('text from somewhere else', () => {
+  /**
+   * The rule the brief states for CAP headlines, applied to Home Assistant
+   * attributes too — which is where it was missed first time round.
+   *
+   * `textContent` in the renderer is what prevents injection, and there is no
+   * `innerHTML` anywhere in this bundle. This is the other half: a reading has
+   * to stay *legible*, and a friendly name carrying a bidi override can
+   * reverse the reading order of the line it sits in.
+   */
+  it('strips the invisible characters out of a Home Assistant reading', () => {
+    const { readings } = houseFrom({
+      readings: [
+        {
+          label: 'Kitchen\u202Etemperature',
+          value: '19.4\u200B',
+          unit: '\u00B0C',
+          icon: '\uD83C\uDF21',
+          mode: 'label_value',
+        },
+      ],
+    });
+    expect(readings[0]?.label).toBe('Kitchentemperature');
+    expect(readings[0]?.value).toBe('19.4°C');
+  });
+
+  it('caps a reading somebody made very long', () => {
+    const { readings } = houseFrom({
+      readings: [{ label: 'A'.repeat(400), value: 'B'.repeat(400), mode: 'value' }],
+    });
+    expect((readings[0]?.label ?? '').length).toBeLessThanOrEqual(60);
+    expect((readings[0]?.value ?? '').length).toBeLessThanOrEqual(60);
+  });
+
+  it('drops a reading that is nothing but invisible characters', () => {
+    // A label of zero-width marks is a label a household cannot see and cannot
+    // tell apart from the one next to it.
+    expect(houseFrom({ readings: [{ label: '\u200B\u200B', value: '1' }] }).readings).toEqual([]);
+  });
+
+  it('applies the same rule to an alert headline', () => {
+    const [interrupt] = interruptsFrom([
+      {
+        ruleId: 'r', key: 'k', title: 'Tornado\u202EWarning',
+        headline: 'TAKE COVER\u200B NOW', action: 'takeover', dismissible: true,
+      },
+    ]);
+    expect(interrupt?.title).toBe('TornadoWarning');
+    expect(interrupt?.headline).toBe('TAKE COVER NOW');
   });
 });

@@ -72,14 +72,21 @@ describe('the push contract', () => {
     });
   });
 
-  it('will not wake for something that may not pierce night mode', () => {
-    // Two separate questions on the rule, and conflating them here would mean
-    // a bin reminder lighting a bedroom at six in the morning.
+  it('follows the action, not the night-mode flag', () => {
+    /*
+     * Two different questions. Waking is about a screen that is dark for any
+     * reason; piercing night mode is about the hours a household said to stay
+     * quiet. Anding them made `takeover_and_wake` with `piercesNightMode:
+     * false` a silent no-op — a combination somebody could set and never work
+     * out. Both fields travel on every interrupt, so an app that wants to
+     * respect night hours has what it needs.
+     */
     const push = interruptPush(
       [interrupt({ action: 'takeover_and_wake', wakeScreen: true, piercesNightMode: false })],
       1000,
     );
-    expect(push.wakeScreen).toBe(false);
+    expect(push.wakeScreen).toBe(true);
+    expect(push.interrupts[0]?.piercesNightMode).toBe(false);
   });
 
   it('is quiet when nothing asked to wake anybody', () => {

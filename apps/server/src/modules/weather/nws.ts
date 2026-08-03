@@ -1,4 +1,5 @@
 import { FETCH_LIMITS, type Fetcher } from '@maverick-wall/core';
+import { DEFAULT_USER_AGENT } from '../../net/fetcher.js';
 
 /**
  * The National Weather Service.
@@ -42,9 +43,15 @@ export type WeatherResult =
   | { readonly ok: true; readonly forecast: Forecast; readonly expiresAt: number | null }
   | { readonly ok: false; readonly message: string; readonly suggestion?: string };
 
-/** NWS asks for a contact in the agent string, and enforces it. */
-export const AGENT =
-  'MaverickWall/0.1 (+https://github.com/ambient-home-systems/MaverickWall)';
+/**
+ * NWS asks for a contact in the agent string, and enforces it with a 403.
+ *
+ * The fetcher already sends this on every request; re-stating it at the NWS
+ * call sites is belt and braces for the one upstream that refuses without it.
+ * Re-exported rather than repeated, because two copies of a version string is
+ * one version bump away from one of them being wrong.
+ */
+export { DEFAULT_USER_AGENT as AGENT };
 
 export function pointsUrl(at: Coordinates): string {
   // Four decimals is about ten metres, and NWS rejects excessive precision.
@@ -168,7 +175,7 @@ export async function resolveForecastUrl(
     maxBytes: FETCH_LIMITS.json,
     acceptContentTypes: ['application/geo+json', 'application/json'],
     timeoutMs: 12_000,
-    userAgent: AGENT,
+    userAgent: DEFAULT_USER_AGENT,
   });
 
   if (response.status !== 'ok') {
@@ -202,7 +209,7 @@ export async function fetchForecast(
     maxBytes: FETCH_LIMITS.json,
     acceptContentTypes: ['application/geo+json', 'application/json'],
     timeoutMs: 12_000,
-    userAgent: AGENT,
+    userAgent: DEFAULT_USER_AGENT,
   });
 
   if (response.status !== 'ok') return { ok: false, message: describe(response) };

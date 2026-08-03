@@ -230,22 +230,35 @@ export function houseFrom(panel: unknown): {
       label?: unknown; value?: unknown; unit?: unknown; icon?: unknown;
       mode?: unknown; stale?: unknown;
     };
-    if (typeof reading.label !== 'string' || typeof reading.value !== 'string') continue;
-    const unit = typeof reading.unit === 'string' ? reading.unit : '';
+    /*
+     * Through the same sanitiser the alert text uses.
+     *
+     * These are Home Assistant *attributes* — a friendly name and a state that
+     * some integration wrote, and that a household may have typed. The same
+     * rule applies as to a CAP headline: capped, and stripped of the invisible
+     * characters that would otherwise let a device name reverse the reading
+     * order of the line it sits in. `textContent` is what prevents injection;
+     * this is what keeps a reading legible.
+     */
+    const label = text(reading.label, 60);
+    const value = text(reading.value, 60);
+    if (label === undefined || value === undefined) continue;
+    const unit = text(reading.unit, 16) ?? '';
     readings.push({
-      label: reading.label,
+      label,
       // The unit is joined here rather than kept apart, because every mode
       // that shows a value shows it with its unit and nothing styles them
       // differently. A degree sign gets no space; a word does.
-      value: unit === '' ? reading.value : `${reading.value}${unit.startsWith('°') ? '' : ' '}${unit}`,
-      icon: typeof reading.icon === 'string' ? reading.icon : '·',
+      value: unit === '' ? value : `${value}${unit.startsWith('°') ? '' : ' '}${unit}`,
+      // One character, and one this bundle chose. A glyph is a token rather
+      // than a sentence, so a long "icon" is a mistake rather than a reading.
+      icon: text(reading.icon, 4) ?? '·',
       mode: typeof reading.mode === 'string' ? reading.mode : 'label_value',
       stale: reading.stale === true,
     });
   }
 
-  const note = (panel as { note?: unknown }).note;
-  return { readings, note: typeof note === 'string' && note !== '' ? note : undefined };
+  return { readings, note: text((panel as { note?: unknown }).note, 200) };
 }
 
 /**

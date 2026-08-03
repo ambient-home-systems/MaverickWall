@@ -41,6 +41,15 @@ export interface InterruptPush {
    *
    * Hoisted out of the list so a client acts on one boolean rather than
    * scanning — and so the field is unmissable to whoever writes the app.
+   *
+   * Straight from the action, and deliberately *not* also gated on
+   * `piercesNightMode`. Those are different questions: waking is about a screen
+   * that is dark for any reason, and piercing night mode is about the hours a
+   * household said to stay quiet. Anding them here made
+   * `takeover_and_wake` with `piercesNightMode: false` a silent no-op, which is
+   * a combination somebody could set and never work out. Both fields travel on
+   * every interrupt, so an app that wants to respect night hours has what it
+   * needs without this one lying about what was asked for.
    */
   readonly wakeScreen: boolean;
 }
@@ -53,22 +62,13 @@ export interface ManifestChangedPush {
   readonly etag: string;
 }
 
-/**
- * Build the interrupt message.
- *
- * `wakeScreen` is true only when an interrupt both asks for a wake *and* is
- * allowed to pierce night mode. They are separate fields on a rule because
- * they are separate questions, and conflating them here would mean a household
- * who wanted a bin reminder to cover the wall got their bedroom lit at 6am.
- */
+/** Build the interrupt message. */
 export function interruptPush(interrupts: readonly Interrupt[], sentAt: number): InterruptPush {
   return {
     type: 'INTERRUPT_PUSH',
     protocol: PUSH_PROTOCOL_VERSION,
     sentAt,
     interrupts,
-    wakeScreen: interrupts.some(
-      (interrupt) => interrupt.wakeScreen && interrupt.piercesNightMode,
-    ),
+    wakeScreen: interrupts.some((interrupt) => interrupt.wakeScreen),
   };
 }
