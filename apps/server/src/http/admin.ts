@@ -16,7 +16,9 @@ import {
   readAdminScreens,
   readAdminSources,
   readUpdateState,
+  readWeatherSettings,
   recordUpdateCheck,
+  writeWeatherSettings,
   setPersonAvatar,
   setUpdateCheckEnabled,
   readHousehold,
@@ -114,6 +116,7 @@ function checked(body: Record<string, unknown>, name: string): boolean {
  */
 const BLOCKS = [
   { key: 'now', label: 'Today' },
+  { key: 'weather', label: 'Weather' },
   { key: 'next', label: 'The week ahead' },
   { key: 'horizon', label: 'The month' },
 ] as const;
@@ -183,6 +186,13 @@ function formatBytes(bytes: number): string {
   if (bytes <= 0) return 'unknown size';
   const mb = bytes / (1024 * 1024);
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} kB`;
+}
+
+/** A coordinate, or undefined when it is not one. */
+function coordinate(raw: string, limit: number): number | undefined {
+  if (!/^-?\d{1,3}(\.\d+)?$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && Math.abs(value) <= limit ? value : undefined;
 }
 
 function isColor(value: string): boolean {
@@ -843,6 +853,39 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.get('/admin/display', (c: Context) => c.html(displayPage()));
 
+  /**
+   * Weather: the first panel module's own corner of the settings.
+   *
+   * Beside the block order rather than on its own screen, because the question
+   * a household is answering — "do I want this on the wall, and where" — is
+   * the same question.
+   */
+  app.post('/admin/display/weather', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const enabled = checked(body, 'weather_enabled');
+
+    const latitude = coordinate(field(body, 'latitude'), 90);
+    const longitude = coordinate(field(body, 'longitude'), 180);
+    if (enabled && (latitude === undefined || longitude === undefined)) {
+      return c.html(
+        displayPage({
+          message: 'Weather needs a location.',
+          suggestion:
+            'Latitude between -90 and 90, longitude between -180 and 180. Your phone’s map app ' +
+            'will show both if you press and hold on your house.',
+        }),
+        400,
+      );
+    }
+
+    writeWeatherSettings(deps.db, {
+      enabled,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
+    });
+    return c.redirect('/admin/display', 302);
+  });
+
   app.post('/admin/display', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
@@ -1279,6 +1322,42 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+  /**
+   * The weather settings, and the honest bit about coverage.
+   *
+   * The provider is the US National Weather Service and covers nowhere else.
+   * Saying so on the form is the difference between "this is not for me" and
+   * an empty panel somebody spends an evening debugging.
+   */
+  function weatherSection(): string {
+    const weather = readWeatherSettings(deps.db);
+    const value = (n: number | null): string => (n === null ? '' : String(n));
+
+    return (
+      `<p class="hint">A five-day forecast strip. Put it where you want it in the ` +
+      `list above — it is a block like any other.</p>` +
+      `<form method="post" action="/admin/display/weather">` +
+      `<div class="checks"><label>` +
+      `<input type="checkbox" name="weather_enabled" value="1"` +
+      `${weather.enabled ? ' checked' : ''}> Show the forecast</label></div>` +
+      `<div class="row-fields">` +
+      `<span><label for="latitude">Latitude</label>` +
+      `<input id="latitude" name="latitude" type="text" inputmode="decimal" ` +
+      `placeholder="38.8894" value="${escapeHtml(value(weather.latitude))}"></span>` +
+      `<span><label for="longitude">Longitude</label>` +
+      `<input id="longitude" name="longitude" type="text" inputmode="decimal" ` +
+      `placeholder="-77.0352" value="${escapeHtml(value(weather.longitude))}"></span>` +
+      `</div>` +
+      `<p class="hint">Press and hold your house in a phone map app to get both numbers.</p>` +
+      errorBlock(
+        'The forecast comes from the US National Weather Service.',
+        'It covers the United States only. Elsewhere, leave this off — a second ' +
+          'provider is the obvious next module.',
+      ) +
+      `<button type="submit">Save</button></form>`
+    );
+  }
+
   function readSchemaVersionSafe(): number {
     try {
       return (
@@ -1563,6 +1642,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Top to bottom in portrait. In landscape the month takes ` +
         `its own column and the rest stack beside it, in this order.</p>` +
         blockRows(parseBlocks(household.displayBlocks)) +
+
+        `<h2 class="add">Weather</h2>` +
+        weatherSection() +
 
         `<h2 class="add">How much to show</h2>` +
         number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,

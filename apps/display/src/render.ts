@@ -111,6 +111,36 @@ function renderTodayEvent(event: EventModel): HTMLElement {
   return row;
 }
 
+/* ------------------------------------------------------------ WEATHER ---- */
+
+/**
+ * The forecast strip, in the design's own markup.
+ *
+ * The icon is a character rather than an image: the provider offers an icon
+ * URL and rule three forbids the wall from fetching one, so the server maps
+ * the forecast wording to a glyph the device already has.
+ */
+function renderWeather(model: DisplayModel): HTMLElement | undefined {
+  if (model.weather.length === 0) return undefined;
+
+  const strip = el('section', 'wx');
+  for (const day of model.weather) {
+    const cell = el('div', 'wx-day');
+    cell.appendChild(el('div', 'wx-name', day.name));
+    cell.appendChild(el('div', 'wx-ico', day.icon));
+    const temp = el('div', 'wx-temp');
+    temp.appendChild(document.createTextNode(`${day.high} `));
+    temp.appendChild(el('span', 'lo', day.low));
+    cell.appendChild(temp);
+    strip.appendChild(cell);
+  }
+
+  if (model.weatherNote !== undefined) {
+    strip.appendChild(el('div', 'wx-note', model.weatherNote));
+  }
+  return strip;
+}
+
 /* --------------------------------------------------------------- NEXT ---- */
 
 function renderNext(model: DisplayModel): HTMLElement {
@@ -274,11 +304,39 @@ export function render(root: HTMLElement, model: DisplayModel): void {
    * fall in beside it — so there is one list to reason about rather than an
    * ordering rule per layout.
    */
+  /*
+   * Each block named, and nothing drawn for a name this bundle does not know.
+   *
+   * The trailing `else` this replaced drew the month for anything that was not
+   * `now` or `next` — so the moment a fourth block existed, asking for weather
+   * would have produced a second month grid.
+   */
   for (const block of model.blocks) {
-    if (block === 'now') screen.appendChild(renderNow(model));
-    else if (block === 'next') screen.appendChild(renderNext(model));
-    else screen.appendChild(renderHorizon(model));
+    if (block === 'now') {
+      screen.appendChild(renderNow(model));
+    } else if (block === 'weather') {
+      // Absent rather than empty when no module contributed one: a strip of
+      // dashes is worse than no strip.
+      const strip = renderWeather(model);
+      if (strip !== undefined) screen.appendChild(strip);
+    } else if (block === 'next') {
+      screen.appendChild(renderNext(model));
+    } else if (block === 'horizon') {
+      screen.appendChild(renderHorizon(model));
+    }
   }
+
+  /*
+   * How many rows the left column needs, stated for the stylesheet.
+   *
+   * Landscape pins the month to `grid-row: 1 / -1`, and `-1` only means the
+   * end of the grid when the rows are explicit — so the template has to match
+   * the number of blocks actually drawn. Hard-coding two rows was fine until a
+   * third block existed, at which point the week ahead and the forecast were
+   * drawn on top of each other.
+   */
+  const stacked = screen.querySelectorAll(':scope > *:not(.horizon)').length;
+  screen.setAttribute('data-rows', String(Math.max(2, Math.min(5, stacked))));
 
   root.textContent = '';
   root.appendChild(screen);

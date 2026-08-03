@@ -223,6 +223,40 @@ body {
 .te.is-past { opacity: 0.32; }
 :root[data-theme="glance"] .te.is-past { display: none; }
 
+/* --- WEATHER ---------------------------------------------------------- */
+
+/*
+ * The forecast strip, straight from the design file.
+ *
+ * The icon is a character, not an image: the provider offers an icon URL and
+ * rule three forbids fetching one, so the server maps the wording to a glyph.
+ */
+.wx {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 1.15rem 0;
+  flex: 0 0 auto;
+}
+.wx-day { text-align: center; }
+.wx-day + .wx-day { border-left: 1px solid var(--rule); }
+.wx-name {
+  font-size: 1.25rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+}
+.wx-ico { font-size: 2.1rem; line-height: 1.5; }
+.wx-temp { font-size: 1.7rem; font-weight: 600; }
+.wx-temp .lo { color: var(--muted); font-weight: 400; }
+/* Spans the strip, because it is about the forecast rather than about a day. */
+.wx-note {
+  grid-column: 1 / -1;
+  padding-top: 0.6rem;
+  font-size: 1.2rem;
+  color: var(--faint);
+  text-align: center;
+}
+:root[data-theme="glance"] .wx { display: none; }
+
 /* --- BLOCK 2 — NEXT --------------------------------------------------- */
 
 .next { display: grid; gap: 0; align-content: start; min-height: 0; overflow: hidden; }
@@ -393,9 +427,27 @@ body {
   padding: 2.6rem 2.8rem 2.2rem;
   gap: 1.8rem 2.8rem;
 }
-/* A banner adds a row above the pair. */
-:root[data-layout="landscape"] .screen.has-banners {
-  grid-template-rows: auto minmax(0, auto) minmax(0, 1fr);
+
+/*
+ * One template per number of stacked blocks, written by the renderer.
+ *
+ * The last row takes the slack; the rest size to their content. This has to
+ * follow the block count because the month spans `1 / -1`, and `-1` is only
+ * meaningful when the rows are explicit — with a fixed two-row template a
+ * third block had nowhere to go and drew on top of its neighbour.
+ */
+:root[data-layout="landscape"] .screen[data-rows="2"] {
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+}
+:root[data-layout="landscape"] .screen[data-rows="3"] {
+  grid-template-rows: minmax(0, auto) minmax(0, auto) minmax(0, 1fr);
+}
+:root[data-layout="landscape"] .screen[data-rows="4"] {
+  grid-template-rows: minmax(0, auto) minmax(0, auto) minmax(0, auto) minmax(0, 1fr);
+}
+:root[data-layout="landscape"] .screen[data-rows="5"] {
+  grid-template-rows:
+    minmax(0, auto) minmax(0, auto) minmax(0, auto) minmax(0, auto) minmax(0, 1fr);
 }
 /* Everything that is not the month stacks down the left. */
 :root[data-layout="landscape"] .screen > * { grid-column: 1; }

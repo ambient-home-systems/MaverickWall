@@ -70,7 +70,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **twenty-four real bugs**, and the pattern in how is the most
+This project has found **twenty-six real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -99,6 +99,8 @@ useful thing in this document:
 | **A QR that passed every structural test and scanned as nothing** | Decoding one with a real detector |
 | A required dep missing from four test harnesses | **Finally typechecking the test files** |
 | **A banner in landscape drew the month on top of itself** | Killing the server, which is the only way to get a banner |
+| A fourth block drew a second month grid | Adding one, and reading the `else` that caught it |
+| **A new block could never appear on an existing wall** | Turning weather on and watching nothing happen |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -186,7 +188,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**797 tests passing.** calendar 153 · core 238 · server 332 · display 74.
+**809 tests passing.** calendar 153 · core 238 · server 344 · display 74.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -200,8 +202,7 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Not started:** weather (NWS) · interrupts and alerts · ws push · Docker
-image · HA add-on.
+**Not started:** interrupts and alerts · ws push · Docker image · HA add-on.
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and
@@ -290,6 +291,29 @@ but `none`, so the display can colour it (`--s-break`) and still leave a day
 the rota says nothing about plain. Before this the two were identical in the
 manifest, and a test named "treats an explicit rest day as not working, not as
 unknown" asserted the empty list that proved they were not.
+
+**Panels are modules, and weather is the first.** `src/modules/` holds a
+registry: a module owns a block key, a slice of the manifest, usually a job,
+and a corner of the settings. `collectPanels` catches per module, so a provider
+that changes a field name costs its own panel and not the calendar.
+
+**A module contributes data, never code.** Rule three forbids third-party
+origins in the display bundle, so nothing a module supplies is executed or
+fetched by the wall — it says what it wants shown and a first-party renderer
+draws it. That is what would let a third-party add-on work later with no new
+trust: it would run as its own process and answer with the same shape over
+HTTP, through the SSRF-guarded fetcher exactly like a calendar feed. In-process
+plugins are the version to refuse — they would read the master key, bypass the
+guard, and take the wall down when they throw.
+
+**NWS covers the United States only**, and the settings page says so rather
+than leaving somebody to debug an empty strip. A second provider is the obvious
+second module.
+
+**Adding a block does not put it on existing walls.** The order is stored per
+household, so a block that did not exist when they last saved can never appear
+in it. Enabling a module is the moment somebody asked for it, so that is where
+its block gets inserted.
 
 **The wall remembers.** The last good manifest is kept in IndexedDB and drawn
 *before* the first request is sent, so a wall coming back from a power cut

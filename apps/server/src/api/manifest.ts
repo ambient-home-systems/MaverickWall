@@ -27,9 +27,9 @@ import {
 export const MANIFEST_VERSION = 1;
 
 /** The three things a wall can show. Order is the household's to choose. */
-export type DisplayBlock = 'now' | 'next' | 'horizon';
+export type DisplayBlock = 'now' | 'weather' | 'next' | 'horizon';
 
-const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'next', 'horizon'];
+const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'next', 'horizon'];
 
 /**
  * Read the stored order, and never return nothing.
@@ -183,9 +183,16 @@ export interface Manifest {
   readonly sources: readonly ManifestSourceHealth[];
   /** Empty in the healthy case. Anything here gets a banner on screen. */
   readonly notices: readonly ManifestNotice[];
-  /** Weather and interrupts are not built yet; the fields exist so the
-   *  display contract does not change when they arrive. */
-  readonly weather: null;
+  /**
+   * What each panel module had to say, keyed by its block key.
+   *
+   * A module contributes data and never code — rule three forbids the display
+   * from executing or fetching anything a module supplies, so the wall draws
+   * these with first-party renderers keyed off the same block list the
+   * household orders.
+   */
+  readonly panels: Readonly<Record<string, unknown>>;
+  /** Interrupts are not built yet; the field exists so the contract holds. */
   readonly interrupts: readonly never[];
 }
 
@@ -250,6 +257,13 @@ export interface BuildManifestInput {
   readonly daysAfter: number;
   readonly now: number;
   readonly appVersion: string;
+  /**
+   * What each panel module had to say, already collected.
+   *
+   * Passed in rather than gathered here, because assembly is pure and does no
+   * I/O — every module reads its own cache, which its own job fills.
+   */
+  readonly panels?: Readonly<Record<string, unknown>>;
   /**
    * The screen this document is for, when it is being served to one.
    *
@@ -584,7 +598,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       eventCount: source.eventCount,
     })),
     notices: [...(input.notices ?? []), ...healthNotices(input.sources, input.now)],
-    weather: null,
+    panels: input.panels ?? {},
     interrupts: [],
   };
 }

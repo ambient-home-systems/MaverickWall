@@ -496,6 +496,76 @@ export function revokeScreen(db: SqliteDatabase, id: string): boolean {
   );
 }
 
+export interface WeatherSettings {
+  readonly enabled: boolean;
+  readonly latitude: number | null;
+  readonly longitude: number | null;
+}
+
+export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
+  const row = db
+    .prepare(
+      `SELECT weather_enabled AS enabled, latitude, longitude
+         FROM household_settings WHERE id = 'singleton'`,
+    )
+    .get() as { enabled: number; latitude: number | null; longitude: number | null } | undefined;
+  return {
+    enabled: row?.enabled === 1,
+    latitude: row?.latitude ?? null,
+    longitude: row?.longitude ?? null,
+  };
+}
+
+/**
+ * Save the weather settings, and clear the cache when the location moves.
+ *
+ * A forecast for where the household used to live is worse than no forecast:
+ * it is wrong and looks right. The resolved gridpoint goes with it, since that
+ * is what pins the old location.
+ */
+export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettings): void {
+  const previous = readWeatherSettings(db);
+  const moved =
+    previous.latitude !== settings.latitude || previous.longitude !== settings.longitude;
+
+  const write = db.transaction(() => {
+    db.prepare(
+      `UPDATE household_settings
+          SET weather_enabled = ?, latitude = ?, longitude = ?, updated_at = ?
+        WHERE id = 'singleton'`,
+    ).run(settings.enabled ? 1 : 0, settings.latitude, settings.longitude, Date.now());
+
+    if (moved) db.prepare('DELETE FROM weather_cache').run();
+
+    /*
+     * Switching a module on puts its block on the wall.
+     *
+     * The block order is stored, so a block that did not exist when a
+     * household first saved their order can never appear in it — they would
+     * turn weather on, wait an hour, and see nothing. Enabling is the moment
+     * they asked for it, so that is the moment to add it. The order is still
+     * theirs to change afterwards, and turning it off leaves the list alone.
+     */
+    if (settings.enabled) {
+      const row = db
+        .prepare(`SELECT display_blocks AS blocks FROM household_settings WHERE id = 'singleton'`)
+        .get() as { blocks: string | null } | undefined;
+      const blocks = (row?.blocks ?? '').split(',').map((b) => b.trim()).filter((b) => b !== '');
+      if (!blocks.includes('weather')) {
+        // After today, which is where the design puts the strip.
+        const at = blocks.indexOf('now');
+        blocks.splice(at < 0 ? blocks.length : at + 1, 0, 'weather');
+        db.prepare(
+          `UPDATE household_settings SET display_blocks = ?, updated_at = ? WHERE id = 'singleton'`,
+        ).run(blocks.join(','), Date.now());
+      }
+    }
+    // Bring the refresh forward so the panel fills in without a wait.
+    db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'weather-sync'`).run();
+  });
+  write();
+}
+
 export interface UpdateState {
   readonly enabled: boolean;
   readonly lastCheckedAt: number | null;

@@ -109,6 +109,13 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     jitterRatio: 0.05,
     backoffMaxMs: 60 * 60_000,
   },
+  'weather-sync': {
+    // NWS updates about hourly and asks clients not to poll harder.
+    intervalMs: 60 * 60_000,
+    jitterRatio: 0.2,
+    backoffInitialMs: 5 * 60_000,
+    backoffMaxMs: 6 * 60 * 60_000,
+  },
   'update-check': {
     // Once a day. Anything more often is a household's address book of
     // requests to somebody else's server for a number that changes monthly.

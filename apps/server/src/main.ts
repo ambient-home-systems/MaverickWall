@@ -7,7 +7,7 @@ import { createFetcher } from './net/fetcher.js';
 import { createJobStore, ensureJob, removeJobsNotIn } from './jobs/store.js';
 import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
-import { createApp } from './http/app.js';
+import { createApp, MODULES } from './http/app.js';
 import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
 import { createSetupTokenHolder } from './http/setup.js';
@@ -126,6 +126,26 @@ async function main(): Promise<void> {
        * registers a job would leave a stale one running after somebody turned
        * it off, and the thing being turned off is a request to a third party.
        */
+      /*
+       * One handler per module job, from the same list the manifest reads.
+       *
+       * Spread in rather than listed, so a new module is a single entry in
+       * MODULES and not a second edit here that somebody forgets.
+       */
+      ...Object.fromEntries(
+        MODULES.filter((module) => module.job !== undefined).map((module) => [
+          (module.job as { kind: string }).kind,
+          async () => {
+            await (module.job as { run: (c: unknown) => Promise<void> }).run({
+              db,
+              fetcher,
+              now: Date.now(),
+              timezone: readHousehold(db).timezone,
+            });
+            return { status: 'ok' as const };
+          },
+        ]),
+      ),
       'update-check': async () => {
         if (!readUpdateState(db).enabled) return { status: 'ok' };
         const result = await checkForUpdate(fetcher, APP_VERSION);
@@ -283,6 +303,12 @@ function registerJobs(db: SqliteDatabase): void {
   // Registered always, gated by the setting when it fires. Ten minutes out so
   // a restart is never the thing that makes an outbound request.
   ensureJob(db, 'update-check', 'update-check', Date.now() + 10 * 60_000);
+  // Module jobs, a minute out so a restart never stampedes an upstream.
+  for (const module of MODULES) {
+    if (module.job !== undefined) {
+      ensureJob(db, module.job.kind, module.job.kind, Date.now() + 60_000);
+    }
+  }
 }
 
 main().catch((error: unknown) => {

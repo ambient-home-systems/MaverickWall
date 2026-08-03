@@ -392,19 +392,22 @@ describe('which blocks are drawn, and in what order', () => {
 
   it('drops a block name this bundle cannot render', () => {
     // A newer server naming a block this build has no renderer for would
-    // otherwise be a gap on the wall.
-    expect(withBlocks(['now', 'weather', 'horizon']).blocks).toEqual(['now', 'horizon']);
+    // otherwise be a gap on the wall. This used to use 'weather' as the
+    // example, which stopped being unknown the moment weather shipped — the
+    // name has to be one nothing will ever render.
+    expect(withBlocks(['now', 'tides', 'horizon']).blocks).toEqual(['now', 'horizon']);
   });
 
   it('drops a repeat rather than drawing it twice', () => {
     expect(withBlocks(['now', 'now', 'next']).blocks).toEqual(['now', 'next']);
   });
 
-  it('falls back to all three rather than drawing nothing', () => {
+  it('falls back to every block rather than drawing nothing', () => {
     // Rule nine. An empty list is far more likely to be a mistake than a
     // household asking for a blank wall.
-    expect(withBlocks([]).blocks).toEqual(['now', 'next', 'horizon']);
-    expect(withBlocks(['nonsense']).blocks).toEqual(['now', 'next', 'horizon']);
-    expect(withBlocks(undefined).blocks).toEqual(['now', 'next', 'horizon']);
+    const all = ['now', 'weather', 'next', 'horizon'];
+    expect(withBlocks([]).blocks).toEqual(all);
+    expect(withBlocks(['nonsense']).blocks).toEqual(all);
+    expect(withBlocks(undefined).blocks).toEqual(all);
   });
 });

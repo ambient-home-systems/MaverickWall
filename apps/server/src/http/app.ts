@@ -18,6 +18,8 @@ import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } fr
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir } from './static.js';
 import { readImage } from '../api/media.js';
+import { collectPanels } from '../modules/registry.js';
+import { weatherModule } from '../modules/weather/index.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { errorBlock, escapeHtml, page } from './html.js';
 import type { Fetcher } from '@maverick-wall/core';
@@ -160,6 +162,15 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
   return screens.find((screen) => verifyDisplayToken(presented, screen.tokenHash));
 }
 
+/**
+ * Every panel module, in one list.
+ *
+ * The manifest asks each for its slice, boot registers their jobs from the
+ * same list, and the Display screen offers their blocks from it too — so
+ * adding a module is one entry rather than three edits in three files.
+ */
+export const MODULES = [weatherModule];
+
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   const now = deps.now ?? (() => Date.now());
@@ -301,6 +312,14 @@ export function createApp(deps: AppDeps): Hono {
       daysAfter: DEFAULT_DAYS_AFTER,
       now: at,
       appVersion: deps.appVersion,
+      // Collected here rather than inside assembly, which stays pure and does
+      // no I/O: every module reads its own cache, filled by its own job.
+      panels: collectPanels(MODULES, {
+        db: deps.db,
+        fetcher: deps.fetcher,
+        now: at,
+        timezone: household.timezone,
+      }),
       // The document is already screen-specific — it is served behind a
       // display token — so how that screen is hung travels with it.
       screen: {

@@ -95,7 +95,8 @@ export interface Manifest {
   readonly people: readonly ManifestPerson[];
   readonly sources: readonly ManifestSourceHealth[];
   readonly notices: readonly ManifestNotice[];
-  readonly weather: null;
+  /** Panel slices keyed by block. Data only — never anything to execute. */
+  readonly panels?: Readonly<Record<string, unknown>>;
   readonly interrupts: readonly never[];
 }
 

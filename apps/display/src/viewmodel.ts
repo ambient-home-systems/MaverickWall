@@ -34,8 +34,8 @@ export const NEXT_EVENT_LIMIT = 4;
 export const HORIZON_WEEKS = 5;
 
 /** The three things a wall can show, and the order it shows them in by default. */
-export type DisplayBlock = 'now' | 'next' | 'horizon';
-export const DEFAULT_BLOCKS: readonly DisplayBlock[] = ['now', 'next', 'horizon'];
+export type DisplayBlock = 'now' | 'weather' | 'next' | 'horizon';
+export const DEFAULT_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'next', 'horizon'];
 
 /**
  * The order to draw in, from whatever the manifest said.
@@ -117,6 +117,13 @@ export interface HorizonCell {
   readonly eventCount: number;
 }
 
+export interface WeatherDayModel {
+  readonly name: string;
+  readonly icon: string;
+  readonly high: string;
+  readonly low: string;
+}
+
 export type Staleness =
   | { readonly level: 'fresh' }
   | { readonly level: 'stale'; readonly message: string }
@@ -138,6 +145,49 @@ export interface DisplayModel {
   readonly staleness: Staleness;
   /** Which blocks to draw, in order. The renderer walks this and nothing else. */
   readonly blocks: readonly DisplayBlock[];
+  /** The weather panel, when a module contributed one. */
+  readonly weather: readonly WeatherDayModel[];
+  /** Something quiet to say about the forecast, such as its age. */
+  readonly weatherNote: string | undefined;
+}
+
+/**
+ * The weather panel, read defensively.
+ *
+ * A module's slice arrives as `unknown` and is shaped here rather than trusted:
+ * a server one version ahead, or a provider that changed a field, must cost
+ * the panel and nothing else.
+ */
+export function weatherFrom(panel: unknown): {
+  days: WeatherDayModel[];
+  note: string | undefined;
+} {
+  if (typeof panel !== 'object' || panel === null) return { days: [], note: undefined };
+  const raw = (panel as { days?: unknown }).days;
+  if (!Array.isArray(raw)) return { days: [], note: undefined };
+
+  const days: WeatherDayModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const day = entry as {
+      name?: unknown; icon?: unknown; high?: unknown; low?: unknown; unit?: unknown;
+    };
+    if (typeof day.name !== 'string') continue;
+    const unit = typeof day.unit === 'string' ? day.unit : '';
+    const degrees = (value: unknown): string =>
+      typeof value === 'number' ? `${Math.round(value)}°` : '—';
+    days.push({
+      name: day.name,
+      icon: typeof day.icon === 'string' ? day.icon : '·',
+      high: degrees(day.high),
+      // The unit rides on the low so the row reads "84° 69°F" rather than
+      // repeating itself five times across the strip.
+      low: `${degrees(day.low)}${unit === '' ? '' : unit}`,
+    });
+  }
+
+  const note = (panel as { note?: unknown }).note;
+  return { days, note: typeof note === 'string' && note !== '' ? note : undefined };
 }
 
 /** A whole number inside a range, or the fallback when it is not one at all. */
@@ -357,6 +407,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
     staleness = { level: 'stale', message: `Last updated ${describeAge(age)}.` };
   }
 
+  const weather = weatherFrom(manifest.panels?.['weather']);
+
   const { weekday, day: dayNumber, month } = parts(today, timezone);
 
   return {
@@ -375,6 +427,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
     shiftRun: todayDay === undefined ? undefined : describeRun(byDate, today, timezone),
     next,
     horizon: intoWeeks(cells),
+    weather: weather.days,
+    weatherNote: weather.note,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,
