@@ -38,7 +38,78 @@ import {
   type RuleTemplate,
 } from './rule-templates.js';
 import { randomBytes } from 'node:crypto';
+import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import type { AdminDeps } from './admin.js';
+
+/** One schema per form on this screen. */
+const connectBody = z.object({
+  base_url: text('The address of Home Assistant', 2048),
+  token: optionalText(4096),
+  allow_lan: checkbox(),
+  accept_http: checkbox(),
+});
+
+const watchBody = z.object({
+  entity_id: text('An entity', 255),
+  label: optionalText(60),
+  display_mode: optionalText(20),
+});
+
+const calendarSourceBody = z.object({
+  entity_id: text('A calendar', 255),
+  name: optionalText(80),
+});
+
+const ruleBody = z.object({
+  name: text('What the wall should say', 60),
+  entity_id: text('An entity', 255),
+  condition: z.enum(['equals', 'above', 'below', 'changed_to'], {
+    error: () => 'Choose a condition from the list.',
+  }),
+  value: text('A state or a number', 100),
+  for_minutes: optionalText(4),
+  from_time: optionalText(5),
+  to_time: optionalText(5),
+  action: z.enum(['banner', 'takeover', 'takeover_and_wake'], {
+    error: () => 'Choose how loudly this should be shown.',
+  }),
+}).superRefine((value, ctx) => {
+  // Two rules that are about the *combination*, which is the whole reason
+  // this is a schema rather than four independent fields.
+  if ((value.condition === 'above' || value.condition === 'below') && !Number.isFinite(Number(value.value))) {
+    ctx.addIssue({ code: 'custom', message: 'Above and below need a number to compare with.' });
+  }
+
+  if (value.for_minutes !== undefined && !/^[0-9]{1,4}$/.test(value.for_minutes)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Enter the wait in whole minutes, or leave it empty.',
+    });
+  }
+
+  /*
+   * The overnight window is all-or-nothing.
+   *
+   * One time without the other is somebody who filled in half a thought, and
+   * honouring it silently would give them a rule that fires at noon.
+   */
+  const half = (value.from_time === undefined) !== (value.to_time === undefined);
+  if (half) {
+    ctx.addIssue({
+      code: 'custom',
+      message:
+        'Give both times, or neither. Leaving them empty means the rule applies at any ' +
+        'hour; to limit it to the night, set from 23:00 to 06:00.',
+    });
+    return;
+  }
+  if (value.from_time !== undefined && parseWindow({ from: value.from_time, to: value.to_time }) === null) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Those times are not a window. Use HH:MM, and make them different.',
+    });
+  }
+});
 
 /**
  * The Home Assistant screen.
@@ -58,15 +129,6 @@ const ACTIONS: readonly { key: InterruptAction; label: string }[] = [
   { key: 'takeover', label: 'The whole wall' },
   { key: 'takeover_and_wake', label: 'The whole wall, and wake a dark screen' },
 ];
-
-function field(body: Record<string, unknown>, name: string): string {
-  const value = body[name];
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function checked(body: Record<string, unknown>, name: string): boolean {
-  return typeof body[name] === 'string';
-}
 
 /** One `<option>`, selected when it is the one a template chose. */
 function option(value: string, label: string, selected?: string): string {
@@ -189,17 +251,14 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const settings = readHaSettings(deps.db);
 
-    const raw = field(body, 'base_url');
-    if (raw === '') {
+    const shaped = parse(connectBody, body);
+    if (!shaped.ok) {
       return render(
-        {
-          message: 'Enter the address of Home Assistant.',
-          suggestion: 'Usually something like http://192.168.1.10:8123',
-        },
+        { message: shaped.message, suggestion: 'Usually something like http://192.168.1.10:8123' },
         400,
       );
     }
-    const baseUrl = raw.replace(/\/+$/, '');
+    const baseUrl = shaped.value.base_url.replace(/\/+$/, '');
 
     /*
      * Plain http needs saying out loud, once.
@@ -211,7 +270,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
      * checkbox they have to tick is the honest middle. It is not stored,
      * because it is consent for this address rather than a setting.
      */
-    if (baseUrl.startsWith('http://') && !checked(body, 'accept_http')) {
+    if (baseUrl.startsWith('http://') && !shaped.value.accept_http) {
       return render(
         {
           message: 'That address is not encrypted.',
@@ -224,7 +283,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
 
-    const token = field(body, 'token');
+    const token = shaped.value.token ?? '';
     if (token === '' && !settings.hasToken) {
       return render(
         {
@@ -239,7 +298,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     writeHaSettings(deps.db, deps.keyring, {
       baseUrl,
       ...(token === '' ? {} : { token }),
-      allowPrivateNetwork: checked(body, 'allow_lan'),
+      allowPrivateNetwork: shaped.value.allow_lan,
     });
 
     const resolved = resolveConnection(deps.db, deps.keyring);
@@ -286,8 +345,11 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/home-assistant/entities', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const entityId = field(body, 'entity_id');
-    if (entityId === '' || !isSupported(entityId)) {
+    const watched = parse(watchBody, body);
+    if (!watched.ok) return render({ message: watched.message }, 400);
+
+    const entityId = watched.value.entity_id;
+    if (!isSupported(entityId)) {
       return render(
         {
           message: 'Choose an entity from the list.',
@@ -299,15 +361,15 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
 
-    const mode = field(body, 'display_mode');
-    const label = field(body, 'label');
+    const mode = watched.value.display_mode ?? '';
+    const label = watched.value.label;
     const live = await look();
     const known = live.entities.find((state) => state.entityId === entityId);
 
     watchEntity(deps.db, {
       entityId,
       friendlyName: known?.friendlyName ?? entityId,
-      label: label === '' ? null : label,
+      label: label ?? null,
       displayMode: (DISPLAY_MODES.some((option) => option.key === mode)
         ? mode
         : 'label_value') as DisplayMode,
@@ -317,13 +379,16 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/home-assistant/entities/remove', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    unwatchEntity(deps.db, field(body, 'entity_id'));
+    const removal = parse(z.object({ entity_id: text('An entity', 255) }), body);
+    if (removal.ok) unwatchEntity(deps.db, removal.value.entity_id);
     return c.redirect('/admin/home-assistant', 302);
   });
 
   app.post('/admin/home-assistant/calendars', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const entityId = field(body, 'entity_id');
+    const picked = parse(calendarSourceBody, body);
+    if (!picked.ok) return render({ message: picked.message }, 400);
+    const entityId = picked.value.entity_id;
     if (!entityId.startsWith('calendar.')) {
       return render({ message: 'Choose a calendar from the list.' }, 400);
     }
@@ -333,10 +398,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
     const live = await look();
     const known = live.calendars.find((entity) => entity.entityId === entityId);
-    const name = field(body, 'name');
     addHaCalendarSource(deps.db, {
       entityId,
-      name: name !== '' ? name : (known?.name ?? entityId),
+      name: picked.value.name ?? known?.name ?? entityId,
     });
     return c.redirect('/admin/calendars', 302);
   });
@@ -344,75 +408,21 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/home-assistant/rules', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
-    const name = field(body, 'name');
-    const entityId = field(body, 'entity_id');
-    if (name === '' || entityId === '') {
-      return render({ message: 'A rule needs a name and an entity.' }, 400);
-    }
+    const shaped = parse(ruleBody, body);
+    if (!shaped.ok) return render({ message: shaped.message }, 400);
+
+    const { name, entity_id: entityId, condition, value, action } = shaped.value;
+    // Membership rather than shape: which domains this can watch is a fact
+    // about the application, not about the request.
     if (!isSupported(entityId)) {
       return render({ message: 'That entity is not one this can watch.' }, 400);
     }
 
-    const condition = field(body, 'condition');
-    if (
-      condition !== 'equals' &&
-      condition !== 'above' &&
-      condition !== 'below' &&
-      condition !== 'changed_to'
-    ) {
-      return render({ message: 'Choose a condition from the list.' }, 400);
-    }
-
-    const value = field(body, 'value');
-    if (value === '') {
-      return render({ message: 'Say what state or number this rule is about.' }, 400);
-    }
-    if ((condition === 'above' || condition === 'below') && !Number.isFinite(Number(value))) {
-      return render(
-        { message: 'Above and below need a number to compare with.' },
-        400,
-      );
-    }
-
-    const minutes = field(body, 'for_minutes');
-    if (minutes !== '' && !/^[0-9]{1,4}$/.test(minutes)) {
-      return render({ message: 'Enter the wait in whole minutes, or leave it empty.' }, 400);
-    }
-
-    /*
-     * The overnight window, which is optional and all-or-nothing.
-     *
-     * One time without the other is somebody who filled in half a thought, and
-     * silently ignoring it would give them a rule that fires at noon.
-     */
-    const from = field(body, 'from_time');
-    const to = field(body, 'to_time');
-    if ((from === '') !== (to === '')) {
-      return render(
-        {
-          message: 'Give both times, or neither.',
-          suggestion:
-            'Leaving them empty means the rule applies at any hour. To limit it to the ' +
-            'night, set from 23:00 to 06:00.',
-        },
-        400,
-      );
-    }
-    const between = from === '' ? null : parseWindow({ from, to });
-    if (from !== '' && between === null) {
-      return render(
-        {
-          message: 'Those times are not a window.',
-          suggestion: 'Use HH:MM, and make them different from each other.',
-        },
-        400,
-      );
-    }
-
-    const action = field(body, 'action');
-    if (!ACTIONS.some((candidate) => candidate.key === action)) {
-      return render({ message: 'Choose how loudly this should be shown.' }, 400);
-    }
+    const minutes = shaped.value.for_minutes;
+    const between =
+      shaped.value.from_time === undefined
+        ? null
+        : parseWindow({ from: shaped.value.from_time, to: shaped.value.to_time });
 
     /*
      * Stored through the shared writer, in the shared model.
@@ -429,9 +439,11 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       name,
       enabled: true,
       match: { entityId, condition: { kind: condition, value, between } },
-      action: action as InterruptAction,
+      action,
       piercesNightMode: action === 'takeover_and_wake',
-      minDwellSec: minutes === '' || minutes === '0' ? 0 : Number(minutes) * 60,
+      // `undefined` now, not `''` — an empty field is absent once the schema
+      // has read it, and `Number(undefined)` is NaN rather than zero.
+      minDwellSec: minutes === undefined || minutes === '0' ? 0 : Number(minutes) * 60,
       dismissible: true,
       // Ordering matters only when two fire at once, which is rare enough that
       // asking about it would be a field nobody could answer. A takeover
@@ -459,7 +471,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/home-assistant/rules/:id/toggle', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    setRuleEnabled(deps.db, c.req.param('id') ?? '', checked(body, 'enabled'));
+    const toggled = parse(z.object({ enabled: checkbox() }), body);
+    setRuleEnabled(deps.db, c.req.param('id') ?? '', toggled.ok && toggled.value.enabled);
     return c.redirect('/admin/home-assistant', 302);
   });
 

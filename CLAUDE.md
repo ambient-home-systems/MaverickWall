@@ -579,6 +579,14 @@ list of suggestions rather than templates.
 wall" and "do not tell me when the house is flooding" are different requests,
 and conflating them would silently disarm a rule.
 
+**Rule five is satisfied, and `grep` is how you check.** No `field()`,
+`checked()`, `counted()`, `isColor()` or `isHhmm()` survives; every form body
+and every external payload goes through a schema in `src/validation.ts`. The
+handlers read as "shape it, then do the thing", and the cross-field rules that
+used to be three `if` statements down a handler — a daylight window that is
+all-or-nothing, `above`/`below` needing a number — are `superRefine` beside the
+fields they constrain.
+
 **Zod lives in `apps/server` and nowhere else.** Rule one keeps
 `packages/core` and `packages/calendar` free of any vendor library, so their
 inputs are validated one layer out, on the way in. That is not an exception to
@@ -780,15 +788,14 @@ distinct address.
 - **Display density.** A work feed marks *every* day. Matched shift events are
   consumed out of the agenda, but a NEXT row still needs an opinion about how
   many events per day it can show before it stops being readable.
-- **Rule five, part done.** Every boundary where bytes arrive from *outside*
-  is on Zod now — CAP, Home Assistant states and calendars, the NWS forecast
-  and points documents, the GitHub release feed, the stored rule conditions,
-  and the whole first-run wizard. What is left is admin form bodies: roughly
-  sixty `field()`/`checked()` calls across thirteen handlers in `admin.ts` and
-  six in `admin-ha.ts`. They are session-gated, same-origin and already
-  centralised, so the remaining risk is low and the remaining work is
-  mechanical — but it is still hand-rolled, and finishing it is what closes the
-  rule rather than narrowing it.
+- ~~Rule five~~ **is closed.** Every boundary is a schema: external payloads,
+  every admin and wizard form, and the stored rule conditions. There is no
+  `field()`, `checked()`, `counted()`, `isColor()` or `isHhmm()` left anywhere
+  — `grep` for them is the check. What remains open is only the reverse
+  question: whether the three remaining `JSON.parse` calls on *our own* cached
+  writes (the weather payload, Home Assistant attributes, shift plan columns)
+  are boundaries at all. They are reads of what this process wrote, so today
+  they are treated as internal.
 - **The image is ~482MB.** About 50MB of it is `esbuild` and `vitest` in the
   production tree, pulled in because `better-auth` declares `drizzle-kit` and
   `vitest` as peer dependencies. Fixing it means changing peer resolution,

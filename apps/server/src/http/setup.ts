@@ -133,11 +133,6 @@ export interface SetupDeps {
   readonly now?: () => number;
 }
 
-function field(body: Record<string, unknown>, name: string): string {
-  const value = body[name];
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 function hasSetupCookie(c: Context, holder: SetupTokenHolder, now: number): boolean {
   const header = c.req.header('cookie');
   if (!header) return false;
@@ -221,7 +216,16 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     if (readSetupState(deps.db).hasUsers) return c.redirect('/setup', 302);
 
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const presented = field(body, 'code');
+    /*
+     * The bootstrap code, which is the only way into a fresh installation.
+     *
+     * Shaped like everything else, and compared with `shortCodeMatches` rather
+     * than by the schema: the comparison has to be constant-time, and a Zod
+     * refinement that short-circuits on the first wrong character would leak
+     * the code one character at a time to anybody who can reach the port.
+     */
+    const shapedCode = parse(text('The setup code', 64), body['code']);
+    const presented = shapedCode.ok ? shapedCode.value : '';
     const token = deps.setupToken.current();
 
     if (!shortCodeMatches(token.token, presented)) {

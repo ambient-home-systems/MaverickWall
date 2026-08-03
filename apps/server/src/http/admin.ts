@@ -62,7 +62,79 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
-import { bounded, oneOf, optionalText, parse, z } from '../validation.js';
+import { bounded, checkbox, colour, coordinate, oneOf, optionalText, parse, text, z } from '../validation.js';
+
+/**
+ * One schema per form, stated where the constants they lean on are.
+ *
+ * The handlers below read as "shape it, then do the thing", which is what they
+ * were always trying to say — the field-by-field checks were the same rules
+ * spread over a dozen early returns.
+ */
+const feedBody = z.object({
+  name: optionalText(80),
+  url: text('An address', 2048),
+  allow_lan: checkbox(),
+  allow_loopback: checkbox(),
+  allow_http: checkbox(),
+  action: optionalText(10),
+});
+
+const sourceSettingsBody = z.object({
+  name: text('A name', 80),
+  color: colour(),
+  person_id: optionalText(40),
+  enabled: checkbox(),
+  allow_lan: checkbox(),
+});
+
+/**
+ * The shift builder's form, which is a draft rather than a submission.
+ *
+ * It round-trips: the page renders a draft, the household changes one thing,
+ * and the same shape comes back. So nothing here rejects — every field falls
+ * back to empty and `planFrom` is what decides whether the *draft* is a plan
+ * yet. A schema that refused a half-filled draft would refuse the form's own
+ * preview button.
+ *
+ * The indexed fields are the reason this is a `catchall` rather than a list of
+ * keys: `slot_0`…`slot_27` and `title_0`…`title_39` are positional, and naming
+ * forty of them would be worse than reading them by index.
+ */
+const draftBody = z.looseObject({
+  person_id: optionalText(40),
+  kind: optionalText(20),
+  source_id: optionalText(40),
+  anchor_date: optionalText(10),
+});
+
+const personBody = z.object({
+  name: text('A name', 80),
+  color: colour(),
+});
+
+const weatherBody = z.object({
+  weather_enabled: checkbox(),
+  latitude: optionalText(20),
+  longitude: optionalText(20),
+});
+
+const screenBody = z.object({
+  name: text('A name for the screen', 80),
+  orientation: oneOf('an orientation', ['auto', 'portrait', 'landscape']),
+  rotation: z
+    .unknown()
+    .refine((value) => ['0', '90', '180', '270'].includes(String(value)), {
+      error: () => 'Rotation has to be a quarter turn.',
+    })
+    .transform((value) => Number(value)),
+  theme: optionalText(20),
+  daytime_theme: optionalText(20),
+  daytime_starts_at: optionalText(5),
+  daytime_ends_at: optionalText(5),
+  timezone: optionalText(64),
+  allow_dismiss: checkbox(),
+});
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
@@ -95,15 +167,6 @@ export interface AdminDeps {
   readonly dataDir: string;
   readonly startedAt: number;
   readonly log: LogBuffer;
-}
-
-function field(body: Record<string, unknown>, name: string): string {
-  const value = body[name];
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function checked(body: Record<string, unknown>, name: string): boolean {
-  return typeof body[name] === 'string';
 }
 
 /**
@@ -151,7 +214,8 @@ function blockOrder(
 
   const chosen: string[] = [];
   for (let position = 1; position <= BLOCKS.length; position++) {
-    const value = field(body, `block_${position}`);
+    const raw = body[`block_${position}`];
+    const value = typeof raw === 'string' ? raw.trim() : '';
     if (value === '' || value === 'none') continue;
     if (!BLOCKS.some((block) => block.key === value)) {
       return { error: 'Choose what each row shows from the list.' };
@@ -241,20 +305,6 @@ function formatBytes(bytes: number): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} kB`;
 }
 
-/** A coordinate, or undefined when it is not one. */
-function coordinate(raw: string, limit: number): number | undefined {
-  if (!/^-?\d{1,3}(\.\d+)?$/.test(raw)) return undefined;
-  const value = Number(raw);
-  return Number.isFinite(value) && Math.abs(value) <= limit ? value : undefined;
-}
-
-function isColor(value: string): boolean {
-  return /^#[0-9a-fA-F]{6}$/.test(value);
-}
-
-function isHhmm(value: string): boolean {
-  return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
-}
 
 
 /**
@@ -378,22 +428,30 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/calendars', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const name = field(body, 'name');
-    const url = field(body, 'url');
-    const allowPrivateNetwork = checked(body, 'allow_lan');
-    const allowLoopback = checked(body, 'allow_loopback');
-    const allowHttp = checked(body, 'allow_http');
-    const testOnly = field(body, 'action') === 'test';
-    const values = { name, url, allowPrivateNetwork, allowLoopback, allowHttp };
+    const shaped = parse(feedBody, body);
+    // Echoed back either way, so a bad address never costs the name above it.
+    const echo = {
+      name: typeof body['name'] === 'string' ? body['name'] : '',
+      url: typeof body['url'] === 'string' ? body['url'] : '',
+      allowPrivateNetwork: typeof body['allow_lan'] === 'string',
+      allowLoopback: typeof body['allow_loopback'] === 'string',
+      allowHttp: typeof body['allow_http'] === 'string',
+    };
+    if (!shaped.ok) return c.html(calendarsPage(echo, { message: shaped.message }), 400);
 
-    if (url === '' || (!testOnly && name === '')) {
-      return c.html(
-        calendarsPage(values, {
-          message: testOnly ? 'Enter an address to test.' : 'Enter a name and an address.',
-        }),
-        400,
-      );
+    const testOnly = shaped.value.action === 'test';
+    // A name is only required to *store* one. Testing an address is a
+    // question, and asking it should not need the answer named first.
+    if (!testOnly && shaped.value.name === undefined) {
+      return c.html(calendarsPage(echo, { message: 'Enter a name and an address.' }), 400);
     }
+
+    const name = shaped.value.name ?? '';
+    const url = shaped.value.url;
+    const allowPrivateNetwork = shaped.value.allow_lan;
+    const allowLoopback = shaped.value.allow_loopback;
+    const allowHttp = shaped.value.allow_http;
+    const values = { name, url, allowPrivateNetwork, allowLoopback, allowHttp };
 
     const tested = await testFeed(
       {
@@ -435,24 +493,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   /** Editing what a stored source is, as opposed to where it points. */
   app.post('/admin/calendars/:id/settings', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const name = field(body, 'name');
-    const color = field(body, 'color');
-    const personId = field(body, 'person_id');
+    const shaped = parse(sourceSettingsBody, body);
+    if (!shaped.ok) return c.html(calendarsPage({}, { message: shaped.message }), 400);
 
-    if (name === '') return c.html(calendarsPage({}, { message: 'Give the calendar a name.' }), 400);
-    if (!isColor(color)) return c.html(calendarsPage({}, { message: 'Pick a colour.' }), 400);
-
-    const people = readPeopleAdmin(deps.db);
-    if (personId !== '' && !people.some((person) => person.id === personId)) {
+    // Membership, and it cannot live in the schema: who exists is a question
+    // for the database rather than for the shape of the request.
+    const personId = shaped.value.person_id;
+    if (personId !== undefined && !readPeopleAdmin(deps.db).some((p) => p.id === personId)) {
       return c.html(calendarsPage({}, { message: 'That person is no longer there.' }), 400);
     }
 
     updateSource(deps.db, c.req.param('id') ?? '', {
-      name,
-      color,
-      personId: personId === '' ? null : personId,
-      enabled: checked(body, 'enabled'),
-      allowPrivateNetwork: checked(body, 'allow_lan'),
+      name: shaped.value.name,
+      color: shaped.value.color,
+      personId: personId ?? null,
+      enabled: shaped.value.enabled,
+      allowPrivateNetwork: shaped.value.allow_lan,
     });
     return c.redirect('/admin/calendars', 302);
   });
@@ -510,7 +566,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/system/updates', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    setUpdateCheckEnabled(deps.db, checked(body, 'update_check_enabled'));
+    const shaped = parse(z.object({ update_check_enabled: checkbox() }), body);
+    setUpdateCheckEnabled(deps.db, shaped.ok && shaped.value.update_check_enabled);
     return c.redirect('/admin/system', 302);
   });
 
@@ -531,13 +588,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/system/timezone', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const timezone = field(body, 'timezone');
-    if (!supportedTimezones().includes(timezone)) {
-      return c.html(systemPage('Choose a timezone from the list.'), 400);
-    }
+    const shaped = parse(
+      z.string().refine((value) => supportedTimezones().includes(value), {
+        error: () => 'Choose a timezone from the list.',
+      }),
+      body['timezone'],
+    );
+    if (!shaped.ok) return c.html(systemPage(shaped.message), 400);
     deps.db
       .prepare(`UPDATE household_settings SET timezone = ?, updated_at = ? WHERE id = 'singleton'`)
-      .run(timezone, now());
+      .run(shaped.value, now());
     return c.redirect('/admin/system', 302);
   });
 
@@ -654,13 +714,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/people', (c: Context) => c.html(peoplePage()));
 
   app.post('/admin/people', async (c: Context) => {
-    const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const name = field(body, 'name');
-    const color = field(body, 'color');
-    if (name === '') return c.html(peoplePage('Give them a name.'), 400);
-    if (!isColor(color)) return c.html(peoplePage('Pick a colour.'), 400);
+    const shaped = parse(personBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(peoplePage(shaped.message), 400);
 
-    createPerson(deps.db, randomBytes(8).toString('hex'), name, color);
+    createPerson(deps.db, randomBytes(8).toString('hex'), shaped.value.name, shaped.value.color);
     return c.redirect('/admin/people', 302);
   });
 
@@ -706,13 +763,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   app.post('/admin/people/:id', async (c: Context) => {
-    const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const name = field(body, 'name');
-    const color = field(body, 'color');
-    if (name === '') return c.html(peoplePage('Give them a name.'), 400);
-    if (!isColor(color)) return c.html(peoplePage('Pick a colour.'), 400);
+    const shaped = parse(personBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(peoplePage(shaped.message), 400);
 
-    updatePerson(deps.db, c.req.param('id') ?? '', name, color);
+    updatePerson(deps.db, c.req.param('id') ?? '', shaped.value.name, shaped.value.color);
     return c.redirect('/admin/people', 302);
   });
 
@@ -751,21 +805,30 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   /** Read a draft back out of the form that rendered it. */
   const draftFrom = (body: Record<string, unknown>): Draft => {
+    const shaped = parse(draftBody, body);
+    const named = shaped.ok ? shaped.value : {};
+
+    /** One positional field, read by index and never rejected. */
+    const at = (prefix: string, index: number): string => {
+      const value = (body as Record<string, unknown>)[`${prefix}_${index}`];
+      return typeof value === 'string' ? value.trim() : '';
+    };
+
     const slots: string[] = [];
-    for (let index = 0; index < MAX_CYCLE; index++) slots.push(field(body, `slot_${index}`));
+    for (let index = 0; index < MAX_CYCLE; index++) slots.push(at('slot', index));
 
     const titleMap: { title: string; key: string }[] = [];
     for (let index = 0; index < 40; index++) {
-      const title = field(body, `title_${index}`);
+      const title = at('title', index);
       if (title === '') continue;
-      titleMap.push({ title, key: field(body, `map_${index}`) });
+      titleMap.push({ title, key: at('map', index) });
     }
 
     return {
-      personId: field(body, 'person_id'),
-      kind: field(body, 'kind') === 'pattern' ? 'pattern' : 'calendar',
-      sourceId: field(body, 'source_id'),
-      anchorDate: field(body, 'anchor_date'),
+      personId: named.person_id ?? '',
+      kind: named.kind === 'pattern' ? 'pattern' : 'calendar',
+      sourceId: named.source_id ?? '',
+      anchorDate: named.anchor_date ?? '',
       slots,
       titleMap,
     };
@@ -776,9 +839,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   /** Step one: who, and where the answer comes from. */
   app.post('/admin/shifts/new', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const personId = field(body, 'person_id');
-    const kind: PlanKind = field(body, 'kind') === 'pattern' ? 'pattern' : 'calendar';
-    const sourceId = field(body, 'source_id');
+    const shaped = parse(draftBody, body);
+    if (!shaped.ok) return c.html(shiftsPage({ message: shaped.message }), 400);
+
+    const personId = shaped.value.person_id ?? '';
+    const kind: PlanKind = shaped.value.kind === 'pattern' ? 'pattern' : 'calendar';
+    const sourceId = shaped.value.source_id ?? '';
 
     if (!readPeopleAdmin(deps.db).some((person) => person.id === personId)) {
       return c.html(shiftsPage({ message: 'Choose who the rotation is for.' }), 400);
@@ -847,43 +913,38 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const id = c.req.param('id') ?? '';
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
-    const name = field(body, 'name');
-    if (name === '') return c.html(screensPage('Give the screen a name.'), 400);
+    const shaped = parse(screenBody, body);
+    if (!shaped.ok) return c.html(screensPage(shaped.message), 400);
 
-    const orientation = field(body, 'orientation');
-    if (!['auto', 'portrait', 'landscape'].includes(orientation)) {
-      return c.html(screensPage('Choose an orientation from the list.'), 400);
-    }
+    /*
+     * Empty means "follow the household" on every one of these.
+     *
+     * That is a real answer rather than a missing one, so the schema leaves
+     * them optional and the membership checks live here — a theme this build
+     * cannot draw and a zone `Intl` does not know are both facts about this
+     * process rather than about the shape of the request.
+     */
+    const { name, orientation, rotation, allow_dismiss: allowDismiss } = shaped.value;
+    const theme = shaped.value.theme ?? '';
+    const daytimeTheme = shaped.value.daytime_theme ?? '';
+    const startsAt = shaped.value.daytime_starts_at ?? '';
+    const endsAt = shaped.value.daytime_ends_at ?? '';
+    const timezone = shaped.value.timezone ?? '';
 
-    const rotation = Number(field(body, 'rotation'));
-    if (![0, 90, 180, 270].includes(rotation)) {
-      return c.html(screensPage('Rotation has to be a quarter turn.'), 400);
-    }
-
-    const allowDismiss = checked(body, 'allow_dismiss');
-
-    // Empty means "follow the household", which is a real answer rather than
-    // a missing one, so it is stored as null instead of rejected.
-    const theme = field(body, 'theme');
     if (theme !== '' && !THEMES.some((candidate) => candidate.key === theme)) {
       return c.html(screensPage('Choose a theme from the list.'), 400);
     }
-    const daytimeTheme = field(body, 'daytime_theme');
     if (daytimeTheme !== '' && !THEMES.some((candidate) => candidate.key === daytimeTheme)) {
       return c.html(screensPage('Choose a daylight theme from the list.'), 400);
     }
 
-    const startsAt = field(body, 'daytime_starts_at');
-    const endsAt = field(body, 'daytime_ends_at');
     const scheduled = daytimeTheme !== '';
-    if (scheduled && (!isHhmm(startsAt) || !isHhmm(endsAt))) {
+    if (scheduled && (!HHMM_SHAPE.test(startsAt) || !HHMM_SHAPE.test(endsAt))) {
       return c.html(screensPage('Enter this screen’s daylight hours as HH:MM.'), 400);
     }
     if (scheduled && startsAt === endsAt) {
       return c.html(screensPage('A daylight window of no length would never switch.'), 400);
     }
-
-    const timezone = field(body, 'timezone');
     if (timezone !== '' && !supportedTimezones().includes(timezone)) {
       return c.html(screensPage('Choose a timezone from the list.'), 400);
     }
@@ -944,11 +1005,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/display/weather', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const enabled = checked(body, 'weather_enabled');
+    const shaped = parse(weatherBody, body);
+    if (!shaped.ok) return c.html(displayPage({ message: shaped.message }), 400);
 
-    const latitude = coordinate(field(body, 'latitude'), 90);
-    const longitude = coordinate(field(body, 'longitude'), 180);
-    if (enabled && (latitude === undefined || longitude === undefined)) {
+    /*
+     * A location is only required when the panel is on.
+     *
+     * Turning weather *off* must not demand two numbers first, which is why
+     * the coordinates are optional in the schema and checked here against the
+     * switch rather than on their own.
+     */
+    const lat = parse(coordinate('Latitude', 90), shaped.value.latitude);
+    const lon = parse(coordinate('Longitude', 180), shaped.value.longitude);
+    if (shaped.value.weather_enabled && (!lat.ok || !lon.ok)) {
       return c.html(
         displayPage({
           message: 'Weather needs a location.',
@@ -961,9 +1030,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     writeWeatherSettings(deps.db, {
-      enabled,
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
+      enabled: shaped.value.weather_enabled,
+      latitude: lat.ok ? lat.value : null,
+      longitude: lon.ok ? lon.value : null,
     });
     return c.redirect('/admin/display', 302);
   });
