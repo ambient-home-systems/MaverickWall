@@ -254,7 +254,19 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 export function render(root: HTMLElement, model: DisplayModel): void {
   const screen = el('div', 'screen');
   const banners = renderBanners(model);
-  if (banners !== undefined) screen.appendChild(banners);
+  if (banners !== undefined) {
+    /*
+     * Stated as a class rather than left for CSS to infer.
+     *
+     * The landscape layout pins the month to the full height of the second
+     * column, so an auto-placed banner has nowhere to go but underneath it —
+     * the wall came out with the month above the notice and today's list
+     * squeezed to nothing. Which row things start on depends on whether a
+     * banner exists, and only the renderer knows that.
+     */
+    screen.classList.add('has-banners');
+    screen.appendChild(banners);
+  }
   /*
    * Drawn in the order the household asked for, and only the blocks they asked
    * for. DOM order is visual order in both layouts — portrait stacks these

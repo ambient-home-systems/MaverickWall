@@ -207,10 +207,12 @@ that existed. The advice stands for what is left.
 
 **Next on the display**, in this order:
 
-1. **The offline store.** IndexedDB for the last good manifest, a service
-   worker for the shell, and a watchdog that reloads a wedged renderer. A
-   reload with the server down currently shows the waiting screen, which is the
-   one gap in rule nine that is still open.
+1. ~~**The offline store.**~~ Done. IndexedDB holds the last good manifest and
+   it is drawn before the first request is sent; a service worker caches the
+   shell so the reload itself works; a watchdog reloads a renderer that has
+   stopped drawing. Note the platform limit: **a service worker will not
+   register over plain http**, so on a LAN address the shell is not cached and
+   only the stored-manifest half applies.
 2. **Density, with a person looking at it.** The household now sets the counts
    on `/admin/display`, but the *defaults* in `viewmodel.ts` are still opinions
    written at a desk, and `NEXT_EVENT_LIMIT` is still a constant nobody can

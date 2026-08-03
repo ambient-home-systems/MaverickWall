@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    /*
+     * A worker has no DOM and the page has no `ServiceWorkerGlobalScope`, and
+     * the two lib sets contradict each other on `self`. One extra compile is
+     * cheaper than the casts the alternative needs.
+     */
+    "lib": ["ES2019", "WebWorker"],
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/sw.ts"],
+  /* The base config excludes this file; that exclusion is inherited. */
+  "exclude": []
+}

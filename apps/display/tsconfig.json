@@ -31,5 +31,7 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "include": ["src/**/*.ts"]
+  /* `sw.ts` compiles separately: a worker needs the WebWorker lib. */
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/sw.ts"]
 }

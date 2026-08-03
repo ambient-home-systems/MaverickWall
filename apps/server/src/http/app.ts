@@ -496,6 +496,23 @@ export function createApp(deps: AppDeps): Hono {
     return c.body(bytesOf(file.body));
   });
 
+  /**
+   * The service worker, at the root and only at the root.
+   *
+   * A worker's scope is the path it is served from, so one delivered from
+   * `/assets/` could only ever control `/assets/` — which is not where the
+   * page is. Same-origin, no cache: an old worker that outlives its bundle is
+   * a wall serving a shell nobody can update.
+   */
+  app.get('/sw.js', (c: Context) => {
+    const worker = staticFiles.read('sw.js');
+    if (worker === undefined) return c.json({ error: 'not-found' }, 404);
+    c.header('content-type', 'text/javascript; charset=utf-8');
+    c.header('cache-control', 'no-cache');
+    c.header('service-worker-allowed', '/');
+    return c.body(bytesOf(worker.body));
+  });
+
   app.get('/', (c: Context) => {
     const shell = staticFiles.read('index.html');
     if (shell !== undefined) {

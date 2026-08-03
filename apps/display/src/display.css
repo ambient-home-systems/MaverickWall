@@ -380,14 +380,39 @@ body {
 :root[data-layout="landscape"] .screen {
   display: grid;
   grid-template-columns: 1.1fr 1fr;
-  grid-auto-rows: minmax(0, auto);
+  /*
+   * Explicit rows, because `-1` means the end of the *explicit* grid.
+   *
+   * With only `grid-auto-rows` there are no explicit row lines, so the month's
+   * `grid-row: 1 / -1` quietly resolved to a single row and a banner landed on
+   * top of it. Naming the rows is what makes "span the whole column" mean what
+   * it reads as.
+   */
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
   align-content: start;
   padding: 2.6rem 2.8rem 2.2rem;
   gap: 1.8rem 2.8rem;
 }
+/* A banner adds a row above the pair. */
+:root[data-layout="landscape"] .screen.has-banners {
+  grid-template-rows: auto minmax(0, auto) minmax(0, 1fr);
+}
 /* Everything that is not the month stacks down the left. */
 :root[data-layout="landscape"] .screen > * { grid-column: 1; }
+
+/*
+ * A banner takes the first row across both columns, and the month starts
+ * below it.
+ *
+ * Without the explicit rows the month keeps `grid-row: 1 / -1` and the banner
+ * is auto-placed beneath it — which put a notice under the calendar it was
+ * about and crushed today's list to a couple of clipped lines. Only shows up
+ * when there is something to say, which is exactly when nobody is looking for
+ * a layout bug.
+ */
 :root[data-layout="landscape"] .banners { grid-column: 1 / -1; }
+:root[data-layout="landscape"] .screen.has-banners .banners { grid-row: 1; }
+:root[data-layout="landscape"] .screen.has-banners .horizon { grid-row: 2 / -1; }
 :root[data-layout="landscape"] .next { align-content: start; min-height: 0; overflow: hidden; }
 :root[data-layout="landscape"] .horizon {
   grid-column: 2;

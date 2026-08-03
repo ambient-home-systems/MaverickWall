@@ -55,7 +55,7 @@ The admin UI is also **no framework** — vanilla TS plus a small hash router.
 packages/calendar/   Pure ICS parsing + recurrence expansion. MIT, own repo later.
 packages/core/       Pure domain: SSRF guards, civil dates, shift, scheduler, ports.
 apps/server/         Hono + SQLite + scheduler + jobs. The single process.
-apps/display/        Vanilla TS wall renderer. Drawing real data; no offline store yet.
+apps/display/        Vanilla TS wall renderer. Draws offline from a stored manifest.
 apps/admin/          Does not exist. The admin screens are server-rendered — see below.
 ```
 
@@ -70,7 +70,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **twenty-three real bugs**, and the pattern in how is the most
+This project has found **twenty-four real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -98,6 +98,7 @@ useful thing in this document:
 | The landscape two-column rule had been dead CSS | Measuring `gridTemplateColumns` and getting `none` |
 | **A QR that passed every structural test and scanned as nothing** | Decoding one with a real detector |
 | A required dep missing from four test harnesses | **Finally typechecking the test files** |
+| **A banner in landscape drew the month on top of itself** | Killing the server, which is the only way to get a banner |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -185,7 +186,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**787 tests passing.** calendar 153 · core 238 · server 332 · display 64.
+**797 tests passing.** calendar 153 · core 238 · server 332 · display 74.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -199,8 +200,8 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Not started:** display offline store (IndexedDB, service worker, watchdog) ·
-weather (NWS) · interrupts and alerts · ws push · Docker image · HA add-on.
+**Not started:** weather (NWS) · interrupts and alerts · ws push · Docker
+image · HA add-on.
 
 **Every module has now been executed.** `better-auth.ts` was the last one
 written against a shim; it has been run against the real package (1.6.25), and
@@ -289,6 +290,19 @@ but `none`, so the display can colour it (`--s-break`) and still leave a day
 the rota says nothing about plain. Before this the two were identical in the
 manifest, and a test named "treats an explicit rest day as not working, not as
 unknown" asserted the empty list that proved they were not.
+
+**The wall remembers.** The last good manifest is kept in IndexedDB and drawn
+*before* the first request is sent, so a wall coming back from a power cut
+paints a calendar in milliseconds and says how old it is. A service worker
+caches the shell so the reload itself works — but **it will not register over
+plain http**, because a service worker needs a secure context and a LAN address
+is not one. On http the stored manifest still covers the commoner case: a wall
+that stays loaded for months while the server comes and goes underneath it.
+
+**`grid-row: 1 / -1` means the end of the *explicit* grid.** With only
+`grid-auto-rows` there are no explicit row lines, so the landscape month's
+"span the whole column" silently resolved to a single row — and a banner landed
+on top of it. Naming the rows is what makes the rule mean what it reads as.
 
 **Layout is verified by measuring the DOM, not by looking.** The wall must
 never exceed the viewport: `overflow: hidden` means anything that does is
