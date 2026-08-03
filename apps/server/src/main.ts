@@ -8,6 +8,8 @@ import { createJobStore, ensureJob, removeJobsNotIn } from './jobs/store.js';
 import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
+import { createAlertJobHandler } from './modules/weather/alert-job.js';
+import { seedDefaultRules } from './api/rules.js';
 import { createApp, MODULES } from './http/app.js';
 import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
@@ -101,6 +103,14 @@ async function main(): Promise<void> {
   const keyring = createKeyring(master.key);
 
   seedDefaults(db);
+  /*
+   * The shipped weather rules, inserted once and never overwritten.
+   *
+   * A household who turned the Extreme rule off keeps that decision across
+   * every future restart — a seed that overwrote would quietly undo somebody's
+   * settings on upgrade and they would have no way to know why.
+   */
+  seedDefaultRules(db);
 
   const fetcher = createFetcher();
   const household = readHousehold(db);
@@ -128,6 +138,15 @@ async function main(): Promise<void> {
         keyring,
         timezone: () => readHousehold(db).timezone,
       }),
+      /*
+       * Every sixty seconds, conditionally.
+       *
+       * Its own job rather than part of the weather module's, because the
+       * forecast is hourly and this is not — and because during the weather
+       * that makes it matter, a failing forecast must not carry the alerts
+       * into backoff with it.
+       */
+      'alerts-sync': createAlertJobHandler({ db, fetcher }),
       optimize: async () => {
         optimize(db);
         return { status: 'ok' };
@@ -327,6 +346,9 @@ function registerJobs(db: SqliteDatabase): void {
   removeJobsNotIn(db, 'ha-calendar-sync', haKeys);
 
   ensureJob(db, 'optimize', 'optimize', Date.now() + 60_000);
+  // Soon, but not instantly: a restart during a storm should get back into
+  // rhythm rather than stampede.
+  ensureJob(db, 'alerts-sync', 'alerts-sync', Date.now() + 15_000);
   // Registered always, gated by the setting when it fires. Ten minutes out so
   // a restart is never the thing that makes an outbound request.
   ensureJob(db, 'update-check', 'update-check', Date.now() + 10 * 60_000);

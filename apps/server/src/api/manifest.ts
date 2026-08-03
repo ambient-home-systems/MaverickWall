@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ManifestInterrupt } from './interrupts.js';
+
 import {
   addDays,
   eachDate,
@@ -10,6 +10,7 @@ import {
   type ShiftOverride,
   type ShiftPlan,
   type ShiftType,
+  type Interrupt,
 } from '@maverick-wall/core';
 
 /**
@@ -200,7 +201,7 @@ export interface Manifest {
    * to draw one and nothing else. Empty in the healthy case, which is almost
    * always.
    */
-  readonly interrupts: readonly ManifestInterrupt[];
+  readonly interrupts: readonly Interrupt[];
 }
 
 /** Row shapes as they come out of the database, before assembly. */
@@ -275,7 +276,7 @@ export interface BuildManifestInput {
    * Interrupts already evaluated, for the same reason panels are already
    * collected: assembly is pure and reads no cache of its own.
    */
-  readonly interrupts?: readonly ManifestInterrupt[];
+  readonly interrupts?: readonly Interrupt[];
   /**
    * The screen this document is for, when it is being served to one.
    *

@@ -53,7 +53,8 @@ The admin UI is also **no framework** — vanilla TS plus a small hash router.
 
 ```
 packages/calendar/   Pure ICS parsing + recurrence expansion. MIT, own repo later.
-packages/core/       Pure domain: SSRF guards, civil dates, shift, scheduler, ports.
+packages/core/       Pure domain: SSRF guards, civil dates, shift, scheduler,
+                     interrupts, ports.
 apps/server/         Hono + SQLite + scheduler + jobs. The single process.
 apps/server/src/modules/   Panel modules: weather, homeassistant. One block, one
                            manifest slice, one job, one corner of the settings.
@@ -72,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **thirty-two real bugs**, and the pattern in how is the most
+This project has found **thirty-five real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -109,6 +110,9 @@ useful thing in this document:
 | A person's presence read `home`, not `Home` | Looking at the strip after measuring it |
 | The takeover drew in the left half of a television | Measuring, after the layout looked merely left-aligned |
 | **Today's date sliced in half by a fourth block** | Measuring `scrollHeight` against `clientHeight` |
+| **Every NWS instruction came out with words glued together** | A fixture copied from a real CAP message |
+| One tornado warning drew a takeover *and* a banner repeating it | Reading the manifest after seeding a real alert |
+| Disconnecting HA stopped deleting its own rules | A test asserting a count, after the source name moved |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -196,7 +200,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**869 tests passing.** calendar 153 · core 238 · server 404 · display 74.
+**907 tests passing.** calendar 153 · core 264 · server 416 · display 74.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -346,14 +350,68 @@ through the supervisor proxy, and a subscription that cannot authenticate must
 not be why a wall stops knowing anything. Thirty-second REST is the baseline; a
 subscription would be an optimisation on top and is not built.
 
-**Interrupts match a *signal*, not an entity.** `api/interrupts.ts` knows
-nothing about Home Assistant: a signal is a key, a state, a number and when it
-last changed, and a module offers them through `signals()` on the same registry
-that offers panels. Weather alerts are the obvious second source and are a
-function that emits signals, not a second evaluator. `changed_to` is read as
-"is X, and became X within five minutes", because there is no store of previous
-states and a timestamp already answers it — the cost, stated rather than
-hidden, is that a wall unreachable for the whole window misses the edge.
+**Interrupts match a *signal*, not an entity**, and the model lives in
+`packages/core/domain/interrupts` — pure, with no `Intl`, so even the wall-clock
+reading a night-hours rule needs is passed in the way `now` is. A signal is a
+key, a title, and whichever of severity / state / start time its source
+happens to have; a module offers them through `signals()` on the same registry
+that offers panels. `changed_to` is read as "is X, and became X within five
+minutes", because there is no store of previous states and a timestamp already
+answers it — the cost, stated rather than hidden, is that a wall unreachable for
+the whole window misses the edge.
+
+**Three sources is the proof, and the calendar one is the proof that counts.**
+NWS alerts have severity and no state; Home Assistant entities have state and no
+severity; a calendar event has neither and matches on a time that has not
+happened yet. `startsWithinSec` is one clause in `RuleMatch` and one branch in
+`matches`, and everything after — ordering, dwell, dismissal, re-assertion,
+night mode, the renderer — is shared. If the model had been quietly shaped
+around weather alerts, the third source would have needed a third code path.
+
+**`resolveConflicts` collapses to one interrupt per signal**, and that is not
+tidiness. The shipped rules are a ladder of `minSeverity` bars, so an Extreme
+warning clears every one of them — without the collapse, one tornado warning
+came out as a takeover with a banner underneath repeating the same sentence,
+which is how a wall teaches a household that its banners are noise. Severity
+also outranks priority, permanently: a Moderate banner with a high priority must
+never beat an Extreme takeover.
+
+**Dismissal is household-wide**, which settles the question left open when
+interrupts were sketched. One row keyed `ruleId:signalKey`, so a kitchen tablet
+and a hall television never disagree, and `reassertAfterSec` is what stops "yes,
+I know" meaning "never mention it again" while the storm is still overhead. An
+Extreme warning ships non-dismissible: somebody woken at three in the morning
+reaches for the nearest button.
+
+**CAP is a message stream, not a state document.** `reconcile` is where it
+becomes state: `Cancel` withdraws what it references, `Update` supersedes, later
+`sent` wins for the same id so an out-of-order poll cannot resurrect a stale
+copy, and anything the zone stops listing is over — which is the only signal for
+an alert cancelled while the wall was offline. Both zones are watched, forecast
+*and* county, because flood warnings are issued by county and watching one
+silently misses a category.
+
+**Collapse whitespace before stripping control characters.** A newline *is* a
+control character, so stripping first deleted it and CAP's teletype-width
+wrapping came out as "on the lowestfloor of a sturdy building" — every
+instruction NWS issues, joined at every line break, on the highest-prominence
+text in the product. Found by a fixture copied from a real message; invented
+text has no hard wrapping in it.
+
+**The push contract exists before the socket does.** There is no WebSocket
+server yet, but `api/push.ts` fixes the message shape now, because adding
+`wakeScreen` after an Android app has shipped means a tablet in somebody's
+hallway that never wakes for a tornado warning until they update it. Web clients
+ignore it — a browser cannot turn a screen on, and a tab pretending otherwise is
+a wall that looks like it woke and did not.
+
+**The disclaimer is one constant in three places.** `api/disclaimer.ts`, shown
+in the alerts screen, the wizard and the README, because a copy per screen is
+how three of them end up saying different things — and this is the one piece of
+text in the product where that matters. It is in the *wizard* because weather
+alerts are on by default in the United States, so a household who never opens
+the alerts screen would otherwise have a wall that shows tornado warnings and
+never be told what it does not promise.
 
 **An interrupt can be limited to an hour of the day, and the garage rule is why.**
 A duration alone cannot express "open after 23:00" — it fires just as readily
@@ -512,11 +570,13 @@ distinct address.
 - **A second weather provider.** NWS is the United States only, and the module
   seam is where one would go. Not built speculatively — that would be a second
   implementation to keep correct before anybody had asked for it.
-- **Whether an interrupt should be dismissable from the wall.** Auto-dismiss is
-  measured from when the state was entered, so there is no per-screen record of
-  what has already been shown — which is what keeps a kitchen tablet and a hall
-  television saying the same thing. A dismiss button would break that, or need
-  to be household-wide.
+- **The WebSocket.** The contract is fixed (`api/push.ts`) and tested; nothing
+  sends one. Polling carries interrupts in the manifest today, which is why a
+  reconnecting display gets them at all.
+- **Whether the wall should draw a dismiss control.** The endpoint exists and
+  refuses a rule that said it may not be cleared; the renderer draws no button,
+  because a wall has no pointer (`cursor: none`) and the touch target has not
+  been designed. That is a design question, not a plumbing one.
 - **Display density.** A work feed marks *every* day. Matched shift events are
   consumed out of the agenda, but a NEXT row still needs an opinion about how
   many events per day it can show before it stops being readable.

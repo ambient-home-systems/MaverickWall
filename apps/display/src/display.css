@@ -193,22 +193,49 @@ body {
   justify-content: center;
   border: 0.5rem solid var(--accent);
 }
-.alert { text-align: center; max-width: 88%; }
+.alert { text-align: center; max-width: 90%; }
+/* "EXTREME". Small, above the event, because it is a category not a sentence. */
+.alert-kind {
+  font-size: 1.6rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1.2rem;
+}
 .alert-line {
   font-family: var(--disp);
-  font-size: 4.6rem;
+  font-size: 5rem;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.1;
   color: var(--ink);
 }
-.alert-line + .alert-line { margin-top: 2.4rem; }
-/* Kept because somebody reading this needs to know whether it is now or 4am. */
-.alert-clock {
-  margin-top: 3.2rem;
-  font-size: 2.2rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+/*
+ * The instruction, and the reason this layer exists.
+ *
+ * "Move to an interior room on the lowest floor" is the only line that tells
+ * anybody what to do, so it is second-largest rather than a footnote — legible
+ * from across a dark room is the requirement, and a 2.6rem line at the design's
+ * scale is about 50px on a 1080-tall panel.
+ */
+.alert-what {
+  font-size: 2.6rem;
+  line-height: 1.3;
+  color: var(--ink);
+  margin-top: 2rem;
 }
+.alert-area { font-size: 1.9rem; color: var(--muted); margin-top: 1.4rem; }
+.alert-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 2rem;
+  margin-top: 2.8rem;
+  font-size: 1.7rem;
+  color: var(--muted);
+}
+.alert-clock { font-variant-numeric: tabular-nums; }
+.alert-until { font-variant-numeric: tabular-nums; }
+.alert-office { color: var(--faint); }
 
 /* --- BLOCK 1 — NOW ---------------------------------------------------- */
 

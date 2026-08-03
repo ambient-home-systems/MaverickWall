@@ -16,6 +16,7 @@ import { haModule } from '../src/modules/homeassistant/index.js';
 import { createHaCalendarSyncHandler } from '../src/jobs/ha-calendar-sync.js';
 import { resolveConnection, SUPERVISOR_BASE } from '../src/modules/homeassistant/client.js';
 import { buildDiagnostics } from '../src/api/diagnostics.js';
+import { seedDefaultRules } from '../src/api/rules.js';
 import type { SqliteDatabase } from '../src/db/open.js';
 import type { JobRecord } from '@maverick-wall/core';
 
@@ -197,7 +198,13 @@ interface Harness {
 interface ManifestShape {
   readonly display: { readonly blocks: string[] };
   readonly panels: Record<string, unknown>;
-  readonly interrupts: { message: string; action: string; name: string }[];
+  readonly interrupts: {
+    title: string;
+    headline?: string;
+    action: string;
+    source: string;
+    dismissible: boolean;
+  }[];
   readonly days: { date: string; events: { title: string }[] }[];
   readonly sources: { name: string; eventCount: number; lastError: string | null }[];
 }
@@ -213,6 +220,9 @@ async function harness(): Promise<Harness> {
   db.prepare(
     `INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`,
   ).run(stamp, stamp);
+  // The same seed boot runs, so the harness has the rules a real installation
+  // has rather than an emptier world than any household ever sees.
+  seedDefaultRules(db);
 
   const keyring = createKeyring(randomBytes(32));
   const fetcher = createFetcher();
@@ -660,14 +670,11 @@ describe('interrupts', () => {
 
     expect(manifest.interrupts).toHaveLength(1);
     expect(manifest.interrupts[0]?.action).toBe('banner');
-    // The household's own sentence leads, and the reading is the evidence.
-    expect(manifest.interrupts[0]?.message).toContain('Freezer door open');
-    expect(manifest.interrupts[0]?.message).toContain('9 minutes');
-    // Says what the state means, not what Home Assistant calls it.
-    expect(manifest.interrupts[0]?.message).toContain('Open');
-    expect(manifest.interrupts[0]?.message).not.toContain('· on ');
-    // Never an entity id, even here.
-    expect(JSON.stringify(manifest.interrupts)).not.toContain('binary_sensor');
+    expect(manifest.interrupts[0]?.source).toBe('homeassistant');
+    // The entity's own name, and the state said the way a person would say it
+    // rather than the way Home Assistant reports it.
+    expect(manifest.interrupts[0]?.title).toBe('Freezer door');
+    expect(manifest.interrupts[0]?.headline).toBe('Open');
   });
 
   it('does not fire before the wait is up', async () => {
@@ -766,10 +773,11 @@ describe('the shipped templates, through the form', () => {
     await h.pollHa();
 
     const stored = h.db
-      .prepare(`SELECT conditions FROM interrupt_rules`)
+      .prepare(`SELECT conditions FROM interrupt_rules WHERE trigger = 'homeassistant'`)
       .get() as { conditions: string };
     expect(JSON.parse(stored.conditions)).toMatchObject({
-      between: { from: '23:00', to: '06:00' },
+      entityId: 'binary_sensor.freezer_door',
+      condition: { kind: 'equals', value: 'on', between: { from: '23:00', to: '06:00' } },
     });
 
     /*
@@ -837,9 +845,15 @@ describe('disconnecting', () => {
     const counts = h.db
       .prepare(
         `SELECT (SELECT count(*) FROM ha_entity_cache) AS entities,
-                (SELECT count(*) FROM interrupt_rules) AS rules`,
+                (SELECT count(*) FROM interrupt_rules
+                  WHERE trigger IN ('homeassistant', 'ha_entity')) AS rules,
+                (SELECT count(*) FROM interrupt_rules WHERE trigger = 'nws') AS weather`,
       )
-      .get() as { entities: number; rules: number };
-    expect(counts).toEqual({ entities: 0, rules: 0 });
+      .get() as { entities: number; rules: number; weather: number };
+    expect(counts.entities).toBe(0);
+    expect(counts.rules).toBe(0);
+    // The shipped weather rules have nothing to do with Home Assistant and
+    // must survive disconnecting it.
+    expect(counts.weather).toBeGreaterThan(0);
   });
 });

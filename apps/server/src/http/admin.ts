@@ -63,6 +63,7 @@ import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
 import { registerHaRoutes } from './admin-ha.js';
+import { registerAlertRoutes } from './admin-alerts.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
 
@@ -242,6 +243,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
   registerHaRoutes(app, deps);
+  registerAlertRoutes(app, deps);
 
   /**
    * What the index says about Home Assistant.
@@ -255,6 +257,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Resolved rather than read from the settings row, so an add-on installation
    * says "connected" on the index without anybody having configured anything.
    */
+  const alertSummary = (): string => {
+    const row = deps.db
+      .prepare(`SELECT alerts_enabled AS enabled FROM household_settings WHERE id = 'singleton'`)
+      .get() as { enabled: number } | undefined;
+    if (row?.enabled !== 1) return 'off';
+    const zones = deps.db
+      .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
+      .get() as { n: number } | undefined;
+    return (zones?.n ?? 0) === 0 ? 'on, working out your zones' : `watching ${zones?.n} zones`;
+  };
+
   const haSummary = (): string => {
     const resolved = resolveConnection(deps.db, deps.keyring);
     if (!resolved.ok) return 'not connected';
@@ -294,6 +307,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `version, backup, diagnostics</p>` +
           `<p><a class="link" href="/admin/home-assistant">Home Assistant</a> — ` +
           `${haSummary()}</p>` +
+          `<p><a class="link" href="/admin/alerts">Weather alerts</a> — ` +
+          `${alertSummary()}</p>` +
 
           `<form method="post" action="/admin/sign-out">` +
           `<button class="secondary" type="submit">Sign out</button></form>`,

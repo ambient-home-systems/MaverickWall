@@ -1,7 +1,7 @@
 import type { Fetcher } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import type { Keyring } from '../secrets/keyring.js';
-import type { Signal } from '../api/interrupts.js';
+import type { Signal } from '@maverick-wall/core';
 
 /**
  * Panel modules.

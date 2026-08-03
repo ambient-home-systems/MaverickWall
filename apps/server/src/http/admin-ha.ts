@@ -12,24 +12,32 @@ import {
 import { parseCalendarList } from '../modules/homeassistant/calendars.js';
 import {
   addHaCalendarSource,
-  deleteRule,
   disconnectHa,
   haCalendarEntityIds,
   readHaSettings,
-  readRuleRows,
   readWatched,
-  saveRule,
-  setRuleEnabled,
   unwatchEntity,
   watchEntity,
   writeHaSettings,
 } from '../modules/homeassistant/store.js';
+import { deleteRule, readMatch, readRuleRows, setRuleEnabled, writeRule } from '../api/rules.js';
+
+/** JSON that may not be JSON. A rule nobody can read is a rule nobody can delete. */
+function safeJson(value: string | null): unknown {
+  if (value === null) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
 import {
   parseWindow,
   RULE_TEMPLATES,
   type InterruptAction,
   type RuleTemplate,
-} from '../api/interrupts.js';
+} from './rule-templates.js';
+import { randomBytes } from 'node:crypto';
 import type { AdminDeps } from './admin.js';
 
 /**
@@ -406,19 +414,41 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       return render({ message: 'Choose how loudly this should be shown.' }, 400);
     }
 
-    saveRule(deps.db, {
+    /*
+     * Stored through the shared writer, in the shared model.
+     *
+     * A Home Assistant rule and a weather rule are the same row in the same
+     * table read by the same evaluator — the only difference is which clause of
+     * `match` is filled in. That is the abstraction being claimed, and writing
+     * it through a Home-Assistant-specific path here would quietly have made it
+     * untrue.
+     */
+    writeRule(deps.db, {
+      id: randomBytes(8).toString('hex'),
+      source: 'homeassistant',
       name,
-      entityId,
-      condition,
-      value,
-      forSeconds: minutes === '' || minutes === '0' ? null : Number(minutes) * 60,
-      between,
+      enabled: true,
+      match: { entityId, condition: { kind: condition, value, between } },
       action: action as InterruptAction,
+      piercesNightMode: action === 'takeover_and_wake',
+      minDwellSec: minutes === '' || minutes === '0' ? 0 : Number(minutes) * 60,
+      dismissible: true,
       // Ordering matters only when two fire at once, which is rare enough that
       // asking about it would be a field nobody could answer. A takeover
       // outranks a banner, which is the only ordering anybody means.
-      priority: action === 'banner' ? 40 : action === 'takeover' ? 60 : 100,
+      priority: action === 'banner' ? 40 : action === 'takeover' ? 60 : 90,
     });
+
+    // The entity has to be polled or the rule can never fire, and it would look
+    // exactly like an entity that is simply fine.
+    deps.db
+      .prepare(
+        `INSERT INTO ha_entity_cache (entity_id, friendly_name, watched, fetched_at)
+         VALUES (?, ?, 0, 0) ON CONFLICT(entity_id) DO NOTHING`,
+      )
+      .run(entityId, entityId);
+    deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'ha-sync'`).run();
+
     return c.redirect('/admin/home-assistant', 302);
   });
 
@@ -637,28 +667,26 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   function rules(live: LiveState, template?: RuleTemplate): string {
-    const stored = readRuleRows(deps.db).filter((row) => row.trigger === 'ha_entity');
+    const stored = readRuleRows(deps.db).filter(
+      (row) => row.trigger === 'homeassistant' || row.trigger === 'ha_entity',
+    );
 
     const existing = stored
       .map((row) => {
-        let condition: { entityId?: unknown; condition?: unknown; value?: unknown; forSeconds?: unknown } = {};
-        try {
-          const parsed: unknown = row.conditions === null ? {} : JSON.parse(row.conditions);
-          if (typeof parsed === 'object' && parsed !== null) condition = parsed;
-        } catch {
-          // Shown as a rule with no readable condition rather than hidden. A
-          // rule somebody cannot see is a rule they cannot delete.
-        }
-        const wait =
-          typeof condition.forSeconds === 'number' && condition.forSeconds > 0
-            ? ` for ${Math.round(condition.forSeconds / 60)} min`
+        const parsed = readMatch(safeJson(row.conditions));
+        const match = parsed?.match;
+        const wait = row.minDwellSec > 0 ? ` for ${Math.round(row.minDwellSec / 60)} min` : '';
+        const window =
+          match?.condition?.between != null
+            ? `, ${match.condition.between.from}–${match.condition.between.to}`
             : '';
         return (
           `<article class="card">` +
           `<h2>${escapeHtml(row.name)}${row.enabled === 1 ? '' : ' (off)'}</h2>` +
-          `<p class="host">${escapeHtml(String(condition.entityId ?? 'unknown entity'))} ` +
-          `${escapeHtml(String(condition.condition ?? '?'))} ` +
-          `${escapeHtml(String(condition.value ?? '?'))}${escapeHtml(wait)}</p>` +
+          `<p class="host">${escapeHtml(match?.entityId ?? 'unknown entity')} ` +
+          `${escapeHtml(match?.condition?.kind ?? '?')} ` +
+          `${escapeHtml(match?.condition?.value ?? '?')}` +
+          `${escapeHtml(wait)}${escapeHtml(window)}</p>` +
           `<p>${escapeHtml(ACTIONS.find((a) => a.key === row.action)?.label ?? row.action)}</p>` +
           `<div class="row">` +
           `<form method="post" action="/admin/home-assistant/rules/${encodeURIComponent(row.id)}/toggle">` +
@@ -724,7 +752,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<span><label for="rule_for">For (minutes)</label>` +
       `<input id="rule_for" name="for_minutes" type="number" min="0" max="1440" ` +
       `inputmode="numeric" placeholder="0" ` +
-      `value="${template?.condition.forSeconds ? Math.round(template.condition.forSeconds / 60) : ''}"></span>` +
+      `value="${template?.minDwellSec ? Math.round(template.minDwellSec / 60) : ''}"></span>` +
       `</div>` +
       `<p class="hint">A door sensor reads <span class="code">on</span> when it is open. ` +
       `The wait is what separates “somebody is carrying shopping in” from “it has been ` +

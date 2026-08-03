@@ -28,6 +28,25 @@ There is no Docker image yet, so today it runs from a checkout.
 - `apps/admin` — does not exist, and may never need to. The admin screens are
   server-rendered.
 
+## Weather alerts
+
+Optional, United States only, from the National Weather Service. No account and
+no API key. The wall can show an advisory as a banner, a severe warning across
+the whole screen, and — for an Extreme warning only — light a screen that has
+gone dark. Every one of those is a rule you can change or switch off.
+
+> **Not a life-safety system.**
+>
+> Maverick Wall is not a life-safety system. Do not rely on it for emergency
+> warnings. It is not a substitute for a NOAA Weather Radio, Wireless Emergency
+> Alerts, or local warning sirens. Delivery depends on your internet connection,
+> device, and power.
+
+That is not boilerplate. A household internet connection, a tablet that may have
+crashed hours ago, mains power, and a public API that degrades under load during
+exactly the events that matter are all links in this chain, and a weather radio
+depends on none of them.
+
 ## Home Assistant
 
 Optional, and **read-only — permanently**.

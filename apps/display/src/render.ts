@@ -1,4 +1,10 @@
-import type { DayModel, DisplayModel, EventModel, HorizonCell } from './viewmodel.js';
+import type {
+  DayModel,
+  DisplayModel,
+  EventModel,
+  HorizonCell,
+  InterruptModel,
+} from './viewmodel.js';
 
 /**
  * The DOM, and no decisions.
@@ -291,6 +297,72 @@ function legendFor(model: DisplayModel): HTMLElement | undefined {
   return legend;
 }
 
+/* -------------------------------------------------------------- ALERT --- */
+
+/**
+ * The takeover: one warning, the whole wall.
+ *
+ * Every string here goes in through `el`, which uses `textContent` — never
+ * `innerHTML`, anywhere, at any prominence. That is not a general hygiene note:
+ * this is the one place in the product where text a stranger wrote is drawn at
+ * maximum size, and a headline is exactly the field somebody would try it in.
+ *
+ * What is drawn, and why in this order: the event name, because it is what
+ * somebody reads from the doorway; the instruction, because "move to an
+ * interior room on the lowest floor" is the only line that tells them what to
+ * do; the area, so they know whether it is them; then the countdown and the
+ * office, small, because those answer "should I still care" rather than "what
+ * is happening".
+ */
+function renderAlert(interrupt: InterruptModel, model: DisplayModel): HTMLElement {
+  const screen = el('div', `screen screen-alert alert-${interrupt.severity.toLowerCase()}`);
+  const panel = el('section', 'alert');
+
+  panel.appendChild(el('p', 'alert-kind', interrupt.severity));
+  panel.appendChild(el('h1', 'alert-line', interrupt.title));
+  if (interrupt.headline !== undefined) {
+    panel.appendChild(el('p', 'alert-what', interrupt.headline));
+  }
+  if (interrupt.area !== undefined) {
+    panel.appendChild(el('p', 'alert-area', interrupt.area));
+  }
+
+  const foot = el('div', 'alert-foot');
+  // The time stays. Somebody looking at a wall that has stopped being a
+  // calendar still needs to know whether this is now or four in the morning.
+  foot.appendChild(el('span', 'alert-clock', model.clock));
+  if (interrupt.expiresAt !== undefined) {
+    foot.appendChild(el('span', 'alert-until', untilText(interrupt.expiresAt, model.now)));
+  }
+  if (interrupt.sender !== undefined) {
+    foot.appendChild(el('span', 'alert-office', interrupt.sender));
+  }
+  panel.appendChild(foot);
+
+  screen.appendChild(panel);
+  return screen;
+}
+
+/**
+ * "Until 14:35 · 42 minutes left", as one string.
+ *
+ * A countdown rather than a timestamp, because the question is "is this still
+ * happening" and a household should not have to do the arithmetic from across
+ * a room. It re-renders on the same tick as the clock, so it stays honest
+ * without a timer of its own.
+ */
+export function untilText(expiresAt: number, now: number): string {
+  const remaining = expiresAt - now;
+  if (remaining <= 0) return 'Ending now';
+  const minutes = Math.round(remaining / 60_000);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} left`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0
+    ? `${hours} hour${hours === 1 ? '' : 's'} left`
+    : `${hours}h ${rest}m left`;
+}
+
 /* ------------------------------------------------------------- banners --- */
 
 function renderBanners(model: DisplayModel): HTMLElement | undefined {
@@ -302,7 +374,15 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
    * server; this only has to not bury them.
    */
   const messages: { level: string; message: string }[] = [
-    ...model.interrupts.map((interrupt) => ({ level: 'alert', message: interrupt.message })),
+    ...model.interrupts
+      .filter((interrupt) => !interrupt.takeover)
+      .map((interrupt) => ({
+        level: 'alert',
+        message:
+          interrupt.headline === undefined
+            ? interrupt.title
+            : `${interrupt.title} — ${interrupt.headline}`,
+      })),
     ...model.notices,
   ];
   if (model.staleness.level !== 'fresh') {
@@ -337,20 +417,10 @@ export function render(root: HTMLElement, model: DisplayModel): void {
    * Assistant screen, and everything else is a banner over a calendar that
    * still works.
    */
-  const takeover = model.interrupts.filter((interrupt) => interrupt.takeover);
-  if (takeover.length > 0) {
-    const screen = el('div', 'screen screen-alert');
-    const panel = el('section', 'alert');
-    for (const interrupt of takeover) {
-      panel.appendChild(el('p', 'alert-line', interrupt.message));
-    }
-    // The time stays. Somebody looking at a wall that has stopped being a
-    // calendar still needs to know whether they are looking at something that
-    // happened just now or at four in the morning.
-    panel.appendChild(el('p', 'alert-clock', model.clock));
-    screen.appendChild(panel);
+  const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
+  if (takeover !== undefined) {
     root.textContent = '';
-    root.appendChild(screen);
+    root.appendChild(renderAlert(takeover, model));
     return;
   }
 

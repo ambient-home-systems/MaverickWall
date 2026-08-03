@@ -1,6 +1,8 @@
+import type { Signal } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 import { fetchForecast, resolveForecastUrl, type Forecast } from './nws.js';
+import { alertSignals } from './alert-store.js';
 
 /**
  * Weather, as the first panel module.
@@ -103,6 +105,19 @@ export const weatherModule: PanelModule = {
       fetchedAt: forecast.fetchedAt ?? 0,
       note: stale ? 'The forecast is more than six hours old.' : null,
     };
+  },
+
+  /**
+   * Alerts in force, as signals.
+   *
+   * They belong to this module because they come from the same provider and
+   * the same location, but they are deliberately not part of the panel: a
+   * forecast strip is something to glance at and a tornado warning is not.
+   * Kept ungated on `ready` by the registry, so a household who switched the
+   * forecast strip off still gets warned.
+   */
+  signals(context: ModuleContext): readonly Signal[] {
+    return alertSignals(context.db, context.now);
   },
 
   job: {

@@ -160,6 +160,13 @@ export interface DisplayModel {
   /** Something quiet to say about them, such as a connection that is failing. */
   readonly houseNote: string | undefined;
   /**
+   * Server time for this document, so a countdown does not trust the device.
+   *
+   * A wall tablet's clock drifts and some never get NTP at all. "42 minutes
+   * left" computed against a clock two hours out is worse than no countdown.
+   */
+  readonly now: number;
+  /**
    * Anything drawn over the calendar, most important first.
    *
    * Already decided by the server; nothing here re-evaluates a rule. A
@@ -177,8 +184,20 @@ export interface HouseReadingModel {
 }
 
 export interface InterruptModel {
-  readonly message: string;
+  /** The event name. Drawn largest. */
+  readonly title: string;
+  /** What to actually do, when the source said. */
+  readonly headline: string | undefined;
+  /** Which counties or rooms it covers. */
+  readonly area: string | undefined;
+  /** Who said so — the issuing office. */
+  readonly sender: string | undefined;
   readonly takeover: boolean;
+  readonly severity: string;
+  readonly expiresAt: number | undefined;
+  readonly dismissible: boolean;
+  /** `ruleId:signalKey`, the only thing the dismiss endpoint accepts. */
+  readonly key: string;
 }
 
 /**
@@ -232,17 +251,55 @@ export function houseFrom(panel: unknown): {
 export function interruptsFrom(raw: unknown): InterruptModel[] {
   if (!Array.isArray(raw)) return [];
   const model: InterruptModel[] = [];
+
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
-    const interrupt = entry as { message?: unknown; action?: unknown };
-    if (typeof interrupt.message !== 'string' || interrupt.message === '') continue;
+    const interrupt = entry as Record<string, unknown>;
+    const title = text(interrupt['title'], 120);
+    if (title === undefined) continue;
+
+    const ruleId = typeof interrupt['ruleId'] === 'string' ? interrupt['ruleId'] : '';
+    const key = typeof interrupt['key'] === 'string' ? interrupt['key'] : '';
+
     model.push({
-      message: interrupt.message,
-      takeover: interrupt.action === 'takeover' || interrupt.action === 'takeover_and_wake',
+      title,
+      headline: text(interrupt['headline'], 600),
+      area: text(interrupt['area'], 300),
+      sender: text(interrupt['sender'], 120),
+      takeover:
+        interrupt['action'] === 'takeover' || interrupt['action'] === 'takeover_and_wake',
+      severity: typeof interrupt['severity'] === 'string' ? interrupt['severity'] : 'Unknown',
+      expiresAt: typeof interrupt['expiresAt'] === 'number' ? interrupt['expiresAt'] : undefined,
+      dismissible: interrupt['dismissible'] === true && ruleId !== '' && key !== '',
+      key: `${ruleId}:${key}`,
     });
-    if (model.length === 2) break;
+    if (model.length === 3) break;
   }
   return model;
+}
+
+/**
+ * Text from somebody else, made safe to draw.
+ *
+ * The server already strips and caps what it stores, and this does it again on
+ * the way out. Not belt and braces for its own sake: the display also draws
+ * Home Assistant attributes and a manifest it read out of IndexedDB months
+ * ago, and neither of those went through the alert parser. The rule that
+ * actually prevents injection is `textContent` in the renderer — this is about
+ * a headline being *legible*, which a string of zero-width marks is not.
+ */
+function text(value: unknown, limit: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  // Whitespace collapses first: a newline is a control character, and
+  // stripping before collapsing joins the words either side of a line break.
+  const cleaned = value
+    .replace(/\s+/g, ' ')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (cleaned === '') return undefined;
+  return cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit - 1)}…`;
 }
 
 /**
@@ -526,6 +583,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     weatherNote: weather.note,
     house: house.readings,
     houseNote: house.note,
+    now,
     interrupts: interruptsFrom(manifest.interrupts),
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,

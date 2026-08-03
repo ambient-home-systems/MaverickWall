@@ -140,6 +140,22 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     backoffInitialMs: 60_000,
     backoffMaxMs: 10 * 60_000,
   },
+  'alerts-sync': {
+    /*
+     * Sixty seconds, conditionally.
+     *
+     * A quiet zone costs one 304, which is what makes a minute defensible
+     * against a public service. Backoff starts at five minutes and is allowed
+     * to climb to thirty: NWS reliability varies during major events, which is
+     * exactly when this matters, and a thousand kitchen walls retrying every
+     * sixty seconds is a small part of why it was struggling. The alerts
+     * already on the wall stay up throughout.
+     */
+    intervalMs: 60_000,
+    jitterRatio: 0.2,
+    backoffInitialMs: 5 * 60_000,
+    backoffMaxMs: 30 * 60_000,
+  },
   'update-check': {
     // Once a day. Anything more often is a household's address book of
     // requests to somebody else's server for a number that changes monthly.

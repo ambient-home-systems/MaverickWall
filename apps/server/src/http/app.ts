@@ -21,8 +21,9 @@ import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { weatherModule } from '../modules/weather/index.js';
 import { haModule } from '../modules/homeassistant/index.js';
-import { readActiveRules } from '../modules/homeassistant/store.js';
-import { evaluateInterrupts } from '../api/interrupts.js';
+import { calendarModule } from '../modules/calendar/index.js';
+import { evaluateInterrupts } from '@maverick-wall/core';
+import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { errorBlock, escapeHtml, page } from './html.js';
 import type { Fetcher } from '@maverick-wall/core';
@@ -172,7 +173,34 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
  * same list, and the Display screen offers their blocks from it too — so
  * adding a module is one entry rather than three edits in three files.
  */
-export const MODULES = [weatherModule, haModule];
+export const MODULES = [weatherModule, haModule, calendarModule];
+
+/**
+ * The wall clock in a zone, as `HH:MM`.
+ *
+ * Lives here rather than in core, because core may not reach for `Intl` — rule
+ * one, and `globals.d.ts` is the complete list of what it may use. From `Intl`
+ * rather than arithmetic for the same reason recurrence is: the offset on a
+ * given night is a fact about a timezone database, and a household on the wrong
+ * side of a clock change would otherwise get their overnight rules an hour late
+ * twice a year.
+ */
+export function localClock(at: number, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(at));
+  } catch {
+    // An unusable zone must not disarm every rule that has a window. UTC is
+    // wrong by hours; refusing to evaluate is wrong always.
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(at));
+  }
+}
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -293,6 +321,41 @@ export function createApp(deps: AppDeps): Hono {
     return c.body(bytesOf(image.bytes));
   });
 
+  /**
+   * Clearing an interrupt from the wall.
+   *
+   * Behind the display token, and household-wide rather than per screen — a
+   * kitchen tablet and a hall television must not disagree about whether the
+   * garage is still worth mentioning. That was the open question when
+   * interrupts were first sketched, and this is the answer: one record, every
+   * screen, and `reassertAfterSec` is what stops "yes, I know" meaning "never
+   * mention it again" while the storm is still overhead.
+   */
+  app.post('/d/interrupts/dismiss', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const key = typeof body['key'] === 'string' ? body['key'].trim() : '';
+    // `ruleId:signalKey`, and nothing longer than the ids that make it up.
+    if (key === '' || key.length > 400 || !key.includes(':')) {
+      return c.json({ error: 'bad-key' }, 400);
+    }
+
+    /*
+     * Only a rule that said it may be dismissed.
+     *
+     * The wall hides the button for the rest, but the button is not the
+     * control — an Extreme warning must not be clearable by anything that can
+     * reach this endpoint, and the display token is on the wall.
+     */
+    const ruleId = key.slice(0, key.indexOf(':'));
+    const rule = readRules(deps.db).find((candidate) => candidate.id === ruleId);
+    if (rule === undefined || !rule.dismissible) {
+      return c.json({ error: 'not-dismissible' }, 403);
+    }
+
+    dismissInterrupt(deps.db, key, now());
+    return c.json({ ok: true });
+  });
+
   app.get('/d/manifest', (c: Context) => {
     const screen = c.get('screen') as ScreenRow;
     const at = now();
@@ -340,21 +403,21 @@ export function createApp(deps: AppDeps): Hono {
       // no I/O: every module reads its own cache, filled by its own job.
       panels: collectPanels(MODULES, moduleContext),
       /*
-       * Evaluated per poll, from cached state and stored rules.
+       * Evaluated per poll, from stored signals and stored rules.
        *
-       * There is no record of which interrupts a screen has already shown, and
-       * deliberately none: a household with a kitchen tablet and a hall
-       * television would otherwise get two different answers about whether the
-       * garage is open. Every wall reads the same document.
+       * Every wall reads the same document, including which interrupts have
+       * been cleared — that is what keeps a kitchen tablet and a hall
+       * television saying the same thing.
        */
       interrupts: evaluateInterrupts({
-        rules: readActiveRules(deps.db),
+        rules: readRules(deps.db),
         signals: collectSignals(MODULES, moduleContext),
         now: at,
-        // The screen's zone if it has one, so a rule limited to the night
-        // means night where that screen is hanging.
-        timezone,
-      }),
+        // Worked out here because core may not reach for `Intl` — rule one.
+        // The evaluator is told what time it is, exactly as it is told `now`.
+        localHhmm: localClock(at, timezone),
+        dismissedAt: readDismissals(deps.db),
+      }).active,
       // The document is already screen-specific — it is served behind a
       // display token — so how that screen is hung travels with it.
       screen: {

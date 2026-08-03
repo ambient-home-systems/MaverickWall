@@ -1,6 +1,6 @@
 import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
-import type { Signal } from '../../api/interrupts.js';
+import type { Signal } from '@maverick-wall/core';
 import { call, resolveConnection } from './client.js';
 import {
   iconFor,
@@ -178,17 +178,17 @@ export const haModule: PanelModule = {
       const state = stateFrom(row);
       const asNumber = Number(state.state);
       return {
-        source: 'ha_entity',
+        source: 'homeassistant' as const,
         key: row.entityId,
-        state: state.state,
-        // What a person would say. `readState` is the same function the panel
-        // uses, so a door reads "Open" in both places rather than "on" in one.
-        reading: readState(state),
-        numeric: state.state.trim() !== '' && Number.isFinite(asNumber) ? asNumber : null,
-        since: row.lastChangedAt,
         // The household's own name for it if they gave one, then Home
         // Assistant's. An entity id never reaches the wall.
-        label: row.label ?? state.friendlyName,
+        title: row.label ?? state.friendlyName,
+        // What a person would say. `readState` is the same function the panel
+        // uses, so a door reads "Open" in both places rather than "on" in one.
+        headline: readState(state),
+        state: state.state,
+        numeric: state.state.trim() !== '' && Number.isFinite(asNumber) ? asNumber : null,
+        since: row.lastChangedAt,
       };
     });
   },

@@ -8,6 +8,7 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page } from './html.js';
+import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 
 /**
  * The first-run wizard.
@@ -416,7 +417,23 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         `<form method="post" action="/setup/household">` +
         `<label for="timezone">Timezone</label>` +
         `<select id="timezone" name="timezone" required>${options}</select>` +
-        `<button type="submit">Save and continue</button></form>`,
+        `<button type="submit">Save and continue</button></form>` +
+
+        /*
+         * The disclaimer, in the wizard.
+         *
+         * Here rather than on a settings screen nobody visits, because this is
+         * the one moment every household passes through. Weather alerts are on
+         * by default in the United States, so somebody who never opens the
+         * alerts screen would otherwise have a wall that shows tornado
+         * warnings and never be told what it does not promise.
+         */
+        `<div class="error" style="margin-top:2rem">` +
+        `<strong>About weather alerts</strong>` +
+        `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
+        `<p class="hint">National Weather Service alerts are shown in the United ` +
+        `States. You can change what each level does, or switch them off, on the ` +
+        `Weather alerts screen.</p>`,
     });
   }
 

@@ -1,12 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { Keyring } from '../../secrets/keyring.js';
-import {
-  parseCondition,
-  type InterruptAction,
-  type InterruptRule,
-  type TimeWindow,
-} from '../../api/interrupts.js';
 import { HOME_BLOCK } from './index.js';
 import type { DisplayMode } from './entities.js';
 
@@ -110,7 +104,19 @@ export function disconnectHa(db: SqliteDatabase): void {
                               updated_at = ? WHERE id = 'singleton'`,
     ).run(at);
     db.prepare('DELETE FROM ha_entity_cache').run();
-    db.prepare(`DELETE FROM interrupt_rules WHERE trigger = 'ha_entity'`).run();
+    /*
+     * Both spellings, and only this source's rules.
+     *
+     * The stored value moved from `ha_entity` to `homeassistant` when the model
+     * became source-agnostic, and this clause did not follow it — so
+     * disconnecting left every rule about the house behind, still matching, on
+     * entities that were about to be deleted. Naming both is what makes the
+     * upgrade safe. The shipped weather rules are emphatically not touched:
+     * they have nothing to do with Home Assistant.
+     */
+    db.prepare(
+      `DELETE FROM interrupt_rules WHERE trigger IN ('homeassistant', 'ha_entity')`,
+    ).run();
   });
   clear();
 }
@@ -216,139 +222,6 @@ export function unwatchEntity(db: SqliteDatabase, entityId: string): void {
     return;
   }
   db.prepare('DELETE FROM ha_entity_cache WHERE entity_id = ?').run(entityId);
-}
-
-// ---------------------------------------------------------------------------
-// Interrupt rules
-// ---------------------------------------------------------------------------
-
-export interface AdminRuleRow {
-  readonly id: string;
-  readonly name: string;
-  readonly enabled: number;
-  readonly trigger: string;
-  readonly action: string;
-  readonly priority: number;
-  readonly dismissAfterSeconds: number | null;
-  readonly conditions: string | null;
-}
-
-export function readRuleRows(db: SqliteDatabase): AdminRuleRow[] {
-  return db
-    .prepare(
-      `SELECT id, name, enabled, trigger, action, priority,
-              dismiss_after_seconds AS dismissAfterSeconds, conditions
-         FROM interrupt_rules ORDER BY priority DESC, name`,
-    )
-    .all() as AdminRuleRow[];
-}
-
-/**
- * The rules the evaluator sees: enabled, and with a condition that parses.
- *
- * A rule whose stored condition is nonsense is dropped here rather than
- * defended against inside the evaluator. It is a boundary, and this is the
- * side of it that knows a row can be hand-edited.
- */
-export function readActiveRules(db: SqliteDatabase): InterruptRule[] {
-  const rules: InterruptRule[] = [];
-  for (const row of readRuleRows(db)) {
-    if (row.enabled !== 1) continue;
-    let raw: unknown;
-    try {
-      raw = row.conditions === null ? null : JSON.parse(row.conditions);
-    } catch {
-      continue;
-    }
-    const condition = parseCondition(raw);
-    if (condition === undefined) continue;
-    rules.push({
-      id: row.id,
-      name: row.name,
-      trigger: row.trigger,
-      action: asAction(row.action),
-      priority: row.priority,
-      dismissAfterSeconds: row.dismissAfterSeconds,
-      condition,
-    });
-  }
-  return rules;
-}
-
-function asAction(stored: string): InterruptAction {
-  return stored === 'takeover' || stored === 'takeover_and_wake' ? stored : 'banner';
-}
-
-export interface SaveRuleInput {
-  readonly name: string;
-  readonly entityId: string;
-  readonly condition: 'equals' | 'above' | 'below' | 'changed_to';
-  readonly value: string;
-  readonly forSeconds: number | null;
-  /** Only between these times of day, in the household's zone. */
-  readonly between: TimeWindow | null;
-  readonly action: InterruptAction;
-  readonly priority: number;
-}
-
-/**
- * Store a rule, and make sure the entity it names is being polled.
- *
- * A rule about an entity nothing reads would never fire, and it would look
- * exactly like a rule about an entity that is simply fine. The row is inserted
- * unwatched: the household asked to be *told* about the freezer door, not to
- * look at it.
- */
-export function saveRule(db: SqliteDatabase, input: SaveRuleInput): string {
-  const id = randomBytes(8).toString('hex');
-  const at = Date.now();
-
-  const write = db.transaction(() => {
-    db.prepare(
-      `INSERT INTO ha_entity_cache (entity_id, friendly_name, watched, fetched_at)
-       VALUES (?, ?, 0, 0) ON CONFLICT(entity_id) DO NOTHING`,
-    ).run(input.entityId, input.entityId);
-
-    db.prepare(
-      `INSERT INTO interrupt_rules
-         (id, name, enabled, trigger, conditions, action, priority, wake_screen,
-          dismiss_after_seconds, created_at, updated_at)
-       VALUES (?, ?, 1, 'ha_entity', ?, ?, ?, ?, NULL, ?, ?)`,
-    ).run(
-      id,
-      input.name,
-      JSON.stringify({
-        entityId: input.entityId,
-        condition: input.condition,
-        value: input.value,
-        forSeconds: input.forSeconds,
-        between: input.between,
-      }),
-      input.action,
-      input.priority,
-      // Kept in step with `action` rather than asked about separately. Two
-      // controls for one decision is how they end up disagreeing.
-      input.action === 'takeover_and_wake' ? 1 : 0,
-      at,
-      at,
-    );
-
-    db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'ha-sync'`).run();
-  });
-  write();
-  return id;
-}
-
-export function deleteRule(db: SqliteDatabase, id: string): boolean {
-  return db.prepare('DELETE FROM interrupt_rules WHERE id = ?').run(id).changes > 0;
-}
-
-export function setRuleEnabled(db: SqliteDatabase, id: string, enabled: boolean): void {
-  db.prepare('UPDATE interrupt_rules SET enabled = ?, updated_at = ? WHERE id = ?').run(
-    enabled ? 1 : 0,
-    Date.now(),
-    id,
-  );
 }
 
 // ---------------------------------------------------------------------------

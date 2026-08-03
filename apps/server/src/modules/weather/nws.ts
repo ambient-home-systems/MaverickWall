@@ -43,7 +43,8 @@ export type WeatherResult =
   | { readonly ok: false; readonly message: string; readonly suggestion?: string };
 
 /** NWS asks for a contact in the agent string, and enforces it. */
-const AGENT = 'MaverickWall/0.1 (+https://github.com/ambient-home-systems/MaverickWall)';
+export const AGENT =
+  'MaverickWall/0.1 (+https://github.com/ambient-home-systems/MaverickWall)';
 
 export function pointsUrl(at: Coordinates): string {
   // Four decimals is about ten metres, and NWS rejects excessive precision.

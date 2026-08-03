@@ -1,0 +1,74 @@
+import type { Interrupt } from '@maverick-wall/core';
+
+/**
+ * The push message contract.
+ *
+ * There is no WebSocket server yet — the display polls, and the manifest is
+ * what carries interrupts today. This file exists anyway, and deliberately:
+ * the Android app needs `wakeScreen` on the wire, and adding a field to a
+ * message after an app has shipped means a version of that app in somebody's
+ * hallway that will never wake for a tornado warning until they update it.
+ *
+ * So the shape is fixed now, built from the same `Interrupt` the manifest
+ * carries, and tested. When the socket lands it sends these; nothing about the
+ * app has to change.
+ *
+ * **Web clients ignore `wakeScreen`.** A browser cannot turn a screen on, and
+ * a tab pretending otherwise would be a wall that looks like it woke and did
+ * not. The Android app holds the wake lock and acts on it.
+ */
+
+export const PUSH_PROTOCOL_VERSION = 1;
+
+export type PushMessage = InterruptPush | ManifestChangedPush;
+
+export interface InterruptPush {
+  readonly type: 'INTERRUPT_PUSH';
+  readonly protocol: number;
+  /** Server time, so a client with a drifting clock can still order these. */
+  readonly sentAt: number;
+  /**
+   * What is in force, loudest first — the whole set, not a delta.
+   *
+   * A client that missed a message must not be left holding a warning that has
+   * been cancelled, and reconciling deltas across a reconnect is how that
+   * happens. Sending the set makes a dropped message cost latency and nothing
+   * else, which on a wall is the right trade every time.
+   */
+  readonly interrupts: readonly Interrupt[];
+  /**
+   * True when anything in this set asked for a screen that has gone dark.
+   *
+   * Hoisted out of the list so a client acts on one boolean rather than
+   * scanning — and so the field is unmissable to whoever writes the app.
+   */
+  readonly wakeScreen: boolean;
+}
+
+export interface ManifestChangedPush {
+  readonly type: 'MANIFEST_CHANGED';
+  readonly protocol: number;
+  readonly sentAt: number;
+  /** The client re-polls if this differs from what it holds. */
+  readonly etag: string;
+}
+
+/**
+ * Build the interrupt message.
+ *
+ * `wakeScreen` is true only when an interrupt both asks for a wake *and* is
+ * allowed to pierce night mode. They are separate fields on a rule because
+ * they are separate questions, and conflating them here would mean a household
+ * who wanted a bin reminder to cover the wall got their bedroom lit at 6am.
+ */
+export function interruptPush(interrupts: readonly Interrupt[], sentAt: number): InterruptPush {
+  return {
+    type: 'INTERRUPT_PUSH',
+    protocol: PUSH_PROTOCOL_VERSION,
+    sentAt,
+    interrupts,
+    wakeScreen: interrupts.some(
+      (interrupt) => interrupt.wakeScreen && interrupt.piercesNightMode,
+    ),
+  };
+}
