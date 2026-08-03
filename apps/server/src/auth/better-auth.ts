@@ -18,6 +18,22 @@ import * as schema from '../db/schema.js';
  * mistake here is one file to correct rather than a rewrite.
  */
 
+/**
+ * The header this server puts the real client address in.
+ *
+ * Better Auth reads the client IP from headers only — it never sees the
+ * socket — and rate limiting is keyed on it. With no such header every caller
+ * shares a single bucket, so one screen polling too eagerly can lock the whole
+ * household out of signing in. Verified, not assumed: with this unset, three
+ * sign-up attempts from independent instances were enough to return 429.
+ *
+ * Deliberately a private name rather than `x-forwarded-for`. The value is
+ * overwritten from the socket on every request, so nothing a client sends is
+ * ever read, and a name nothing else uses makes that impossible to confuse
+ * with a proxy header somebody meant to trust.
+ */
+export const CLIENT_IP_HEADER = 'x-mw-client-ip';
+
 export interface AuthOptions {
   readonly db: SqliteDatabase;
   /** Signing key, derived from the master key so it survives restarts. */
@@ -49,6 +65,33 @@ export function createAuth(options: AuthOptions) {
     baseURL: options.baseUrl,
     ...(options.basePath !== undefined ? { basePath: options.basePath } : {}),
 
+    /**
+     * Trust the address the browser actually used to get here.
+     *
+     * `baseUrl` cannot know it. A household reaches a self-hosted box by LAN
+     * IP, by mDNS name, by hostname, or by localhost, and whichever one they
+     * type is the origin their browser stamps on every form post. With only
+     * `baseUrl` trusted, browsing to `http://192.168.1.10:8080` and signing up
+     * fails with "Missing or null Origin" — which is not a sentence anybody
+     * standing in a kitchen can act on.
+     *
+     * This is still same-origin only, and so still a real CSRF check: a form
+     * on another site posting here carries *its* origin, which matches neither
+     * entry. What it permits is exactly the case where the request came back
+     * to the host it was served from.
+     */
+    trustedOrigins: (request?: Request) => {
+      const origins = [options.baseUrl];
+      if (request !== undefined) {
+        try {
+          origins.push(new URL(request.url).origin);
+        } catch {
+          // A URL we cannot parse is one we cannot trust. Leave the list as is.
+        }
+      }
+      return origins;
+    },
+
     emailAndPassword: {
       enabled: true,
       // No email is ever sent. There is no mail server in a self-hosted
@@ -73,6 +116,12 @@ export function createAuth(options: AuthOptions) {
       defaultCookieAttributes: {
         httpOnly: true,
         sameSite: 'lax',
+      },
+      ipAddress: {
+        // Only this one, and only because the server sets it from the socket.
+        // Leaving `x-forwarded-for` in the list would let any client on the
+        // LAN pick its own rate-limit bucket by sending the header.
+        ipAddressHeaders: [CLIENT_IP_HEADER],
       },
     },
 

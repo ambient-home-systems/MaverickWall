@@ -55,8 +55,8 @@ The admin UI is also **no framework** — vanilla TS plus a small hash router.
 packages/calendar/   Pure ICS parsing + recurrence expansion. MIT, own repo later.
 packages/core/       Pure domain: SSRF guards, civil dates, shift, scheduler, ports.
 apps/server/         Hono + SQLite + scheduler + jobs. The single process.
-apps/display/        Not started. Vanilla TS wall renderer.
-apps/admin/          Not started. Vanilla TS settings UI.
+apps/display/        Vanilla TS wall renderer. Drawing real data; no offline store yet.
+apps/admin/          Does not exist. The admin screens are server-rendered — see below.
 ```
 
 `packages/core/src/domain/shift/` is deliberately self-contained: nothing else
@@ -70,7 +70,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **eight real bugs**, and the pattern in how is the most
+This project has found **twenty-three real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -83,11 +83,33 @@ useful thing in this document:
 | gzip responses never decompressed | Pointing it at real Google Calendar |
 | Setup gate deadlocked sign-up | A route test with a stubbed session |
 | `/admin/*` didn't protect `/admin` | The same test |
+| **The session gate forwarded no headers** | Driving a *real* cookie through it |
+| Rate limiting keyed every client to one bucket | Watching a fresh instance get a 429 |
+| The wizard's own sign-up shared the no-IP bucket | The fourth test in a file failing to sign up |
+| `/admin/sign-in` sat behind the gate it unlocks | Reasoning about the redirect target, then a test |
+| **Sign-up refused at any address but `BASE_URL`** | Browsing to the box by IP, like a household does |
+| Own form routes had no origin check at all | Writing the test that proved the fix above |
+| **A whole week silently cut off the bottom of the wall** | Looking at it, then measuring the DOM |
+| `describeAge` rounded 30 seconds up to a minute | A test written from how it should read |
+| The week ahead drew straight over the month grid | Looking at the real design in portrait |
+| Landscape scaled type *down*, not up | Seeing a wall of 5px text on a television |
+| **A rest day was indistinguishable from no rota** | A test whose *name* contradicted its assertion |
+| `align-self: end` pinned the month to the right edge | Looking, after grid became flex |
+| The landscape two-column rule had been dead CSS | Measuring `gridTemplateColumns` and getting `none` |
+| **A QR that passed every structural test and scanned as nothing** | Decoding one with a real detector |
+| A required dep missing from four test harnesses | **Finally typechecking the test files** |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
 `isLocalNetwork('169.254.1.1') === true` — it was confidently testing the bug,
 in a file with 88 passing assertions, and only a real redirect exposed it.
+
+The session-gate one is the same shape and worth reading twice.
+`requireSession` built a fresh `Request` and forwarded no headers, so the
+cookie never reached the resolver and every signed-in user resolved as
+anonymous. Thirteen tests passed over it because the stub was
+`resolve: async () => options.user` — it ignored the request entirely. The
+first real cookie through the real gate failed instantly.
 
 So: **prefer tests that touch something real.** A local HTTP server over a stub.
 A temp SQLite file over a mock. Actual fixture bytes over invented ones.
@@ -163,7 +185,7 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**463+ tests passing.** calendar 153 · core 213+ · server 144+.
+**787 tests passing.** calendar 153 · core 238 · server 332 · display 64.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -172,20 +194,191 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 **Done:** ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift rotation
 (per person, pattern or calendar-derived, with title analysis) · secrets at rest
 · 21-table schema · migrations behind a file lock · scheduler · ICS sync ·
-`/healthz` · `/d/manifest` · display tokens · session gating.
+`/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
+mounted at `/api/auth/*`, verified against the real library** · **first-run
+wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
+feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Not started:** `apps/display` · `apps/admin` · weather (NWS) · interrupts and
-alerts · ws push · Docker image · HA add-on.
+**Not started:** display offline store (IndexedDB, service worker, watchdog) ·
+weather (NWS) · interrupts and alerts · ws push · Docker image · HA add-on.
 
-**Unverified:** `apps/server/src/auth/better-auth.ts`. Written against a shim.
-Every other module has been executed.
+**Every module has now been executed.** `better-auth.ts` was the last one
+written against a shim; it has been run against the real package (1.6.25), and
+a real sign-up, cookie, gate and sign-out have been driven through a live
+server. The config shape needed no correction — but the wiring around it had
+two bugs, which is where they usually are.
+
+**The wizard.** `/setup` is server-rendered HTML with no script and no build
+step, because it is the one screen that has to work before anything else does.
+Three steps: account, timezone, then a calendar that can be skipped. Setup is
+marked complete after the **timezone** — a feed can fail for reasons the
+household does not control, and a wizard that cannot be finished because Google
+is having a bad morning would leave a wall blank on the evening it was
+installed. The bootstrap code is printed to stdout at boot, re-issued when it
+expires, and is the only way to create the first account; before it existed the
+first sign-up was open to anyone who could reach the port.
+
+**The display is a zoom pyramid**: today in full, the next few days that have
+anything on them, then six weeks as colour. Every decision about what is shown
+lives in `viewmodel.ts`, which has no DOM in it, so density is argued about
+against a document rather than a screenshot. `render.ts` builds nodes and does
+no thinking — event titles come from calendars the household does not control.
+
+**Its theme tokens come from the design file** and live in
+`apps/display/src/theme.ts` — all four directions (Board, Kitchen Slate, Paper
+Almanac, Glance). Nothing outside that file names a colour. Two things had to
+be adapted: `color-mix()` is the same vintage as `:has()` and is out under rule
+two, so the cell and badge tints are pre-mixed per theme against that theme's
+own background; and no web font is fetched, so the design's Roboto Condensed
+and Roboto Mono are used only if the device already has them.
+
+**It works in portrait and landscape, and they are different layouts.** The
+design is drawn for portrait 1080x1920 and that is the stacked arrangement.
+Landscape is not that squashed: it is two columns, the day and week ahead on
+the left and the month on the right, from the same markup — only placement and
+the rem scale change.
+
+**Which layout is a computed answer, not a media query.** `orientation.ts` is a
+pure function of viewport, rotation and what the household pinned, and it sets
+`data-layout` on the root; every layout rule keys off that. A media query is
+the wrong input once rotation exists — a television turned on its end still
+reports a landscape viewport while the thing a person is looking at is
+portrait.
+
+**Screens can be rotated and pinned, per screen.** `screens.rotation` is
+quarter turns applied in the page, because plenty of panels cannot rotate in
+their own settings and plenty of the ones that can forget after a power cut.
+`screens.orientation` pins the layout for a kiosk frame that reports a size
+with no relation to how it is hung. Both are per screen and not per household:
+a kitchen tablet and a hall television are mounted differently. A quarter turn
+swaps the canvas, so the rem basis switches from `vh` to `vw` — get that wrong
+and the wall comes out half size on exactly the screens that needed rotating.
+
+**The household chooses which blocks appear and in what order.**
+`display_blocks` is a comma-separated list — `now`, `next`, `horizon` — edited
+on `/admin/display`. A block left out is not drawn at all, which is a different
+statement from asking for zero days of it. The renderer walks that list and
+nothing else.
+
+**Portrait is a flex column so the order can be arbitrary.** It was a grid with
+positional row rules, and "the second row yields" is the wrong rule once the
+second row might be the month. Which block gives up space is now a property of
+the block: **the week ahead yields, wherever it sits.** Today and the month are
+whole in every case — the first is what somebody walked over to read, the
+second is the rotation shape that has to carry from the doorway. With no week
+ahead present, the month takes the slack instead of leaving a third of the
+screen empty.
+
+**Landscape places the month by name, not by position.** It gets the right-hand
+column whatever its place in the order, because it is the widest thing and the
+only block that is itself a grid; everything else stacks down the left in the
+chosen order. That is what keeps one set of layout rules for any ordering.
+
+**The household owns the density, not the bundle.** Theme, the daylight theme
+and its window, and how much to show — events today, days ahead, weeks of
+horizon — are columns on `household_settings`, travel in the manifest, and are
+edited on `/admin/display`. Bounds are enforced twice, in `buildManifest` and
+again in `viewmodel.ts`: the server because a form is a boundary, the display
+because it must draw something sane against a server older or newer than
+itself. The constants in `viewmodel.ts` are now only the fallback for a
+manifest that does not carry the field.
+
+**A rest day is a fact, not an absence.** `shiftFor` emits a synthetic `break`
+shift when the rotation resolved to "not working" and the source is anything
+but `none`, so the display can colour it (`--s-break`) and still leave a day
+the rota says nothing about plain. Before this the two were identical in the
+manifest, and a test named "treats an explicit rest day as not working, not as
+unknown" asserted the empty list that proved they were not.
+
+**Layout is verified by measuring the DOM, not by looking.** The wall must
+never exceed the viewport: `overflow: hidden` means anything that does is
+silently gone, and a month grid missing its last week looks deliberate. Two
+faults did exactly that — `grid-auto-rows: 1fr` refusing to shrink below
+min-content, and a broken `height: 100%` chain at `#wall`.
+
+**The QR encoder is ours** (`http/qr.ts`), because rule three forbids a CDN
+and a pairing link is the worst thing to type on a television remote. Byte
+mode, level M, versions 1–10, and it refuses rather than guessing when a
+payload will not fit. **Verify it by decoding, never by looking.** Its format
+information was written least-significant bit first, which satisfies every
+check a person can reason about — finders, timing, the dark module, the module
+count — and produces a code no scanner will read. `BarcodeDetector` in the
+browser pane decodes it end to end; that is the only test that settles it.
+
+**Uploaded images are the one place a file arrives from a person and is
+served back.** Three rules, in `api/media.ts`: the type is **sniffed from magic
+bytes**, never taken from the header or the extension; **SVG is refused**,
+because it is an image to a person and a script container to a browser, and
+served from this origin it is stored XSS against the household's own admin
+session; and **the stored name is ours**, derived from the content hash, so a
+filename cannot reach the filesystem. Served with `nosniff` behind either the
+display token (`/d/media`) or a session (`/admin/media`) — a family's
+photographs must not be readable by anything on the LAN that knows a filename.
+
+**`pnpm test` now typechecks the tests too** (`tsconfig.test.json`). It did not,
+and four harnesses were calling `createApp` without a required argument — which
+surfaced as a 500 on a feature that had nothing to do with it. The offline
+shims and `tsconfig.offline.json` are gone; this replaces them.
+
+**The update check is the only thing that contacts anybody, and it is off.**
+Turning it on is consent, so the switch does not itself make a request — a
+person exploring the settings must not reach a third party before they have
+read what the switch does. The page names the host, says what the request
+reveals (this house's IP, and that somebody there runs this), says what it does
+not send, and says it will never download or install anything. Turning it off
+forgets what it found, because a version number on the page from a request
+somebody has since withdrawn consent for is not theirs to keep. The job is
+registered always and checks the setting when it fires; a job registered by the
+switch would leave a stale one making requests after it was turned off.
+
+**Backup and diagnostics are two different things, deliberately.** The backup
+is the database plus the key, offered as two downloads so the credential is
+visibly separate — the database alone restores everything except the calendar
+addresses, because those are encrypted. The diagnostics export is the one that
+is safe to hand over: hostnames, counts, job state and the log tail, and a test
+stuffs a database with an email address, an event title and a feed name and
+asserts none of them appear. That test is the feature.
+
+**Restore is staged, never live.** The upload is checked for the SQLite magic
+and written to `restore.db`; `applyStagedRestore` swaps it at boot, before
+anything opens the database, and renames the old one aside rather than deleting
+it. Swapping a file under a process that has it open, mid-sync, with WAL
+readers attached, is how a restore becomes a corruption — and the `-wal` and
+`-shm` sidecars have to move with the file they belong to or SQLite replays
+them over the restored database.
+
+**The admin screens are server-rendered too**, in `http/admin.ts`. No build
+step and no bundle that can fail to load, which is the same reason the wizard
+is. `apps/admin` has not been started and may never need to be — that is worth
+deciding deliberately before the Shifts screen rather than by drift.
+
+**`trustedOrigins` includes the address the request arrived on.** `BASE_URL`
+defaults to localhost and nobody browses to localhost from the sofa; without
+this, signing up from `http://192.168.1.10:8080` fails with "Missing or null
+Origin". It is still same-origin only. A separate app-wide guard refuses any
+non-GET carrying a foreign `Origin`, because the forms here are handled by this
+application and the internal call stamps an origin Better Auth will trust —
+so the library's own check is no longer in that path.
+
+**`/admin/sign-in` is in `ALWAYS_OPEN`.** It lives under the prefix it lets you
+through, so without the exemption the gate redirects it to itself forever.
+
+**Auth notes for whoever is next.** The signing secret is derived from the
+master key (`deriveKey(key, 'session')`), so sessions survive a restart and
+there is no default credential. `BASE_URL` overrides the origin; it must match
+what the browser actually uses or the cookie is set for the wrong place and
+every request is silently anonymous. Better Auth reads the client IP from
+headers only, never the socket, so `app.ts` stamps `x-mw-client-ip` from the
+real connection and *overwrites* whatever arrived — without it every caller
+shares one rate-limit bucket and one busy screen can lock the household out.
+Those counters live in module-global memory, so they outlive an auth instance
+and even its database; tests stay independent by giving each harness a
+distinct address.
 
 ---
 
 ## Open decisions
 
-- **First-run wizard completion criteria.** Blocked until "configuration is
-  complete" — is that account + timezone, or does it require a calendar too?
 - **HA calendar entities as a source type.** Distinct from ingress. If the
   household already has calendars in Home Assistant, re-syncing the same ICS is
   wasteful. Needs a new source kind with its own fetch path.

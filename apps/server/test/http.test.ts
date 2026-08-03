@@ -7,6 +7,9 @@ import { openDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
 import { createApp } from '../src/http/app.js';
+import { createKeyring } from '../src/secrets/keyring.js';
+import { createFetcher } from '../src/net/fetcher.js';
+import { randomBytes } from 'node:crypto';
 
 /**
  * The routes, exercised through Hono's fetch interface.
@@ -29,10 +32,13 @@ function harness() {
   runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
 
   const now = Date.now();
+  // A household that finished the wizard. Without `setup_completed_at` every
+  // route here would answer with a redirect to `/setup`, which is the gate
+  // doing its job rather than these routes misbehaving.
   db.prepare(
-    `INSERT INTO household_settings (id, timezone, theme, created_at, updated_at)
-     VALUES ('singleton', 'America/New_York', 'board', ?, ?)`,
-  ).run(now, now);
+    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'America/New_York', 'board', ?, ?, ?)`,
+  ).run(now, now, now);
 
   const issued = issueDisplayToken();
   db.prepare(
@@ -40,7 +46,17 @@ function harness() {
      VALUES ('screen1', 'Kitchen', ?, ?, ?, ?)`,
   ).run(issued.tokenHash, now, now, now);
 
-  const app = createApp({ db, appVersion: '0.1.0-test', bootNotices: [] });
+  // Auth is required rather than defaulted: a fallback signing secret would be
+  // a default credential, and rule ten says to assume this port is reachable.
+  const app = createApp({
+    db,
+    appVersion: '0.1.0-test',
+    bootNotices: [],
+    auth: { secret: 'h'.repeat(32), baseUrl: 'http://localhost' },
+    keyring: createKeyring(randomBytes(32)),
+    fetcher: createFetcher(),
+    dataDir,
+  });
   const call = (path: string, headers: Record<string, string> = {}) =>
     app.fetch(new Request(`http://localhost${path}`, { headers }));
 

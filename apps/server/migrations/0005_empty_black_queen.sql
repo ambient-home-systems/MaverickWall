@@ -1,0 +1,1 @@
+ALTER TABLE `household_settings` ADD `display_blocks` text DEFAULT 'now,next,horizon' NOT NULL;

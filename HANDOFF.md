@@ -95,10 +95,16 @@ namespace.** The imported name is not usable as a type. Use
 shaped — and that shape differs between bundled types and `@types/*`.
 
 **The offline type shims in `test/offline-types/` were written without the real
-packages installed.** They were wrong about `ical.js` and `better-sqlite3`, and
-`better-auth.d.ts` is very likely wrong too. Once the real packages are present,
-those shims are only used by `tsconfig.offline.json` and can be deleted — the
-build uses the genuine types.
+packages installed.** They were wrong about `ical.js` and `better-sqlite3`.
+`better-auth.d.ts` turned out to be right about everything the adapter uses.
+All the real packages are now installed and the build uses genuine types, so
+the shims and `tsconfig.offline.json` are dead weight and can be deleted.
+
+**`pnpm test` typechecks the tests as well**, via `tsconfig.test.json`. It did
+not until avatars, and the gap had already let four harnesses call `createApp`
+without a required argument. Turning it on found seven errors in one go,
+including a test asserting a `dns-failed` outcome with the wrong status — that
+code is a *rejection*, not a failure.
 
 **The scheduler persists `next_run_at`.** After repeated failures a job may be
 15 minutes out, and restarting will not hurry it. To force a sync:
@@ -132,21 +138,97 @@ confirmed installed and working.
 
 ## Immediate next steps
 
-1. **Verify `better-auth.ts` against the real library.** The one unexecuted
-   file. Expect the config shape, `auth.api.getSession`, and the drizzle adapter
-   mapping to need correcting.
-2. **Wire auth into `main.ts` and `app.ts`.** `protectPrefix` exists; the
-   Better Auth handler needs mounting at `/api/auth/*` and `resolveBaseUrl`
-   needs calling per request for HA ingress.
-3. **First-run wizard.** `/setup` currently answers 501. Completion criteria
-   still undecided — see CLAUDE.md.
-4. **Calendars screen**, with `testFeed()` behind the TEST FEED button. That
-   endpoint is built and tested; it needs a route and a form.
+1. ~~**Verify `better-auth.ts` against the real library.**~~ Done. The config
+   shape, `auth.api.getSession` and the drizzle adapter mapping were all
+   correct as written — the expectation that they would need fixing was wrong.
+   The column names in `schema.ts` match what 1.6.25 wants.
+2. ~~**Wire auth into `main.ts` and `app.ts`.**~~ Done, with one deliberate
+   departure: `resolveBaseUrl` is **not** called per request. See below.
+3. ~~**First-run wizard.**~~ Done, with `requireSetupComplete` mounted in the
+   same change. Completion criteria decided: **account + timezone**. The
+   calendar step is offered and skippable, for the reason in CLAUDE.md.
+4. ~~**Calendars screen.**~~ Done. `testFeed()` runs on add rather than behind
+   a separate TEST FEED button: a feed that cannot be fetched and parsed is
+   never stored, so the list cannot contain a row that has never worked. Also
+   has "sync now", which automates the `job_state` SQL above, and a two-step
+   remove that clears the scheduler row the cascade does not reach.
 5. **Shifts screen** — the title-tagging flow. `analyseTitles()` is built and
-   tested.
+   tested. Decide first whether it is another server-rendered screen or the
+   thing that finally starts `apps/admin`; four screens now exist without it.
 
-After that: the display. Suggested order is **inverted from the original spec** —
-get the zoom pyramid drawing real data first, then add IndexedDB, the service
-worker, and the watchdog. Resilience protecting a layout nobody has looked at is
-effort on the wrong risk, and the display is the first work where a human eye is
-a better instrument than a test suite.
+6. **Prompt 3.** CALENDARS, PEOPLE, SHIFT ROTATION, SCREENS and SYSTEM are
+   done. Two pieces of it are not:
+
+   - ~~**The opt-in update check.**~~ Done, off by default, with the
+     disclosure written to be read rather than agreed to.
+   - ~~**Avatars on People.**~~ Done. Uploaded, sniffed, stored by content
+     hash, served behind both gates, and drawn beside the name in the shift
+     badge — the design file predates avatars and says nothing about where one
+     goes, so that placement is a choice worth revisiting.
+
+7. **Home Assistant ingress** — the one piece of step 2 never finished, and the
+   only reason `resolveBaseUrl` still exists. Three things have to move
+   together, and none can be verified without a real add-on to test against:
+   the dynamic `baseURL`, the `x-ingress-path` prefix, and the app-wide
+   cross-origin guard in `app.ts`, which compares the browser's `Origin`
+   against the address the request arrived on and would refuse every
+   supervisor-proxied POST.
+
+### Zod is in the rules but not in the project
+
+Rule five says "Zod at every boundary", and it is in the stack list. It is not
+a dependency of any package and is not imported anywhere — the wizard forms,
+the tools and the HTTP layer all hand-validate. That is not an argument for
+either side; it is a discrepancy between the rules and the code that somebody
+should settle deliberately. Adding it would be a real improvement at the form
+boundaries, where the current checks are correct but easy to forget to repeat.
+
+### Why `resolveBaseUrl` is not wired in
+
+It cannot be "called per request" as step 2 assumed. Better Auth resolves
+`baseURL` when the instance is built, so honouring a per-request value would
+mean constructing an auth instance per request — which would also throw away
+the rate-limit counters on every call.
+
+It does not need to be. 1.6.25 supports this natively: `baseURL` accepts
+`{ allowedHosts, fallback }` and resolves per request internally, and there is
+a `trustedProxyHeaders` flag. That is a supported path; `resolveBaseUrl` is a
+hand-rolled one that would have to be kept correct forever.
+
+So it stays as a tested pure function and nothing calls it. When the HA add-on
+is built — and it can be tested against a real ingress path — use the
+library's dynamic `baseURL` with the ingress host in `allowedHosts`, and
+delete `resolveBaseUrl`. Shipping unverifiable ingress handling now is the
+exact trap this session was opened to clean up.
+
+The display now draws real data, and that order held up: two layout faults were
+found by looking at it and then measuring, and neither was reachable by any test
+that existed. The advice stands for what is left.
+
+**Next on the display**, in this order:
+
+1. **The offline store.** IndexedDB for the last good manifest, a service
+   worker for the shell, and a watchdog that reloads a wedged renderer. A
+   reload with the server down currently shows the waiting screen, which is the
+   one gap in rule nine that is still open.
+2. **Density, with a person looking at it.** The household now sets the counts
+   on `/admin/display`, but the *defaults* in `viewmodel.ts` are still opinions
+   written at a desk, and `NEXT_EVENT_LIMIT` is still a constant nobody can
+   change. They want a real wall at a real distance.
+
+**Break days are coloured.** `shiftFor()` in `api/manifest.ts` emits a
+synthetic `break` shift when the rotation resolved to "not working" with a
+source other than `none`, so the display can tint it (`--s-break`). A day no
+plan covers still produces nothing, which is the distinction that was missing:
+the two used to arrive at the display identically.
+
+**Density is configurable**, on `/admin/display`. **Orientation and rotation
+are configurable per screen**, on `/admin/screens`, which also renames and
+unpairs. Unpairing revokes rather than deletes: the row is what makes a token
+stop working, and somebody auditing what is still on their wall wants the
+history.
+
+Block order and visibility are configurable too. What is still fixed: the
+*landscape* column assignment — the month always takes the right-hand column
+rather than following the chosen order literally. That is deliberate and
+documented in CLAUDE.md, but it is the next thing somebody will ask for.

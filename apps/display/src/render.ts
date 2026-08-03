@@ -1,0 +1,287 @@
+import type { DayModel, DisplayModel, EventModel, HorizonCell } from './viewmodel.js';
+
+/**
+ * The DOM, and no decisions.
+ *
+ * Structure and class names follow `maverick-wall-design-directions.html`, so
+ * the stylesheet next to this is recognisably the design file's rather than a
+ * reinterpretation of it. Everything about *what* to show was settled in the
+ * view model.
+ *
+ * Nodes, never HTML strings: event titles come from calendars the household
+ * does not control, and `textContent` cannot be talked into executing one.
+ */
+
+function el(tag: string, className?: string, text?: string): HTMLElement {
+  const node = document.createElement(tag);
+  if (className !== undefined) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+/**
+ * The shift colour for a row or cell, as the design sets it: one custom
+ * property that everything else reads.
+ *
+ * `--sc` is the hue and `--sc-tint` the wash behind it. The tint is pre-mixed
+ * per theme because `color-mix()` is too new for the browsers rule two exists
+ * to keep working.
+ */
+function paintShift(node: HTMLElement, token: string | undefined): void {
+  if (token === undefined) return;
+  node.style.setProperty('--sc', `var(${token}, var(--s-straight))`);
+  node.style.setProperty('--sc-tint', `var(${token}-tint, var(--panel))`);
+  node.classList.add('has-shift');
+}
+
+/* ---------------------------------------------------------------- NOW ---- */
+
+function renderNow(model: DisplayModel): HTMLElement {
+  const now = el('section', 'now');
+  const top = el('div', 'now-top');
+
+  const left = el('div');
+  left.appendChild(el('div', 'clock', model.clock));
+  left.appendChild(el('div', 'today-date', model.todayLabel));
+  top.appendChild(left);
+
+  /*
+   * The badge, which the design calls the single most important element.
+   *
+   * Absent rather than empty when nobody is on a rota: a household with no
+   * shift worker should see a calendar, not a hole where a feature would be.
+   */
+  const shift = model.todayShift;
+  if (shift !== undefined) {
+    const badge = el('div', 'shift-badge');
+    paintShift(badge, shift.colorToken);
+    /*
+     * The picture, where the person already is.
+     *
+     * The design file predates avatars and says nothing about where one goes,
+     * so this puts it beside the name in the badge rather than inventing a
+     * place for it. Same-origin and behind the display token — rule three, and
+     * the wall works with no internet.
+     */
+    const who = el('div', 'who');
+    const avatar = shift.personAvatarUrl;
+    if (avatar !== undefined && avatar !== null && avatar !== '') {
+      const image = document.createElement('img');
+      image.className = 'who-face';
+      image.src = avatar;
+      // Decorative: the name is right beside it, so a reader gains nothing
+      // from hearing the filename.
+      image.alt = '';
+      who.appendChild(image);
+    }
+    who.appendChild(document.createTextNode(shift.personName));
+    badge.appendChild(who);
+    badge.appendChild(el('div', 'what', shift.label));
+    if (model.shiftRun !== undefined) badge.appendChild(el('div', 'until', model.shiftRun));
+    top.appendChild(badge);
+  }
+
+  now.appendChild(top);
+
+  const events = el('div', 'today-events');
+  if (model.today === undefined || model.today.events.length === 0) {
+    events.appendChild(el('div', 'dr-empty', 'Nothing scheduled today.'));
+  } else {
+    for (const event of model.today.events) events.appendChild(renderTodayEvent(event));
+    if (model.today.hiddenEventCount > 0) {
+      events.appendChild(el('div', 'dr-empty', `+${model.today.hiddenEventCount} more`));
+    }
+  }
+  now.appendChild(events);
+  return now;
+}
+
+function renderTodayEvent(event: EventModel): HTMLElement {
+  const classes = ['te'];
+  if (event.isPast) classes.push('is-past');
+  if (event.isNext) classes.push('is-next');
+  const row = el('div', classes.join(' '));
+  row.appendChild(el('div', 'te-time', event.allDay ? 'all day' : event.time));
+
+  const title = el('div', 'te-title', event.title);
+  if (event.location !== undefined && event.location !== '') {
+    title.appendChild(el('span', 'te-where', event.location));
+  }
+  row.appendChild(title);
+  return row;
+}
+
+/* --------------------------------------------------------------- NEXT ---- */
+
+function renderNext(model: DisplayModel): HTMLElement {
+  const next = el('section', 'next');
+  next.appendChild(el('div', 'section-label', `Next ${model.next.length} days`));
+  for (const day of model.next) next.appendChild(renderDayRow(day));
+  return next;
+}
+
+function renderDayRow(day: DayModel): HTMLElement {
+  const row = el('div', 'day-row');
+  const shift = day.shifts[0];
+  paintShift(row, shift?.colorToken);
+
+  const when = el('div', 'dr-when');
+  when.appendChild(el('div', 'dr-dow', day.weekday));
+  when.appendChild(el('div', 'dr-num', day.dayNumber));
+  if (shift !== undefined) when.appendChild(el('div', 'dr-shift', shift.label));
+  row.appendChild(when);
+
+  const events = el('div', 'dr-events');
+  if (day.events.length === 0) {
+    // A dash rather than nothing, so an empty day reads as "checked, nothing"
+    // rather than as a row that failed to render.
+    events.appendChild(el('div', 'dr-empty', '—'));
+  } else {
+    for (const event of day.events) {
+      const entry = el('div', event.allDay ? 'dr-ev allday' : 'dr-ev');
+      if (!event.allDay) entry.appendChild(el('div', 'dr-ev-time', event.time));
+      entry.appendChild(el('div', 'dr-ev-title', event.title));
+      events.appendChild(entry);
+    }
+    if (day.hiddenEventCount > 0) {
+      events.appendChild(el('div', 'dr-empty', `+${day.hiddenEventCount} more`));
+    }
+  }
+  row.appendChild(events);
+  return row;
+}
+
+/* ------------------------------------------------------------ HORIZON ---- */
+
+function renderCell(cell: HorizonCell): HTMLElement {
+  const classes = ['hz-cell'];
+  if (cell.isToday) classes.push('is-today');
+  if (cell.isPast) classes.push('dim');
+  if (!cell.inMonth) classes.push('outside');
+
+  const node = el('div', classes.join(' '));
+  paintShift(node, cell.shiftToken);
+  node.appendChild(el('div', 'hz-num', cell.dayNumber));
+
+  if (cell.eventCount > 0) {
+    const dots = el('div', 'hz-dots');
+    // Three at most. Beyond that the count stops being countable at a glance
+    // and the cell only needs to read as "busy".
+    for (let index = 0; index < Math.min(cell.eventCount, 3); index++) {
+      dots.appendChild(el('span', 'hz-dot'));
+    }
+    node.appendChild(dots);
+  }
+  return node;
+}
+
+function renderHorizon(model: DisplayModel): HTMLElement {
+  const horizon = el('section', 'horizon');
+  const grid = el('div', 'hz-grid');
+  for (const name of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    grid.appendChild(el('div', 'hz-head', name));
+  }
+  for (const week of model.horizon) {
+    for (const cell of week) grid.appendChild(renderCell(cell));
+  }
+  horizon.appendChild(grid);
+
+  const legend = legendFor(model);
+  if (legend !== undefined) horizon.appendChild(legend);
+  return horizon;
+}
+
+/**
+ * The rotation legend.
+ *
+ * Built from the cells actually in the grid above it, not from the week ahead.
+ * It used to read the latter, which was fine until the week ahead could be
+ * switched off — the legend then explained one colour while the grid showed
+ * three. A key has to describe the thing it sits under.
+ *
+ * Only colours that appear, too: explaining four when the household ever sees
+ * two is noise on a surface with no room for any.
+ */
+function legendFor(model: DisplayModel): HTMLElement | undefined {
+  const seen = new Map<string, string>();
+  for (const week of model.horizon) {
+    for (const cell of week) {
+      if (cell.shiftToken !== undefined && cell.shiftLabel !== undefined) {
+        seen.set(cell.shiftToken, cell.shiftLabel);
+      }
+    }
+  }
+  if (seen.size === 0) return undefined;
+
+  const legend = el('div', 'legend');
+  seen.forEach((label, token) => {
+    const entry = el('span');
+    const swatch = el('i');
+    swatch.style.setProperty('--sc', `var(${token}, var(--s-straight))`);
+    entry.appendChild(swatch);
+    entry.appendChild(document.createTextNode(label));
+    legend.appendChild(entry);
+  });
+  return legend;
+}
+
+/* ------------------------------------------------------------- banners --- */
+
+function renderBanners(model: DisplayModel): HTMLElement | undefined {
+  const messages: { level: string; message: string }[] = [...model.notices];
+  if (model.staleness.level !== 'fresh') {
+    messages.unshift({
+      level: model.staleness.level === 'offline' ? 'warn' : 'info',
+      message: model.staleness.message,
+    });
+  }
+  if (messages.length === 0) return undefined;
+
+  const wrap = el('div', 'banners');
+  for (const entry of messages) {
+    wrap.appendChild(el('div', `banner banner-${entry.level}`, entry.message));
+  }
+  return wrap;
+}
+
+/**
+ * Replace the screen in one go.
+ *
+ * Built detached and swapped in a single assignment, so a slow render is never
+ * seen half-finished. A wall is watched continuously; a flicker at the top of
+ * every minute is the sort of thing that makes a household unplug it.
+ */
+export function render(root: HTMLElement, model: DisplayModel): void {
+  const screen = el('div', 'screen');
+  const banners = renderBanners(model);
+  if (banners !== undefined) screen.appendChild(banners);
+  /*
+   * Drawn in the order the household asked for, and only the blocks they asked
+   * for. DOM order is visual order in both layouts — portrait stacks these
+   * directly, and landscape pins the month to its own column and lets the rest
+   * fall in beside it — so there is one list to reason about rather than an
+   * ordering rule per layout.
+   */
+  for (const block of model.blocks) {
+    if (block === 'now') screen.appendChild(renderNow(model));
+    else if (block === 'next') screen.appendChild(renderNext(model));
+    else screen.appendChild(renderHorizon(model));
+  }
+
+  root.textContent = '';
+  root.appendChild(screen);
+}
+
+/**
+ * The screen shown before the first manifest arrives, and when this screen is
+ * not paired. Never a blank rectangle — rule nine.
+ */
+export function renderMessage(root: HTMLElement, heading: string, detail: string): void {
+  const screen = el('div', 'screen screen-message');
+  const panel = el('section', 'message');
+  panel.appendChild(el('h1', undefined, heading));
+  panel.appendChild(el('p', undefined, detail));
+  screen.appendChild(panel);
+  root.textContent = '';
+  root.appendChild(screen);
+}

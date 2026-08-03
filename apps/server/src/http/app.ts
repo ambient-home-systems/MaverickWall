@@ -1,6 +1,27 @@
 import { Hono, type Context, type Next } from 'hono';
 import { localDateOf } from '@maverick-wall/calendar';
 import { verifyDisplayToken } from '../auth/tokens.js';
+import { getConnInfo } from '@hono/node-server/conninfo';
+import {
+  createAuth,
+  createSessionResolver,
+  CLIENT_IP_HEADER,
+  type AuthOptions,
+} from '../auth/better-auth.js';
+import {
+  protectPrefix,
+  refuseLateSignUp,
+  requireSetupComplete,
+  type GateDeps,
+} from '../auth/session.js';
+import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
+import { registerAdminRoutes } from './admin.js';
+import { createStaticFiles, defaultDisplayDir } from './static.js';
+import { readImage } from '../api/media.js';
+import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
+import { errorBlock, escapeHtml, page } from './html.js';
+import type { Fetcher } from '@maverick-wall/core';
+import type { Keyring } from '../secrets/keyring.js';
 import { buildManifest, manifestEtag, type ManifestNotice } from '../api/manifest.js';
 import {
   countUsers,
@@ -10,6 +31,7 @@ import {
   readPeople,
   readSchemaVersion,
   readScreens,
+  readSetupState,
   readShiftOverrides,
   readShiftPlans,
   readShiftTypes,
@@ -37,6 +59,73 @@ export interface AppDeps {
   /** Notices from boot — a failed migration, a permissions warning. */
   readonly bootNotices: readonly ManifestNotice[];
   readonly now?: () => number;
+  /**
+   * Better Auth configuration.
+   *
+   * `baseUrl` is fixed for the process lifetime. Home Assistant ingress serves
+   * this app from a path that varies per installation and is carried in a
+   * header per request — `resolveBaseUrl` in `auth/better-auth.ts` computes
+   * that, but nothing calls it yet, because there is no ingress add-on to
+   * verify the result against. Wiring it in now would be exactly the kind of
+   * unexecuted code this project has been burned by before.
+   */
+  readonly auth: Pick<AuthOptions, 'secret' | 'baseUrl'>;
+  /**
+   * The address the request actually came from.
+   *
+   * Defaults to the socket. Injectable because `getConnInfo` needs a real Node
+   * server underneath and there is none when a test calls `app.fetch`
+   * directly — and because a test that cannot vary the address cannot show
+   * that rate limiting is per-client at all.
+   */
+  readonly clientAddress?: (c: Context) => string | undefined;
+  /** Encrypts calendar URLs added through the wizard. */
+  readonly keyring: Keyring;
+  /** Tests a feed before the wizard stores it. */
+  readonly fetcher: Fetcher;
+  /**
+   * The bootstrap setup code.
+   *
+   * Supplied by the caller rather than created here, because boot has to print
+   * it before anyone loads a page — a holder owned by the app would not issue
+   * one until the first request, which is far too late to reach the log the
+   * household is reading.
+   */
+  readonly setupToken?: SetupTokenHolder;
+  /**
+   * Where the built display bundle lives.
+   *
+   * Defaults to the sibling of the compiled server, resolved from this
+   * module's own URL rather than the working directory — the same trap that
+   * once split one installation into two databases.
+   */
+  readonly displayDir?: string;
+  /** Where the database and the encryption key live. */
+  readonly dataDir: string;
+  /** For the uptime figure in diagnostics. Defaults to now. */
+  readonly startedAt?: number;
+  /**
+   * The log the System screen tails.
+   *
+   * Supplied by boot, because it has to be capturing before anything worth
+   * reading has been logged — one created here would start empty at the first
+   * request and miss every line about why the start went badly.
+   */
+  readonly log?: LogBuffer;
+}
+
+/**
+ * A Buffer as something Hono will send.
+ *
+ * `c.body` takes an ArrayBuffer, and a Buffer is a view onto a pooled one, so
+ * handing over `.buffer` directly would send whatever else Node happens to
+ * have parked in that pool alongside it.
+ */
+export function bytesOf(buffer: Buffer): ArrayBuffer {
+  return buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
 }
 
 const DISPLAY_COOKIE = 'mw_display';
@@ -74,6 +163,61 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   const now = deps.now ?? (() => Date.now());
+
+  const staticFiles = createStaticFiles(deps.displayDir ?? defaultDisplayDir());
+
+  const auth = createAuth({ db: deps.db, secret: deps.auth.secret, baseUrl: deps.auth.baseUrl });
+  const gateDeps: GateDeps = {
+    sessions: createSessionResolver(auth),
+    setupState: () => readSetupState(deps.db),
+  };
+
+  /*
+   * Held back until the wizard finishes, everywhere at once.
+   *
+   * Registered first so it cannot be outflanked by a route added below it,
+   * and made to answer for its own exceptions rather than depending on where
+   * it sits in the file. `/healthz`, `/d/*` and `/setup` pass through: a
+   * stalled setup has to stay diagnosable, and a wall that says "not set up
+   * yet" beats one showing nothing at all.
+   */
+  /**
+   * Refuse a state-changing request that came from somebody else's page.
+   *
+   * The session and setup cookies are `SameSite=Lax`, which already stops a
+   * browser attaching them to a cross-site POST, and that is the main
+   * mitigation. This is the second one, and it exists because the forms here
+   * are handled by this application rather than by Better Auth — the internal
+   * call stamps an origin the library will trust, so the library's own check
+   * no longer stands between a forged post and the account it would create.
+   *
+   * Only when an `Origin` is present and disagrees. A browser always sends one
+   * on a cross-site POST; a missing header means a client that is not a
+   * browser, which is not the thing being defended against here.
+   *
+   * Whoever wires Home Assistant ingress: the browser's origin will be the
+   * supervisor's, and this compares against the address the request arrived
+   * on. That needs handling here at the same time.
+   */
+  app.use('*', async (c: Context, next: Next): Promise<Response | void> => {
+    if (c.req.method === 'GET' || c.req.method === 'HEAD') {
+      await next();
+      return;
+    }
+    const origin = c.req.header('origin');
+    if (origin !== undefined && origin !== new URL(c.req.url).origin) {
+      return c.json(
+        {
+          error: 'cross-origin',
+          message: 'That request came from another site and was refused.',
+        },
+        403,
+      );
+    }
+    await next();
+  });
+
+  app.use('*', requireSetupComplete(gateDeps));
 
   /**
    * Unauthenticated on purpose.
@@ -117,6 +261,24 @@ export function createApp(deps: AppDeps): Hono {
 
   app.use('/d/*', requireScreen);
 
+  /**
+   * Uploaded pictures, behind the display token like the manifest itself.
+   *
+   * `/d/*` already requires a paired screen, so this inherits that gate. A
+   * family's photographs must not be readable by anything on the network that
+   * happens to know a filename.
+   */
+  app.get('/d/media/:name', (c: Context) => {
+    const image = readImage(deps.dataDir, c.req.param('name') ?? '');
+    if (image === undefined) return c.json({ error: 'not-found' }, 404);
+    c.header('content-type', image.contentType);
+    // The type is sniffed from the bytes; this stops a browser deciding it
+    // knows better and treating an image as something executable.
+    c.header('x-content-type-options', 'nosniff');
+    c.header('cache-control', 'public, max-age=86400');
+    return c.body(bytesOf(image.bytes));
+  });
+
   app.get('/d/manifest', (c: Context) => {
     const screen = c.get('screen') as ScreenRow;
     const at = now();
@@ -139,6 +301,17 @@ export function createApp(deps: AppDeps): Hono {
       daysAfter: DEFAULT_DAYS_AFTER,
       now: at,
       appVersion: deps.appVersion,
+      // The document is already screen-specific — it is served behind a
+      // display token — so how that screen is hung travels with it.
+      screen: {
+        orientation: screen.orientation,
+        rotation: screen.rotation,
+        theme: screen.theme,
+        timezone: screen.timezone,
+        daytimeTheme: screen.daytimeTheme,
+        daytimeStartsAt: screen.daytimeStartsAt,
+        daytimeEndsAt: screen.daytimeEndsAt,
+      },
       notices: deps.bootNotices,
     });
 
@@ -163,6 +336,118 @@ export function createApp(deps: AppDeps): Hono {
 
     c.header('etag', etag);
     return c.json(manifest);
+  });
+
+  /**
+   * No public registration. The first account is the only one Better Auth's
+   * own sign-up route will ever create; after that this answers 403 before the
+   * library sees the request. Registered ahead of the catch-all below so it
+   * runs first and falls through via `next()` — the same composition already
+   * proven by `requireScreen` guarding `/d/manifest`.
+   */
+  app.use('/api/auth/sign-up/email', refuseLateSignUp(gateDeps));
+
+  const clientAddress =
+    deps.clientAddress ??
+    ((c: Context): string | undefined => {
+      try {
+        return getConnInfo(c).remote.address;
+      } catch {
+        // No Node server underneath. Rate limiting falls back to a shared
+        // bucket, which is worse but is not worth failing a request over.
+        return undefined;
+      }
+    });
+
+  /**
+   * Everything else Better Auth handles itself: sign-in, sign-out, session
+   * lookup, CSRF, rate limiting. Reimplementing any of that here would be the
+   * mistake rule five exists to prevent.
+   */
+  app.all('/api/auth/*', (c: Context) => {
+    const headers = new Headers(c.req.raw.headers);
+    // Deleted before it is set, so a client that sends this header cannot keep
+    // its own value when the socket address is unavailable.
+    headers.delete(CLIENT_IP_HEADER);
+    const address = clientAddress(c);
+    if (address !== undefined && address !== '') headers.set(CLIENT_IP_HEADER, address);
+    return auth.handler(new Request(c.req.raw, { headers }));
+  });
+
+  /**
+   * Call Better Auth from inside a handler.
+   *
+   * Every internal call goes through here so none of them can forget the
+   * client address — one did, and the wizard's own sign-up silently shared a
+   * rate-limit bucket with every other caller until a test could not create a
+   * fourth account. The cookie is forwarded too, because sign-out needs to
+   * know which session it is ending.
+   */
+  const authApi = (c: Context, path: string, body: unknown = {}): Promise<Response> =>
+    auth.handler(
+      new Request(new URL(path, c.req.url), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          [CLIENT_IP_HEADER]: clientAddress(c) ?? '',
+          cookie: c.req.header('cookie') ?? '',
+          // Better Auth refuses a POST with no Origin. This request really is
+          // same-origin — this server made it — and saying so is honest
+          // rather than a way around the check.
+          origin: new URL(c.req.url).origin,
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  /**
+   * The sign-in form.
+   *
+   * Server-rendered for the same reason the wizard is: this is the way back in
+   * when something else is broken. It posts to itself rather than to Better
+   * Auth directly because a plain form sends url-encoded fields and the API
+   * expects JSON — and a form that needs script to submit is one that fails on
+   * exactly the locked-down browser most likely to be pointed at a wall.
+   */
+  app.get('/admin/sign-in', (c: Context) => c.html(signInPage()));
+
+  app.post('/admin/sign-in', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const email = typeof body['email'] === 'string' ? body['email'].trim() : '';
+    const password = typeof body['password'] === 'string' ? body['password'] : '';
+
+    const response = await authApi(c, '/api/auth/sign-in/email', { email, password });
+
+    if (response.status >= 400) {
+      // Deliberately the same message for an unknown address and a wrong
+      // password. Distinguishing them tells anyone who can reach the port
+      // which email address is the household's.
+      const message =
+        response.status === 429
+          ? 'Too many attempts. Wait a minute and try again.'
+          : 'That email address and password do not match.';
+      return c.html(signInPage(message, email), response.status === 429 ? 429 : 401);
+    }
+
+    for (const cookie of response.headers.getSetCookie()) {
+      c.header('set-cookie', cookie, { append: true });
+    }
+    return c.redirect('/admin', 302);
+  });
+
+  protectPrefix(app, '/api', gateDeps);
+  protectPrefix(app, '/admin', gateDeps);
+
+  registerAdminRoutes(app, {
+    db: deps.db,
+    keyring: deps.keyring,
+    fetcher: deps.fetcher,
+    signOut: (c: Context) => authApi(c, '/api/auth/sign-out'),
+    appVersion: deps.appVersion,
+    dataDir: deps.dataDir,
+    startedAt: deps.startedAt ?? now(),
+    log: deps.log ?? createLogBuffer(),
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
   });
 
   /**
@@ -194,32 +479,54 @@ export function createApp(deps: AppDeps): Hono {
     return c.redirect('/', 302);
   });
 
+  /**
+   * The display bundle.
+   *
+   * Open, like `/d/*` and for the same reason: the screen carries its own
+   * token and the manifest behind it is what is actually protected. Serving
+   * the shell to anyone on the LAN gives away nothing, and putting it behind
+   * the session gate would mean a wall that cannot draw until somebody signs
+   * in on it, which is the one thing these screens cannot do.
+   */
+  app.get('/assets/:name', (c: Context) => {
+    const file = staticFiles.read(c.req.param('name') ?? '');
+    if (file === undefined) return c.json({ error: 'not-found' }, 404);
+    c.header('content-type', file.contentType);
+    c.header('cache-control', 'no-cache');
+    return c.body(bytesOf(file.body));
+  });
+
   app.get('/', (c: Context) => {
-    // The display bundle lands here. Until it exists, say something useful
-    // rather than 404 — a blank screen is the one outcome to avoid.
+    const shell = staticFiles.read('index.html');
+    if (shell !== undefined) {
+      c.header('content-type', 'text/html; charset=utf-8');
+      c.header('cache-control', 'no-cache');
+      return c.body(bytesOf(shell.body));
+    }
+
+    // Not built. Say so rather than 404 — a blank screen is the one outcome to
+    // avoid, and "the bundle is missing" is a fault somebody can act on.
     const users = countUsers(deps.db);
     return c.html(
       `<!doctype html><meta charset="utf-8"><title>Maverick Wall</title>` +
         `<body style="font:16px system-ui;padding:2rem;background:#0B0E11;color:#E9EEF4">` +
         `<h1>Maverick Wall</h1>` +
-        `<p>The server is running. The display bundle is not built yet.</p>` +
-        `<p>${users === 0 ? 'No account has been created. Check the container logs for the setup link.' : 'Try <code>/healthz</code> or <code>/d/manifest</code>.'}</p>`,
+        `<p>The server is running, but the display bundle was not found at ` +
+        `<code>${escapeHtml(staticFiles.directory)}</code>.</p>` +
+        `<p>Build it with <code>pnpm --filter @maverick-wall/display build</code>.</p>` +
+        `<p>${users === 0 ? 'No account has been created either. Check the container logs for the setup link.' : 'The admin interface is at <code>/admin</code>.'}</p>`,
     );
   });
 
-  app.get('/setup', (c: Context) =>
-    // Not built. Saying so beats a bare 404, which reads as a broken server
-    // rather than an unfinished one.
-    c.json(
-      {
-        error: 'not-implemented',
-        message:
-          'Account setup is not built yet. Use the add-source and add-screen ' +
-          'command line tools, then pair a display at /pair?token=…',
-      },
-      501,
-    ),
-  );
+  registerSetupRoutes(app, {
+    db: deps.db,
+    keyring: deps.keyring,
+    fetcher: deps.fetcher,
+    sessions: gateDeps.sessions,
+    setupToken: deps.setupToken ?? createSetupTokenHolder((): void => {}),
+    signUp: (c: Context, input) => authApi(c, '/api/auth/sign-up/email', input),
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+  });
 
   app.notFound((c: Context) => c.json({ error: 'not-found', path: c.req.path }, 404));
 
@@ -231,6 +538,21 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   return app;
+}
+
+function signInPage(error?: string, email = ''): string {
+  return page({
+    title: 'Sign in — Maverick Wall',
+    heading: 'Sign in',
+    body:
+      (error === undefined ? '' : errorBlock(error)) +
+      `<form method="post" action="/admin/sign-in">` +
+      `<label for="email">Email address</label>` +
+      `<input id="email" name="email" type="email" required autocomplete="username" value="${escapeHtml(email)}">` +
+      `<label for="password">Password</label>` +
+      `<input id="password" name="password" type="password" required autocomplete="current-password">` +
+      `<button type="submit">Sign in</button></form>`,
+  });
 }
 
 /** Civil date arithmetic without pulling core in for one call. */

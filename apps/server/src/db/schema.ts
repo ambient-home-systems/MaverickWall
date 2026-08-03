@@ -62,6 +62,42 @@ export const householdSettings = sqliteTable('household_settings', {
   weatherEnabled: integer('weather_enabled', { mode: 'boolean' }).notNull().default(true),
   alertsEnabled: integer('alerts_enabled', { mode: 'boolean' }).notNull().default(true),
 
+  /**
+   * How much the wall shows. Owned by the household, not by the bundle.
+   *
+   * A ten-inch tablet in a hallway and a 43" panel in a kitchen want different
+   * answers, and so do a family with one appointment a week and one with six a
+   * day. These travel in the manifest so the display reads them rather than
+   * carrying an opinion nobody on site can change.
+   */
+  displayTodayEvents: integer('display_today_events', { mode: 'number' }).notNull().default(8),
+  displayNextDays: integer('display_next_days', { mode: 'number' }).notNull().default(6),
+  displayHorizonWeeks: integer('display_horizon_weeks', { mode: 'number' }).notNull().default(5),
+
+  /**
+   * Which blocks the wall draws, in order, top to bottom.
+   *
+   * A comma-separated list rather than a table, because it is three items with
+   * no attributes of their own and a join to read them would be ceremony. A
+   * block left out of the list is simply not drawn — a household that only
+   * wants today and the month says so by omitting the week ahead, which is a
+   * different statement from asking for zero days of it.
+   */
+  displayBlocks: text('display_blocks').notNull().default('now,next,horizon'),
+
+  /**
+   * The one thing in this product that talks to anybody else.
+   *
+   * Off unless the household turns it on, and it stays a check rather than an
+   * update: nothing is downloaded and nothing is installed. Rule nine says
+   * never brick the kitchen calendar, and an installer that runs unattended in
+   * a house nobody can reach is the most direct way to break that.
+   */
+  updateCheckEnabled: integer('update_check_enabled', { mode: 'boolean' }).notNull().default(false),
+  updateLastCheckedAt: integer('update_last_checked_at', { mode: 'number' }),
+  updateLatestVersion: text('update_latest_version'),
+  updateLastError: text('update_last_error'),
+
   /** False until the first-run wizard completes. */
   setupCompletedAt: integer('setup_completed_at', { mode: 'number' }),
 
@@ -160,10 +196,41 @@ export const screens = sqliteTable(
     name: text('name').notNull(),
     tokenHash: text('token_hash').notNull(),
 
-    /** Per-screen overrides. Null means follow the household setting. */
+    /**
+     * Per-screen overrides. Null means follow the household setting.
+     *
+     * A household mostly wants one look everywhere, so null is the common case
+     * and has to stay the easy one. The exceptions are real though: a screen in
+     * a bedroom wants the dark theme long after the kitchen has gone light, and
+     * a holiday home on another clock wants its own zone.
+     */
     theme: text('theme'),
     layout: text('layout', { mode: 'json' }).$type<unknown>(),
     timezone: text('timezone'),
+    daytimeTheme: text('daytime_theme'),
+    daytimeStartsAt: text('daytime_starts_at'),
+    daytimeEndsAt: text('daytime_ends_at'),
+
+    /**
+     * Which layout to draw, regardless of what the browser reports.
+     *
+     * `auto` follows the viewport, which is right until it isn't: a panel in a
+     * kiosk frame can report a size that has nothing to do with how it is
+     * hung, and there is nobody on site to argue with it.
+     */
+    orientation: text('orientation', { enum: ['auto', 'portrait', 'landscape'] })
+      .notNull()
+      .default('auto'),
+
+    /**
+     * Quarter turns applied to the whole wall.
+     *
+     * Plenty of screens are mounted sideways on purpose — a widescreen panel
+     * turned on its end is the cheapest portrait wall there is — and many of
+     * them cannot be rotated in their own settings, or lose the setting on
+     * power loss. Rotating in the page is the one place it always sticks.
+     */
+    rotation: integer('rotation', { mode: 'number' }).notNull().default(0),
 
     /** Rotated when the token is regenerated, invalidating old sessions. */
     tokenIssuedAt: integer('token_issued_at', { mode: 'number' }).notNull().$defaultFn(now),
@@ -203,6 +270,14 @@ export const calendarSources = sqliteTable(
     urlHost: text('url_host'),
 
     color: text('color').notNull().default('#4C7FD1'),
+    /**
+     * Whose calendar this is, when it is one person's.
+     *
+     * Null for a shared feed — the household calendar, the bin collections —
+     * which is the common case and must stay the easy one. Set, it drives the
+     * per-person columns on the wall.
+     */
+    personId: text('person_id').references(() => people.id, { onDelete: 'set null' }),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     /** Hidden feeds still sync; they just do not render. */
     visible: integer('visible', { mode: 'boolean' }).notNull().default(true),

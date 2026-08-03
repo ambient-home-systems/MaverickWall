@@ -11,7 +11,7 @@ import {
 } from '../src/api/manifest.js';
 
 const PEOPLE: PersonRow[] = [
-  { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: 1, sortOrder: 0 },
+  { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: 1, sortOrder: 0, avatarPath: null },
 ];
 
 const NOW = Date.parse('2026-09-10T12:00:00Z');
@@ -23,6 +23,10 @@ const HOUSEHOLD: HouseholdRow = {
   daytimeStartsAt: '07:00',
   daytimeEndsAt: '21:00',
   shiftEnabled: 1,
+  displayTodayEvents: 8,
+  displayNextDays: 6,
+  displayHorizonWeeks: 5,
+  displayBlocks: 'now,next,horizon',
 };
 
 const SOURCES: SourceRow[] = [
@@ -129,11 +133,17 @@ describe('events', () => {
 });
 
 describe('shifts', () => {
-  it('resolves a working day and leaves rest days empty', () => {
+  it('resolves a working day, and marks a rest day as an explicit break', () => {
     const manifest = buildManifest(BASE);
     expect(dayOf(manifest, '2026-09-13')?.shifts[0]?.key).toBe('day');
     expect(dayOf(manifest, '2026-09-13')?.shifts[0]?.source).toBe('pattern');
-    expect(dayOf(manifest, '2026-09-10')?.shifts).toEqual([]);
+
+    // A rest day the pattern named is a fact about the day, not an absence of
+    // one. The display colours it, and it says so out of the same field.
+    const rest = dayOf(manifest, '2026-09-10')?.shifts[0];
+    expect(rest?.key).toBe('break');
+    expect(rest?.isWorking).toBe(false);
+    expect(rest?.colorToken).toBe('--s-break');
   });
 
   it('shows an override through to the display', () => {
@@ -271,8 +281,15 @@ describe('shifts derived from a calendar', () => {
   });
 
   it('treats an explicit rest day as not working, not as unknown', () => {
+    // The distinction this test is named for. It previously asserted an empty
+    // list, which is what "unknown" looks like — so it was quietly checking
+    // the opposite of its own title, and the display had no way to tell a
+    // rest day from a day the rota says nothing about.
     const manifest = buildManifest(input);
-    expect(dayOf(manifest, '2026-09-11')?.shifts).toEqual([]);
+    const shift = dayOf(manifest, '2026-09-11')?.shifts[0];
+    expect(shift?.key).toBe('break');
+    expect(shift?.isWorking).toBe(false);
+    expect(shift?.source).not.toBe('none');
   });
 
   it('removes the shift events from the agenda but keeps the appointments', () => {
@@ -318,8 +335,8 @@ describe('two people', () => {
   // showing one person's rota while the other's is invisible is worse than
   // showing neither.
   const TWO: PersonRow[] = [
-    { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: 1, sortOrder: 0 },
-    { id: 'p2', name: 'Sam', color: '#4C7FD1', hasShiftRotation: 1, sortOrder: 1 },
+    { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: 1, sortOrder: 0, avatarPath: null },
+    { id: 'p2', name: 'Sam', color: '#4C7FD1', hasShiftRotation: 1, sortOrder: 1, avatarPath: null },
   ];
 
   const plans = [
@@ -339,10 +356,28 @@ describe('two people', () => {
 
   it('keeps each person on their own rota', () => {
     const manifest = buildManifest(input);
-    // 2026-09-06 is cycle position 0: Josh works days, Sam is off.
-    const sixth = manifest.days.find((day) => day.date === '2026-09-09');
-    expect(sixth?.shifts.map((shift) => shift.personName)).toEqual(['Sam']);
-    expect(sixth?.shifts[0]?.key).toBe('night');
+    // 2026-09-09 is cycle position 3: Josh is off, Sam is on nights. Both are
+    // now stated, so a wall can say "Josh off, Sam nights" rather than leaving
+    // half the household unaccounted for.
+    const ninth = manifest.days.find((day) => day.date === '2026-09-09');
+    expect(ninth?.shifts.map((shift) => shift.personName)).toEqual(['Josh', 'Sam']);
+
+    const byPerson = new Map(ninth?.shifts.map((shift) => [shift.personName, shift]));
+    expect(byPerson.get('Sam')?.key).toBe('night');
+    expect(byPerson.get('Sam')?.isWorking).toBe(true);
+    expect(byPerson.get('Josh')?.key).toBe('break');
+    expect(byPerson.get('Josh')?.isWorking).toBe(false);
+  });
+
+  it('says nothing at all about a day no plan covers', () => {
+    // The other half of the distinction: outside every plan's range there is
+    // no rota to report, and that must not render as a rest day.
+    const outside: BuildManifestInput = {
+      ...input,
+      shiftPlans: plans.map((plan) => ({ ...plan, effectiveTo: '2020-01-01' })) as ShiftPlan[],
+    };
+    const manifest = buildManifest(outside);
+    expect(manifest.days.every((day) => day.shifts.length === 0)).toBe(true);
   });
 
   it('lists both when both are working', () => {
@@ -376,8 +411,8 @@ describe('two people', () => {
 
   it('publishes the roster so a legend can be drawn', () => {
     expect(buildManifest(input).people).toEqual([
-      { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: true },
-      { id: 'p2', name: 'Sam', color: '#4C7FD1', hasShiftRotation: true },
+      { id: 'p1', name: 'Josh', color: '#E8A33D', hasShiftRotation: true, avatarUrl: null },
+      { id: 'p2', name: 'Sam', color: '#4C7FD1', hasShiftRotation: true, avatarUrl: null },
     ]);
   });
 
