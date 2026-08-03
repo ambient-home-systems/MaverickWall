@@ -11,7 +11,7 @@
 docker run -d \
   --name maverick-wall \
   --restart unless-stopped \
-  -v ./data:/data \
+  -v maverick-wall:/data \
   -p 8080:8080 \
   ghcr.io/ambient-home-systems/maverick-wall:stable
 ```
@@ -19,9 +19,33 @@ docker run -d \
 That is the whole thing. There is no database to start, no configuration file
 to write, and no account to create anywhere else.
 
-`./data` is everything: the calendar, the settings, and the key that decrypts
-your feed addresses. Back up that directory and you have backed up your
-installation.
+`maverick-wall` there is a **named volume** — Docker creates it and owns it.
+That is what lets this work with no setup at all, on Linux as well as on macOS.
+It holds everything: the calendar, the settings, and the key that decrypts your
+feed addresses.
+
+```bash
+docker volume inspect maverick-wall     # where it actually is on disk
+```
+
+## A folder instead of a volume
+
+If you would rather keep the data somewhere you can see:
+
+```bash
+mkdir -p ./data
+sudo chown -R 1000:1000 ./data
+docker run -d -v ./data:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall:stable
+```
+
+The `chown` is not optional on Linux. The container runs as uid 1000 rather
+than root, and a folder you just created belongs to you — so the container
+cannot write its own database in it. macOS hides this because Docker Desktop
+maps ownership across its file sharing layer; a Raspberry Pi, a Synology and a
+NAS do not, and those are most of the machines this runs on.
+
+If you skip it, the container says so on the way out and tells you this exact
+command. It does not fail with a stack trace.
 
 ### Tags
 
@@ -31,14 +55,8 @@ installation.
 
 ### If the container exits immediately
 
-It is almost always the volume. The container runs as uid 1000 rather than
-root, so a directory owned by somebody else is not writable by it — and it
-says so on the way out, with the command to fix it. Or use a named volume and
-let Docker deal with ownership:
-
-```bash
-docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall:stable
-```
+It is almost always a bind mount that the container cannot write. See above —
+it says so on the way out, with the command to fix it.
 
 ## Compose
 

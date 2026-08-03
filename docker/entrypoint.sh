@@ -33,4 +33,34 @@ if ! touch "$DATA_DIR/.writable" 2>/dev/null; then
 fi
 rm -f "$DATA_DIR/.writable"
 
+# ---------------------------------------------------------------------------
+# Home Assistant add-on options
+# ---------------------------------------------------------------------------
+#
+# The supervisor writes what somebody typed in the add-on's Configuration tab
+# to /data/options.json. Nothing else in this image knows that file exists, so
+# this is where it becomes an environment variable.
+#
+# Only `base_url`, and it earns its place: under ingress the address is
+# handled for us, but the *wall displays* connect to the add-on's port
+# directly, and the pairing link they are given comes from BASE_URL. Left
+# unset it says `localhost`, which is exactly nowhere from a tablet on a wall.
+#
+# An explicit BASE_URL in the environment wins — somebody who set it meant it.
+if [ -f "$DATA_DIR/options.json" ] && [ -z "${BASE_URL:-}" ]; then
+  # node is already here, and parsing JSON in sh is how quoting bugs are born.
+  option_base_url=$(node -e '
+    try {
+      const o = require(process.argv[1]);
+      const v = o && o.base_url;
+      if (typeof v === "string" && v.trim() !== "") process.stdout.write(v.trim());
+    } catch {}
+  ' "$DATA_DIR/options.json" 2>/dev/null || true)
+
+  if [ -n "$option_base_url" ]; then
+    export BASE_URL="$option_base_url"
+    echo "[entrypoint] BASE_URL from add-on options: $BASE_URL"
+  fi
+fi
+
 exec "$@"

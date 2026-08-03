@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **forty-three real bugs**, and the pattern in how is the most
+This project has found **forty-six real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -121,6 +121,9 @@ useful thing in this document:
 | `pnpm deploy --legacy` is not an option in pnpm 9 | Running the Dockerfile's own command |
 | **The display bundle resolves outside a deployed tree** | Booting from the pruned directory the image copies |
 | **A container that ran perfectly and reported itself unhealthy** | Building the image and reading `docker inspect` |
+| **The README's one-liner does not work on Linux** | CI, which is Linux; macOS hides it entirely |
+| Add-on options a household could set that did nothing | Grepping for who reads `options.json` |
+| The performance budget failed on any machine but mine | Letting CI run the suite for the first time |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -223,6 +226,17 @@ wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
 **Not started:** ws push · a published docs site · the Android app.
+
+**A bind mount is not a named volume, and macOS hides the difference.** The
+README said `-v ./data:/data`; on Linux a folder the host just created belongs
+to the host user, and the container is uid 1000, so it cannot write its own
+database. Docker Desktop maps ownership across its file sharing layer and made
+this invisible on the machine it was written on — it took a CI run, on Linux,
+to see it. The image now creates `/data` owned by `node`, which is what makes a
+*named* volume work with no configuration anywhere; the documented one-liner
+uses one, and the bind-mount path is documented with its `chown`. CI asserts
+both, because only one of them was ever exercised and it was the one that hides
+the problem.
 
 **The image is built and run.** Both architectures: `linux/arm64` natively and
 `linux/amd64` under emulation, each with `better-sqlite3` compiled for its own

@@ -25,7 +25,7 @@ add-on. Wall-mounted tablets and televisions point at it and run unattended for
 months.
 
 ```bash
-docker run -d -v ./data:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
+docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
 ```
 
 Open `http://<that-machine>:8080` and the first-run wizard is there. Nothing to
@@ -65,10 +65,15 @@ configure first, no account to create anywhere else, no key to paste.
 docker run -d \
   --name maverick-wall \
   --restart unless-stopped \
-  -v ./data:/data \
+  -v maverick-wall:/data \
   -p 8080:8080 \
   ghcr.io/ambient-home-systems/maverick-wall:stable
 ```
+
+> **`maverick-wall` is a named volume, not a folder.** Docker creates and owns
+> it, which is what makes this work with no setup on Linux as well as macOS. To
+> use a folder of your own instead, see [bind mounts](docs/install.md#a-folder-instead-of-a-volume)
+> — it needs one `chown`, because the container does not run as root.
 
 Or with compose — copy [`docker-compose.yml`](docker-compose.yml) and
 [`.env.example`](.env.example), then `docker compose up -d`. Every variable is

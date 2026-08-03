@@ -102,6 +102,18 @@ COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
 # The comment above said non-root and nothing enforced it. `node` is uid 1000
 # in the base image; a bind mount owned by another uid is the one thing this
 # costs, and the entrypoint says exactly what to run about it.
+#
+# /data is created here and given to that user, which is what makes a *named*
+# volume work with no configuration at all: Docker initialises a new volume
+# from the image's directory and carries its ownership across. Without this the
+# volume arrives owned by root and the container cannot write its own database.
+#
+# A *bind* mount is a different matter and cannot be fixed from inside an
+# image — the host directory keeps the host's ownership. On macOS the file
+# sharing layer hides that; on Linux, which is every Pi and NAS this runs on,
+# it does not. Hence the named volume in the README, and the entrypoint's
+# message for anybody who bind-mounts anyway.
+RUN mkdir -p /data && chown node:node /data
 USER node
 
 VOLUME ["/data"]

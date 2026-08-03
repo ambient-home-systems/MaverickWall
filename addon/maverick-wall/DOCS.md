@@ -37,11 +37,11 @@ the new one in the pairing link.
 
 ## Options
 
-**base_url** — the address a browser actually uses to reach the add-on, for
-example `http://homeassistant.local:8080`. Leave it empty unless sign-in
-complains about an origin. It has no effect on ingress.
+**base_url** — the address the *wall displays* use, for example
+`http://homeassistant.local:8080`. Set it if a pairing link comes out saying
+`localhost`, which is nowhere from a tablet on a wall.
 
-**log_level** — how much the add-on writes to its log. `info` is right.
+It has no effect on the sidebar: ingress handles that address itself.
 
 ## Weather alerts
 

@@ -58,11 +58,16 @@ ports_description:
 # own init on top.
 init: false
 
+# One option, because one is all that does anything.
+#
+# `log_level` was here and controlled nothing — this application has no log
+# levels, and a setting somebody can change with no effect is worse than a
+# setting that does not exist. Everything else worth changing lives on a
+# settings screen, next to an explanation of what it affects.
 options:
   base_url: ""
-  log_level: info
 schema:
-  # Only what somebody would actually change. Everything else belongs on a
-  # settings screen, where it can be explained next to the thing it affects.
+  # Only needed for the wall displays. They connect to the add-on's port
+  # rather than through ingress, and the pairing link they are handed comes
+  # from this. Left empty it reads `localhost`, which is nowhere from a tablet.
   base_url: "str?"
-  log_level: "list(trace|debug|info|notice|warning|error|fatal)?"
