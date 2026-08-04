@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.3
+
+Lets you pair a wall screen from the sidebar, with no shell.
+
+- The Screens page now has an "Add a screen" button. Before this the only way
+  to pair the first screen was a command-line tool, which an add-on has no way
+  to run — a sidebar is not a shell.
+- The pairing link now points at an address a screen can actually reach. When
+  generated through the sidebar it uses the `base_url` you set, rather than
+  Home Assistant's own internal address, which is reachable from inside Home
+  Assistant and nowhere a tablet on the wall lives. If `base_url` is unset the
+  page says so plainly instead of handing over a link to localhost.
+
+  Set `base_url` in the Configuration tab to this box's address on your
+  network — like `http://192.168.1.10:8080` — before you pair a screen.
+
 ## 0.1.2
 
 Makes the Home Assistant add-on start. Under 0.1.1 it installed and then
