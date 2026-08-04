@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **forty-nine real bugs**, and the pattern in how is the most
+This project has found **fifty-three real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -127,6 +127,10 @@ useful thing in this document:
 | Nine stray `… 2.sql` migrations in the working tree | The journal-parity check, which exists for exactly that |
 | **A Zod schema that refused every unticked checkbox** | Running the wizard's own tests after the rewrite |
 | **`"location": ""` dropped every Home Assistant event** | A fixture with the empty strings a real HA sends |
+| **The whole add-on path was 404 to everybody** | `curl`, signed out — the repo was private while the image was public |
+| **The add-on repository was never installable** | Pasting the URL into real Home Assistant and reading its four-word refusal |
+| `armv7` declared for an image that has only two arches | Comparing `config.yaml` to the registry manifest |
+| **Two duplicate licence files committed and pushed** | `ls`, in passing, while moving a file next to them |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -228,7 +232,7 @@ verify` passes and names `release.yml@refs/tags/v0.1.1`. The manifest carries
 an ancestor of `main`** — the PRs were merged with merge commits rather than
 squashed precisely so that stayed true.
 
-**943 tests passing.** calendar 153 · core 266 · server 446 · display 78. CI
+**950 tests passing.** calendar 153 · core 266 · server 453 · display 78. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -262,11 +266,40 @@ whether `packages/calendar` moves to its own MIT repository now or later.
 for a while only one of them was on. The image was public and `docker run`
 worked anonymously while the repository was private — which silently broke the
 entire add-on path, because Home Assistant adds a repository by fetching
-`raw.githubusercontent.com/…/addon/repository.yaml`. That 404s, as did the My
+`raw.githubusercontent.com/…/repository.yaml`. That 404s, as did the My
 Home Assistant button, the issues URL in `repository.yaml` and every `docs/`
 link. Both are public now and all four verified signed out. The trap is that
 it looks correct from any browser logged in as the owner, which is the only
 place it will ever look correct: **check it with `curl`, not with a tab.**
+
+**`repository.yaml` lives at the repository root, and that is not a
+convention.** `store/data.py` finds it with
+`find_one_filetype(path, "repository", […])` where `path` is the root of the
+clone — so in `addon/` it was invisible and the add-on was uninstallable by
+everybody. All Home Assistant says is **"is not a valid app repository"**,
+which names no file, no path and no reason, and is the same four words whether
+the manifest is missing, misplaced or malformed. The add-on *folder* may stay
+nested, because `_find_app_configs` globs `config.*` at any depth — which is
+the trap: any `config.yaml`, `config.yml` or `config.json` committed anywhere
+in this monorepo is read as another add-on. `test/addon-repository.test.ts`
+asserts there is exactly one, and every other rule in this paragraph, each read
+out of the supervisor's own source rather than guessed.
+
+**A declared architecture is a promise about the image.** `armv7` was in
+`config.yaml` and has never been built; the supervisor believes that list, so
+it offers the add-on on an armv7 machine and the install fails at `docker pull`
+with a registry-shaped error — after the household has added the repository and
+pressed the button. `aarch64` and `amd64` are what the manifest carries and
+what `release.yml` builds, and the test pins all three to each other.
+
+**The `… 2` sync collisions are still happening, and two of them shipped.**
+`NOTICE 2` and `packages/calendar/LICENSE 2` were tracked, pushed, and
+byte-identical to the files beside them — duplicate *licence* files in a public
+repository, where a reader cannot tell which is authoritative. The nine stray
+migrations were caught by the journal-parity check; these were caught by
+nothing, because there was nothing looking. Now there is, in the same test: no
+tracked file may end in ` <number>`. They are invisible by construction —
+plausible name, identical content, no diff to read.
 
 **GitHub strips `target` from every anchor**, so a README badge cannot open in
 a new tab — the sanitiser allows `href` and nothing else, and raw HTML renders

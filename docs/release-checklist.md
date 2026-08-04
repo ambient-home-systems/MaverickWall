@@ -33,16 +33,16 @@ Ordered so that nothing is announced before it can be installed.
 
 ## Before the first public release
 
-- [x] Replace the maintainer address in `addon/repository.yaml`. It is the
+- [x] Replace the maintainer address in `repository.yaml`. It is the
       issues URL rather than an inbox — public, permanent, and answerable by
       more than one person.
 - [x] **Make the repository public.** Separate switch from the package, and
       for a while only the package was on — which broke the whole add-on path,
       because Home Assistant adds a repository by fetching
-      `raw.githubusercontent.com/.../addon/repository.yaml`. Both are public
-      now; repo, raw manifest and issues all verified 200 signed out. Re-check
-      it with `curl` and not from a browser you are logged into, which is the
-      one place it looks fine either way.
+      `raw.githubusercontent.com/.../repository.yaml`. Both are public now;
+      repo, raw manifest and issues all verified 200 signed out. Re-check it
+      with `curl` and not from a browser you are logged into, which is the one
+      place it looks fine either way.
 - [ ] Take the README screenshots. They are the top of the page and the only
       thing there that cannot be written.
 - [ ] Decide whether `packages/calendar` moves to its own MIT repository now or

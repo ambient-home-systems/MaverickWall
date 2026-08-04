@@ -15,10 +15,17 @@ version: "0.1.1"
 description: A family calendar for a wall display, with your Home Assistant calendars and sensors.
 url: https://github.com/ambient-home-systems/MaverickWall
 image: ghcr.io/ambient-home-systems/maverick-wall
+# Exactly what the published manifest carries, and no more.
+#
+# `armv7` was listed here and has never been built. The supervisor believes
+# this list — it offers the add-on on an armv7 machine, and the install then
+# fails at `docker pull` with a manifest error, which reads like a broken
+# registry rather than a machine that was never supported. Declaring an
+# architecture is a promise about the image, not a wish. It is also in the
+# supervisor's own ARCH_DEPRECATED; ARCH_ALL is these two.
 arch:
   - aarch64
   - amd64
-  - armv7
 
 # Read-only, and that is a security property rather than a missing feature: a
 # long-lived token cannot be scoped, so the limit lives on this side. Nothing
