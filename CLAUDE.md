@@ -869,9 +869,32 @@ distinct address.
 
 ## Open decisions
 
-- **A second weather provider.** NWS is the United States only, and the module
-  seam is where one would go. Not built speculatively — that would be a second
-  implementation to keep correct before anybody had asked for it.
+- **First-run is a two-step dance, and it should not be.** Today the bootstrap
+  code prints to the log and the household types it into the wizard — read the
+  container log, copy a code, cross to the web UI, paste it. On a real install
+  that means the add-on log tab and the sidebar panel, or `docker logs` and a
+  browser. It is awkward and the household said so.
+
+  The code is not decoration and a fix cannot just drop it: it is the whole of
+  rule ten on the first run — before it existed, the first sign-up was open to
+  anyone who could reach the port. So "simpler" has to keep the property that
+  *only someone who can already prove they own the box* creates the first
+  account. Two directions, and the first is nearly free:
+
+  - **Under ingress, the supervisor has already authenticated the household.**
+    CLAUDE.md already leans on this — the cross-origin guard stands down under
+    ingress because the supervisor is the trust boundary and will not forward a
+    request without a valid Home Assistant session. By that same argument the
+    setup code is *redundant* through the sidebar: reaching `/setup` under a
+    valid `X-Ingress-Path` is itself proof of ownership. The add-on could skip
+    the code entirely and let the first sidebar visitor create the account.
+    That is the install that matters most and the one where the dance is worst.
+  - **For plain `docker run`, the code still earns its place** — there is no
+    supervisor vouching for anyone — but even there the log→UI copy could
+    become a one-click link. The wizard could show "waiting for the code from
+    the log", and the boot line already prints a full `…/setup?token=` URL;
+    the gap is only that the token is not pre-filled into the form a browser
+    lands on. Tabled deliberately, not forgotten.
 - **The WebSocket.** The contract is fixed (`api/push.ts`) and tested; nothing
   sends one. Polling carries interrupts in the manifest today, which is why a
   reconnecting display gets them at all.
