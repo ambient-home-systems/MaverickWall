@@ -264,13 +264,22 @@ its own database. The image starts as root, adopts `/data`, and drops to uid
 hardware is `[entrypoint] starting as uid 1000`, then the boot log and the
 setup code. Shipped in v0.1.2.
 
-**Ingress is still only proven against a stand-in.** The proxy that imitates
-the supervisor — prefix stripped, `X-Ingress-Path` set, `Origin` rewritten —
-found two real bugs, but a household reaching the settings *through* the
-sidebar, and `ingress_stream: true` carrying a live WebSocket upgrade, have not
-been watched on real hardware. The install and first boot have; the sidebar
-session has not. That is the next thing to confirm, and it needs somebody to
-open the panel and pair a screen, not a test.
+**Ingress is proven on real hardware too.** The sidebar panel was opened
+through a real supervisor and the settings rendered — so the ingress path works
+end to end where before it was only checked against a proxy: the prefix
+stripped and put back on redirects, the single `<base>` deciding where relative
+links resolve, the cookie scoped to the prefix so the wizard can complete, and
+a real Home Assistant session forwarded through. Calendars showed in that same
+panel, which is the read-only HA integration confirmed on real hardware at the
+same time — a token exchanged, entities read, and events on the screen.
+
+Two things are still unwatched, and neither is a bug: a **wall screen paired
+over the mapped port** (the non-ingress path a screen on a wall actually uses,
+reached with a display token and the `base_url` option, never through the
+sidebar); and `ingress_stream: true` carrying a **live WebSocket upgrade** —
+which cannot be proven yet because there is no WebSocket server, the display
+polls, and the stream flag is set for a push channel that does not exist. The
+first is worth a household trying; the second waits on the socket being built.
 
 **Before anybody is told about it:** the README's screenshots (a photograph of
 a real wall, which is the one thing on that page that cannot be written), and
