@@ -252,12 +252,25 @@ feed test, sync now, remove) · **the wall itself, drawing real data**.
 **Not started:** ws push · a published docs site · the Android app · a second
 weather provider.
 
-**Never run against the real thing:** the Home Assistant add-on. Ingress is
-verified against a proxy written to imitate the supervisor — prefix stripped,
-`X-Ingress-Path` set, `Origin` rewritten — and that found two real bugs. But no
-supervisor has ever started this, and `ingress_stream: true` is set on
-reasoning rather than observation. It is the highest-value unproven thing left,
-and the distribution path that matters most.
+**The add-on now installs and starts on a real Home Assistant supervisor.**
+That was the highest-value unproven thing in the project for a long time, and
+getting there took four separate fixes, each found only by a real supervisor
+and invisible to every stand-in before it: the repository manifest was in the
+wrong directory (uninstallable by everybody); `armv7` was declared and never
+built; and the one that stopped it dead on install — the supervisor creates
+`/data` owned by root while the image ran as uid 1000, so it could not write
+its own database. The image starts as root, adopts `/data`, and drops to uid
+1000 with `setpriv` before it execs anything; the observed first line on real
+hardware is `[entrypoint] starting as uid 1000`, then the boot log and the
+setup code. Shipped in v0.1.2.
+
+**Ingress is still only proven against a stand-in.** The proxy that imitates
+the supervisor — prefix stripped, `X-Ingress-Path` set, `Origin` rewritten —
+found two real bugs, but a household reaching the settings *through* the
+sidebar, and `ingress_stream: true` carrying a live WebSocket upgrade, have not
+been watched on real hardware. The install and first boot have; the sidebar
+session has not. That is the next thing to confirm, and it needs somebody to
+open the panel and pair a screen, not a test.
 
 **Before anybody is told about it:** the README's screenshots (a photograph of
 a real wall, which is the one thing on that page that cannot be written), and
