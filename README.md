@@ -90,10 +90,17 @@ cosign verify ghcr.io/ambient-home-systems/maverick-wall:stable \
 
 ### Home Assistant add-on
 
-Add this repository under **Settings → Add-ons → Add-on Store → ⋮ →
-Repositories**, install **Maverick Wall**, start it, and open it from the
-sidebar. Your Home Assistant calendars are available immediately — there is no
-token to create.
+[![Add repository to your Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fambient-home-systems%2FMaverickWall)
+
+That button opens your own Home Assistant with this repository already filled
+in — you just confirm. Then install **Maverick Wall**, start it, and open it
+from the sidebar.
+
+Or add it by hand: **Settings → Add-ons → Add-on Store → ⋮ → Repositories**,
+and paste `https://github.com/ambient-home-systems/MaverickWall`.
+
+Your Home Assistant calendars are available immediately — there is no token to
+create.
 
 Two ways in, and they are different: **the sidebar is the settings** (Home
 Assistant does the authentication), and **the port is for the wall displays** (a

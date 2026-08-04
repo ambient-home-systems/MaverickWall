@@ -5,8 +5,11 @@ and a few sensors, and it never writes anything back.
 
 ## Installing
 
-1. Add this repository under **Settings → Add-ons → Add-on Store → ⋮ →
-   Repositories**.
+[![Add repository to your Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fambient-home-systems%2FMaverickWall)
+
+1. Press the button above — it opens your Home Assistant with this repository
+   already filled in. Or add it by hand under **Settings → Add-ons → Add-on
+   Store → ⋮ → Repositories**.
 2. Install **Maverick Wall**, then **Start**.
 3. Open it from the sidebar. The first-run wizard asks for an account, a
    timezone, and optionally a calendar.

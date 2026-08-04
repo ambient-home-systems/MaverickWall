@@ -69,6 +69,17 @@ second thing to upgrade, and a second thing to be down.
 
 ## Home Assistant add-on
 
+[![Add repository to your Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fambient-home-systems%2FMaverickWall)
+
+The button opens your own Home Assistant with the repository pre-filled; you
+confirm, then install **Maverick Wall**, start it, and open it from the
+sidebar.
+
+It works by handing the URL to [My Home Assistant](https://my.home-assistant.io),
+which is a redirector — it knows nothing about your instance and nothing is
+sent anywhere. If you would rather not use it, or the button does nothing
+because My Home Assistant has not been set up on your instance:
+
 1. **Settings → Add-ons → Add-on Store → ⋮ → Repositories**
 2. Add `https://github.com/ambient-home-systems/MaverickWall`
 3. Install **Maverick Wall**, then **Start**
