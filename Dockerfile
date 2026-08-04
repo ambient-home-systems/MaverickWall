@@ -94,27 +94,39 @@ ENV DISPLAY_DIR=/app/display
 WORKDIR /app
 COPY --from=build /out /app
 
-# `node` exists in the base image as uid 1000. Non-root by default — rule ten,
-# and the entrypoint says something a person can act on when the volume is not
-# writable by it rather than dying with EACCES.
 COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
 
-# The comment above said non-root and nothing enforced it. `node` is uid 1000
-# in the base image; a bind mount owned by another uid is the one thing this
-# costs, and the entrypoint says exactly what to run about it.
-#
-# /data is created here and given to that user, which is what makes a *named*
-# volume work with no configuration at all: Docker initialises a new volume
-# from the image's directory and carries its ownership across. Without this the
-# volume arrives owned by root and the container cannot write its own database.
-#
-# A *bind* mount is a different matter and cannot be fixed from inside an
-# image — the host directory keeps the host's ownership. On macOS the file
-# sharing layer hides that; on Linux, which is every Pi and NAS this runs on,
-# it does not. Hence the named volume in the README, and the entrypoint's
-# message for anybody who bind-mounts anyway.
+# /data is created here and given to `node` (uid 1000 in the base image), which
+# is what makes a *named* volume work with no configuration at all: Docker
+# initialises a new volume from the image's directory and carries its ownership
+# across. Without this the volume arrives owned by root.
 RUN mkdir -p /data && chown node:node /data
-USER node
+
+# There is deliberately no `USER` line, and that is not a regression.
+#
+# The application runs as uid 1000 — the entrypoint drops to it with `setpriv`
+# and never comes back, so the process that opens the database, serves the port
+# and parses somebody else's calendar feed has exactly the privileges it had
+# before. What changed is that the few lines *before* it still have root.
+#
+# `USER node` here meant the container could not adopt a volume that arrived
+# owned by somebody else, and that is not a corner case:
+#
+#   - The Home Assistant supervisor creates the add-on's /data itself, owned by
+#     root, with no option anywhere to change it. The add-on could be installed
+#     and could never start. This is the case that found it.
+#   - A bind-mounted host folder keeps the host's ownership. The README steers
+#     people to a named volume for exactly this reason, and they bind-mount
+#     anyway.
+#
+# Neither is fixable from inside an image that has already given up root, and
+# both are one `chown` away for one that has not. Rule nine says a failure
+# degrades to reduced function with a message, never a refusal to start — an
+# image that cannot write its own volume is a refusal to start.
+#
+# The entrypoint tests writability *as uid 1000* rather than as root, which is
+# the part that has to be right: root can always write, so asking as root
+# answers a different question and answers it yes.
 
 VOLUME ["/data"]
 EXPOSE 8080

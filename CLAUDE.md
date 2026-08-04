@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **fifty-three real bugs**, and the pattern in how is the most
+This project has found **fifty-four real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -131,6 +131,7 @@ useful thing in this document:
 | **The add-on repository was never installable** | Pasting the URL into real Home Assistant and reading its four-word refusal |
 | `armv7` declared for an image that has only two arches | Comparing `config.yaml` to the registry manifest |
 | **Two duplicate licence files committed and pushed** | `ls`, in passing, while moving a file next to them |
+| **The add-on installed and could not start: root-owned `/data`** | A real Home Assistant supervisor, which no stand-in had |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -313,11 +314,33 @@ README said `-v ./data:/data`; on Linux a folder the host just created belongs
 to the host user, and the container is uid 1000, so it cannot write its own
 database. Docker Desktop maps ownership across its file sharing layer and made
 this invisible on the machine it was written on — it took a CI run, on Linux,
-to see it. The image now creates `/data` owned by `node`, which is what makes a
-*named* volume work with no configuration anywhere; the documented one-liner
-uses one, and the bind-mount path is documented with its `chown`. CI asserts
-both, because only one of them was ever exercised and it was the one that hides
-the problem.
+to see it. The image creates `/data` owned by `node`, which makes a *named*
+volume work with no configuration anywhere.
+
+**But a chown the household has to type is a chore the household will not do,
+and the add-on cannot do it at all.** That is the sharper version of the same
+bug, and only a real Home Assistant supervisor found it: the supervisor creates
+the add-on's `/data` itself, owned by root, with no option anywhere to change
+it — so an image that runs as uid 1000 with `USER node` set installs, and then
+stops on its first line with "not writable". There is no `chown` a household
+can reach and no docker flag they typed. The image now **starts as root, adopts
+`/data`, and drops to uid 1000 with `setpriv` before it execs anything** — so
+the process that opens the database and parses a stranger's calendar has
+exactly the privileges it had before (in fact fewer: `--no-new-privs`,
+`--inh-caps=-all`). The `USER` line is gone deliberately, and the Dockerfile
+says why at length so nobody restores it as a "hardening" fix and re-bricks the
+add-on. `setpriv` is `util-linux`, already in the base image — reaching for
+`gosu` would repeat the wget mistake of assuming a binary is present.
+
+The one case root cannot fix is a genuinely read-only mount, and there rule
+nine still holds: it says so, and names *that* rather than repeating chown
+advice that does not apply. The writability probe runs **as uid 1000, not as
+root** — root can always write, so asking as root is the bug that would let a
+broken image report itself fine. CI asserts the application's own process is
+uid 1000 with `NoNewPrivs`, that a root-owned *non-empty* volume is adopted
+(an empty one is silently repaired by Docker's copy-up, which hid the first
+version of this very test), that a plain bind mount now just works, and that
+`:ro` still fails loudly.
 
 **The image is built and run.** Both architectures: `linux/arm64` natively and
 `linux/amd64` under emulation, each with `better-sqlite3` compiled for its own

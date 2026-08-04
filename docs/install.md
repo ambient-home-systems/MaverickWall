@@ -29,18 +29,17 @@ If you would rather keep the data somewhere you can see:
 
 ```bash
 mkdir -p ./data
-sudo chown -R 1000:1000 ./data
 docker run -d -v ./data:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall:stable
 ```
 
-The `chown` is not optional on Linux. The container runs as uid 1000 rather
-than root, and a folder you just created belongs to you — so the container
-cannot write its own database in it. macOS hides this because Docker Desktop
-maps ownership across its file sharing layer; a Raspberry Pi, a Synology and a
-NAS do not, and those are most of the machines this runs on.
+No `chown`. The container starts as root, takes ownership of the data
+directory, and then drops to an unprivileged user before it runs anything — so
+a folder you just created, or one another user owns, works with no arrangement,
+and the process that serves the port and reads your feeds is still not root.
 
-If you skip it, the container says so on the way out and tells you this exact
-command. It does not fail with a stack trace.
+The one case it cannot fix is a mount that is genuinely read-only, and there it
+says so and names the cause rather than dying with a stack trace. A `:ro` on
+the volume is the usual reason.
 
 ### Tags
 
@@ -50,8 +49,9 @@ command. It does not fail with a stack trace.
 
 ### If the container exits immediately
 
-It is almost always a bind mount that the container cannot write. See above —
-it says so on the way out, with the command to fix it.
+It is almost always a mount the container cannot write *and* cannot take over —
+a read-only volume, or one you forced a `--user` onto. It says which on the way
+out. A named volume, or a plain folder, needs nothing.
 
 ## Compose
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.2
+
+Makes the Home Assistant add-on start. Under 0.1.1 it installed and then
+refused to start with "/data is not writable by this container".
+
+- The supervisor creates the add-on's data directory itself, owned by root,
+  and there is no setting anywhere that changes that. The image ran as a
+  normal user and so could not write its own database — the one thing the
+  add-on had no way around. The container now takes ownership of the directory
+  at startup and then drops to that user before running anything, so it is
+  still unprivileged the moment it touches a calendar feed.
+- The "not writable" message, when it does still appear, now names the actual
+  cause — a read-only mount, or a `--user` that cannot be helped — instead of
+  advising a `chown` that does not apply under the supervisor.
+
 ## 0.1.1
 
 Fixes the install. 0.1.0 could not be started by the command in its own

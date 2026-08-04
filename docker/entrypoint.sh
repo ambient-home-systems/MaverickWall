@@ -1,37 +1,94 @@
 #!/bin/sh
-# Say what is wrong before it becomes a stack trace.
+# Say what is wrong before it becomes a stack trace, and fix what can be fixed.
 #
 # Rule eleven: you can never reach the household's machine, so the container's
-# first ten lines of output are the entire diagnostic channel. The two failures
-# that actually happen on a first run are both about the volume, and both look
-# like an unreadable Node error if nobody catches them here.
+# first ten lines of output are the entire diagnostic channel. The failures
+# that actually happen on a first run are all about the volume, and every one
+# of them looks like an unreadable Node error if nobody catches it here.
 set -e
 
 DATA_DIR="${DATA_DIR:-/data}"
+
+# The uid the application runs as. `node` in the base image, and the owner of
+# /data as the image ships it — so a named volume needs no arrangement at all.
+APP_UID=1000
+APP_GID=1000
 
 if [ ! -d "$DATA_DIR" ]; then
   echo "  The data directory $DATA_DIR is not there."
   echo ""
   echo "  Mount a volume at $DATA_DIR so the calendar survives a restart:"
-  echo "    docker run -v ./data:/data ..."
-  exit 1
-fi
-
-# Written as root, mounted from a host directory owned by somebody else, or on
-# a filesystem that does not do permissions — all end up here.
-if ! touch "$DATA_DIR/.writable" 2>/dev/null; then
-  echo "  $DATA_DIR is not writable by this container."
-  echo ""
-  echo "  It runs as uid $(id -u) so it is not root on your machine. Give that"
-  echo "  user the directory:"
-  echo ""
-  echo "    sudo chown -R $(id -u):$(id -g) ./data"
-  echo ""
-  echo "  Or let Docker create the volume itself by using a named volume:"
   echo "    docker run -v maverick-wall:/data ..."
   exit 1
 fi
-rm -f "$DATA_DIR/.writable"
+
+# ---------------------------------------------------------------------------
+# Can the application's user write to the volume?
+# ---------------------------------------------------------------------------
+#
+# Asked *as that user*, which is the whole point. Running the test as root
+# answers a different question and always answers yes — root can write to a
+# directory uid 1000 cannot, so the check would pass and the application would
+# then fail with EACCES on its first query.
+writable_by_app() {
+  if [ "$(id -u)" = "0" ]; then
+    setpriv --reuid="$APP_UID" --regid="$APP_GID" --clear-groups \
+      touch "$DATA_DIR/.writable" 2>/dev/null || return 1
+  else
+    touch "$DATA_DIR/.writable" 2>/dev/null || return 1
+  fi
+  rm -f "$DATA_DIR/.writable" 2>/dev/null || true
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Adopt the volume if we still can
+# ---------------------------------------------------------------------------
+#
+# This container starts as root and does not stay that way — see the Dockerfile
+# for why the `USER` line went. The one thing root is for is this: a directory
+# that arrives owned by somebody else is the single commonest way a first run
+# fails, and it is trivially fixable from in here while nothing has opened the
+# database yet.
+#
+# The Home Assistant add-on is the case that forced it. The supervisor creates
+# the add-on's /data itself, owned by root, and there is no option anywhere
+# that changes that — so an image running as uid 1000 simply could not start,
+# and the message below told the household to chown a directory they cannot
+# see or to pass a docker flag they never typed. Both true for `docker run`,
+# both useless under the supervisor.
+#
+# Announced rather than silent, because it changes ownership of a directory on
+# somebody's host and they should be able to find out why from the log.
+if ! writable_by_app; then
+  if [ "$(id -u)" = "0" ]; then
+    echo "[entrypoint] $DATA_DIR is not writable by uid $APP_UID. Taking ownership of it."
+    chown -R "$APP_UID:$APP_GID" "$DATA_DIR" 2>/dev/null || true
+  fi
+fi
+
+# Still not writable: a read-only mount, a filesystem with no ownership to
+# change, or a container told to run as a user that cannot fix it. Nothing left
+# to do but say so in a way somebody can act on.
+if ! writable_by_app; then
+  echo "  $DATA_DIR is not writable, and this container could not fix it."
+  echo ""
+  if [ "$(id -u)" = "0" ]; then
+    echo "  It is running as root and still could not take ownership, so the"
+    echo "  mount is most likely read-only. Check for a :ro on the volume."
+  else
+    echo "  It was told to run as uid $(id -u), which cannot take ownership of"
+    echo "  the directory. Either give that user the directory:"
+    echo ""
+    echo "    sudo chown -R $(id -u):$(id -g) ./data"
+    echo ""
+    echo "  or drop the --user flag and let the container sort it out itself."
+  fi
+  echo ""
+  echo "  A named volume needs none of this:"
+  echo "    docker run -v maverick-wall:/data ..."
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Home Assistant add-on options
@@ -61,6 +118,27 @@ if [ -f "$DATA_DIR/options.json" ] && [ -z "${BASE_URL:-}" ]; then
     export BASE_URL="$option_base_url"
     echo "[entrypoint] BASE_URL from add-on options: $BASE_URL"
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# Drop
+# ---------------------------------------------------------------------------
+#
+# Everything above either needed root or did not care. Nothing from here on
+# gets it.
+#
+# `setpriv` execs directly rather than forking, so the application keeps its
+# place under tini and `docker stop` still reaches the shutdown handler — `su`
+# would put a shell in between and eat the signal. It is part of util-linux and
+# is already in the base image, which is the point: reaching for `gosu` would
+# mean a package to install and keep patched, and the HEALTHCHECK already
+# taught this image what assuming a binary is present costs.
+#
+# --no-new-privs so nothing downstream can regain what was just given up.
+if [ "$(id -u)" = "0" ]; then
+  echo "[entrypoint] starting as uid $APP_UID"
+  exec setpriv --reuid="$APP_UID" --regid="$APP_GID" --init-groups \
+    --inh-caps=-all --no-new-privs "$@"
 fi
 
 exec "$@"

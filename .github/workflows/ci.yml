@@ -91,39 +91,91 @@ jobs:
           docker logs wall 2>&1 | grep -q "Nobody has set this up yet" \
             || { echo "no setup code in the log"; docker logs wall; exit 1; }
 
-      - name: It runs as nobody in particular
+      # `docker exec` runs as the image's USER, which is root — there is no
+      # USER line, deliberately, so the entrypoint can adopt a volume it does
+      # not own. That says nothing about the application, which is the thing
+      # that has to be unprivileged, so ask the process itself.
+      #
+      # Asserted three ways because the first two can both be true of a
+      # container that quietly kept root: the process uid, the ownership of the
+      # database it actually wrote, and NoNewPrivs.
+      - name: The application runs as uid 1000, whatever the container started as
         run: |
-          user=$(docker exec wall id -u)
-          [ "$user" != "0" ] || { echo "running as root"; exit 1; }
+          set -e
+          pid=$(docker exec wall sh -c '
+            for p in /proc/[0-9]*; do
+              [ -r "$p/cmdline" ] || continue
+              case "$(tr "\0" " " < "$p/cmdline")" in
+                node\ /app/dist/main.js*) echo "${p#/proc/}"; break ;;
+              esac
+            done')
+          [ -n "$pid" ] || { echo "no application process found"; docker logs wall; exit 1; }
 
-      # The other half of the install instructions, and the half that broke.
-      # A folder the host just created is owned by the host user, and the
-      # container is uid 1000 — so without the chown it cannot write, and with
-      # it everything works. Both halves are asserted because only one of them
-      # was ever exercised, and it was the one that hides the problem.
-      - name: A bind mount fails loudly without a chown
-        run: |
-          mkdir -p "${RUNNER_TEMP}/bind"
-          out=$(docker run --rm -v "${RUNNER_TEMP}/bind:/data" maverick-wall:ci 2>&1 || true)
-          echo "$out"
-          echo "$out" | grep -q "not writable by this container" \
-            || { echo "expected the entrypoint's message, got something else"; exit 1; }
-          echo "$out" | grep -q "chown -R 1000:1000" \
-            || { echo "the message did not say how to fix it"; exit 1; }
+          uid=$(docker exec wall awk '/^Uid:/{print $2}' "/proc/$pid/status")
+          [ "$uid" = "1000" ] || { echo "application runs as uid $uid, not 1000"; exit 1; }
 
-      - name: A bind mount works once it is chowned
+          nnp=$(docker exec wall awk '/^NoNewPrivs:/{print $2}' "/proc/$pid/status")
+          [ "$nnp" = "1" ] || { echo "NoNewPrivs is $nnp; privileges can be regained"; exit 1; }
+
+          owner=$(docker exec wall stat -c '%u' /data/wall.db)
+          [ "$owner" = "1000" ] || { echo "the database was written by uid $owner"; exit 1; }
+
+      # The case a real Home Assistant supervisor found, and the one that made
+      # the USER line untenable: it creates the add-on's /data itself, owned by
+      # root, with no option anywhere to change it. The add-on installed and
+      # could never start.
+      #
+      # A *non-empty* volume is what reproduces it. Docker copies the image's
+      # ownership onto an empty named volume, which silently repairs the very
+      # thing under test — the first attempt at this test passed against the
+      # broken image for exactly that reason.
+      - name: A volume owned by root is adopted, not refused
         run: |
-          mkdir -p "${RUNNER_TEMP}/bind2"
-          sudo chown -R 1000:1000 "${RUNNER_TEMP}/bind2"
-          docker run -d --name wall2 -v "${RUNNER_TEMP}/bind2:/data" -p 8081:8080 maverick-wall:ci
+          set -e
+          docker volume create rooted >/dev/null
+          docker run --rm -v rooted:/data alpine sh -c 'touch /data/keep && chown -R 0:0 /data'
+
+          docker run -d --name wall2 -v rooted:/data -p 8081:8080 maverick-wall:ci
           for i in $(seq 1 40); do
-            [ "$(docker inspect -f '{{.State.Health.Status}}' wall2)" = "healthy" ] && exit 0
+            [ "$(docker inspect -f '{{.State.Health.Status}}' wall2)" = "healthy" ] && break
             sleep 2
           done
-          echo "bind mount never became healthy"; docker logs wall2; exit 1
+          [ "$(docker inspect -f '{{.State.Health.Status}}' wall2)" = "healthy" ] \
+            || { echo "never became healthy"; docker logs wall2; exit 1; }
+
+          docker logs wall2 2>&1 | grep -q "Taking ownership" \
+            || { echo "it started, but never said it had taken the directory"; exit 1; }
+
+      # A bind mount the host owns needs no chown any more either. It is still
+      # not what the README recommends — a named volume is — but somebody who
+      # does it anyway gets a working wall rather than a message.
+      - name: A bind mount the container does not own still works
+        run: |
+          set -e
+          mkdir -p "${RUNNER_TEMP}/bind"
+          docker run -d --name wall3 -v "${RUNNER_TEMP}/bind:/data" -p 8082:8080 maverick-wall:ci
+          for i in $(seq 1 40); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' wall3)" = "healthy" ] && exit 0
+            sleep 2
+          done
+          echo "bind mount never became healthy"; docker logs wall3; exit 1
+
+      # Rule eleven has not moved: what cannot be fixed still has to be
+      # explained. Read-only is the case root cannot chown its way out of, and
+      # the message has to name that rather than repeat advice about chown.
+      - name: A read-only volume still says so, and says why
+        run: |
+          set -e
+          out=$(docker run --rm -v rooted:/data:ro maverick-wall:ci 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -q "could not fix it" \
+            || { echo "expected the entrypoint's message"; exit 1; }
+          echo "$out" | grep -q "read-only" \
+            || { echo "the message did not name the actual cause"; exit 1; }
 
       - name: Show the logs either way
         if: always()
         run: |
-          docker logs wall || true
-          docker logs wall2 || true
+          for c in wall wall2 wall3; do
+            echo "::group::$c"; docker logs "$c" 2>&1 || true; echo "::endgroup::"
+          done
