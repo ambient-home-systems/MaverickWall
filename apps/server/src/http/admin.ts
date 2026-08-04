@@ -23,6 +23,7 @@ import {
   setUpdateCheckEnabled,
   readHousehold,
   requestSyncNow,
+  createScreen,
   revokeScreen,
   writeDisplaySettings,
   rotateScreenToken,
@@ -39,6 +40,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { backupTo, databasePath, integrityCheck } from '../db/open.js';
 import { bytesOf } from './app.js';
+import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
@@ -135,6 +137,9 @@ const screenBody = z.object({
   timezone: optionalText(64),
   allow_dismiss: checkbox(),
 });
+
+/** Creating a screen asks for one thing; everything else follows the household. */
+const newScreenBody = z.object({ name: text('A name for the screen', 80) });
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
@@ -163,6 +168,14 @@ export interface AdminDeps {
   readonly signOut: (c: Context) => Promise<Response>;
   readonly now?: () => number;
   readonly appVersion: string;
+  /**
+   * The address a wall display reaches this box on — the `base_url` add-on
+   * option, or `BASE_URL`. The pairing link has to carry this rather than the
+   * request's own origin, because that request may have arrived through Home
+   * Assistant ingress, whose origin is an internal address no screen on the
+   * LAN can reach.
+   */
+  readonly baseUrl: string;
   /** Where the database and the key live, for backup and restore. */
   readonly dataDir: string;
   readonly startedAt: number;
@@ -969,6 +982,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
+   * Create a screen and show its pairing link.
+   *
+   * This is what the `add-screen` CLI does, moved to the one place a household
+   * on the add-on can actually reach — they have a sidebar, not a shell. The
+   * CLI stays for an SSH pairing and for the very first screen before any
+   * account exists, but it is no longer the only door.
+   */
+  app.post('/admin/screens', async (c: Context) => {
+    const shaped = parse(newScreenBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(screensPage(shaped.message), 400);
+
+    const issued = issueDisplayToken();
+    const id = randomBytes(6).toString('hex');
+    createScreen(deps.db, id, shaped.value.name, issued.tokenHash);
+    return c.html(pairingPage(shaped.value.name, issued.token, issued.shortCode, c));
+  });
+
+  /**
    * A new token, shown once.
    *
    * The old one stops working the moment this runs, which is the point: a
@@ -1562,9 +1593,30 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * reason, for anyone whose screen has no camera.
    */
   function pairingPage(name: string, token: string, shortCode: string, c: Context): string {
-    const origin = new URL(c.req.url).origin;
+    /*
+     * The origin a wall screen can actually reach — which is not always the one
+     * this request arrived on.
+     *
+     * Through Home Assistant ingress the request's origin is an address on the
+     * supervisor's own Docker network, reachable from inside Home Assistant and
+     * from nowhere a tablet on the wall lives. A QR built from it scans as a
+     * dead link. So under ingress the link comes from `base_url` instead, which
+     * is the whole reason that option exists.
+     *
+     * On the port the request origin is exactly right — it is whatever the
+     * household typed to get here, `http://192.168.1.10:8080` and not a guess —
+     * and better than `base_url`, which may still be its localhost default. So
+     * that path keeps using it.
+     */
+    const underIngress = ingressPath(c) !== '';
+    const origin = (underIngress ? deps.baseUrl : new URL(c.req.url).origin).replace(/\/+$/, '');
     const url = `${origin}/pair?token=${token}`;
     const matrix = encodeQr(url);
+
+    // A pairing link that says `localhost` is a link to the tablet itself, and
+    // it will pair with nothing. Only reachable under ingress, where `base_url`
+    // is the only source of the address and the household may not have set it.
+    const unreachable = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(origin);
 
     return page({
       title: 'Pair this screen',
@@ -1573,6 +1625,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'Open this on the screen itself. It is shown once — if you lose it, ' +
         'generate another, which costs nothing.',
       body:
+        (unreachable
+          ? errorBlock(
+              'This link points at localhost, which is nowhere from a wall screen.',
+              underIngress
+                ? 'Set the add-on’s “base_url” option to this box’s address on ' +
+                    'your network — like http://192.168.1.10:8080 — then pair again.'
+                : 'Open this admin page using the box’s address on your network — ' +
+                    'like http://192.168.1.10:8080 — rather than localhost, then pair again.',
+            )
+          : '') +
         (matrix === undefined
           ? errorBlock('That address is too long to put in a QR code.', 'Use the link below.')
           : `<div class="qr">${qrSvg(matrix, 260)}</div>`) +
@@ -1686,7 +1748,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Screens — Maverick Wall',
       heading: 'Screens',
       ...(active.length === 0
-        ? { intro: 'No screens paired yet. Pair one with the add-screen tool.' }
+        ? { intro: 'No screens paired yet. Add one below and open the link it gives you on the screen itself.' }
         : {}),
       body:
         `<p><a class="link" href="admin">← Back</a></p>` +
@@ -1696,10 +1758,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? ''
           : `<p class="hint">${revoked} unpaired screen${revoked === 1 ? '' : 's'} kept ` +
             `for the record. Their tokens no longer work.</p>`) +
-        `<h2 class="add">Pair another</h2>` +
-        `<p>Run <span class="code">add-screen "Kitchen"</span> and open the link ` +
-        `it prints on the screen itself. An existing screen can be re-paired ` +
-        `from its own card above.</p>`,
+        `<h2 class="add">Add a screen</h2>` +
+        `<form method="post" action="admin/screens">` +
+        `<label for="new-screen">Name</label>` +
+        `<input id="new-screen" name="name" type="text" required maxlength="80" ` +
+        `placeholder="Kitchen">` +
+        `<p class="hint">You get a QR code and a link to open on the screen itself. ` +
+        `An existing screen can be re-paired from its own card above.</p>` +
+        `<button type="submit">Add screen</button></form>` +
+        `<p class="hint">Over SSH instead: <span class="code">add-screen "Kitchen"</span>.</p>`,
     });
   }
 

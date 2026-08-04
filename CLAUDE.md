@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **fifty-four real bugs**, and the pattern in how is the most
+This project has found **fifty-six real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -132,6 +132,8 @@ useful thing in this document:
 | `armv7` declared for an image that has only two arches | Comparing `config.yaml` to the registry manifest |
 | **Two duplicate licence files committed and pushed** | `ls`, in passing, while moving a file next to them |
 | **The add-on installed and could not start: root-owned `/data`** | A real Home Assistant supervisor, which no stand-in had |
+| **No way to pair the first screen without a shell** | Trying to pair a screen on the add-on, which has no shell |
+| **A pairing QR that scanned as an unreachable internal address** | Reading the origin the link is built from, under ingress |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -233,7 +235,7 @@ verify` passes and names `release.yml@refs/tags/v0.1.1`. The manifest carries
 an ancestor of `main`** — the PRs were merged with merge commits rather than
 squashed precisely so that stayed true.
 
-**950 tests passing.** calendar 153 · core 266 · server 453 · display 78. CI
+**955 tests passing.** calendar 153 · core 266 · server 458 · display 78. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -273,13 +275,29 @@ a real Home Assistant session forwarded through. Calendars showed in that same
 panel, which is the read-only HA integration confirmed on real hardware at the
 same time — a token exchanged, entities read, and events on the screen.
 
-Two things are still unwatched, and neither is a bug: a **wall screen paired
-over the mapped port** (the non-ingress path a screen on a wall actually uses,
-reached with a display token and the `base_url` option, never through the
-sidebar); and `ingress_stream: true` carrying a **live WebSocket upgrade** —
-which cannot be proven yet because there is no WebSocket server, the display
-polls, and the stream flag is set for a push channel that does not exist. The
-first is worth a household trying; the second waits on the socket being built.
+**Pairing a wall screen was broken for the add-on, and trying it is what found
+it.** Two faults, both on the one path a screen actually uses — the port, with
+a display token, never through the sidebar. First, there was **no way to add
+the first screen from the web UI at all**: the Screens page said "run
+`add-screen`", a CLI tool, and a household on the add-on has a sidebar and no
+shell. Second, the pairing link was built from the *request's* origin, so a QR
+generated from the sidebar carried the supervisor's **internal** Docker address
+— reachable from inside Home Assistant and from nowhere a tablet lives. It
+scanned as a dead link. `/admin/screens` now has an add form, and the pairing
+link comes from `base_url` under ingress (the request origin still wins on the
+port, where it is exactly right and `base_url` might be its localhost default),
+with a plain message when `base_url` is unset and the link would say localhost.
+`test/screen-pairing.test.ts` drives the real app and round-trips the minted
+token through `/d/manifest`; the two ingress assertions were confirmed by
+reverting the origin and watching them fail.
+
+Still unwatched, and not a bug: `ingress_stream: true` carrying a **live
+WebSocket upgrade** — which cannot be proven yet because there is no WebSocket
+server, the display polls, and the stream flag is set for a push channel that
+does not exist. It waits on the socket being built. And the *fixed* pairing
+flow has been proven against the app but not yet on real hardware — a household
+adding a screen from the sidebar and opening the link on a tablet is the next
+real-hardware check.
 
 **Before anybody is told about it:** the README's screenshots (a photograph of
 a real wall, which is the one thing on that page that cannot be written), and

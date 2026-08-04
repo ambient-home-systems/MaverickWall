@@ -474,6 +474,22 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
 }
 
 /** A new token for an existing screen. The old one stops working at once. */
+/**
+ * Create a screen, unpaired but for its freshly issued token.
+ *
+ * The same row the `add-screen` tool writes, so the CLI and the admin form
+ * produce identical screens — one code path minted the token before, and a
+ * second one that drifted would be a screen the display layer treated subtly
+ * differently depending on which button made it.
+ */
+export function createScreen(db: SqliteDatabase, id: string, name: string, tokenHash: string): void {
+  const at = Date.now();
+  db.prepare(
+    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, tokenHash, at, at, at);
+}
+
 export function rotateScreenToken(db: SqliteDatabase, id: string, tokenHash: string): boolean {
   const at = Date.now();
   return (

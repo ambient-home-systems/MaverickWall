@@ -591,6 +591,7 @@ export function createApp(deps: AppDeps): Hono {
     fetcher: deps.fetcher,
     signOut: (c: Context) => authApi(c, '/api/auth/sign-out'),
     appVersion: deps.appVersion,
+    baseUrl: deps.auth.baseUrl,
     dataDir: deps.dataDir,
     startedAt: deps.startedAt ?? now(),
     log: deps.log ?? createLogBuffer(),
