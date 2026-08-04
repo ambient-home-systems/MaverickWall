@@ -255,9 +255,18 @@ reasoning rather than observation. It is the highest-value unproven thing left,
 and the distribution path that matters most.
 
 **Before anybody is told about it:** the README's screenshots (a photograph of
-a real wall, which is the one thing on that page that cannot be written), the
-maintainer address in `addon/repository.yaml`, and whether
-`packages/calendar` moves to its own MIT repository now or later.
+a real wall, which is the one thing on that page that cannot be written), and
+whether `packages/calendar` moves to its own MIT repository now or later.
+
+**The image is public and the repository is not**, which splits the two
+install paths cleanly in half. `docker run` works anonymously — that is
+verified. The add-on cannot work at all: Home Assistant adds a repository by
+fetching `raw.githubusercontent.com/…/addon/repository.yaml`, and that is a
+404 while the repository is private, as are the My Home Assistant button in
+the README, the issues URL now in `repository.yaml`, and every `docs/` link.
+Making the *package* public was a separate switch and did nothing for this
+one. It looks fine from any browser signed in as the owner, which is the only
+place it will ever look fine — check it with `curl`, signed out.
 
 **A bind mount is not a named volume, and macOS hides the difference.** The
 README said `-v ./data:/data`; on Linux a folder the host just created belongs

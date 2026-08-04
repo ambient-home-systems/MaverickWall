@@ -2,4 +2,14 @@
 # Settings → Add-ons → Add-on Store → ⋮ → Repositories.
 name: Maverick Wall
 url: https://github.com/ambient-home-systems/MaverickWall
-maintainer: Ambient Home Systems <hello@example.invalid>
+
+# An issues URL rather than an address, and the field permits it — the
+# supervisor reads `maintainer` as free text and shows it beside the
+# repository name.
+#
+# Somebody reading this line has an add-on that will not start, and an inbox is
+# the wrong place for that: it is invisible to the next person with the same
+# problem, and it cannot be answered by anybody but one person. It is also
+# permanent — a repository is public and its history is not editable, so an
+# address published here is published for good.
+maintainer: Ambient Home Systems <https://github.com/ambient-home-systems/MaverickWall/issues>

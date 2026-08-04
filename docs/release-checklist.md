@@ -33,7 +33,17 @@ Ordered so that nothing is announced before it can be installed.
 
 ## Before the first public release
 
-- [ ] Replace the maintainer address in `addon/repository.yaml`.
+- [x] Replace the maintainer address in `addon/repository.yaml`. It is the
+      issues URL rather than an inbox — public, permanent, and answerable by
+      more than one person.
+- [ ] **Make the repository public.** The image is already public and
+      `docker run` works anonymously, but the repository is not, and that is
+      the whole of the add-on path: Home Assistant fetches
+      `raw.githubusercontent.com/.../addon/repository.yaml` to add a
+      repository, and gets a 404 while it is private. The My Home Assistant
+      button, the issues URL and every `docs/` link are 404 to everybody for
+      the same reason. Checked with `curl`, signed out — do not check it from
+      a browser you are logged into, which is the one place it looks fine.
 - [ ] Take the README screenshots. They are the top of the page and the only
       thing there that cannot be written.
 - [ ] Decide whether `packages/calendar` moves to its own MIT repository now or
