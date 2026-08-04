@@ -98,25 +98,42 @@ fi
 # to /data/options.json. Nothing else in this image knows that file exists, so
 # this is where it becomes an environment variable.
 #
-# Only `base_url`, and it earns its place: under ingress the address is
-# handled for us, but the *wall displays* connect to the add-on's port
-# directly, and the pairing link they are given comes from BASE_URL. Left
-# unset it says `localhost`, which is exactly nowhere from a tablet on a wall.
+# An explicit value already in the environment always wins — somebody who set
+# it meant it — so each is read only when its variable is still unset.
 #
-# An explicit BASE_URL in the environment wins — somebody who set it meant it.
-if [ -f "$DATA_DIR/options.json" ] && [ -z "${BASE_URL:-}" ]; then
+#   - base_url: under ingress the address is handled for us, but the *wall
+#     displays* connect to the add-on's port directly, and the pairing link
+#     they are given comes from BASE_URL. Left unset it says `localhost`, which
+#     is nowhere from a tablet on a wall.
+#   - ingress_trust_source: the supervisor's address, which lets the settings
+#     trust a Home Assistant login instead of asking for a second one. The
+#     default in the app is right on a normal install; this only overrides it.
+read_option() {
   # node is already here, and parsing JSON in sh is how quoting bugs are born.
-  option_base_url=$(node -e '
+  node -e '
     try {
       const o = require(process.argv[1]);
-      const v = o && o.base_url;
+      const v = o && o[process.argv[2]];
       if (typeof v === "string" && v.trim() !== "") process.stdout.write(v.trim());
     } catch {}
-  ' "$DATA_DIR/options.json" 2>/dev/null || true)
+  ' "$DATA_DIR/options.json" "$1" 2>/dev/null || true
+}
 
-  if [ -n "$option_base_url" ]; then
-    export BASE_URL="$option_base_url"
-    echo "[entrypoint] BASE_URL from add-on options: $BASE_URL"
+if [ -f "$DATA_DIR/options.json" ]; then
+  if [ -z "${BASE_URL:-}" ]; then
+    option_base_url=$(read_option base_url)
+    if [ -n "$option_base_url" ]; then
+      export BASE_URL="$option_base_url"
+      echo "[entrypoint] BASE_URL from add-on options: $BASE_URL"
+    fi
+  fi
+
+  if [ -z "${INGRESS_TRUST_SOURCE:-}" ]; then
+    option_trust=$(read_option ingress_trust_source)
+    if [ -n "$option_trust" ]; then
+      export INGRESS_TRUST_SOURCE="$option_trust"
+      echo "[entrypoint] INGRESS_TRUST_SOURCE from add-on options: $INGRESS_TRUST_SOURCE"
+    fi
   fi
 fi
 

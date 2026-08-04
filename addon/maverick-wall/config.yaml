@@ -65,16 +65,22 @@ ports_description:
 # own init on top.
 init: false
 
-# One option, because one is all that does anything.
-#
-# `log_level` was here and controlled nothing — this application has no log
-# levels, and a setting somebody can change with no effect is worse than a
-# setting that does not exist. Everything else worth changing lives on a
-# settings screen, next to an explanation of what it affects.
+# Two options, both empty by default, because the defaults are right almost
+# everywhere. A setting that does nothing is worse than none — `log_level` was
+# here and controlled nothing — so neither of these is here for show.
 options:
   base_url: ""
+  ingress_trust_source: ""
 schema:
   # Only needed for the wall displays. They connect to the add-on's port
   # rather than through ingress, and the pairing link they are handed comes
   # from this. Left empty it reads `localhost`, which is nowhere from a tablet.
   base_url: "str?"
+  # The supervisor's address on the internal network, which is what lets the
+  # settings trust a Home Assistant login instead of asking for a second one.
+  # The default (172.30.32.2) is right on a normal install; set this only if
+  # the add-on log's `[ingress] first request from …` line shows a different
+  # address and reads `trusted supervisor source: no`. Comma-separated for the
+  # rare setup with more than one. Wrong or empty simply means the ordinary
+  # login stays — it can never open the settings to anything it should not.
+  ingress_trust_source: "str?"

@@ -755,6 +755,29 @@ export function requestSyncNow(db: SqliteDatabase, id: string): void {
   ).run(`ics-sync:${id}`, `ha-calendar-sync:${id}`);
 }
 
+/**
+ * The one household account, for trusting a Home Assistant ingress session.
+ *
+ * Exactly one, or nobody. Zero means the wizard has not run yet; more than one
+ * is ambiguous — there is no mapping from a Home Assistant user to a particular
+ * account here — and both fail closed to the normal login rather than guess
+ * which account an ingress visitor should become.
+ */
+export function readHouseholdUser(
+  db: SqliteDatabase,
+): { readonly id: string; readonly email: string; readonly name: string } | undefined {
+  try {
+    const rows = db.prepare('SELECT id, email, name FROM user LIMIT 2').all() as {
+      id: string;
+      email: string;
+      name: string;
+    }[];
+    return rows.length === 1 ? rows[0] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function readSetupState(db: SqliteDatabase): SetupState {
   const hasUsers = countUsers(db) > 0;
   let complete = false;

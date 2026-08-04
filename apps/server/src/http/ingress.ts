@@ -57,6 +57,48 @@ export function baseHref(prefix: string): string {
 }
 
 /**
+ * Node reports an IPv4 peer on a dual-stack socket as `::ffff:172.30.32.2`.
+ * Compared against the bare form so a plain address in the trust list matches
+ * either representation.
+ */
+export function normaliseSource(address: string): string {
+  return address.startsWith('::ffff:') ? address.slice(7) : address;
+}
+
+/**
+ * Is this the supervisor itself, forwarding an already-authenticated Home
+ * Assistant session — rather than a device on the LAN that merely set the
+ * ingress header?
+ *
+ * This is what lets the settings trust Home Assistant's own login instead of
+ * asking for a second one. All of it has to hold, and any doubt fails closed
+ * to the normal sign-in:
+ *
+ *   - We are actually running as an add-on. A plain `docker run` never sees
+ *     ingress and must never grant a session on the strength of a header.
+ *   - The request carries a valid ingress path.
+ *   - Its real TCP source — the socket, never a header — is in the trusted
+ *     set, which is the supervisor's fixed address on the internal network.
+ *
+ * The header alone cannot be trusted, and that is the whole point. Ingress and
+ * the wall displays share one LAN-exposed port, so anything on the household
+ * network can open it and send `X-Ingress-Path`. The socket source is the part
+ * it cannot forge without already being on the supervisor's own network — a
+ * compromised add-on, which is a different and far higher bar than a phone on
+ * the wifi.
+ */
+export function isTrustedIngress(
+  c: Context,
+  socketAddress: string | undefined,
+  opts: { readonly isAddon: boolean; readonly sources: ReadonlySet<string> },
+): boolean {
+  if (!opts.isAddon) return false;
+  if (ingressPath(c) === '') return false;
+  if (socketAddress === undefined || socketAddress === '') return false;
+  return opts.sources.has(normaliseSource(socketAddress));
+}
+
+/**
  * The tag `page()` always emits. Replaced rather than joined by a second one.
  *
  * A browser honours the first `<base>` and ignores the rest, so injecting one

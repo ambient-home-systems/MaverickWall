@@ -409,8 +409,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<p><a class="link" href="admin/alerts">Weather alerts</a> — ` +
           `${alertSummary()}</p>` +
 
-          `<form method="post" action="admin/sign-out">` +
-          `<button class="secondary" type="submit">Sign out</button></form>`,
+          // No sign-out under ingress: Home Assistant did the authenticating,
+          // so a button here would end our cookie and the supervisor would
+          // hand the session straight back on the next request — a control that
+          // looks like it failed. Signing out is a Home Assistant action there.
+          (c.get('viaIngress') === true
+            ? `<p class="hint">Signed in through Home Assistant.</p>`
+            : `<form method="post" action="admin/sign-out">` +
+              `<button class="secondary" type="submit">Sign out</button></form>`),
       }),
     );
   });

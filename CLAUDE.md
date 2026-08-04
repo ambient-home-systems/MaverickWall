@@ -235,7 +235,7 @@ verify` passes and names `release.yml@refs/tags/v0.1.1`. The manifest carries
 an ancestor of `main`** — the PRs were merged with merge commits rather than
 squashed precisely so that stayed true.
 
-**955 tests passing.** calendar 153 · core 266 · server 458 · display 78. CI
+**963 tests passing.** calendar 153 · core 266 · server 466 · display 78. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -830,6 +830,28 @@ step and no bundle that can fail to load, which is the same reason the wizard
 is. `apps/admin` has not been started and may never need to be — that is worth
 deciding deliberately before the Shifts screen rather than by drift.
 
+**Under ingress the settings trust Home Assistant's login, and the socket is
+what makes that safe.** The supervisor only forwards a request from somebody
+already signed in to Home Assistant, so asking for a second login in the
+sidebar is redundant — `requireSession` accepts the one household account with
+no cookie when `isTrustedIngress` says yes. The trap is that ingress and the
+wall displays share one LAN-exposed port (`ingress_port` *is* the mapped
+`ports` entry), so `X-Ingress-Path` is a header anything on the network can
+send. The header is therefore **not** the credential; the **socket source** is
+— the request must arrive from the supervisor's fixed internal address
+(`172.30.32.2` by default, `INGRESS_TRUST_SOURCE` / the `ingress_trust_source`
+option to override), read from `getConnInfo`, never from a header. Everything
+fails closed to the ordinary login: not an add-on, no ingress header, a foreign
+source, an unknown socket, or more than one account (no way to say which user
+an ingress visitor is) all fall through to sign-in. A wrong trust address costs
+a login, never a bypass. `test/ingress-auth.test.ts` proves both directions and
+was checked by weakening the guard to header-only and watching the forged-LAN
+case walk in; a real container confirmed the socket address is what
+`getConnInfo` reports and that the option threads through the entrypoint. The
+one thing unproven off real hardware is the supervisor's actual address — which
+is why the first ingress request logs `[ingress] first request from <addr>;
+trusted supervisor source: yes|no` for a household to read and correct.
+
 **Home Assistant ingress is one middleware, and nothing else knows about it.**
 The supervisor mounts the add-on under a per-session path, strips it, and says
 what it stripped in `X-Ingress-Path`. Three things move: redirects get the
@@ -900,13 +922,16 @@ distinct address.
   account. Two directions, and the first is nearly free:
 
   - **Under ingress, the supervisor has already authenticated the household.**
-    CLAUDE.md already leans on this — the cross-origin guard stands down under
-    ingress because the supervisor is the trust boundary and will not forward a
-    request without a valid Home Assistant session. By that same argument the
-    setup code is *redundant* through the sidebar: reaching `/setup` under a
-    valid `X-Ingress-Path` is itself proof of ownership. The add-on could skip
-    the code entirely and let the first sidebar visitor create the account.
-    That is the install that matters most and the one where the dance is worst.
+    The *post-setup* half of this is now built: `isTrustedIngress` lets the
+    settings accept a Home Assistant login in place of ours, pinned to the
+    supervisor's socket source rather than the forgeable ingress header. The
+    setup code is the same argument one step earlier — reaching `/setup` from a
+    trusted supervisor source is itself proof of ownership — so the wizard could
+    reuse `isTrustedIngress` to skip the code on the add-on entirely, and let
+    the first sidebar visitor create the account. That is the install that
+    matters most and the one where the dance is worst. What stops it being done
+    already is only that it wants the same real-hardware confirmation of the
+    supervisor address that the login path is waiting on.
   - **For plain `docker run`, the code still earns its place** — there is no
     supervisor vouching for anyone — but even there the log→UI copy could
     become a one-click link. The wizard could show "waiting for the code from

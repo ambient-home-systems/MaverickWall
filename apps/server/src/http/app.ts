@@ -17,7 +17,7 @@ import {
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir } from './static.js';
-import { ingress, ingressPath } from './ingress.js';
+import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { weatherModule } from '../modules/weather/index.js';
@@ -39,6 +39,7 @@ import {
   readSchemaVersion,
   readScreens,
   readSetupState,
+  readHouseholdUser,
   readShiftOverrides,
   readShiftPlans,
   readShiftTypes,
@@ -86,6 +87,19 @@ export interface AppDeps {
    * that rate limiting is per-client at all.
    */
   readonly clientAddress?: (c: Context) => string | undefined;
+  /**
+   * When to trust a Home Assistant ingress request as an already-signed-in
+   * household, so the settings do not ask for a second login the supervisor
+   * has already done.
+   *
+   * `isAddon` gates the whole thing — off, and the behaviour is exactly as
+   * before. `sources` is the set of socket addresses a genuine ingress request
+   * can come from: the supervisor's fixed address on the internal network.
+   * Defaults from the environment (`SUPERVISOR_TOKEN` present, and
+   * `INGRESS_TRUST_SOURCE` or the documented `172.30.32.2`); injectable so a
+   * test can prove both the trusted and the forged case without a supervisor.
+   */
+  readonly ingressTrust?: { readonly isAddon: boolean; readonly sources: readonly string[] };
   /** Encrypts calendar URLs added through the wizard. */
   readonly keyring: Keyring;
   /** Tests a feed before the wizard stores it. */
@@ -210,9 +224,45 @@ export function createApp(deps: AppDeps): Hono {
   const staticFiles = createStaticFiles(deps.displayDir ?? defaultDisplayDir());
 
   const auth = createAuth({ db: deps.db, secret: deps.auth.secret, baseUrl: deps.auth.baseUrl });
+
+  /*
+   * The real socket peer, for every decision that must not trust a header:
+   * rate limiting, and whether an ingress request is genuinely the supervisor.
+   * Defined here rather than lower down because the session gate depends on it.
+   */
+  const clientAddress =
+    deps.clientAddress ??
+    ((c: Context): string | undefined => {
+      try {
+        return getConnInfo(c).remote.address;
+      } catch {
+        // No Node server underneath (a test calling app.fetch). Rate limiting
+        // falls back to a shared bucket; ingress trust fails closed to login.
+        return undefined;
+      }
+    });
+
+  /*
+   * When to accept a Home Assistant login in place of ours. Off unless we are
+   * an add-on, and pinned to the supervisor's socket address — see
+   * `isTrustedIngress`. Read once, from the caller or the environment.
+   */
+  const ingressTrust = deps.ingressTrust ?? {
+    isAddon: process.env['SUPERVISOR_TOKEN'] !== undefined,
+    sources: (process.env['INGRESS_TRUST_SOURCE'] ?? '172.30.32.2')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== ''),
+  };
+  const trustedSources = new Set(ingressTrust.sources);
+
   const gateDeps: GateDeps = {
     sessions: createSessionResolver(auth),
     setupState: () => readSetupState(deps.db),
+    ingressUser: (c: Context) =>
+      isTrustedIngress(c, clientAddress(c), { isAddon: ingressTrust.isAddon, sources: trustedSources })
+        ? readHouseholdUser(deps.db)
+        : undefined,
   };
 
   /*
@@ -247,6 +297,33 @@ export function createApp(deps: AppDeps): Hono {
    * and because every response it rewrites has to be rewritten on the way out.
    */
   app.use('*', ingress());
+
+  /*
+   * The one fact this whole feature turns on, printed once so it can be
+   * confirmed on real hardware rather than assumed.
+   *
+   * The trusted source is the supervisor's address, and a wrong guess fails
+   * closed to the normal login — so this line is how a household (or whoever is
+   * next) checks it is right: the first ingress request logs where it actually
+   * came from and whether that was trusted. If it says `trusted: no`, the
+   * address printed is the one to add to `INGRESS_TRUST_SOURCE`. Addresses
+   * only, never a path or a token — rule six.
+   */
+  if (ingressTrust.isAddon) {
+    let announced = false;
+    app.use('*', async (c: Context, next: Next): Promise<void> => {
+      if (!announced && ingressPath(c) !== '') {
+        announced = true;
+        const addr = clientAddress(c) ?? 'unknown';
+        const trusted = isTrustedIngress(c, clientAddress(c), {
+          isAddon: ingressTrust.isAddon,
+          sources: trustedSources,
+        });
+        console.log(`[ingress] first request from ${addr}; trusted supervisor source: ${trusted ? 'yes' : 'no'}`);
+      }
+      await next();
+    });
+  }
 
   app.use('*', async (c: Context, next: Next): Promise<Response | void> => {
     if (c.req.method === 'GET' || c.req.method === 'HEAD') {
@@ -493,18 +570,6 @@ export function createApp(deps: AppDeps): Hono {
    * proven by `requireScreen` guarding `/d/manifest`.
    */
   app.use('/api/auth/sign-up/email', refuseLateSignUp(gateDeps));
-
-  const clientAddress =
-    deps.clientAddress ??
-    ((c: Context): string | undefined => {
-      try {
-        return getConnInfo(c).remote.address;
-      } catch {
-        // No Node server underneath. Rate limiting falls back to a shared
-        // bucket, which is worse but is not worth failing a request over.
-        return undefined;
-      }
-    });
 
   /**
    * Everything else Better Auth handles itself: sign-in, sign-out, session

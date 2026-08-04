@@ -31,6 +31,14 @@ export interface SetupState {
 export interface GateDeps {
   readonly sessions: SessionResolver;
   readonly setupState: () => SetupState;
+  /**
+   * The household account to accept without a cookie, when — and only when —
+   * this request is the Home Assistant supervisor forwarding a session it has
+   * already authenticated. Returns undefined for everything else, which is
+   * every request that must still sign in. Optional: absent outside the add-on
+   * and in tests that do not exercise it, where it changes nothing.
+   */
+  readonly ingressUser?: (c: Context) => SessionUser | undefined;
 }
 
 /**
@@ -110,6 +118,22 @@ export function requireSession(deps: GateDeps) {
     }
 
     if (!user) {
+      /*
+       * No cookie session — but if this is the supervisor forwarding a Home
+       * Assistant login it has already checked, that login stands in for ours.
+       * `ingressUser` has done the whole trust decision, socket source and all,
+       * and returns a user only when it is certain; here we just honour it.
+       * Absent, or undefined, and nothing changes: the normal sign-in follows.
+       */
+      const viaIngress = deps.ingressUser?.(c);
+      if (viaIngress) {
+        c.set('user', viaIngress);
+        // So a page can tell: a "Sign out" button does nothing under ingress,
+        // where the supervisor would hand the session straight back.
+        c.set('viaIngress', true);
+        await next();
+        return;
+      }
       return c.req.path.startsWith('/api/')
         ? c.json({ error: 'unauthorized', message: 'Sign in to continue.' }, 401)
         : c.redirect('/admin/sign-in', 302);
