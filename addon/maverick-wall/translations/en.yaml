@@ -1,0 +1,31 @@
+# Shown on the add-on's Configuration tab, one entry per option.
+#
+# The supervisor reads this file for the label and help text under each field;
+# without it the page shows the bare option key and nothing else. The comments
+# in config.yaml are for whoever edits the add-on, not for the household — this
+# is the household's copy.
+configuration:
+  base_url:
+    name: Wall display address (base_url)
+    description: >-
+      The full web address a wall screen — a tablet or television — uses to
+      reach this add-on, so the pairing link it is handed points somewhere the
+      screen can actually open. Give the whole thing: the scheme and the port,
+      like http://192.168.1.33:8080. Use this machine's address on your network
+      and the port you mapped for the add-on in the Network section below. A
+      bare 192.168.1.33 will not work — it has no port, and without http:// it
+      is not an address. Only wall displays need this; the settings you are
+      reading now come through the sidebar and do not. Leave it blank if you are
+      not pairing any wall screens.
+  ingress_trust_source:
+    name: Ingress trust source (advanced — leave blank)
+    description: >-
+      Leave this blank on a normal install. It is the supervisor's address on
+      Home Assistant's internal network, and it is what lets these settings
+      accept your Home Assistant login instead of asking for a second one. The
+      built-in default (172.30.32.2) is correct almost everywhere. Only set it
+      if, after opening these settings once, the add-on log's first line reading
+      "[ingress] first request from …" shows a different address together with
+      "trusted supervisor source: no" — in that case put the address it shows
+      here and restart. A wrong or blank value only ever means you will see a
+      login prompt; it can never open the settings to anything it should not.
