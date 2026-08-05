@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.6
+
+Fixes a crash when `base_url` was set to a bare address.
+
+- Setting `base_url` to just an IP — `192.168.1.33` rather than
+  `http://192.168.1.33:8080` — stopped the add-on from starting. It now adds
+  the missing `http://`, boots, and prints a line reminding you to include the
+  host port the add-on was mapped to. A value it still cannot make sense of
+  falls back to the default instead of refusing to start.
+- Give `base_url` the full URL — scheme and port — for wall-screen pairing to
+  hand out a link a tablet can reach.
+
 ## 0.1.5
 
 Adds a free-form layout: arrange widgets on the wall yourself.
