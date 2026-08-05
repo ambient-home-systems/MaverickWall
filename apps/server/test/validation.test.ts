@@ -6,6 +6,7 @@ import {
   colour,
   coordinate,
   hhmm,
+  normalizeBaseUrl,
   oneOf,
   optionalText,
   parse,
@@ -126,5 +127,43 @@ describe('rejecting rather than coercing', () => {
   it('trims but does not invent', () => {
     expect(parse(text('A name'), '   ')).toMatchObject({ ok: false });
     expect(parse(optionalText(), '   ')).toEqual({ ok: true, value: undefined });
+  });
+});
+
+describe('normalizeBaseUrl — never let a typed address refuse the boot', () => {
+  const FALLBACK = 'http://localhost:8080';
+
+  it('adds a scheme to a bare host, and warns that the port is missing', () => {
+    // The exact input that crashed a real add-on: a bare IP.
+    const out = normalizeBaseUrl('192.168.1.33', FALLBACK);
+    expect(out.url).toBe('http://192.168.1.33');
+    expect(out.warning).toContain('has no port');
+    // And the result is a URL Better Auth will actually accept.
+    expect(() => new URL(out.url)).not.toThrow();
+  });
+
+  it('keeps a full URL as given, with no warning', () => {
+    expect(normalizeBaseUrl('http://192.168.1.33:8080', FALLBACK)).toEqual({
+      url: 'http://192.168.1.33:8080',
+    });
+    expect(normalizeBaseUrl('https://wall.example.com', FALLBACK).warning).toBeUndefined();
+  });
+
+  it('strips a path or trailing slash so links do not double up', () => {
+    expect(normalizeBaseUrl('http://192.168.1.33:8080/', FALLBACK).url).toBe('http://192.168.1.33:8080');
+    expect(normalizeBaseUrl('http://192.168.1.33:8080/setup', FALLBACK).url).toBe('http://192.168.1.33:8080');
+  });
+
+  it('falls back rather than crashing on an empty or unparseable value', () => {
+    expect(normalizeBaseUrl(undefined, FALLBACK)).toEqual({ url: FALLBACK });
+    expect(normalizeBaseUrl('   ', FALLBACK)).toEqual({ url: FALLBACK });
+    const bad = normalizeBaseUrl('http://', FALLBACK);
+    expect(bad.url).toBe(FALLBACK);
+    expect(bad.warning).toContain('not a valid address');
+  });
+
+  it('does not nag about a missing port on localhost', () => {
+    expect(normalizeBaseUrl('http://localhost:8080', FALLBACK).warning).toBeUndefined();
+    expect(normalizeBaseUrl('localhost', FALLBACK).warning).toBeUndefined();
   });
 });

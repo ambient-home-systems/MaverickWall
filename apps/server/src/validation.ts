@@ -218,4 +218,50 @@ export const oneOf = <T extends string>(
     })
     .transform((value) => value as T);
 
+/**
+ * A base URL the household typed, made safe to boot with.
+ *
+ * `BASE_URL` — or the add-on's `base_url` option — is a boundary: somebody
+ * types it, and a bare `192.168.1.33`, the obvious thing to type, is not a URL.
+ * Better Auth rejects it and the process exits on its first line, which is
+ * exactly the refusal-to-start rule nine forbids. So a value with no scheme
+ * gets `http://`, and anything still unparseable falls back to the default
+ * rather than crashing. The port stays the household's to get right: a missing
+ * one is warned about, never invented, because only they know which host port
+ * the add-on was mapped to.
+ */
+export function normalizeBaseUrl(
+  raw: string | undefined,
+  fallback: string,
+): { readonly url: string; readonly warning?: string } {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed === '') return { url: fallback };
+
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    return { url: fallback, warning: `BASE_URL "${raw}" is not a valid address; using ${fallback}.` };
+  }
+
+  // Scheme and host only — a path or trailing slash would double up when the
+  // setup and pairing links append their own.
+  const url = `${parsed.protocol}//${parsed.host}`;
+  const local = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  // Only `http` with no port is worth a word — that is the add-on case, where
+  // the wall lives on a mapped host port and port 80 is almost never it. An
+  // `https` host with no port means 443 behind a reverse proxy, which is a
+  // deliberate setup, not a mistake.
+  if (parsed.port === '' && parsed.protocol === 'http:' && !local) {
+    return {
+      url,
+      warning:
+        `BASE_URL "${url}" has no port. Wall displays reach the add-on on its ` +
+        `mapped port — include it, e.g. http://${parsed.hostname}:8080.`,
+    };
+  }
+  return { url };
+}
+
 export { z };

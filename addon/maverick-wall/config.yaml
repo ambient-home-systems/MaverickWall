@@ -75,6 +75,10 @@ schema:
   # Only needed for the wall displays. They connect to the add-on's port
   # rather than through ingress, and the pairing link they are handed comes
   # from this. Left empty it reads `localhost`, which is nowhere from a tablet.
+  #
+  # A full URL: the scheme AND the host port the add-on was mapped to — e.g.
+  # http://192.168.1.33:8080, not a bare 192.168.1.33 (which has no port and,
+  # without http://, is not an address the app can boot with).
   base_url: "str?"
   # The supervisor's address on the internal network, which is what lets the
   # settings trust a Home Assistant login instead of asking for a second one.

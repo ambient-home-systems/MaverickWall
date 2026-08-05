@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
 import { createSetupTokenHolder } from './http/setup.js';
+import { normalizeBaseUrl } from './validation.js';
 import { countUsers, readHousehold, readUpdateState, recordUpdateCheck } from './api/queries.js';
 import { checkForUpdate } from './api/update-check.js';
 import type { ManifestNotice } from './api/manifest.js';
@@ -209,7 +210,12 @@ async function main(): Promise<void> {
   // there is no default credential to leave unchanged. Its own purpose, so it
   // is not the key that encrypts calendar URLs.
   const authSecret = deriveKey(master.key, 'session').toString('base64');
-  const baseUrl = env('BASE_URL', `http://localhost:${port}`);
+  // Normalised rather than trusted: a bare IP is the obvious thing to type and
+  // is not a URL, and passing it straight to Better Auth exits the process on
+  // its first line — the refusal to start rule nine forbids. See the function.
+  const base = normalizeBaseUrl(process.env['BASE_URL'], `http://localhost:${port}`);
+  const baseUrl = base.url;
+  if (base.warning !== undefined) console.log(`[boot] ${base.warning}`);
 
   /*
    * The bootstrap code, printed here and nowhere else.
