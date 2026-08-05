@@ -28,10 +28,19 @@ body{margin:0;background:#0B0E11;color:#E9EEF4;
   font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   display:flex;justify-content:center;padding:2rem 1rem}
 main{width:100%;max-width:34rem}
-.brand{display:flex;align-items:center;gap:.6rem;margin:0 0 1.6rem;
-  font-weight:700;font-size:1.05rem;letter-spacing:.01em}
+.brand{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;
+  font-weight:700;font-size:1.05rem;letter-spacing:.01em;text-decoration:none}
+a.brand{cursor:pointer}
 .brand svg{width:30px;height:30px;flex:0 0 auto;border-radius:7px}
 .brand span{color:#E9EEF4}
+/* The section tabs: wrap rather than scroll, so every one is reachable at any
+   width — a narrow phone shows three rows, a wide panel shows one. */
+.tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.6rem;
+  border-bottom:1px solid #1E262F;padding-bottom:.8rem}
+.tabs a{padding:.35rem .7rem;border-radius:.4rem;font-size:.9rem;font-weight:600;
+  color:#A8B3C0;text-decoration:none;white-space:nowrap;border:1px solid transparent}
+.tabs a:hover{color:#E9EEF4;background:#141A21}
+.tabs a.active{color:#1A1206;background:#E0A33E}
 h1{font-size:1.5rem;margin:0 0 .25rem}
 p{color:#A8B3C0;margin:.5rem 0}
 form{margin:1.5rem 0 0}
@@ -185,12 +194,51 @@ const MARK =
 /** The mark as a favicon. Same bytes, URL-encoded into a data URI. */
 const FAVICON = `data:image/svg+xml,${encodeURIComponent(MARK)}`;
 
+/**
+ * The admin sections, in the order they tab across the top.
+ *
+ * Calendar first, because the calendar is the product; the two panel modules
+ * (Home Assistant, Weather) sit together before System, which is the box's own
+ * housekeeping. `href` is relative so the `<base>` handles ingress.
+ */
+const NAV: readonly { readonly key: string; readonly label: string; readonly href: string }[] = [
+  { key: 'calendars', label: 'Calendars', href: 'admin/calendars' },
+  { key: 'display', label: 'Display', href: 'admin/display' },
+  { key: 'layout', label: 'Layout', href: 'admin/layout' },
+  { key: 'people', label: 'People', href: 'admin/people' },
+  { key: 'shifts', label: 'Shifts', href: 'admin/shifts' },
+  { key: 'screens', label: 'Screens', href: 'admin/screens' },
+  { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant' },
+  { key: 'alerts', label: 'Weather', href: 'admin/alerts' },
+  { key: 'system', label: 'System', href: 'admin/system' },
+];
+
+/** The tab bar, with the current section marked. Empty off the admin pages. */
+function navBar(active: string | undefined): string {
+  if (active === undefined) return '';
+  return (
+    `<nav class="tabs" aria-label="Sections">` +
+    NAV.map(
+      (section) =>
+        `<a href="${section.href}"${section.key === active ? ' class="active" aria-current="page"' : ''}>` +
+        `${escapeHtml(section.label)}</a>`,
+    ).join('') +
+    `</nav>`
+  );
+}
+
 export interface PageOptions {
   readonly title: string;
   /** Rendered above the heading, e.g. "Step 2 of 3". */
   readonly step?: string;
   readonly heading: string;
   readonly intro?: string;
+  /**
+   * The current admin section, e.g. `screens` — draws the tab bar with it
+   * marked. Absent on the wizard and sign-in, which have no sections to tab
+   * between; a key no tab matches (the overview) draws the bar with none lit.
+   */
+  readonly nav?: string;
   /** Already-escaped markup. */
   readonly body: string;
 }
@@ -215,8 +263,12 @@ export function page(options: PageOptions): string {
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<link rel="icon" href="${FAVICON}">` +
     `<title>${escapeHtml(options.title)}</title><style>${STYLE}</style></head><body><main>` +
-    // The masthead: identity on every page, above whatever this page is called.
-    `<header class="brand">${MARK}<span>Maverick Wall</span></header>` +
+    // The masthead: identity on every page. A link home where there is a home
+    // to go to — the admin — and plain text on the wizard, which has none yet.
+    (options.nav === undefined
+      ? `<header class="brand">${MARK}<span>Maverick Wall</span></header>`
+      : `<a class="brand" href="admin">${MARK}<span>Maverick Wall</span></a>`) +
+    navBar(options.nav) +
     (options.step === undefined ? '' : `<p class="steps">${escapeHtml(options.step)}</p>`) +
     `<h1>${escapeHtml(options.heading)}</h1>` +
     (options.intro === undefined ? '' : `<p>${escapeHtml(options.intro)}</p>`) +

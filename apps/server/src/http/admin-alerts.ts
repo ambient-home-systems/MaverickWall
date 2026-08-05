@@ -73,9 +73,9 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Weather alerts — Maverick Wall',
+      nav: 'alerts',
       heading: 'Weather alerts',
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
 
         // First, before the switch. Somebody deciding whether to rely on this

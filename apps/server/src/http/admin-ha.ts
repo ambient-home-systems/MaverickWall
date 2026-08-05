@@ -486,9 +486,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Home Assistant — Maverick Wall',
+      nav: 'homeassistant',
       heading: 'Home Assistant',
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         boundary() +
         status(live, settings.lastSyncAt) +

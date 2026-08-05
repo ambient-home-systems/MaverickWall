@@ -421,6 +421,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(
       page({
         title: 'Maverick Wall',
+        nav: 'home',
         heading: 'Maverick Wall',
         intro: `Signed in as ${user.name}.`,
         body:
@@ -590,6 +591,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(
       page({
         title: 'Remove calendar',
+        nav: 'calendars',
         heading: `Remove “${source.name}”?`,
         intro:
           'Its events disappear from the wall immediately. The calendar itself ' +
@@ -751,6 +753,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(
       page({
         title: 'Restore staged',
+        nav: 'system',
         heading: 'Ready to restore',
         intro:
           'The backup has been checked and put aside. Restart Maverick Wall to ' +
@@ -835,6 +838,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(
       page({
         title: 'Remove person',
+        nav: 'people',
         heading: `Remove ${person.name}?`,
         intro:
           person.sourceCount === 0
@@ -1308,6 +1312,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Shift rotation — Maverick Wall',
+      nav: 'shifts',
       heading: `${person?.name ?? 'Someone'}'s rotation`,
       intro:
         draft.kind === 'pattern'
@@ -1357,13 +1362,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const canAdd = people.length > 0;
     return page({
       title: 'Shifts — Maverick Wall',
+      nav: 'shifts',
       heading: 'Shift rotation',
       intro:
         'The wall colours each day by who is working. A rotation is either read ' +
         'from a calendar that already has the shifts in it, or set as a pattern ' +
         'that repeats.',
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         plans.map(card).join('') +
         (canAdd
@@ -1437,9 +1442,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'System — Maverick Wall',
+      nav: 'system',
       heading: 'System',
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
 
         `<article class="card">` +
@@ -1652,12 +1657,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'People — Maverick Wall',
+      nav: 'people',
       heading: 'People',
       intro:
         'Everyone the wall knows about. Their colour marks their events and ' +
         'their shifts, so pick ones that are easy to tell apart from across a room.',
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error, suggestion)) +
         people.map(card).join('') +
         `<h2 class="add">Add someone</h2>` +
@@ -1710,6 +1715,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Pair this screen',
+      nav: 'screens',
       heading: `Pair ${name}`,
       intro:
         'Open this on the screen itself. It is shown once — if you lose it, ' +
@@ -1836,12 +1842,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Screens — Maverick Wall',
+      nav: 'screens',
       heading: 'Screens',
       ...(active.length === 0
         ? { intro: 'No screens paired yet. Add one below and open the link it gives you on the screen itself.' }
         : {}),
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         active.map((screen) => screenCard(screen, at)).join('') +
         (revoked === 0
@@ -1906,13 +1912,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Layout — Maverick Wall',
+      nav: 'layout',
       heading: 'Layout',
       intro:
         'Arrange the wall: add a widget, drag it to move, pull the corner to ' +
         'resize. Turn it on to use this instead of the stacked layout. The wall ' +
         'picks up a saved change within a minute.',
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         // The editor mounts here. Data in an attribute, script from the image.
         `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
         `<noscript><p class="hint">The layout editor needs JavaScript. The ` +
@@ -1943,10 +1949,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Display — Maverick Wall',
+      nav: 'display',
       heading: 'Display',
       intro: 'The wall picks these up within a minute. No need to touch the screen.',
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         `<form method="post" action="admin/display">` +
         `<label for="theme">Theme</label>` +
@@ -2106,12 +2112,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       title: 'Calendars — Maverick Wall',
+      nav: 'calendars',
       heading: 'Calendars',
       ...(sources.length === 0
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }
         : {}),
       body:
-        `<p><a class="link" href="admin">← Back</a></p>` +
         sources.map((source) => sourceRow(source, at, people)).join('') +
         `<h2 class="add">Add a calendar</h2>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
