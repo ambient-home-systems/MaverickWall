@@ -463,37 +463,45 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ ok: true });
   });
 
-  app.get('/d/manifest', (c: Context) => {
-    const screen = c.get('screen') as ScreenRow;
+  /**
+   * The manifest, built for a given screen.
+   *
+   * Shared by the wall (a paired screen) and the layout editor's preview (a
+   * default screen, behind the session), so the preview draws from exactly the
+   * same document a wall does and cannot drift from what the wall shows.
+   */
+  const buildDisplayManifest = (screenLike: {
+    readonly timezone: string | null;
+    readonly orientation: string;
+    readonly rotation: number;
+    readonly allowDismiss: boolean;
+    readonly theme: string | null;
+    readonly daytimeTheme: string | null;
+    readonly daytimeStartsAt: string | null;
+    readonly daytimeEndsAt: string | null;
+  }) => {
     const at = now();
     const household = readHousehold(deps.db);
     const today = localDateOf(at, household.timezone);
-
     const from = shiftDate(today, -DEFAULT_DAYS_BEFORE);
     const to = shiftDate(today, DEFAULT_DAYS_AFTER);
 
     /*
-     * The zone this particular screen is in.
-     *
-     * The same resolution the manifest does, hoisted because an interrupt
-     * limited to the night has to mean night where the screen is hanging — a
-     * holiday home on another clock is a case this product already supports.
+     * The zone this particular screen is in — the same resolution the manifest
+     * does, hoisted because an interrupt limited to the night has to mean night
+     * where the screen is hanging.
      */
     const timezone =
-      screen.timezone !== null && screen.timezone !== '' ? screen.timezone : household.timezone;
+      screenLike.timezone !== null && screenLike.timezone !== ''
+        ? screenLike.timezone
+        : household.timezone;
 
     // Built once and shared: the panels and the signals come from the same
     // instant, so a wall never draws a reading from one poll beside an
     // interrupt evaluated against another.
-    const moduleContext = {
-      db: deps.db,
-      fetcher: deps.fetcher,
-      keyring: deps.keyring,
-      now: at,
-      timezone,
-    };
+    const moduleContext = { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: at, timezone };
 
-    const manifest = buildManifest({
+    return buildManifest({
       household,
       layoutWidgets: readLayoutWidgets(deps.db),
       events: readEvents(deps.db, from, to),
@@ -511,34 +519,44 @@ export function createApp(deps: AppDeps): Hono {
       // no I/O: every module reads its own cache, filled by its own job.
       panels: collectPanels(MODULES, moduleContext),
       /*
-       * Evaluated per poll, from stored signals and stored rules.
-       *
-       * Every wall reads the same document, including which interrupts have
-       * been cleared — that is what keeps a kitchen tablet and a hall
-       * television saying the same thing.
+       * Evaluated per poll, from stored signals and stored rules — every wall
+       * reads the same document, including which interrupts have been cleared.
        */
       interrupts: evaluateInterrupts({
         rules: readRules(deps.db),
         signals: collectSignals(MODULES, moduleContext),
         now: at,
         // Worked out here because core may not reach for `Intl` — rule one.
-        // The evaluator is told what time it is, exactly as it is told `now`.
         localHhmm: localClock(at, timezone),
         dismissedAt: readDismissals(deps.db),
       }).active,
-      // The document is already screen-specific — it is served behind a
-      // display token — so how that screen is hung travels with it.
       screen: {
-        orientation: screen.orientation,
-        rotation: screen.rotation,
-        allowDismiss: screen.allowDismiss === 1,
-        theme: screen.theme,
-        timezone: screen.timezone,
-        daytimeTheme: screen.daytimeTheme,
-        daytimeStartsAt: screen.daytimeStartsAt,
-        daytimeEndsAt: screen.daytimeEndsAt,
+        orientation: screenLike.orientation,
+        rotation: screenLike.rotation,
+        allowDismiss: screenLike.allowDismiss,
+        theme: screenLike.theme,
+        timezone: screenLike.timezone,
+        daytimeTheme: screenLike.daytimeTheme,
+        daytimeStartsAt: screenLike.daytimeStartsAt,
+        daytimeEndsAt: screenLike.daytimeEndsAt,
       },
       notices: deps.bootNotices,
+    });
+  };
+
+  app.get('/d/manifest', (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    const manifest = buildDisplayManifest({
+      // The document is already screen-specific — served behind a display
+      // token — so how that screen is hung travels with it.
+      timezone: screen.timezone,
+      orientation: screen.orientation,
+      rotation: screen.rotation,
+      allowDismiss: screen.allowDismiss === 1,
+      theme: screen.theme,
+      daytimeTheme: screen.daytimeTheme,
+      daytimeStartsAt: screen.daytimeStartsAt,
+      daytimeEndsAt: screen.daytimeEndsAt,
     });
 
     // Recorded after building, so a screen that is failing to render still
@@ -553,7 +571,7 @@ export function createApp(deps: AppDeps): Hono {
     const etag = manifestEtag(manifest);
     // Server time goes in a header as well as the body, so a 304 still
     // carries it. Clock sync must not depend on the body being sent.
-    c.header('x-server-time', String(at));
+    c.header('x-server-time', String(manifest.generatedAt));
     c.header('cache-control', 'no-cache');
 
     if (c.req.header('if-none-match') === etag) {
@@ -659,6 +677,17 @@ export function createApp(deps: AppDeps): Hono {
     signOut: (c: Context) => authApi(c, '/api/auth/sign-out'),
     appVersion: deps.appVersion,
     baseUrl: deps.auth.baseUrl,
+    previewManifest: () =>
+      buildDisplayManifest({
+        timezone: null,
+        orientation: 'portrait',
+        rotation: 0,
+        allowDismiss: false,
+        theme: null,
+        daytimeTheme: null,
+        daytimeStartsAt: null,
+        daytimeEndsAt: null,
+      }),
     dataDir: deps.dataDir,
     startedAt: deps.startedAt ?? now(),
     log: deps.log ?? createLogBuffer(),

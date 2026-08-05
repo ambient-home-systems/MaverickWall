@@ -108,7 +108,10 @@ async function harness() {
       }),
     );
 
-  return { db, call, saveLayout, saveBare, manifestLayout };
+  // A GET with no session cookie, to prove a gate.
+  const getBare = (path: string) => app.fetch(new Request(`http://localhost${path}`));
+
+  return { db, call, saveLayout, saveBare, getBare, manifestLayout };
 }
 
 const validLayout = {
@@ -138,6 +141,30 @@ describe('saving a layout', () => {
     await h.saveLayout({ mode: 'freeform', aspect: 1, widgets: [{ id: 'c', type: 'weather', x: 0, y: 0, w: 0.5, h: 0.5, z: 0 }] });
     const layout = await h.manifestLayout();
     expect(layout.widgets.map((w) => w.type)).toEqual(['weather']);
+  });
+});
+
+describe('the editor preview manifest', () => {
+  it('is the real manifest, carrying the layout, behind the session', async () => {
+    const h = await harness();
+    await h.saveLayout(validLayout);
+
+    const res = await h.call('/admin/layout/preview.json');
+    expect(res.status).toBe(200);
+    const manifest = (await res.json()) as {
+      layout: { mode: string; widgets: { type: string }[] };
+      days: unknown[];
+    };
+    // The same document a wall polls: it has the days grid and the saved layout.
+    expect(Array.isArray(manifest.days)).toBe(true);
+    expect(manifest.layout.mode).toBe('freeform');
+    expect(manifest.layout.widgets.map((w) => w.type)).toEqual(['clock', 'calendar']);
+  });
+
+  it('is not served without a session', async () => {
+    const h = await harness();
+    const res = await h.getBare('/admin/layout/preview.json');
+    expect([302, 401]).toContain(res.status);
   });
 });
 

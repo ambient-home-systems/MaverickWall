@@ -205,6 +205,13 @@ export interface AdminDeps {
    * LAN can reach.
    */
   readonly baseUrl: string;
+  /**
+   * The manifest the layout editor previews from — the same document a wall
+   * gets, for a default screen. Built in `app.ts`, which is where the modules
+   * and the fetcher live; supplied here so the editor's preview route sits
+   * behind the session with every other admin route.
+   */
+  readonly previewManifest?: () => unknown;
   /** Where the database and the key live, for backup and restore. */
   readonly dataDir: string;
   readonly startedAt: number;
@@ -1147,6 +1154,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // -------------------------------------------------------------------------
 
   app.get('/admin/layout', (c: Context) => c.html(layoutPage()));
+
+  /**
+   * The manifest the editor's live preview renders from.
+   *
+   * The same document a wall polls, so the preview shows real calendars,
+   * forecasts and readings rather than a label — behind the session like every
+   * other admin route, because it carries the household's actual data.
+   */
+  app.get('/admin/layout/preview.json', (c: Context) => {
+    if (deps.previewManifest === undefined) return c.json({ error: 'unavailable' }, 404);
+    return c.json(deps.previewManifest());
+  });
 
   /**
    * Save the whole canvas.

@@ -489,7 +489,7 @@ function renderShiftWidget(model: DisplayModel): HTMLElement | undefined {
  * never reaches here — the server drops it — and the `default` is only a
  * belt: an unknown type on a newer server draws nothing rather than throwing.
  */
-function renderWidgetBody(type: string, model: DisplayModel): HTMLElement | undefined {
+export function renderWidget(type: string, model: DisplayModel): HTMLElement | undefined {
   switch (type) {
     case 'clock':
       return renderClockWidget(model);
@@ -552,7 +552,7 @@ export function renderFreeform(
     box.style.setProperty('--bw', String(widget.w));
     box.style.setProperty('--bh', String(widget.h));
 
-    const body = renderWidgetBody(widget.type, model);
+    const body = renderWidget(widget.type, model);
     if (body === undefined) {
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
@@ -606,7 +606,7 @@ export function renderFreeform(
  * proportions are kept and only its size changes. The width reference means the
  * factor is at most one, so nothing is ever blown up past its natural scale.
  */
-function fitToBox(box: HTMLElement, scale: HTMLElement, canvasWidth: number): void {
+export function fitToBox(box: HTMLElement, scale: HTMLElement, canvasWidth: number): void {
   const style = getComputedStyle(box);
   const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
   const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);

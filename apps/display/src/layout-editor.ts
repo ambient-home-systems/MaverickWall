@@ -6,10 +6,20 @@
  * shell and the current layout as JSON; this makes it a canvas you drag on and
  * a Save that posts the result back.
  *
+ * The preview is the wall. Rather than draw a mock, it renders the household's
+ * real manifest through the same `renderFreeform` a screen uses, inside a shadow
+ * root that carries the display's own stylesheet — so the CSS never touches the
+ * admin page, and what you arrange is exactly what the wall will draw. The
+ * draggable boxes are a transparent overlay on top of that live preview.
+ *
  * Coordinates are fractions of the canvas throughout, the same as the manifest,
- * so what is dragged here is what the wall draws. The canvas on screen is only
- * a scaled preview of that fraction space — the maths is all 0..1.
+ * so what is dragged here is what the wall draws.
  */
+
+import { renderFreeform } from './render.js';
+import { buildModel, type DisplayModel } from './viewmodel.js';
+import { applyTheme } from './theme.js';
+import type { Manifest } from './manifest.js';
 
 interface Widget {
   id: string;
@@ -52,7 +62,7 @@ function labelFor(type: string): string {
 }
 
 function randomId(): string {
-  // Enough to not collide across a household's handful of widgets. Not a secret.
+  // Enough not to collide across a household's handful of widgets. Not a secret.
   return 'w' + Math.random().toString(36).slice(2, 10);
 }
 
@@ -74,6 +84,13 @@ function boot(): void {
 
   let selected: string | undefined;
   let dirty = false;
+
+  // The live preview, once it has loaded. Until then the overlay draws with
+  // labels, which is a fine fallback and the whole editor if the fetch fails.
+  let model: DisplayModel | undefined;
+  let manifest: Manifest | undefined;
+  let previewShadow: ShadowRoot | undefined;
+  let previewWall: HTMLElement | undefined;
 
   // ---- structure, built once -------------------------------------------
 
@@ -109,6 +126,12 @@ function boot(): void {
     palette.appendChild(button);
   }
 
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'le-delete';
+  deleteButton.textContent = 'Remove selected';
+  deleteButton.addEventListener('click', removeSelected);
+
   const saveButton = document.createElement('button');
   saveButton.type = 'button';
   saveButton.className = 'le-save';
@@ -118,18 +141,20 @@ function boot(): void {
   const status = document.createElement('span');
   status.className = 'le-status';
 
-  const deleteButton = document.createElement('button');
-  deleteButton.type = 'button';
-  deleteButton.className = 'le-delete';
-  deleteButton.textContent = 'Remove selected';
-  deleteButton.addEventListener('click', removeSelected);
-
   toolbar.append(onToggle, aspectSelect, palette, deleteButton, saveButton, status);
 
   const stage = document.createElement('div');
   stage.className = 'le-stage';
   const canvas = document.createElement('div');
   canvas.className = 'le-canvas';
+
+  // The live preview sits behind the draggable overlay, and never takes a
+  // pointer — every drag is the overlay's.
+  const preview = document.createElement('div');
+  preview.className = 'le-preview';
+  const overlay = document.createElement('div');
+  overlay.className = 'le-overlay';
+  canvas.append(preview, overlay);
   stage.appendChild(canvas);
 
   const hint = document.createElement('p');
@@ -140,7 +165,60 @@ function boot(): void {
 
   mount.append(toolbar, stage, hint);
 
-  // ---- render from state -----------------------------------------------
+  // ---- the live preview ------------------------------------------------
+
+  // Load the real manifest and the display's stylesheet, then draw the preview.
+  // Both behind the session; a failure just leaves the labelled overlay.
+  void (async (): Promise<void> => {
+    try {
+      const [manifestRes, cssRes] = await Promise.all([
+        fetch('admin/layout/preview.json'),
+        fetch('assets/display.css'),
+      ]);
+      if (!manifestRes.ok || !cssRes.ok) return;
+      manifest = (await manifestRes.json()) as Manifest;
+      const css = await cssRes.text();
+
+      const shadow = preview.attachShadow({ mode: 'open' });
+      const styleEl = document.createElement('style');
+      styleEl.textContent = css;
+      const wall = document.createElement('div');
+      wall.className = 'preview-wall';
+      shadow.append(styleEl, wall);
+      previewShadow = shadow;
+      previewWall = wall;
+
+      const at = Date.now();
+      model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });
+      renderPreview();
+    } catch {
+      // Leave the labelled overlay; it is a complete editor without the preview.
+    }
+  })();
+
+  function renderPreview(): void {
+    if (model === undefined || previewWall === undefined || manifest === undefined) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    // Give the display's own layout the frame it expects: no rotation, the
+    // canvas exactly this box, and a rem that is one percent of its height —
+    // the same relationship `orientation.ts` sets on a real wall.
+    previewWall.style.width = `${rect.width}px`;
+    previewWall.style.height = `${rect.height}px`;
+    previewWall.style.setProperty('--frame-w', `${rect.width}px`);
+    previewWall.style.setProperty('--frame-h', `${rect.height}px`);
+    previewWall.style.setProperty('--root-size', `${rect.height / 100}px`);
+    applyTheme(previewWall, manifest.theme.active);
+
+    // The draft, drawn by the very renderer a wall uses.
+    renderFreeform(previewWall, model, {
+      aspect: state.aspect,
+      widgets: state.widgets.map((w) => ({ ...w })),
+    });
+  }
+
+  // ---- the draggable overlay -------------------------------------------
 
   function markDirty(): void {
     dirty = true;
@@ -149,7 +227,6 @@ function boot(): void {
   }
 
   function sizeCanvas(): void {
-    // The stage caps the width; the canvas takes the aspect from there.
     const maxW = Math.min(stage.clientWidth || 360, 520);
     const maxH = 560;
     let w = maxW;
@@ -162,22 +239,20 @@ function boot(): void {
     canvas.style.height = `${Math.round(h)}px`;
   }
 
-  function draw(): void {
-    sizeCanvas();
-    canvas.textContent = '';
+  /** Rebuild the overlay boxes from state. Cheap — a box is a div and a label. */
+  function drawOverlay(): void {
+    overlay.textContent = '';
     const ordered = [...state.widgets].sort((a, b) => a.z - b.z);
-    for (const widget of ordered) canvas.appendChild(widgetNode(widget));
+    for (const widget of ordered) overlay.appendChild(overlayNode(widget));
     hint.style.display = state.widgets.length === 0 ? '' : 'none';
     deleteButton.disabled = selected === undefined;
   }
 
-  function widgetNode(widget: Widget): HTMLElement {
+  function overlayNode(widget: Widget): HTMLElement {
     const box = document.createElement('div');
     box.className = 'le-widget' + (widget.id === selected ? ' is-selected' : '');
-    box.style.left = `${widget.x * 100}%`;
-    box.style.top = `${widget.y * 100}%`;
-    box.style.width = `${widget.w * 100}%`;
-    box.style.height = `${widget.h * 100}%`;
+    box.dataset['id'] = widget.id;
+    positionBox(box, widget);
     box.style.zIndex = String(widget.z);
 
     const label = document.createElement('span');
@@ -189,19 +264,36 @@ function boot(): void {
     handle.className = 'le-handle';
     box.appendChild(handle);
 
-    box.addEventListener('pointerdown', (event) => startDrag(event, widget, false));
-    handle.addEventListener('pointerdown', (event) => startDrag(event, widget, true));
+    box.addEventListener('pointerdown', (event) => startDrag(event, widget, box, false));
+    handle.addEventListener('pointerdown', (event) => startDrag(event, widget, box, true));
     return box;
+  }
+
+  function positionBox(box: HTMLElement, widget: Widget): void {
+    box.style.left = `${widget.x * 100}%`;
+    box.style.top = `${widget.y * 100}%`;
+    box.style.width = `${widget.w * 100}%`;
+    box.style.height = `${widget.h * 100}%`;
+  }
+
+  /** Everything: size the canvas, redraw the overlay, then the live preview. */
+  function draw(): void {
+    sizeCanvas();
+    drawOverlay();
+    renderPreview();
   }
 
   // ---- pointer interaction ---------------------------------------------
 
-  function startDrag(event: PointerEvent, widget: Widget, resizing: boolean): void {
+  function startDrag(event: PointerEvent, widget: Widget, box: HTMLElement, resizing: boolean): void {
     event.preventDefault();
     event.stopPropagation();
     selected = widget.id;
-    // Bring the just-touched widget to the front, so a drag is never hidden.
     widget.z = Math.max(0, ...state.widgets.map((w) => w.z)) + 1;
+    box.style.zIndex = String(widget.z);
+    for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
+    box.classList.add('is-selected');
+    deleteButton.disabled = false;
 
     const rect = canvas.getBoundingClientRect();
     const startX = event.clientX;
@@ -209,13 +301,12 @@ function boot(): void {
     const origin = { x: widget.x, y: widget.y, w: widget.w, h: widget.h };
 
     /*
-     * Move and up on the window, not the box.
+     * Move and up on the window, not the box — a drag routinely leaves the box,
+     * and pointer capture throws on the synthetic pointer a test dispatches.
      *
-     * A drag routinely leaves the box it started on, and a listener on the box
-     * would then stop hearing the pointer. Pointer capture is the usual fix but
-     * it throws on a pointer id the browser has not seen — which is every
-     * synthetic one a test dispatches — so the window is both more robust in
-     * use and testable without a real mouse.
+     * Only the dragged box's position is updated here, not the whole overlay
+     * and certainly not the preview: re-rendering a month grid on every pointer
+     * move would judder. The preview catches up once, on release.
      */
     const move = (moveEvent: PointerEvent): void => {
       const dx = (moveEvent.clientX - startX) / rect.width;
@@ -227,24 +318,22 @@ function boot(): void {
         widget.x = round3(clamp01(Math.min(1 - widget.w, origin.x + dx)));
         widget.y = round3(clamp01(Math.min(1 - widget.h, origin.y + dy)));
       }
-      draw();
+      positionBox(box, widget);
       markDirty();
     };
     const up = (): void => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      renderPreview();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-    draw();
   }
 
   // ---- mutations --------------------------------------------------------
 
   function addWidget(type: string): void {
     const z = Math.max(0, ...state.widgets.map((w) => w.z), 0) + 1;
-    // A little offset per add, so a second widget does not land exactly on the
-    // first and hide it.
     const n = state.widgets.length;
     state.widgets.push({
       id: randomId(),
@@ -277,10 +366,11 @@ function boot(): void {
     draw();
     markDirty();
   });
-  // A click on the empty canvas clears the selection.
-  canvas.addEventListener('pointerdown', () => {
+  // A pointer on the empty canvas clears the selection.
+  overlay.addEventListener('pointerdown', () => {
     selected = undefined;
-    draw();
+    for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
+    deleteButton.disabled = true;
   });
   window.addEventListener('resize', draw);
 
@@ -325,13 +415,14 @@ function boot(): void {
     }
   }
 
-  // Warn before leaving with unsaved changes — a dragged-out layout lost to a
-  // stray click is a real annoyance.
   window.addEventListener('beforeunload', (event) => {
     if (!dirty) return;
     event.preventDefault();
     event.returnValue = '';
   });
+
+  // Keep the preview from being referenced-as-unused when a build tightens up.
+  void previewShadow;
 
   draw();
 }

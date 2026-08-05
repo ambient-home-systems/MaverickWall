@@ -132,14 +132,25 @@ input[type=file]{width:100%;padding:.5rem;border-radius:.4rem;border:1px solid #
 .le-status.is-error{color:#C98A8A}
 .le-stage{display:flex;justify-content:center;padding:1rem;background:#0E141A;
   border:1px solid #1E262F;border-radius:.6rem}
-/* The preview of the wall's fraction space: widgets are placed in % of this. */
+/* The wall's fraction space: the live preview fills it, widgets are placed in %. */
 .le-canvas{position:relative;background:#161d25;border-radius:.5rem;overflow:hidden;
   box-shadow:inset 0 0 0 1px #232c36;touch-action:none}
-.le-widget{position:absolute;background:#22303F;border:1px solid #35916A;border-radius:.35rem;
-  display:flex;align-items:center;justify-content:center;cursor:move;touch-action:none;
-  overflow:hidden;user-select:none}
-.le-widget.is-selected{border-color:#E0A33E;box-shadow:0 0 0 2px rgba(224,163,62,.4)}
-.le-widget-label{font-size:.8rem;color:#CFE0D8;pointer-events:none;padding:.2rem;text-align:center}
+/* The live preview, behind the overlay and never taking a pointer. */
+.le-preview{position:absolute;inset:0;z-index:0;pointer-events:none}
+.le-preview .preview-wall{overflow:hidden}
+/* The interaction layer, above the preview. */
+.le-overlay{position:absolute;inset:0;z-index:1}
+/* A widget box: a translucent frame over the live content, not a solid tile. */
+.le-widget{position:absolute;background:rgba(53,145,106,.10);border:1px solid rgba(53,145,106,.7);
+  border-radius:.35rem;cursor:move;touch-action:none;overflow:hidden;user-select:none}
+.le-widget:hover{background:rgba(53,145,106,.18)}
+.le-widget.is-selected{border-color:#E0A33E;box-shadow:0 0 0 2px rgba(224,163,62,.45);
+  background:rgba(224,163,62,.10)}
+/* The type name as a small chip in the corner, so it never hides the content. */
+.le-widget-label{position:absolute;top:0;left:0;font-size:.68rem;color:#0B0E11;
+  background:rgba(53,145,106,.9);padding:.05rem .35rem;border-radius:0 0 .3rem 0;
+  pointer-events:none;user-select:none}
+.le-widget.is-selected .le-widget-label{background:#E0A33E}
 .le-handle{position:absolute;right:0;bottom:0;width:16px;height:16px;background:#E0A33E;
   border-radius:.35rem 0 .35rem 0;cursor:se-resize;touch-action:none}
 `;
