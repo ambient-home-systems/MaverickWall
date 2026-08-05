@@ -465,11 +465,19 @@ function renderClockWidget(model: DisplayModel): HTMLElement {
   return box;
 }
 
-/** The shift, as a widget: the badge alone, or a plain note on a rest day. */
-function renderShiftWidget(model: DisplayModel): HTMLElement {
-  const box = el('div', 'fw-shift');
+/**
+ * The shift, as a widget: the badge alone.
+ *
+ * Undefined on a day with no rota, exactly like weather and house on a day with
+ * no data — so `renderFreeform` draws the one box-relative "nothing yet" note
+ * for all three, rather than this one scaling a note that is already sized to
+ * its box and ending up drawn twice as small.
+ */
+function renderShiftWidget(model: DisplayModel): HTMLElement | undefined {
   const badge = shiftBadge(model);
-  box.appendChild(badge ?? el('div', 'fw-empty', 'No rota today.'));
+  if (badge === undefined) return undefined;
+  const box = el('div', 'fw-shift');
+  box.appendChild(badge);
   return box;
 }
 
@@ -526,6 +534,10 @@ export function renderFreeform(
   const canvas = el('div', 'canvas');
   canvas.style.setProperty('--aspect', String(layout.aspect));
 
+  // Widgets whose body is a section from the responsive layout are scaled to
+  // their box after they are on screen — see below.
+  const toFit: { readonly box: HTMLElement; readonly scale: HTMLElement }[] = [];
+
   for (const widget of layout.widgets) {
     const box = el('div', `fw fw-${widget.type}`);
     // Percentages of the canvas, so the same layout fills any resolution of
@@ -535,17 +547,34 @@ export function renderFreeform(
     box.style.width = `${widget.w * 100}%`;
     box.style.height = `${widget.h * 100}%`;
     box.style.zIndex = String(widget.z);
-    // The box's own size, as fractions of the canvas, so a widget's text can
-    // scale to the box it was given rather than to the whole wall — a clock in
-    // a short wide box and a clock filling the screen are different sizes of
-    // the same thing. Read in CSS as `--bw`/`--bh`.
+    // The box's own size, as fractions of the canvas — read in CSS as
+    // `--bw`/`--bh` by the clock, which sizes its text against its box.
     box.style.setProperty('--bw', String(widget.w));
     box.style.setProperty('--bh', String(widget.h));
 
     const body = renderWidgetBody(widget.type, model);
-    // A box the household placed but that has no data yet says so, rather than
-    // being an empty rectangle nobody can explain from the kitchen.
-    box.appendChild(body ?? el('div', 'fw-empty', 'Nothing to show yet.'));
+    if (body === undefined) {
+      // A box the household placed but that has no data yet says so, rather
+      // than being an empty rectangle nobody can explain from the kitchen.
+      box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
+    } else if (widget.type === 'clock') {
+      // The clock already sizes itself to its box; nothing to scale.
+      box.appendChild(body);
+    } else {
+      /*
+       * The calendar, weather, house and shift widgets reuse sections built
+       * for a full-width strip or grid, sized against the whole wall. Rather
+       * than re-derive every font size for a box — which fights the design and
+       * still guesses — the section is rendered at its natural size and scaled
+       * as one to fit the box. The proportions the design chose are kept; only
+       * the whole thing gets smaller. The scale is measured once it is on
+       * screen, at the foot of this function.
+       */
+      const scale = el('div', 'fw-scale');
+      scale.appendChild(body);
+      box.appendChild(scale);
+      toFit.push({ box, scale });
+    }
     canvas.appendChild(box);
   }
 
@@ -559,6 +588,39 @@ export function renderFreeform(
 
   root.textContent = '';
   root.appendChild(screen);
+
+  // Now that everything has a size, scale each reused section to fit its box.
+  // The reference is the whole canvas width, so a grid's columns have the room
+  // they get on a full wall before the whole thing is shrunk into the box.
+  const canvasWidth = canvas.clientWidth;
+  for (const { box, scale } of toFit) fitToBox(box, scale, canvasWidth);
+}
+
+/**
+ * Scale a reused section to fit its widget box.
+ *
+ * The section is first laid out at the *canvas* width — the width it would have
+ * filling the wall — so a seven-column month grid resolves its `fr` tracks with
+ * room to spare instead of being squeezed until a column clips. Then the whole
+ * thing is scaled down uniformly to the box, from the top-left, so the design's
+ * proportions are kept and only its size changes. The width reference means the
+ * factor is at most one, so nothing is ever blown up past its natural scale.
+ */
+function fitToBox(box: HTMLElement, scale: HTMLElement, canvasWidth: number): void {
+  const style = getComputedStyle(box);
+  const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+  const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const availW = box.clientWidth - padX;
+  const availH = box.clientHeight - padY;
+  if (canvasWidth <= 0 || availW <= 0 || availH <= 0) return;
+
+  // Lay the section out at the full canvas width, then measure how tall it is.
+  scale.style.width = `${canvasWidth}px`;
+  const contentH = scale.scrollHeight;
+  if (contentH <= 0) return;
+
+  const factor = Math.min(availW / canvasWidth, availH / contentH);
+  scale.style.transform = `scale(${factor})`;
 }
 
 export function render(root: HTMLElement, model: DisplayModel): void {

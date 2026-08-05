@@ -790,16 +790,15 @@ body {
 .fw-shift { justify-content: center; }
 
 /*
- * The calendar, weather and house widgets reuse the responsive layout's own
- * sections, whose type is sized in rem against the root — so inside a small box
- * they draw at the wall's global scale and clip rather than scaling to the box.
- * That is the known edge of this first version: the two purpose-built widgets
- * (clock, shift) scale with the canvas; making the reused three box-relative is
- * a follow-up, not a rewrite. The box clips cleanly meanwhile.
+ * The reused sections (calendar, weather, house, shift) are rendered at their
+ * natural size inside this wrapper, then scaled as one to fit the box by
+ * `fitToBox`. Full width so a grid or strip lays out to the box width first;
+ * scaled from the top centre, so a shrunk section sits under the top edge and
+ * horizontally centred rather than drifting to a corner.
  */
-.fw-calendar .horizon,
-.fw-weather .wx,
-.fw-homeassistant .house {
-  height: 100%;
-  margin: 0;
+.fw-scale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
 }
