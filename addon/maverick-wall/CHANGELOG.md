@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.4
+
+Stops asking you to sign in to the settings when you open them from the Home
+Assistant sidebar — Home Assistant has already authenticated you there.
+
+- The sidebar settings now accept your Home Assistant login. This is only
+  granted when the request genuinely comes from the supervisor, checked by its
+  network address and not by any header a device on your network could send, so
+  it cannot be used to reach the settings from anywhere else. Every case of
+  doubt falls back to the normal login.
+- If the default is wrong for your install, the add-on log's first
+  `[ingress] first request from …` line shows the address it saw and whether it
+  was trusted. Set it with the new `ingress_trust_source` option if that line
+  reads `trusted supervisor source: no`. A wrong or empty value only ever means
+  you still sign in — it can never open the settings to anything it should not.
+- Wall displays are unaffected: a screen on the port still pairs with its own
+  token, and never uses a Home Assistant login.
+
 ## 0.1.3
 
 Lets you pair a wall screen from the sidebar, with no shell.
