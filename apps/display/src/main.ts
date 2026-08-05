@@ -1,6 +1,6 @@
 import { createClock } from './clock.js';
 import { createManifestClient, type Manifest } from './manifest.js';
-import { render, renderMessage } from './render.js';
+import { render, renderFreeform, renderMessage } from './render.js';
 import { applyTheme, themeAt } from './theme.js';
 import {
   geometryFor,
@@ -95,7 +95,18 @@ function start(): void {
         manifest.theme.daytimeEndsAt,
       ),
     );
-    render(root, model);
+    /*
+     * Free-form when the household arranged a canvas, the responsive layout
+     * otherwise. The server only sets `freeform` when there is something to
+     * draw, but the length check is kept here too: a bundle must draw something
+     * sane against any manifest, including one older or newer than itself.
+     */
+    const layout = manifest.layout;
+    if (layout?.mode === 'freeform' && layout.widgets !== undefined && layout.widgets.length > 0) {
+      renderFreeform(root, model, { aspect: layout.aspect ?? 0.5625, widgets: layout.widgets });
+    } else {
+      render(root, model);
+    }
     lastDrawAt = Date.now();
   };
 

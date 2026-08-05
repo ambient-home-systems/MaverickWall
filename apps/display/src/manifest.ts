@@ -67,6 +67,19 @@ export interface ManifestSourceHealth {
   readonly eventCount: number;
 }
 
+export interface ManifestWidget {
+  readonly id: string;
+  /** A first-party module: clock, calendar, weather, homeassistant, shift, … */
+  readonly type: string;
+  /** Top-left and size, each a fraction 0..1 of the canvas. */
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly z: number;
+  readonly config?: unknown;
+}
+
 export interface Manifest {
   readonly manifestVersion: number;
   readonly appVersion: string;
@@ -85,6 +98,21 @@ export interface Manifest {
     readonly nextDays: number;
     readonly horizonWeeks: number;
     readonly blocks?: readonly string[];
+  };
+  /**
+   * The free-form layout, when the household arranged one.
+   *
+   * Optional and defaulted throughout: an older bundle that does not read this
+   * simply draws the responsive blocks, and a manifest without it (or with
+   * `mode` anything but `freeform`) does the same. The server has already
+   * clamped every coordinate and dropped any type this bundle has no widget
+   * for, so the renderer trusts what it is handed.
+   */
+  readonly layout?: {
+    readonly mode?: string;
+    /** Width ÷ height of the authored canvas. */
+    readonly aspect?: number;
+    readonly widgets?: readonly ManifestWidget[];
   };
   /** How this screen is hung. Per screen, because they differ. */
   readonly screen?: {

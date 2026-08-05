@@ -704,3 +704,102 @@ body {
   :root[data-layout="landscape"] .day-row:nth-child(n + 6) { display: none; }
   :root[data-layout="landscape"] .today-events .te:nth-child(n + 7) { display: none; }
 }
+
+/* ------------------------------------------------------------ FREEFORM --- */
+/*
+ * A canvas of the household's authored aspect, centred and letterboxed.
+ *
+ * The fit is pure CSS against the frame the geometry already sized and rotated
+ * (--frame-w/h), so a quarter turn needs no new arithmetic. --aspect is
+ * width / height, set on the canvas by the renderer. This is the classic
+ * letterbox: the canvas is as large as fits inside the frame while keeping its
+ * shape, so what was dragged is what is drawn rather than reflowed.
+ */
+.screen.freeform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  gap: 0;
+  position: relative;
+}
+
+.canvas {
+  --canvas-w: min(var(--frame-w, 100vw), calc(var(--frame-h, 100vh) * var(--aspect, 0.5625)));
+  --canvas-h: min(var(--frame-h, 100vh), calc(var(--frame-w, 100vw) / var(--aspect, 0.5625)));
+  width: var(--canvas-w);
+  height: var(--canvas-h);
+  /*
+   * One unit is 1% of the canvas height. Widgets scale with the canvas rather
+   * than the viewport, so the same layout reads the same on a ten-inch tablet
+   * and a 43-inch panel — the letterbox changes size, not the arrangement.
+   */
+  --u: calc(var(--canvas-h) / 100);
+  position: relative;
+  overflow: hidden;
+  background: var(--panel, rgba(255, 255, 255, 0.03));
+  border-radius: var(--radius, 1.2rem);
+}
+
+/*
+ * A placed widget: absolutely positioned in the canvas, clipped to its box.
+ *
+ * `--buw` and `--buh` are one percent of the box's own width and height (the
+ * box fractions --bw/--bh times the canvas size). A widget sizes its text off
+ * these rather than off the canvas, so a clock in a short wide box fits it
+ * instead of spilling out — which is exactly how the first cut clipped
+ * "01:03". Sizes below are `min()` of a width- and a height-derived value, so
+ * whichever dimension is tighter wins and nothing overflows either way.
+ */
+.fw {
+  position: absolute;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: calc(var(--u) * 1.4);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  --buw: calc(var(--canvas-w) * var(--bw, 0.25) / 100);
+  --buh: calc(var(--canvas-h) * var(--bh, 0.15) / 100);
+}
+
+.fw-empty {
+  margin: auto;
+  color: var(--muted, #8a8a8a);
+  font-family: var(--f-sans);
+  font-size: min(calc(var(--buw) * 7), calc(var(--buh) * 12));
+  text-align: center;
+}
+
+/* The clock widget scales to its own box, not the canvas. */
+.fw-clock { justify-content: center; }
+.fw-clock .clock {
+  font-family: var(--f-cond, var(--f-sans));
+  font-size: min(calc(var(--buw) * 26), calc(var(--buh) * 52));
+  line-height: 1;
+  color: var(--ink);
+}
+.fw-clock .today-date {
+  font-family: var(--f-sans);
+  font-size: min(calc(var(--buw) * 8), calc(var(--buh) * 15));
+  color: var(--muted);
+  margin-top: calc(var(--buh) * 2);
+}
+
+.fw-shift { justify-content: center; }
+
+/*
+ * The calendar, weather and house widgets reuse the responsive layout's own
+ * sections, whose type is sized in rem against the root — so inside a small box
+ * they draw at the wall's global scale and clip rather than scaling to the box.
+ * That is the known edge of this first version: the two purpose-built widgets
+ * (clock, shift) scale with the canvas; making the reused three box-relative is
+ * a follow-up, not a rewrite. The box clips cleanly meanwhile.
+ */
+.fw-calendar .horizon,
+.fw-weather .wx,
+.fw-homeassistant .house {
+  height: 100%;
+  margin: 0;
+}

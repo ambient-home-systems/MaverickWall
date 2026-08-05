@@ -5,6 +5,7 @@ import type {
   HorizonCell,
   InterruptModel,
 } from './viewmodel.js';
+import type { ManifestWidget } from './manifest.js';
 
 /**
  * The DOM, and no decisions.
@@ -57,35 +58,8 @@ function renderNow(model: DisplayModel): HTMLElement {
    * Absent rather than empty when nobody is on a rota: a household with no
    * shift worker should see a calendar, not a hole where a feature would be.
    */
-  const shift = model.todayShift;
-  if (shift !== undefined) {
-    const badge = el('div', 'shift-badge');
-    paintShift(badge, shift.colorToken);
-    /*
-     * The picture, where the person already is.
-     *
-     * The design file predates avatars and says nothing about where one goes,
-     * so this puts it beside the name in the badge rather than inventing a
-     * place for it. Same-origin and behind the display token — rule three, and
-     * the wall works with no internet.
-     */
-    const who = el('div', 'who');
-    const avatar = shift.personAvatarUrl;
-    if (avatar !== undefined && avatar !== null && avatar !== '') {
-      const image = document.createElement('img');
-      image.className = 'who-face';
-      image.src = avatar;
-      // Decorative: the name is right beside it, so a reader gains nothing
-      // from hearing the filename.
-      image.alt = '';
-      who.appendChild(image);
-    }
-    who.appendChild(document.createTextNode(shift.personName));
-    badge.appendChild(who);
-    badge.appendChild(el('div', 'what', shift.label));
-    if (model.shiftRun !== undefined) badge.appendChild(el('div', 'until', model.shiftRun));
-    top.appendChild(badge);
-  }
+  const badge = shiftBadge(model);
+  if (badge !== undefined) top.appendChild(badge);
 
   now.appendChild(top);
 
@@ -100,6 +74,40 @@ function renderNow(model: DisplayModel): HTMLElement {
   }
   now.appendChild(events);
   return now;
+}
+
+/**
+ * The shift badge, shared by the today block and the free-form shift widget.
+ *
+ * Absent when nobody is on a rota — the same statement in both places, so a
+ * household with no shift worker never sees a hole where a feature would be.
+ */
+function shiftBadge(model: DisplayModel): HTMLElement | undefined {
+  const shift = model.todayShift;
+  if (shift === undefined) return undefined;
+
+  const badge = el('div', 'shift-badge');
+  paintShift(badge, shift.colorToken);
+  /*
+   * The picture, where the person already is. Same-origin and behind the
+   * display token — rule three, and the wall works with no internet.
+   */
+  const who = el('div', 'who');
+  const avatar = shift.personAvatarUrl;
+  if (avatar !== undefined && avatar !== null && avatar !== '') {
+    const image = document.createElement('img');
+    image.className = 'who-face';
+    image.src = avatar;
+    // Decorative: the name is right beside it, so a reader gains nothing from
+    // hearing the filename.
+    image.alt = '';
+    who.appendChild(image);
+  }
+  who.appendChild(document.createTextNode(shift.personName));
+  badge.appendChild(who);
+  badge.appendChild(el('div', 'what', shift.label));
+  if (model.shiftRun !== undefined) badge.appendChild(el('div', 'until', model.shiftRun));
+  return badge;
 }
 
 function renderTodayEvent(event: EventModel): HTMLElement {
@@ -447,6 +455,112 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
  * seen half-finished. A wall is watched continuously; a flicker at the top of
  * every minute is the sort of thing that makes a household unplug it.
  */
+/* ----------------------------------------------------------- FREEFORM --- */
+
+/** The clock, as a widget: the time the today block already shows, on its own. */
+function renderClockWidget(model: DisplayModel): HTMLElement {
+  const box = el('div', 'fw-clock');
+  box.appendChild(el('div', 'clock', model.clock));
+  box.appendChild(el('div', 'today-date', model.todayLabel));
+  return box;
+}
+
+/** The shift, as a widget: the badge alone, or a plain note on a rest day. */
+function renderShiftWidget(model: DisplayModel): HTMLElement {
+  const box = el('div', 'fw-shift');
+  const badge = shiftBadge(model);
+  box.appendChild(badge ?? el('div', 'fw-empty', 'No rota today.'));
+  return box;
+}
+
+/**
+ * What a placed widget draws — first-party modules only.
+ *
+ * Every arm reuses the same renderer the responsive layout does, so a calendar
+ * on the canvas is the same month grid it is in the pyramid. A type with no arm
+ * never reaches here — the server drops it — and the `default` is only a
+ * belt: an unknown type on a newer server draws nothing rather than throwing.
+ */
+function renderWidgetBody(type: string, model: DisplayModel): HTMLElement | undefined {
+  switch (type) {
+    case 'clock':
+      return renderClockWidget(model);
+    case 'calendar':
+      return renderHorizon(model);
+    case 'weather':
+      return renderWeather(model);
+    case 'homeassistant':
+      return renderHouse(model);
+    case 'shift':
+      return renderShiftWidget(model);
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The free-form canvas.
+ *
+ * The household placed these boxes at an authored aspect; the canvas keeps that
+ * aspect and letterboxes on a screen of a different shape, so what was dragged
+ * is what is drawn. The letterbox is pure CSS against the frame the geometry
+ * already sized and rotated (`--frame-w/h`), so this does no measuring and
+ * stays correct through a quarter turn.
+ *
+ * A takeover still wins — a warning is a warning, canvas or no canvas — and a
+ * banner still draws over the top, the same as it does over the blocks.
+ */
+export function renderFreeform(
+  root: HTMLElement,
+  model: DisplayModel,
+  layout: { readonly aspect: number; readonly widgets: readonly ManifestWidget[] },
+): void {
+  const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
+  if (takeover !== undefined) {
+    root.textContent = '';
+    root.appendChild(renderAlert(takeover, model));
+    return;
+  }
+
+  const screen = el('div', 'screen freeform');
+  const canvas = el('div', 'canvas');
+  canvas.style.setProperty('--aspect', String(layout.aspect));
+
+  for (const widget of layout.widgets) {
+    const box = el('div', `fw fw-${widget.type}`);
+    // Percentages of the canvas, so the same layout fills any resolution of
+    // the authored aspect.
+    box.style.left = `${widget.x * 100}%`;
+    box.style.top = `${widget.y * 100}%`;
+    box.style.width = `${widget.w * 100}%`;
+    box.style.height = `${widget.h * 100}%`;
+    box.style.zIndex = String(widget.z);
+    // The box's own size, as fractions of the canvas, so a widget's text can
+    // scale to the box it was given rather than to the whole wall — a clock in
+    // a short wide box and a clock filling the screen are different sizes of
+    // the same thing. Read in CSS as `--bw`/`--bh`.
+    box.style.setProperty('--bw', String(widget.w));
+    box.style.setProperty('--bh', String(widget.h));
+
+    const body = renderWidgetBody(widget.type, model);
+    // A box the household placed but that has no data yet says so, rather than
+    // being an empty rectangle nobody can explain from the kitchen.
+    box.appendChild(body ?? el('div', 'fw-empty', 'Nothing to show yet.'));
+    canvas.appendChild(box);
+  }
+
+  screen.appendChild(canvas);
+
+  const banners = renderBanners(model);
+  if (banners !== undefined) {
+    screen.classList.add('has-banners');
+    screen.appendChild(banners);
+  }
+
+  root.textContent = '';
+  root.appendChild(screen);
+}
+
 export function render(root: HTMLElement, model: DisplayModel): void {
   /*
    * A takeover replaces the wall, and is drawn before anything else is built.
