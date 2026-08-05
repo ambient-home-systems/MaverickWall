@@ -28,6 +28,10 @@ body{margin:0;background:#0B0E11;color:#E9EEF4;
   font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   display:flex;justify-content:center;padding:2rem 1rem}
 main{width:100%;max-width:34rem}
+.brand{display:flex;align-items:center;gap:.6rem;margin:0 0 1.6rem;
+  font-weight:700;font-size:1.05rem;letter-spacing:.01em}
+.brand svg{width:30px;height:30px;flex:0 0 auto;border-radius:7px}
+.brand span{color:#E9EEF4}
 h1{font-size:1.5rem;margin:0 0 .25rem}
 p{color:#A8B3C0;margin:.5rem 0}
 form{margin:1.5rem 0 0}
@@ -155,6 +159,32 @@ input[type=file]{width:100%;padding:.5rem;border-radius:.4rem;border:1px solid #
   border-radius:.35rem 0 .35rem 0;cursor:se-resize;touch-action:none}
 `;
 
+/**
+ * The brand mark, inline and first-party.
+ *
+ * The zoom-pyramid the product is built around — today, the next days, the
+ * month with one cell lit — the same shape as the add-on icon. Inlined rather
+ * than fetched: rule three keeps the served HTML free of a third-party origin,
+ * and a data-URI favicon and one `<svg>` need no network at all. Flat fills, no
+ * gradient, so it stays crisp in a favicon and small in the markup.
+ */
+const MARK =
+  `<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
+  `<rect width="512" height="512" rx="108" fill="#12181f"/>` +
+  `<rect x="96" y="112" width="320" height="118" rx="22" fill="#E0A33E"/>` +
+  `<rect x="96" y="252" width="150" height="58" rx="15" fill="#2c3a47"/>` +
+  `<rect x="266" y="252" width="150" height="58" rx="15" fill="#2c3a47"/>` +
+  `<rect x="96" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
+  `<rect x="152" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
+  `<rect x="208" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
+  `<rect x="264" y="332" width="40" height="52" rx="9" fill="#E0A33E"/>` +
+  `<rect x="320" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
+  `<rect x="376" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
+  `</svg>`;
+
+/** The mark as a favicon. Same bytes, URL-encoded into a data URI. */
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(MARK)}`;
+
 export interface PageOptions {
   readonly title: string;
   /** Rendered above the heading, e.g. "Step 2 of 3". */
@@ -183,7 +213,10 @@ export function page(options: PageOptions): string {
     `<base href="/">` +
     `<meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<link rel="icon" href="${FAVICON}">` +
     `<title>${escapeHtml(options.title)}</title><style>${STYLE}</style></head><body><main>` +
+    // The masthead: identity on every page, above whatever this page is called.
+    `<header class="brand">${MARK}<span>Maverick Wall</span></header>` +
     (options.step === undefined ? '' : `<p class="steps">${escapeHtml(options.step)}</p>`) +
     `<h1>${escapeHtml(options.heading)}</h1>` +
     (options.intro === undefined ? '' : `<p>${escapeHtml(options.intro)}</p>`) +
