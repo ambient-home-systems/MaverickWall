@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * One household. One database. No tenancy.
@@ -86,6 +86,25 @@ export const householdSettings = sqliteTable('household_settings', {
   displayBlocks: text('display_blocks').notNull().default('now,next,horizon'),
 
   /**
+   * Which layout the wall draws.
+   *
+   * `auto` is the responsive zoom-pyramid that computes portrait and landscape
+   * from the block list above. `freeform` is a canvas the household arranged by
+   * hand — `layout_widgets`, placed anywhere. Defaults to `auto` so an existing
+   * wall is unchanged, and so a wall is never blank while a free-form layout is
+   * still being built.
+   */
+  layoutMode: text('layout_mode').notNull().default('auto'),
+  /**
+   * The aspect ratio (width ÷ height) the free-form canvas was authored at.
+   *
+   * The wall scales that canvas to fit and letterboxes a screen of a different
+   * shape, so what was dragged is what is drawn rather than reflowed into
+   * something nobody arranged. 9/16 portrait by default.
+   */
+  layoutAspect: real('layout_aspect').notNull().default(0.5625),
+
+  /**
    * The one thing in this product that talks to anybody else.
    *
    * Off unless the household turns it on, and it stays a check rather than an
@@ -101,6 +120,33 @@ export const householdSettings = sqliteTable('household_settings', {
   /** False until the first-run wizard completes. */
   setupCompletedAt: integer('setup_completed_at', { mode: 'number' }),
 
+  ...timestamps,
+});
+
+/**
+ * A widget placed on the free-form canvas.
+ *
+ * Only read when `household_settings.layout_mode` is `freeform`. Each row is
+ * one first-party module — never a third-party embed, which rule 3 forbids on
+ * the wall — positioned in normalized coordinates so a single layout scales to
+ * any resolution of the authored aspect.
+ */
+export const layoutWidgets = sqliteTable('layout_widgets', {
+  id: text('id').primaryKey(),
+  /** The module that draws here: clock, calendar, weather, homeassistant, … */
+  type: text('type').notNull(),
+  /** Top-left and size, each a fraction 0..1 of the canvas. */
+  x: real('x').notNull(),
+  y: real('y').notNull(),
+  w: real('w').notNull(),
+  h: real('h').notNull(),
+  /** Stacking order, low behind high. */
+  z: integer('z', { mode: 'number' }).notNull().default(0),
+  /**
+   * Per-widget settings, as JSON this process wrote and reads back. Its shape
+   * is the widget's own; validated at the boundary rather than trusted here.
+   */
+  config: text('config'),
   ...timestamps,
 });
 

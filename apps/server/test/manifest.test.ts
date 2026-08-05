@@ -27,6 +27,8 @@ const HOUSEHOLD: HouseholdRow = {
   displayNextDays: 6,
   displayHorizonWeeks: 5,
   displayBlocks: 'now,next,horizon',
+  layoutMode: 'auto',
+  layoutAspect: 0.5625,
 };
 
 const SOURCES: SourceRow[] = [

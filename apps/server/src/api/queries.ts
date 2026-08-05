@@ -1,7 +1,13 @@
 import type { ShiftOverride, ShiftPlan, ShiftType } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import type { SetupState } from '../auth/session.js';
-import type { EventCacheRow, HouseholdRow, PersonRow, SourceRow } from './manifest.js';
+import type {
+  EventCacheRow,
+  HouseholdRow,
+  PersonRow,
+  PlacedWidgetRow,
+  SourceRow,
+} from './manifest.js';
 
 /**
  * Reads for the manifest.
@@ -22,6 +28,8 @@ const HOUSEHOLD_DEFAULTS: HouseholdRow = {
   displayNextDays: 6,
   displayHorizonWeeks: 5,
   displayBlocks: 'now,next,horizon',
+  layoutMode: 'auto',
+  layoutAspect: 0.5625,
 };
 
 export function readHousehold(db: SqliteDatabase): HouseholdRow {
@@ -33,13 +41,53 @@ export function readHousehold(db: SqliteDatabase): HouseholdRow {
               display_today_events AS displayTodayEvents,
               display_next_days AS displayNextDays,
               display_horizon_weeks AS displayHorizonWeeks,
-              display_blocks AS displayBlocks
+              display_blocks AS displayBlocks,
+              layout_mode AS layoutMode,
+              layout_aspect AS layoutAspect
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as HouseholdRow | undefined;
   // Defaults rather than an error. A missing settings row means setup has not
   // run, and the display should still boot and say so.
   return row ?? HOUSEHOLD_DEFAULTS;
+}
+
+/**
+ * The placed widgets, for a free-form canvas.
+ *
+ * The `config` column is JSON this process wrote; parsed leniently because a
+ * row that will not parse is one missing widget, never a manifest that fails to
+ * build — rule nine. `buildLayout` clamps the coordinates and checks the type;
+ * this only turns rows into the shape it expects.
+ */
+export function readLayoutWidgets(db: SqliteDatabase): PlacedWidgetRow[] {
+  const rows = db
+    .prepare(
+      `SELECT id, type, x, y, w, h, z, config
+         FROM layout_widgets ORDER BY z, created_at`,
+    )
+    .all() as {
+    id: string;
+    type: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    z: number;
+    config: string | null;
+  }[];
+
+  return rows.map((row) => {
+    let config: unknown;
+    if (row.config !== null) {
+      try {
+        config = JSON.parse(row.config);
+      } catch {
+        config = undefined;
+      }
+    }
+    return { id: row.id, type: row.type, x: row.x, y: row.y, w: row.w, h: row.h, z: row.z, config };
+  });
 }
 
 export function readSources(db: SqliteDatabase): SourceRow[] {

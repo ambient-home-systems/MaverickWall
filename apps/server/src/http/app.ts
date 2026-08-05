@@ -33,6 +33,7 @@ import { buildManifest, manifestEtag, type ManifestNotice } from '../api/manifes
 import {
   countUsers,
   readEvents,
+  readLayoutWidgets,
   readHousehold,
   readLastSync,
   readPeople,
@@ -494,6 +495,7 @@ export function createApp(deps: AppDeps): Hono {
 
     const manifest = buildManifest({
       household,
+      layoutWidgets: readLayoutWidgets(deps.db),
       events: readEvents(deps.db, from, to),
       sources: readSources(deps.db),
       people: readPeople(deps.db),

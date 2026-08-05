@@ -85,6 +85,13 @@
       "when": 1785727882434,
       "tag": "0011_warm_marrow",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1785904721447,
+      "tag": "0012_swift_paladin",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,28 @@ export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon';
 const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'home', 'next', 'horizon'];
 
 /**
+ * The widgets a free-form canvas may hold — first-party modules only.
+ *
+ * Never a third-party embed: rule three forbids a web page, an iframe, or a
+ * remote script on the wall, so there is no `website`, no `html`, no `video`
+ * here however much a canvas builder invites them. A row of any other type is
+ * dropped on the way to the display rather than handed to a renderer that does
+ * not exist.
+ */
+export const WIDGET_TYPES = [
+  'clock',
+  'calendar',
+  'weather',
+  'homeassistant',
+  'shift',
+  'notes',
+  'todo',
+  'countdown',
+  'image',
+] as const;
+export type WidgetType = (typeof WIDGET_TYPES)[number];
+
+/**
  * Read the stored order, and never return nothing.
  *
  * Duplicates are dropped and unknown names ignored, so a hand-edited row
@@ -51,6 +73,49 @@ export function parseBlocks(stored: string | undefined): DisplayBlock[] {
     seen.push(name as DisplayBlock);
   }
   return seen.length === 0 ? [...ALL_BLOCKS] : seen;
+}
+
+const unit = (value: number, fallback: number): number =>
+  Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+
+/**
+ * The free-form layout the display switches on.
+ *
+ * `freeform` only when the household chose it *and* there is something to draw
+ * — an empty canvas would be a blank wall, which rule nine forbids, so it falls
+ * back to `auto` and the responsive layout keeps the wall alive. Every widget
+ * is clamped and its type checked here, the one place between a stored row and
+ * the wall, so the renderer is handed nothing off-screen and no type it has no
+ * module for. `config` is carried through untouched: it is the widget's own,
+ * validated where the editor writes it.
+ */
+export function buildLayout(
+  household: HouseholdRow,
+  widgets: readonly PlacedWidgetRow[],
+): Manifest['layout'] {
+  const aspect = Number.isFinite(household.layoutAspect) && household.layoutAspect > 0
+    ? household.layoutAspect
+    : 0.5625;
+
+  const placed = widgets
+    .filter((widget) => (WIDGET_TYPES as readonly string[]).includes(widget.type))
+    .map((widget) => ({
+      id: widget.id,
+      type: widget.type,
+      x: unit(widget.x, 0),
+      y: unit(widget.y, 0),
+      // A zero-size widget is invisible; fall back to a readable default.
+      w: unit(widget.w, 0.25) || 0.25,
+      h: unit(widget.h, 0.15) || 0.15,
+      z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
+      config: widget.config,
+    }))
+    .sort((a, b) => a.z - b.z);
+
+  const mode: 'auto' | 'freeform' =
+    household.layoutMode === 'freeform' && placed.length > 0 ? 'freeform' : 'auto';
+
+  return { mode, aspect, widgets: placed };
 }
 
 export interface ManifestEvent {
@@ -169,6 +234,20 @@ export interface Manifest {
     readonly blocks: readonly DisplayBlock[];
   };
   /**
+   * The free-form layout, when the household has chosen one.
+   *
+   * `mode` is what the display switches on: `auto` draws the responsive
+   * zoom-pyramid from `display.blocks` above, and `freeform` draws these
+   * widgets on a canvas of `aspect` (width ÷ height), scaled to fit and
+   * letterboxed on a screen of a different shape. Always present so an older
+   * display that does not know the field still finds `mode: 'auto'`.
+   */
+  readonly layout: {
+    readonly mode: 'auto' | 'freeform';
+    readonly aspect: number;
+    readonly widgets: readonly PlacedWidgetRow[];
+  };
+  /**
    * How this particular screen is hung.
    *
    * Per screen rather than per household: a tablet in the kitchen and a
@@ -249,6 +328,27 @@ export interface HouseholdRow {
   readonly displayNextDays: number;
   readonly displayHorizonWeeks: number;
   readonly displayBlocks: string;
+  readonly layoutMode: string;
+  readonly layoutAspect: number;
+}
+
+/**
+ * One placed widget, already shaped for the wall.
+ *
+ * Coordinates are fractions of the authored canvas, clamped on the way in so a
+ * hand-edited row cannot push a widget off the wall or size it past it — rule
+ * nine, the display must draw something sane against any row it is handed.
+ */
+export interface PlacedWidgetRow {
+  readonly id: string;
+  readonly type: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly z: number;
+  /** The widget's own settings, validated where it is written, not here. */
+  readonly config: unknown;
 }
 
 export interface PersonRow {
@@ -262,6 +362,12 @@ export interface PersonRow {
 
 export interface BuildManifestInput {
   readonly household: HouseholdRow;
+  /**
+   * The placed widgets, read from the database and passed in — assembly is
+   * pure and does no I/O, the same reason panels and interrupts arrive
+   * already-collected. Empty when the household has never arranged a canvas.
+   */
+  readonly layoutWidgets?: readonly PlacedWidgetRow[];
   readonly events: readonly EventCacheRow[];
   readonly sources: readonly SourceRow[];
   readonly people: readonly PersonRow[];
@@ -603,6 +709,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       horizonWeeks: clamp(input.household.displayHorizonWeeks, 1, 8, 5),
       blocks: parseBlocks(input.household.displayBlocks),
     },
+    layout: buildLayout(input.household, input.layoutWidgets ?? []),
     days,
     people: people.map((person) => ({
       id: person.id,
