@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.5
+
+Adds a free-form layout: arrange widgets on the wall yourself.
+
+- A new **Layout** screen lets you place widgets anywhere — add a Clock,
+  Calendar, Weather, Home Assistant or Shift widget, drag it to move, pull the
+  corner to resize. The preview shows the real wall as you arrange it, not a
+  mock-up. Turn it on to use your layout instead of the stacked one; leave it
+  off and nothing changes.
+- Widgets are first-party only, by design: there is no web-page or video tile,
+  because the wall does not run third-party content. A layout scales to any
+  screen resolution of the shape you author it at, and works in a rotation.
+- Every existing wall is untouched until you turn a layout on.
+
 ## 0.1.4
 
 Stops asking you to sign in to the settings when you open them from the Home
