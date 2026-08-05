@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.8
+
+A face for the project, and easier navigation.
+
+- Maverick Wall now has an icon and a logo, so it shows up properly in the
+  sidebar and the add-on store instead of a nameless placeholder. The same mark
+  appears on the settings pages and in the browser tab.
+- The settings gained a row of tabs — Calendars, Display, Layout, People,
+  Shifts, Screens, Home Assistant, Weather, System — so you move straight from
+  one section to the next instead of going back to a menu each time.
+
 ## 0.1.7
 
 Explains the options on the Configuration page.
