@@ -24,6 +24,8 @@ import {
   readHousehold,
   requestSyncNow,
   createScreen,
+  readLayoutWidgets,
+  replaceLayout,
   revokeScreen,
   writeDisplaySettings,
   rotateScreenToken,
@@ -45,7 +47,7 @@ import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import type { LogBuffer } from '../logbuffer.js';
-import { parseBlocks } from '../api/manifest.js';
+import { parseBlocks, WIDGET_TYPES } from '../api/manifest.js';
 import {
   candidatesFor,
   cycleFrom,
@@ -140,6 +142,33 @@ const screenBody = z.object({
 
 /** Creating a screen asks for one thing; everything else follows the household. */
 const newScreenBody = z.object({ name: text('A name for the screen', 80) });
+
+/**
+ * A saved free-form layout, as the editor posts it — JSON, not a form.
+ *
+ * Rejected, not coerced (rule five). The type must be a first-party module —
+ * `WIDGET_TYPES` is where rule three is enforced, so a `website` or `iframe`
+ * never reaches the database. Coordinates are fractions of the canvas, sized so
+ * a widget cannot be nudged off the wall or shrunk to nothing; the display
+ * clamps again regardless, because a form is a boundary and so is a manifest.
+ */
+const layoutWidgetBody = z.object({
+  id: z.string().min(1).max(64),
+  type: z.enum(WIDGET_TYPES),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  w: z.number().min(0.02).max(1),
+  h: z.number().min(0.02).max(1),
+  z: z.number().int().min(0).max(9999),
+  config: z.unknown().optional(),
+});
+const layoutBody = z.object({
+  mode: z.enum(['auto', 'freeform']),
+  // Portrait phone through wide television, and nothing degenerate.
+  aspect: z.number().min(0.2).max(5),
+  // A wall is a few widgets, not a dashboard. The cap is a guard, not a target.
+  widgets: z.array(layoutWidgetBody).max(50),
+});
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
@@ -395,6 +424,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `</p>` +
           `<p><a class="link" href="admin/display">Display</a> — ` +
           `theme, and how much the wall shows</p>` +
+          `<p><a class="link" href="admin/layout">Layout</a> — ` +
+          `arrange widgets on the wall yourself</p>` +
           `<p><a class="link" href="admin/people">People</a> — ` +
           `${readPeopleAdmin(deps.db).length} added</p>` +
           `<p><a class="link" href="admin/shifts">Shifts</a> — ` +
@@ -1112,6 +1143,40 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   // -------------------------------------------------------------------------
+  // Layout editor
+  // -------------------------------------------------------------------------
+
+  app.get('/admin/layout', (c: Context) => c.html(layoutPage()));
+
+  /**
+   * Save the whole canvas.
+   *
+   * A JSON POST from the editor script rather than a form, because a canvas is
+   * a set of shapes and coordinates, not named fields. Answered as JSON too:
+   * the caller is a `fetch`, not a browser following a redirect. The schema is
+   * the boundary — a bad payload is a 400 with a message, never a half-written
+   * layout, because `replaceLayout` is one transaction.
+   */
+  app.post('/admin/layout', async (c: Context) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ ok: false, message: 'That was not readable as JSON.' }, 400);
+    }
+
+    const shaped = parse(layoutBody, raw);
+    if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
+
+    replaceLayout(deps.db, {
+      mode: shaped.value.mode,
+      aspect: shaped.value.aspect,
+      widgets: shaped.value.widgets,
+    });
+    return c.json({ ok: true });
+  });
+
+  // -------------------------------------------------------------------------
   // Pages
   // -------------------------------------------------------------------------
 
@@ -1793,6 +1858,48 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<select id="block_${position}" name="block_${position}">${options}</select>`
       );
     }).join('');
+  }
+
+  /**
+   * The free-form layout editor.
+   *
+   * The server renders only the shell and the current layout as JSON; a
+   * first-party module makes it interactive. That module is same-origin and
+   * ships in the image — rule three — and nothing on the wall loads it, only
+   * this admin page. The link and the script src are relative so the single
+   * `<base>` handles ingress with no prefix threaded through here.
+   */
+  function layoutPage(): string {
+    const household = readHousehold(deps.db);
+    const initial = {
+      mode: household.layoutMode === 'freeform' ? 'freeform' : 'auto',
+      aspect: household.layoutAspect,
+      widgets: readLayoutWidgets(deps.db).map((widget) => ({
+        id: widget.id,
+        type: widget.type,
+        x: widget.x,
+        y: widget.y,
+        w: widget.w,
+        h: widget.h,
+        z: widget.z,
+      })),
+    };
+
+    return page({
+      title: 'Layout — Maverick Wall',
+      heading: 'Layout',
+      intro:
+        'Arrange the wall: add a widget, drag it to move, pull the corner to ' +
+        'resize. Turn it on to use this instead of the stacked layout. The wall ' +
+        'picks up a saved change within a minute.',
+      body:
+        `<p><a class="link" href="admin">← Back</a></p>` +
+        // The editor mounts here. Data in an attribute, script from the image.
+        `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
+        `<noscript><p class="hint">The layout editor needs JavaScript. The ` +
+        `stacked layout on the Display screen does not.</p></noscript>` +
+        `<script type="module" src="assets/layout-editor.js"></script>`,
+    });
   }
 
   function displayPage(error?: { message: string; suggestion?: string }): string {

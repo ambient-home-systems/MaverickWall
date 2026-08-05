@@ -90,6 +90,62 @@ export function readLayoutWidgets(db: SqliteDatabase): PlacedWidgetRow[] {
   });
 }
 
+export interface LayoutWidgetInput {
+  readonly id: string;
+  readonly type: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly z: number;
+  readonly config?: unknown;
+}
+
+/**
+ * Save a whole layout at once — the mode, the aspect, and every widget.
+ *
+ * Replace rather than diff, because the editor sends the canvas it has and the
+ * simplest correct thing is to make the database match it. One transaction, so
+ * a wall polling mid-save never reads half a layout: it sees the old one or the
+ * new one, never a canvas with a widget deleted and its replacement not yet
+ * written. The rows are trusted here because the boundary validated them; the
+ * display clamps again in `buildLayout` regardless.
+ */
+export function replaceLayout(
+  db: SqliteDatabase,
+  layout: { readonly mode: string; readonly aspect: number; readonly widgets: readonly LayoutWidgetInput[] },
+): void {
+  const at = Date.now();
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE household_settings SET layout_mode = ?, layout_aspect = ?, updated_at = ?
+        WHERE id = 'singleton'`,
+    ).run(layout.mode, layout.aspect, at);
+
+    db.prepare('DELETE FROM layout_widgets').run();
+    const insert = db.prepare(
+      `INSERT INTO layout_widgets (id, type, x, y, w, h, z, config, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    layout.widgets.forEach((widget, index) => {
+      insert.run(
+        widget.id,
+        widget.type,
+        widget.x,
+        widget.y,
+        widget.w,
+        widget.h,
+        // Stored order carries the z, so a plain read is already back-to-front.
+        widget.z ?? index,
+        widget.config === undefined ? null : JSON.stringify(widget.config),
+        at,
+        at,
+      );
+    });
+  });
+  tx();
+}
+
 export function readSources(db: SqliteDatabase): SourceRow[] {
   return db
     .prepare(

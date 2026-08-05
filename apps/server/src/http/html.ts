@@ -111,6 +111,37 @@ input[type=file]{width:100%;padding:.5rem;border-radius:.4rem;border:1px solid #
 .pv-unknown .pv-code{color:#4A5563}
 .row-fields{display:flex;gap:1rem}
 .row-fields span{flex:1 1 0}
+
+/* Layout editor */
+.le-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:1rem 0}
+.le-toggle{display:inline-flex;align-items:center;gap:.4rem;font-size:.95rem}
+.le-aspect{padding:.4rem .5rem;background:#141C24;color:#E9EEF4;border:1px solid #2A333D;
+  border-radius:.4rem}
+.le-palette{display:flex;flex-wrap:wrap;gap:.4rem}
+.le-add{padding:.4rem .7rem;background:#18202A;color:#E9EEF4;border:1px solid #2A333D;
+  border-radius:.4rem;cursor:pointer;font-size:.9rem}
+.le-add:hover{border-color:#35916A}
+.le-delete{padding:.4rem .7rem;background:transparent;color:#C98A8A;border:1px solid #4A2E2E;
+  border-radius:.4rem;cursor:pointer}
+.le-delete:disabled{opacity:.4;cursor:default}
+.le-save{padding:.45rem 1.1rem;background:#35916A;color:#fff;border:0;border-radius:.4rem;
+  cursor:pointer;font-weight:600}
+.le-status{font-size:.85rem;color:#6D7A88}
+.le-status.is-dirty{color:#E0A33E}
+.le-status.is-ok{color:#35916A}
+.le-status.is-error{color:#C98A8A}
+.le-stage{display:flex;justify-content:center;padding:1rem;background:#0E141A;
+  border:1px solid #1E262F;border-radius:.6rem}
+/* The preview of the wall's fraction space: widgets are placed in % of this. */
+.le-canvas{position:relative;background:#161d25;border-radius:.5rem;overflow:hidden;
+  box-shadow:inset 0 0 0 1px #232c36;touch-action:none}
+.le-widget{position:absolute;background:#22303F;border:1px solid #35916A;border-radius:.35rem;
+  display:flex;align-items:center;justify-content:center;cursor:move;touch-action:none;
+  overflow:hidden;user-select:none}
+.le-widget.is-selected{border-color:#E0A33E;box-shadow:0 0 0 2px rgba(224,163,62,.4)}
+.le-widget-label{font-size:.8rem;color:#CFE0D8;pointer-events:none;padding:.2rem;text-align:center}
+.le-handle{position:absolute;right:0;bottom:0;width:16px;height:16px;background:#E0A33E;
+  border-radius:.35rem 0 .35rem 0;cursor:se-resize;touch-action:none}
 `;
 
 export interface PageOptions {
