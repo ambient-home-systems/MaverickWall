@@ -505,6 +505,29 @@ on `/admin/display`. A block left out is not drawn at all, which is a different
 statement from asking for zero days of it. The renderer walks that list and
 nothing else.
 
+**There is also a free-form layout, and it is the other of two modes.**
+`household_settings.layout_mode` is `auto` (the responsive zoom-pyramid above)
+or `freeform` (a canvas the household arranged — `layout_widgets`, placed
+anywhere). Default `auto`, so an existing wall is untouched and never blank
+while a layout is half-built; `buildLayout` also falls back to `auto` when a
+free-form canvas is empty. The wall's `renderFreeform` places each widget on a
+canvas of the authored aspect, letterboxed to fit and correct through a
+rotation; the reused sections (calendar, weather, house, shift) are laid out at
+the canvas width and scaled down to their box, so what was dragged is what is
+drawn rather than reflowed. The palette is **first-party modules only** — the
+`WIDGET_TYPES` allowlist is where rule three lives, so there is no website,
+HTML or video widget however much a canvas builder invites one; the schema,
+`buildLayout` and the editor palette all enforce it. `/admin/layout` is the
+first client-side app in the admin (a vanilla-TS drag-and-drop editor, the
+`apps/admin` seed that stayed in `apps/display`), and its preview *is* the
+wall: it renders the real manifest through the same `renderFreeform`, inside a
+shadow root carrying the display's own stylesheet so the CSS never touches the
+admin page. Shipped in v0.1.5, and the editor is confirmed working through the
+sidebar on a real supervisor — the shadow-DOM preview and its fetches all
+function under ingress. The one path still unproven on real hardware is a
+*paired wall screen* drawing a saved free-form layout, which needs a screen on
+the port, not the sidebar.
+
 **Portrait is a flex column so the order can be arbitrary.** It was a grid with
 positional row rules, and "the second row yields" is the wrong rule once the
 second row might be the month. Which block gives up space is now a property of
