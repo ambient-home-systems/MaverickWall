@@ -847,10 +847,15 @@ an ingress visitor is) all fall through to sign-in. A wrong trust address costs
 a login, never a bypass. `test/ingress-auth.test.ts` proves both directions and
 was checked by weakening the guard to header-only and watching the forged-LAN
 case walk in; a real container confirmed the socket address is what
-`getConnInfo` reports and that the option threads through the entrypoint. The
-one thing unproven off real hardware is the supervisor's actual address — which
-is why the first ingress request logs `[ingress] first request from <addr>;
-trusted supervisor source: yes|no` for a household to read and correct.
+`getConnInfo` reports and that the option threads through the entrypoint.
+
+**Proven on real hardware in v0.1.4: the default supervisor address is right.**
+The sidebar settings auto-logged in on a real Home Assistant supervisor with no
+override set — so `172.30.32.2` is where ingress actually arrives from, and the
+socket-source pin identified it as the supervisor. The `[ingress] first request
+from <addr>; trusted supervisor source: yes|no` line and the
+`ingress_trust_source` override stay for the install where it differs, but the
+common case needs neither. That was the last unproven step in the ingress work.
 
 **Home Assistant ingress is one middleware, and nothing else knows about it.**
 The supervisor mounts the add-on under a per-session path, strips it, and says
@@ -929,9 +934,10 @@ distinct address.
     trusted supervisor source is itself proof of ownership — so the wizard could
     reuse `isTrustedIngress` to skip the code on the add-on entirely, and let
     the first sidebar visitor create the account. That is the install that
-    matters most and the one where the dance is worst. What stops it being done
-    already is only that it wants the same real-hardware confirmation of the
-    supervisor address that the login path is waiting on.
+    matters most and the one where the dance is worst. The blocker is now gone:
+    the login path proved `isTrustedIngress` works on a real supervisor in
+    v0.1.4, so the setup wizard can lean on the same check with nothing left to
+    confirm. This is the next thing to build, not the next thing to prove.
   - **For plain `docker run`, the code still earns its place** — there is no
     supervisor vouching for anyone — but even there the log→UI copy could
     become a one-click link. The wizard could show "waiting for the code from
