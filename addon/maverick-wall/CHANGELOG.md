@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.7
+
+Explains the options on the Configuration page.
+
+- `base_url` and `ingress_trust_source` now have a label and help text on the
+  add-on's Configuration tab, instead of showing as bare keys. `base_url` says
+  to give the full address — scheme and port, like `http://192.168.1.33:8080`.
+  `ingress_trust_source` says to leave it blank unless the add-on log tells you
+  otherwise.
+
 ## 0.1.6
 
 Fixes a crash when `base_url` was set to a bare address.
