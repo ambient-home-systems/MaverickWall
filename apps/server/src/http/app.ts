@@ -698,8 +698,34 @@ export function createApp(deps: AppDeps): Hono {
     signOut: (c: Context) => authApi(c, '/api/auth/sign-out'),
     appVersion: deps.appVersion,
     baseUrl: deps.auth.baseUrl,
-    previewManifest: () =>
-      buildDisplayManifest({
+    previewManifest: (screenId?: string | null) => {
+      // A named wall previews as itself — its zone, its density, its own
+      // canvas — so the editor shows what that screen will actually draw. The
+      // default (no id, or an unknown one) previews the shared settings.
+      const screen =
+        screenId === null || screenId === undefined
+          ? undefined
+          : readScreens(deps.db).find((s) => s.id === screenId);
+      if (screen !== undefined) {
+        return buildDisplayManifest({
+          id: screen.id,
+          timezone: screen.timezone,
+          orientation: screen.orientation,
+          rotation: screen.rotation,
+          allowDismiss: screen.allowDismiss === 1,
+          theme: screen.theme,
+          daytimeTheme: screen.daytimeTheme,
+          daytimeStartsAt: screen.daytimeStartsAt,
+          daytimeEndsAt: screen.daytimeEndsAt,
+          displayTodayEvents: screen.displayTodayEvents,
+          displayNextDays: screen.displayNextDays,
+          displayHorizonWeeks: screen.displayHorizonWeeks,
+          displayBlocks: screen.displayBlocks,
+          layoutMode: screen.layoutMode,
+          layoutAspect: screen.layoutAspect,
+        });
+      }
+      return buildDisplayManifest({
         timezone: null,
         orientation: 'portrait',
         rotation: 0,
@@ -708,7 +734,8 @@ export function createApp(deps: AppDeps): Hono {
         daytimeTheme: null,
         daytimeStartsAt: null,
         daytimeEndsAt: null,
-      }),
+      });
+    },
     dataDir: deps.dataDir,
     startedAt: deps.startedAt ?? now(),
     log: deps.log ?? createLogBuffer(),

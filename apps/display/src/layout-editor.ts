@@ -32,6 +32,8 @@ interface Widget {
 }
 
 interface LayoutState {
+  /** The wall this canvas is for: a screen id, or null for the shared default. */
+  screen: string | null;
   mode: 'auto' | 'freeform';
   aspect: number;
   widgets: Widget[];
@@ -74,13 +76,17 @@ function boot(): void {
   try {
     const parsed = JSON.parse(mount.dataset['json'] ?? '{}') as Partial<LayoutState>;
     state = {
+      screen: typeof parsed.screen === 'string' ? parsed.screen : null,
       mode: parsed.mode === 'freeform' ? 'freeform' : 'auto',
       aspect: typeof parsed.aspect === 'number' && parsed.aspect > 0 ? parsed.aspect : 0.5625,
       widgets: Array.isArray(parsed.widgets) ? (parsed.widgets as Widget[]) : [],
     };
   } catch {
-    state = { mode: 'auto', aspect: 0.5625, widgets: [] };
+    state = { screen: null, mode: 'auto', aspect: 0.5625, widgets: [] };
   }
+
+  // The wall being edited, as a query for the per-wall endpoints.
+  const screenQuery = state.screen === null ? '' : `?screen=${encodeURIComponent(state.screen)}`;
 
   let selected: string | undefined;
   let dirty = false;
@@ -172,7 +178,7 @@ function boot(): void {
   void (async (): Promise<void> => {
     try {
       const [manifestRes, cssRes] = await Promise.all([
-        fetch('admin/layout/preview.json'),
+        fetch(`admin/layout/preview.json${screenQuery}`),
         fetch('assets/display.css'),
       ]);
       if (!manifestRes.ok || !cssRes.ok) return;
@@ -385,6 +391,7 @@ function boot(): void {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          screen: state.screen,
           mode: state.mode,
           aspect: round3(state.aspect),
           widgets: state.widgets.map((w, index) => ({

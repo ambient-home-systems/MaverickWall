@@ -134,6 +134,13 @@ input[type=file]{width:100%;padding:.5rem;border-radius:.4rem;border:1px solid #
 .row-fields{display:flex;gap:1rem}
 .row-fields span{flex:1 1 0}
 
+/* The wall switcher above the layout editor. */
+.walls{display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 .6rem}
+.walls a{padding:.35rem .8rem;border-radius:2rem;font-size:.9rem;font-weight:600;
+  text-decoration:none;color:#A8B3C0;background:#141A21;border:1px solid #2A333D}
+.walls a:hover{color:#E9EEF4;border-color:#35916A}
+.walls a.active{color:#1A1206;background:#E0A33E;border-color:#E0A33E}
+
 /* Layout editor */
 .le-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:1rem 0}
 .le-toggle{display:inline-flex;align-items:center;gap:.4rem;font-size:.95rem}

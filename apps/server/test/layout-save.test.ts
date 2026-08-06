@@ -209,3 +209,43 @@ describe('what the boundary refuses', () => {
     expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBe(0);
   });
 });
+
+describe('a per-wall layout', () => {
+  it('is drawn by that wall, while another inherits the default', async () => {
+    const h = await harness();
+    const at = Date.now();
+    const tokens: Record<string, string> = {};
+    for (const [id, name] of [['wA', 'Kitchen'], ['wB', 'Hall']] as const) {
+      const issued = issueDisplayToken();
+      tokens[id] = issued.token;
+      h.db
+        .prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(id, name, issued.tokenHash, at, at, at);
+    }
+
+    // Default: a clock. wA (Kitchen): its own calendar. wB (Hall): left alone.
+    await h.saveLayout({
+      screen: null, mode: 'freeform', aspect: 0.5625,
+      widgets: [{ id: 'd', type: 'clock', x: 0.05, y: 0.05, w: 0.4, h: 0.15, z: 0 }],
+    });
+    await h.saveLayout({
+      screen: 'wA', mode: 'freeform', aspect: 1,
+      widgets: [{ id: 'k', type: 'calendar', x: 0.05, y: 0.05, w: 0.9, h: 0.8, z: 0 }],
+    });
+
+    const manifestFor = async (token: string) => {
+      const res = await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } });
+      return (await res.json()) as { layout: { mode: string; widgets: { type: string }[] } };
+    };
+
+    const kitchen = await manifestFor(tokens['wA']!);
+    const hall = await manifestFor(tokens['wB']!);
+
+    // The Kitchen draws its own calendar; the Hall, untouched, draws the default.
+    expect(kitchen.layout.widgets.map((w) => w.type)).toEqual(['calendar']);
+    expect(hall.layout.widgets.map((w) => w.type)).toEqual(['clock']);
+  });
+});

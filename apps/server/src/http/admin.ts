@@ -163,6 +163,10 @@ const layoutWidgetBody = z.object({
   config: z.unknown().optional(),
 });
 const layoutBody = z.object({
+  // Which wall this canvas is for. Null (or absent) is the shared default; a
+  // screen id is that wall's own. Validated against the real screens in the
+  // handler — a stranger's id must not write onto a wall.
+  screen: z.string().min(1).max(64).nullable().optional(),
   mode: z.enum(['auto', 'freeform']),
   // Portrait phone through wide television, and nothing degenerate.
   aspect: z.number().min(0.2).max(5),
@@ -211,7 +215,7 @@ export interface AdminDeps {
    * and the fetcher live; supplied here so the editor's preview route sits
    * behind the session with every other admin route.
    */
-  readonly previewManifest?: () => unknown;
+  readonly previewManifest?: (screenId?: string | null) => unknown;
   /** Where the database and the key live, for backup and restore. */
   readonly dataDir: string;
   readonly startedAt: number;
@@ -1157,18 +1161,31 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Layout editor
   // -------------------------------------------------------------------------
 
-  app.get('/admin/layout', (c: Context) => c.html(layoutPage()));
+  /**
+   * The owner a `?screen=` or a posted `screen` names — a real paired wall, or
+   * the shared default. A stranger's id resolves to the default rather than
+   * writing onto, or reading, a wall that is not theirs.
+   */
+  function resolveOwner(id: string | null | undefined): string | null {
+    if (id === null || id === undefined || id === '') return null;
+    return activeScreens().some((s) => s.id === id) ? id : null;
+  }
+
+  app.get('/admin/layout', (c: Context) =>
+    c.html(layoutPage(resolveOwner(c.req.query('screen')))),
+  );
 
   /**
-   * The manifest the editor's live preview renders from.
+   * The manifest the editor's live preview renders from — for the wall being
+   * edited, so its zone and density are the ones that wall actually uses.
    *
-   * The same document a wall polls, so the preview shows real calendars,
+   * The same document that wall polls, so the preview shows real calendars,
    * forecasts and readings rather than a label — behind the session like every
    * other admin route, because it carries the household's actual data.
    */
   app.get('/admin/layout/preview.json', (c: Context) => {
     if (deps.previewManifest === undefined) return c.json({ error: 'unavailable' }, 404);
-    return c.json(deps.previewManifest());
+    return c.json(deps.previewManifest(resolveOwner(c.req.query('screen'))));
   });
 
   /**
@@ -1191,9 +1208,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const shaped = parse(layoutBody, raw);
     if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
 
-    // The shared default canvas for now — the per-wall editor on the Walls page
-    // passes a screen id here instead.
-    replaceLayout(deps.db, null, {
+    // Null is the shared default; a valid screen id is that wall's own canvas.
+    // An id that is not a real wall falls back to the default rather than
+    // conjuring a row for a screen that does not exist.
+    replaceLayout(deps.db, resolveOwner(shaped.value.screen), {
       mode: shaped.value.mode,
       aspect: shaped.value.aspect,
       widgets: shaped.value.widgets,
@@ -1896,12 +1914,38 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * this admin page. The link and the script src are relative so the single
    * `<base>` handles ingress with no prefix threaded through here.
    */
-  function layoutPage(): string {
+  /**
+   * The active paired screens, for the wall switcher.
+   */
+  function activeScreens(): AdminScreenRow[] {
+    return readAdminScreens(deps.db).filter((screen) => screen.revokedAt === null);
+  }
+
+  /**
+   * The layout editor, for one wall or the shared default.
+   *
+   * `ownerId` null is the default a wall inherits until it is given its own; a
+   * screen id is that wall's own canvas. The switcher above the editor is plain
+   * server-rendered links — one page per wall — so the whole thing stays a
+   * document, and a wall's canvas, mode and aspect all come pre-resolved from
+   * the same fallback the manifest uses.
+   */
+  function layoutPage(ownerId: string | null): string {
     const household = readHousehold(deps.db);
+    const screens = activeScreens();
+    const owner = screens.find((s) => s.id === ownerId) ?? null;
+    const ownerKey = owner === null ? null : owner.id;
+
+    // The effective mode and aspect for this canvas: the wall's own if it has
+    // one, otherwise the household default.
+    const mode = owner?.layoutMode ?? household.layoutMode;
+    const aspect = owner?.layoutAspect ?? household.layoutAspect;
+
     const initial = {
-      mode: household.layoutMode === 'freeform' ? 'freeform' : 'auto',
-      aspect: household.layoutAspect,
-      widgets: readLayoutWidgets(deps.db).map((widget) => ({
+      screen: ownerKey,
+      mode: mode === 'freeform' ? 'freeform' : 'auto',
+      aspect,
+      widgets: readLayoutWidgets(deps.db, ownerKey).map((widget) => ({
         id: widget.id,
         type: widget.type,
         x: widget.x,
@@ -1912,15 +1956,35 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       })),
     };
 
+    const tab = (key: string | null, label: string): string => {
+      const href = key === null ? 'admin/layout' : `admin/layout?screen=${encodeURIComponent(key)}`;
+      const active = key === ownerKey ? ' class="active" aria-current="page"' : '';
+      return `<a href="${href}"${active}>${escapeHtml(label)}</a>`;
+    };
+    const switcher =
+      `<nav class="walls" aria-label="Walls">` +
+      tab(null, 'Default') +
+      screens.map((s) => tab(s.id, s.name)).join('') +
+      `</nav>` +
+      (screens.length === 0
+        ? `<p class="hint">This is the layout every wall shows until it has one of ` +
+          `its own. Pair a screen on the Screens page to give it a different one.</p>`
+        : owner === null
+          ? `<p class="hint">The <strong>Default</strong> — what a wall shows until you ` +
+            `give it its own. Pick a wall above to design just that one.</p>`
+          : `<p class="hint">Designing <strong>${escapeHtml(owner.name)}</strong>. Only this ` +
+            `wall changes; the rest keep the Default until you design them too.</p>`);
+
     return page({
       title: 'Layout — Maverick Wall',
       nav: 'layout',
       heading: 'Layout',
       intro:
-        'Arrange the wall: add a widget, drag it to move, pull the corner to ' +
+        'Arrange a wall: add a widget, drag it to move, pull the corner to ' +
         'resize. Turn it on to use this instead of the stacked layout. The wall ' +
         'picks up a saved change within a minute.',
       body:
+        switcher +
         // The editor mounts here. Data in an attribute, script from the image.
         `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
         `<noscript><p class="hint">The layout editor needs JavaScript. The ` +
