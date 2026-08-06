@@ -138,6 +138,11 @@ const screenBody = z.object({
   daytime_ends_at: optionalText(5),
   timezone: optionalText(64),
   allow_dismiss: checkbox(),
+  // How much this wall shows. Empty follows the household default; a number is
+  // range-checked in the handler, next to the theme and zone checks.
+  today_events: optionalText(3),
+  next_days: optionalText(3),
+  horizon_weeks: optionalText(3),
 });
 
 /** Creating a screen asks for one thing; everything else follows the household. */
@@ -997,22 +1002,46 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const timezone = shaped.value.timezone ?? '';
 
     if (theme !== '' && !THEMES.some((candidate) => candidate.key === theme)) {
-      return c.html(screensPage('Choose a theme from the list.'), 400);
+      return c.html(layoutPage(id, 'Choose a theme from the list.'), 400);
     }
     if (daytimeTheme !== '' && !THEMES.some((candidate) => candidate.key === daytimeTheme)) {
-      return c.html(screensPage('Choose a daylight theme from the list.'), 400);
+      return c.html(layoutPage(id, 'Choose a daylight theme from the list.'), 400);
     }
 
     const scheduled = daytimeTheme !== '';
     if (scheduled && (!HHMM_SHAPE.test(startsAt) || !HHMM_SHAPE.test(endsAt))) {
-      return c.html(screensPage('Enter this screen’s daylight hours as HH:MM.'), 400);
+      return c.html(layoutPage(id, 'Enter this wall’s daylight hours as HH:MM.'), 400);
     }
     if (scheduled && startsAt === endsAt) {
-      return c.html(screensPage('A daylight window of no length would never switch.'), 400);
+      return c.html(layoutPage(id, 'A daylight window of no length would never switch.'), 400);
     }
     if (timezone !== '' && !supportedTimezones().includes(timezone)) {
-      return c.html(screensPage('Choose a timezone from the list.'), 400);
+      return c.html(layoutPage(id, 'Choose a timezone from the list.'), 400);
     }
+
+    // Density overrides: empty follows the household default, a number is
+    // range-checked here beside the theme and zone checks.
+    const density = (
+      raw: string | undefined,
+      low: number,
+      high: number,
+      label: string,
+    ): { ok: true; value: number | null } | { ok: false; message: string } => {
+      const value = (raw ?? '').trim();
+      if (value === '') return { ok: true, value: null };
+      if (!/^[0-9]+$/.test(value)) {
+        return { ok: false, message: `${label} has to be a whole number, or blank to follow the default.` };
+      }
+      const n = Number(value);
+      if (n < low || n > high) return { ok: false, message: `${label} has to be between ${low} and ${high}.` };
+      return { ok: true, value: n };
+    };
+    const today = density(shaped.value.today_events, 1, 20, 'Events today');
+    if (!today.ok) return c.html(layoutPage(id, today.message), 400);
+    const nextDays = density(shaped.value.next_days, 0, 14, 'Days ahead');
+    if (!nextDays.ok) return c.html(layoutPage(id, nextDays.message), 400);
+    const weeks = density(shaped.value.horizon_weeks, 1, 8, 'Weeks of month');
+    if (!weeks.ok) return c.html(layoutPage(id, weeks.message), 400);
 
     if (
       !writeScreenSettings(deps.db, id, {
@@ -1025,12 +1054,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         daytimeStartsAt: scheduled ? startsAt : null,
         daytimeEndsAt: scheduled ? endsAt : null,
         allowDismiss,
+        displayTodayEvents: today.value,
+        displayNextDays: nextDays.value,
+        displayHorizonWeeks: weeks.value,
       })
     ) {
-      return c.html(screensPage('That screen is no longer there.'), 404);
+      return c.redirect('/admin/screens', 302);
     }
-    // The screen picks this up on its next poll, within the minute.
-    return c.redirect('/admin/screens', 302);
+    // Back to the wall's own page; it picks the change up on its next poll.
+    return c.redirect(`/admin/layout?screen=${encodeURIComponent(id)}`, 302);
   });
 
   /**
@@ -1762,24 +1794,31 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
-  function screenCard(screen: AdminScreenRow, at: number): string {
+  /**
+   * The settings for one wall — everything about how that screen shows the
+   * household's stuff, shown on the wall's own page beside its layout. Empty on
+   * any override follows the shared default set on the Display screen.
+   */
+  function wallSettingsForm(screen: AdminScreenRow): string {
+    const household = readHousehold(deps.db);
     const option = (value: string, label: string, selected: boolean): string =>
       `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
     const action = `/admin/screens/${encodeURIComponent(screen.id)}`;
+    // A density field: this wall's number, or blank showing the household's as a
+    // placeholder so the default is visible without being typed.
+    const density = (name: string, value: number | null, fallback: number): string =>
+      `<input id="${name}-${screen.id}" name="${name}" type="number" inputmode="numeric" ` +
+      `placeholder="${fallback} (default)" value="${value === null ? '' : String(value)}">`;
 
     return (
-      `<article class="card">` +
-      `<h2>${escapeHtml(screen.name)}</h2>` +
-      `<p class="host">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
-      (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
-      `</p>` +
-      `<form method="post" action="${action}">` +
+      `<form method="post" action="${action}" class="wall-settings">` +
+      `<h2 class="add">${escapeHtml(screen.name)}</h2>` +
       `<label for="name-${screen.id}">Name</label>` +
       `<input id="name-${screen.id}" name="name" type="text" required ` +
       `value="${escapeHtml(screen.name)}">` +
 
       `<div class="row-fields">` +
-      `<span><label for="orientation-${screen.id}">Layout</label>` +
+      `<span><label for="orientation-${screen.id}">Orientation</label>` +
       `<select id="orientation-${screen.id}" name="orientation">` +
       option('auto', 'Follow the screen', screen.orientation === 'auto') +
       option('portrait', 'Always portrait', screen.orientation === 'portrait') +
@@ -1801,12 +1840,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="row-fields">` +
       `<span><label for="theme-${screen.id}">Theme</label>` +
       `<select id="theme-${screen.id}" name="theme">` +
-      option('', 'Follow the household', screen.theme === null) +
+      option('', 'Follow the default', screen.theme === null) +
       THEMES.map((theme) => option(theme.key, theme.label, screen.theme === theme.key)).join('') +
       `</select></span>` +
       `<span><label for="night-${screen.id}">During the day</label>` +
       `<select id="night-${screen.id}" name="daytime_theme">` +
-      option('', 'Follow the household', screen.daytimeTheme === null) +
+      option('', 'Follow the default', screen.daytimeTheme === null) +
       THEMES.map((theme) =>
         option(theme.key, theme.label, screen.daytimeTheme === theme.key),
       ).join('') +
@@ -1821,28 +1860,61 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<input id="until-${screen.id}" name="daytime_ends_at" type="time" ` +
       `value="${escapeHtml(screen.daytimeEndsAt ?? '21:00')}"></span>` +
       `</div>` +
-      `<p class="hint">Only used when this screen sets its own daylight theme.</p>` +
+      `<p class="hint">Only used when this wall sets its own daylight theme.</p>` +
+
+      // How much this wall shows, on the stacked layout. Blank follows the
+      // default set on the Display screen.
+      `<div class="row-fields">` +
+      `<span><label for="today_events-${screen.id}">Events today</label>` +
+      density('today_events', screen.displayTodayEvents, household.displayTodayEvents) +
+      `</span>` +
+      `<span><label for="next_days-${screen.id}">Days ahead</label>` +
+      density('next_days', screen.displayNextDays, household.displayNextDays) +
+      `</span>` +
+      `<span><label for="horizon_weeks-${screen.id}">Weeks of month</label>` +
+      density('horizon_weeks', screen.displayHorizonWeeks, household.displayHorizonWeeks) +
+      `</span>` +
+      `</div>` +
+      `<p class="hint">How much the stacked layout shows on this wall. Blank ` +
+      `follows the default from the Display screen.</p>` +
 
       `<div class="checks"><label>` +
       `<input type="checkbox" name="allow_dismiss" value="1"` +
       `${screen.allowDismiss === 1 ? ' checked' : ''}> ` +
-      `This screen can acknowledge alerts</label></div>` +
+      `This wall can acknowledge alerts</label></div>` +
       `<p class="hint">Turn on for a television with a remote, or a tablet somebody ` +
-      `can reach — the OK button on a remote clears whatever the wall is showing. ` +
-      `Leave off for a screen with no input, and for one that gets brushed against. ` +
-      `Acknowledging is household-wide: one screen clears it and every wall goes ` +
-      `quiet. Some alerts cannot be cleared at all, and no screen overrides that.</p>` +
+      `can reach — the OK button clears whatever the wall is showing. Leave off ` +
+      `for a screen with no input, and for one that gets brushed against. ` +
+      `Acknowledging is household-wide: one wall clears it and every wall goes ` +
+      `quiet. Some alerts cannot be cleared at all, and no wall overrides that.</p>` +
 
       `<label for="tz-${screen.id}">Timezone</label>` +
       `<select id="tz-${screen.id}" name="timezone">` +
-      option('', 'Follow the household', screen.timezone === null) +
+      option('', 'Follow the default', screen.timezone === null) +
       supportedTimezones()
         .map((zone) => option(zone, zone, screen.timezone === zone))
         .join('') +
       `</select>` +
-      `<p class="hint">Only for a screen somewhere else — a holiday home, say.</p>` +
-      `<button type="submit">Save</button></form>` +
+      `<p class="hint">Only for a wall somewhere else — a holiday home, say.</p>` +
+      `<button type="submit">Save this wall</button></form>`
+    );
+  }
 
+  /**
+   * A paired wall on the Screens page: what it is and its pairing, with the
+   * settings themselves moved to the wall's own page under Layout.
+   */
+  function screenCard(screen: AdminScreenRow, at: number): string {
+    const action = `/admin/screens/${encodeURIComponent(screen.id)}`;
+    const configure = `admin/layout?screen=${encodeURIComponent(screen.id)}`;
+    return (
+      `<article class="card">` +
+      `<h2>${escapeHtml(screen.name)}</h2>` +
+      `<p class="host">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
+      (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
+      `</p>` +
+      `<p><a class="link" href="${configure}">Configure this wall →</a> — its ` +
+      `layout, orientation, theme and how much it shows.</p>` +
       `<div class="row">` +
       `<form method="post" action="${action}/regenerate">` +
       `<button class="secondary" type="submit">Show pairing link</button></form>` +
@@ -1930,7 +2002,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * document, and a wall's canvas, mode and aspect all come pre-resolved from
    * the same fallback the manifest uses.
    */
-  function layoutPage(ownerId: string | null): string {
+  function layoutPage(ownerId: string | null, error?: string): string {
     const household = readHousehold(deps.db);
     const screens = activeScreens();
     const owner = screens.find((s) => s.id === ownerId) ?? null;
@@ -1985,11 +2057,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'picks up a saved change within a minute.',
       body:
         switcher +
+        (error === undefined ? '' : errorBlock(error)) +
         // The editor mounts here. Data in an attribute, script from the image.
         `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
         `<noscript><p class="hint">The layout editor needs JavaScript. The ` +
         `stacked layout on the Display screen does not.</p></noscript>` +
-        `<script type="module" src="assets/layout-editor.js"></script>`,
+        `<script type="module" src="assets/layout-editor.js"></script>` +
+        // A real wall also carries its own settings: how it is hung, its theme,
+        // how much it shows. The Default has none — those live on Display.
+        (owner === null ? '' : wallSettingsForm(owner)),
     });
   }
 

@@ -605,6 +605,11 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               orientation, rotation, allow_dismiss AS allowDismiss, timezone,
               daytime_theme AS daytimeTheme,
               daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt,
+              display_today_events AS displayTodayEvents,
+              display_next_days AS displayNextDays,
+              display_horizon_weeks AS displayHorizonWeeks,
+              display_blocks AS displayBlocks,
+              layout_mode AS layoutMode, layout_aspect AS layoutAspect,
               last_seen_at AS lastSeenAt, app_version AS appVersion
          FROM screens ORDER BY name`,
     )
@@ -623,6 +628,10 @@ export interface ScreenSettings {
   readonly daytimeEndsAt: string | null;
   /** Whether this screen offers a way to acknowledge an interrupt. */
   readonly allowDismiss: boolean;
+  /** How much this wall shows; null on any follows the household default. */
+  readonly displayTodayEvents: number | null;
+  readonly displayNextDays: number | null;
+  readonly displayHorizonWeeks: number | null;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -632,13 +641,17 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         `UPDATE screens
             SET name = ?, orientation = ?, rotation = ?, theme = ?, timezone = ?,
                 daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
-                allow_dismiss = ?, updated_at = ?
+                allow_dismiss = ?,
+                display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
+                updated_at = ?
           WHERE id = ?`,
       )
       .run(
         s.name, s.orientation, s.rotation, s.theme, s.timezone,
         s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt,
-        s.allowDismiss ? 1 : 0, Date.now(), id,
+        s.allowDismiss ? 1 : 0,
+        s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
+        Date.now(), id,
       ).changes > 0
   );
 }
