@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.9
+
+Each wall can now be set up on its own.
+
+- The settings are grouped into **Modules** (Calendars, Shifts, Weather, Home
+  Assistant), **Walls**, and **Settings**, instead of one long list — and the
+  pages are wider, since they open in the full window.
+- A **wall switcher** on the Layout page lets you design each screen
+  separately: pick a wall and arrange its own layout, set its orientation,
+  theme and how much it shows — all in one place, with a live preview of that
+  wall. Leave a wall alone and it follows the shared default.
+- The Screens page is now just for pairing a screen; its settings moved to the
+  wall's own page.
+
+Existing walls are unchanged: every setting is the shared default until you give
+a wall its own.
+
 ## 0.1.8
 
 A face for the project, and easier navigation.
