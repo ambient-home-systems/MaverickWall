@@ -27,20 +27,29 @@ const STYLE = `
 body{margin:0;background:#0B0E11;color:#E9EEF4;
   font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   display:flex;justify-content:center;padding:2rem 1rem}
-main{width:100%;max-width:34rem}
+/* Wider than the old 34rem: ingress opens in the full pane, not the sidebar,
+   and the flat narrow column was the flow people found cramped. */
+main{width:100%;max-width:48rem}
 .brand{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;
   font-weight:700;font-size:1.05rem;letter-spacing:.01em;text-decoration:none}
 a.brand{cursor:pointer}
 .brand svg{width:30px;height:30px;flex:0 0 auto;border-radius:7px}
 .brand span{color:#E9EEF4}
-/* The section tabs: wrap rather than scroll, so every one is reachable at any
-   width — a narrow phone shows three rows, a wide panel shows one. */
-.tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.6rem;
-  border-bottom:1px solid #1E262F;padding-bottom:.8rem}
-.tabs a{padding:.35rem .7rem;border-radius:.4rem;font-size:.9rem;font-weight:600;
-  color:#A8B3C0;text-decoration:none;white-space:nowrap;border:1px solid transparent}
-.tabs a:hover{color:#E9EEF4;background:#141A21}
-.tabs a.active{color:#1A1206;background:#E0A33E}
+/* Two tiers of tabs, both wrapping rather than scrolling so every one is
+   reachable at any width. The top row is the groups; the row under it is the
+   pages of the group you are in. */
+.tabs{display:flex;flex-wrap:wrap;gap:.4rem}
+.tabs a{padding:.35rem .8rem;border-radius:.4rem;text-decoration:none;
+  white-space:nowrap;border:1px solid transparent}
+.tabs-top{margin:0 0 .5rem;font-size:1rem}
+.tabs-top a{font-weight:700;color:#E9EEF4}
+.tabs-top a:hover{background:#141A21}
+.tabs-top a.active{background:#141A21;border-color:#2A333D}
+.tabs-sub{margin:0 0 1.6rem;padding-bottom:.8rem;border-bottom:1px solid #1E262F;
+  font-size:.9rem}
+.tabs-sub a{font-weight:600;color:#A8B3C0}
+.tabs-sub a:hover{color:#E9EEF4;background:#141A21}
+.tabs-sub a.active{color:#1A1206;background:#E0A33E}
 h1{font-size:1.5rem;margin:0 0 .25rem}
 p{color:#A8B3C0;margin:.5rem 0}
 form{margin:1.5rem 0 0}
@@ -195,36 +204,84 @@ const MARK =
 const FAVICON = `data:image/svg+xml,${encodeURIComponent(MARK)}`;
 
 /**
- * The admin sections, in the order they tab across the top.
+ * The admin, in three groups rather than nine flat pages.
  *
- * Calendar first, because the calendar is the product; the two panel modules
- * (Home Assistant, Weather) sit together before System, which is the box's own
- * housekeeping. `href` is relative so the `<base>` handles ingress.
+ * **Modules** is everything a wall shows — the calendar first, because the
+ * calendar is the product, then the rest as equals whether they are core or an
+ * integration. **Walls** is the screens themselves and what each one draws.
+ * **Settings** is the shared defaults a wall inherits, the people its calendars
+ * belong to, and the box's own housekeeping.
+ *
+ * A group's tab goes to its first page. `href` is relative, so the single
+ * `<base>` carries every link through ingress.
  */
-const NAV: readonly { readonly key: string; readonly label: string; readonly href: string }[] = [
-  { key: 'calendars', label: 'Calendars', href: 'admin/calendars' },
-  { key: 'display', label: 'Display', href: 'admin/display' },
-  { key: 'layout', label: 'Layout', href: 'admin/layout' },
-  { key: 'people', label: 'People', href: 'admin/people' },
-  { key: 'shifts', label: 'Shifts', href: 'admin/shifts' },
-  { key: 'screens', label: 'Screens', href: 'admin/screens' },
-  { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant' },
-  { key: 'alerts', label: 'Weather', href: 'admin/alerts' },
-  { key: 'system', label: 'System', href: 'admin/system' },
+interface NavItem {
+  readonly key: string;
+  readonly label: string;
+  readonly href: string;
+}
+const GROUPS: readonly { readonly key: string; readonly label: string; readonly items: readonly NavItem[] }[] = [
+  {
+    key: 'modules',
+    label: 'Modules',
+    items: [
+      { key: 'calendars', label: 'Calendars', href: 'admin/calendars' },
+      { key: 'shifts', label: 'Shifts', href: 'admin/shifts' },
+      { key: 'alerts', label: 'Weather', href: 'admin/alerts' },
+      { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant' },
+    ],
+  },
+  {
+    key: 'walls',
+    label: 'Walls',
+    items: [
+      { key: 'screens', label: 'Screens', href: 'admin/screens' },
+      { key: 'layout', label: 'Layout', href: 'admin/layout' },
+    ],
+  },
+  {
+    key: 'settings',
+    label: 'Settings',
+    items: [
+      { key: 'display', label: 'Display', href: 'admin/display' },
+      { key: 'people', label: 'People', href: 'admin/people' },
+      { key: 'system', label: 'System', href: 'admin/system' },
+    ],
+  },
 ];
 
-/** The tab bar, with the current section marked. Empty off the admin pages. */
+/**
+ * Two tiers: the groups, then the pages of whichever group the current page is
+ * in. Off the admin pages entirely (the wizard has no sections). The overview
+ * (`home`, in no group) shows the groups alone, none of them lit.
+ */
 function navBar(active: string | undefined): string {
   if (active === undefined) return '';
-  return (
-    `<nav class="tabs" aria-label="Sections">` +
-    NAV.map(
-      (section) =>
-        `<a href="${section.href}"${section.key === active ? ' class="active" aria-current="page"' : ''}>` +
-        `${escapeHtml(section.label)}</a>`,
+  const group = GROUPS.find((g) => g.items.some((i) => i.key === active));
+
+  const top =
+    `<nav class="tabs tabs-top" aria-label="Sections">` +
+    GROUPS.map(
+      (g) =>
+        `<a href="${g.items[0]!.href}"${g === group ? ' class="active" aria-current="true"' : ''}>` +
+        `${escapeHtml(g.label)}</a>`,
     ).join('') +
-    `</nav>`
-  );
+    `</nav>`;
+
+  if (group === undefined) return top;
+
+  const sub =
+    `<nav class="tabs tabs-sub" aria-label="${escapeHtml(group.label)}">` +
+    group.items
+      .map(
+        (i) =>
+          `<a href="${i.href}"${i.key === active ? ' class="active" aria-current="page"' : ''}>` +
+          `${escapeHtml(i.label)}</a>`,
+      )
+      .join('') +
+    `</nav>`;
+
+  return top + sub;
 }
 
 export interface PageOptions {
