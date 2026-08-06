@@ -133,6 +133,15 @@ export const householdSettings = sqliteTable('household_settings', {
  */
 export const layoutWidgets = sqliteTable('layout_widgets', {
   id: text('id').primaryKey(),
+  /**
+   * Which wall this widget belongs to.
+   *
+   * Null is the shared default canvas — the layout a screen draws until it is
+   * given its own. A screen's id is that screen's own canvas. A plain column
+   * rather than a foreign key: SQLite cannot add one by `ALTER`, and the app is
+   * the thing that keeps a widget's owner honest anyway.
+   */
+  screenId: text('screen_id'),
   /** The module that draws here: clock, calendar, weather, homeassistant, … */
   type: text('type').notNull(),
   /** Top-left and size, each a fraction 0..1 of the canvas. */
@@ -251,11 +260,37 @@ export const screens = sqliteTable(
      * a holiday home on another clock wants its own zone.
      */
     theme: text('theme'),
+    /**
+     * Dead. Superseded by the columns below plus `layout_widgets.screen_id`.
+     *
+     * An early per-screen layout blob that was never wired to anything. Left in
+     * place because dropping a column is a table rebuild, which is the one
+     * migration shape that has corrupted this database before — not worth the
+     * risk for a column nothing reads. Do not start using it.
+     */
     layout: text('layout', { mode: 'json' }).$type<unknown>(),
     timezone: text('timezone'),
     daytimeTheme: text('daytime_theme'),
     daytimeStartsAt: text('daytime_starts_at'),
     daytimeEndsAt: text('daytime_ends_at'),
+
+    /**
+     * The rest of the per-screen overrides. Null follows the household, exactly
+     * like the theme above — a household with one wall sets none of these, and
+     * that stays the easy case.
+     *
+     * How much to show, which blocks in what order, and — for a wall arranged
+     * on the free-form canvas — its mode and aspect. The widgets themselves are
+     * rows in `layout_widgets` tagged with this screen's id; a non-null
+     * `layout_mode` here is what says to read *those* rather than the shared
+     * default set.
+     */
+    displayTodayEvents: integer('display_today_events', { mode: 'number' }),
+    displayNextDays: integer('display_next_days', { mode: 'number' }),
+    displayHorizonWeeks: integer('display_horizon_weeks', { mode: 'number' }),
+    displayBlocks: text('display_blocks'),
+    layoutMode: text('layout_mode'),
+    layoutAspect: real('layout_aspect'),
 
     /**
      * Which layout to draw, regardless of what the browser reports.

@@ -1191,7 +1191,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const shaped = parse(layoutBody, raw);
     if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
 
-    replaceLayout(deps.db, {
+    // The shared default canvas for now — the per-wall editor on the Walls page
+    // passes a screen id here instead.
+    replaceLayout(deps.db, null, {
       mode: shaped.value.mode,
       aspect: shaped.value.aspect,
       widgets: shaped.value.widgets,

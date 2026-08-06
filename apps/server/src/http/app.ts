@@ -34,6 +34,7 @@ import {
   countUsers,
   readEvents,
   readLayoutWidgets,
+  effectiveDisplay,
   readHousehold,
   readLastSync,
   readPeople,
@@ -471,6 +472,7 @@ export function createApp(deps: AppDeps): Hono {
    * same document a wall does and cannot drift from what the wall shows.
    */
   const buildDisplayManifest = (screenLike: {
+    readonly id?: string;
     readonly timezone: string | null;
     readonly orientation: string;
     readonly rotation: number;
@@ -479,6 +481,12 @@ export function createApp(deps: AppDeps): Hono {
     readonly daytimeTheme: string | null;
     readonly daytimeStartsAt: string | null;
     readonly daytimeEndsAt: string | null;
+    readonly displayTodayEvents?: number | null;
+    readonly displayNextDays?: number | null;
+    readonly displayHorizonWeeks?: number | null;
+    readonly displayBlocks?: string | null;
+    readonly layoutMode?: string | null;
+    readonly layoutAspect?: number | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -496,14 +504,19 @@ export function createApp(deps: AppDeps): Hono {
         ? screenLike.timezone
         : household.timezone;
 
+    // This wall's effective display settings — its own overrides, or the
+    // household's — and which canvas of widgets to read: its own, or the
+    // shared default. One resolver, so every surface agrees.
+    const { household: effective, layoutOwner } = effectiveDisplay(household, screenLike);
+
     // Built once and shared: the panels and the signals come from the same
     // instant, so a wall never draws a reading from one poll beside an
     // interrupt evaluated against another.
     const moduleContext = { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: at, timezone };
 
     return buildManifest({
-      household,
-      layoutWidgets: readLayoutWidgets(deps.db),
+      household: effective,
+      layoutWidgets: readLayoutWidgets(deps.db, layoutOwner),
       events: readEvents(deps.db, from, to),
       sources: readSources(deps.db),
       people: readPeople(deps.db),
@@ -548,7 +561,9 @@ export function createApp(deps: AppDeps): Hono {
     const screen = c.get('screen') as ScreenRow;
     const manifest = buildDisplayManifest({
       // The document is already screen-specific — served behind a display
-      // token — so how that screen is hung travels with it.
+      // token — so how that screen is hung, and anything it has arranged for
+      // itself, travels with it.
+      id: screen.id,
       timezone: screen.timezone,
       orientation: screen.orientation,
       rotation: screen.rotation,
@@ -557,6 +572,12 @@ export function createApp(deps: AppDeps): Hono {
       daytimeTheme: screen.daytimeTheme,
       daytimeStartsAt: screen.daytimeStartsAt,
       daytimeEndsAt: screen.daytimeEndsAt,
+      displayTodayEvents: screen.displayTodayEvents,
+      displayNextDays: screen.displayNextDays,
+      displayHorizonWeeks: screen.displayHorizonWeeks,
+      displayBlocks: screen.displayBlocks,
+      layoutMode: screen.layoutMode,
+      layoutAspect: screen.layoutAspect,
     });
 
     // Recorded after building, so a screen that is failing to render still
