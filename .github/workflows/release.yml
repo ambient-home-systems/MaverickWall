@@ -95,3 +95,60 @@ jobs:
           image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           upload-artifact: true
+
+  # A tag and a config bump ship independently of the image, and once did:
+  # v0.1.9's build never ran (the hosted runner was never acquired), so the git
+  # tag and `config.yaml: version: 0.1.9` went out while `:0.1.9` was a 404 in
+  # the registry. A "completed (failed)" release makes no noise, so the first
+  # thing that noticed was a household's supervisor pulling a tag that did not
+  # exist, three days later, and reporting it as an "unknown error".
+  #
+  # This job is the guard: after the release, pull the version tag exactly the
+  # way a supervisor does — anonymously, no credentials, over the public
+  # registry — and fail loudly here if it is missing or does not cover both
+  # declared architectures. A red release with no image should stop at CI, not
+  # in somebody's kitchen.
+  verify:
+    name: Verify the published image is pullable
+    needs: release
+    runs-on: ubuntu-latest
+    # No login step, deliberately. The whole point is to prove the anonymous
+    # pull works — the path a household takes, and the one that was silently
+    # broken. A logged-in check would hide exactly the failure this catches
+    # (a package still private, a tag not actually pushed).
+    steps:
+      - name: The version tag resolves, for both architectures
+        run: |
+          # `type=semver,pattern={{version}}` strips the leading v, so the
+          # image tag for v0.1.9 is 0.1.9 — mirror that here.
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Anonymously inspecting ${IMAGE}:${VERSION} (no credentials, as a supervisor pulls it)"
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw > manifest.json
+          python3 - "$VERSION" <<'PY'
+          import json, sys
+          version = sys.argv[1]
+          data = json.load(open("manifest.json"))
+          # Attestations ride in the same index as os/architecture "unknown";
+          # only the real image manifests carry a concrete platform.
+          platforms = {
+              f"{m['platform']['os']}/{m['platform']['architecture']}"
+              for m in data.get("manifests", [])
+              if m.get("platform", {}).get("os") not in (None, "unknown")
+          }
+          print("Published platforms:", sorted(platforms))
+          # These must match config.yaml's `arch:` — a declared architecture is
+          # a promise about the image, and an unbuilt one fails at `docker pull`
+          # only after the household has pressed the button.
+          required = {"linux/amd64", "linux/arm64"}
+          missing = required - platforms
+          if missing:
+              print(f"::error::{version} is missing {sorted(missing)}")
+              sys.exit(1)
+          PY
+
+      - name: And it pulls for real
+        run: |
+          # imagetools reads the manifest; this fetches the blobs, so a tag that
+          # resolves but whose layers never landed still fails here.
+          VERSION="${GITHUB_REF_NAME#v}"
+          docker pull "${IMAGE}:${VERSION}"
