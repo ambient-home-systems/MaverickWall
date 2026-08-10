@@ -58,6 +58,10 @@ RUN pnpm -r build
 # DISPLAY_DIR below.
 RUN pnpm --filter @maverick-wall/server deploy --prod /out \
  && cp -r apps/display/dist /out/display \
+ # The self-hosted admin fonts. Copied beside the display bundle and named by
+ # FONTS_DIR below — `pnpm deploy` flattens the package, so a repo-relative path
+ # resolves nowhere here, exactly as for the display bundle.
+ && cp -r apps/server/assets/fonts /out/fonts \
  # `deploy` copies the whole package, sources and test harness included. None
  # of it is read at runtime and all of it ends up in a layer somebody pulls.
  && rm -rf /out/src /out/test /out/tsconfig*.json /out/vitest.config.ts /out/drizzle.config.ts
@@ -90,6 +94,10 @@ ENV NODE_OPTIONS="--max-old-space-size=256"
 # fallback in static.ts is a fact about the repository layout rather than this
 # one. Without it every asset 404s and the wall draws "the bundle is missing".
 ENV DISPLAY_DIR=/app/display
+# The self-hosted admin fonts, copied beside the display bundle above. Named
+# explicitly for the same reason DISPLAY_DIR is: the flattened package has no
+# repo-relative path to them.
+ENV FONTS_DIR=/app/fonts
 
 WORKDIR /app
 COPY --from=build /out /app

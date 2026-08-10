@@ -72,7 +72,7 @@ import { currentUser } from '../auth/session.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, page } from './html.js';
+import { errorBlock, escapeHtml, icon, page } from './html.js';
 import { bounded, checkbox, colour, coordinate, oneOf, optionalText, parse, text, z } from '../validation.js';
 
 /**
@@ -358,6 +358,48 @@ const THEMES = [
   { key: 'glance', label: 'Glance — the whole screen is the status' },
 ] as const;
 
+/**
+ * The three swatch colours per theme, for the Display screen's theme cards —
+ * background, accent, a shift hue. Taken from the design file's token sets so
+ * the card previews what the wall will actually look like. Kept beside `THEMES`
+ * so a theme added to one is a visible hole in the other.
+ */
+const THEME_SWATCHES: Readonly<Record<string, readonly [string, string, string]>> = {
+  board: ['#0B0E11', '#E0A33E', '#4C7FD1'],
+  slate: ['#23201A', '#D2A93F', '#6C8FAB'],
+  almanac: ['#F1EDE3', '#B3372B', '#2F5D8C'],
+  glance: ['#07080A', '#FFFFFF', '#4F86DE'],
+};
+
+/**
+ * The theme picker as selectable cards, scriptless.
+ *
+ * A radio per theme wrapped in a `.themecard` label: it posts `theme` exactly
+ * as the old `<select>` did, so the handler is unchanged, and the amber ring on
+ * the checked card is pure CSS (`:has(input:checked)`), which is fine in the
+ * admin — rule two is about the locked wall tablet, not the household's phone.
+ */
+function themeCards(selected: string): string {
+  return (
+    `<div class="themegrid">` +
+    THEMES.map((theme) => {
+      const [name, ...rest] = theme.label.split(' — ');
+      const swatches = THEME_SWATCHES[theme.key] ?? ['#0B0E11', '#E0A33E', '#4C7FD1'];
+      return (
+        `<label class="themecard">` +
+        `<input type="radio" name="theme" value="${escapeHtml(theme.key)}"${theme.key === selected ? ' checked' : ''}>` +
+        `<div class="sw">` +
+        swatches.map((c) => `<i style="background:${escapeHtml(c)}"></i>`).join('') +
+        `</div>` +
+        `<div class="cap"><b>${escapeHtml(name ?? theme.key)}</b>` +
+        `<small>${escapeHtml(rest.join(' — '))}</small></div>` +
+        `</label>`
+      );
+    }).join('') +
+    `</div>`
+  );
+}
+
 /** A six-digit hex colour, which is what `<input type="color">` submits. */
 /**
  * The zones offered, from the runtime rather than a bundled list.
@@ -434,51 +476,132 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return settings.lastError === null ? 'connected' : 'connected, with a problem';
   };
 
+  /**
+   * A status summary as a coloured pill for the overview: green when it is
+   * working, red when a summary says it is not, plain when it is simply off.
+   */
+  const tagFor = (summary: string): string => {
+    const low = summary.toLowerCase();
+    const cls =
+      low.includes('not connected') || low.includes('problem') || low.includes('error')
+        ? 'tag-bad'
+        : low === 'off' || low.startsWith('on,')
+          ? 'tag'
+          : 'tag-ok';
+    const dot = cls === 'tag-ok' ? '<span class="dot dot-ok"></span>' : cls === 'tag-bad' ? '<span class="dot dot-bad"></span>' : '';
+    // A capitalised first letter reads as a label rather than a sentence fragment.
+    const text = summary.charAt(0).toUpperCase() + summary.slice(1);
+    return `<span class="tag ${cls}">${dot}${escapeHtml(text)}</span>`;
+  };
+
   app.get('/admin', (c: Context) => {
     const user = currentUser(c);
     const household = readHousehold(deps.db);
     const sources = readAdminSources(deps.db);
     const screens = readAdminScreens(deps.db).filter((screen) => screen.revokedAt === null);
     const failing = sources.filter((source) => source.lastError !== null).length;
+    const plans = readShiftPlansAdmin(deps.db);
+    const at = now();
+    // "Online" is loose on purpose: a wall polls on a minute, so anything seen
+    // inside a few minutes is up. Enough to say "both online" rather than to
+    // diagnose one that is not.
+    const online = screens.filter(
+      (screen) => screen.lastSeenAt !== null && at - screen.lastSeenAt < 5 * 60_000,
+    ).length;
+
+    // A span, not an anchor: the whole stat card is already an <a>, and a
+    // nested anchor is invalid HTML the browser hoists out of the card.
+    const manage = (): string => `<span class="link">Manage ${icon('arrow')}</span>`;
+
+    const calTag =
+      failing === 0
+        ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>All syncing</span>`
+        : `<span class="tag tag-bad"><span class="dot dot-bad"></span>${failing} failing</span>`;
+    const scrTag =
+      screens.length === 0
+        ? `<span class="tag">None paired</span>`
+        : online === screens.length
+          ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>${screens.length === 1 ? 'Online' : 'All online'}</span>`
+          : `<span class="tag"><span class="dot dot-idle"></span>${online} of ${screens.length} online</span>`;
+
+    const statCard = (
+      href: string,
+      iconKey: string,
+      tag: string,
+      big: string | number,
+      lab: string,
+      sub: string,
+    ): string =>
+      `<a class="card stat" href="${href}">` +
+      `<i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>` +
+      `<div class="top"><div class="ic">${icon(iconKey)}</div>${tag}</div>` +
+      `<div class="big">${escapeHtml(String(big))}</div><div class="lab">${escapeHtml(lab)}</div>` +
+      `<div class="subrow"><span>${sub}</span>${manage()}</div></a>`;
+
+    const statusRow = (iconKey: string, name: string, meta: string, tag: string): string =>
+      `<div class="frow"><div class="ic">${icon(iconKey)}</div>` +
+      `<div style="flex:1;min-width:0"><div class="rname">${escapeHtml(name)}</div>` +
+      (meta === '' ? '' : `<div class="host">${escapeHtml(meta)}</div>`) +
+      `</div>${tag}</div>`;
+
+    const uptime = Math.max(0, Math.round((at - deps.startedAt) / 1000));
+    const uptimeText =
+      uptime < 3600
+        ? `${Math.round(uptime / 60)}m`
+        : uptime < 172800
+          ? `${Math.round(uptime / 3600)}h`
+          : `${Math.round(uptime / 86400)}d`;
 
     return c.html(
       page({
         title: 'Maverick Wall',
         nav: 'home',
-        heading: 'Maverick Wall',
+        heading: 'Overview',
         intro: `Signed in as ${user.name}.`,
         body:
-          `<p>Timezone <strong>${escapeHtml(household.timezone)}</strong>.</p>` +
-          `<p><a class="link" href="admin/calendars">Calendars</a> — ` +
-          `${sources.length} configured` +
-          (failing === 0 ? '' : `, <strong>${failing} failing</strong>`) +
-          `</p>` +
-          `<p><a class="link" href="admin/display">Display</a> — ` +
-          `theme, and how much the wall shows</p>` +
-          `<p><a class="link" href="admin/layout">Layout</a> — ` +
-          `arrange widgets on the wall yourself</p>` +
-          `<p><a class="link" href="admin/people">People</a> — ` +
-          `${readPeopleAdmin(deps.db).length} added</p>` +
-          `<p><a class="link" href="admin/shifts">Shifts</a> — ` +
-          `${readShiftPlansAdmin(deps.db).length} rotation` +
-          `${readShiftPlansAdmin(deps.db).length === 1 ? '' : 's'}</p>` +
-          `<p><a class="link" href="admin/screens">Screens</a> — ` +
-          `${screens.length} paired</p>` +
-          `<p><a class="link" href="admin/system">System</a> — ` +
-          `version, backup, diagnostics</p>` +
-          `<p><a class="link" href="admin/home-assistant">Home Assistant</a> — ` +
-          `${haSummary()}</p>` +
-          `<p><a class="link" href="admin/alerts">Weather alerts</a> — ` +
-          `${alertSummary()}</p>` +
+          `<div class="grid g3">` +
+          statCard(
+            'admin/calendars', 'calendars', calTag, sources.length,
+            `Calendar${sources.length === 1 ? '' : 's'} connected`,
+            `Timezone ${escapeHtml(household.timezone)}`,
+          ) +
+          statCard(
+            'admin/screens', 'screens', scrTag, screens.length,
+            `Wall display${screens.length === 1 ? '' : 's'} paired`,
+            screens.length === 0 ? 'Pair one on the Screens page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
+          ) +
+          statCard(
+            'admin/shifts', 'shifts',
+            plans.length === 0 ? '<span class="tag">None set</span>' : `<span class="tag tag-accent">${plans.length} active</span>`,
+            plans.length, `Shift rotation${plans.length === 1 ? '' : 's'}`,
+            plans.length === 0 ? 'Colour each day by who is working' : escapeHtml(plans.map((p) => p.personName ?? 'Someone').join(' · ')),
+          ) +
+          `</div>` +
 
-          // No sign-out under ingress: Home Assistant did the authenticating,
-          // so a button here would end our cookie and the supervisor would
-          // hand the session straight back on the next request — a control that
-          // looks like it failed. Signing out is a Home Assistant action there.
+          `<div class="sect"><div class="sect-head"><h2>Status</h2>` +
+          `<span class="kick">Household · ${escapeHtml(household.timezone)}</span></div>` +
+          `<div class="grid g2">` +
+          `<div class="card status-card">` +
+          statusRow('alerts', 'Weather alerts', '', tagFor(alertSummary())) +
+          statusRow('homeassistant', 'Home Assistant', '', tagFor(haSummary())) +
+          statusRow('system', 'System', `${escapeHtml(deps.appVersion)} · up ${uptimeText}`, `<a class="link" href="admin/system">Open ${icon('arrow')}</a>`) +
+          `</div>` +
+          `<div class="card today-card">` +
+          `<div class="kick">Today on the wall</div>` +
+          `<div class="today-big">${escapeHtml(household.timezone)}</div>` +
+          `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} screen${screens.length === 1 ? '' : 's'}</div>` +
+          `<div class="row" style="margin-top:auto;padding-top:16px">` +
+          `<a class="btn btn-ghost btn-sm" href="admin/display">Edit what shows</a>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/layout">Arrange layout</a></div>` +
+          `</div></div></div>` +
+
+          // Sign-out lives in the sidebar footer now, shown on every page for a
+          // plain docker install and stripped under ingress. Here we only keep
+          // the note for the ingress case, where signing out is a Home Assistant
+          // action rather than ours.
           (c.get('viaIngress') === true
-            ? `<p class="hint">Signed in through Home Assistant.</p>`
-            : `<form method="post" action="admin/sign-out">` +
-              `<button class="secondary" type="submit">Sign out</button></form>`),
+            ? `<p class="hint" style="margin-top:24px">Signed in through Home Assistant.</p>`
+            : ''),
       }),
     );
   });
@@ -1451,7 +1574,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         plans.map(card).join('') +
         (canAdd
-          ? `<h2 class="add">Add a rotation</h2>` +
+          ? `<h2 class="add" id="add">Add a rotation</h2>` +
             `<form method="post" action="admin/shifts/new">` +
             `<label for="who">Who</label>` +
             `<select id="who" name="person_id">` +
@@ -1738,13 +1861,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'People — Maverick Wall',
       nav: 'people',
       heading: 'People',
+      action: { label: 'Add someone', href: 'admin/people#add' },
       intro:
         'Everyone the wall knows about. Their colour marks their events and ' +
         'their shifts, so pick ones that are easy to tell apart from across a room.',
       body:
         (error === undefined ? '' : errorBlock(error, suggestion)) +
         people.map(card).join('') +
-        `<h2 class="add">Add someone</h2>` +
+        `<h2 class="add" id="add">Add someone</h2>` +
         `<form method="post" action="admin/people">` +
         `<div class="row-fields">` +
         `<span><label for="new-name">Name</label>` +
@@ -1999,6 +2123,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Screens — Maverick Wall',
       nav: 'screens',
       heading: 'Screens',
+      action: { label: 'Pair a new screen', href: 'admin/screens#add' },
       ...(active.length === 0
         ? { intro: 'No screens paired yet. Add one below and open the link it gives you on the screen itself.' }
         : {}),
@@ -2009,7 +2134,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? ''
           : `<p class="hint">${revoked} unpaired screen${revoked === 1 ? '' : 's'} kept ` +
             `for the record. Their tokens no longer work.</p>`) +
-        `<h2 class="add">Add a screen</h2>` +
+        `<h2 class="add" id="add">Add a screen</h2>` +
         `<form method="post" action="admin/screens">` +
         `<label for="new-screen">Name</label>` +
         `<input id="new-screen" name="name" type="text" required maxlength="80" ` +
@@ -2160,8 +2285,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         `<form method="post" action="admin/display">` +
-        `<label for="theme">Theme</label>` +
-        `<select id="theme" name="theme">${themeOptions(household.theme, false)}</select>` +
+        `<label>Theme</label>` +
+        themeCards(household.theme) +
         `<p class="hint">Board separates the shift colours best from across a room.</p>` +
 
         `<label for="daytime_theme">During the day</label>` +
@@ -2319,12 +2444,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Calendars — Maverick Wall',
       nav: 'calendars',
       heading: 'Calendars',
+      action: { label: 'Add a calendar', href: 'admin/calendars#add' },
       ...(sources.length === 0
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }
         : {}),
       body:
         sources.map((source) => sourceRow(source, at, people)).join('') +
-        `<h2 class="add">Add a calendar</h2>` +
+        `<h2 class="add" id="add">Add a calendar</h2>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         (tested === undefined ? '' : previewPanel(tested)) +
         `<form method="post" action="admin/calendars">` +

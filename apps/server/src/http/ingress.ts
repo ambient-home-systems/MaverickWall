@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono';
+import { SIGNOUT_CLOSE, SIGNOUT_OPEN } from './html.js';
 
 /**
  * Running behind Home Assistant's ingress proxy.
@@ -108,6 +109,10 @@ export function isTrustedIngress(
  */
 const BASE_TAG = '<base href="/">';
 
+/** Matches the sidebar sign-out block, markers included, for removal. */
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SIGNOUT_RE = new RegExp(`${escapeRe(SIGNOUT_OPEN)}[\\s\\S]*?${escapeRe(SIGNOUT_CLOSE)}`, 'g');
+
 /**
  * Rewrite what leaves, so nothing that builds a page has to know.
  *
@@ -142,17 +147,28 @@ export function ingress() {
     if (!type.includes('text/html')) return;
 
     /*
-     * Then the base element.
+     * Then the base element and the sign-out control.
      *
-     * Inserted rather than templated because `page()` is called from four
-     * files and a dozen closures, and threading a prefix through all of them
-     * would be forty chances to forget one. The pages emit relative URLs, so
-     * this single tag is what makes every link, form action and asset resolve
-     * inside the add-on.
+     * The base is inserted rather than templated because `page()` is called
+     * from four files and a dozen closures, and threading a prefix through all
+     * of them would be forty chances to forget one. The pages emit relative
+     * URLs, so this single tag is what makes every link, form action and asset
+     * resolve inside the add-on.
+     *
+     * The sidebar's sign-out is removed here for the same reason it is not
+     * threaded through every page: under ingress the supervisor authenticated
+     * the household, so ending our cookie only has the supervisor hand the
+     * session straight back — a control that looks like it failed. It is
+     * rendered by default (a plain `docker run` has no other way out) and
+     * stripped on the one path where it is wrong.
      */
     const body = await c.res.text();
-    if (!body.includes(BASE_TAG)) return;
-    const patched = body.replace(BASE_TAG, `<base href="${baseHref(prefix)}">`);
+    const hasBase = body.includes(BASE_TAG);
+    const hasSignOut = body.includes(SIGNOUT_OPEN);
+    if (!hasBase && !hasSignOut) return;
+
+    let patched = hasBase ? body.replace(BASE_TAG, `<base href="${baseHref(prefix)}">`) : body;
+    if (hasSignOut) patched = patched.replace(SIGNOUT_RE, '');
 
     c.res = new Response(patched, {
       status: c.res.status,

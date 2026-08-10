@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0
+
+A new look for the settings.
+
+- The admin has been redesigned around a fixed **sidebar** and an **Overview**
+  dashboard: at-a-glance cards for your calendars, screens and shifts, and the
+  status of Weather, Home Assistant and the system, so you can take in the whole
+  wall from one page. Every screen now wears the wall's own dark, amber "Board"
+  look, with clearer cards, headings and status pills throughout.
+- The settings carry their own **typeface** instead of fetching one from the
+  internet, so they read the same offline and nothing is loaded from anywhere
+  outside the add-on.
+- Nothing you have set up changes — the same calendars, screens, shifts and
+  layouts, in a clearer place.
+
 ## 0.1.9
 
 Each wall can now be set up on its own.
