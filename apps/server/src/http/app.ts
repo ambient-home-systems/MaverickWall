@@ -1,6 +1,10 @@
 import { Hono, type Context, type Next } from 'hono';
 import { localDateOf } from '@maverick-wall/calendar';
-import { verifyDisplayToken } from '../auth/tokens.js';
+import {
+  issueDisplayToken,
+  shortCodeHashMatches,
+  verifyDisplayToken,
+} from '../auth/tokens.js';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import {
   createAuth,
@@ -27,16 +31,19 @@ import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { errorBlock, escapeHtml, page } from './html.js';
+import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import { buildManifest, manifestEtag, type ManifestNotice } from '../api/manifest.js';
 import {
+  claimScreenPairing,
   countUsers,
   readEvents,
   readLayoutWidgets,
   effectiveDisplay,
   readHousehold,
   readLastSync,
+  readPairableScreens,
   readPeople,
   readSchemaVersion,
   readScreens,
@@ -62,6 +69,21 @@ import type { SqliteDatabase } from '../db/open.js';
 
 export const DEFAULT_DAYS_BEFORE = 1;
 export const DEFAULT_DAYS_AFTER = 41;
+
+/**
+ * What boot learned from the supervisor about the wall's own address.
+ *
+ * `portMapped` is the load-bearing field: a number is a working host port, a
+ * `null` is a port the household has turned off (and the one case the Screens
+ * page must call out), and `undefined` is "no supervisor to ask" — a plain
+ * `docker run`, where the old manual behaviour is exactly right.
+ */
+export interface WallAddress {
+  readonly detected: string | undefined;
+  readonly portMapped: number | null | undefined;
+  /** True when the household set `base_url` themselves; their value wins. */
+  readonly explicit: boolean;
+}
 
 export interface AppDeps {
   readonly db: SqliteDatabase;
@@ -125,6 +147,13 @@ export interface AppDeps {
   readonly displayDir?: string;
   /** Where the database and the encryption key live. */
   readonly dataDir: string;
+  /**
+   * What the supervisor knows about how a wall screen reaches this add-on,
+   * detected once at boot. Absent on plain `docker run`, where there is no
+   * supervisor to ask. The Screens page uses it to fill the pairing address in
+   * and to say plainly when the display port is turned off.
+   */
+  readonly wallAddress?: WallAddress;
   /** For the uptime figure in diagnostics. Defaults to now. */
   readonly startedAt?: number;
   /**
@@ -152,6 +181,13 @@ export function bytesOf(buffer: Buffer): ArrayBuffer {
 }
 
 const DISPLAY_COOKIE = 'mw_display';
+
+/** Ten years. A wall is paired once and left alone; see the `/pair` routes. */
+const DISPLAY_COOKIE_ATTRS = 'Path=/; HttpOnly; SameSite=Lax; Max-Age=315360000';
+
+/** The pairing-code guess limit: how many, and over how long. */
+const PAIR_WINDOW_MS = 5 * 60_000;
+const PAIR_MAX_ATTEMPTS = 20;
 
 function cookieValue(header: string | undefined, name: string): string | undefined {
   if (!header) return undefined;
@@ -243,6 +279,28 @@ export function createApp(deps: AppDeps): Hono {
         return undefined;
       }
     });
+
+  /*
+   * A fixed-window limit on pairing-code guesses.
+   *
+   * The code is single-use and time-boxed, which is the real defence — but it
+   * is only ~38 bits, and a wall-side endpoint anyone on the LAN can reach
+   * should not let a script sit and guess. Twenty tries in five minutes is far
+   * more than a person fumbling a code off a screen needs and far too few to
+   * search the space. Per app instance, not module-global, so tests keyed to
+   * one address stay independent — the same reason the auth counters are.
+   */
+  const pairAttempts = new Map<string, { count: number; resetAt: number }>();
+  const pairRateLimited = (address: string | undefined, at: number): boolean => {
+    const key = address ?? 'shared';
+    const bucket = pairAttempts.get(key);
+    if (bucket === undefined || at > bucket.resetAt) {
+      pairAttempts.set(key, { count: 1, resetAt: at + PAIR_WINDOW_MS });
+      return false;
+    }
+    bucket.count += 1;
+    return bucket.count > PAIR_MAX_ATTEMPTS;
+  };
 
   /*
    * When to accept a Home Assistant login in place of ours. Off unless we are
@@ -698,6 +756,7 @@ export function createApp(deps: AppDeps): Hono {
     signOut: (c: Context) => authApi(c, '/api/auth/sign-out'),
     appVersion: deps.appVersion,
     baseUrl: deps.auth.baseUrl,
+    ...(deps.wallAddress !== undefined ? { wallAddress: deps.wallAddress } : {}),
     previewManifest: (screenId?: string | null) => {
       // A named wall previews as itself — its zone, its density, its own
       // canvas — so the editor shows what that screen will actually draw. The
@@ -764,11 +823,59 @@ export function createApp(deps: AppDeps): Hono {
     // Ten years. A wall display is paired once and then left alone; an expiry
     // would mean a screen going blank at some arbitrary future moment with
     // nobody around to notice why.
-    c.header(
-      'set-cookie',
-      `${DISPLAY_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=315360000`,
-    );
+    c.header('set-cookie', `${DISPLAY_COOKIE}=${token}; ${DISPLAY_COOKIE_ATTRS}`);
     return c.redirect('/', 302);
+  });
+
+  /**
+   * Pairing by code, for a screen with no camera.
+   *
+   * A television cannot scan the QR, and typing the whole token URL on a remote
+   * is miserable — so the screen itself offers a field, and this is where it
+   * posts the short code from the admin's pairing page. On a match the screen is
+   * rotated onto a fresh token and handed the same cookie the QR path sets, so
+   * everything downstream is identical however the wall was paired.
+   *
+   * The reply is JSON, not a redirect: the display posts this from script and
+   * reloads itself on success. The token never appears in a URL here either.
+   */
+  app.post('/pair', async (c: Context) => {
+    // The socket peer, never a header — a forged `X-Forwarded-For` must not let
+    // a guesser reset somebody else's bucket or hide behind theirs.
+    if (pairRateLimited(clientAddress(c), now())) {
+      return c.json(
+        { error: 'rate-limited', message: 'Too many tries. Wait a few minutes, then try again.' },
+        429,
+      );
+    }
+
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(text('A pairing code', 32), body['code']);
+    // One generic message for every failure below: a wrong code, an expired
+    // code and an already-spent code are indistinguishable to whoever is typing,
+    // and telling them apart only helps somebody guessing.
+    const rejected = { error: 'unknown-code', message: 'That code is not right, or it has expired.' };
+    if (!shaped.ok) return c.json(rejected, 400);
+
+    const candidate = readPairableScreens(deps.db, now()).find((screen) =>
+      shortCodeHashMatches(screen.pairingCodeHash, shaped.value),
+    );
+    if (candidate === undefined) return c.json(rejected, 400);
+
+    // A fresh token, so the code-paired screen is indistinguishable from a
+    // QR-paired one and the QR's token (if it was ever shown) stops working.
+    const issued = issueDisplayToken();
+    const claimed = claimScreenPairing(
+      deps.db,
+      candidate.id,
+      candidate.pairingCodeHash,
+      issued.tokenHash,
+    );
+    // Lost the race with another submission of the same code — it is spent now.
+    if (!claimed) return c.json(rejected, 400);
+
+    c.header('set-cookie', `${DISPLAY_COOKIE}=${issued.token}; ${DISPLAY_COOKIE_ATTRS}`);
+    return c.json({ ok: true });
   });
 
   /**

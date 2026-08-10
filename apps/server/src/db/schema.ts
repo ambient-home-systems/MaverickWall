@@ -333,6 +333,26 @@ export const screens = sqliteTable(
     tokenIssuedAt: integer('token_issued_at', { mode: 'number' }).notNull().$defaultFn(now),
     revokedAt: integer('revoked_at', { mode: 'number' }),
 
+    /**
+     * A short pairing code a screen with no camera can type by hand.
+     *
+     * A television cannot scan the QR — nothing points a camera at the admin
+     * page — and typing a 43-character token on a remote is the worst input
+     * method in the house. So the pairing page also shows an eight-character
+     * code, and this is that code, hashed. The raw code is shown once and never
+     * stored, exactly like the token.
+     *
+     * It is deliberately weaker than the ten-year token — eight characters from
+     * an unambiguous alphabet, roughly 38 bits — so it does not get the token's
+     * lifetime. It is single-use (cleared the moment a screen pairs with it) and
+     * time-boxed (ignored past `pairing_code_expires_at`), which bounds the
+     * window in which that lower entropy is a standing target. A screen that
+     * pairs by code is issued a fresh token like any other, so nothing
+     * downstream can tell how it was paired.
+     */
+    pairingCodeHash: text('pairing_code_hash'),
+    pairingCodeExpiresAt: integer('pairing_code_expires_at', { mode: 'number' }),
+
     /** Diagnostics: is that tablet in the kitchen actually still alive? */
     lastSeenAt: integer('last_seen_at', { mode: 'number' }),
     lastSeenIp: text('last_seen_ip'),

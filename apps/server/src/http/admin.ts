@@ -32,16 +32,23 @@ import {
   writeScreenSettings,
   type AdminScreenRow,
   type AdminSourceRow,
+  type PairingSecret,
   type PersonRecord,
 } from '../api/queries.js';
 import { randomBytes } from 'node:crypto';
-import { issueDisplayToken } from '../auth/tokens.js';
+import {
+  formatShortCode,
+  hashShortCode,
+  issueDisplayToken,
+  PAIRING_CODE_TTL_MS,
+} from '../auth/tokens.js';
+import type { IssuedToken } from '../auth/tokens.js';
 import { encodeQr, qrSvg } from './qr.js';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { backupTo, databasePath, integrityCheck } from '../db/open.js';
-import { bytesOf } from './app.js';
+import { bytesOf, type WallAddress } from './app.js';
 import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage } from '../api/media.js';
@@ -214,6 +221,13 @@ export interface AdminDeps {
    * LAN can reach.
    */
   readonly baseUrl: string;
+  /**
+   * What boot detected from the supervisor about the wall's own address — the
+   * mapped port and a best-guess host. The Screens page pre-fills the pairing
+   * address from it and, when the port is turned off, says so where the
+   * household is looking rather than leaving a link that points nowhere.
+   */
+  readonly wallAddress?: WallAddress;
   /**
    * The manifest the layout editor previews from — the same document a wall
    * gets, for a default screen. Built in `app.ts`, which is where the modules
@@ -1066,6 +1080,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
+   * The stored secrets for a freshly issued pairing: the token's hash, and the
+   * short code's hash with its expiry. One place so the code's lifetime is set
+   * once whether the screen is created or regenerated.
+   */
+  function pairingSecret(issued: IssuedToken): PairingSecret {
+    return {
+      tokenHash: issued.tokenHash,
+      pairingCodeHash: hashShortCode(issued.shortCode),
+      pairingCodeExpiresAt: Date.now() + PAIRING_CODE_TTL_MS,
+    };
+  }
+
+  /**
    * Create a screen and show its pairing link.
    *
    * This is what the `add-screen` CLI does, moved to the one place a household
@@ -1079,7 +1106,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const issued = issueDisplayToken();
     const id = randomBytes(6).toString('hex');
-    createScreen(deps.db, id, shaped.value.name, issued.tokenHash);
+    createScreen(deps.db, id, shaped.value.name, pairingSecret(issued));
     return c.html(pairingPage(shaped.value.name, issued.token, issued.shortCode, c));
   });
 
@@ -1096,7 +1123,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (screen === undefined) return c.html(screensPage('That screen is no longer there.'), 404);
 
     const issued = issueDisplayToken();
-    rotateScreenToken(deps.db, id, issued.tokenHash);
+    rotateScreenToken(deps.db, id, pairingSecret(issued));
     return c.html(pairingPage(screen.name, issued.token, issued.shortCode, c));
   });
 
@@ -1765,6 +1792,36 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // is the only source of the address and the household may not have set it.
     const unreachable = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(origin);
 
+    /*
+     * When boot could ask the supervisor, we know more than the URL string can
+     * tell us. A `null` mapped port is the port turned off — the exact fault
+     * that cost a real install a 404 with nothing on screen to explain it — and
+     * it is worth stopping on, because no link or code can work until it is
+     * fixed. A known mapped *number* lets the localhost fallback name the port
+     * to set rather than guess `8080`.
+     */
+    const wall = deps.wallAddress;
+    const portOff = wall?.portMapped === null;
+    const mappedPort = typeof wall?.portMapped === 'number' ? wall.portMapped : undefined;
+
+    if (portOff) {
+      return page({
+        title: 'Pair this screen',
+        nav: 'screens',
+        heading: `Pair ${name}`,
+        intro: 'This screen cannot be paired until the display port is turned on.',
+        body:
+          errorBlock(
+            'The wall display port is turned off, so a screen has nowhere to connect.',
+            'Open this add-on’s Network panel, give “Wall displays connect here” ' +
+              '(8080/tcp) a free host port, and restart the add-on.',
+          ) +
+          `<p class="hint">Then come back to Screens and pair this screen again — ` +
+          `the add-on will fill in the address for you once the port is on.</p>` +
+          `<p><a class="link" href="admin/screens">← Back to screens</a></p>`,
+      });
+    }
+
     return page({
       title: 'Pair this screen',
       nav: 'screens',
@@ -1776,20 +1833,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (unreachable
           ? errorBlock(
               'This link points at localhost, which is nowhere from a wall screen.',
-              underIngress
-                ? 'Set the add-on’s “base_url” option to this box’s address on ' +
-                    'your network — like http://192.168.1.10:8080 — then pair again.'
-                : 'Open this admin page using the box’s address on your network — ' +
-                    'like http://192.168.1.10:8080 — rather than localhost, then pair again.',
+              mappedPort !== undefined
+                ? `The display port is mapped to ${mappedPort}. Set the add-on’s ` +
+                    `“base_url” to this box’s network address with that port — like ` +
+                    `http://192.168.1.10:${mappedPort} — then pair again.`
+                : underIngress
+                  ? 'Set the add-on’s “base_url” option to this box’s address on ' +
+                      'your network — like http://192.168.1.10:8080 — then pair again.'
+                  : 'Open this admin page using the box’s address on your network — ' +
+                      'like http://192.168.1.10:8080 — rather than localhost, then pair again.',
             )
           : '') +
         (matrix === undefined
           ? errorBlock('That address is too long to put in a QR code.', 'Use the link below.')
           : `<div class="qr">${qrSvg(matrix, 260)}</div>`) +
-        `<p class="hint">Or type this address on the screen:</p>` +
+        `<p class="hint">No camera? Open Maverick Wall on the screen itself and ` +
+        `type this pairing code:</p>` +
+        `<p><span class="code">${escapeHtml(formatShortCode(shortCode))}</span></p>` +
+        `<p class="hint">It works for the next day, and once — pairing a screen ` +
+        `spends it. Or type this whole address on the screen instead:</p>` +
         `<p><span class="code">${escapeHtml(url)}</span></p>` +
-        `<p class="hint">Pairing code, if the screen asks for one: ` +
-        `<span class="code">${escapeHtml(shortCode)}</span></p>` +
         `<p><a class="link" href="admin/screens">← Back to screens</a></p>`,
     });
   }

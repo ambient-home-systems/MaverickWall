@@ -147,6 +147,10 @@ CMD ["node", "/app/dist/main.js"]
 # Filled in by the release workflow. Kept last so they never bust the cache.
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
+# The same tag the label carries, handed to the running process so it can report
+# its true version — `/healthz`, each screen's reported version, and the update
+# check's baseline all read this instead of a constant nobody remembered to bump.
+ENV MW_VERSION=${VERSION}
 LABEL org.opencontainers.image.title="Maverick Wall" \
       org.opencontainers.image.description="A self-hosted family calendar for a wall display." \
       org.opencontainers.image.source="https://github.com/ambient-home-systems/MaverickWall" \

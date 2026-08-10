@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { openAndMigrate } from '../db/bootstrap.js';
-import { formatShortCode, issueDisplayToken } from '../auth/tokens.js';
+import { formatShortCode, hashShortCode, issueDisplayToken, PAIRING_CODE_TTL_MS } from '../auth/tokens.js';
+import { createScreen } from '../api/queries.js';
 
 /**
  * Pair a screen from the command line.
@@ -76,12 +77,14 @@ if (!name) {
 
 const issued = issueDisplayToken();
 const id = randomBytes(6).toString('hex');
-const now = Date.now();
 
-db.prepare(
-  `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, ?)`,
-).run(id, name, issued.tokenHash, now, now, now);
+// Through the same writer the admin uses, so a CLI-paired screen carries the
+// same short code — the code entry on the display works whichever door made it.
+createScreen(db, id, name, {
+  tokenHash: issued.tokenHash,
+  pairingCodeHash: hashShortCode(issued.shortCode),
+  pairingCodeExpiresAt: Date.now() + PAIRING_CODE_TTL_MS,
+});
 
 const port = process.env['PORT'] ?? '8080';
 

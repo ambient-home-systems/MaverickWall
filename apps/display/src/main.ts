@@ -1,6 +1,6 @@
 import { createClock } from './clock.js';
 import { createManifestClient, type Manifest } from './manifest.js';
-import { render, renderFreeform, renderMessage } from './render.js';
+import { render, renderFreeform, renderMessage, renderPairing } from './render.js';
 import { applyTheme, themeAt } from './theme.js';
 import {
   geometryFor,
@@ -35,6 +35,13 @@ function start(): void {
   const root = document.getElementById('wall');
   if (root === null) return;
 
+  // The default theme, before any manifest. Board is the documented default,
+  // and its tokens are what the pre-paint and pairing screens are styled from —
+  // without this they draw with `--panel`, `--muted` and `--accent` all unset,
+  // so a field has no box and the muted text is not muted. A real manifest
+  // re-themes on the first draw.
+  applyTheme(document.documentElement, 'board');
+
   const clock = createClock();
   const client = createManifestClient((input, init) => fetch(input, init));
   const store = createManifestStore();
@@ -42,6 +49,9 @@ function start(): void {
   let manifest: Manifest | undefined;
   let lastConfirmedAt = 0;
   let offline = false;
+  // Drawn once when the screen first turns out to be unpaired, then left alone
+  // so the 60-second poll cannot wipe a code somebody is mid-way through typing.
+  let pairingShown = false;
   const startedAt = Date.now();
   let lastDrawAt = startedAt;
   let lastContactAt = startedAt;
@@ -148,11 +158,12 @@ function start(): void {
         break;
       case 'unpaired':
         manifest = undefined;
-        renderMessage(
-          root,
-          'This screen is not paired',
-          'Add it from the Maverick Wall admin, then open the pairing link on this screen.',
-        );
+        // Render the code-entry form once. Redrawing it every poll would clear
+        // the field between keystrokes on a remote, which is slow enough already.
+        if (!pairingShown) {
+          pairingShown = true;
+          renderPairing(root, submitPairingCode);
+        }
         return;
       case 'failed':
         // Deliberately keeps the last manifest. The banner will say how old it
@@ -163,6 +174,36 @@ function start(): void {
     // Through `safely`, like the tick does: a poll-driven draw gets the same
     // protection, and the focus that follows a redraw is applied in one place.
     safely(draw);
+  };
+
+  /*
+   * Pairing this screen by code.
+   *
+   * Posts the short code from the admin's pairing page. On success the server
+   * has set the display cookie, so a reload restarts the normal boot path fully
+   * paired — simpler and more certain than trying to poll on from here. On
+   * failure the message is passed straight back to the form for the person at
+   * the screen to read.
+   */
+  const submitPairingCode = async (code: string): Promise<{ ok: boolean; message?: string }> => {
+    const response = await fetch('/pair', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      // Accept the Set-Cookie the server sends back.
+      credentials: 'same-origin',
+      body: new URLSearchParams({ code }).toString(),
+    });
+    if (response.ok) {
+      location.reload();
+      return { ok: true };
+    }
+    try {
+      const payload = (await response.json()) as { message?: unknown };
+      if (typeof payload.message === 'string') return { ok: false, message: payload.message };
+    } catch {
+      // No JSON body; the form falls back to its own wording.
+    }
+    return { ok: false };
   };
 
   /*

@@ -665,23 +665,97 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
  * second one that drifted would be a screen the display layer treated subtly
  * differently depending on which button made it.
  */
-export function createScreen(db: SqliteDatabase, id: string, name: string, tokenHash: string): void {
-  const at = Date.now();
-  db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, name, tokenHash, at, at, at);
+/**
+ * What a freshly issued pairing carries: the token's hash, plus the short
+ * code's hash and when that code stops being accepted. The code fields are
+ * optional because the CLI path can pair without ever showing a code.
+ */
+export interface PairingSecret {
+  readonly tokenHash: string;
+  readonly pairingCodeHash: string | null;
+  readonly pairingCodeExpiresAt: number | null;
 }
 
-export function rotateScreenToken(db: SqliteDatabase, id: string, tokenHash: string): boolean {
+export function createScreen(
+  db: SqliteDatabase,
+  id: string,
+  name: string,
+  pairing: PairingSecret,
+): void {
+  const at = Date.now();
+  db.prepare(
+    `INSERT INTO screens
+       (id, name, token_hash, pairing_code_hash, pairing_code_expires_at,
+        token_issued_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, pairing.tokenHash, pairing.pairingCodeHash, pairing.pairingCodeExpiresAt, at, at, at);
+}
+
+export function rotateScreenToken(db: SqliteDatabase, id: string, pairing: PairingSecret): boolean {
   const at = Date.now();
   return (
     db
       .prepare(
-        `UPDATE screens SET token_hash = ?, token_issued_at = ?, revoked_at = NULL, updated_at = ?
+        `UPDATE screens
+            SET token_hash = ?, pairing_code_hash = ?, pairing_code_expires_at = ?,
+                token_issued_at = ?, revoked_at = NULL, updated_at = ?
           WHERE id = ?`,
       )
-      .run(tokenHash, at, at, id).changes > 0
+      .run(
+        pairing.tokenHash, pairing.pairingCodeHash, pairing.pairingCodeExpiresAt, at, at, id,
+      ).changes > 0
+  );
+}
+
+export interface PairableScreen {
+  readonly id: string;
+  readonly pairingCodeHash: string;
+}
+
+/**
+ * Screens a pairing code could still claim: not revoked, with a code set, and
+ * inside its window. The caller compares the presented code against these in
+ * constant time rather than matching on the hash in SQL, so a wrong code takes
+ * the same work whichever screen it was aimed at.
+ */
+export function readPairableScreens(db: SqliteDatabase, now: number): PairableScreen[] {
+  return db
+    .prepare(
+      `SELECT id, pairing_code_hash AS pairingCodeHash
+         FROM screens
+        WHERE revoked_at IS NULL
+          AND pairing_code_hash IS NOT NULL
+          AND pairing_code_expires_at IS NOT NULL
+          AND pairing_code_expires_at > ?`,
+    )
+    .all(now) as PairableScreen[];
+}
+
+/**
+ * Claim a screen with its pairing code: rotate to a fresh token and spend the
+ * code so it can never be reused.
+ *
+ * The write is conditional on the code still being present, so two submissions
+ * of the same code race to a single winner — the second finds nothing to claim
+ * and fails, rather than minting a second token for one screen.
+ */
+export function claimScreenPairing(
+  db: SqliteDatabase,
+  id: string,
+  expectedCodeHash: string,
+  newTokenHash: string,
+): boolean {
+  const at = Date.now();
+  return (
+    db
+      .prepare(
+        `UPDATE screens
+            SET token_hash = ?, token_issued_at = ?,
+                pairing_code_hash = NULL, pairing_code_expires_at = NULL,
+                revoked_at = NULL, updated_at = ?
+          WHERE id = ? AND pairing_code_hash = ?`,
+      )
+      .run(newTokenHash, at, at, id, expectedCodeHash).changes > 0
   );
 }
 
