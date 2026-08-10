@@ -530,6 +530,61 @@ body {
 .message h1 { font-family: var(--disp); font-size: 6rem; font-weight: 700; }
 .message p { font-size: 2.4rem; color: var(--muted); margin-top: 1.6rem; }
 
+/* The code-entry form on the unpaired screen. Sized to be read across a room
+   and typed with a remote: one big field, one big button. */
+.message.pairing { max-width: 40rem; }
+.pair-form {
+  display: flex;
+  justify-content: center;
+  gap: 1.4rem;
+  margin-top: 3rem;
+}
+.pair-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 1.1rem 1.4rem;
+  border: 0.2rem solid var(--line, var(--muted));
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--f-mono, monospace);
+  font-size: 2.6rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.pair-input::placeholder { color: var(--muted); letter-spacing: 0.18em; }
+.pair-input:focus,
+.pair-input:focus-visible {
+  outline: 0.25rem solid var(--accent);
+  outline-offset: 0.3rem;
+}
+.pair-submit {
+  flex: 0 0 auto;
+  padding: 1.1rem 2.2rem;
+  border: 0.2rem solid var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.pair-submit:focus,
+.pair-submit:focus-visible {
+  outline: 0.25rem solid var(--ink);
+  outline-offset: 0.3rem;
+}
+.pair-submit:disabled { opacity: 0.5; }
+.pair-status {
+  min-height: 2.4rem;
+  margin-top: 1.6rem;
+  font-size: 1.8rem;
+  color: var(--muted);
+}
+
 /* ======================================================================
    LANDSCAPE
    ======================================================================

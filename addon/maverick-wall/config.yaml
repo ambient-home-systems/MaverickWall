@@ -41,11 +41,20 @@ ingress_stream: true
 panel_icon: mdi:calendar-month
 panel_title: Wall
 
-# The displays. Left null so Home Assistant asks rather than assuming 8080 is
-# free — a household with something already on it should not have a failed
-# start with no explanation.
+# The displays. Mapped to 8080 by default, because a wall calendar with no
+# reachable display port is the one thing this add-on exists to avoid — and a
+# port left null is *hidden* in the UI behind "show disabled ports", so a
+# household never learns they had to turn it on. It cost a real install exactly
+# that: a 404 on the pairing link with nothing on screen to explain it.
+#
+# The tradeoff is a port conflict when 8080 is already taken. That is the case
+# the null default was protecting — but the supervisor reports a clash plainly
+# at install ("port already in use"), which a household can act on, where a
+# silently-off port teaches them nothing. If it clashes, change it here and set
+# the wall display address to match; the add-on now detects the mapped port and
+# says so on the Screens page either way.
 ports:
-  8080/tcp: null
+  8080/tcp: 8080
 ports_description:
   8080/tcp: Wall displays connect here. Not needed for the settings, which use the sidebar.
 

@@ -718,3 +718,105 @@ export function renderMessage(root: HTMLElement, heading: string, detail: string
   root.textContent = '';
   root.appendChild(screen);
 }
+
+/** What the code-entry form reports back after a submission. */
+export interface PairingOutcome {
+  readonly ok: boolean;
+  readonly message?: string;
+}
+
+/**
+ * The pairing screen, with a field to type the short code.
+ *
+ * This is the whole answer to "a wall television cannot scan a QR". The admin's
+ * pairing page shows an eight-character code; the wall shows a box to type it
+ * into, and `submit` is what posts it. On success the caller reloads, so the
+ * normal boot path picks up the freshly set cookie — this function never has to
+ * know what a paired wall looks like.
+ *
+ * Built to be driven from a television remote as much as a touchscreen: the
+ * field takes focus immediately so the first key press lands in it, `Enter`
+ * submits (a form with a submit button does that for free), and the code is
+ * upper-cased as it is typed because the alphabet is.
+ */
+export function renderPairing(
+  root: HTMLElement,
+  submit: (code: string) => Promise<PairingOutcome>,
+): void {
+  const screen = el('div', 'screen screen-message');
+  const panel = el('section', 'message pairing');
+  panel.appendChild(el('h1', undefined, 'Pair this screen'));
+  panel.appendChild(
+    el(
+      'p',
+      undefined,
+      'On another device, open Maverick Wall, add this screen under Screens, ' +
+        'and type the pairing code it shows.',
+    ),
+  );
+
+  const form = document.createElement('form');
+  form.className = 'pair-form';
+
+  const input = document.createElement('input');
+  input.className = 'pair-input';
+  input.type = 'text';
+  // A code, not prose: no autocorrect, no capitalised-first-letter, no
+  // dictionary. `characters` matches the alphabet the code is drawn from.
+  input.autocapitalize = 'characters';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.setAttribute('aria-label', 'Pairing code');
+  input.setAttribute('placeholder', 'ABCD-EFGH');
+  // Eight characters plus the dash a person copies off the screen.
+  input.maxLength = 12;
+
+  const button = el('button', 'pair-submit', 'Pair') as HTMLButtonElement;
+  button.type = 'submit';
+
+  const status = el('p', 'pair-status');
+
+  form.appendChild(input);
+  form.appendChild(button);
+  panel.appendChild(form);
+  panel.appendChild(status);
+  screen.appendChild(panel);
+  root.textContent = '';
+  root.appendChild(screen);
+
+  let busy = false;
+  const onSubmit = async (): Promise<void> => {
+    if (busy) return;
+    const code = input.value.trim();
+    if (code === '') {
+      status.textContent = 'Type the code shown in the admin.';
+      return;
+    }
+    busy = true;
+    button.disabled = true;
+    status.textContent = 'Pairing…';
+    let outcome: PairingOutcome;
+    try {
+      outcome = await submit(code);
+    } catch {
+      outcome = { ok: false, message: 'Could not reach the server. Try again.' };
+    }
+    if (outcome.ok) {
+      // Leave "Pairing…" up; the caller reloads and the wall replaces it.
+      status.textContent = 'Paired. Loading your wall…';
+      return;
+    }
+    status.textContent = outcome.message ?? 'That code is not right, or it has expired.';
+    busy = false;
+    button.disabled = false;
+    input.focus();
+    input.select();
+  };
+
+  form.addEventListener('submit', (event: Event) => {
+    event.preventDefault();
+    void onSubmit();
+  });
+
+  input.focus();
+}

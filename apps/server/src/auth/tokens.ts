@@ -81,10 +81,59 @@ export function verifyDisplayToken(presented: string, storedHash: string): boole
 
 /** True when a short code matches the token, ignoring case and spacing. */
 export function shortCodeMatches(token: string, presented: string): boolean {
-  const normalised = presented.replace(/[\s-]/g, '').toUpperCase();
+  const normalised = normaliseShortCode(presented);
   const expected = shortCodeFrom(token);
   if (normalised.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(normalised, 'utf8'), Buffer.from(expected, 'utf8'));
+}
+
+/**
+ * How long a screen's pairing code lives.
+ *
+ * The token URL is deliberately good for ten years — a wall is paired once and
+ * left alone. The short *code* is not: it is roughly 38 bits, so it is
+ * single-use and time-boxed instead, and this bounds the window in which an
+ * unpaired screen's code sits as a standing target on the LAN. A day is long
+ * enough that nobody setting up a screen is rushed, and a household that takes
+ * longer just regenerates, which costs nothing.
+ */
+export const PAIRING_CODE_TTL_MS = 24 * 60 * 60_000;
+
+/** Trim the spacing and case a person adds when typing a code off a screen. */
+export function normaliseShortCode(presented: string): string {
+  return presented.replace(/[\s-]/g, '').toUpperCase();
+}
+
+/**
+ * The stored form of a screen pairing code.
+ *
+ * Hashed for the same reason the token is: a leaked database must not hand out
+ * a working pairing credential. No slow KDF — the code is compared against what
+ * a person typed, not brute-forced from the hash, and the entropy plus the
+ * single-use, time-boxed lifetime is what defends it. Prefixed so it can never
+ * collide with any other short code this file derives.
+ */
+export function hashShortCode(code: string): string {
+  return createHash('sha256').update(`pair:${normaliseShortCode(code)}`, 'utf8').digest('hex');
+}
+
+/**
+ * Whether a presented code matches a stored hash, in constant time.
+ *
+ * The comparison is on the hashes, not the codes, so it never short-circuits on
+ * the first wrong character — the same reason the setup path compares with
+ * `shortCodeMatches` rather than by a schema.
+ */
+export function shortCodeHashMatches(storedHash: string, presented: string): boolean {
+  const presentedHash = Buffer.from(hashShortCode(presented), 'hex');
+  let stored: Buffer;
+  try {
+    stored = Buffer.from(storedHash, 'hex');
+  } catch {
+    return false;
+  }
+  if (presentedHash.length !== stored.length) return false;
+  return timingSafeEqual(presentedHash, stored);
 }
 
 /**

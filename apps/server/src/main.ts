@@ -18,6 +18,7 @@ import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
 import { createSetupTokenHolder } from './http/setup.js';
 import { normalizeBaseUrl } from './validation.js';
+import { detectWallAddress } from './net/supervisor.js';
 import { countUsers, readHousehold, readUpdateState, recordUpdateCheck } from './api/queries.js';
 import { checkForUpdate } from './api/update-check.js';
 import type { ManifestNotice } from './api/manifest.js';
@@ -31,12 +32,23 @@ import type { ManifestNotice } from './api/manifest.js';
  * becomes a notice on screen rather than a non-zero exit.
  */
 
-const APP_VERSION = '0.1.1';
-
 function env(name: string, fallback: string): string {
   const value = process.env[name];
   return value === undefined || value === '' ? fallback : value;
 }
+
+/*
+ * The real version of this image, not a constant somebody has to remember to
+ * bump.
+ *
+ * It was hardcoded `'0.1.1'` for four releases, so every `/healthz`, every
+ * screen's reported version, and — the one that bites — the update check's
+ * baseline all lied. `MW_VERSION` is set in the image from the release tag the
+ * build already receives (`VERSION` in the Dockerfile), with the `v` stripped.
+ * A local build has no tag, so it reports `0.0.0`, which reads honestly as
+ * "unversioned" rather than as some specific release it is not.
+ */
+const APP_VERSION = env('MW_VERSION', '0.0.0').replace(/^v/, '');
 
 async function main(): Promise<void> {
   const startedAt = Date.now();
@@ -210,10 +222,35 @@ async function main(): Promise<void> {
   // there is no default credential to leave unchanged. Its own purpose, so it
   // is not the key that encrypts calendar URLs.
   const authSecret = deriveKey(master.key, 'session').toString('base64');
+
+  /*
+   * Ask the supervisor where the wall actually lives, so a household does not
+   * have to type it. On the add-on this fills in the mapped host port and the
+   * box's address; on a plain `docker run` there is no supervisor and it returns
+   * nothing, leaving the manual path exactly as it was. It cannot fail the boot
+   * — every branch degrades to "unknown" — see the module.
+   */
+  const detection = await detectWallAddress(fetcher, process.env, port);
+  const explicitBaseUrl = (process.env['BASE_URL'] ?? '').trim() !== '';
+  if (!explicitBaseUrl && detection.baseUrl !== undefined) {
+    console.log(`[boot] detected wall address ${detection.baseUrl}`);
+  }
+  if (detection.mappedPort === null) {
+    console.log(
+      '[boot] the wall display port is not mapped — turn it on in the add-on ' +
+        'Network settings before pairing a screen',
+    );
+  }
+
   // Normalised rather than trusted: a bare IP is the obvious thing to type and
   // is not a URL, and passing it straight to Better Auth exits the process on
-  // its first line — the refusal to start rule nine forbids. See the function.
-  const base = normalizeBaseUrl(process.env['BASE_URL'], `http://localhost:${port}`);
+  // its first line — the refusal to start rule nine forbids. The detected
+  // address is the fallback when nobody set one, in place of the old localhost
+  // guess that is nowhere from a wall screen; an explicit BASE_URL still wins.
+  const base = normalizeBaseUrl(
+    process.env['BASE_URL'],
+    detection.baseUrl ?? `http://localhost:${port}`,
+  );
   const baseUrl = base.url;
   if (base.warning !== undefined) console.log(`[boot] ${base.warning}`);
 
@@ -247,6 +284,11 @@ async function main(): Promise<void> {
     fetcher,
     setupToken,
     dataDir: resolved,
+    wallAddress: {
+      detected: detection.baseUrl,
+      portMapped: detection.mappedPort,
+      explicit: explicitBaseUrl,
+    },
     startedAt,
     log,
   });
