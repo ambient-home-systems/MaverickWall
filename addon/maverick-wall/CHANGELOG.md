@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.1
+
+Setting up a wall screen is far less fiddly.
+
+- A screen with no camera — most **televisions** — can now be paired by
+  **typing a short code**. Open Maverick Wall on the screen itself, enter the
+  code shown on the Screens page, and it pairs. No more reading a long web
+  address off one screen and thumbing it into another with a remote.
+- The add-on now **works out its own address**. It asks Home Assistant which
+  port your wall screens should connect on and fills the pairing address in for
+  you, so there is far less to get exactly right by hand — and if the display
+  port is turned off, the Screens page says so plainly instead of handing you a
+  link that goes nowhere.
+- The **wall display port is on by default**, so a fresh install already has
+  somewhere for screens to connect without digging through the Network
+  settings.
+
+If a screen was already paired, nothing changes.
+
 ## 0.2.0
 
 A new look for the settings.
