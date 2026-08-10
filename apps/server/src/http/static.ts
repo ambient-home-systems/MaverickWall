@@ -70,6 +70,23 @@ export function defaultDisplayDir(): string {
   return new URL('../../../display/dist', import.meta.url).pathname;
 }
 
+/**
+ * Where the self-hosted admin fonts are.
+ *
+ * `FONTS_DIR` first, for the image: `pnpm deploy` flattens the server package,
+ * so the repo-relative fallback below resolves nowhere in the container — the
+ * same trap `defaultDisplayDir` guards against, so the Dockerfile sets it. The
+ * fallback is `apps/server/assets/fonts`, for a checkout run in development.
+ * Rule three: nothing here is fetched — the woff2 ships in the image and is
+ * served same-origin from this directory.
+ */
+export function defaultFontsDir(): string {
+  const configured = globalThis.process?.env?.['FONTS_DIR'];
+  if (configured !== undefined && configured !== '') return configured;
+  // apps/server/dist/http/static.js → apps/server/assets/fonts
+  return new URL('../../assets/fonts', import.meta.url).pathname;
+}
+
 export function createStaticFiles(directory: string): StaticFiles {
   return {
     directory,

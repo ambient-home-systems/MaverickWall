@@ -545,14 +545,12 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       heading: 'That is everything',
       intro:
         sourceCount === 0
-          ? 'No calendars yet. Add one with the add-source tool, or from the ' +
-            'Calendars screen once it is built.'
+          ? 'No calendars yet — you can add one from the Calendars screen whenever you like.'
           : 'Your calendar will sync within a few seconds.',
       body:
-        `<p>Pair a display by running <span class="code">add-screen "Kitchen"</span> ` +
-        `and opening the link it prints on the screen itself.</p>` +
-        `<p>The admin interface is not built yet. ` +
-        `<a style="color:#E0A33E" href="healthz">Check the server status</a>.</p>`,
+        `<p>Pair a wall display from the <a class="link" href="admin/screens">Screens</a> ` +
+        `screen — it gives you a QR code and a link to open on the screen itself.</p>` +
+        `<p><a class="link" href="admin">Go to the admin →</a></p>`,
     });
   }
 }

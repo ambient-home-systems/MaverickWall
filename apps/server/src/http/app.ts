@@ -20,7 +20,7 @@ import {
 } from '../auth/session.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
-import { createStaticFiles, defaultDisplayDir } from './static.js';
+import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.js';
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
@@ -145,6 +145,11 @@ export interface AppDeps {
    * once split one installation into two databases.
    */
   readonly displayDir?: string;
+  /**
+   * Where the self-hosted admin fonts live. Defaults to the sibling of the
+   * compiled server; `FONTS_DIR` overrides it in the flattened image.
+   */
+  readonly fontsDir?: string;
   /** Where the database and the encryption key live. */
   readonly dataDir: string;
   /**
@@ -260,6 +265,7 @@ export function createApp(deps: AppDeps): Hono {
   const now = deps.now ?? (() => Date.now());
 
   const staticFiles = createStaticFiles(deps.displayDir ?? defaultDisplayDir());
+  const fontFiles = createStaticFiles(deps.fontsDir ?? defaultFontsDir());
 
   const auth = createAuth({ db: deps.db, secret: deps.auth.secret, baseUrl: deps.auth.baseUrl });
 
@@ -892,6 +898,22 @@ export function createApp(deps: AppDeps): Hono {
     if (file === undefined) return c.json({ error: 'not-found' }, 404);
     c.header('content-type', file.contentType);
     c.header('cache-control', 'no-cache');
+    return c.body(bytesOf(file.body));
+  });
+
+  /*
+   * The self-hosted admin fonts, on their own path and directory.
+   *
+   * Rule three: the admin loads no web font, so Roboto Condensed ships in the
+   * image and is served same-origin. Unlike the display bundle these are
+   * content-addressed by nothing that changes, so they carry a long immutable
+   * cache — a woff2 that never changes is cheap to keep for a year.
+   */
+  app.get('/assets/fonts/:name', (c: Context) => {
+    const file = fontFiles.read(c.req.param('name') ?? '');
+    if (file === undefined) return c.json({ error: 'not-found' }, 404);
+    c.header('content-type', file.contentType);
+    c.header('cache-control', 'public, max-age=31536000, immutable');
     return c.body(bytesOf(file.body));
   });
 
