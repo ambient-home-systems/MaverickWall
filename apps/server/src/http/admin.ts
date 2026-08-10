@@ -1990,7 +1990,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const household = readHousehold(deps.db);
     const option = (value: string, label: string, selected: boolean): string =>
       `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
-    const action = `/admin/screens/${encodeURIComponent(screen.id)}`;
+    // Relative, so the `<base href>` prefix carries it through ingress/a proxy.
+    const action = `admin/screens/${encodeURIComponent(screen.id)}`;
     // A density field: this wall's number, or blank showing the household's as a
     // placeholder so the default is visible without being typed.
     const density = (name: string, value: number | null, fallback: number): string =>
@@ -2092,7 +2093,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * settings themselves moved to the wall's own page under Layout.
    */
   function screenCard(screen: AdminScreenRow, at: number): string {
-    const action = `/admin/screens/${encodeURIComponent(screen.id)}`;
+    // Relative, like every other form action here — an absolute `/admin/...`
+    // bypasses the `<base href>` prefix and 404s behind ingress or a proxy.
+    const action = `admin/screens/${encodeURIComponent(screen.id)}`;
     const configure = `admin/layout?screen=${encodeURIComponent(screen.id)}`;
     return (
       `<article class="card">` +
