@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2
+
+Fixes the buttons on the Screens page.
+
+- **Unpair** and **Show pairing link** led to a "not found" page when the
+  settings were opened through the Home Assistant sidebar or a reverse proxy.
+  Both buttons work again wherever the settings are opened from.
+
 ## 0.2.1
 
 Setting up a wall screen is far less fiddly.
