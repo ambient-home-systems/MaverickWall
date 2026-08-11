@@ -14,6 +14,13 @@ the end of the afternoon.
 The [add-on documentation](../addon/maverick-wall/DOCS.md) covers the Home
 Assistant path in more detail.
 
+**Building an add-on module.** A module is a small HTTP service that puts an
+extra panel on the wall — data, never code.
+
+- [Building a module](building-a-module.md) — the contract and the panel shapes
+- [`examples/example-module`](../examples/example-module) — a complete, runnable one
+- [RFC 001](rfc-001-module-framework.md) — the design and its trade-offs
+
 > **A note on the docs site.** These are plain Markdown in the repository. A
 > published site (Cloudflare Pages) is not set up — that is a deployment with
 > its own domain and build, and shipping a half-configured one would be worse
