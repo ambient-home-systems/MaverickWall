@@ -1,0 +1,82 @@
+# The version main declares must have a public image behind it.
+#
+# Home Assistant's add-on store reads `addon/maverick-wall/config.yaml` from the
+# default branch, so the instant a version bump merges to main the supervisor
+# advertises that version to every household — *before* its image exists. The
+# image is only built when the matching `vX.Y.Z` tag is pushed and `release.yml`
+# finishes (~9 min). Forget the tag, mistype it, let the build fail, or leave the
+# GHCR package private, and main promises a version whose image is a 404. The
+# first anyone learns of it is a household pressing Update and getting
+# "An unknown error occurred" — which is exactly how 0.16.0 first went out.
+#
+# `release.yml` verifies the *tag's* image after a release, but that never runs
+# if the tag is never pushed. This is the complementary guard: for the version
+# main currently declares, assert the image is publicly pullable from GHCR — the
+# same anonymous pull the supervisor does. It polls, so it does not fire during a
+# normal release (bump and tag pushed together, image up within minutes) and only
+# fails when the image genuinely never appears.
+
+name: Add-on image published
+
+on:
+  # The bump itself. Only when config.yaml changes, so an ordinary commit does
+  # not spend twenty minutes polling.
+  push:
+    branches: [main]
+    paths: ['addon/maverick-wall/config.yaml']
+  # A daily backstop, in case a mismatch arrives some other way (a revert, a
+  # package that was made private, a hand-edited manifest).
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-exists:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The version main declares is a public image on GHCR
+        run: |
+          set -euo pipefail
+          IMG="${{ github.repository_owner }}/maverick-wall"
+          VERSION=$(grep -E '^version:' addon/maverick-wall/config.yaml | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "${VERSION}" ]; then
+            echo "::error::could not read version: from addon/maverick-wall/config.yaml"
+            exit 1
+          fi
+          echo "config.yaml declares ${VERSION}; ghcr.io/${IMG}:${VERSION} must be publicly pullable."
+
+          # Anonymous, exactly like a household's supervisor: fetch a pull token
+          # with no credentials, then ask for the manifest. 200 = present and
+          # public. 401/404 = missing or private — both are the household-facing
+          # failure, so both fail this check.
+          probe() {
+            local token
+            token=$(curl -fsSL "https://ghcr.io/token?scope=repository:${IMG}:pull" \
+              | sed -E 's/.*"token":"([^"]+)".*/\1/')
+            curl -s -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${token}" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json' \
+              "https://ghcr.io/v2/${IMG}/manifests/${VERSION}"
+          }
+
+          # A release publishes within ~10 min of the bump landing, so give the
+          # build time rather than failing the instant the bump merges. ~20 min of
+          # slack covers a queued runner; past that, the image is not coming.
+          code=000
+          for attempt in $(seq 1 40); do
+            code=$(probe || echo 000)
+            if [ "${code}" = "200" ]; then
+              echo "ghcr.io/${IMG}:${VERSION} is public and present (attempt ${attempt})."
+              exit 0
+            fi
+            echo "attempt ${attempt}/40: HTTP ${code} — not yet; waiting 30s"
+            sleep 30
+          done
+
+          echo "::error::main declares ${VERSION} but ghcr.io/${IMG}:${VERSION} is not publicly pullable (last HTTP ${code}). Push the v${VERSION} tag so release.yml builds it, and confirm the GHCR package is public. Until then Home Assistant offers an update that 404s on pull."
+          exit 1
