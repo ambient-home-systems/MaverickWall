@@ -876,6 +876,11 @@ export function render(root: HTMLElement, model: DisplayModel): void {
       screen.appendChild(renderNext(model));
     } else if (block === 'horizon') {
       screen.appendChild(renderHorizon(model));
+    } else if (block.startsWith('ext:')) {
+      // A third-party module's block. Absent rather than empty when the module
+      // has not answered yet — a blank row is worse than no row.
+      const panel = model.externalPanels[block];
+      if (panel !== undefined) screen.appendChild(renderGenericPanel(panel));
     }
   }
 

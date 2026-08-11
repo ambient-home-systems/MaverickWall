@@ -21,6 +21,7 @@ import { normalizeBaseUrl } from './validation.js';
 import { detectWallAddress } from './net/supervisor.js';
 import { countUsers, readHousehold, readUpdateState, recordUpdateCheck } from './api/queries.js';
 import { checkForUpdate } from './api/update-check.js';
+import { pollExternalModules } from './modules/external/index.js';
 import type { ManifestNotice } from './api/manifest.js';
 
 /**
@@ -196,6 +197,18 @@ async function main(): Promise<void> {
           },
         ]),
       ),
+      /*
+       * Third-party modules, all in one poll (docs/rfc-001-module-framework.md).
+       *
+       * One shared job rather than one per module: they are on the household's
+       * own network, a handful at most, and a single pass keeps the scheduler
+       * from filling with `ext:*` job rows. Each module's own failure is caught
+       * inside and surfaced on its card; the wall keeps its calendar regardless.
+       */
+      'external-modules': async () => {
+        await pollExternalModules(db, fetcher);
+        return { status: 'ok' };
+      },
       'update-check': async () => {
         if (!readUpdateState(db).enabled) return { status: 'ok' };
         const result = await checkForUpdate(fetcher, APP_VERSION);
@@ -424,6 +437,9 @@ function registerJobs(db: SqliteDatabase): void {
   // Registered always, gated by the setting when it fires. Ten minutes out so
   // a restart is never the thing that makes an outbound request.
   ensureJob(db, 'update-check', 'update-check', Date.now() + 10 * 60_000);
+  // Third-party module poll, registered always; does nothing when there are no
+  // modules. Half a minute out so a restart never stampedes them.
+  ensureJob(db, 'external-modules', 'external-modules', Date.now() + 30_000);
   // Module jobs, a minute out so a restart never stampedes an upstream.
   for (const module of MODULES) {
     if (module.job !== undefined) {

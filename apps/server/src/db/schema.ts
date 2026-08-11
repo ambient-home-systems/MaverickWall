@@ -818,6 +818,37 @@ export const weatherCache = sqliteTable('weather_cache', {
 });
 
 // ---------------------------------------------------------------------------
+// Third-party modules (docs/rfc-001-module-framework.md).
+//
+// A module is its own HTTP service the household registered by URL. The server
+// polls it through the SSRF-guarded fetcher, validates the body against the
+// Panel Data Schema, and caches it here. Nothing the module returns is ever
+// executed — data crosses the boundary, code never does.
+// ---------------------------------------------------------------------------
+
+export const externalModules = sqliteTable('external_modules', {
+  id: text('id').primaryKey(),
+  /** The module's base URL; its `/panel` and `/maverick.json` hang off it. */
+  url: text('url').notNull(),
+  /** Shown to the household; from the module's manifest, or a fallback. */
+  name: text('name').notNull(),
+  /**
+   * The block key on the wall, always `ext:<id>` so it can never collide with a
+   * first-party block. Stored so the manifest and `display_blocks` agree.
+   */
+  blockKey: text('block_key').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  /** Order among external panels. Built-in blocks keep their own ordering. */
+  sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
+  /** Last validated Panel Data, as JSON this process wrote. */
+  panel: text('panel', { mode: 'json' }).$type<unknown>(),
+  lastPolledAt: integer('last_polled_at', { mode: 'number' }).notNull().default(0),
+  /** The last poll's failure, for the health line on the module's card. */
+  lastError: text('last_error'),
+  ...timestamps,
+});
+
+// ---------------------------------------------------------------------------
 // Home Assistant. Read-only, always.
 // ---------------------------------------------------------------------------
 

@@ -144,16 +144,18 @@ trusting the module:
 
 ## Phases
 
-- **Phase 0 — the vocabulary (this RFC's first commit).** Define the Panel Data
-  Schema, its server-side Zod validator, its defensive display parser, and the
-  generic renderer. Useful before any third-party module exists: it is how any
-  new panel gets drawn without new renderer code. No user-facing change yet;
-  ships with Phase 1.
-- **Phase 1 — external panels.** The `external_modules` table, the add-by-URL
-  admin screen, the poll job, the `ExternalPanelModule` adapter, and a visible
-  health/last-error surface. Modules are **self-configured** (their own UI);
-  Maverick Wall stores only URL + enable + order. Ship an example module (a
-  ~40-line reference service) and the spec doc.
+- **Phase 0 — the vocabulary. DONE.** The Panel Data Schema, its server-side Zod
+  validator (`modules/external/panel-data.ts`), its defensive display parser
+  (`panelFrom`) and the generic renderer (`renderGenericPanel`). How any new
+  panel gets drawn without new renderer code.
+- **Phase 1 — external panels. DONE.** The `external_modules` table, the
+  add-by-URL admin screen (`/admin/modules`), the shared poll job
+  (`pollExternalModules`), the `ExternalPanelModule` adapter (registered rows
+  join `collectPanels`), and a health/last-error line per module. The block
+  system was widened for `ext:<id>` keys end to end (`parseBlocks`,
+  `resolveBlocks`, the render loop), and enabling a module inserts its block
+  after the built-ins. Modules are **self-configured** — Maverick Wall stores
+  only URL + enable + order.
 - **Phase 2 — richer.** Module-declared **signals/interrupts** (safety-critical,
   handled with more care than a panel), per-module config passed through, and an
   external panel as a free-form widget.

@@ -29,7 +29,7 @@ import {
 export const MANIFEST_VERSION = 1;
 
 /** Everything a wall can show. Order is the household's to choose. */
-export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon';
+export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon' | `ext:${string}`;
 
 const ALL_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'home', 'next', 'horizon'];
 
@@ -68,7 +68,10 @@ export function parseBlocks(stored: string | undefined): DisplayBlock[] {
   const seen: DisplayBlock[] = [];
   for (const raw of (stored ?? '').split(',')) {
     const name = raw.trim().toLowerCase();
-    if (!ALL_BLOCKS.includes(name as DisplayBlock)) continue;
+    // A built-in block, or a registered third-party one (`ext:<id>`). A
+    // third-party key that no longer has a module is simply drawn as nothing by
+    // the display, the same as a built-in a module has switched off.
+    if (!ALL_BLOCKS.includes(name as DisplayBlock) && !name.startsWith('ext:')) continue;
     if (seen.includes(name as DisplayBlock)) continue;
     seen.push(name as DisplayBlock);
   }
