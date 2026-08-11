@@ -515,9 +515,26 @@ export function renderWidget(
       return renderShiftWidget(model);
     case 'countdown':
       return renderCountdownWidget(model, config);
+    case 'external':
+      return renderExternalWidget(model, config);
     default:
       return undefined;
   }
+}
+
+/**
+ * A registered module's panel, placed as a widget (docs/rfc-001-module-framework.md).
+ *
+ * The same `renderGenericPanel` the stacked block uses — only the placement
+ * differs. The module id in the config points at the `ext:<id>` panel the
+ * manifest already carries. A widget whose module has no panel yet (not chosen,
+ * disabled, or not polled) says so rather than drawing an empty box.
+ */
+function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const id = widgetConfig(config)['module'];
+  const panel = typeof id === 'string' ? model.externalPanels[`ext:${id}`] : undefined;
+  if (panel === undefined) return el('div', 'cd-empty', 'Pick a module in this widget’s options.');
+  return renderGenericPanel(panel);
 }
 
 /**

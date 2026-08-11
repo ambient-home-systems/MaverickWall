@@ -52,6 +52,10 @@ export const WIDGET_TYPES = [
   'todo',
   'countdown',
   'image',
+  // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
+  // Still first-party by the rule that matters: the wall draws sanitised strings
+  // through renderGenericPanel, never anything the module ships.
+  'external',
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 

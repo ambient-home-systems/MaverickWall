@@ -190,6 +190,8 @@ const widgetConfigBody = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown date has to be YYYY-MM-DD.')
       .optional(),
+    // External module widget — which registered module's panel to draw (its id).
+    module: z.string().max(64).optional(),
     // Format (every widget) — box-level, so it applies whatever the type draws.
     title: z.string().max(60).optional(),
     showTitle: z.boolean().optional(),
@@ -230,6 +232,7 @@ const layoutBody = z.object({
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
+import { readEnabledExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 
@@ -2455,6 +2458,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // its pickers without a second round trip.
       calendars: readAdminSources(deps.db).map((s) => ({ id: s.id, name: s.name })),
       readings: haReadingLabels(),
+      // The registered modules, for the External widget's module picker.
+      modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
     };
 
     const statusAndPairing =

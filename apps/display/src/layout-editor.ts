@@ -43,6 +43,8 @@ interface LayoutState {
   calendars: readonly { readonly id: string; readonly name: string }[];
   /** The Home Assistant reading labels resolving now, for the HA widget picker. */
   readings: readonly string[];
+  /** The registered modules, for the External widget's "which module". */
+  modules: readonly { readonly id: string; readonly name: string }[];
 }
 
 /** The first-party palette. No web embed is offered — the wall cannot draw one. */
@@ -53,6 +55,7 @@ const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
   { type: 'homeassistant', label: 'Home Assistant' },
   { type: 'shift', label: 'Shift' },
   { type: 'countdown', label: 'Countdown' },
+  { type: 'external', label: 'Module' },
 ];
 
 const ASPECTS: readonly { readonly value: number; readonly label: string }[] = [
@@ -89,9 +92,13 @@ function boot(): void {
       widgets: Array.isArray(parsed.widgets) ? (parsed.widgets as Widget[]) : [],
       calendars: Array.isArray(parsed.calendars) ? parsed.calendars : [],
       readings: Array.isArray(parsed.readings) ? parsed.readings : [],
+      modules: Array.isArray(parsed.modules) ? parsed.modules : [],
     };
   } catch {
-    state = { screen: null, mode: 'auto', aspect: 0.5625, widgets: [], calendars: [], readings: [] };
+    state = {
+      screen: null, mode: 'auto', aspect: 0.5625, widgets: [],
+      calendars: [], readings: [], modules: [],
+    };
   }
 
   // The wall being edited, as a query for the per-wall endpoints.
@@ -412,8 +419,36 @@ function boot(): void {
     if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
     else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
     else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
+    else if (widget.type === 'external') buildExternalConfig(widget, cfg);
     // Every widget gets the Format section — it is all box-level.
     buildFormatConfig(widget, cfg);
+  }
+
+  function buildExternalConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const field = cfgField('Module');
+    if (state.modules.length === 0) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'No modules yet — add one on the Add-ons screen first.';
+      field.appendChild(note);
+      configPanel.appendChild(field);
+      return;
+    }
+    const select = document.createElement('select');
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'Choose a module…';
+    select.appendChild(none);
+    for (const module of state.modules) {
+      const opt = document.createElement('option');
+      opt.value = module.id;
+      opt.textContent = module.name;
+      if (cfg['module'] === module.id) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => setConfig(widget, 'module', select.value || undefined));
+    field.appendChild(select);
+    configPanel.appendChild(field);
   }
 
   function buildCountdownConfig(widget: Widget, cfg: Record<string, unknown>): void {
