@@ -381,12 +381,129 @@ function boot(): void {
     const cfg = widget.config ?? {};
     if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
     else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
-    else {
-      const note = document.createElement('p');
-      note.className = 'hint';
-      note.textContent = 'No options for this widget yet.';
-      configPanel.appendChild(note);
+    // Every widget gets the Format section — it is all box-level.
+    buildFormatConfig(widget, cfg);
+  }
+
+  function optionSelect(
+    options: readonly (readonly [string, string])[],
+    current: string,
+    onChange: (value: string) => void,
+  ): HTMLSelectElement {
+    const select = document.createElement('select');
+    for (const [value, label] of options) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (value === current) opt.selected = true;
+      select.appendChild(opt);
     }
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  function toggle(label: string, on: boolean, onChange: (checked: boolean) => void): HTMLElement {
+    const wrap = document.createElement('label');
+    wrap.className = 'le-cfg-check';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = on;
+    input.addEventListener('change', () => onChange(input.checked));
+    wrap.appendChild(input);
+    wrap.appendChild(document.createTextNode(' ' + label));
+    return wrap;
+  }
+
+  function buildFormatConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const heading = document.createElement('div');
+    heading.className = 'kick';
+    heading.style.marginTop = '18px';
+    heading.textContent = 'Format';
+    configPanel.appendChild(heading);
+
+    // Title
+    const titleField = cfgField('Title');
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.maxLength = 60;
+    titleInput.placeholder = 'e.g. This week';
+    titleInput.value = typeof cfg['title'] === 'string' ? (cfg['title'] as string) : '';
+    titleInput.addEventListener('change', () => setConfig(widget, 'title', titleInput.value.trim()));
+    titleField.appendChild(titleInput);
+    configPanel.appendChild(titleField);
+    configPanel.appendChild(
+      toggle('Show title on the wall', cfg['showTitle'] === true, (checked) =>
+        setConfig(widget, 'showTitle', checked ? true : undefined),
+      ),
+    );
+
+    // Alignment — 'left' is the default, stored as an absence.
+    const alignField = cfgField('Text alignment');
+    alignField.appendChild(
+      optionSelect(
+        [
+          ['left', 'Left'],
+          ['center', 'Centre'],
+          ['right', 'Right'],
+        ],
+        typeof cfg['align'] === 'string' ? (cfg['align'] as string) : 'left',
+        (value) => setConfig(widget, 'align', value === 'left' ? undefined : value),
+      ),
+    );
+    configPanel.appendChild(alignField);
+
+    // Background
+    const hasBg = typeof cfg['background'] === 'string';
+    configPanel.appendChild(
+      toggle('Give it a background', hasBg, (checked) => {
+        setConfig(widget, 'background', checked ? '#111820' : undefined);
+        if (!checked) setConfig(widget, 'opacity', undefined);
+        renderConfigPanel();
+      }),
+    );
+    if (hasBg) {
+      const colorField = cfgField('Background colour');
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = /^#[0-9a-fA-F]{6}$/.test(String(cfg['background']))
+        ? String(cfg['background'])
+        : '#111820';
+      color.addEventListener('change', () => setConfig(widget, 'background', color.value));
+      colorField.appendChild(color);
+      configPanel.appendChild(colorField);
+
+      const opField = cfgField('Background opacity');
+      const range = document.createElement('input');
+      range.type = 'range';
+      range.min = '0';
+      range.max = '100';
+      range.value = typeof cfg['opacity'] === 'number' ? String(cfg['opacity']) : '100';
+      range.addEventListener('change', () =>
+        setConfig(widget, 'opacity', range.value === '100' ? undefined : Math.round(Number(range.value))),
+      );
+      opField.appendChild(range);
+      configPanel.appendChild(opField);
+    }
+
+    // Corners — 'square' is the default.
+    const cornersField = cfgField('Corners');
+    cornersField.appendChild(
+      optionSelect(
+        [
+          ['square', 'Square'],
+          ['rounded', 'Rounded'],
+        ],
+        typeof cfg['corners'] === 'string' ? (cfg['corners'] as string) : 'square',
+        (value) => setConfig(widget, 'corners', value === 'square' ? undefined : value),
+      ),
+    );
+    configPanel.appendChild(cornersField);
+
+    configPanel.appendChild(
+      toggle('Drop shadow', cfg['shadow'] === true, (checked) =>
+        setConfig(widget, 'shadow', checked ? true : undefined),
+      ),
+    );
   }
 
   function buildCalendarConfig(widget: Widget, cfg: Record<string, unknown>): void {

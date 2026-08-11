@@ -530,6 +530,47 @@ function configStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * The box-level format a widget carries — decorative only, so it is safe on
+ * every type and never changes what the section draws. The server has already
+ * validated the shape; this reads it back defensively all the same.
+ */
+function applyWidgetFormat(box: HTMLElement, config: unknown): void {
+  const c = widgetConfig(config);
+  if (c['align'] === 'center' || c['align'] === 'right' || c['align'] === 'left') {
+    box.style.textAlign = c['align'];
+  }
+  if (typeof c['background'] === 'string' && HEX6.test(c['background'])) {
+    const raw = c['opacity'];
+    const opacity = typeof raw === 'number' ? Math.min(100, Math.max(0, raw)) : 100;
+    box.style.background = hexToRgba(c['background'], opacity / 100);
+  }
+  if (c['corners'] === 'rounded') {
+    box.style.borderRadius = '0.6rem';
+    box.style.overflow = 'hidden';
+  }
+  if (c['shadow'] === true) box.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.35)';
+}
+
+/** Wrap a widget body with its title when one is set to show, else pass through. */
+function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
+  const c = widgetConfig(config);
+  const title = typeof c['title'] === 'string' ? c['title'].trim() : '';
+  if (c['showTitle'] !== true || title === '') return body;
+  const wrap = el('div', 'fw-content');
+  wrap.appendChild(el('div', 'fw-title', title));
+  wrap.appendChild(body);
+  return wrap;
+}
+
 /**
  * The Calendar widget, in one of two modes.
  *
@@ -617,13 +658,17 @@ export function renderFreeform(
     box.style.setProperty('--bw', String(widget.w));
     box.style.setProperty('--bh', String(widget.h));
 
+    // Box-level format the household chose — a background, corners, a shadow,
+    // alignment. Applied whatever the widget draws inside.
+    applyWidgetFormat(box, widget.config);
+
     const body = renderWidget(widget.type, model, widget.config);
     if (body === undefined) {
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
       box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
     } else if (widget.type === 'clock') {
-      // The clock already sizes itself to its box; nothing to scale.
+      // The clock already sizes itself to its box; a title would fight it.
       box.appendChild(body);
     } else {
       /*
@@ -636,7 +681,9 @@ export function renderFreeform(
        * screen, at the foot of this function.
        */
       const scale = el('div', 'fw-scale');
-      scale.appendChild(body);
+      // The title rides inside the scaled content, so it shrinks with the
+      // section and the fit measurement already accounts for it.
+      scale.appendChild(contentWithTitle(body, widget.config));
       box.appendChild(scale);
       toFit.push({ box, scale });
     }

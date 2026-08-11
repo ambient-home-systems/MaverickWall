@@ -857,3 +857,16 @@ body {
   left: 0;
   transform-origin: top left;
 }
+
+/* An optional widget title, riding inside the scaled content so it shrinks with
+   the section (`renderFreeform` measures the whole thing including this). */
+.fw-content { display: block; }
+.fw-title {
+  font-family: var(--f-cond, var(--f-sans));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 1.7rem;
+  color: var(--muted);
+  margin: 0 0 0.7rem;
+}

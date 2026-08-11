@@ -185,6 +185,19 @@ const widgetConfigBody = z
     showLocations: z.boolean().optional(),
     // Home Assistant
     readings: z.array(z.string().max(80)).max(50).optional(),
+    // Format (every widget) — box-level, so it applies whatever the type draws.
+    title: z.string().max(60).optional(),
+    showTitle: z.boolean().optional(),
+    align: z.enum(['left', 'center', 'right']).optional(),
+    // A six-digit hex, the only colour shape `<input type=color>` submits, and
+    // the only one the renderer will honour — rejected here, not coerced.
+    background: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'A background colour has to be a #rrggbb hex.')
+      .optional(),
+    opacity: z.number().int().min(0).max(100).optional(),
+    corners: z.enum(['square', 'rounded']).optional(),
+    shadow: z.boolean().optional(),
   })
   .strict();
 

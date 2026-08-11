@@ -149,7 +149,9 @@ describe('saving a layout', () => {
       mode: 'freeform', aspect: 0.5625,
       widgets: [
         { id: 'cal', type: 'calendar', x: 0.05, y: 0.05, w: 0.9, h: 0.5, z: 0,
-          config: { mode: 'list', calendars: ['fam'], count: 5 } },
+          config: { mode: 'list', calendars: ['fam'], count: 5,
+            title: 'This week', showTitle: true, align: 'center',
+            background: '#111820', opacity: 80, corners: 'rounded', shadow: true } },
         { id: 'ha', type: 'homeassistant', x: 0.05, y: 0.6, w: 0.9, h: 0.3, z: 1,
           config: { readings: ['Front door'] } },
       ],
@@ -160,8 +162,22 @@ describe('saving a layout', () => {
       await h.call('/admin/layout/preview.json')
     ).json()) as { layout: { widgets: { type: string; config?: unknown }[] } };
     const byType = Object.fromEntries(layout.layout.widgets.map((w) => [w.type, w.config]));
-    expect(byType['calendar']).toEqual({ mode: 'list', calendars: ['fam'], count: 5 });
+    expect(byType['calendar']).toEqual({
+      mode: 'list', calendars: ['fam'], count: 5,
+      title: 'This week', showTitle: true, align: 'center',
+      background: '#111820', opacity: 80, corners: 'rounded', shadow: true,
+    });
     expect(byType['homeassistant']).toEqual({ readings: ['Front door'] });
+  });
+
+  it('rejects a background that is not a hex colour', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [{ id: 'x', type: 'clock', x: 0.1, y: 0.1, w: 0.4, h: 0.2, z: 0,
+        config: { background: 'red' } }],
+    });
+    expect(res.status).toBe(400);
   });
 
   it('rejects an unknown config key rather than dropping it (rule five)', async () => {
