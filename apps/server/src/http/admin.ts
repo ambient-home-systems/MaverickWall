@@ -185,6 +185,11 @@ const widgetConfigBody = z
     showLocations: z.boolean().optional(),
     // Home Assistant
     readings: z.array(z.string().max(80)).max(50).optional(),
+    // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
+    target: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown date has to be YYYY-MM-DD.')
+      .optional(),
     // Format (every widget) — box-level, so it applies whatever the type draws.
     title: z.string().max(60).optional(),
     showTitle: z.boolean().optional(),

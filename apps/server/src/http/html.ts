@@ -34,19 +34,40 @@ const STYLE = `
   font-display:swap;src:url('assets/fonts/roboto-condensed.woff2') format('woff2')}
 
 /*
- * Board-only. The admin always wears the wall's default palette, whatever theme
- * the household picked for the wall itself — it is viewed on a phone or a
- * desktop, not the locked-down tablet rule two is about, so color-mix() and a
- * fixed dark scheme are both fine here.
+ * Dark by default — the Board palette, the wall's own — with a light option and
+ * an "auto" that follows the device. The choice is per-browser (localStorage,
+ * applied by a tiny inline script before first paint, so there is no flash) and
+ * only ever styles the admin, never the wall. color-mix() and either scheme are
+ * fine here: this is a phone or a desktop, not the locked-down tablet rule two
+ * is about. Every colour is a token, so a theme is just a different set of them.
  */
 :root{
-  color-scheme:dark;
   --cond:'Roboto Condensed','Arial Narrow','Helvetica Neue',system-ui,sans-serif;
   --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+/* Dark (the default). */
+:root{
+  color-scheme:dark;
   --bg:#0B0E11;--panel:#111820;--panel2:#0E141A;--rule:#1F2833;--ruleSoft:#161D25;
   --ink:#E9EEF4;--muted:#A8B3C0;--faint:#6D7A88;--accent:#E0A33E;--accentInk:#1A1206;
   --ok:#35916A;--warn:#D9A13E;--danger:#D9544F;--night:#4C7FD1;
+}
+/* Light, when the household picks it. */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#F4F2EC;--panel:#FFFFFF;--panel2:#F8F6F0;--rule:#E3DFD5;--ruleSoft:#EDEAE2;
+  --ink:#1A1C20;--muted:#54585E;--faint:#8A9098;--accent:#B07912;--accentInk:#FFFFFF;
+  --ok:#2E7D53;--warn:#B5820F;--danger:#C0392B;--night:#2F5D8C;
+}
+/* Auto: no explicit choice, and the device prefers light. */
+@media (prefers-color-scheme: light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --bg:#F4F2EC;--panel:#FFFFFF;--panel2:#F8F6F0;--rule:#E3DFD5;--ruleSoft:#EDEAE2;
+    --ink:#1A1C20;--muted:#54585E;--faint:#8A9098;--accent:#B07912;--accentInk:#FFFFFF;
+    --ok:#2E7D53;--warn:#B5820F;--danger:#C0392B;--night:#2F5D8C;
+  }
 }
 *{box-sizing:border-box}
 *::selection{background:color-mix(in srgb,var(--accent) 32%,transparent)}
@@ -78,7 +99,8 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 .nav-item.active{background:var(--accent);color:var(--accentInk);
   border-color:var(--accent);font-weight:600}
 .side-foot{border-top:1px solid var(--rule);padding:14px 16px;display:flex;
-  align-items:center;gap:10px}
+  flex-direction:column;gap:12px}
+.side-foot-id{display:flex;align-items:center;gap:10px}
 .side-foot .fmark{width:32px;height:32px;flex:0 0 auto}
 .side-foot .fmark svg{width:32px;height:32px;border-radius:7px;display:block}
 .side-foot .who{min-width:0;flex:1}
@@ -89,6 +111,14 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
   background:var(--panel);color:var(--muted);border:1px solid var(--rule);border-radius:7px;cursor:pointer}
 .signout:hover{filter:none;color:var(--ink);border-color:var(--faint)}
 .signout svg{width:17px;height:17px;stroke-width:1.7}
+/* Admin theme toggle. Per-browser; applied before paint by an inline script. */
+.themebar{display:flex;border:1px solid var(--rule);border-radius:7px;overflow:hidden}
+.themebtn{flex:1;margin:0;padding:.4rem;border:0;border-left:1px solid var(--rule);
+  background:var(--panel);color:var(--muted);font-family:inherit;font-size:12px;
+  font-weight:600;cursor:pointer}
+.themebtn:first-child{border-left:0}
+.themebtn:hover{filter:none;color:var(--ink)}
+.themebtn[data-active="true"]{background:var(--accent);color:var(--accentInk)}
 
 .main{min-width:0;display:flex;flex-direction:column}
 .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:flex-end;
@@ -455,6 +485,33 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 `;
 
 /**
+ * The admin theme, applied before the first paint and toggled from the sidebar.
+ *
+ * Inline and first-party — it must run before the body paints, so there is no
+ * flash of the wrong scheme, which a fetched module could never guarantee.
+ * `dark`/`light` set the attribute the CSS keys off; `auto` removes it and lets
+ * the `prefers-color-scheme` media query decide. The preference is per-browser
+ * (localStorage), because a theme is a fact about the screen you are reading on,
+ * not about the household. Clicks are delegated, so the buttons work whenever
+ * the sidebar renders them.
+ */
+const THEME_SCRIPT =
+  `<script>(function(){try{` +
+  `var K='mw-admin-theme',d=document,r=d.documentElement;` +
+  `var t=localStorage.getItem(K);` +
+  `if(t==='light'||t==='dark')r.setAttribute('data-theme',t);` +
+  `function mark(){var c=(t==='light'||t==='dark')?t:'auto';` +
+  `var b=d.querySelectorAll('[data-theme-set]');` +
+  `for(var i=0;i<b.length;i++)b[i].setAttribute('data-active',String(b[i].getAttribute('data-theme-set')===c));}` +
+  `d.addEventListener('click',function(e){` +
+  `var el=e.target.closest?e.target.closest('[data-theme-set]'):null;if(!el)return;` +
+  `var v=el.getAttribute('data-theme-set');t=v;` +
+  `if(v==='auto'){localStorage.removeItem(K);r.removeAttribute('data-theme');}` +
+  `else{localStorage.setItem(K,v);r.setAttribute('data-theme',v);}mark();});` +
+  `d.addEventListener('DOMContentLoaded',mark);` +
+  `}catch(e){}})();</script>`;
+
+/**
  * The brand mark, inline and first-party.
  *
  * The zoom-pyramid the product is built around — today, the next days, the
@@ -679,7 +736,7 @@ function head(title: string): string {
     `<meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<link rel="icon" href="${FAVICON}">` +
-    `<title>${escapeHtml(title)}</title><style>${STYLE}</style></head>`
+    `<title>${escapeHtml(title)}</title><style>${STYLE}</style>${THEME_SCRIPT}</head>`
   );
 }
 
@@ -712,7 +769,8 @@ export function page(options: PageOptions): string {
     `<aside class="side">` +
     `<a class="brand" href="admin">${MARK}<span><b>Maverick Wall</b><small>Admin</small></span></a>` +
     navBar(options.nav) +
-    `<div class="side-foot"><div class="fmark">${MARK}</div>` +
+    `<div class="side-foot">` +
+    `<div class="side-foot-id"><div class="fmark">${MARK}</div>` +
     `<div class="who"><b>Signed in</b><small>Maverick Wall</small></div>` +
     // Stripped under ingress by the ingress middleware; the only way out on a
     // plain docker install, so it is the default rather than an add-on.
@@ -721,6 +779,13 @@ export function page(options: PageOptions): string {
     `<button class="signout" type="submit" aria-label="Sign out" title="Sign out">${icon('logout')}</button>` +
     `</form>` +
     SIGNOUT_CLOSE +
+    `</div>` +
+    // The admin theme toggle. Wired by the head script; no server state.
+    `<div class="themebar" role="group" aria-label="Admin theme">` +
+    `<button type="button" class="themebtn" data-theme-set="auto">Auto</button>` +
+    `<button type="button" class="themebtn" data-theme-set="light">Light</button>` +
+    `<button type="button" class="themebtn" data-theme-set="dark">Dark</button>` +
+    `</div>` +
     `</div>` +
     `</aside>` +
     `<main class="main">` +

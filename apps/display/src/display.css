@@ -870,3 +870,41 @@ body {
   color: var(--muted);
   margin: 0 0 0.7rem;
 }
+
+/* Countdown widget. Scaled to its box like the other reused sections. */
+.cd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.cd-num {
+  font-family: var(--f-cond, var(--f-sans));
+  font-weight: 700;
+  font-size: 6rem;
+  line-height: 0.95;
+  color: var(--ink);
+}
+.cd-unit {
+  font-family: var(--f-cond, var(--f-sans));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 1.6rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+.cd-label {
+  font-family: var(--f-cond, var(--f-sans));
+  font-weight: 600;
+  font-size: 2.2rem;
+  color: var(--ink);
+  margin-top: 0.6rem;
+}
+.cd-empty {
+  margin: auto;
+  color: var(--muted);
+  font-family: var(--f-sans);
+  text-align: center;
+}
