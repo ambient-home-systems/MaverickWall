@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.16.0
+
+The settings are reorganised so everything lives with the thing it sets.
+
+- **Every wall has its own page.** Open **Displays** and choose a wall — or the
+  **Default**, which new screens follow. Its theme, how much it shows, and its
+  layout are all there now, on two tabs: **Appearance** and **Layout**. The old
+  separate "Display" settings page is gone; what was on it now sets the Default.
+- **Weather in one place.** The forecast strip and the National Weather Service
+  alerts share a single **Weather** page — set your location once, for both.
+- **Your modules in the sidebar.** Everything you have installed shows under
+  Modules in the sidebar, so you can jump straight to one; an installed module
+  you have switched off is marked.
+- **A cleaner, easier-to-read look**, and the Store now shows a small preview of
+  what each module draws on the wall.
+
+Nothing about your walls, calendars, people or modules changes — only where the
+settings live. Any wall you had set up keeps its own look and layout.
+
 ## 0.15.0
 
 The Add-ons screen is now a **Store**.
