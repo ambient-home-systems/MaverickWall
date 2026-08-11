@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0
+
+Install a recipe straight from the catalogue.
+
+- The **Browse** list now includes **recipes** — modules with no service to host —
+  alongside services, each tagged so you can tell them apart. Choose a recipe and
+  you get a simple form: fill in its settings (a latitude, a station id) and press
+  **Add to the wall**. No pasting anything.
+- A first recipe ships to try: **Outside temperature**, which shows the current
+  temperature where you live from a free, key-less public weather feed — install
+  it, enter your latitude and longitude, done.
+
+A recipe is still data, never code: it reads a public web feed over a secure
+connection and shows a value from it, and nothing else.
+
 ## 0.11.0
 
 Recipes can now raise an alert.
