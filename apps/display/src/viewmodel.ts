@@ -67,6 +67,13 @@ export const STALE_AFTER_MS = 30 * 60_000;
 
 export interface EventModel {
   readonly id: string;
+  /**
+   * Which calendar this came from. Already in the manifest (the `sources`
+   * legend carries it), so keeping it on the event leaks nothing new — it lets
+   * a per-widget layout show only some calendars without the server building a
+   * separate document per widget.
+   */
+  readonly sourceId: string;
   readonly title: string;
   readonly time: string;
   readonly allDay: boolean;
@@ -420,6 +427,7 @@ function toEvent(
 ): EventModel {
   return {
     id: event.id,
+    sourceId: event.sourceId,
     title: event.title,
     time: eventTime(event, timezone),
     allDay: event.allDay,

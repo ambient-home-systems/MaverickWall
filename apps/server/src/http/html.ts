@@ -396,6 +396,18 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
+/* Per-widget options, shown under the stage when a widget is selected. */
+.le-config{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
+  padding:16px 18px;background:var(--panel)}
+.le-config>.kick{margin-bottom:12px}
+.le-cfg-field{display:block;margin:12px 0 0}
+.le-cfg-field>span{display:block;font-family:var(--cond);font-weight:600;font-size:12px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
+.le-cfg-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:2px}
+.le-cfg-check{display:inline-flex;align-items:center;gap:.45rem;font-size:14px;
+  color:var(--muted);cursor:pointer;margin:0}
+.le-cfg-check input{width:16px;height:16px;accent-color:var(--accent);margin:0}
 `;
 
 /**

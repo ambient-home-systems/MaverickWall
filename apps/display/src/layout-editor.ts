@@ -29,6 +29,8 @@ interface Widget {
   w: number;
   h: number;
   z: number;
+  /** The widget's own options. Shape validated server-side (widgetConfigBody). */
+  config?: Record<string, unknown>;
 }
 
 interface LayoutState {
@@ -37,6 +39,10 @@ interface LayoutState {
   mode: 'auto' | 'freeform';
   aspect: number;
   widgets: Widget[];
+  /** The calendars that exist, for the Calendar widget's "which calendars". */
+  calendars: readonly { readonly id: string; readonly name: string }[];
+  /** The Home Assistant reading labels resolving now, for the HA widget picker. */
+  readings: readonly string[];
 }
 
 /** The first-party palette. No web embed is offered — the wall cannot draw one. */
@@ -80,9 +86,11 @@ function boot(): void {
       mode: parsed.mode === 'freeform' ? 'freeform' : 'auto',
       aspect: typeof parsed.aspect === 'number' && parsed.aspect > 0 ? parsed.aspect : 0.5625,
       widgets: Array.isArray(parsed.widgets) ? (parsed.widgets as Widget[]) : [],
+      calendars: Array.isArray(parsed.calendars) ? parsed.calendars : [],
+      readings: Array.isArray(parsed.readings) ? parsed.readings : [],
     };
   } catch {
-    state = { screen: null, mode: 'auto', aspect: 0.5625, widgets: [] };
+    state = { screen: null, mode: 'auto', aspect: 0.5625, widgets: [], calendars: [], readings: [] };
   }
 
   // The wall being edited, as a query for the per-wall endpoints.
@@ -169,7 +177,12 @@ function boot(): void {
     'Nothing is placed yet — add a widget above. Turning the layout on with an ' +
     'empty canvas keeps the stacked layout, so the wall is never blank.';
 
-  mount.append(toolbar, stage, hint);
+  // The per-widget options, shown under the stage when a widget is selected.
+  const configPanel = document.createElement('div');
+  configPanel.className = 'le-config';
+  configPanel.style.display = 'none';
+
+  mount.append(toolbar, stage, configPanel, hint);
 
   // ---- the live preview ------------------------------------------------
 
@@ -252,6 +265,7 @@ function boot(): void {
     for (const widget of ordered) overlay.appendChild(overlayNode(widget));
     hint.style.display = state.widgets.length === 0 ? '' : 'none';
     deleteButton.disabled = selected === undefined;
+    renderConfigPanel();
   }
 
   function overlayNode(widget: Widget): HTMLElement {
@@ -289,6 +303,163 @@ function boot(): void {
     renderPreview();
   }
 
+  // ---- per-widget config ------------------------------------------------
+
+  /** Merge one option into the selected widget's config, dropping empties. */
+  function setConfig(widget: Widget, key: string, value: unknown): void {
+    const cfg: Record<string, unknown> = { ...(widget.config ?? {}) };
+    const empty =
+      value === undefined ||
+      value === null ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0);
+    if (empty) delete cfg[key];
+    else cfg[key] = value;
+    if (Object.keys(cfg).length > 0) widget.config = cfg;
+    else delete widget.config;
+    markDirty();
+    renderPreview();
+  }
+
+  function cfgField(label: string): HTMLElement {
+    const wrap = document.createElement('label');
+    wrap.className = 'le-cfg-field';
+    const span = document.createElement('span');
+    span.textContent = label;
+    wrap.appendChild(span);
+    return wrap;
+  }
+
+  /** A set of checkboxes; empty selection means "all", stated where used. */
+  function checkList(
+    options: readonly { readonly value: string; readonly label: string }[],
+    chosen: readonly string[],
+    onChange: (values: string[]) => void,
+    emptyNote: string,
+  ): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'le-cfg-checks';
+    if (options.length === 0) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = emptyNote;
+      box.appendChild(note);
+      return box;
+    }
+    const current = new Set(chosen);
+    for (const opt of options) {
+      const row = document.createElement('label');
+      row.className = 'le-cfg-check';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = current.has(opt.value);
+      input.addEventListener('change', () => {
+        if (input.checked) current.add(opt.value);
+        else current.delete(opt.value);
+        onChange([...current]);
+      });
+      row.appendChild(input);
+      row.appendChild(document.createTextNode(' ' + opt.label));
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  function renderConfigPanel(): void {
+    configPanel.textContent = '';
+    const widget = state.widgets.find((w) => w.id === selected);
+    if (widget === undefined) {
+      configPanel.style.display = 'none';
+      return;
+    }
+    configPanel.style.display = '';
+    const title = document.createElement('div');
+    title.className = 'kick';
+    title.textContent = labelFor(widget.type) + ' options';
+    configPanel.appendChild(title);
+
+    const cfg = widget.config ?? {};
+    if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
+    else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
+    else {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'No options for this widget yet.';
+      configPanel.appendChild(note);
+    }
+  }
+
+  function buildCalendarConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const modeField = cfgField('Show as');
+    const modeSelect = document.createElement('select');
+    for (const [value, label] of [
+      ['month', 'Month grid'],
+      ['list', 'Upcoming list'],
+    ] as const) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if ((cfg['mode'] ?? 'month') === value) opt.selected = true;
+      modeSelect.appendChild(opt);
+    }
+    modeSelect.addEventListener('change', () => {
+      // 'month' is the default, so it is stored as an absence rather than a key.
+      setConfig(widget, 'mode', modeSelect.value === 'list' ? 'list' : undefined);
+      renderConfigPanel();
+    });
+    modeField.appendChild(modeSelect);
+    configPanel.appendChild(modeField);
+
+    // Filtering only means something for the list — the month grid is a whole
+    // month at a glance — so the options that would do nothing are not shown.
+    if ((cfg['mode'] ?? 'month') === 'list') {
+      const which = cfgField('Calendars to show');
+      which.appendChild(
+        checkList(
+          state.calendars.map((c) => ({ value: c.id, label: c.name })),
+          Array.isArray(cfg['calendars']) ? (cfg['calendars'] as string[]) : [],
+          (values) => setConfig(widget, 'calendars', values),
+          'No calendars yet — add one on the Calendars screen.',
+        ),
+      );
+      configPanel.appendChild(which);
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'None ticked shows them all.';
+      configPanel.appendChild(note);
+
+      const countField = cfgField('How many events');
+      const count = document.createElement('input');
+      count.type = 'number';
+      count.min = '1';
+      count.max = '50';
+      count.value = typeof cfg['count'] === 'number' ? String(cfg['count']) : '12';
+      count.addEventListener('change', () => {
+        const n = Math.round(Number(count.value));
+        setConfig(widget, 'count', Number.isFinite(n) && n >= 1 ? Math.min(50, n) : undefined);
+      });
+      countField.appendChild(count);
+      configPanel.appendChild(countField);
+    }
+  }
+
+  function buildHaConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const which = cfgField('Readings to show');
+    which.appendChild(
+      checkList(
+        state.readings.map((r) => ({ value: r, label: r })),
+        Array.isArray(cfg['readings']) ? (cfg['readings'] as string[]) : [],
+        (values) => setConfig(widget, 'readings', values),
+        'No Home Assistant readings yet — connect it and choose entities first.',
+      ),
+    );
+    configPanel.appendChild(which);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'None ticked shows them all.';
+    configPanel.appendChild(note);
+  }
+
   // ---- pointer interaction ---------------------------------------------
 
   function startDrag(event: PointerEvent, widget: Widget, box: HTMLElement, resizing: boolean): void {
@@ -300,6 +471,7 @@ function boot(): void {
     for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
     box.classList.add('is-selected');
     deleteButton.disabled = false;
+    renderConfigPanel();
 
     const rect = canvas.getBoundingClientRect();
     const startX = event.clientX;
@@ -377,6 +549,7 @@ function boot(): void {
     selected = undefined;
     for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
     deleteButton.disabled = true;
+    renderConfigPanel();
   });
   window.addEventListener('resize', draw);
 
@@ -402,6 +575,11 @@ function boot(): void {
             w: round3(Math.max(0.05, Math.min(1, w.w))),
             h: round3(Math.max(0.05, Math.min(1, w.h))),
             z: index,
+            // Only when it holds something, so an untouched widget stores no
+            // config row and the server sees a clean absence rather than `{}`.
+            ...(w.config !== undefined && Object.keys(w.config).length > 0
+              ? { config: w.config }
+              : {}),
           })),
         }),
       });

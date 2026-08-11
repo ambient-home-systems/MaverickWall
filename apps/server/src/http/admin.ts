@@ -164,6 +164,30 @@ const newScreenBody = z.object({ name: text('A name for the screen', 80) });
  * a widget cannot be nudged off the wall or shrunk to nothing; the display
  * clamps again regardless, because a form is a boundary and so is a manifest.
  */
+/**
+ * A widget's stored options.
+ *
+ * One shape for every type rather than a discriminated union: the keys a type
+ * ignores are simply not read by its renderer, and a single strict object is
+ * easier to reason about than five. `.strict()` rejects an unknown key rather
+ * than coercing it away (rule five) — a typo in a saved config is a 400, not a
+ * silently dropped option. Selections are by identifiers already in the
+ * manifest: calendar `source id`s and Home Assistant reading `label`s, never an
+ * entity id, which the manifest deliberately does not carry.
+ */
+const widgetConfigBody = z
+  .object({
+    // Calendar
+    calendars: z.array(z.string().max(64)).max(50).optional(),
+    mode: z.enum(['month', 'list']).optional(),
+    count: z.number().int().min(1).max(50).optional(),
+    showTimes: z.boolean().optional(),
+    showLocations: z.boolean().optional(),
+    // Home Assistant
+    readings: z.array(z.string().max(80)).max(50).optional(),
+  })
+  .strict();
+
 const layoutWidgetBody = z.object({
   id: z.string().min(1).max(64),
   type: z.enum(WIDGET_TYPES),
@@ -172,7 +196,7 @@ const layoutWidgetBody = z.object({
   w: z.number().min(0.02).max(1),
   h: z.number().min(0.02).max(1),
   z: z.number().int().min(0).max(9999),
-  config: z.unknown().optional(),
+  config: widgetConfigBody.optional(),
 });
 const layoutBody = z.object({
   // Which wall this canvas is for. Null (or absent) is the shared default; a
@@ -2232,6 +2256,32 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * The Home Assistant reading labels currently resolving, for the widget
+   * config picker — the exact labels a widget filters on. Read from the same
+   * manifest the wall gets (the house panel is household-wide), so the picker
+   * can never offer a label the wall would not recognise. Empty when there is
+   * no manifest builder or no Home Assistant connection.
+   */
+  function haReadingLabels(): string[] {
+    if (deps.previewManifest === undefined) return [];
+    try {
+      const manifest = deps.previewManifest(null) as {
+        panels?: { home?: { readings?: unknown } };
+      };
+      const raw = manifest?.panels?.home?.readings;
+      if (!Array.isArray(raw)) return [];
+      const labels: string[] = [];
+      for (const entry of raw) {
+        const label = (entry as { label?: unknown })?.label;
+        if (typeof label === 'string' && label !== '') labels.push(label);
+      }
+      return labels;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * One display: the shared Default (`ownerId` null) or a paired screen.
    *
    * Everything about that wall in one place — its status and pairing, the
@@ -2259,7 +2309,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         w: widget.w,
         h: widget.h,
         z: widget.z,
+        config: widget.config,
       })),
+      // Everything the config panel needs to offer a choice: the calendars that
+      // exist (id + name), and the Home Assistant reading labels currently
+      // resolving. Read here rather than fetched again so the editor can build
+      // its pickers without a second round trip.
+      calendars: readAdminSources(deps.db).map((s) => ({ id: s.id, name: s.name })),
+      readings: haReadingLabels(),
     };
 
     const statusAndPairing =
