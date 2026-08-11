@@ -2,7 +2,7 @@ import type { Context, Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { FETCH_LIMITS } from '@maverick-wall/core';
 import { errorBlock, escapeHtml, page } from './html.js';
-import { ago } from './admin.js';
+import { ago, navModules } from './admin.js';
 import type { AdminDeps } from './admin.js';
 import {
   createExternalModule,
@@ -302,7 +302,8 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           : `<span class="tag tag-ok"><span class="dot dot-ok"></span>Working · updated ${escapeHtml(ago(module.lastPolledAt, at))}</span>`;
     const action = `admin/modules/${encodeURIComponent(module.id)}`;
     return (
-      `<article class="card">` +
+      // The id is the anchor the sidebar's per-module nav entries link to.
+      `<article class="card" id="mod-${escapeHtml(module.id)}">` +
       `<div style="display:flex;align-items:center;gap:12px">` +
       `<div style="flex:1;min-width:0"><div class="rname" style="font-size:16px">` +
       `${escapeHtml(module.name)}${module.enabled === 1 ? '' : ' (off)'}</div>` +
@@ -329,8 +330,12 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   function alertsControl(module: ExternalModuleRow, action: string): string {
     const parsed = signalDataSchema.safeParse(module.signals);
     const count = parsed.success ? parsed.data.signals.length : 0;
-    const opt = (value: AlertsAction, label: string): string =>
-      `<option value="${value}"${module.alertsAction === value ? ' selected' : ''}>${label}</option>`;
+    // A scriptless segmented control: three submit buttons in one form. Clicking
+    // one posts that value straight away — no separate Save — and the current
+    // choice carries the `.on` fill. Same values and route as the old <select>.
+    const seg = (value: AlertsAction, label: string): string =>
+      `<button type="submit" name="action" value="${value}"` +
+      `${module.alertsAction === value ? ' class="on" aria-current="true"' : ''}>${label}</button>`;
     const status =
       module.alertsAction === 'none'
         ? 'This module cannot show alerts.'
@@ -342,15 +347,13 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<div class="row" style="margin-top:14px;padding-top:14px;` +
       `border-top:1px solid var(--ruleSoft);align-items:center;gap:10px">` +
-      `<form method="post" action="${action}/alerts" ` +
-      `style="display:flex;align-items:center;gap:10px;flex:1;margin:0">` +
-      `<label for="alerts-${module.id}" style="margin:0">Alerts</label>` +
-      `<select id="alerts-${module.id}" name="action">` +
-      opt('none', 'Off') +
-      opt('banner', 'Show a banner') +
-      opt('takeover', 'Take over the wall') +
-      `</select>` +
-      `<button class="secondary" type="submit">Save</button></form></div>` +
+      `<span class="kick">Alerts</span>` +
+      `<form method="post" action="${action}/alerts" class="seg" ` +
+      `aria-label="What this module may do to the wall">` +
+      seg('none', 'Off') +
+      seg('banner', 'Banner') +
+      seg('takeover', 'Take over') +
+      `</form></div>` +
       `<p class="hint" style="margin-top:6px">${escapeHtml(status)} A module can raise ` +
       `a banner or cover the wall, but never wake a screen that has gone dark for ` +
       `the night, and you can always clear it from the wall.</p>`
@@ -361,6 +364,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   function storePage(error?: string): string {
     const modules = readExternalModules(deps.db);
     return page({
+      modules: navModules(deps.db),
       title: 'Store — Maverick Wall',
       nav: 'modules',
       heading: 'Store',
@@ -398,6 +402,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
               `rel="noreferrer noopener">Where to get it</a>`) +
           `</div>`;
     return page({
+      modules: navModules(deps.db),
       title: 'Advanced — Maverick Wall',
       nav: 'modules',
       heading: 'Advanced',
@@ -453,6 +458,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     secrets?: string,
   ): string {
     return page({
+      modules: navModules(deps.db),
       title: 'Add a recipe — Maverick Wall',
       nav: 'modules',
       heading: 'Add a recipe',
@@ -557,6 +563,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           `only to <span class="code">${escapeHtml(recipeFetchHost(entry.recipe))}</span>. ` +
           `They never appear on the wall or in a log.</p>${secretFields}`;
     return page({
+      modules: navModules(deps.db),
       title: `Install ${entry.name} — Maverick Wall`,
       nav: 'modules',
       heading: `Install ${entry.name}`,

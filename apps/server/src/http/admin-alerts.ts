@@ -2,7 +2,22 @@ import type { Context, Hono } from 'hono';
 import { escapeHtml, errorBlock, page } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
-import type { AdminDeps } from './admin.js';
+import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
+import { call, resolveConnection } from '../modules/homeassistant/client.js';
+import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
+import { navModules, type AdminDeps } from './admin.js';
+
+/**
+ * The forecast form's body. The coordinates are optional here and checked
+ * against the switch in the handler: turning the forecast *off* must not
+ * demand two numbers first. `checkbox()`, not `z.unknown().transform`, because
+ * an unticked box is not sent at all and the latter would make the key required.
+ */
+const weatherBody = z.object({
+  weather_enabled: checkbox(),
+  latitude: optionalText(20),
+  longitude: optionalText(20),
+});
 
 /**
  * The alerts screen.
@@ -46,6 +61,169 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     return c.redirect('/admin/alerts', 302);
   });
 
+  /**
+   * The forecast panel's settings, on the Weather page beside the alerts —
+   * everything weather in one place. A household answering "do I want weather on
+   * the wall, and where does it look" should not hunt across two screens for it.
+   */
+  app.post('/admin/weather', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(weatherBody, body);
+    if (!shaped.ok) return c.html(alertsPage(shaped.message), 400);
+
+    // A location is only required when the panel is on: turning weather off must
+    // not demand two numbers first.
+    const lat = parse(coordinate('Latitude', 90), shaped.value.latitude);
+    const lon = parse(coordinate('Longitude', 180), shaped.value.longitude);
+    if (shaped.value.weather_enabled && (!lat.ok || !lon.ok)) {
+      return c.html(
+        alertsPage(
+          'Weather needs a location — latitude between -90 and 90, longitude between -180 and 180. ' +
+            'Your phone’s map app shows both if you press and hold on your house.',
+        ),
+        400,
+      );
+    }
+
+    writeWeatherSettings(deps.db, {
+      enabled: shaped.value.weather_enabled,
+      latitude: lat.ok ? lat.value : null,
+      longitude: lon.ok ? lon.value : null,
+    });
+    return c.redirect('/admin/alerts', 302);
+  });
+
+  /**
+   * Fill the location from Home Assistant's own home zone.
+   *
+   * The commonest install is an add-on, and the box already knows where home is
+   * — `zone.home` carries a latitude and longitude. Read-only, like everything
+   * else here: this only ever reads the zone's coordinates.
+   */
+  app.post('/admin/weather/use-ha-location', async (c: Context) => {
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) {
+      return c.html(
+        alertsPage('Home Assistant is not connected. Connect it on the Home Assistant screen, then try this again.'),
+        400,
+      );
+    }
+    const home = await call(deps.fetcher, resolved.connection, '/states/zone.home');
+    if (!home.ok) {
+      return c.html(alertsPage('Could not read your Home Assistant home location.'), 400);
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(home.body);
+    } catch {
+      raw = null;
+    }
+    const located = parse(
+      z.object({ attributes: z.object({ latitude: z.number(), longitude: z.number() }) }),
+      raw,
+    );
+    if (!located.ok) {
+      return c.html(
+        alertsPage(
+          'Home Assistant did not return a home location. Set your home zone in Home Assistant ' +
+            '(Settings → Areas, labels & zones), then try again.',
+        ),
+        400,
+      );
+    }
+    const current = readWeatherSettings(deps.db);
+    writeWeatherSettings(deps.db, {
+      enabled: current.enabled,
+      latitude: located.value.attributes.latitude,
+      longitude: located.value.attributes.longitude,
+    });
+    return c.redirect('/admin/alerts', 302);
+  });
+
+  /** The forecast panel's own settings block: switch, location, and a live preview. */
+  function weatherSection(): string {
+    const weather = readWeatherSettings(deps.db);
+    const value = (n: number | null): string => (n === null ? '' : String(n));
+    const haConnected = resolveConnection(deps.db, deps.keyring).ok;
+    const located = weather.latitude !== null && weather.longitude !== null;
+
+    // What the forecast is doing right now, so it is visibly working rather than
+    // a switch that may or may not have taken.
+    let forecastBlock = '';
+    const row = deps.db
+      .prepare(`SELECT payload, fetched_at AS fetchedAt FROM weather_cache WHERE cache_key = 'nws:forecast'`)
+      .get() as { payload: string; fetchedAt: number } | undefined;
+    if (row !== undefined) {
+      try {
+        const days = (JSON.parse(row.payload) as {
+          days?: { name: string; high: number | null; low: number | null; icon: string }[];
+        }).days ?? [];
+        if (days.length > 0) {
+          const strip = days
+            .slice(0, 5)
+            .map(
+              (day) =>
+                `<li><span class="when">${escapeHtml(day.name)}</span><span>` +
+                `${escapeHtml(day.icon)} ` +
+                (day.high === null ? '' : `${day.high}°`) +
+                (day.low === null ? '' : ` / ${day.low}°`) +
+                `</span></li>`,
+            )
+            .join('');
+          forecastBlock =
+            `<div class="preview"><h3>On the wall now</h3>` +
+            `<p class="host">National Weather Service · updated ${escapeHtml(ago(row.fetchedAt, now()))}</p>` +
+            `<ul>${strip}</ul></div>`;
+        }
+      } catch {
+        // A malformed cache is not worth failing the settings page over.
+      }
+    }
+
+    const status =
+      weather.enabled && located && forecastBlock === ''
+        ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
+        : '';
+
+    return (
+      `<p class="hint">A five-day forecast strip. It is a block like any other — ` +
+      `choose where it sits on the <a class="link" href="admin/displays/default">Default display</a>.</p>` +
+      forecastBlock +
+      status +
+      `<form method="post" action="admin/weather">` +
+      `<div class="checks"><label>` +
+      `<input type="checkbox" name="weather_enabled" value="1"` +
+      `${weather.enabled ? ' checked' : ''}> Show the forecast</label></div>` +
+      `<div class="row-fields">` +
+      `<span><label for="latitude">Latitude</label>` +
+      `<input id="latitude" name="latitude" type="text" inputmode="decimal" ` +
+      `placeholder="38.8894" value="${escapeHtml(value(weather.latitude))}"></span>` +
+      `<span><label for="longitude">Longitude</label>` +
+      `<input id="longitude" name="longitude" type="text" inputmode="decimal" ` +
+      `placeholder="-97.7431" value="${escapeHtml(value(weather.longitude))}"></span>` +
+      `</div>` +
+      `<p class="hint">Press and hold your house in a phone map app to get both numbers. ` +
+      `The alert zones below are worked out from the same location.</p>` +
+      `<button type="submit">Save</button></form>` +
+
+      // The easy way, for the common install: read the location Home Assistant
+      // already knows. Only offered when there is a connection to read it from.
+      (haConnected
+        ? `<form method="post" action="admin/weather/use-ha-location">` +
+          `<button class="secondary" type="submit">Use my Home Assistant home location</button>` +
+          `</form>` +
+          `<p class="hint">Fills the latitude and longitude from Home Assistant’s ` +
+          `home zone, so there are no numbers to look up.</p>`
+        : '') +
+
+      errorBlock(
+        'The forecast comes from the US National Weather Service.',
+        'It covers the United States only. Elsewhere, leave this off — a second ' +
+          'provider is the obvious next module.',
+      )
+    );
+  }
+
   function alertsPage(error?: string): string {
     const household = deps.db
       .prepare(
@@ -72,14 +250,21 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const located = household?.latitude !== null && household?.longitude !== null;
 
     return page({
-      title: 'Weather alerts — Maverick Wall',
+      modules: navModules(deps.db),
+      title: 'Weather — Maverick Wall',
       nav: 'alerts',
-      heading: 'Weather alerts',
+      heading: 'Weather',
+      intro: 'The forecast strip on the wall, and the National Weather Service alerts — both here, both fed from one location.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
 
-        // First, before the switch. Somebody deciding whether to rely on this
-        // should read it before they decide, not after.
+        // The everyday panel first: the forecast the wall draws day to day.
+        `<h2 class="add" style="margin-top:0;padding-top:0;border-top:0">Forecast</h2>` +
+        weatherSection() +
+
+        `<h2 class="add">Alerts</h2>` +
+        // Before the switch. Somebody deciding whether to rely on this should
+        // read it before they decide, not after.
         `<div class="error"><strong>Not a life-safety system.</strong>` +
         `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
 
@@ -94,9 +279,8 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
         (located
           ? ''
-          : `<p class="hint">Set your latitude and longitude on the ` +
-            `<a class="link" href="admin/display">Display</a> screen first — the zones ` +
-            `are worked out from them.</p>`) +
+          : `<p class="hint">Set your latitude and longitude in the Forecast section ` +
+            `above first — the alert zones are worked out from them.</p>`) +
 
         `<h2 class="add">Zones being watched</h2>` +
         (zones.length === 0

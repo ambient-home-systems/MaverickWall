@@ -371,7 +371,9 @@ describe('display settings', () => {
     // A theme in the dropdown that the wall then falls back on would be a
     // puzzle nobody could solve from the kitchen.
     const h = await harness();
-    const body = await (await h.call('/admin/display')).text();
+    // The default appearance form lives on the Default display now, not the
+    // retired global Display page.
+    const body = await (await h.call('/admin/displays/default')).text();
     for (const theme of ['board', 'slate', 'almanac', 'glance']) {
       expect(body).toContain(`value="${theme}"`);
     }
@@ -636,7 +638,7 @@ describe('the order the wall draws in', () => {
       today_events: '8', next_days: '6', horizon_weeks: '5',
       block_1: 'horizon', block_2: 'next', block_3: 'none',
     });
-    const body = await (await h.call('/admin/display')).text();
+    const body = await (await h.call('/admin/displays/default')).text();
     expect(body).toMatch(/id="block_1"[\s\S]*?<option value="horizon" selected/);
     expect(body).toMatch(/id="block_3"[\s\S]*?<option value="none" selected/);
   });

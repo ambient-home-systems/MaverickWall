@@ -16,9 +16,7 @@ import {
   readAdminScreens,
   readAdminSources,
   readUpdateState,
-  readWeatherSettings,
   recordUpdateCheck,
-  writeWeatherSettings,
   setPersonAvatar,
   setUpdateCheckEnabled,
   readHousehold,
@@ -72,8 +70,8 @@ import { currentUser } from '../auth/session.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, icon, page } from './html.js';
-import { bounded, checkbox, colour, coordinate, oneOf, optionalText, parse, text, z } from '../validation.js';
+import { errorBlock, escapeHtml, icon, page, type NavModule } from './html.js';
+import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
 /**
  * One schema per form, stated where the constants they lean on are.
@@ -122,12 +120,6 @@ const draftBody = z.looseObject({
 const personBody = z.object({
   name: text('A name', 80),
   color: colour(),
-});
-
-const weatherBody = z.object({
-  weather_enabled: checkbox(),
-  latitude: optionalText(20),
-  longitude: optionalText(20),
 });
 
 const screenBody = z.object({
@@ -232,9 +224,9 @@ const layoutBody = z.object({
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
-import { readEnabledExternalModules } from '../api/external-modules.js';
+import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
-import { call, resolveConnection } from '../modules/homeassistant/client.js';
+import { resolveConnection } from '../modules/homeassistant/client.js';
 
 /**
  * The admin screens.
@@ -491,6 +483,23 @@ export function ago(from: number | null, now: number): string {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
+/**
+ * The installed modules for the sidebar's Modules group, read live.
+ *
+ * Every shell page passes this so the nav is a mirror of what is installed:
+ * add one from the Store and its entry appears, remove it and the entry goes.
+ * Disabled modules stay listed with an "off" badge — they are installed, just
+ * quiet — so the household can find one to turn back on. The db read lives here
+ * rather than in `html.ts`, which never touches the database.
+ */
+export function navModules(db: SqliteDatabase): NavModule[] {
+  return readExternalModules(db).map((m) => ({
+    id: m.id,
+    name: m.name,
+    enabled: m.enabled === 1,
+  }));
+}
+
 export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
@@ -607,6 +616,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+      modules: navModules(deps.db),
         title: 'Maverick Wall',
         nav: 'home',
         heading: 'Overview',
@@ -644,8 +654,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="today-big">${escapeHtml(household.timezone)}</div>` +
           `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} screen${screens.length === 1 ? '' : 's'}</div>` +
           `<div class="row" style="margin-top:auto;padding-top:16px">` +
-          `<a class="btn btn-ghost btn-sm" href="admin/display">Edit what shows</a>` +
-          `<a class="btn btn-ghost btn-sm" href="admin/displays/default">Arrange layout</a></div>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/displays/default">Edit what shows</a>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/displays/default?view=layout">Arrange layout</a></div>` +
           `</div></div></div>` +
 
           // Sign-out lives in the sidebar footer now, shown on every page for a
@@ -789,6 +799,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+      modules: navModules(deps.db),
         title: 'Remove calendar',
         nav: 'calendars',
         heading: `Remove “${source.name}”?`,
@@ -951,6 +962,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     writeFileSync(staged, bytes);
     return c.html(
       page({
+      modules: navModules(deps.db),
         title: 'Restore staged',
         nav: 'system',
         heading: 'Ready to restore',
@@ -1036,6 +1048,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+      modules: navModules(deps.db),
         title: 'Remove person',
         nav: 'people',
         heading: `Remove ${person.name}?`,
@@ -1172,9 +1185,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/displays', (c: Context) => c.html(displaysPage()));
   app.get('/admin/displays/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
-    if (id === 'default') return c.html(displayDetailPage(null));
+    const view = c.req.query('view') === 'layout' ? 'layout' : 'appearance';
+    if (id === 'default') return c.html(displayDetailPage(null, undefined, view));
     if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/displays', 302);
-    return c.html(displayDetailPage(id));
+    return c.html(displayDetailPage(id, undefined, view));
   });
 
   // Old routes kept as redirects so bookmarks and any hand-typed links land in
@@ -1324,113 +1338,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Display
   // -------------------------------------------------------------------------
 
-  app.get('/admin/display', (c: Context) => c.html(displayPage()));
+  // The global Display page is retired: its appearance controls are the Default
+  // display's now. Kept as a redirect so old bookmarks and links land there.
+  app.get('/admin/display', (c: Context) => c.redirect('/admin/displays/default', 302));
 
-  /**
-   * Weather: the first panel module's own corner of the settings.
-   *
-   * Beside the block order rather than on its own screen, because the question
-   * a household is answering — "do I want this on the wall, and where" — is
-   * the same question.
-   */
-  app.post('/admin/display/weather', async (c: Context) => {
-    const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const shaped = parse(weatherBody, body);
-    if (!shaped.ok) return c.html(displayPage({ message: shaped.message }), 400);
-
-    /*
-     * A location is only required when the panel is on.
-     *
-     * Turning weather *off* must not demand two numbers first, which is why
-     * the coordinates are optional in the schema and checked here against the
-     * switch rather than on their own.
-     */
-    const lat = parse(coordinate('Latitude', 90), shaped.value.latitude);
-    const lon = parse(coordinate('Longitude', 180), shaped.value.longitude);
-    if (shaped.value.weather_enabled && (!lat.ok || !lon.ok)) {
-      return c.html(
-        displayPage({
-          message: 'Weather needs a location.',
-          suggestion:
-            'Latitude between -90 and 90, longitude between -180 and 180. Your phone’s map app ' +
-            'will show both if you press and hold on your house.',
-        }),
-        400,
-      );
-    }
-
-    writeWeatherSettings(deps.db, {
-      enabled: shaped.value.weather_enabled,
-      latitude: lat.ok ? lat.value : null,
-      longitude: lon.ok ? lon.value : null,
-    });
-    return c.redirect('/admin/display', 302);
-  });
-
-  /**
-   * Fill the location from Home Assistant's own home zone.
-   *
-   * The commonest install is an add-on, and the box already knows where home is
-   * — `zone.home` carries a latitude and longitude. So rather than ask a
-   * household to press-and-hold a map for two numbers, read them from the one
-   * connection we already have. Read-only, like everything else here: this only
-   * ever reads the zone's coordinates, never writes to Home Assistant.
-   */
-  app.post('/admin/display/weather/use-ha-location', async (c: Context) => {
-    const resolved = resolveConnection(deps.db, deps.keyring);
-    if (!resolved.ok) {
-      return c.html(
-        displayPage({
-          message: 'Home Assistant is not connected.',
-          suggestion: 'Connect it on the Home Assistant screen, then try this again.',
-        }),
-        400,
-      );
-    }
-    const home = await call(deps.fetcher, resolved.connection, '/states/zone.home');
-    if (!home.ok) {
-      return c.html(
-        displayPage({
-          message: 'Could not read your Home Assistant home location.',
-          ...(home.suggestion !== undefined ? { suggestion: home.suggestion } : {}),
-        }),
-        400,
-      );
-    }
-    let raw: unknown;
-    try {
-      raw = JSON.parse(home.body);
-    } catch {
-      raw = null;
-    }
-    const located = parse(
-      z.object({ attributes: z.object({ latitude: z.number(), longitude: z.number() }) }),
-      raw,
-    );
-    if (!located.ok) {
-      return c.html(
-        displayPage({
-          message: 'Home Assistant did not return a home location.',
-          suggestion:
-            'Set your home zone in Home Assistant (Settings → Areas, labels & zones), then try again.',
-        }),
-        400,
-      );
-    }
-    const current = readWeatherSettings(deps.db);
-    writeWeatherSettings(deps.db, {
-      enabled: current.enabled,
-      latitude: located.value.attributes.latitude,
-      longitude: located.value.attributes.longitude,
-    });
-    return c.redirect('/admin/display', 302);
-  });
-
+  // The Default display's appearance form posts here — the household defaults
+  // every wall inherits. (Weather moved to its own page; see admin-alerts.ts.)
   app.post('/admin/display', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
     const shaped = parse(displayBody, body);
-    if (!shaped.ok) return c.html(displayPage({ message: shaped.message }), 400);
+    if (!shaped.ok) return c.html(displayDetailPage(null, shaped.message), 400);
 
     /*
      * "Same theme all day" is a choice, not a missing value.
@@ -1443,7 +1361,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const scheduled = daytimeRaw !== undefined && daytimeRaw !== 'none';
 
     const order = blockOrder(body, readHousehold(deps.db).displayBlocks);
-    if ('error' in order) return c.html(displayPage({ message: order.error }), 400);
+    if ('error' in order) return c.html(displayDetailPage(null, order.error), 400);
 
     writeDisplaySettings(deps.db, {
       theme: shaped.value.theme,
@@ -1459,8 +1377,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       blocks: order.blocks,
     });
 
-    // The wall picks this up on its next poll, within the minute.
-    return c.redirect('/admin/display', 302);
+    // Back to the Default display; the wall picks it up on its next poll.
+    return c.redirect('/admin/displays/default', 302);
   });
 
   // -------------------------------------------------------------------------
@@ -1638,6 +1556,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     return page({
+      modules: navModules(deps.db),
       title: 'Shift rotation — Maverick Wall',
       nav: 'shifts',
       heading: `${person?.name ?? 'Someone'}'s rotation`,
@@ -1688,6 +1607,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const canAdd = people.length > 0;
     return page({
+      modules: navModules(deps.db),
       title: 'Shifts — Maverick Wall',
       nav: 'shifts',
       heading: 'Shift rotation',
@@ -1768,6 +1688,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       .join('\n');
 
     return page({
+      modules: navModules(deps.db),
       title: 'System — Maverick Wall',
       nav: 'system',
       heading: 'System',
@@ -1902,88 +1823,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Saying so on the form is the difference between "this is not for me" and
    * an empty panel somebody spends an evening debugging.
    */
-  function weatherSection(): string {
-    const weather = readWeatherSettings(deps.db);
-    const value = (n: number | null): string => (n === null ? '' : String(n));
-    const haConnected = resolveConnection(deps.db, deps.keyring).ok;
-    const located = weather.latitude !== null && weather.longitude !== null;
-
-    // What the forecast is doing right now, so it is visibly working rather than
-    // a switch that may or may not have taken (issue #6).
-    let forecastBlock = '';
-    const row = deps.db
-      .prepare(`SELECT payload, fetched_at AS fetchedAt FROM weather_cache WHERE cache_key = 'nws:forecast'`)
-      .get() as { payload: string; fetchedAt: number } | undefined;
-    if (row !== undefined) {
-      try {
-        const days = (JSON.parse(row.payload) as {
-          days?: { name: string; high: number | null; low: number | null; icon: string }[];
-        }).days ?? [];
-        if (days.length > 0) {
-          const strip = days
-            .slice(0, 5)
-            .map(
-              (day) =>
-                `<li><span class="when">${escapeHtml(day.name)}</span><span>` +
-                `${escapeHtml(day.icon)} ` +
-                (day.high === null ? '' : `${day.high}°`) +
-                (day.low === null ? '' : ` / ${day.low}°`) +
-                `</span></li>`,
-            )
-            .join('');
-          forecastBlock =
-            `<div class="preview"><h3>On the wall now</h3>` +
-            `<p class="host">National Weather Service · updated ${escapeHtml(ago(row.fetchedAt, now()))}</p>` +
-            `<ul>${strip}</ul></div>`;
-        }
-      } catch {
-        // A malformed cache is not worth failing the settings page over.
-      }
-    }
-
-    const status =
-      weather.enabled && located && forecastBlock === ''
-        ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
-        : '';
-
-    return (
-      `<p class="hint">A five-day forecast strip. Put it where you want it in the ` +
-      `list above — it is a block like any other.</p>` +
-      forecastBlock +
-      status +
-      `<form method="post" action="admin/display/weather">` +
-      `<div class="checks"><label>` +
-      `<input type="checkbox" name="weather_enabled" value="1"` +
-      `${weather.enabled ? ' checked' : ''}> Show the forecast</label></div>` +
-      `<div class="row-fields">` +
-      `<span><label for="latitude">Latitude</label>` +
-      `<input id="latitude" name="latitude" type="text" inputmode="decimal" ` +
-      `placeholder="38.8894" value="${escapeHtml(value(weather.latitude))}"></span>` +
-      `<span><label for="longitude">Longitude</label>` +
-      `<input id="longitude" name="longitude" type="text" inputmode="decimal" ` +
-      `placeholder="-97.7431" value="${escapeHtml(value(weather.longitude))}"></span>` +
-      `</div>` +
-      `<p class="hint">Press and hold your house in a phone map app to get both numbers.</p>` +
-      `<button type="submit">Save</button></form>` +
-
-      // The easy way, for the common install: read the location Home Assistant
-      // already knows. Only offered when there is a connection to read it from.
-      (haConnected
-        ? `<form method="post" action="admin/display/weather/use-ha-location">` +
-          `<button class="secondary" type="submit">Use my Home Assistant home location</button>` +
-          `</form>` +
-          `<p class="hint">Fills the latitude and longitude from Home Assistant’s ` +
-          `home zone, so there are no numbers to look up.</p>`
-        : '') +
-
-      errorBlock(
-        'The forecast comes from the US National Weather Service.',
-        'It covers the United States only. Elsewhere, leave this off — a second ' +
-          'provider is the obvious next module.',
-      )
-    );
-  }
-
   function readSchemaVersionSafe(): number {
     try {
       return (
@@ -2036,6 +1875,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</article>`;
 
     return page({
+      modules: navModules(deps.db),
       title: 'People — Maverick Wall',
       nav: 'people',
       heading: 'People',
@@ -2108,6 +1948,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     if (portOff) {
       return page({
+      modules: navModules(deps.db),
         title: 'Pair this screen',
         nav: 'displays',
         heading: `Pair ${name}`,
@@ -2125,6 +1966,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     return page({
+      modules: navModules(deps.db),
       title: 'Pair this screen',
       nav: 'displays',
       heading: `Pair ${name}`,
@@ -2332,6 +2174,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</div></a>`;
 
     return page({
+      modules: navModules(deps.db),
       title: 'Displays — Maverick Wall',
       nav: 'displays',
       heading: 'Displays',
@@ -2430,11 +2273,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Default has no hardware, so no status or pairing; the household-wide stacked
    * defaults still live on the Display screen and are linked to from here.
    */
-  function displayDetailPage(ownerId: string | null, error?: string): string {
+  /**
+   * One display, in two sub-views: Appearance and Layout.
+   *
+   * Both are per wall — the Default (`ownerId` null) included, which is the
+   * "default for new screens" surface. The sub-views are plain links carrying a
+   * `?view`, marked active server-side, so there is no client tab state. A real
+   * screen also shows its status and pairing above the switcher, on both views,
+   * because that is its identity rather than a setting.
+   */
+  function displayDetailPage(
+    ownerId: string | null,
+    error?: string,
+    view: 'appearance' | 'layout' = 'appearance',
+  ): string {
     const at = now();
     const household = readHousehold(deps.db);
     const owner = ownerId === null ? null : activeScreens().find((s) => s.id === ownerId) ?? null;
     const ownerKey = owner?.id ?? null;
+    const detailId = ownerKey ?? 'default';
 
     const mode = owner?.layoutMode ?? household.layoutMode;
     const aspect = owner?.layoutAspect ?? household.layoutAspect;
@@ -2482,32 +2339,45 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="hint">Showing a new pairing link stops the old one working.</p>` +
           `</article>`;
 
+    const tab = (key: 'appearance' | 'layout', label: string): string =>
+      `<a class="subtab${view === key ? ' active' : ''}" ` +
+      `href="admin/displays/${encodeURIComponent(detailId)}?view=${key}">${label}</a>`;
+    const subnav = `<div class="subnav">${tab('appearance', 'Appearance')}${tab('layout', 'Layout')}</div>`;
+
+    // wallSettingsForm carries its own heading; the Default's form does not need
+    // one because the page title already says "Default display".
+    const appearance = owner === null ? defaultsForm() : wallSettingsForm(owner);
+
+    const layout =
+      `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
+      `Turn it on to use this instead of the stacked layout — the wall picks up a ` +
+      `change within a minute.</p>` +
+      layoutEditorMount(initial);
+
     return page({
+      modules: navModules(deps.db),
       title: `${owner ? owner.name : 'Default display'} — Maverick Wall`,
       nav: 'displays',
       heading: owner ? owner.name : 'Default display',
       intro: owner
-        ? 'Everything about this wall — its layout, how it is hung, its theme and how much it shows.'
-        : 'The layout every wall shows until you design one of its own.',
+        ? 'Everything about this wall — how it is hung, its theme, how much it shows, and its layout.'
+        : 'The appearance and layout every wall inherits until it is given its own.',
       body:
         `<p><a class="link" href="admin/displays">← All displays</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         statusAndPairing +
-        `<h2 class="add">Layout</h2>` +
-        `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
-        `Turn it on to use this instead of the stacked layout — the wall picks up a ` +
-        `change within a minute.</p>` +
-        layoutEditorMount(initial) +
-        (owner === null
-          ? `<h2 class="add">Defaults</h2>` +
-            `<p class="hint">Theme, the stacked-layout block order and how much to show ` +
-            `are the household defaults, on the <a class="link" href="admin/display">Display ` +
-            `defaults</a> screen. Every wall follows them until it is given its own.</p>`
-          : `<h2 class="add">This wall’s settings</h2>` + wallSettingsForm(owner)),
+        subnav +
+        (view === 'layout' ? layout : appearance),
     });
   }
 
-  function displayPage(error?: { message: string; suggestion?: string }): string {
+  /**
+   * The household's default appearance — theme, daylight schedule, block order
+   * and density — shown as the Default display's Appearance view. Every wall
+   * inherits these until it overrides them on its own page. Weather lives on the
+   * Weather page now, not here; this is only what a screen draws by default.
+   */
+  function defaultsForm(): string {
     const household = readHousehold(deps.db);
     const scheduled = household.daytimeTheme !== null && household.daytimeTheme !== '';
 
@@ -2527,51 +2397,40 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `min="${low}" max="${high}" value="${value}">` +
       `<p class="hint">${escapeHtml(hint)}</p>`;
 
-    return page({
-      title: 'Display — Maverick Wall',
-      nav: 'display',
-      heading: 'Display',
-      intro: 'The wall picks these up within a minute. No need to touch the screen.',
-      body:
-        (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
-        `<form method="post" action="admin/display">` +
-        `<label>Theme</label>` +
-        themeCards(household.theme) +
-        `<p class="hint">Board separates the shift colours best from across a room.</p>` +
+    return (
+      `<form method="post" action="admin/display">` +
+      `<label>Theme</label>` +
+      themeCards(household.theme) +
+      `<p class="hint">Board separates the shift colours best from across a room.</p>` +
 
-        `<label for="daytime_theme">During the day</label>` +
-        `<select id="daytime_theme" name="daytime_theme">` +
-        `${themeOptions(scheduled ? (household.daytimeTheme ?? '') : '', true)}</select>` +
-        `<p class="hint">A dark theme at noon is a hole in the wall; a light one at 2am is a lamp.</p>` +
+      `<label for="daytime_theme">During the day</label>` +
+      `<select id="daytime_theme" name="daytime_theme">` +
+      `${themeOptions(scheduled ? (household.daytimeTheme ?? '') : '', true)}</select>` +
+      `<p class="hint">A dark theme at noon is a hole in the wall; a light one at 2am is a lamp.</p>` +
 
-        `<div class="row-fields">` +
-        `<span><label for="daytime_starts_at">From</label>` +
-        `<input id="daytime_starts_at" name="daytime_starts_at" type="time" ` +
-        `value="${escapeHtml(household.daytimeStartsAt ?? '07:00')}"></span>` +
-        `<span><label for="daytime_ends_at">Until</label>` +
-        `<input id="daytime_ends_at" name="daytime_ends_at" type="time" ` +
-        `value="${escapeHtml(household.daytimeEndsAt ?? '21:00')}"></span>` +
-        `</div>` +
+      `<div class="row-fields">` +
+      `<span><label for="daytime_starts_at">From</label>` +
+      `<input id="daytime_starts_at" name="daytime_starts_at" type="time" ` +
+      `value="${escapeHtml(household.daytimeStartsAt ?? '07:00')}"></span>` +
+      `<span><label for="daytime_ends_at">Until</label>` +
+      `<input id="daytime_ends_at" name="daytime_ends_at" type="time" ` +
+      `value="${escapeHtml(household.daytimeEndsAt ?? '21:00')}"></span>` +
+      `</div>` +
 
-        `<h2 class="add">What the wall shows</h2>` +
-        `<p class="hint">Top to bottom in portrait. In landscape the month takes ` +
-        `its own column and the rest stack beside it, in this order.</p>` +
-        blockRows(parseBlocks(household.displayBlocks)) +
+      `<h2 class="add">What the wall shows</h2>` +
+      `<p class="hint">Top to bottom in portrait. In landscape the month takes ` +
+      `its own column and the rest stack beside it, in this order.</p>` +
+      blockRows(parseBlocks(household.displayBlocks)) +
 
-        `<h2 class="add">How much to show</h2>` +
-        number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
-          'Anything past this is counted rather than listed.') +
-        number('next_days', 'Days in the week ahead', household.displayNextDays, 0, 14,
-          'Set to 0 to hide the week ahead entirely.') +
-        number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
-          'The rotation shape. Five covers a month at a glance.') +
-        `<button type="submit">Save</button></form>` +
-
-        // Its own section, outside the form above — weather has its own forms
-        // (Save, and "use my Home Assistant location"), which cannot be nested.
-        `<h2 class="add">Weather</h2>` +
-        weatherSection(),
-    });
+      `<h2 class="add">How much to show</h2>` +
+      number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
+        'Anything past this is counted rather than listed.') +
+      number('next_days', 'Days in the week ahead', household.displayNextDays, 0, 14,
+        'Set to 0 to hide the week ahead entirely.') +
+      number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
+        'The rotation shape. Five covers a month at a glance.') +
+      `<button type="submit">Save</button></form>`
+    );
   }
 
   function sourceRow(source: AdminSourceRow, at: number, people: readonly PersonRecord[]): string {
@@ -2693,6 +2552,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<label><input type="checkbox" name="${id}" value="1"${on ? ' checked' : ''}> ${escapeHtml(label)}</label>`;
 
     return page({
+      modules: navModules(deps.db),
       title: 'Calendars — Maverick Wall',
       nav: 'calendars',
       heading: 'Calendars',
