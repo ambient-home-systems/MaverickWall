@@ -1,0 +1,1 @@
+ALTER TABLE `external_modules` ADD `secrets` text;

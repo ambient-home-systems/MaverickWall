@@ -31,6 +31,8 @@ export type SecretPurpose =
   | 'ha-token'
   /** Display tokens issued to screens. */
   | 'display-token'
+  /** Credentials a recipe injects into its fetch (an API key). */
+  | 'recipe-secret'
   /** Session signing. */
   | 'session';
 

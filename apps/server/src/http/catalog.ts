@@ -92,11 +92,22 @@ export const catalogSchema = z.object({ version: z.literal(1), modules: z.array(
  */
 export const remoteCatalogSchema = catalogSchema.superRefine((cat, ctx) => {
   cat.modules.forEach((entry, i) => {
-    if (entry.kind === 'recipe' && entry.recipe.fetch.allowLan) {
+    if (entry.kind !== 'recipe') return;
+    if (entry.recipe.fetch.allowLan) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['modules', i],
         message: 'a remote catalogue may not ask a recipe to reach your local network',
+      });
+    }
+    // A stranger's recipe may not ask the household for a credential: it would be
+    // a phishing surface (give me your API key, I decide where it goes). A recipe
+    // that needs a secret is one the household pastes themselves, and trusts.
+    if (entry.recipe.secrets.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['modules', i],
+        message: 'a remote catalogue may not ask for a secret',
       });
     }
   });
@@ -153,6 +164,7 @@ export const CATALOG: Catalog = {
           { key: 'lat', label: 'Latitude', type: 'string', default: '51.5074' },
           { key: 'lon', label: 'Longitude', type: 'string', default: '-0.1278' },
         ],
+        secrets: [],
         fetch: {
           url: 'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m',
           intervalSeconds: 900,

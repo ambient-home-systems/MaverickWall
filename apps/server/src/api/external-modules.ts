@@ -27,6 +27,8 @@ export interface ExternalModuleRow {
   readonly recipe: unknown;
   /** For a recipe: the household's filled-in config values. */
   readonly config: unknown;
+  /** For a recipe with secrets: the encrypted envelope, decrypted only at fetch. */
+  readonly secretsEnvelope: string | null;
   readonly panel: unknown;
   /** Last validated signals this module offered; raw JSON this process wrote. */
   readonly signals: unknown;
@@ -46,6 +48,7 @@ interface RawRow {
   kind: string;
   recipe: string | null;
   config: string | null;
+  secrets: string | null;
   panel: string | null;
   signals: string | null;
   alerts_action: string | null;
@@ -79,6 +82,7 @@ function shape(row: RawRow): ExternalModuleRow {
     kind: row.kind === 'recipe' ? 'recipe' : 'service',
     recipe: parseJson(row.recipe),
     config: parseJson(row.config),
+    secretsEnvelope: row.secrets,
     panel: parseJson(row.panel),
     signals: parseJson(row.signals),
     alertsAction: action,
@@ -88,7 +92,7 @@ function shape(row: RawRow): ExternalModuleRow {
 }
 
 const SELECT = `SELECT id, url, name, block_key, enabled, sort_order, kind, recipe, config,
-  panel, signals, alerts_action, last_polled_at, last_error
+  secrets, panel, signals, alerts_action, last_polled_at, last_error
   FROM external_modules ORDER BY sort_order, created_at`;
 
 export function readExternalModules(db: SqliteDatabase): ExternalModuleRow[] {
@@ -128,7 +132,15 @@ export function createExternalModule(
  */
 export function createRecipeModule(
   db: SqliteDatabase,
-  input: { id: string; name: string; url: string; recipe: unknown; config: unknown },
+  input: {
+    id: string;
+    name: string;
+    url: string;
+    recipe: unknown;
+    config: unknown;
+    /** An already-encrypted keyring envelope, or null. Never plaintext here. */
+    secretsEnvelope?: string | null;
+  },
 ): string {
   const at = Date.now();
   const blockKey = externalBlockKey(input.id);
@@ -138,8 +150,8 @@ export function createRecipeModule(
     }).n;
   db.prepare(
     `INSERT INTO external_modules (id, url, name, block_key, enabled, kind, recipe, config,
-        sort_order, last_polled_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, 'recipe', ?, ?, ?, 0, ?, ?)`,
+        secrets, sort_order, last_polled_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, 'recipe', ?, ?, ?, ?, 0, ?, ?)`,
   ).run(
     input.id,
     input.url,
@@ -147,6 +159,7 @@ export function createRecipeModule(
     blockKey,
     JSON.stringify(input.recipe),
     JSON.stringify(input.config),
+    input.secretsEnvelope ?? null,
     order,
     at,
     at,

@@ -18,7 +18,12 @@ import {
 } from '../api/external-modules.js';
 import { deleteRule, moduleAlertRuleId, syncModuleAlertRule } from '../api/rules.js';
 import { signalDataSchema } from '../modules/external/signal-data.js';
-import { normaliseConfig, recipeSchema, type RecipeConfig } from '../modules/external/recipe.js';
+import {
+  normaliseConfig,
+  recipeFetchHost,
+  recipeSchema,
+  type RecipeConfig,
+} from '../modules/external/recipe.js';
 import { type RecipeEntry, type ServiceEntry } from './catalog.js';
 import {
   browseEntries,
@@ -106,11 +111,32 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       url: entry.recipe.fetch.url,
       recipe: entry.recipe,
       config,
+      secretsEnvelope: encryptSecrets(entry.recipe.secrets, body, 'sec_'),
     });
     ensureDisplayBlock(deps.db, blockKey);
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
     return c.redirect('/admin/modules', 302);
   });
+
+  /**
+   * Collect the secret values the household typed and seal them into one keyring
+   * envelope. The plaintext never leaves this function; only the envelope is
+   * stored, and only decrypted at fetch time. Null when the recipe has no
+   * secrets or the household left them blank.
+   */
+  function encryptSecrets(
+    fields: readonly { key: string }[],
+    body: Record<string, unknown>,
+    prefix: string,
+  ): string | null {
+    const values: Record<string, string> = {};
+    for (const field of fields) {
+      const raw = body[`${prefix}${field.key}`];
+      if (typeof raw === 'string' && raw !== '') values[field.key] = raw;
+    }
+    if (Object.keys(values).length === 0) return null;
+    return deps.keyring.encrypt(JSON.stringify(values), 'recipe-secret');
+  }
 
   app.get('/admin/modules/recipe', (c: Context) => c.html(recipePage()));
 
@@ -118,13 +144,16 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const manifestRaw = typeof body['manifest'] === 'string' ? body['manifest'] : '';
     const configRaw = typeof body['config'] === 'string' ? body['config'] : '';
+    const secretsRaw = typeof body['secrets'] === 'string' ? body['secrets'] : '';
     const nameOverride = typeof body['name'] === 'string' ? body['name'].trim() : '';
+    const back = (message: string): Response =>
+      c.html(recipePage(message, manifestRaw, configRaw, secretsRaw), 400);
 
     let manifestJson: unknown;
     try {
       manifestJson = JSON.parse(manifestRaw);
     } catch {
-      return c.html(recipePage('That recipe is not valid JSON.', manifestRaw, configRaw), 400);
+      return back('That recipe is not valid JSON.');
     }
     const parsed = recipeSchema.safeParse(manifestJson);
     if (!parsed.success) {
@@ -133,7 +162,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       const first = parsed.error.issues[0];
       const where = first && first.path.length > 0 ? `${first.path.join('.')}: ` : '';
       const why = first?.message ?? 'not a valid recipe';
-      return c.html(recipePage(`This recipe is not valid — ${where}${why}.`, manifestRaw, configRaw), 400);
+      return back(`This recipe is not valid — ${where}${why}.`);
     }
     const recipe = parsed.data;
 
@@ -142,12 +171,34 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       try {
         configJson = JSON.parse(configRaw);
       } catch {
-        return c.html(recipePage('The config is not valid JSON.', manifestRaw, configRaw), 400);
+        return back('The config is not valid JSON.');
       }
     }
     const supplied =
       configJson !== null && typeof configJson === 'object' ? (configJson as RecipeConfig) : {};
     const config = normaliseConfig(recipe, supplied);
+
+    // Secrets, if the recipe declares any: a JSON object of {key: value},
+    // encrypted here and stored as an envelope only.
+    let secretsEnvelope: string | null = null;
+    if (recipe.secrets.length > 0 && secretsRaw.trim() !== '') {
+      let secretsJson: unknown;
+      try {
+        secretsJson = JSON.parse(secretsRaw);
+      } catch {
+        return back('The secrets are not valid JSON.');
+      }
+      const values: Record<string, string> = {};
+      if (secretsJson !== null && typeof secretsJson === 'object') {
+        for (const field of recipe.secrets) {
+          const v = (secretsJson as Record<string, unknown>)[field.key];
+          if (typeof v === 'string' && v !== '') values[field.key] = v;
+        }
+      }
+      if (Object.keys(values).length > 0) {
+        secretsEnvelope = deps.keyring.encrypt(JSON.stringify(values), 'recipe-secret');
+      }
+    }
 
     const id = randomBytes(6).toString('hex');
     const blockKey = createRecipeModule(deps.db, {
@@ -156,6 +207,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       url: recipe.fetch.url,
       recipe,
       config,
+      secretsEnvelope,
     });
     ensureDisplayBlock(deps.db, blockKey);
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
@@ -380,7 +432,12 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     2,
   );
 
-  function recipePage(error?: string, manifest?: string, config?: string): string {
+  function recipePage(
+    error?: string,
+    manifest?: string,
+    config?: string,
+    secrets?: string,
+  ): string {
     return page({
       title: 'Add a recipe — Maverick Wall',
       nav: 'modules',
@@ -413,6 +470,13 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         `placeholder='{ "station": "12345" }'>${escapeHtml(config ?? '')}</textarea>` +
         `<p class="hint">If the recipe’s address has <span class="code">{placeholders}</span>, ` +
         `fill them here. A tidier form is coming; for now this is the raw way in.</p>` +
+        `<label for="secrets">Secret values (optional JSON)</label>` +
+        `<textarea id="secrets" name="secrets" rows="3" spellcheck="false" autocomplete="off" ` +
+        `style="width:100%;font-family:var(--mono);font-size:13px" ` +
+        `placeholder='{ "api_key": "…" }'>${escapeHtml(secrets ?? '')}</textarea>` +
+        `<p class="hint">If the recipe declares <span class="code">secrets</span> and uses ` +
+        `them in a <span class="code">header</span>, put the values here. They are ` +
+        `stored encrypted and never shown again — a secret may not go in the address.</p>` +
         `<button type="submit">Add recipe</button></form>`,
     });
   }
@@ -467,6 +531,23 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           `value="${escapeHtml(field.default ?? '')}">`,
       )
       .join('');
+    // Secrets are password inputs, never pre-filled, and the household is told
+    // exactly where the value will be sent before they type it.
+    const secretFields = entry.recipe.secrets
+      .map(
+        (field) =>
+          `<label for="sec_${field.key}">${escapeHtml(field.label)}</label>` +
+          `<input id="sec_${field.key}" name="sec_${field.key}" type="password" ` +
+          `autocomplete="off" maxlength="280">`,
+      )
+      .join('');
+    const secretsBlock =
+      secretFields === ''
+        ? ''
+        : `<h2 class="add">Credentials</h2>` +
+          `<p class="hint" style="margin-top:0">These are stored encrypted and sent ` +
+          `only to <span class="code">${escapeHtml(recipeFetchHost(entry.recipe))}</span>. ` +
+          `They never appear on the wall or in a log.</p>${secretFields}`;
     return page({
       title: `Install ${entry.name} — Maverick Wall`,
       nav: 'modules',
@@ -479,12 +560,15 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         `<input id="name" name="name" type="text" maxlength="60" ` +
         `value="${escapeHtml(entry.name)}">` +
         (fields === ''
-          ? `<p class="hint">This recipe needs no settings.</p>`
+          ? secretFields === ''
+            ? `<p class="hint">This recipe needs no settings.</p>`
+            : ''
           : `<h2 class="add">Settings</h2>${fields}`) +
+        secretsBlock +
         `<button type="submit" style="margin-top:16px">Add to the wall</button></form>` +
-        `<p class="hint">A recipe is data, never code. It reads a public web feed ` +
-        `over a secure connection and shows a value from it — it never runs ` +
-        `anything, and never receives anything about your household.</p>`,
+        `<p class="hint">A recipe is data, never code. It reads a web feed and shows ` +
+        `a value from it — it never runs anything, and never receives anything ` +
+        `about your household.</p>`,
     });
   }
 

@@ -269,8 +269,22 @@ either being load-bearing for safety.
   recipe** (a raw manifest form for now; the tidy config prompt is A2). The proof
   is a recipe transforming a real feed end to end (`{bitcoin.gbp | currency:GBP}`
   → `£51234.50`) and the SSRF default refusing a loopback fetch until the recipe
-  opts in. **Deferred within B1:** `secrets` (encrypted credentials injected into
-  the fetch) — config-only for now.
+  opts in.
+
+  **Secrets: DONE.** A recipe may declare `secrets` (key/label) and reference them
+  in `fetch.headers` as `{secret:key}` — never in the URL, which is stored and
+  logged (a credential in a query string is a credential leaked; the schema
+  refuses it). The household types the value into a password field at install (or
+  a JSON field on the paste form); it is sealed with the keyring (`recipe-secret`
+  purpose) into one envelope in the encrypted `secrets` column (migration `0019`),
+  decrypted only inside `pollRecipe`, for the length of one request, into the
+  headers — never the manifest, the wall, or a log (rule six). The install page
+  names the host a secret will be sent to. A **remote** catalogue may not ask for
+  a secret at all (like `allowLan`): a stranger's recipe requesting the
+  household's key is a phishing surface, so a secret recipe is one the household
+  pastes and trusts. Proven end to end — the feed receives the header with the
+  decrypted value while the stored column is an envelope that does not contain
+  the plaintext.
 - **Phase B2 — recipe signals. DONE.** A recipe may declare `signals`, read out
   of the same fetched body the panel is. The `when` predicate is kept as blunt as
   promised — a selector path (truthy) or `{ path, equals }`, and nothing that
@@ -318,10 +332,10 @@ either being load-bearing for safety.
   source with a plain reason, and the SSRF guard enforces public-only a second
   time at the recipe's own fetch. The store/read schema is one schema in both
   directions, which is how a mismatch (storing the array, re-validating it as a
-  catalogue object) surfaced instantly in the test. **Still open in A2:** the
-  config prompt cannot yet collect `secrets` (they do not exist — recipe secrets
-  are a B-tier item); and **server-proxied screenshots** (v1 is glyph-only,
-  deliberately).
+  catalogue object) surfaced instantly in the test. The config prompt now also
+  collects `secrets` (a password field per declared secret) — see the secrets
+  entry under Phase B1. **Still open in A2:** **server-proxied screenshots** (v1
+  is glyph-only, deliberately).
 
 ## Decisions taken
 
