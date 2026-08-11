@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.0
+
+Setting up from the Home Assistant sidebar no longer needs a code.
+
+- **One less step on first run.** When you open Maverick Wall from the Home
+  Assistant sidebar for the first time, it goes straight to "Create your
+  account" — no more finding a setup code in the add-on log and copying it over.
+  Home Assistant has already signed you in, so that is proof enough.
+- Running Maverick Wall outside Home Assistant (plain Docker) is unchanged: the
+  setup code is still printed to the log and still required, because there is no
+  Home Assistant login to vouch for you there.
+
+Nothing changes for a wall that is already set up.
+
 ## 0.17.0
 
 A maintenance release — nothing changes on the wall.
