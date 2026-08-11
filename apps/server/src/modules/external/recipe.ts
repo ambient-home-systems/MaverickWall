@@ -1,5 +1,6 @@
 import { z } from '../../validation.js';
 import { panelDataSchema } from './panel-data.js';
+import { signalDataSchema } from './signal-data.js';
 
 /**
  * Recipe modules (docs/rfc-002-module-catalog-and-recipes.md, Phase B1).
@@ -237,6 +238,40 @@ const panelSpec = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tiles'), title: tpl(120).optional(), items: itemsSpec }).strict(),
 ]);
 
+/**
+ * `when` — the one predicate a recipe signal is allowed, kept deliberately
+ * blunt. Two forms, and no more:
+ *   - a selector path, which fires when the value there is *truthy*;
+ *   - `{ path, equals }`, which fires when the value there equals a literal.
+ * The moment this grows `and`/`or` and parentheses, a recipe is code again — so
+ * it does not. "Compare to a config value" and the like are for later, if ever.
+ */
+const whenSpec = z.union([
+  z.string().regex(PATH, 'a selector path'),
+  z.object({ path: z.string().regex(PATH, 'a selector path'), equals: z.string().max(200) }).strict(),
+]);
+
+/**
+ * A signal a recipe can raise. It reads the *same* fetched body the panel does,
+ * and what it produces is validated against the very `signalDataSchema` a
+ * service module's `/signals` answers with — so everything downstream is the
+ * Phase 2b machinery, unchanged: the signal is stamped `source: ext:<id>`, does
+ * nothing until the household arms the module's Alerts control, and is
+ * dismissible and source-scoped like any other.
+ *
+ * `severity` is a literal the author declares, not a value pulled from the feed:
+ * mapping a stranger's severity words onto CAP levels is fuzzy, and the author
+ * knows what their own signal means. `key` and `title` are templates.
+ */
+const signalSpec = z
+  .object({
+    when: whenSpec,
+    key: tpl(120),
+    title: tpl(80),
+    severity: z.enum(['Minor', 'Moderate', 'Severe', 'Extreme']).optional(),
+  })
+  .strict();
+
 const fetchSpec = z
   .object({
     // May carry {config_key} placeholders, substituted before the request.
@@ -260,6 +295,8 @@ export const recipeSchema = z
     config: z.array(configField).max(8).default([]),
     fetch: fetchSpec,
     panel: panelSpec,
+    // Optional. A panel-only recipe omits it; the cap matches signalDataSchema.
+    signals: z.array(signalSpec).max(12).default([]),
   })
   .strict()
   .superRefine((recipe, ctx) => {
@@ -348,6 +385,45 @@ export function runRecipePanel(
     return { ok: false, error: 'The recipe produced something the wall cannot draw.' };
   }
   return { ok: true, panel: parsed.data };
+}
+
+/** JS-ish truthiness on a selected value: null/undefined/false/0/'' are false. */
+function truthy(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== false && value !== 0 && value !== '';
+}
+
+/** Does a recipe signal's `when` predicate hold against the fetched body? */
+function whenHolds(when: Recipe['signals'][number]['when'], body: unknown): boolean {
+  if (typeof when === 'string') return truthy(resolvePath(body, when));
+  return asString(resolvePath(body, when.path)) === when.equals;
+}
+
+/**
+ * Evaluate a recipe's signals against the fetched body.
+ *
+ * Only the ones whose `when` holds are produced, and the result is validated
+ * against the same `signalDataSchema` a service module answers with — so a
+ * recipe cannot smuggle a malformed signal past the boundary any more than a
+ * service can. From here it is entirely the Phase 2b path: source-scoped,
+ * inert until armed, dismissible.
+ */
+export function runRecipeSignals(
+  recipe: Recipe,
+  body: unknown,
+  now: number,
+): { ok: true; signals: unknown } | { ok: false; error: string } {
+  const built = recipe.signals
+    .filter((spec) => whenHolds(spec.when, body))
+    .map((spec) => ({
+      key: renderTemplate(spec.key, body, now),
+      title: renderTemplate(spec.title, body, now),
+      ...(spec.severity !== undefined ? { severity: spec.severity } : {}),
+    }));
+  const parsed = signalDataSchema.safeParse({ signals: built });
+  if (!parsed.success) {
+    return { ok: false, error: 'The recipe produced a signal the wall cannot use.' };
+  }
+  return { ok: true, signals: parsed.data };
 }
 
 /** Fill in any config defaults the household did not supply, and drop unknown keys. */

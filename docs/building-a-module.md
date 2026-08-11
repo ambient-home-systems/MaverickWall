@@ -204,8 +204,31 @@ lets Maverick Wall run it in-process safely.
   at a service on your own network, add `"allowLan": true` — then it may reach
   the LAN, loopback and plain http.
 
-Not yet: credentials for a feed that needs an API key (`secrets`), and a recipe
-raising an alert (`signals`). Those are the next steps — see the RFC.
+### A recipe can raise an alert
+
+A recipe may also declare `signals` — the same alerts an add-on module can raise
+(a banner, or a takeover), read out of the feed it already fetches:
+
+```json
+"signals": [
+  { "when": "flood.active", "key": "{flood.id}", "title": "Flood warning: {flood.river}", "severity": "Severe" }
+]
+```
+
+- **`when`** decides whether the signal is showing. It is deliberately tiny —
+  either a selector path (fires when the value there is truthy) or
+  `{ "path": "…", "equals": "…" }` (fires on an exact match). Nothing more; it is
+  not an expression.
+- **`key`** and **`title`** are templates, like a panel's. **`severity`** is one
+  of `Minor` / `Moderate` / `Severe` / `Extreme`, optional.
+
+As with any module, a signal does **nothing** until the household turns your
+module's **Alerts** control on (Add-ons screen, off by default), and even then a
+recipe can only raise a banner or cover the wall — never wake a dark screen. Its
+alert clears on its own when `when` stops holding.
+
+Not yet: credentials for a feed that needs an API key (`secrets`). That is the
+next step — see the RFC.
 
 ## Versioning
 

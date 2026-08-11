@@ -271,8 +271,29 @@ either being load-bearing for safety.
   → `£51234.50`) and the SSRF default refusing a loopback fetch until the recipe
   opts in. **Deferred within B1:** `secrets` (encrypted credentials injected into
   the fetch) — config-only for now.
-- **Phase B2 — recipe signals and sourceless generators.** The tiny `when`
-  predicate and the named-generator allowlist (countdown first).
+- **Phase B2 — recipe signals. DONE.** A recipe may declare `signals`, read out
+  of the same fetched body the panel is. The `when` predicate is kept as blunt as
+  promised — a selector path (truthy) or `{ path, equals }`, and nothing that
+  could grow into an expression. `key`/`title` are templates; `severity` is a
+  literal the author declares (mapping a stranger's severity words onto CAP is
+  fuzzy, and the author knows their own signal). What a recipe produces is
+  validated against the very `signalDataSchema` a service module's `/signals`
+  answers with and written to the same `signals` column — so **everything
+  downstream is the unchanged Phase 2b path**: stamped `source: ext:<id>`, inert
+  until the household arms the module's Alerts control, source-scoped,
+  dismissible, and an authoritative replace each poll (a signal whose `when`
+  stops holding clears its interrupt). Proven by an armed recipe raising a banner
+  and nothing until armed.
+
+  **Sourceless generators are deferred, and may not be built.** The named
+  generator the RFC reached for was `countdown` — but a countdown already exists
+  two other ways (the free-form **Countdown** widget, and the runnable example
+  module), so a third would be redundant surface on a security-sensitive schema:
+  it would make `fetch` and `panel` optional and add a generator dispatch, to
+  duplicate something the wall already does. The one genuinely non-redundant
+  sourceless idea is a *static* info panel (literal readings a household types —
+  a chore rota, a wifi note), which is a different, later shape and not a
+  countdown. So B2 ships as signals; generators wait for a real need.
 - **Phase A2 — catalogue polish.** Recipe install directly from the gallery
   (config + secrets prompt), then catalogue *sources* by URL, then
   server-proxied screenshots.
