@@ -594,6 +594,29 @@ never the NWS takeover. The auto-rule's id is colon-free (`extrule-<id>`)
 because the wall's dismiss endpoint splits the acknowledgement key on its first
 colon.
 
+**Modules can be browsed, and some need no server at all (v0.10.0, RFC 002).**
+Two additions. A **catalogue** — a curated, Zod-validated list baked into the
+image (`http/catalog.ts`), browsed at `/admin/modules/browse`, whose Install
+pre-fills the add form via `?install=<id>` (a query parameter, not a script, the
+same prefill the rule templates use). It is discovery only: an entry grants no
+new trust. And **recipe modules** — a module that is *pure declarative data*
+(`modules/external/recipe.ts`): it names a public feed and how to draw it, and
+Maverick Wall runs the fetch-and-transform itself, so there is no service to
+host. The whole safety of a recipe is that the transform is **not a language** —
+dotted-path selectors (traversal only), a closed formatter allowlist (an unknown
+one is a rejected recipe at *parse* time, not a runtime surprise), and
+placeholder-only templates. It reuses `external_modules` with a
+`kind`/`recipe`/`config` widening (migration `0017`) and one `kind = recipe`
+poll branch; the adapter is unchanged, and the built panel crosses the *same*
+`panelDataSchema` a service module's body does. The fetch is SSRF-guarded and
+**public-https-only by default** — `allowLan` is what lets a recipe reach a
+service on the household's own network, and the test that a loopback fetch is
+refused until a recipe opts in is the one that proves it. **Deferred:** recipe
+`secrets` (encrypted credentials in the fetch), recipe `signals` and their `when`
+predicate (B2), sourceless generators like a countdown (B2), the tidy
+catalogue-recipe install with a config prompt and remote community catalogues
+fetched with consent (A2).
+
 **Home Assistant is read-only, and that is a security property.** A long-lived
 access token has full control of a house and cannot be scoped, so the limit is
 on this side: nothing in the repository issues a POST to Home Assistant, and the
