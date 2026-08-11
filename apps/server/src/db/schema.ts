@@ -842,6 +842,20 @@ export const externalModules = sqliteTable('external_modules', {
   sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
   /** Last validated Panel Data, as JSON this process wrote. */
   panel: text('panel', { mode: 'json' }).$type<unknown>(),
+  /**
+   * Last validated signals the module offered the interrupt evaluator, as JSON
+   * this process wrote. Distinct from `panel`: a signal is a fact the rules can
+   * match on, not a block on the wall. Null until a `/signals` poll succeeds.
+   */
+  signals: text('signals', { mode: 'json' }).$type<unknown>(),
+  /**
+   * What this module is allowed to do to the wall when one of its signals is
+   * true: `none` (the default — a module raises nothing until the household
+   * says so), `banner`, or `takeover`. Deliberately never `takeover_and_wake`:
+   * a third-party module may not light a dark bedroom, which is reserved for
+   * genuine safety like a tornado warning. The household sets this per module.
+   */
+  alertsAction: text('alerts_action').notNull().default('none'),
   lastPolledAt: integer('last_polled_at', { mode: 'number' }).notNull().default(0),
   /** The last poll's failure, for the health line on the module's card. */
   lastError: text('last_error'),

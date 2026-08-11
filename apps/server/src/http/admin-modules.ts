@@ -10,9 +10,13 @@ import {
   ensureDisplayBlock,
   readExternalModules,
   removeDisplayBlock,
+  setExternalModuleAlertsAction,
   setExternalModuleEnabled,
+  type AlertsAction,
   type ExternalModuleRow,
 } from '../api/external-modules.js';
+import { deleteRule, moduleAlertRuleId, syncModuleAlertRule } from '../api/rules.js';
+import { signalDataSchema } from '../modules/external/signal-data.js';
 import { parse, text, z } from '../validation.js';
 
 /**
@@ -28,6 +32,12 @@ import { parse, text, z } from '../validation.js';
 const addBody = z.object({
   url: text('The module’s address', 2048),
   name: z.string().max(60).optional(),
+});
+
+const alertsBody = z.object({
+  // `takeover_and_wake` is deliberately not accepted: a module may not wake a
+  // dark screen. The evaluator is told the same thing, but this is the boundary.
+  action: z.enum(['none', 'banner', 'takeover']),
 });
 
 // A module runs on the household's own network, so LAN, loopback and http are
@@ -78,12 +88,32 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     return c.redirect('/admin/modules', 302);
   });
 
+  app.post('/admin/modules/:id/alerts', async (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const module = readExternalModules(deps.db).find((m) => m.id === id);
+    if (module === undefined) return c.redirect('/admin/modules', 302);
+
+    const shaped = parse(alertsBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(modulesPage(shaped.message), 400);
+
+    const action = shaped.value.action;
+    setExternalModuleAlertsAction(deps.db, id, action);
+    // Keep the one source-scoped rule in step. This is the only thing that lets
+    // a module's signals reach the wall — and it can only ever match this
+    // module (see syncModuleAlertRule).
+    syncModuleAlertRule(deps.db, { moduleId: id, moduleName: module.name, action });
+    return c.redirect('/admin/modules', 302);
+  });
+
   app.post('/admin/modules/:id/remove', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const module = readExternalModules(deps.db).find((m) => m.id === id);
     if (module !== undefined) {
       deleteExternalModule(deps.db, id);
       removeDisplayBlock(deps.db, module.blockKey);
+      // A removed module leaves no rule behind to fire on signals it will never
+      // send again.
+      deleteRule(deps.db, moduleAlertRuleId(id));
     }
     return c.redirect('/admin/modules', 302);
   });
@@ -123,12 +153,53 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       `<div style="flex:1;min-width:0"><div class="rname" style="font-size:16px">` +
       `${escapeHtml(module.name)}${module.enabled === 1 ? '' : ' (off)'}</div>` +
       `<div class="host">${escapeHtml(module.url)}</div></div>${health}</div>` +
+      alertsControl(module, action) +
       `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
       `<form method="post" action="${action}/toggle">` +
       `<button class="secondary" type="submit">${module.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
       `<form method="post" action="${action}/remove">` +
       `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
       `</div></article>`
+    );
+  }
+
+  /**
+   * The per-module alerts control: what this module may do to the wall.
+   *
+   * Off by default, and the three choices stop at "take over the wall" — a
+   * third-party module is never offered "wake a dark screen", which stays with
+   * genuine safety alerts. The note underneath says how many alerts the module
+   * is reporting right now, so a household can tell the control is doing
+   * something rather than guessing.
+   */
+  function alertsControl(module: ExternalModuleRow, action: string): string {
+    const parsed = signalDataSchema.safeParse(module.signals);
+    const count = parsed.success ? parsed.data.signals.length : 0;
+    const opt = (value: AlertsAction, label: string): string =>
+      `<option value="${value}"${module.alertsAction === value ? ' selected' : ''}>${label}</option>`;
+    const status =
+      module.alertsAction === 'none'
+        ? 'This module cannot show alerts.'
+        : count === 0
+          ? 'No alerts from this module right now.'
+          : count === 1
+            ? '1 alert is showing on the wall.'
+            : `${count} alerts are showing on the wall.`;
+    return (
+      `<div class="row" style="margin-top:14px;padding-top:14px;` +
+      `border-top:1px solid var(--ruleSoft);align-items:center;gap:10px">` +
+      `<form method="post" action="${action}/alerts" ` +
+      `style="display:flex;align-items:center;gap:10px;flex:1;margin:0">` +
+      `<label for="alerts-${module.id}" style="margin:0">Alerts</label>` +
+      `<select id="alerts-${module.id}" name="action">` +
+      opt('none', 'Off') +
+      opt('banner', 'Show a banner') +
+      opt('takeover', 'Take over the wall') +
+      `</select>` +
+      `<button class="secondary" type="submit">Save</button></form></div>` +
+      `<p class="hint" style="margin-top:6px">${escapeHtml(status)} A module can raise ` +
+      `a banner or cover the wall, but never wake a screen that has gone dark for ` +
+      `the night, and you can always clear it from the wall.</p>`
     );
   }
 

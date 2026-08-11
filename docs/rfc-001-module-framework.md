@@ -156,9 +156,22 @@ trusting the module:
   `resolveBlocks`, the render loop), and enabling a module inserts its block
   after the built-ins. Modules are **self-configured** — Maverick Wall stores
   only URL + enable + order.
-- **Phase 2 — richer.** Module-declared **signals/interrupts** (safety-critical,
-  handled with more care than a panel), per-module config passed through, and an
-  external panel as a free-form widget.
+- **Phase 2 — richer.** Two parts. **2a — an external panel as a free-form
+  widget. DONE.** A module block is a `Module` in the layout editor, placeable on
+  the free-form canvas like any first-party widget. **2b — module-declared
+  signals/interrupts. DONE**, and handled with more care than a panel because one
+  can cover the whole wall. A module optionally serves `GET /signals`
+  (`modules/external/signal-data.ts` — a strict, sanitised, capped schema, no
+  `Unknown` severity), the shared poll caches them (`signals` column, replace on
+  a good poll, clear on a 404, keep-last-good on a blip), and the adapter offers
+  them to the evaluator stamped with source `ext:<id>`. The guardrail is the
+  source scope already in core: `signal.source !== rule.source`, so a module's
+  signals can never satisfy a weather rule nor another module's rule. Nothing
+  fires until the household sets a per-module **Alerts** action (`none` by
+  default; `banner` or `takeover`, never `takeover_and_wake`), which maintains a
+  single source-scoped rule (`syncModuleAlertRule`). A module may cover the wall
+  when someone is looking; it may never wake a dark bedroom, and its interrupt is
+  always dismissible. Still open: per-module config passed through.
 - **Phase 3 — ecosystem.** A docs page, a directory of known modules, install-UX
   polish.
 

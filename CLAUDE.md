@@ -572,6 +572,28 @@ HTTP, through the SSRF-guarded fetcher exactly like a calendar feed. In-process
 plugins are the version to refuse — they would read the master key, bypass the
 guard, and take the wall down when they throw.
 
+**A module may also raise an alert, and that is fenced far harder than a panel
+(v0.9.0).** A panel sits in a row; a *signal* can match an interrupt rule and
+cover the whole wall, so it is the one place a third-party module reaches past
+its own block. The pipeline mirrors panels — an optional `GET /signals`, a
+strict/sanitised/capped schema (`modules/external/signal-data.ts`, no `Unknown`
+severity, ≤12 items), one shared poll that caches to a `signals` column
+(**replace** on a good poll, **clear** on a 404, **keep-last-good** on a blip so
+a network flake cannot silently drop a live alert), and the adapter offering
+them stamped `source: ext:<id>`. Everything that makes it safe is the source
+scope already in core: `signal.source !== rule.source`, so a module's signals
+can never satisfy a weather rule nor another module's rule. Nothing fires until
+the household sets a per-module **Alerts** action (`none` by default, then
+`banner` or `takeover` — **never** `takeover_and_wake`), which maintains exactly
+one source-scoped rule (`syncModuleAlertRule`, `match: { minSeverity: 'Unknown'
+}` so any signal the module emits clears it — an empty match matches nothing by
+design). A module can cover the wall when someone is looking; it may never wake
+a dark bedroom, and its interrupt is always dismissible. The proof that counts
+is the test where a module claims `Extreme` and still fires only its own banner,
+never the NWS takeover. The auto-rule's id is colon-free (`extrule-<id>`)
+because the wall's dismiss endpoint splits the acknowledgement key on its first
+colon.
+
 **Home Assistant is read-only, and that is a security property.** A long-lived
 access token has full control of a house and cannot be scoped, so the limit is
 on this side: nothing in the repository issues a POST to Home Assistant, and the

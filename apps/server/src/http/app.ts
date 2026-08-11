@@ -604,7 +604,10 @@ export function createApp(deps: AppDeps): Hono {
        */
       interrupts: evaluateInterrupts({
         rules: readRules(deps.db),
-        signals: collectSignals(MODULES, moduleContext),
+        // The same module list as the panels above: a third-party module's
+        // signals go through the identical isolation, and core's source guard
+        // keeps them matchable only by a rule the household armed for it.
+        signals: collectSignals([...MODULES, ...externalPanelModules(deps.db)], moduleContext),
         now: at,
         // Worked out here because core may not reach for `Intl` — rule one.
         localHhmm: localClock(at, timezone),
