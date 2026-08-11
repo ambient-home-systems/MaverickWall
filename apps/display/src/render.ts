@@ -6,6 +6,7 @@ import type {
   InterruptModel,
 } from './viewmodel.js';
 import { localDate } from './viewmodel.js';
+import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget } from './manifest.js';
 
 /**
@@ -651,6 +652,45 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
 }
 
 /**
+ * The generic module panel — the one renderer every module's data flows
+ * through (see docs/rfc-001-module-framework.md). `textContent` throughout, no
+ * `innerHTML` anywhere: a module supplies strings and this draws them, so it can
+ * never inject markup, an origin, or a script. The shape is already validated
+ * and sanitised (`panelFrom`); this only lays it out.
+ */
+export function renderGenericPanel(data: PanelData): HTMLElement {
+  const section = el('section', `gp gp-${data.kind}`);
+  if (data.title !== undefined) section.appendChild(el('div', 'gp-title', data.title));
+
+  if (data.kind === 'readings') {
+    const list = el('div', 'gp-readings');
+    for (const reading of data.items) {
+      const row = el('div', 'gp-reading');
+      if (reading.icon !== undefined) row.appendChild(el('span', 'gp-ico', reading.icon));
+      row.appendChild(el('span', 'gp-label', reading.label));
+      row.appendChild(el('span', 'gp-value', reading.value));
+      list.appendChild(row);
+    }
+    section.appendChild(list);
+  } else if (data.kind === 'stat') {
+    section.appendChild(el('div', 'gp-stat-value', data.value));
+    if (data.caption !== undefined) section.appendChild(el('div', 'gp-stat-caption', data.caption));
+  } else if (data.kind === 'tiles') {
+    const strip = el('div', 'gp-tiles');
+    for (const tile of data.items) {
+      const cell = el('div', 'gp-tile');
+      cell.appendChild(el('div', 'gp-tile-value', tile.value));
+      cell.appendChild(el('div', 'gp-tile-label', tile.label));
+      strip.appendChild(cell);
+    }
+    section.appendChild(strip);
+  } else {
+    section.appendChild(el('div', 'gp-text', data.text));
+  }
+  return section;
+}
+
+/**
  * The free-form canvas.
  *
  * The household placed these boxes at an authored aspect; the canvas keeps that
@@ -836,6 +876,11 @@ export function render(root: HTMLElement, model: DisplayModel): void {
       screen.appendChild(renderNext(model));
     } else if (block === 'horizon') {
       screen.appendChild(renderHorizon(model));
+    } else if (block.startsWith('ext:')) {
+      // A third-party module's block. Absent rather than empty when the module
+      // has not answered yet — a blank row is worse than no row.
+      const panel = model.externalPanels[block];
+      if (panel !== undefined) screen.appendChild(renderGenericPanel(panel));
     }
   }
 

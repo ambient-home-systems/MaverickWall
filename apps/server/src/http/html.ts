@@ -563,6 +563,7 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   system: `<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/>`,
   arrow: `<path d="M5 12h14M13 6l6 6-6 6"/>`,
   logout: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>`,
+  addons: `<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>`,
 };
 
 /**
@@ -620,6 +621,7 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
       { key: 'shifts', label: 'Shifts', href: 'admin/shifts', icon: 'shifts' },
       { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
       { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
+      { key: 'modules', label: 'Add-ons', href: 'admin/modules', icon: 'addons' },
     ],
   },
   {

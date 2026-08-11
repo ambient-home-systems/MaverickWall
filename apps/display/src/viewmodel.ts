@@ -34,7 +34,7 @@ export const NEXT_EVENT_LIMIT = 4;
 export const HORIZON_WEEKS = 5;
 
 /** Everything a wall can show, and the order it shows them in by default. */
-export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon';
+export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon' | `ext:${string}`;
 export const DEFAULT_BLOCKS: readonly DisplayBlock[] = [
   'now',
   'weather',
@@ -42,6 +42,7 @@ export const DEFAULT_BLOCKS: readonly DisplayBlock[] = [
   'next',
   'horizon',
 ];
+const BUILT_IN_BLOCKS: readonly DisplayBlock[] = ['now', 'weather', 'home', 'next', 'horizon'];
 
 /**
  * The order to draw in, from whatever the manifest said.
@@ -55,7 +56,10 @@ export function resolveBlocks(requested: readonly string[] | undefined): Display
   if (requested === undefined) return [...DEFAULT_BLOCKS];
   const blocks: DisplayBlock[] = [];
   for (const name of requested) {
-    if (!DEFAULT_BLOCKS.includes(name as DisplayBlock)) continue;
+    // A built-in, or a registered third-party block (`ext:<id>`). An `ext:` key
+    // with no panel in the manifest draws nothing, the same as a built-in whose
+    // module is off.
+    if (!BUILT_IN_BLOCKS.includes(name as DisplayBlock) && !name.startsWith('ext:')) continue;
     if (blocks.includes(name as DisplayBlock)) continue;
     blocks.push(name as DisplayBlock);
   }
@@ -162,6 +166,8 @@ export interface DisplayModel {
   readonly weather: readonly WeatherDayModel[];
   /** Something quiet to say about the forecast, such as its age. */
   readonly weatherNote: string | undefined;
+  /** Third-party module panels, keyed by their `ext:<id>` block key. */
+  readonly externalPanels: Readonly<Record<string, PanelData>>;
   /** Readings from the house, when a module contributed any. */
   readonly house: readonly HouseReadingModel[];
   /** Something quiet to say about them, such as a connection that is failing. */
@@ -328,6 +334,85 @@ function text(value: unknown, limit: number): string | undefined {
     .trim();
   if (cleaned === '') return undefined;
   return cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit - 1)}…`;
+}
+
+/**
+ * A generic module panel — the vocabulary a module (first- or third-party) may
+ * put on the wall. See docs/rfc-001-module-framework.md. Deliberately small:
+ * it is the safety boundary and what keeps a panel looking like the wall.
+ */
+export interface PanelReading {
+  readonly label: string;
+  readonly value: string;
+  readonly icon?: string;
+}
+export interface PanelTile {
+  readonly label: string;
+  readonly value: string;
+}
+export type PanelData =
+  | { readonly kind: 'readings'; readonly title?: string; readonly items: readonly PanelReading[] }
+  | { readonly kind: 'stat'; readonly title?: string; readonly value: string; readonly caption?: string }
+  | { readonly kind: 'tiles'; readonly title?: string; readonly items: readonly PanelTile[] }
+  | { readonly kind: 'text'; readonly title?: string; readonly text: string };
+
+function readPanelItems(raw: unknown, withIcon: boolean): PanelReading[] {
+  if (!Array.isArray(raw)) return [];
+  const items: PanelReading[] = [];
+  for (const entry of raw.slice(0, 12)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const row = entry as Record<string, unknown>;
+    const label = text(row['label'], 60);
+    const value = text(row['value'], 60);
+    if (label === undefined || value === undefined) continue;
+    const icon = withIcon ? text(row['icon'], 4) : undefined;
+    items.push(icon === undefined ? { label, value } : { label, value, icon });
+  }
+  return items;
+}
+
+/**
+ * Shape a module panel defensively.
+ *
+ * The server has already validated the module's body against the schema, but
+ * this reads it as untrusted all the same — the same treatment `houseFrom` and
+ * `weatherFrom` give a manifest slice, so a wall a version ahead of the server
+ * still draws something sane. Every string is sanitised (`text`) and capped;
+ * anything that does not fit the vocabulary returns null and nothing is drawn.
+ */
+export function panelFrom(raw: unknown): PanelData | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const panel = raw as Record<string, unknown>;
+  const title = text(panel['title'], 60);
+  const base = title === undefined ? {} : { title };
+
+  switch (panel['kind']) {
+    case 'readings': {
+      const items = readPanelItems(panel['items'], true);
+      return items.length === 0 ? null : ({ kind: 'readings', items, ...base } as PanelData);
+    }
+    case 'stat': {
+      const value = text(panel['value'], 60);
+      if (value === undefined) return null;
+      const caption = text(panel['caption'], 60);
+      return {
+        kind: 'stat',
+        value,
+        ...(caption === undefined ? {} : { caption }),
+        ...base,
+      } as PanelData;
+    }
+    case 'tiles': {
+      const items = readPanelItems(panel['items'], false);
+      return items.length === 0 ? null : ({ kind: 'tiles', items, ...base } as PanelData);
+    }
+    case 'text': {
+      const body = text(panel['text'], 280);
+      return body === undefined ? null : ({ kind: 'text', text: body, ...base } as PanelData);
+    }
+    default:
+      return null;
+  }
 }
 
 /**
@@ -590,6 +675,17 @@ export function buildModel(options: BuildOptions): DisplayModel {
   const weather = weatherFrom(manifest.panels?.['weather']);
   const house = houseFrom(manifest.panels?.['home']);
 
+  // Third-party module panels: every `ext:*` slice, read through the same
+  // defensive parser (docs/rfc-001-module-framework.md). A slice that does not
+  // fit the vocabulary is dropped, so its block simply draws nothing.
+  const externalPanels: Record<string, PanelData> = {};
+  const panels = manifest.panels ?? {};
+  for (const key of Object.keys(panels)) {
+    if (!key.startsWith('ext:')) continue;
+    const panel = panelFrom(panels[key]);
+    if (panel !== null) externalPanels[key] = panel;
+  }
+
   const { weekday, day: dayNumber, month } = parts(today, timezone);
 
   return {
@@ -610,6 +706,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     horizon: intoWeeks(cells),
     weather: weather.days,
     weatherNote: weather.note,
+    externalPanels,
     house: house.readings,
     houseNote: house.note,
     now,

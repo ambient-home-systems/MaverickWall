@@ -156,6 +156,15 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     backoffInitialMs: 5 * 60_000,
     backoffMaxMs: 30 * 60_000,
   },
+  'external-modules': {
+    // A few minutes: third-party modules are on the household's own network, so
+    // the constraint is freshness rather than politeness to a stranger. A slow
+    // or failing module backs off on its own without dragging the others.
+    intervalMs: 5 * 60_000,
+    jitterRatio: 0.15,
+    backoffInitialMs: 60_000,
+    backoffMaxMs: 30 * 60_000,
+  },
   'update-check': {
     // Once a day. Anything more often is a household's address book of
     // requests to somebody else's server for a number that changes monthly.

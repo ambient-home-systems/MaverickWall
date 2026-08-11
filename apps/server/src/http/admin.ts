@@ -229,6 +229,7 @@ const layoutBody = z.object({
 });
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
+import { registerModuleRoutes } from './admin-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 
@@ -343,7 +344,13 @@ function blockOrder(
   if (chosen.length === 0) {
     return { error: 'The wall has to show at least one of these.' };
   }
-  return { blocks: chosen.join(',') };
+  // Third-party blocks are not on this form, but a Display save must not
+  // silently take them off the wall — keep them after the built-in order.
+  const externals = current
+    .split(',')
+    .map((b) => b.trim())
+    .filter((b) => b.startsWith('ext:'));
+  return { blocks: [...chosen, ...externals].join(',') };
 }
 
 /**
@@ -486,6 +493,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   registerHaRoutes(app, deps);
   registerAlertRoutes(app, deps);
+  registerModuleRoutes(app, deps);
 
   /**
    * What the index says about Home Assistant.

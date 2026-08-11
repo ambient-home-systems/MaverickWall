@@ -26,6 +26,7 @@ import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { weatherModule } from '../modules/weather/index.js';
 import { haModule } from '../modules/homeassistant/index.js';
+import { externalPanelModules } from '../modules/external/index.js';
 import { calendarModule } from '../modules/calendar/index.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
@@ -593,8 +594,10 @@ export function createApp(deps: AppDeps): Hono {
       now: at,
       appVersion: deps.appVersion,
       // Collected here rather than inside assembly, which stays pure and does
-      // no I/O: every module reads its own cache, filled by its own job.
-      panels: collectPanels(MODULES, moduleContext),
+      // no I/O: every module reads its own cache, filled by its own job. The
+      // registered third-party modules join the first-party ones, so they go
+      // through the same isolation and ordering.
+      panels: collectPanels([...MODULES, ...externalPanelModules(deps.db)], moduleContext),
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.
