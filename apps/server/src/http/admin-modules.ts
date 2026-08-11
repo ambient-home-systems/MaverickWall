@@ -17,6 +17,7 @@ import {
 } from '../api/external-modules.js';
 import { deleteRule, moduleAlertRuleId, syncModuleAlertRule } from '../api/rules.js';
 import { signalDataSchema } from '../modules/external/signal-data.js';
+import { CATALOG, catalogEntry, type CatalogEntry } from './catalog.js';
 import { parse, text, z } from '../validation.js';
 
 /**
@@ -48,7 +49,14 @@ const POLICY = { allowHttp: true, allowPrivateNetwork: true, allowLoopback: true
 export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
-  app.get('/admin/modules', (c: Context) => c.html(modulesPage()));
+  app.get('/admin/modules', (c: Context) => {
+    // `?install=<id>` deep-links from the catalogue and fills the add form in —
+    // a query parameter, not a script, the same "prefill" the rule templates use.
+    const prefill = catalogEntry(c.req.query('install') ?? '');
+    return c.html(modulesPage(undefined, prefill));
+  });
+
+  app.get('/admin/modules/browse', (c: Context) => c.html(browsePage()));
 
   app.post('/admin/modules', async (c: Context) => {
     const shaped = parse(addBody, (await c.req.parseBody()) as Record<string, unknown>);
@@ -203,13 +211,28 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function modulesPage(error?: string): string {
+  function modulesPage(error?: string, prefill?: CatalogEntry): string {
     const modules = readExternalModules(deps.db);
+    // When the add form was reached from the catalogue, pre-fill its fields and
+    // show the entry's install guidance above them.
+    const urlValue = prefill?.install.url ?? '';
+    const nameValue = prefill?.name ?? '';
+    const prefillHint =
+      prefill === undefined
+        ? ''
+        : `<div style="margin:0 0 14px;padding:12px 14px;border:1px solid var(--ruleSoft);` +
+          `border-radius:8px;background:var(--panel)"><strong>${escapeHtml(prefill.name)}</strong> — ` +
+          `${escapeHtml(prefill.install.hint)}` +
+          (prefill.install.source === undefined
+            ? ''
+            : ` <a class="link" href="${escapeHtml(prefill.install.source)}" ` +
+              `rel="noreferrer noopener">Where to get it</a>`) +
+          `</div>`;
     return page({
       title: 'Add-ons — Maverick Wall',
       nav: 'modules',
       heading: 'Add-ons',
-      action: { label: 'Add a module', href: 'admin/modules#add' },
+      action: { label: 'Browse the catalogue', href: 'admin/modules/browse' },
       intro:
         'Third-party modules put an extra panel on the wall. A module is its own ' +
         'small service on your network; Maverick Wall reads it and draws it, and ' +
@@ -218,19 +241,60 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         (error === undefined ? '' : errorBlock(error)) +
         (modules.length === 0 ? '' : modules.map(card).join('')) +
         `<h2 class="add" id="add">Add a module</h2>` +
+        prefillHint +
         `<form method="post" action="admin/modules">` +
         `<label for="url">Module address</label>` +
-        `<input id="url" name="url" type="text" required placeholder="http://192.168.1.10:9000">` +
+        `<input id="url" name="url" type="text" required value="${escapeHtml(urlValue)}" ` +
+        `placeholder="http://192.168.1.10:9000"${prefill === undefined ? '' : ' autofocus'}>` +
         `<p class="hint">The address of the module’s own service. Maverick Wall ` +
         `reads its <span class="code">/panel</span> on a few-minute cycle and ` +
         `draws what it returns — a small set of shapes, never a web page.</p>` +
         `<label for="name">Call it (optional)</label>` +
-        `<input id="name" name="name" type="text" maxlength="60" ` +
+        `<input id="name" name="name" type="text" maxlength="60" value="${escapeHtml(nameValue)}" ` +
         `placeholder="Leave empty to use the module’s own name">` +
         `<button type="submit">Add module</button></form>` +
         `<p class="hint">Only add a module you trust and run yourself. It never ` +
         `receives your calendars or your Home Assistant token; it only supplies ` +
         `values for the wall to show.</p>`,
+    });
+  }
+
+  /** One catalogue card: glyph, name, author, description, and an Install link. */
+  function catalogCard(entry: CatalogEntry): string {
+    return (
+      `<article class="card">` +
+      `<div style="display:flex;align-items:flex-start;gap:12px">` +
+      `<div style="font-size:26px;line-height:1">${escapeHtml(entry.icon)}</div>` +
+      `<div style="flex:1;min-width:0">` +
+      `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
+      `<div class="host">by ${escapeHtml(entry.author)}</div>` +
+      `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div></div>` +
+      `<div class="row" style="margin-top:14px;padding-top:14px;` +
+      `border-top:1px solid var(--ruleSoft)">` +
+      `<a class="btn" href="admin/modules?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
+      (entry.install.source === undefined
+        ? ''
+        : `<a class="link" style="margin-left:auto;align-self:center" ` +
+          `href="${escapeHtml(entry.install.source)}" rel="noreferrer noopener">Source</a>`) +
+      `</div></article>`
+    );
+  }
+
+  function browsePage(): string {
+    return page({
+      title: 'Browse modules — Maverick Wall',
+      nav: 'modules',
+      heading: 'Browse the catalogue',
+      action: { label: 'Back to Add-ons', href: 'admin/modules' },
+      intro:
+        'Modules people have built and shared. Choosing one shows you how to run ' +
+        'it and fills the address in for you — nothing is installed until you add ' +
+        'it yourself. A module only ever supplies values for the wall to show.',
+      body:
+        CATALOG.modules.map(catalogCard).join('') +
+        `<p class="hint">This list ships with Maverick Wall. A community-updated ` +
+        `catalogue, fetched only if you ask, is on the way. To add one of your own, ` +
+        `open a pull request against <span class="code">apps/server/src/http/catalog.ts</span>.</p>`,
     });
   }
 }

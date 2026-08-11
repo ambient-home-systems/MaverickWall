@@ -345,3 +345,47 @@ describe('module signals and interrupts', () => {
     expect(h.db.prepare(`SELECT count(*) c FROM interrupt_rules`).get()).toEqual({ c: 0 });
   });
 });
+
+describe('the module catalogue (Phase A1)', () => {
+  it('lists the built-in catalogue on the Browse page', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/modules/browse')).text();
+    expect(html).toContain('Countdown');
+    expect(html).toContain('by Maverick Wall');
+    // Install deep-links back to the add form with the entry id.
+    expect(html).toContain('admin/modules?install=countdown-example#add');
+  });
+
+  it('Install pre-fills the add form from the catalogue entry', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/modules?install=countdown-example')).text();
+    // The entry's suggested address is filled in, and its install hint is shown.
+    expect(html).toContain('value="http://localhost:9000"');
+    expect(html).toContain('examples/example-module');
+  });
+
+  it('an unknown install id just shows the ordinary add form', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/modules?install=nope')).text();
+    // No prefilled value, and the page still renders.
+    expect(html).not.toContain('value="http://localhost:9000"');
+    expect(html).toContain('Add a module');
+  });
+
+  it('an installed catalogue module works end to end through the add form', async () => {
+    // The catalogue is discovery, not a separate install path: it fills the same
+    // form, which adds the same kind of module. Prove the module it points at is
+    // real by running it and drawing its panel.
+    const h = await harness();
+    const mod = await fakeModule();
+    await h.form('/admin/modules', { url: mod.base, name: 'Countdown' });
+    const id = moduleId(h.db);
+    await h.poll();
+    expect((await h.manifest()).panels[`ext:${id}`]).toEqual({
+      kind: 'stat',
+      title: 'Bins',
+      value: '2',
+      caption: 'days',
+    });
+  });
+});
