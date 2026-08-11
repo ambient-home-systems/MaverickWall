@@ -524,6 +524,45 @@ describe('readings on the wall', () => {
     expect(panel.readings[0]).toMatchObject({ label: 'Kitchen', value: '19.4', unit: '°C' });
   });
 
+  it('adds several readings at once from the searchable picker', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    h.db.prepare(`UPDATE household_settings SET display_blocks = 'now,next,horizon'`).run();
+
+    const response = await h.call('/admin/home-assistant/entities/add', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        entities: [
+          { entity_id: 'sensor.kitchen_temperature' },
+          { entity_id: 'binary_sensor.freezer_door' },
+        ],
+        display_mode: 'label_value',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, added: 2 });
+    await h.pollHa();
+
+    const panel = (await h.manifest()).panels['home'] as {
+      readings: { label: string }[];
+    };
+    expect(panel.readings).toHaveLength(2);
+  });
+
+  it('refuses an empty batch from the picker', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    const response = await h.call('/admin/home-assistant/entities/add', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entities: [], display_mode: 'label_value' }),
+    });
+    expect(response.status).toBe(400);
+  });
+
   it('sends the wall a value and never a way to ask for another', async () => {
     const h = await harness();
     const ha = await fakeHomeAssistant();

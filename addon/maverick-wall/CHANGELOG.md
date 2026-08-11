@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0
+
+Choosing Home Assistant readings is far easier.
+
+- The entity picker is now a **searchable, filterable list** instead of one long
+  drop-down. Search by name, filter by kind (sensors, locks, people, covers, and
+  so on), and see each entity’s **current value** as you browse.
+- **Pick several at once** and add them together; the ones you have chosen show
+  as removable tags. Adding a single reading can still give it your own name.
+
+It works with no calendar-address hunting and reads Home Assistant only — the
+wall still receives resolved values, never a way to reach back into your house.
+
 ## 0.3.0
 
 Designing a wall is now one place, and each widget can be set up on its own.
