@@ -38,6 +38,13 @@ const common = {
   description: z.string().min(1).max(280),
   /** A single glyph the device already has — never a fetched image (rule three). */
   icon: z.string().min(1).max(4),
+  /**
+   * An optional preview of what the module draws — a "screenshot" spelled out in
+   * glyphs and text, never a fetched image (rule three). A few short lines: the
+   * first is the headline (a big value), the rest a caption or two, echoing how
+   * a stat panel reads on the wall. Shown beside the icon on the store card.
+   */
+  preview: z.array(z.string().min(1).max(24)).min(1).max(4).optional(),
 };
 
 /** A module the household runs, added by URL (RFC 001). */
@@ -100,4 +107,67 @@ export const CATALOG: Catalog = { version: 1, modules: [...STORE_ENTRIES] };
 
 export function catalogEntry(id: string): CatalogEntry | undefined {
   return CATALOG.modules.find((entry) => entry.id === id);
+}
+
+/**
+ * The glyph-only preview lines for a store card, or none.
+ *
+ * An authored `preview` wins — a person wrote it to read well. Failing that, a
+ * *recipe* derives one from its own `panel`, so a recipe author gets a preview
+ * for free and it can never drift from what the module actually draws. A
+ * service with no authored preview has nothing to derive from — its panel lives
+ * in a process we do not run — and shows its glyph alone.
+ */
+export function previewFor(entry: CatalogEntry): readonly string[] | undefined {
+  if (entry.preview !== undefined) return entry.preview;
+  if (entry.kind === 'recipe') return recipePreview(entry.recipe);
+  return undefined;
+}
+
+/** A live value the preview cannot compute without fetching — shown as this. */
+const LIVE_VALUE = '—';
+
+/**
+ * One template part as the preview should show it. A literal (interpolating
+ * nothing) is shown as written; a part that reads live data (`{selector}`)
+ * becomes the placeholder — so the preview carries the panel's authored labels
+ * and marks where a live value goes, without inventing data.
+ */
+function literalOr(part: string | undefined, placeholder: string): string {
+  if (part === undefined) return '';
+  return part.includes('{') ? placeholder : part;
+}
+
+/**
+ * A preview derived from a recipe's own `panel` shape. Not authored, so it
+ * shows the shape rather than data: the panel's literal labels, with a
+ * placeholder where the live value would be, mirroring how each kind reads on
+ * the wall (a stat's value+unit over its title; a readings row; …).
+ */
+export function recipePreview(recipe: RecipeEntry['recipe']): readonly string[] | undefined {
+  const panel = recipe.panel;
+  const lines: string[] = [];
+  if (panel.kind === 'stat') {
+    const value = literalOr(panel.value, LIVE_VALUE);
+    const caption = literalOr(panel.caption, '');
+    lines.push(caption === '' ? value : `${value} ${caption}`);
+    lines.push(literalOr(panel.title, ''));
+  } else if (panel.kind === 'text') {
+    lines.push(literalOr(panel.title, ''));
+    lines.push(literalOr(panel.text, LIVE_VALUE));
+  } else {
+    // readings / tiles: a repeater over live rows. A literal title is kept; an
+    // absent or templated one falls back to the kind's name, so the line is
+    // never blank or a bare placeholder.
+    const literalTitle = panel.title !== undefined && !panel.title.includes('{');
+    lines.push(literalTitle ? panel.title! : panel.kind === 'tiles' ? 'Tiles' : 'Readings');
+    lines.push(
+      `${literalOr(panel.items.label, LIVE_VALUE)} ${literalOr(panel.items.value, LIVE_VALUE)}`.trim(),
+    );
+  }
+  const kept = lines
+    .filter((line) => line !== '')
+    .map((line) => (line.length > 24 ? line.slice(0, 23) + '…' : line))
+    .slice(0, 4);
+  return kept.length === 0 ? undefined : kept;
 }

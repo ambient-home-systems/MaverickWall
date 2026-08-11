@@ -46,11 +46,13 @@ const STYLE = `
   --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
-/* Dark (the default). */
+/* Dark (the default). Lifted a notch off near-black so cards read as panels and
+ * the rules are visible without hunting — this is a phone/desktop admin, not the
+ * glare-free wall, so it can afford more contrast than display.css does. */
 :root{
   color-scheme:dark;
-  --bg:#0B0E11;--panel:#111820;--panel2:#0E141A;--rule:#1F2833;--ruleSoft:#161D25;
-  --ink:#E9EEF4;--muted:#A8B3C0;--faint:#6D7A88;--accent:#E0A33E;--accentInk:#1A1206;
+  --bg:#14181E;--panel:#1B212A;--panel2:#171C24;--rule:#2A333F;--ruleSoft:#20272F;
+  --ink:#E9EEF4;--muted:#9BA7B4;--faint:#68727E;--accent:#E0A33E;--accentInk:#1A1206;
   --ok:#35916A;--warn:#D9A13E;--danger:#D9544F;--night:#4C7FD1;
 }
 /* Light, when the household picks it. */
@@ -72,10 +74,10 @@ const STYLE = `
 *{box-sizing:border-box}
 *::selection{background:color-mix(in srgb,var(--accent) 32%,transparent)}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
-  font-size:15px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  font-size:14px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 
 /* ---- App shell: fixed sidebar, scrolling main ---------------------------- */
-body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
+body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
 .side{border-right:1px solid var(--rule);background:var(--panel2);
   display:flex;flex-direction:column;min-height:100vh;position:sticky;top:0;
   max-height:100vh;overflow:hidden}
@@ -98,6 +100,13 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 .nav-item:hover{color:var(--ink);background:var(--panel)}
 .nav-item.active{background:var(--accent);color:var(--accentInk);
   border-color:var(--accent);font-weight:600}
+/* An installed module's nav entry: a generic module glyph (the row stores no
+ * icon) and a small "off" badge when the household has disabled it. */
+.nav-item .nav-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-badge{flex:0 0 auto;font-family:var(--cond);font-weight:600;font-size:9.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
+  border:1px solid var(--rule);border-radius:4px;padding:1px 5px}
+.nav-item.active .nav-badge{color:var(--accentInk);border-color:var(--accentInk)}
 .side-foot{border-top:1px solid var(--rule);padding:14px 16px;display:flex;
   flex-direction:column;gap:12px}
 .side-foot-id{display:flex;align-items:center;gap:10px}
@@ -122,16 +131,18 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 
 .main{min-width:0;display:flex;flex-direction:column}
 .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:flex-end;
-  justify-content:space-between;gap:16px;padding:26px 40px 18px;
+  justify-content:space-between;gap:16px;padding:22px 28px 16px;
   background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(6px);
   border-bottom:1px solid var(--rule)}
 .topbar .crumb{font-family:var(--cond);font-weight:600;font-size:11px;
-  letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
-.topbar h1{font-family:var(--cond);font-weight:700;font-size:34px;line-height:.95;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin:0 0 5px}
+.topbar h1{font-family:var(--cond);font-weight:700;font-size:25px;line-height:.98;
   letter-spacing:.01em;margin:0}
-.topbar .sub{color:var(--muted);font-size:13.5px;margin:7px 0 0;max-width:56ch}
-.content{padding:28px 40px 56px;max-width:1180px;width:100%}
-.content>form:first-child,.content>.card:first-child{margin-top:0}
+.content{padding:24px 28px 52px;max-width:1180px;width:100%}
+.content>form:first-child,.content>.card:first-child,.content>.note:first-child{margin-top:0}
+/* The page's lead line. Used to sit in the topbar as .sub; moved into the
+ * content so the sticky bar stays a compact kicker+title and gives ~40px back. */
+.note{color:var(--muted);font-size:14px;line-height:1.55;margin:0 0 20px;max-width:64ch}
 
 @media(max-width:820px){
   body.shell{grid-template-columns:1fr}
@@ -220,6 +231,15 @@ button.secondary:hover,.btn-ghost:hover{filter:none;border-color:var(--faint)}
   border-color:var(--danger)}
 .btn-sm{margin-top:0;padding:.42rem .75rem;font-size:12.5px}
 .link-btn{margin-top:0}
+/* A scriptless segmented control (Store alerts): buttons in one form, the
+ * current one filled. Each posts its own value, so there is no separate Save. */
+.seg{display:inline-flex;margin:0;border:1px solid var(--rule);border-radius:7px;overflow:hidden}
+.seg button{margin:0;border:0;border-left:1px solid var(--rule);border-radius:0;
+  background:var(--panel2);color:var(--muted);font-family:var(--cond);font-weight:600;
+  font-size:12.5px;letter-spacing:.02em;padding:.42rem .8rem}
+.seg button:first-child{border-left:0}
+.seg button:hover{filter:none;color:var(--ink)}
+.seg button.on{background:var(--accent);color:var(--accentInk)}
 
 /* ---- Errors and disclaimers (the .error box) ----------------------------- */
 .error{border-left:3px solid var(--danger);
@@ -230,7 +250,7 @@ button.secondary:hover,.btn-ghost:hover{filter:none;border-color:var(--faint)}
 
 /* ---- Cards --------------------------------------------------------------- */
 .card{position:relative;background:var(--panel);border:1px solid var(--rule);
-  border-radius:8px;padding:18px 20px;margin:1rem 0}
+  border-radius:8px;padding:16px;margin:1rem 0}
 .card h2{font-family:var(--cond);font-weight:700;font-size:18px;margin:0;
   display:flex;align-items:center;gap:.5rem;letter-spacing:.01em}
 .card p{margin:.4rem 0}
@@ -289,8 +309,8 @@ a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 .stat .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent)}
 .stat .ic svg{width:19px;height:19px;stroke-width:1.6}
-.stat .big{font-family:var(--cond);font-weight:700;font-size:40px;line-height:1;
-  margin:14px 0 2px}
+.stat .big{font-family:var(--cond);font-weight:700;font-size:30px;line-height:1;
+  margin:12px 0 2px}
 .stat .lab{color:var(--muted);font-size:13.5px}
 .stat .subrow{margin-top:12px;padding-top:12px;border-top:1px solid var(--ruleSoft);
   font-size:12.5px;color:var(--faint);display:flex;align-items:center;
@@ -314,6 +334,28 @@ a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
   background:var(--swatch);flex:0 0 auto;vertical-align:baseline}
 img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
   margin-right:.4rem;vertical-align:-.4rem;background:var(--panel2)}
+
+/* ---- Sub-view switcher (per-wall Appearance | Layout) -------------------- */
+/* Server-rendered tabs: each is a plain <a> to the same page with a ?view, so
+ * there is no client state — the active one is marked when the server draws it. */
+.subnav{display:flex;gap:4px;margin:20px 0 22px;border-bottom:1px solid var(--rule)}
+.subtab{padding:8px 14px 10px;margin-bottom:-1px;border-bottom:2px solid transparent;
+  color:var(--muted);text-decoration:none;font-family:var(--cond);font-weight:600;
+  font-size:14px;letter-spacing:.02em}
+.subtab:hover{color:var(--ink)}
+.subtab.active{color:var(--ink);border-bottom-color:var(--accent)}
+
+/* ---- Store card glyph preview ("screenshot" spelled out in glyphs) -------- */
+/* A little inset tile beside the icon, styled like a wall stat panel: a big
+ * headline line then a caption or two. First-party glyphs only, no image. */
+.cpreview{flex:0 0 auto;width:118px;min-height:64px;display:flex;flex-direction:column;
+  justify-content:center;gap:2px;padding:9px 11px;border-radius:8px;
+  background:var(--panel2);border:1px solid var(--rule);overflow:hidden}
+.cpreview b{font-family:var(--cond);font-weight:700;font-size:22px;line-height:1.05;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cpreview i{font-style:normal;font-size:11px;line-height:1.25;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:560px){.cpreview{display:none}}
 
 /* ---- Theme picker cards (Display) ---------------------------------------- */
 .themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:.6rem}
@@ -565,6 +607,9 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   arrow: `<path d="M5 12h14M13 6l6 6-6 6"/>`,
   logout: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>`,
   addons: `<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>`,
+  // A generic installed-module glyph: a tile within a tile. Distinct from the
+  // storefront cube so a module entry does not read as another Store link.
+  module: `<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/>`,
 };
 
 /**
@@ -610,6 +655,22 @@ interface NavItem {
   readonly icon: string;
 }
 
+/**
+ * An installed external module, as the sidebar needs it.
+ *
+ * Read live from the database (`readExternalModules`) rather than baked into
+ * `GROUPS`, so installing one from the Store makes it appear here at once and
+ * removing it takes the entry away — one source of truth. The row stores no
+ * icon, so every entry uses the generic `module` glyph; `enabled` decides
+ * whether it carries an "off" badge. The db read lives in `admin.ts`
+ * (`navModules`) because this file never touches the database.
+ */
+export interface NavModule {
+  readonly id: string;
+  readonly name: string;
+  readonly enabled: boolean;
+}
+
 /** The Overview item sits above the groups, in none of them. */
 const OVERVIEW: NavItem = { key: 'home', label: 'Overview', href: 'admin', icon: 'overview' };
 
@@ -638,7 +699,9 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
     key: 'settings',
     label: 'Settings',
     items: [
-      { key: 'display', label: 'Display', href: 'admin/display', icon: 'display' },
+      // The old global "Display" page is gone: appearance and layout are now
+      // per wall (the Default included), on the Displays screen. What is left
+      // here is the household's people and the box's own housekeeping.
       { key: 'people', label: 'People', href: 'admin/people', icon: 'people' },
       { key: 'system', label: 'System', href: 'admin/system', icon: 'system' },
     ],
@@ -659,17 +722,33 @@ function groupLabelFor(active: string): string {
  * line icon and its label. `href` is relative so the single `<base>` carries it
  * through Home Assistant ingress.
  */
-function navBar(active: string): string {
+function navBar(active: string, modules: readonly NavModule[]): string {
   const item = (i: NavItem): string =>
     `<a class="nav-item${i.key === active ? ' active' : ''}" href="${i.href}"` +
-    `${i.key === active ? ' aria-current="page"' : ''}>${icon(i.icon)}${escapeHtml(i.label)}</a>`;
+    `${i.key === active ? ' aria-current="page"' : ''}>${icon(i.icon)}` +
+    `<span class="nav-name">${escapeHtml(i.label)}</span></a>`;
 
-  const groups = GROUPS.map(
-    (g) =>
-      `<div class="nav-group"><span>${escapeHtml(g.label)}</span>` +
-      g.items.map(item).join('') +
-      `</div>`,
-  ).join('');
+  // An installed module's entry links to its card in the Store, never active
+  // itself — the Store item carries the active state for the whole group.
+  const moduleItem = (m: NavModule): string =>
+    `<a class="nav-item" href="admin/modules#mod-${encodeURIComponent(m.id)}" title="${escapeHtml(m.name)}">` +
+    `${icon('module')}<span class="nav-name">${escapeHtml(m.name)}</span>` +
+    (m.enabled ? '' : `<span class="nav-badge">off</span>`) +
+    `</a>`;
+
+  const groups = GROUPS.map((g) => {
+    let body: string;
+    const store = g.items[g.items.length - 1];
+    if (g.key === 'modules' && modules.length > 0 && store !== undefined) {
+      // Built-ins, then one entry per installed module, then the Store — which
+      // is the last item in the group by construction.
+      const builtins = g.items.slice(0, -1).map(item).join('');
+      body = builtins + modules.map(moduleItem).join('') + item(store);
+    } else {
+      body = g.items.map(item).join('');
+    }
+    return `<div class="nav-group"><span>${escapeHtml(g.label)}</span>${body}</div>`;
+  }).join('');
 
   return `<nav class="nav" aria-label="Admin">${item(OVERVIEW)}${groups}</nav>`;
 }
@@ -692,6 +771,13 @@ export interface PageOptions {
    * relative href.
    */
   readonly action?: { readonly label: string; readonly href: string };
+  /**
+   * The installed modules to list in the sidebar's Modules group. Read live per
+   * request (see `navModules` in `admin.ts`) and passed in, because this file
+   * never touches the database. Absent on the wizard/sign-in, which have no
+   * sidebar; empty is fine and just draws the built-in modules and the Store.
+   */
+  readonly modules?: readonly NavModule[];
   /** Already-escaped markup. */
   readonly body: string;
 }
@@ -771,7 +857,7 @@ export function page(options: PageOptions): string {
     `<body class="shell">` +
     `<aside class="side">` +
     `<a class="brand" href="admin">${MARK}<span><b>Maverick Wall</b><small>Admin</small></span></a>` +
-    navBar(options.nav) +
+    navBar(options.nav, options.modules ?? []) +
     `<div class="side-foot">` +
     `<div class="side-foot-id"><div class="fmark">${MARK}</div>` +
     `<div class="who"><b>Signed in</b><small>Maverick Wall</small></div>` +
@@ -795,9 +881,13 @@ export function page(options: PageOptions): string {
     `<header class="topbar"><div>` +
     `<div class="crumb">${escapeHtml(groupLabelFor(options.nav))}</div>` +
     `<h1>${escapeHtml(options.heading)}</h1>` +
-    (options.intro === undefined ? '' : `<p class="sub">${escapeHtml(options.intro)}</p>`) +
     `</div>${action}</header>` +
-    `<div class="content">${options.body}</div>` +
+    // The intro leads the content now, not the sticky bar — one lead line kept
+    // out of the permanent header so the bar stays compact.
+    `<div class="content">` +
+    (options.intro === undefined ? '' : `<p class="note">${escapeHtml(options.intro)}</p>`) +
+    options.body +
+    `</div>` +
     `</main></body></html>`
   );
 }

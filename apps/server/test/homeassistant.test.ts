@@ -565,11 +565,11 @@ describe('readings on the wall', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
 
-    // The button is offered on the Display screen once Home Assistant is connected.
-    const display = await (await h.call('/admin/display')).text();
-    expect(display).toContain('admin/display/weather/use-ha-location');
+    // The button is offered on the Weather page once Home Assistant is connected.
+    const display = await (await h.call('/admin/alerts')).text();
+    expect(display).toContain('admin/weather/use-ha-location');
 
-    const response = await h.call('/admin/display/weather/use-ha-location', { method: 'POST' });
+    const response = await h.call('/admin/weather/use-ha-location', { method: 'POST' });
     expect(response.status).toBe(302);
 
     const saved = h.db

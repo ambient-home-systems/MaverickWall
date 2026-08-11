@@ -39,7 +39,7 @@ import {
 } from './rule-templates.js';
 import { randomBytes } from 'node:crypto';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
-import type { AdminDeps } from './admin.js';
+import { navModules, type AdminDeps } from './admin.js';
 
 /** One schema per form on this screen. */
 const connectBody = z.object({
@@ -537,6 +537,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const connected = live.mode !== null;
 
     return page({
+      modules: navModules(deps.db),
       title: 'Home Assistant — Maverick Wall',
       nav: 'homeassistant',
       heading: 'Home Assistant',
