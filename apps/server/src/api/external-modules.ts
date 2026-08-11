@@ -7,6 +7,10 @@ import type { SqliteDatabase } from '../db/open.js';
  * `ext:<id>`, minted here so nothing else has to remember the rule.
  */
 
+/** What a module is allowed to do to the wall. See schema.ts. */
+export type AlertsAction = 'none' | 'banner' | 'takeover';
+const ALERTS_ACTIONS: readonly AlertsAction[] = ['none', 'banner', 'takeover'];
+
 export interface ExternalModuleRow {
   readonly id: string;
   readonly url: string;
@@ -15,6 +19,10 @@ export interface ExternalModuleRow {
   readonly enabled: number;
   readonly sortOrder: number;
   readonly panel: unknown;
+  /** Last validated signals this module offered; raw JSON this process wrote. */
+  readonly signals: unknown;
+  /** `none` (default), `banner`, or `takeover` — never `takeover_and_wake`. */
+  readonly alertsAction: AlertsAction;
   readonly lastPolledAt: number;
   readonly lastError: string | null;
 }
@@ -27,19 +35,28 @@ interface RawRow {
   enabled: number;
   sort_order: number;
   panel: string | null;
+  signals: string | null;
+  alerts_action: string | null;
   last_polled_at: number;
   last_error: string | null;
 }
 
-function shape(row: RawRow): ExternalModuleRow {
-  let panel: unknown = null;
-  if (row.panel !== null) {
-    try {
-      panel = JSON.parse(row.panel);
-    } catch {
-      panel = null;
-    }
+/** JSON a column holds, defended against a value this process did not write. */
+function parseJson(value: string | null): unknown {
+  if (value === null) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
+}
+
+function shape(row: RawRow): ExternalModuleRow {
+  // A column read back that is not one of the three known values is treated as
+  // `none`: an unarmed module is the safe reading of a corrupt one.
+  const action = ALERTS_ACTIONS.includes(row.alerts_action as AlertsAction)
+    ? (row.alerts_action as AlertsAction)
+    : 'none';
   return {
     id: row.id,
     url: row.url,
@@ -47,14 +64,16 @@ function shape(row: RawRow): ExternalModuleRow {
     blockKey: row.block_key,
     enabled: row.enabled,
     sortOrder: row.sort_order,
-    panel,
+    panel: parseJson(row.panel),
+    signals: parseJson(row.signals),
+    alertsAction: action,
     lastPolledAt: row.last_polled_at,
     lastError: row.last_error,
   };
 }
 
-const SELECT = `SELECT id, url, name, block_key, enabled, sort_order, panel,
-  last_polled_at, last_error FROM external_modules ORDER BY sort_order, created_at`;
+const SELECT = `SELECT id, url, name, block_key, enabled, sort_order, panel, signals,
+  alerts_action, last_polled_at, last_error FROM external_modules ORDER BY sort_order, created_at`;
 
 export function readExternalModules(db: SqliteDatabase): ExternalModuleRow[] {
   return (db.prepare(SELECT).all() as RawRow[]).map(shape);
@@ -147,4 +166,49 @@ export function writeExternalModuleError(db: SqliteDatabase, id: string, error: 
   db.prepare(
     `UPDATE external_modules SET last_error = ?, last_polled_at = ?, updated_at = ? WHERE id = ?`,
   ).run(error, at, at, id);
+}
+
+/**
+ * Replace the cached signals from a good `/signals` poll.
+ *
+ * Authoritative: the module is the source of truth for what is true right now,
+ * so a shorter list means a signal went away and the interrupt it drove should
+ * clear. Deliberately does NOT touch `last_error` — `/signals` is optional, and
+ * a module that only serves `/panel` must not read as broken. Its panel poll
+ * owns the health line.
+ */
+export function writeExternalModuleSignals(db: SqliteDatabase, id: string, signals: unknown): void {
+  db.prepare(`UPDATE external_modules SET signals = ?, updated_at = ? WHERE id = ?`).run(
+    JSON.stringify(signals),
+    Date.now(),
+    id,
+  );
+}
+
+/**
+ * Forget a module's signals entirely.
+ *
+ * For the one case where keeping the last-good set would be wrong: the module
+ * answered `/signals` with a 404, which is it saying "I offer no signals". A
+ * transient network failure keeps the last set instead (a blip must not drop a
+ * real alert); only a definite "there is nothing here" clears it.
+ */
+export function clearExternalModuleSignals(db: SqliteDatabase, id: string): void {
+  db.prepare(`UPDATE external_modules SET signals = NULL, updated_at = ? WHERE id = ?`).run(
+    Date.now(),
+    id,
+  );
+}
+
+/** Set what a module may do to the wall. Validated to the enum at the boundary. */
+export function setExternalModuleAlertsAction(
+  db: SqliteDatabase,
+  id: string,
+  action: AlertsAction,
+): void {
+  db.prepare(`UPDATE external_modules SET alerts_action = ?, updated_at = ? WHERE id = ?`).run(
+    action,
+    Date.now(),
+    id,
+  );
 }

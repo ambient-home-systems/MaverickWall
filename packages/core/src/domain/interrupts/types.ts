@@ -20,7 +20,20 @@ export type Urgency = 'Immediate' | 'Expected' | 'Future' | 'Past' | 'Unknown';
 
 export type Certainty = 'Observed' | 'Likely' | 'Possible' | 'Unlikely' | 'Unknown';
 
-export type InterruptSource = 'nws' | 'homeassistant' | 'calendar' | 'manual';
+/**
+ * Where a signal came from, and the scope a rule is confined to.
+ *
+ * The four built-in sources, plus `ext:<id>` for a third-party module. The
+ * template member is the whole of the guardrail on module interrupts: the
+ * evaluator only matches a signal against a rule of the *same* source, so a
+ * module's signals (`ext:abc`) can never satisfy a built-in weather rule
+ * (`nws`), nor another module's rule (`ext:def`). A module does not choose its
+ * source — the server stamps it from the module's own id — so this cannot be
+ * spoofed from the module's side. It stays a plain union rather than anything
+ * cleverer precisely so `signal.source !== rule.source` is a string compare
+ * with no special case for "is this an ext one".
+ */
+export type InterruptSource = 'nws' | 'homeassistant' | 'calendar' | 'manual' | `ext:${string}`;
 
 export type InterruptAction = 'none' | 'banner' | 'takeover' | 'takeover_and_wake';
 

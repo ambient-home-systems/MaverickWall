@@ -11,12 +11,17 @@ node server.mjs
 PORT=9000 TARGET=2026-12-25 LABEL="Christmas" node server.mjs
 ```
 
-It serves two endpoints:
+It serves three endpoints:
 
 ```
 GET /maverick.json   →  { "name": "...", "version": "...", "contract": 1, ... }
 GET /panel           →  { "kind": "stat", "title": "Christmas", "value": "135", "caption": "days" }
+GET /signals         →  { "signals": [] }   (on the day itself: [{ "key": "the-day", "title": "Christmas — today!" }])
 ```
+
+`/signals` is optional. It lets a module raise an alert (a banner, or take over
+the wall) — but only if the household turns the module's **Alerts** control on,
+and a module can never wake a dark screen. See the contract for the full story.
 
 ## Add it to the wall
 

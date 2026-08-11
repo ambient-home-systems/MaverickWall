@@ -106,12 +106,54 @@ run on the same host. Plain `http` on the LAN is fine.
 The card shows whether the module is answering, and lets you turn it off or
 remove it. Your block is drawn after the built-in ones; reorder is on the roadmap.
 
+## `GET /signals` — raising an alert (optional)
+
+A panel sits in its row. A **signal** can do more: match one of the wall's alert
+rules and raise a **banner** across the bottom, or **take the whole wall over**.
+That is the one place a module reaches past its own block, so it is fenced on
+every side — and it is entirely opt-in.
+
+Serve `/signals` returning `{ "signals": [ … ] }`, each entry:
+
+```json
+{ "signals": [
+  { "key": "bins", "title": "Bins out tonight", "severity": "Moderate", "startsInSec": 3600 }
+] }
+```
+
+| Field | Meaning |
+|---|---|
+| `key` | Stable id for the thing. The household dismisses *this*, so don't change it every poll. |
+| `title` | What the wall says, at its largest. Capped at 80 chars, sanitised. |
+| `severity` | Optional. `Minor` \| `Moderate` \| `Severe` \| `Extreme`. Omit if you don't know. |
+| `startsInSec` | Optional. Seconds until the thing begins, for a "starting soon" rule. |
+
+Return `{ "signals": [] }` when nothing is true — the ordinary case. At most 12
+signals; an unknown key or a `severity` outside that list is **rejected**, like a
+panel. Don't serve `/signals` at all (return `404`) and your module is
+panel-only.
+
+**A signal does nothing on its own.** Two things have to be true first, and
+neither is yours to set:
+
+1. The household turns your module's **Alerts** control on (Add-ons screen). It
+   is **off by default**, and they choose **banner** or **take over the wall** —
+   never "wake a dark screen", which stays with genuine safety alerts.
+2. A rule scoped to your module matches. Maverick Wall keeps exactly one, tied
+   to that control, and it can **only ever match your module** — your signals can
+   never trip the weather rules, and another module's rules can never see yours.
+
+So the household is always in charge of whether you can interrupt them, and how
+loudly. You decide *what* is worth an alert (only emit those); they decide
+whether it lands and how. Whatever you raise, they can always clear it from the
+wall.
+
 ## The rules (and why)
 
 - **Data, never code.** You return values; a first-party renderer draws them.
   There is no way to ship HTML, a font, an image, a script, or a URL the wall
   fetches. This is what lets a household trust a module they did not write.
-- **You never receive their data.** Maverick Wall only ever calls your two `GET`
+- **You never receive their data.** Maverick Wall only ever calls your `GET`
   endpoints. It does not send your calendars, their Home Assistant token, or
   anything about the household. Your own upstream credentials (an API key) live
   in your service, not in Maverick Wall.

@@ -96,7 +96,9 @@ export function readSource(stored: string): InterruptSource | undefined {
     case 'manual':
       return 'manual';
     default:
-      return undefined;
+      // A module rule's trigger is its own source, `ext:<id>`, stored verbatim.
+      // It round-trips through the same column with no legacy spelling to map.
+      return stored.startsWith('ext:') ? (stored as InterruptSource) : undefined;
   }
 }
 
@@ -266,6 +268,63 @@ export function setRuleEnabled(db: SqliteDatabase, id: string, enabled: boolean)
     Date.now(),
     id,
   );
+}
+
+/**
+ * The one rule a module's signals are allowed to fire, kept in step with the
+ * household's per-module choice.
+ *
+ * A module cannot write a rule — that is the point. Instead the household picks
+ * `banner` or `takeover` on the module's card, and this maintains a single
+ * source-scoped rule so the existing evaluator does all the work (dwell,
+ * dismissal, night mode, conflict resolution) with no module-specific path.
+ *
+ * Every field here is a guardrail, not a default:
+ *   - `source` is `ext:<id>`, so this rule can only ever match *this* module's
+ *     signals — never a weather warning, never another module.
+ *   - `match` is the lowest severity bar, which every signal clears, so the
+ *     module itself decides what is worth showing. It is not empty: an empty
+ *     match matches nothing by design.
+ *   - `piercesNightMode` is hard `false` and the action can never be
+ *     `takeover_and_wake` (the caller's type forbids it). A third-party module
+ *     may cover the wall when someone is looking at it; it may not light a dark
+ *     bedroom. That is reserved for genuine safety like a tornado warning.
+ *   - `dismissible` is hard `true`: whatever a module shows, the household can
+ *     always clear it from the wall.
+ *
+ * The id is colon-free (`extrule-<id>`, not `ext:<id>`) on purpose: the wall's
+ * dismiss endpoint splits the acknowledgement key on its first colon to recover
+ * the rule id, so a colon in the id would break dismissal.
+ */
+export function moduleAlertRuleId(moduleId: string): string {
+  return `extrule-${moduleId}`;
+}
+
+export function syncModuleAlertRule(
+  db: SqliteDatabase,
+  input: { moduleId: string; moduleName: string; action: 'none' | 'banner' | 'takeover' },
+): void {
+  const id = moduleAlertRuleId(input.moduleId);
+  if (input.action === 'none') {
+    deleteRule(db, id);
+    return;
+  }
+  writeRule(db, {
+    id,
+    source: `ext:${input.moduleId}`,
+    name: `${input.moduleName} alerts`,
+    enabled: true,
+    // Present (so `matches` does not treat it as a half-written rule) and the
+    // lowest bar (so every signal the module emits clears it).
+    match: { minSeverity: 'Unknown' },
+    action: input.action,
+    piercesNightMode: false,
+    minDwellSec: 0,
+    dismissible: true,
+    // Below the built-in weather rules: a module alert must never outrank a
+    // real warning. Severity outranks priority anyway, but this settles ties.
+    priority: 0,
+  });
 }
 
 /**

@@ -32,8 +32,17 @@ afterAll(() => {
   for (const server of servers) server.close();
 });
 
-async function fakeModule(): Promise<{ base: string; body: () => unknown; setBody: (b: unknown) => void }> {
+interface FakeModule {
+  base: string;
+  body: () => unknown;
+  setBody: (b: unknown) => void;
+  /** null means the module serves no `/signals` at all (a 404). */
+  setSignals: (s: unknown) => void;
+}
+
+async function fakeModule(): Promise<FakeModule> {
   let current: unknown = { kind: 'stat', title: 'Bins', value: '2', caption: 'days' };
+  let signals: unknown = null;
   const server = createServer((request, response) => {
     const url = request.url ?? '';
     response.setHeader('content-type', 'application/json');
@@ -43,6 +52,16 @@ async function fakeModule(): Promise<{ base: string; body: () => unknown; setBod
     }
     if (url === '/panel') {
       response.end(JSON.stringify(current));
+      return;
+    }
+    if (url === '/signals') {
+      // null: the module offers no signals, which a 404 tells the poll.
+      if (signals === null) {
+        response.writeHead(404);
+        response.end('{}');
+        return;
+      }
+      response.end(JSON.stringify(signals));
       return;
     }
     response.writeHead(404);
@@ -57,6 +76,9 @@ async function fakeModule(): Promise<{ base: string; body: () => unknown; setBod
     body: () => current,
     setBody: (b) => {
       current = b;
+    },
+    setSignals: (s) => {
+      signals = s;
     },
   };
 }
@@ -112,7 +134,21 @@ async function harness() {
   });
   await form('/setup/household', { timezone: 'Europe/London' });
 
-  const manifest = async (): Promise<{ panels: Record<string, unknown>; display: { blocks: string[] } }> => {
+  interface Interrupt {
+    ruleId: string;
+    source: string;
+    action: string;
+    title: string;
+    severity: string;
+    dismissible: boolean;
+    wakeScreen: boolean;
+    piercesNightMode: boolean;
+  }
+  const manifest = async (): Promise<{
+    panels: Record<string, unknown>;
+    display: { blocks: string[] };
+    interrupts: Interrupt[];
+  }> => {
     const issued = issueDisplayToken();
     const at = Date.now();
     db.prepare(
@@ -120,7 +156,11 @@ async function harness() {
        VALUES ('s1','Wall',?,?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`,
     ).run(issued.tokenHash, at, at, at);
     const res = await call('/d/manifest', { headers: { authorization: `Bearer ${issued.token}` } });
-    return (await res.json()) as { panels: Record<string, unknown>; display: { blocks: string[] } };
+    return (await res.json()) as {
+      panels: Record<string, unknown>;
+      display: { blocks: string[] };
+      interrupts: Interrupt[];
+    };
   };
 
   return { db, call, form, manifest, poll: () => pollExternalModules(db, fetcher) };
@@ -183,5 +223,125 @@ describe('third-party modules', () => {
 
     await h.form(`/admin/modules/${id}/remove`, {});
     expect(h.db.prepare(`SELECT count(*) c FROM external_modules`).get()).toEqual({ c: 0 });
+  });
+});
+
+describe('module signals and interrupts', () => {
+  const oneSignal = { signals: [{ key: 'bins', title: 'Bins out tonight' }] };
+
+  it('does nothing until the household arms the module', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setSignals(oneSignal);
+    await h.form('/admin/modules', { url: mod.base });
+    await h.poll();
+
+    // The signal is cached, but the module is unarmed (alerts_action defaults to
+    // 'none'), so the wall shows no interrupt.
+    const id = moduleId(h.db);
+    const row = h.db
+      .prepare(`SELECT signals, alerts_action FROM external_modules WHERE id = ?`)
+      .get(id) as { signals: string | null; alerts_action: string };
+    expect(row.signals).not.toBeNull();
+    expect(row.alerts_action).toBe('none');
+    expect((await h.manifest()).interrupts).toEqual([]);
+    // No rule exists to fire it.
+    expect(h.db.prepare(`SELECT count(*) c FROM interrupt_rules`).get()).toEqual({ c: 0 });
+  });
+
+  it('raises a banner once armed, carrying the module’s own title', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setSignals(oneSignal);
+    await h.form('/admin/modules', { url: mod.base });
+    const id = moduleId(h.db);
+    await h.poll();
+
+    await h.form(`/admin/modules/${id}/alerts`, { action: 'banner' });
+
+    const interrupts = (await h.manifest()).interrupts;
+    expect(interrupts).toHaveLength(1);
+    const it0 = interrupts[0]!;
+    expect(it0.action).toBe('banner');
+    expect(it0.title).toBe('Bins out tonight');
+    expect(it0.source).toBe(`ext:${id}`);
+    // The rule scoped to this module and only this module.
+    expect(it0.ruleId).toBe(`extrule-${id}`);
+  });
+
+  it('caps a module to its chosen action however severe it claims to be', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    // The module claims Extreme — the severity that, on a weather rule, is a
+    // waking takeover. It must not escalate a module past the household's cap.
+    mod.setSignals({ signals: [{ key: 'flood', title: 'FLOOD', severity: 'Extreme' }] });
+    await h.form('/admin/modules', { url: mod.base });
+    const id = moduleId(h.db);
+    await h.poll();
+    await h.form(`/admin/modules/${id}/alerts`, { action: 'banner' });
+
+    const it0 = (await h.manifest()).interrupts[0]!;
+    expect(it0.action).toBe('banner');
+    // Never wakes a dark screen, never pierces night mode — reserved for real
+    // safety alerts, unavailable to any module whatever it declares.
+    expect(it0.wakeScreen).toBe(false);
+    expect(it0.piercesNightMode).toBe(false);
+    // And always clearable from the wall.
+    expect(it0.dismissible).toBe(true);
+  });
+
+  it('an armed module still cannot trip a built-in weather rule', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setSignals({ signals: [{ key: 'x', title: 'Not a real warning', severity: 'Extreme' }] });
+    await h.form('/admin/modules', { url: mod.base });
+    const id = moduleId(h.db);
+
+    // Seed the shipped NWS ladder alongside the module's own armed rule.
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO interrupt_rules
+           (id, name, enabled, trigger, conditions, action, priority, wake_screen,
+            pierces_night_mode, min_dwell_sec, dismissible, reassert_after_sec,
+            created_at, updated_at)
+         VALUES ('nws-extreme','Extreme',1,'nws',?, 'takeover_and_wake', 100, 1, 1, 0, 0, NULL, ?, ?)`,
+      )
+      .run(JSON.stringify({ minSeverity: 'Extreme' }), at, at);
+    await h.poll();
+    await h.form(`/admin/modules/${id}/alerts`, { action: 'banner' });
+
+    const interrupts = (await h.manifest()).interrupts;
+    // The Extreme-claiming module signal fires only its own banner, never the
+    // NWS takeover — source scoping keeps them apart.
+    expect(interrupts).toHaveLength(1);
+    expect(interrupts[0]!.source).toBe(`ext:${id}`);
+    expect(interrupts[0]!.action).toBe('banner');
+  });
+
+  it('a 404 on /signals clears the cache; disarming removes the rule', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setSignals(oneSignal);
+    await h.form('/admin/modules', { url: mod.base });
+    const id = moduleId(h.db);
+    await h.poll();
+    await h.form(`/admin/modules/${id}/alerts`, { action: 'takeover' });
+    expect((await h.manifest()).interrupts).toHaveLength(1);
+
+    // The module drops its /signals endpoint entirely: the cache empties and the
+    // interrupt goes with it.
+    mod.setSignals(null);
+    await h.poll();
+    expect(
+      (h.db.prepare(`SELECT signals FROM external_modules WHERE id = ?`).get(id) as {
+        signals: string | null;
+      }).signals,
+    ).toBeNull();
+    expect((await h.manifest()).interrupts).toEqual([]);
+
+    // Disarming the module deletes its rule.
+    await h.form(`/admin/modules/${id}/alerts`, { action: 'none' });
+    expect(h.db.prepare(`SELECT count(*) c FROM interrupt_rules`).get()).toEqual({ c: 0 });
   });
 });
