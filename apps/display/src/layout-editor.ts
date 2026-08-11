@@ -16,7 +16,7 @@
  * so what is dragged here is what the wall draws.
  */
 
-import { renderFreeform } from './render.js';
+import { render, renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
@@ -230,11 +230,19 @@ function boot(): void {
     previewWall.style.setProperty('--root-size', `${rect.height / 100}px`);
     applyTheme(previewWall, manifest.theme.active);
 
-    // The draft, drawn by the very renderer a wall uses.
-    renderFreeform(previewWall, model, {
-      aspect: state.aspect,
-      widgets: state.widgets.map((w) => ({ ...w })),
-    });
+    // The wall as it will actually draw. With the layout switched on, that is
+    // the free-form draft; with it off, the wall ignores these widgets and
+    // draws the stacked blocks — so the preview shows the stacked layout too,
+    // rather than a canvas the wall would never use. Both go through the exact
+    // renderer a screen runs.
+    if (state.mode === 'freeform') {
+      renderFreeform(previewWall, model, {
+        aspect: state.aspect,
+        widgets: state.widgets.map((w) => ({ ...w })),
+      });
+    } else {
+      render(previewWall, model);
+    }
   }
 
   // ---- the draggable overlay -------------------------------------------
@@ -377,6 +385,27 @@ function boot(): void {
     title.className = 'kick';
     title.textContent = labelFor(widget.type) + ' options';
     configPanel.appendChild(title);
+
+    // Layering — where this widget sits against the others. Only meaningful
+    // once there is something to stack against.
+    if (state.widgets.length > 1) {
+      const layer = cfgField('Layer');
+      const row = document.createElement('div');
+      row.className = 'le-cfg-btns';
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'le-cfg-btn';
+      back.textContent = 'Send to back';
+      back.addEventListener('click', () => restack(false));
+      const front = document.createElement('button');
+      front.type = 'button';
+      front.className = 'le-cfg-btn';
+      front.textContent = 'Bring to front';
+      front.addEventListener('click', () => restack(true));
+      row.append(back, front);
+      layer.appendChild(row);
+      configPanel.appendChild(layer);
+    }
 
     const cfg = widget.config ?? {};
     if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
@@ -652,8 +681,20 @@ function boot(): void {
     markDirty();
   }
 
+  /** Change how the selected widget stacks against the others. */
+  function restack(toFront: boolean): void {
+    const widget = state.widgets.find((w) => w.id === selected);
+    if (widget === undefined) return;
+    const zs = state.widgets.map((w) => w.z);
+    widget.z = toFront ? Math.max(0, ...zs) + 1 : Math.min(0, ...zs) - 1;
+    draw();
+    markDirty();
+  }
+
   onInput.addEventListener('change', () => {
     state.mode = onInput.checked ? 'freeform' : 'auto';
+    // The preview follows the switch: free-form draft on, stacked blocks off.
+    renderPreview();
     markDirty();
   });
   aspectSelect.addEventListener('change', () => {
@@ -684,7 +725,12 @@ function boot(): void {
           screen: state.screen,
           mode: state.mode,
           aspect: round3(state.aspect),
-          widgets: state.widgets.map((w, index) => ({
+          // Saved back-to-front, so the stacking the household set in the
+          // editor is the stacking a wall draws — the interactive `z` was being
+          // discarded for insertion order before. Normalised to 0..n-1.
+          widgets: [...state.widgets]
+            .sort((a, b) => a.z - b.z)
+            .map((w, index) => ({
             id: w.id,
             type: w.type,
             x: round3(clamp01(w.x)),

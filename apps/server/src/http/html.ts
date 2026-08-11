@@ -408,6 +408,11 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-cfg-check{display:inline-flex;align-items:center;gap:.45rem;font-size:14px;
   color:var(--muted);cursor:pointer;margin:0}
 .le-cfg-check input{width:16px;height:16px;accent-color:var(--accent);margin:0}
+.le-cfg-btns{display:flex;gap:8px}
+.le-cfg-btn{margin:0;padding:.42rem .75rem;border:1px solid var(--rule);border-radius:7px;
+  background:var(--panel2);color:var(--ink);font-family:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer}
+.le-cfg-btn:hover{filter:none;border-color:var(--faint)}
 `;
 
 /**
