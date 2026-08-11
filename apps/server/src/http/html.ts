@@ -345,6 +345,18 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .subtab:hover{color:var(--ink)}
 .subtab.active{color:var(--ink);border-bottom-color:var(--accent)}
 
+/* ---- Store card glyph preview ("screenshot" spelled out in glyphs) -------- */
+/* A little inset tile beside the icon, styled like a wall stat panel: a big
+ * headline line then a caption or two. First-party glyphs only, no image. */
+.cpreview{flex:0 0 auto;width:118px;min-height:64px;display:flex;flex-direction:column;
+  justify-content:center;gap:2px;padding:9px 11px;border-radius:8px;
+  background:var(--panel2);border:1px solid var(--rule);overflow:hidden}
+.cpreview b{font-family:var(--cond);font-weight:700;font-size:22px;line-height:1.05;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cpreview i{font-style:normal;font-size:11px;line-height:1.25;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:560px){.cpreview{display:none}}
+
 /* ---- Theme picker cards (Display) ---------------------------------------- */
 .themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:.6rem}
 @media(max-width:560px){.themegrid{grid-template-columns:1fr}}

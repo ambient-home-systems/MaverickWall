@@ -38,6 +38,13 @@ const common = {
   description: z.string().min(1).max(280),
   /** A single glyph the device already has — never a fetched image (rule three). */
   icon: z.string().min(1).max(4),
+  /**
+   * An optional preview of what the module draws — a "screenshot" spelled out in
+   * glyphs and text, never a fetched image (rule three). A few short lines: the
+   * first is the headline (a big value), the rest a caption or two, echoing how
+   * a stat panel reads on the wall. Shown beside the icon on the store card.
+   */
+  preview: z.array(z.string().min(1).max(24)).min(1).max(4).optional(),
 };
 
 /** A module the household runs, added by URL (RFC 001). */

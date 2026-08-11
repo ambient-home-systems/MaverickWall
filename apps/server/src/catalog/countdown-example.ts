@@ -13,6 +13,7 @@ export const entry: CatalogEntry = {
     'A big number counting down the days to a date you choose — the runnable ' +
     'reference module. A good first module to try, and to copy.',
   icon: '⏳',
+  preview: ['42', 'days to Holiday'],
   kind: 'service',
   install: {
     hint:

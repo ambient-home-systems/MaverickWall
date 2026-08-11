@@ -14,6 +14,7 @@ export const entry: CatalogEntry = {
     'key-less public weather feed. A good first recipe: install it, fill in ' +
     'your latitude and longitude, done.',
   icon: '🌡️',
+  preview: ['19.4°', 'Outside'],
   kind: 'recipe',
   recipe: {
     name: 'Outside temperature',

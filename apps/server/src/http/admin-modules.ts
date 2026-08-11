@@ -503,10 +503,21 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
 
   /** One store card: glyph, name, author, description, and an Install link. */
   function catalogCard(entry: CatalogEntry): string {
+    // A glyph-only "screenshot" beside the icon, when the entry authored one:
+    // the first line is the headline, the rest captions, like a wall stat panel.
+    const preview =
+      entry.preview === undefined
+        ? ''
+        : `<div class="cpreview">` +
+          entry.preview
+            .map((line, i) => (i === 0 ? `<b>${escapeHtml(line)}</b>` : `<i>${escapeHtml(line)}</i>`))
+            .join('') +
+          `</div>`;
     return (
       `<article class="card">` +
       `<div style="display:flex;align-items:flex-start;gap:12px">` +
       `<div style="font-size:26px;line-height:1">${escapeHtml(entry.icon)}</div>` +
+      preview +
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
       `<div class="host">by ${escapeHtml(entry.author)}</div>` +
