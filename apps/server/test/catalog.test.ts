@@ -44,21 +44,59 @@ describe('module catalogue', () => {
     expect(catalogSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('rejects a recipe entry — Phase A1 is service modules only', () => {
-    const recipe = {
+  it('accepts a recipe entry with an embedded, valid recipe (A2)', () => {
+    const catalog = {
       version: 1,
       modules: [
         {
-          id: 'x',
-          name: 'X',
+          id: 'temp',
+          name: 'Temp',
           author: 'a',
           description: 'd',
-          icon: '⏳',
+          icon: '🌡️',
           kind: 'recipe',
-          install: { hint: 'h' },
+          recipe: {
+            name: 'Temp',
+            contract: 1,
+            fetch: { url: 'https://api.example.com/x' },
+            panel: { kind: 'stat', value: '{t | round:1}' },
+          },
         },
       ],
     };
-    expect(catalogSchema.safeParse(recipe).success).toBe(false);
+    expect(catalogSchema.safeParse(catalog).success).toBe(true);
+  });
+
+  it('rejects a recipe entry whose embedded recipe is invalid', () => {
+    const catalog = {
+      version: 1,
+      modules: [
+        {
+          id: 'temp',
+          name: 'Temp',
+          author: 'a',
+          description: 'd',
+          icon: '🌡️',
+          kind: 'recipe',
+          // `evil` is not an allowed formatter — the recipe schema catches it,
+          // so the catalogue entry is rejected too.
+          recipe: {
+            name: 'Temp',
+            contract: 1,
+            fetch: { url: 'https://api.example.com/x' },
+            panel: { kind: 'stat', value: '{t | evil}' },
+          },
+        },
+      ],
+    };
+    expect(catalogSchema.safeParse(catalog).success).toBe(false);
+  });
+
+  it('ships a working recipe entry to demonstrate the flow', () => {
+    const entry = catalogEntry('outside-temperature');
+    expect(entry?.kind).toBe('recipe');
+    if (entry?.kind === 'recipe') {
+      expect(entry.recipe.config.map((f) => f.key)).toEqual(['lat', 'lon']);
+    }
   });
 });

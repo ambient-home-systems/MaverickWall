@@ -294,9 +294,20 @@ either being load-bearing for safety.
   sourceless idea is a *static* info panel (literal readings a household types —
   a chore rota, a wifi note), which is a different, later shape and not a
   countdown. So B2 ships as signals; generators wait for a real need.
-- **Phase A2 — catalogue polish.** Recipe install directly from the gallery
-  (config + secrets prompt), then catalogue *sources* by URL, then
-  server-proxied screenshots.
+- **Phase A2 — catalogue polish. Recipe install from the gallery: DONE.** The
+  catalogue entry is now a discriminated union (`service | recipe`); a `recipe`
+  entry embeds the whole manifest, validated by the *same* `recipeSchema` the
+  raw-paste form uses — so a catalogue recipe can do nothing a hand-written one
+  cannot, and the fields to prompt for come straight off `recipe.config`.
+  Installing one is `/admin/modules/install/:id`: an input per config field, its
+  default pre-filled, and `createRecipeModule` on submit — no JSON. A working,
+  key-less example ships (Open-Meteo "Outside temperature", with lat/lon config)
+  so the flow is real, not illustrative. **Still open in A2:** the config prompt
+  cannot yet collect `secrets` (they do not exist — recipe secrets are a B-tier
+  item); **catalogue *sources* by URL** (a remote, community-authored catalogue
+  fetched with consent through the SSRF guard, the "community-supported" half —
+  its own slice, with the add-on-repository traps to reread); and
+  **server-proxied screenshots** (v1 is glyph-only, deliberately).
 
 ## Decisions taken
 
