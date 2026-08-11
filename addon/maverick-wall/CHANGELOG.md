@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.0
+
+Add a community catalogue of modules.
+
+- **Catalogues.** On **Add-ons → Browse → Catalogues** you can add a list of
+  modules someone else publishes, by its web address. Its modules then appear
+  when you Browse, alongside the built-in ones, and you install each the same way.
+- It is your choice and stays transparent: Maverick Wall checks the address every
+  few hours for its list and nothing more. It sends nothing about your household,
+  and a catalogue can **never** make a module reach your own network — one that
+  asks for that is refused outright.
+
+Turn a catalogue off or remove it any time; your installed modules stay.
+
 ## 0.12.0
 
 Install a recipe straight from the catalogue.
