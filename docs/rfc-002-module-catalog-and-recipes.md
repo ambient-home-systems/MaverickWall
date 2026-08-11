@@ -302,12 +302,26 @@ either being load-bearing for safety.
   Installing one is `/admin/modules/install/:id`: an input per config field, its
   default pre-filled, and `createRecipeModule` on submit — no JSON. A working,
   key-less example ships (Open-Meteo "Outside temperature", with lat/lon config)
-  so the flow is real, not illustrative. **Still open in A2:** the config prompt
-  cannot yet collect `secrets` (they do not exist — recipe secrets are a B-tier
-  item); **catalogue *sources* by URL** (a remote, community-authored catalogue
-  fetched with consent through the SSRF guard, the "community-supported" half —
-  its own slice, with the add-on-repository traps to reread); and
-  **server-proxied screenshots** (v1 is glyph-only, deliberately).
+  so the flow is real, not illustrative.
+
+  **Catalogue *sources* by URL: DONE** — the "community-supported" half. A
+  household adds a remote catalogue on `/admin/modules/catalogues`; a
+  `catalog_sources` table holds it (migration `0018`), a six-hourly job
+  (`pollCatalogSources`) fetches its index through the SSRF guard and caches the
+  validated entries, and Browse merges the built-in catalogue with every enabled
+  source's entries (remote install ids namespaced `<sourceId>~<entryId>`). The
+  add form carries the update-check's own consent shape — what fetching does,
+  what it reveals, what it never does. The safety that matters is
+  `remoteCatalogSchema`: it is the catalogue schema plus one hard refusal — a
+  recipe entry may not set `allowLan`, so a stranger's catalogue can never point
+  a recipe at the LAN or `http://supervisor`. That refusal fails the *whole*
+  source with a plain reason, and the SSRF guard enforces public-only a second
+  time at the recipe's own fetch. The store/read schema is one schema in both
+  directions, which is how a mismatch (storing the array, re-validating it as a
+  catalogue object) surfaced instantly in the test. **Still open in A2:** the
+  config prompt cannot yet collect `secrets` (they do not exist — recipe secrets
+  are a B-tier item); and **server-proxied screenshots** (v1 is glyph-only,
+  deliberately).
 
 ## Decisions taken
 

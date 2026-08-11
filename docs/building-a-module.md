@@ -230,6 +230,27 @@ alert clears on its own when `when` stops holding.
 Not yet: credentials for a feed that needs an API key (`secrets`). That is the
 next step — see the RFC.
 
+## Sharing a catalogue
+
+You can publish a **catalogue** — a list of modules others add in one place —
+by hosting a JSON file anywhere reachable:
+
+```json
+{ "version": 1, "modules": [
+  { "id": "tide", "name": "Tide times", "author": "you", "description": "…",
+    "icon": "🌊", "kind": "recipe", "recipe": { … } },
+  { "id": "energy", "name": "Energy", "author": "you", "description": "…",
+    "icon": "⚡", "kind": "service", "install": { "hint": "Run the container, then paste its address." } }
+]}
+```
+
+A household adds your catalogue's URL on **Add-ons → Browse → Catalogues**, and
+its entries appear beside the built-in ones. Two rules a remote catalogue is
+held to: every recipe is validated exactly as a hand-written one, and a recipe
+in a remote catalogue **may not set `allowLan`** — a community list may not ask
+a household's wall to reach their own network. A catalogue that does is refused
+whole.
+
 ## Versioning
 
 Bump `contract` only if the shapes here change in a way an old wall could not

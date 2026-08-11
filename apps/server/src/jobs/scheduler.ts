@@ -178,4 +178,13 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     jitterRatio: 0.1,
     backoffMaxMs: 60 * 60_000,
   },
+  'catalog-sources': {
+    // Six-hourly. A catalogue is a slow-changing list, and each fetch reaches a
+    // stranger's server the household added — so freshness is not the point and
+    // politeness is. A source is fetched immediately when it is added.
+    intervalMs: 6 * 60 * 60_000,
+    jitterRatio: 0.25,
+    backoffInitialMs: 30 * 60_000,
+    backoffMaxMs: 24 * 60 * 60_000,
+  },
 };

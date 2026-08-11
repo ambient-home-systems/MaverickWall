@@ -19,13 +19,17 @@ import {
 import { deleteRule, moduleAlertRuleId, syncModuleAlertRule } from '../api/rules.js';
 import { signalDataSchema } from '../modules/external/signal-data.js';
 import { normaliseConfig, recipeSchema, type RecipeConfig } from '../modules/external/recipe.js';
+import { type RecipeEntry, type ServiceEntry } from './catalog.js';
 import {
-  CATALOG,
-  catalogEntry,
-  type CatalogEntry,
-  type RecipeEntry,
-  type ServiceEntry,
-} from './catalog.js';
+  browseEntries,
+  createCatalogSource,
+  deleteCatalogSource,
+  readCatalogSources,
+  resolveCatalogEntry,
+  setCatalogSourceEnabled,
+  type BrowseEntry,
+  type CatalogSourceRow,
+} from '../api/catalog-sources.js';
 import { parse, text, z } from '../validation.js';
 
 /**
@@ -40,6 +44,11 @@ import { parse, text, z } from '../validation.js';
 
 const addBody = z.object({
   url: text('The module’s address', 2048),
+  name: z.string().max(60).optional(),
+});
+
+const catalogueBody = z.object({
+  url: text('The catalogue’s address', 2048),
   name: z.string().max(60).optional(),
 });
 
@@ -61,7 +70,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     // `?install=<id>` deep-links a *service* entry from the catalogue and fills
     // the add form in — a query parameter, not a script, the same "prefill" the
     // rule templates use. A recipe entry installs on its own page instead.
-    const entry = catalogEntry(c.req.query('install') ?? '');
+    const entry = resolveCatalogEntry(deps.db, c.req.query('install') ?? '');
     const prefill = entry?.kind === 'service' ? entry : undefined;
     return c.html(modulesPage(undefined, prefill));
   });
@@ -69,13 +78,13 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/modules/browse', (c: Context) => c.html(browsePage()));
 
   app.get('/admin/modules/install/:id', (c: Context) => {
-    const entry = catalogEntry(c.req.param('id') ?? '');
+    const entry = resolveCatalogEntry(deps.db, c.req.param('id') ?? '');
     if (entry === undefined || entry.kind !== 'recipe') return c.redirect('/admin/modules/browse', 302);
-    return c.html(installRecipePage(entry));
+    return c.html(installRecipePage(c.req.param('id') ?? '', entry));
   });
 
   app.post('/admin/modules/install/:id', async (c: Context) => {
-    const entry = catalogEntry(c.req.param('id') ?? '');
+    const entry = resolveCatalogEntry(deps.db, c.req.param('id') ?? '');
     if (entry === undefined || entry.kind !== 'recipe') return c.redirect('/admin/modules/browse', 302);
 
     // The household filled in the recipe's own config fields, keyed by their
@@ -409,24 +418,30 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /** One catalogue card: glyph, name, author, description, and an Install link. */
-  function catalogCard(entry: CatalogEntry): string {
+  function catalogCard(item: BrowseEntry): string {
+    const { entry, installId } = item;
+    const from =
+      item.sourceName === undefined
+        ? ''
+        : `<div class="host" style="margin-top:2px">from ${escapeHtml(item.sourceName)}</div>`;
     return (
       `<article class="card">` +
       `<div style="display:flex;align-items:flex-start;gap:12px">` +
       `<div style="font-size:26px;line-height:1">${escapeHtml(entry.icon)}</div>` +
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
-      `<div class="host">by ${escapeHtml(entry.author)}</div>` +
+      `<div class="host">by ${escapeHtml(entry.author)}</div>${from}` +
       `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div>` +
       `<span class="tag" style="align-self:flex-start">${entry.kind === 'recipe' ? 'Recipe' : 'Service'}</span>` +
       `</div>` +
       `<div class="row" style="margin-top:14px;padding-top:14px;` +
       `border-top:1px solid var(--ruleSoft)">` +
       // A recipe installs on its own page (fill in its fields); a service
-      // pre-fills the add-by-URL form.
+      // pre-fills the add-by-URL form. Either way the id is the addressable
+      // install id — namespaced for a remote entry.
       (entry.kind === 'recipe'
-        ? `<a class="btn" href="admin/modules/install/${encodeURIComponent(entry.id)}">Install</a>`
-        : `<a class="btn" href="admin/modules?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
+        ? `<a class="btn" href="admin/modules/install/${encodeURIComponent(installId)}">Install</a>`
+        : `<a class="btn" href="admin/modules?install=${encodeURIComponent(installId)}#add">Install</a>` +
           (entry.install.source === undefined
             ? ''
             : `<a class="link" style="margin-left:auto;align-self:center" ` +
@@ -443,7 +458,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
    * input per `recipe.config` field, its default pre-filled. A recipe with no
    * config is just a confirm.
    */
-  function installRecipePage(entry: RecipeEntry): string {
+  function installRecipePage(installId: string, entry: RecipeEntry): string {
     const fields = entry.recipe.config
       .map(
         (field) =>
@@ -459,7 +474,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       action: { label: 'Back to the catalogue', href: 'admin/modules/browse' },
       intro: entry.description,
       body:
-        `<form method="post" action="admin/modules/install/${encodeURIComponent(entry.id)}">` +
+        `<form method="post" action="admin/modules/install/${encodeURIComponent(installId)}">` +
         `<label for="name">Call it (optional)</label>` +
         `<input id="name" name="name" type="text" maxlength="60" ` +
         `value="${escapeHtml(entry.name)}">` +
@@ -474,20 +489,120 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   function browsePage(): string {
+    const items = browseEntries(deps.db);
+    const sourceCount = readCatalogSources(deps.db).filter((s) => s.enabled === 1).length;
     return page({
       title: 'Browse modules — Maverick Wall',
       nav: 'modules',
       heading: 'Browse the catalogue',
-      action: { label: 'Back to Add-ons', href: 'admin/modules' },
+      action: { label: 'Catalogues', href: 'admin/modules/catalogues' },
       intro:
         'Modules people have built and shared. A recipe installs in a click and ' +
         'a couple of fields; a service shows you how to run it and fills the ' +
         'address in. Either way a module only ever supplies values to show.',
       body:
-        CATALOG.modules.map(catalogCard).join('') +
-        `<p class="hint">This list ships with Maverick Wall. A community-updated ` +
-        `catalogue, fetched only if you ask, is on the way. To add one of your own, ` +
-        `open a pull request against <span class="code">apps/server/src/http/catalog.ts</span>.</p>`,
+        items.map(catalogCard).join('') +
+        `<p class="hint">This list ships with Maverick Wall` +
+        (sourceCount === 0
+          ? `. You can add a <a class="link" href="admin/modules/catalogues">community catalogue</a> ` +
+            `to see more.`
+          : `, plus the ${sourceCount === 1 ? 'catalogue' : `${sourceCount} catalogues`} you added.`) +
+        `</p>`,
+    });
+  }
+
+  app.get('/admin/modules/catalogues', (c: Context) => c.html(cataloguesPage()));
+
+  app.post('/admin/modules/catalogues', async (c: Context) => {
+    const shaped = parse(catalogueBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(cataloguesPage(shaped.message), 400);
+
+    let url: URL;
+    try {
+      url = new URL(shaped.value.url.trim());
+    } catch {
+      return c.html(cataloguesPage('That does not look like a web address.'), 400);
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return c.html(cataloguesPage('A catalogue address has to start with http:// or https://.'), 400);
+    }
+
+    const id = randomBytes(6).toString('hex');
+    const name = shaped.value.name?.trim() || url.host;
+    createCatalogSource(deps.db, { id, url: url.toString(), name });
+    // Fetch it now so its entries appear without waiting for the six-hourly job.
+    deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'catalog-sources'`).run();
+    return c.redirect('/admin/modules/catalogues', 302);
+  });
+
+  app.post('/admin/modules/catalogues/:id/remove', (c: Context) => {
+    deleteCatalogSource(deps.db, c.req.param('id') ?? '');
+    return c.redirect('/admin/modules/catalogues', 302);
+  });
+
+  app.post('/admin/modules/catalogues/:id/toggle', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const source = readCatalogSources(deps.db).find((s) => s.id === id);
+    if (source !== undefined) setCatalogSourceEnabled(deps.db, id, source.enabled === 0);
+    return c.redirect('/admin/modules/catalogues', 302);
+  });
+
+  function sourceCard(source: CatalogSourceRow): string {
+    const health =
+      source.lastFetchedAt === 0
+        ? `<span class="tag"><span class="dot dot-idle"></span>Not checked yet</span>`
+        : source.lastError !== null
+          ? `<span class="tag tag-bad"><span class="dot dot-bad"></span>${escapeHtml(source.lastError)}</span>`
+          : `<span class="tag tag-ok"><span class="dot dot-ok"></span>${source.entries.length} ` +
+            `module${source.entries.length === 1 ? '' : 's'} · updated ${escapeHtml(ago(source.lastFetchedAt, now()))}</span>`;
+    const action = `admin/modules/catalogues/${encodeURIComponent(source.id)}`;
+    return (
+      `<article class="card">` +
+      `<div style="display:flex;align-items:center;gap:12px">` +
+      `<div style="flex:1;min-width:0"><div class="rname" style="font-size:16px">` +
+      `${escapeHtml(source.name)}${source.enabled === 1 ? '' : ' (off)'}</div>` +
+      `<div class="host">${escapeHtml(source.url)}</div></div>${health}</div>` +
+      `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
+      `<form method="post" action="${action}/toggle">` +
+      `<button class="secondary" type="submit">${source.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
+      `<form method="post" action="${action}/remove">` +
+      `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
+      `</div></article>`
+    );
+  }
+
+  function cataloguesPage(error?: string): string {
+    const sources = readCatalogSources(deps.db);
+    return page({
+      title: 'Catalogues — Maverick Wall',
+      nav: 'modules',
+      heading: 'Catalogues',
+      action: { label: 'Back to Browse', href: 'admin/modules/browse' },
+      intro:
+        'A catalogue is a list of modules someone publishes. Add one and its ' +
+        'modules appear when you Browse — you still install each one yourself.',
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        (sources.length === 0 ? '' : sources.map(sourceCard).join('')) +
+        `<h2 class="add" id="add">Add a catalogue</h2>` +
+        `<form method="post" action="admin/modules/catalogues">` +
+        `<label for="curl">Catalogue address</label>` +
+        `<input id="curl" name="url" type="text" required ` +
+        `placeholder="https://example.com/maverick-catalogue.json">` +
+        `<label for="cname">Call it (optional)</label>` +
+        `<input id="cname" name="name" type="text" maxlength="60" ` +
+        `placeholder="Leave empty to use the address">` +
+        `<button type="submit">Add catalogue</button></form>` +
+        `<ul class="plain" style="margin-top:18px">` +
+        `<li><strong>What adding one does:</strong> Maverick Wall fetches this ` +
+        `address every few hours for its list of modules.</li>` +
+        `<li><strong>What that reveals:</strong> if the catalogue is on the ` +
+        `internet, your home's IP and that somebody here runs Maverick Wall — ` +
+        `unavoidable in fetching anything at all, which is why this is your choice.</li>` +
+        `<li><strong>What it never does:</strong> it reads the list and nothing ` +
+        `else. It sends nothing about your household, and it cannot make a module ` +
+        `reach your local network — a catalogue that asks for that is refused.</li>` +
+        `</ul>`,
     });
   }
 }

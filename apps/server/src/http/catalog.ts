@@ -80,6 +80,28 @@ const entrySchema = z.discriminatedUnion('kind', [serviceEntry, recipeEntry]);
 
 export const catalogSchema = z.object({ version: z.literal(1), modules: z.array(entrySchema) });
 
+/**
+ * The schema a *remote* catalogue is held to (A2). Everything the built-in one
+ * is, plus one hard refusal: a recipe entry may not ask to reach the LAN
+ * (`fetch.allowLan`). The household authored neither the source nor its recipes,
+ * so a community catalogue that wanted a recipe pointed at `192.168.x.x` — or at
+ * `http://supervisor` — is refused outright, the whole source. A household that
+ * genuinely wants a recipe on their own network pastes its manifest themselves
+ * (B1), which is their own explicit act. Remote recipes are public-internet
+ * only, and the SSRF guard enforces it a second time at fetch.
+ */
+export const remoteCatalogSchema = catalogSchema.superRefine((cat, ctx) => {
+  cat.modules.forEach((entry, i) => {
+    if (entry.kind === 'recipe' && entry.recipe.fetch.allowLan) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['modules', i],
+        message: 'a remote catalogue may not ask a recipe to reach your local network',
+      });
+    }
+  });
+});
+
 export type CatalogEntry = z.infer<typeof entrySchema>;
 export type ServiceEntry = z.infer<typeof serviceEntry>;
 export type RecipeEntry = z.infer<typeof recipeEntry>;
