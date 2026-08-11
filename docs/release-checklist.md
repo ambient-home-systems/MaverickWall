@@ -5,9 +5,12 @@ Ordered so that nothing is announced before it can be installed.
 1. **Green.** `pnpm test` — it builds first, then runs. That is what CI runs.
 2. **CHANGELOG.** `addon/maverick-wall/CHANGELOG.md`, in the format Home
    Assistant renders. Write it for a household, not for a commit log.
-3. **Versions.** Bump `addon/maverick-wall/config.yaml` and `APP_VERSION` in
-   `apps/server/src/main.ts`. They are checked against each other by nothing
-   yet, so check them.
+3. **Version.** Bump `version:` in `addon/maverick-wall/config.yaml` — the one
+   place. The running app's version is *not* a literal to edit: `main.ts` reads
+   `MW_VERSION`, which the image sets from the `VERSION` build-arg, which
+   `release.yml` sets to the tag — so the tag is what the app reports. Make the
+   tag equal `config.yaml`'s version; a mismatch means the store advertises a
+   version whose image was built under a different tag (see step 6).
 4. **Migrations.** If any migration recreates a table, read the generated
    `INSERT ... SELECT` before shipping it. SQLite resolves a double-quoted name
    that matches no column as a *string literal*, so a generated rebuild can
@@ -15,8 +18,17 @@ Ordered so that nothing is announced before it can be installed.
    `test/migration-upgrade.test.ts` is the guard; make sure it covers what you
    changed.
 5. **Tag.** `git tag -a v1.2.3 -m 'v1.2.3' && git push --tags`.
-6. **Watch the release workflow.** Multi-arch build, cosign signature, SBOM,
-   and the tags — `stable` moves only for a non-pre-release.
+6. **Watch the release workflow — and do not touch Home Assistant until it is
+   green.** Multi-arch build, cosign signature, SBOM, and the tags (`stable`
+   moves only for a non-pre-release). This step is load-bearing: the add-on
+   store reads `config.yaml` from `main`, so the moment the bump merged the
+   supervisor began advertising the new version — but its image does not exist
+   until *this* workflow finishes. Push the tag right after the merge, not
+   later; a forgotten or deferred tag leaves the store offering a version whose
+   image is a 404, and the supervisor's Update fails with "an unknown error
+   occurred". The **Add-on image published** workflow guards exactly this — it
+   goes red when `main`'s declared version has no public image — but treat that
+   as a backstop, not a licence to skip the wait. 0.16.0 shipped this way once.
 7. **Verify what shipped**, from a clean machine, exactly as the README says:
    ```bash
    docker run -d -v ./data:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall:stable
