@@ -180,6 +180,30 @@ describe('saving a layout', () => {
     expect(res.status).toBe(400);
   });
 
+  it('carries a countdown target and label through to the manifest', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [{ id: 'cd', type: 'countdown', x: 0.1, y: 0.1, w: 0.4, h: 0.3, z: 0,
+        config: { target: '2026-12-25', title: 'Christmas' } }],
+    });
+    expect(res.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { widgets: { type: string; config?: unknown }[] } };
+    expect(layout.layout.widgets[0]?.config).toEqual({ target: '2026-12-25', title: 'Christmas' });
+  });
+
+  it('rejects a countdown date that is not YYYY-MM-DD', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [{ id: 'cd', type: 'countdown', x: 0.1, y: 0.1, w: 0.4, h: 0.3, z: 0,
+        config: { target: '25 December' } }],
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('rejects an unknown config key rather than dropping it (rule five)', async () => {
     const h = await harness();
     const res = await h.saveLayout({

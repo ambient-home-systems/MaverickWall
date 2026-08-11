@@ -52,6 +52,7 @@ const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
   { type: 'weather', label: 'Weather' },
   { type: 'homeassistant', label: 'Home Assistant' },
   { type: 'shift', label: 'Shift' },
+  { type: 'countdown', label: 'Countdown' },
 ];
 
 const ASPECTS: readonly { readonly value: number; readonly label: string }[] = [
@@ -410,8 +411,32 @@ function boot(): void {
     const cfg = widget.config ?? {};
     if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
     else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
+    else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
     // Every widget gets the Format section — it is all box-level.
     buildFormatConfig(widget, cfg);
+  }
+
+  function buildCountdownConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const nameField = cfgField('Counting down to');
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.maxLength = 60;
+    name.placeholder = 'e.g. Summer holiday';
+    // The label is the widget title, so it round-trips with the Format title.
+    name.value = typeof cfg['title'] === 'string' ? (cfg['title'] as string) : '';
+    name.addEventListener('change', () => setConfig(widget, 'title', name.value.trim()));
+    nameField.appendChild(name);
+    configPanel.appendChild(nameField);
+
+    const dateField = cfgField('Date');
+    const date = document.createElement('input');
+    date.type = 'date';
+    date.value = typeof cfg['target'] === 'string' ? (cfg['target'] as string) : '';
+    date.addEventListener('change', () =>
+      setConfig(widget, 'target', /^\d{4}-\d{2}-\d{2}$/.test(date.value) ? date.value : undefined),
+    );
+    dateField.appendChild(date);
+    configPanel.appendChild(dateField);
   }
 
   function optionSelect(
@@ -450,21 +475,24 @@ function boot(): void {
     heading.textContent = 'Format';
     configPanel.appendChild(heading);
 
-    // Title
-    const titleField = cfgField('Title');
-    const titleInput = document.createElement('input');
-    titleInput.type = 'text';
-    titleInput.maxLength = 60;
-    titleInput.placeholder = 'e.g. This week';
-    titleInput.value = typeof cfg['title'] === 'string' ? (cfg['title'] as string) : '';
-    titleInput.addEventListener('change', () => setConfig(widget, 'title', titleInput.value.trim()));
-    titleField.appendChild(titleInput);
-    configPanel.appendChild(titleField);
-    configPanel.appendChild(
-      toggle('Show title on the wall', cfg['showTitle'] === true, (checked) =>
-        setConfig(widget, 'showTitle', checked ? true : undefined),
-      ),
-    );
+    // Title — countdown sets its own label in Settings (the same `title` key),
+    // so offering it again here would be two fields for one value.
+    if (widget.type !== 'countdown') {
+      const titleField = cfgField('Title');
+      const titleInput = document.createElement('input');
+      titleInput.type = 'text';
+      titleInput.maxLength = 60;
+      titleInput.placeholder = 'e.g. This week';
+      titleInput.value = typeof cfg['title'] === 'string' ? (cfg['title'] as string) : '';
+      titleInput.addEventListener('change', () => setConfig(widget, 'title', titleInput.value.trim()));
+      titleField.appendChild(titleInput);
+      configPanel.appendChild(titleField);
+      configPanel.appendChild(
+        toggle('Show title on the wall', cfg['showTitle'] === true, (checked) =>
+          setConfig(widget, 'showTitle', checked ? true : undefined),
+        ),
+      );
+    }
 
     // Alignment — 'left' is the default, stored as an absence.
     const alignField = cfgField('Text alignment');

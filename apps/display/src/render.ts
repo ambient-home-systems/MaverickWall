@@ -5,6 +5,7 @@ import type {
   HorizonCell,
   InterruptModel,
 } from './viewmodel.js';
+import { localDate } from './viewmodel.js';
 import type { ManifestWidget } from './manifest.js';
 
 /**
@@ -511,9 +512,46 @@ export function renderWidget(
       return renderHouse(model, config);
     case 'shift':
       return renderShiftWidget(model);
+    case 'countdown':
+      return renderCountdownWidget(model, config);
     default:
       return undefined;
   }
+}
+
+/**
+ * A countdown to a date the household set.
+ *
+ * Days are counted from the wall's own clock reading against the target — and
+ * `model.now` is the *server's* time, not the tablet's, so a countdown does not
+ * drift with a screen whose clock is two hours out. The label is the widget's
+ * title. A date not yet set says so rather than drawing a bare zero.
+ */
+function renderCountdownWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const c = widgetConfig(config);
+  const target = typeof c['target'] === 'string' ? c['target'] : '';
+  const label = typeof c['title'] === 'string' ? (c['title'] as string).trim() : '';
+
+  const box = el('section', 'cd');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(target)) {
+    box.appendChild(el('div', 'cd-empty', 'Set a date in this widget’s options.'));
+    return box;
+  }
+
+  const today = localDate(model.now, model.timezone);
+  const days = Math.round(
+    (Date.parse(`${target}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000,
+  );
+  const abs = Math.abs(days);
+
+  if (days === 0) {
+    box.appendChild(el('div', 'cd-num', 'Today'));
+  } else {
+    box.appendChild(el('div', 'cd-num', String(abs)));
+    box.appendChild(el('div', 'cd-unit', `${abs === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`));
+  }
+  if (label !== '') box.appendChild(el('div', 'cd-label', label));
+  return box;
 }
 
 /**
