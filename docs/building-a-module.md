@@ -160,6 +160,53 @@ wall.
 - **You are polled, not trusted with the wall.** A slow or failing module backs
   off on its own and never stalls the calendar; a malformed answer is dropped.
 
+## Recipes — a module with no server
+
+If your module is really just "fetch a public JSON feed and show a couple of
+fields", you do not need to run a service at all. A **recipe** is a small
+declarative document that Maverick Wall runs itself: it names a URL, selects
+values out of the response, and draws them. Add one on the **Add-ons** screen →
+**Add a recipe**.
+
+A recipe is *data, never code*. It can pull fields and format them, and nothing
+else — no expressions, no branching, no I/O beyond its one fetch. That is what
+lets Maverick Wall run it in-process safely.
+
+```json
+{
+  "name": "Bitcoin",
+  "contract": 1,
+  "fetch": {
+    "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=gbp",
+    "intervalSeconds": 900
+  },
+  "panel": { "kind": "stat", "title": "Bitcoin", "value": "{bitcoin.gbp | currency:GBP}", "caption": "GBP" }
+}
+```
+
+- **`panel`** is the same four shapes as above, except each string is a
+  *template*: plain text plus `{selector}` or `{selector | formatter}`
+  placeholders. For `readings`/`tiles`, give `items` a `for` (a selector that
+  points at an array) and `label`/`value` templates evaluated against each row.
+- **Selectors** are dotted / indexed paths into the fetched JSON:
+  `bitcoin.gbp`, `results.items[0].name`. Traversal only.
+- **Formatters** are a fixed set: `upper`, `lower`, `trim`, `round:N`, `int`,
+  `currency:GBP` (also USD/EUR/JPY), `truncate:N`, `date:relative`,
+  `date:short`, `default:TEXT`. A formatter this list does not have is a
+  rejected recipe, not a broken panel.
+- **`config`** (optional) declares fields a household fills in; reference them in
+  the URL as `{key}`:
+  ```json
+  "config": [{ "key": "station", "label": "Station id" }],
+  "fetch": { "url": "https://api.example.com/fuel/{station}" }
+  ```
+- **`fetch`** reaches the **public internet over https only**. To point a recipe
+  at a service on your own network, add `"allowLan": true` — then it may reach
+  the LAN, loopback and plain http.
+
+Not yet: credentials for a feed that needs an API key (`secrets`), and a recipe
+raising an alert (`signals`). Those are the next steps — see the RFC.
+
 ## Versioning
 
 Bump `contract` only if the shapes here change in a way an old wall could not

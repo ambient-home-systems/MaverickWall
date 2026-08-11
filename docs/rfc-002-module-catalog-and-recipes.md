@@ -256,10 +256,21 @@ either being load-bearing for safety.
   shape), and a Browse gallery on `/admin/modules` that pre-fills the add-by-URL
   form. Small, immediately useful, no architectural change. Proves the
   browse/pick/install UX.
-- **Phase B1 — the recipe engine, fetch pipeline.** The recipe schema, the
-  selector/formatter/template interpreter, the `kind = recipe` poll branch, the
-  `config`/`secrets` store, and public-internet-only fetch defaults. One recipe
-  end to end (a real public JSON API) as the proof.
+- **Phase B1 — the recipe engine, fetch pipeline. DONE.** The recipe schema and
+  the selector/formatter/template interpreter (`modules/external/recipe.ts` —
+  dotted-path selectors, a closed formatter allowlist, placeholder-only
+  templates, output validated against the same `panelDataSchema` a service
+  answers with; an unknown formatter is a rejected recipe, not a runtime
+  surprise). Storage reuses `external_modules` with a `kind`/`recipe`/`config`
+  widening (migration `0017`), and the poll gains one `kind = recipe` branch that
+  resolves the URL from config, fetches through the SSRF guard **public-https-only
+  by default** (`allowLan` opts into the LAN), interprets, and caches — the
+  `ExternalPanelModule` adapter is unchanged. Added from **Add-ons → Add a
+  recipe** (a raw manifest form for now; the tidy config prompt is A2). The proof
+  is a recipe transforming a real feed end to end (`{bitcoin.gbp | currency:GBP}`
+  → `£51234.50`) and the SSRF default refusing a loopback fetch until the recipe
+  opts in. **Deferred within B1:** `secrets` (encrypted credentials injected into
+  the fetch) — config-only for now.
 - **Phase B2 — recipe signals and sourceless generators.** The tiny `when`
   predicate and the named-generator allowlist (countdown first).
 - **Phase A2 — catalogue polish.** Recipe install directly from the gallery

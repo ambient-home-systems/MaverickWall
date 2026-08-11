@@ -11,6 +11,15 @@ import {
 } from '../../api/external-modules.js';
 import { panelDataSchema } from './panel-data.js';
 import { signalDataSchema } from './signal-data.js';
+import {
+  normaliseConfig,
+  recipePolicy,
+  recipeSchema,
+  resolveFetchUrl,
+  runRecipePanel,
+  type RecipeConfig,
+} from './recipe.js';
+import type { ExternalModuleRow } from '../../api/external-modules.js';
 
 /**
  * Third-party modules, as `PanelModule`s (docs/rfc-001-module-framework.md).
@@ -80,6 +89,17 @@ const POLICY = { allowHttp: true, allowPrivateNetwork: true, allowLoopback: true
 /** The shared poll: refresh every enabled module in turn. Never throws. */
 export async function pollExternalModules(db: SqliteDatabase, fetcher: Fetcher): Promise<void> {
   for (const module of readEnabledExternalModules(db)) {
+    // A recipe has no service to poll: Maverick Wall runs its declared fetch and
+    // transform itself. No `/signals` either — recipe signals are Phase B2.
+    if (module.kind === 'recipe') {
+      try {
+        await pollRecipe(db, fetcher, module);
+      } catch {
+        writeExternalModuleError(db, module.id, 'The recipe could not run.');
+      }
+      continue;
+    }
+
     try {
       const outcome = await pollOne(fetcher, module.url);
       if (outcome.ok) writeExternalModulePanel(db, module.id, outcome.panel);
@@ -97,6 +117,61 @@ export async function pollExternalModules(db: SqliteDatabase, fetcher: Fetcher):
       // Keep the last-good signals; a blip must not drop a real alert.
     }
   }
+}
+
+/**
+ * Run one recipe: resolve its URL from config, fetch through the SSRF guard
+ * (public https only unless the recipe opted into the LAN), and interpret the
+ * body into Panel Data validated against the same schema a service answers with.
+ */
+async function pollRecipe(
+  db: SqliteDatabase,
+  fetcher: Fetcher,
+  module: ExternalModuleRow,
+): Promise<void> {
+  const parsed = recipeSchema.safeParse(module.recipe);
+  if (!parsed.success) {
+    writeExternalModuleError(db, module.id, 'This recipe is not valid.');
+    return;
+  }
+  const recipe = parsed.data;
+  const now = Date.now();
+  // Honour the recipe's own polling interval — the shared job runs more often
+  // than most recipes want, and hammering a stranger's API is our manners to
+  // keep, since we make the request.
+  if (module.lastPolledAt !== 0 && now < module.lastPolledAt + recipe.fetch.intervalSeconds * 1000) {
+    return;
+  }
+
+  const supplied =
+    module.config !== null && typeof module.config === 'object'
+      ? (module.config as RecipeConfig)
+      : {};
+  const url = resolveFetchUrl(recipe, normaliseConfig(recipe, supplied));
+
+  const response = await fetcher.fetch({
+    url,
+    policy: recipePolicy(recipe),
+    maxBytes: FETCH_LIMITS.json,
+    acceptContentTypes: ['application/json'],
+    timeoutMs: 10_000,
+  });
+  if (response.status !== 'ok') {
+    writeExternalModuleError(db, module.id, 'The recipe’s source did not answer.');
+    return;
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(response.body);
+  } catch {
+    writeExternalModuleError(db, module.id, 'The source did not return JSON.');
+    return;
+  }
+
+  const outcome = runRecipePanel(recipe, body, now);
+  if (outcome.ok) writeExternalModulePanel(db, module.id, outcome.panel);
+  else writeExternalModuleError(db, module.id, outcome.error);
 }
 
 async function pollOne(
