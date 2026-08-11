@@ -872,6 +872,31 @@ export const externalModules = sqliteTable('external_modules', {
   ...timestamps,
 });
 
+/**
+ * Remote catalogue sources (docs/rfc-002-module-catalog-and-recipes.md, A2).
+ *
+ * A community-authored list of modules the household adds by URL. Fetched
+ * periodically through the SSRF guard (public https only) and validated against
+ * the catalogue schema — a stricter one that refuses any recipe asking to reach
+ * the LAN, because the household did not author these. The built-in catalogue
+ * needs no row here; it ships in the image. This is discovery only: an entry
+ * from a source can do nothing installing it by hand could not.
+ */
+export const catalogSources = sqliteTable('catalog_sources', {
+  id: text('id').primaryKey(),
+  /** The index URL the household added; fetched for its entries. */
+  url: text('url').notNull(),
+  /** A label, from the household or the URL host. */
+  name: text('name').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  /** Last validated entries array, as JSON this process wrote. */
+  entries: text('entries', { mode: 'json' }).$type<unknown>(),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'number' }).notNull().default(0),
+  /** The last fetch's failure, for the source's health line. */
+  lastError: text('last_error'),
+  ...timestamps,
+});
+
 // ---------------------------------------------------------------------------
 // Home Assistant. Read-only, always.
 // ---------------------------------------------------------------------------
