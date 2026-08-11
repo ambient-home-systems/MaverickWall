@@ -626,9 +626,21 @@ its interrupt). `severity` is a literal the author declares, not a value mapped
 from the feed. **Sourceless generators (countdown) were deferred and may never be
 built** — a countdown already exists as the free-form widget and the example
 module, so a third would be redundant surface on a security-sensitive schema; the
-reasoning is in the RFC. **Still deferred:** recipe `secrets` (encrypted
-credentials in the fetch), and the tidy catalogue-recipe install with a config
-prompt plus remote community catalogues fetched with consent (A2).
+reasoning is in the RFC.
+
+**A recipe installs from the catalogue by filling in a form, not pasting JSON
+(v0.12.0, RFC 002 A2).** The catalogue entry schema is now a discriminated union
+(`service | recipe`); a recipe entry embeds the whole manifest, validated by the
+*same* `recipeSchema` the raw-paste form uses — so a catalogue recipe can do
+nothing a hand-written one cannot, and the fields to prompt for come straight off
+`recipe.config`. `/admin/modules/install/:id` renders an input per config field
+(default pre-filled) and calls `createRecipeModule`; the Browse card routes by
+kind and tags each SERVICE/RECIPE. A key-less Open-Meteo "Outside temperature"
+entry ships so the flow is real. **Still deferred:** recipe `secrets` (encrypted
+credentials in the fetch); **catalogue *sources* by URL** — a remote,
+community-authored catalogue fetched with consent through the SSRF guard, the
+"community-supported" half, its own slice with the add-on-repository traps to
+reread; and server-proxied screenshots (glyph-only for now).
 
 **Home Assistant is read-only, and that is a security property.** A long-lived
 access token has full control of a house and cannot be scoped, so the limit is
