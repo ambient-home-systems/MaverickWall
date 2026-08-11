@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.0
+
+A maintenance release — nothing changes on the wall.
+
+Behind the scenes, the process that builds and signs each update is sturdier: a
+hiccup while signing an image now retries instead of shipping it unsigned, and
+the build stops loudly rather than quietly if an image is ever published without
+its signature. There is nothing to do and nothing to relearn.
+
 ## 0.16.0
 
 The settings are reorganised so everything lives with the thing it sets.
