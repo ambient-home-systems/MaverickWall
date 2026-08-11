@@ -146,6 +146,15 @@ async function fakeHomeAssistant(): Promise<FakeHa> {
     };
 
     if (url === '/api/') return json('{"message":"API running."}');
+    if (url === '/api/states/zone.home') {
+      return json(
+        JSON.stringify({
+          entity_id: 'zone.home',
+          state: 'zoning',
+          attributes: { latitude: 38.8894, longitude: -77.0352, friendly_name: 'Home' },
+        }),
+      );
+    }
     if (url === '/api/states') return json(statesBody(state.kitchen));
     if (url === '/api/calendars') {
       return json(JSON.stringify([{ entity_id: 'calendar.family', name: 'Family' }]));
@@ -549,6 +558,25 @@ describe('readings on the wall', () => {
       readings: { label: string }[];
     };
     expect(panel.readings).toHaveLength(2);
+  });
+
+  it('fills the weather location from the Home Assistant home zone', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    // The button is offered on the Display screen once Home Assistant is connected.
+    const display = await (await h.call('/admin/display')).text();
+    expect(display).toContain('admin/display/weather/use-ha-location');
+
+    const response = await h.call('/admin/display/weather/use-ha-location', { method: 'POST' });
+    expect(response.status).toBe(302);
+
+    const saved = h.db
+      .prepare(`SELECT latitude, longitude FROM household_settings WHERE id = 'singleton'`)
+      .get() as { latitude: number; longitude: number };
+    expect(saved.latitude).toBeCloseTo(38.8894);
+    expect(saved.longitude).toBeCloseTo(-77.0352);
   });
 
   it('refuses an empty batch from the picker', async () => {
