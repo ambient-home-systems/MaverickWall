@@ -636,11 +636,25 @@ nothing a hand-written one cannot, and the fields to prompt for come straight of
 `recipe.config`. `/admin/modules/install/:id` renders an input per config field
 (default pre-filled) and calls `createRecipeModule`; the Browse card routes by
 kind and tags each SERVICE/RECIPE. A key-less Open-Meteo "Outside temperature"
-entry ships so the flow is real. **Still deferred:** recipe `secrets` (encrypted
-credentials in the fetch); **catalogue *sources* by URL** — a remote,
-community-authored catalogue fetched with consent through the SSRF guard, the
-"community-supported" half, its own slice with the add-on-repository traps to
-reread; and server-proxied screenshots (glyph-only for now).
+entry ships so the flow is real.
+
+**A household can add a remote, community-authored catalogue (v0.13.0, RFC 002
+A2).** The `catalog_sources` table (migration `0018`) holds a URL the household
+added on `/admin/modules/catalogues`; a six-hourly job (`pollCatalogSources`)
+fetches its index through the SSRF guard and caches the validated entries, and
+Browse merges the built-in catalogue with every enabled source's entries (remote
+install ids namespaced `<sourceId>~<entryId>`; `resolveCatalogEntry` routes an
+install back). The add form carries the update-check's consent shape. The one
+guardrail that makes it safe is `remoteCatalogSchema` — the catalogue schema plus
+a hard refusal of any recipe declaring `allowLan`, so a stranger's list can never
+point a recipe at the LAN or `http://supervisor`; the whole source is refused
+with a plain reason, and the recipe engine's own public-only default enforces it
+a second time. It is discovery, not new capability: a remote entry can do nothing
+installing it by hand could not. The store/read path is one schema in both
+directions — a mismatch (storing the modules array, re-validating it as a
+catalogue object) made entries vanish and the test caught it at once. **Still
+deferred (the last of RFC 002):** recipe `secrets` (encrypted credentials in the
+fetch), and server-proxied screenshots (glyph-only for now).
 
 **Home Assistant is read-only, and that is a security property.** A long-lived
 access token has full control of a house and cannot be scoped, so the limit is
