@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.0
+
+Designing a wall is now one place, and each widget can be set up on its own.
+
+- **Screens and Layout are joined into one “Displays” section.** Click a
+  display and you get everything about it on a single page — whether it is
+  online, its pairing, how it is hung, its theme, and its layout — instead of
+  hopping between two screens.
+- **Each widget on a free-form layout has its own settings.** A Calendar widget
+  can show a month grid or an upcoming list, limited to the calendars you pick
+  and a number of events. A Home Assistant widget can show just the readings you
+  choose rather than every one. So ten sensors no longer means ten on the wall.
+- **And its own look.** Give any widget a title, align its text, and put a
+  background behind it — a colour, a transparency, rounded corners, a shadow.
+- **Stack widgets front to back** with Send to back / Bring to front, and the
+  order you set is the order the wall draws.
+- **The layout preview is the wall.** It now shows exactly what the screen will
+  draw — the stacked layout when the free-form layout is off, your arrangement
+  when it is on — so there are no surprises after you save.
+
+Every existing wall is untouched until you change it.
+
 ## 0.2.2
 
 Fixes the buttons on the Screens page.
