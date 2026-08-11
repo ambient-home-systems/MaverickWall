@@ -331,6 +331,85 @@ function text(value: unknown, limit: number): string | undefined {
 }
 
 /**
+ * A generic module panel — the vocabulary a module (first- or third-party) may
+ * put on the wall. See docs/rfc-001-module-framework.md. Deliberately small:
+ * it is the safety boundary and what keeps a panel looking like the wall.
+ */
+export interface PanelReading {
+  readonly label: string;
+  readonly value: string;
+  readonly icon?: string;
+}
+export interface PanelTile {
+  readonly label: string;
+  readonly value: string;
+}
+export type PanelData =
+  | { readonly kind: 'readings'; readonly title?: string; readonly items: readonly PanelReading[] }
+  | { readonly kind: 'stat'; readonly title?: string; readonly value: string; readonly caption?: string }
+  | { readonly kind: 'tiles'; readonly title?: string; readonly items: readonly PanelTile[] }
+  | { readonly kind: 'text'; readonly title?: string; readonly text: string };
+
+function readPanelItems(raw: unknown, withIcon: boolean): PanelReading[] {
+  if (!Array.isArray(raw)) return [];
+  const items: PanelReading[] = [];
+  for (const entry of raw.slice(0, 12)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const row = entry as Record<string, unknown>;
+    const label = text(row['label'], 60);
+    const value = text(row['value'], 60);
+    if (label === undefined || value === undefined) continue;
+    const icon = withIcon ? text(row['icon'], 4) : undefined;
+    items.push(icon === undefined ? { label, value } : { label, value, icon });
+  }
+  return items;
+}
+
+/**
+ * Shape a module panel defensively.
+ *
+ * The server has already validated the module's body against the schema, but
+ * this reads it as untrusted all the same — the same treatment `houseFrom` and
+ * `weatherFrom` give a manifest slice, so a wall a version ahead of the server
+ * still draws something sane. Every string is sanitised (`text`) and capped;
+ * anything that does not fit the vocabulary returns null and nothing is drawn.
+ */
+export function panelFrom(raw: unknown): PanelData | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const panel = raw as Record<string, unknown>;
+  const title = text(panel['title'], 60);
+  const base = title === undefined ? {} : { title };
+
+  switch (panel['kind']) {
+    case 'readings': {
+      const items = readPanelItems(panel['items'], true);
+      return items.length === 0 ? null : ({ kind: 'readings', items, ...base } as PanelData);
+    }
+    case 'stat': {
+      const value = text(panel['value'], 60);
+      if (value === undefined) return null;
+      const caption = text(panel['caption'], 60);
+      return {
+        kind: 'stat',
+        value,
+        ...(caption === undefined ? {} : { caption }),
+        ...base,
+      } as PanelData;
+    }
+    case 'tiles': {
+      const items = readPanelItems(panel['items'], false);
+      return items.length === 0 ? null : ({ kind: 'tiles', items, ...base } as PanelData);
+    }
+    case 'text': {
+      const body = text(panel['text'], 280);
+      return body === undefined ? null : ({ kind: 'text', text: body, ...base } as PanelData);
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * The weather panel, read defensively.
  *
  * A module's slice arrives as `unknown` and is shaped here rather than trusted:

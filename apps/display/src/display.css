@@ -908,3 +908,63 @@ body {
   font-family: var(--f-sans);
   text-align: center;
 }
+
+/* The generic module panel (docs/rfc-001-module-framework.md). Scaled to its
+   box like the other reused sections; drawn only from validated, sanitised
+   strings. */
+.gp { display: flex; flex-direction: column; min-width: 0; }
+.gp-title {
+  font-family: var(--f-cond, var(--f-sans));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 1.6rem;
+  color: var(--muted);
+  margin: 0 0 0.7rem;
+}
+.gp-readings { display: flex; flex-direction: column; }
+.gp-reading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--ruleSoft, rgba(255, 255, 255, 0.06));
+  font-size: 2rem;
+}
+.gp-reading:first-child { border-top: 0; }
+.gp-ico { font-size: 1.8rem; flex: 0 0 auto; }
+.gp-label { color: var(--muted); flex: 1; min-width: 0; }
+.gp-value { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.gp-stat { align-items: center; text-align: center; justify-content: center; }
+.gp-stat-value {
+  font-family: var(--f-cond, var(--f-sans));
+  font-weight: 700;
+  font-size: 5.5rem;
+  line-height: 0.95;
+  color: var(--ink);
+}
+.gp-stat-caption {
+  font-family: var(--f-cond, var(--f-sans));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 1.6rem;
+  color: var(--muted);
+  margin-top: 0.3rem;
+}
+.gp-tiles { display: flex; gap: 0.6rem; }
+.gp-tile { flex: 1; text-align: center; }
+.gp-tile-value {
+  font-family: var(--f-cond, var(--f-sans));
+  font-weight: 700;
+  font-size: 2.6rem;
+  color: var(--ink);
+}
+.gp-tile-label {
+  font-family: var(--f-cond, var(--f-sans));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 1.3rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+.gp-text { font-size: 2rem; color: var(--ink); line-height: 1.4; }
