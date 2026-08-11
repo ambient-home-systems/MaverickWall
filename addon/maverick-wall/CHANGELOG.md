@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0
+
+Add-ons: put a panel from another service on the wall.
+
+- A new **Add-ons** screen lets you register a small module that runs on your own
+  network — a bin-day countdown, fuel prices, anything — by pasting its address.
+  Maverick Wall reads it every few minutes and draws it beside the calendar, and
+  **never runs anything the module sends**: it only ever shows a few simple
+  shapes (a reading, a number, a strip, a line of text), never a web page.
+- Each module shows whether it is working, and can be turned off or removed. A
+  module that stops answering keeps its last panel and says it went quiet.
+- A module only ever supplies values to show. It never receives your calendars,
+  your Home Assistant token, or anything else about your household.
+
+For developers: the module contract is written up in
+`docs/rfc-001-module-framework.md`.
+
 ## 0.6.0
 
 A countdown for the wall, and a light mode for the settings.
