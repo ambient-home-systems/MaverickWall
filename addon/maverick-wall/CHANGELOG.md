@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0
+
+A countdown for the wall, and a light mode for the settings.
+
+- **Countdown widget.** Add a countdown to any free-form layout — “135 days ·
+  Christmas” — with a name and a date. It counts from the server’s clock, so it
+  stays right even on a screen whose own clock has drifted, and reads “Today” on
+  the day.
+- **Light mode for the settings.** The admin now has **Auto / Light / Dark**,
+  chosen from the sidebar. Auto follows your device. It only changes the
+  settings pages; the wall keeps its own themes.
+
 ## 0.5.0
 
 Weather is easier to set up, and shows that it is working.
