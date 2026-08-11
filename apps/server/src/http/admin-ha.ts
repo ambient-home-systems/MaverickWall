@@ -55,6 +55,19 @@ const watchBody = z.object({
   display_mode: optionalText(20),
 });
 
+/**
+ * The searchable picker's bulk add, as JSON rather than a form: a set of
+ * entities and one display mode. A single entity may carry a custom label; a
+ * batch takes each one's own name. Rejected, not coerced (rule five).
+ */
+const addManyBody = z.object({
+  entities: z
+    .array(z.object({ entity_id: text('An entity', 255), label: optionalText(60) }))
+    .min(1)
+    .max(50),
+  display_mode: optionalText(20),
+});
+
 const calendarSourceBody = z.object({
   entity_id: text('A calendar', 255),
   name: optionalText(80),
@@ -377,6 +390,45 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return c.redirect('/admin/home-assistant', 302);
   });
 
+  /**
+   * Add several entities at once, from the searchable picker.
+   *
+   * A JSON POST answered as JSON: the caller is a `fetch` that reloads the page
+   * on success, not a browser following a redirect. Each unsupported id is
+   * skipped rather than failing the batch — the picker only offers supported
+   * ones, so a stray is a race, not a mistake worth stopping on.
+   */
+  app.post('/admin/home-assistant/entities/add', async (c: Context) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ message: 'That did not look like a request the picker makes.' }, 400);
+    }
+    const shaped = parse(addManyBody, raw);
+    if (!shaped.ok) return c.json({ message: shaped.message }, 400);
+
+    const mode = shaped.value.display_mode ?? '';
+    const displayMode = (DISPLAY_MODES.some((option) => option.key === mode)
+      ? mode
+      : 'label_value') as DisplayMode;
+    const live = await look();
+
+    let added = 0;
+    for (const entity of shaped.value.entities) {
+      if (!isSupported(entity.entity_id)) continue;
+      const known = live.entities.find((state) => state.entityId === entity.entity_id);
+      watchEntity(deps.db, {
+        entityId: entity.entity_id,
+        friendlyName: known?.friendlyName ?? entity.entity_id,
+        label: entity.label ?? null,
+        displayMode,
+      });
+      added++;
+    }
+    return c.json({ ok: true, added });
+  });
+
   app.post('/admin/home-assistant/entities/remove', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const removal = parse(z.object({ entity_id: text('An entity', 255) }), body);
@@ -593,24 +645,17 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The picker: a datalist, so the browser does the searching.
+   * The picker.
    *
-   * Four hundred entities in a `<select>` is unusable and a search box needs a
-   * script. `<input list>` gives type-ahead in every browser that matters,
-   * degrades to a plain text box in the ones that do not, and adds nothing to
-   * the page that can fail to load.
+   * A first-party script turns the entity list — hundreds of them — into a
+   * searchable, domain-filtered, multi-select picker that shows each entity's
+   * live state, the same pattern the layout editor uses. The data is handed in
+   * as JSON on the mount; the script fetches nothing and ships in the image
+   * (rule three). A `<datalist>` fallback stays in `<noscript>`, so the page
+   * still works with no script, just without the search.
    */
   function readings(live: LiveState): string {
     const watched = readWatched(deps.db).filter((row) => row.watched === 1);
-
-    const options = live.entities
-      .map(
-        (state) =>
-          `<option value="${escapeHtml(state.entityId)}">` +
-          `${escapeHtml(state.friendlyName)} — ${escapeHtml(state.state)}` +
-          `${state.unit === null ? '' : ' ' + escapeHtml(state.unit)}</option>`,
-      )
-      .join('');
 
     const rows = watched
       .map(
@@ -628,16 +673,41 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       )
       .join('');
 
+    // What the picker needs, and no more — a resolved value and a label, never
+    // anything that reaches back into the house.
+    const entityData = live.entities.map((state) => ({
+      id: state.entityId,
+      name: state.friendlyName,
+      domain: state.domain,
+      state: state.state,
+      unit: state.unit ?? null,
+    }));
+
+    const fallbackOptions = live.entities
+      .map(
+        (state) =>
+          `<option value="${escapeHtml(state.entityId)}">` +
+          `${escapeHtml(state.friendlyName)} — ${escapeHtml(state.state)}` +
+          `${state.unit === null ? '' : ' ' + escapeHtml(state.unit)}</option>`,
+      )
+      .join('');
+
     return (
       `<h2 class="add">On the wall</h2>` +
       `<p class="hint">A few readings beside the calendar. This is deliberately not a ` +
       `dashboard — Home Assistant already has one, and it is better at it.</p>` +
-      (rows === '' ? `<p>Nothing yet.</p>` : rows) +
+      (rows === '' ? `<p>Nothing on the wall yet.</p>` : rows) +
+      `<h2 class="add">Add readings</h2>` +
+      `<div id="ha-entity-picker" ` +
+      `data-entities="${escapeHtml(JSON.stringify(entityData))}" ` +
+      `data-modes="${escapeHtml(JSON.stringify(DISPLAY_MODES))}"></div>` +
+      `<script type="module" src="assets/ha-entity-picker.js"></script>` +
+      `<noscript>` +
       `<form method="post" action="admin/home-assistant/entities">` +
       `<label for="entity_id">Entity</label>` +
       `<input id="entity_id" name="entity_id" type="text" required list="ha-entities" ` +
       `autocomplete="off" placeholder="Start typing a name">` +
-      `<datalist id="ha-entities">${options}</datalist>` +
+      `<datalist id="ha-entities">${fallbackOptions}</datalist>` +
       `<label for="label">Call it</label>` +
       `<input id="label" name="label" type="text" placeholder="Leave empty to use its own name">` +
       `<label for="display_mode">Show it as</label>` +
@@ -647,7 +717,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
       ).join('') +
       `</select>` +
-      `<button type="submit">Add to the wall</button></form>`
+      `<button type="submit">Add to the wall</button></form></noscript>`
     );
   }
 

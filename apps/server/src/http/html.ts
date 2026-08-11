@@ -413,6 +413,45 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   background:var(--panel2);color:var(--ink);font-family:inherit;font-size:12.5px;
   font-weight:600;cursor:pointer}
 .le-cfg-btn:hover{filter:none;border-color:var(--faint)}
+
+/* ---- Home Assistant entity picker (first-party JS) ----------------------- */
+#ha-entity-picker{margin-top:.6rem}
+.hep-search{width:100%;margin-bottom:12px}
+.hep-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.hep-chip{margin:0;padding:.34rem .7rem;border-radius:2rem;border:1px solid var(--rule);
+  background:var(--panel);color:var(--muted);font-family:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer}
+.hep-chip:hover{filter:none;color:var(--ink);border-color:var(--faint)}
+.hep-chip.active{background:var(--accent);color:var(--accentInk);border-color:var(--accent)}
+.hep-selected{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:1.4rem}
+.hep-pill{display:inline-flex;align-items:center;gap:.4rem;padding:.25rem .3rem .25rem .6rem;
+  border-radius:2rem;background:color-mix(in srgb,var(--accent) 16%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);color:var(--ink);font-size:13px}
+.hep-pill-x{margin:0;padding:0;width:18px;height:18px;display:grid;place-items:center;
+  border:0;border-radius:50%;background:color-mix(in srgb,var(--accent) 30%,transparent);
+  color:var(--ink);cursor:pointer;font-size:14px;line-height:1}
+.hep-pill-x:hover{filter:none;background:var(--accent);color:var(--accentInk)}
+.hep-list{border:1px solid var(--rule);border-radius:8px;background:var(--panel2);
+  max-height:22rem;overflow-y:auto}
+.hep-row{display:flex;align-items:center;gap:12px;padding:.6rem .8rem;cursor:pointer;
+  border-top:1px solid var(--ruleSoft);margin:0}
+.hep-row:first-child{border-top:0}
+.hep-row:hover{background:var(--panel)}
+.hep-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);margin:0;flex:0 0 auto}
+.hep-main{flex:1;min-width:0}
+.hep-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hep-id{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.hep-state{font-family:var(--mono);font-size:12.5px;color:var(--muted);flex:0 0 auto;
+  max-width:10rem;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.hep-footer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin-top:14px}
+.hep-field{display:flex;flex-direction:column;gap:6px;margin:0}
+.hep-field>span{font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted)}
+.hep-field select,.hep-field input{width:auto;min-width:14rem}
+.hep-footer .btn-primary{margin-top:0}
+.hep-status{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+.hep-status.is-error{color:var(--danger)}
 `;
 
 /**
