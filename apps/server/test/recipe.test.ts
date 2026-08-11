@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   normaliseConfig,
+  recipeFetchHost,
   recipePolicy,
   recipeSchema,
   resolveFetchUrl,
+  resolveHeaders,
   runRecipePanel,
   runRecipeSignals,
   type Recipe,
@@ -224,6 +226,46 @@ describe('recipe signals', () => {
   it('a panel-only recipe has no signals', () => {
     const recipe = parse(fuelRecipe);
     expect(recipe.signals).toEqual([]);
+  });
+});
+
+describe('recipe secrets', () => {
+  const secretRecipe = {
+    name: 'Priced',
+    contract: 1,
+    config: [{ key: 'sym', label: 'Symbol' }],
+    secrets: [{ key: 'api_key', label: 'API key' }],
+    fetch: {
+      url: 'https://api.example.com/price?symbol={sym}',
+      headers: { 'X-Api-Key': '{secret:api_key}', 'X-Symbol': '{sym}' },
+    },
+    panel: { kind: 'stat', value: '{price}' },
+  };
+
+  it('accepts a recipe using a secret in a header', () => {
+    expect(recipeSchema.safeParse(secretRecipe).success).toBe(true);
+  });
+
+  it('resolves headers with config and the decrypted secret', () => {
+    const recipe = parse(secretRecipe);
+    expect(resolveHeaders(recipe, { sym: 'BTC' }, { api_key: 'k-123' })).toEqual({
+      'X-Api-Key': 'k-123',
+      'X-Symbol': 'BTC',
+    });
+  });
+
+  it('rejects a secret placed in the address, not a header', () => {
+    const bad = { ...secretRecipe, fetch: { url: 'https://x/y?k={secret:api_key}' } };
+    expect(recipeSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a header that references an undeclared secret', () => {
+    const bad = { ...secretRecipe, secrets: [], fetch: { url: 'https://x/y', headers: { A: '{secret:nope}' } } };
+    expect(recipeSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('names the host a secret will be sent to', () => {
+    expect(recipeFetchHost(parse(secretRecipe))).toBe('api.example.com');
   });
 });
 

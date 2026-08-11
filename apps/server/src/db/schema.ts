@@ -848,6 +848,12 @@ export const externalModules = sqliteTable('external_modules', {
   recipe: text('recipe', { mode: 'json' }).$type<unknown>(),
   /** For a recipe row: the household's filled-in config values. */
   config: text('config', { mode: 'json' }).$type<unknown>(),
+  /**
+   * For a recipe with `secrets`: the household's credential values, **encrypted
+   * at rest** (one keyring envelope over a JSON `{key: value}`, purpose
+   * `recipe-secret`). Never plaintext, never in the manifest, never logged.
+   */
+  secrets: text('secrets'),
   /** Order among external panels. Built-in blocks keep their own ordering. */
   sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
   /** Last validated Panel Data, as JSON this process wrote. */

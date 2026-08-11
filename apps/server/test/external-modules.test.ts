@@ -41,14 +41,18 @@ interface FakeModule {
   setSignals: (s: unknown) => void;
   /** Arbitrary JSON at `/data`, for a recipe to fetch and transform. */
   setData: (d: unknown) => void;
+  /** The headers of the last request the fake received. */
+  lastHeaders: () => Record<string, string | string[] | undefined>;
 }
 
 async function fakeModule(): Promise<FakeModule> {
   let current: unknown = { kind: 'stat', title: 'Bins', value: '2', caption: 'days' };
   let signals: unknown = null;
   let data: unknown = {};
+  let seenHeaders: Record<string, string | string[] | undefined> = {};
   const server = createServer((request, response) => {
     const url = request.url ?? '';
+    seenHeaders = request.headers;
     response.setHeader('content-type', 'application/json');
     if (url === '/maverick.json') {
       response.end(JSON.stringify({ name: 'Bin day', version: '1.0.0', contract: 1 }));
@@ -91,6 +95,7 @@ async function fakeModule(): Promise<FakeModule> {
     setData: (d) => {
       data = d;
     },
+    lastHeaders: () => seenHeaders,
   };
 }
 
@@ -119,13 +124,14 @@ async function harness() {
   ).run(stamp, stamp);
 
   const fetcher = createFetcher();
+  const keyring = createKeyring(randomBytes(32));
   const setupToken = createSetupTokenHolder(() => {});
   const app = createApp({
     db,
     appVersion: '0.1.0-test',
     bootNotices: [],
     auth: { secret: 'e'.repeat(32), baseUrl: 'http://localhost' },
-    keyring: createKeyring(randomBytes(32)),
+    keyring,
     fetcher,
     clientAddress: () => `10.9.0.${++n}`,
     setupToken,
@@ -193,7 +199,7 @@ async function harness() {
     call,
     form,
     manifest,
-    poll: () => pollExternalModules(db, fetcher),
+    poll: () => pollExternalModules(db, fetcher, keyring),
     pollCatalogues: () => pollCatalogSources(db, fetcher),
   };
 }
@@ -581,6 +587,49 @@ describe('recipe modules (Phase B1)', () => {
     h.db.prepare(`UPDATE external_modules SET last_polled_at = 0 WHERE id = ?`).run(id);
     await h.poll();
     expect((await h.manifest()).interrupts).toEqual([]);
+  });
+
+  it('injects a secret into a request header, stored encrypted, and fetches with it', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setData({ price: 42 });
+    const manifest = JSON.stringify({
+      name: 'Priced',
+      contract: 1,
+      secrets: [{ key: 'api_key', label: 'API key' }],
+      fetch: { url: `${mod.base}/data`, allowLan: true, headers: { 'X-Api-Key': '{secret:api_key}' } },
+      panel: { kind: 'stat', value: '{price}' },
+    });
+    await h.form('/admin/modules/recipe', { manifest, secrets: JSON.stringify({ api_key: 's3cr3t' }) });
+    const id = moduleId(h.db);
+
+    // Stored encrypted: the column is a keyring envelope, not the plaintext.
+    const stored = h.db.prepare(`SELECT secrets FROM external_modules WHERE id = ?`).get(id) as {
+      secrets: string | null;
+    };
+    expect(stored.secrets).not.toBeNull();
+    expect(stored.secrets).not.toContain('s3cr3t');
+
+    await h.poll();
+    // The feed received the header with the decrypted value, and drew its panel.
+    expect(mod.lastHeaders()['x-api-key']).toBe('s3cr3t');
+    expect((await h.manifest()).panels[`ext:${id}`]).toEqual({ kind: 'stat', value: '42' });
+  });
+
+  it('refuses a recipe that puts a secret in the address', async () => {
+    const h = await harness();
+    const res = await h.form('/admin/modules/recipe', {
+      manifest: JSON.stringify({
+        name: 'Bad',
+        contract: 1,
+        secrets: [{ key: 'api_key', label: 'Key' }],
+        fetch: { url: 'https://example.com/x?key={secret:api_key}' },
+        panel: { kind: 'stat', value: '{x}' },
+      }),
+      secrets: JSON.stringify({ api_key: 'k' }),
+    });
+    expect(res.status).toBe(400);
+    expect(h.db.prepare(`SELECT count(*) c FROM external_modules`).get()).toEqual({ c: 0 });
   });
 });
 

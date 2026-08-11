@@ -16,11 +16,14 @@ import {
   recipePolicy,
   recipeSchema,
   resolveFetchUrl,
+  resolveHeaders,
   runRecipePanel,
   runRecipeSignals,
   type RecipeConfig,
+  type RecipeSecrets,
 } from './recipe.js';
 import type { ExternalModuleRow } from '../../api/external-modules.js';
+import type { Keyring } from '../../secrets/keyring.js';
 
 /**
  * Third-party modules, as `PanelModule`s (docs/rfc-001-module-framework.md).
@@ -88,13 +91,17 @@ function moduleSignals(id: string, stored: unknown, now: number): Signal[] {
 const POLICY = { allowHttp: true, allowPrivateNetwork: true, allowLoopback: true } as const;
 
 /** The shared poll: refresh every enabled module in turn. Never throws. */
-export async function pollExternalModules(db: SqliteDatabase, fetcher: Fetcher): Promise<void> {
+export async function pollExternalModules(
+  db: SqliteDatabase,
+  fetcher: Fetcher,
+  keyring: Keyring,
+): Promise<void> {
   for (const module of readEnabledExternalModules(db)) {
     // A recipe has no service to poll: Maverick Wall runs its declared fetch and
     // transform itself. No `/signals` either — recipe signals are Phase B2.
     if (module.kind === 'recipe') {
       try {
-        await pollRecipe(db, fetcher, module);
+        await pollRecipe(db, fetcher, keyring, module);
       } catch {
         writeExternalModuleError(db, module.id, 'The recipe could not run.');
       }
@@ -128,6 +135,7 @@ export async function pollExternalModules(db: SqliteDatabase, fetcher: Fetcher):
 async function pollRecipe(
   db: SqliteDatabase,
   fetcher: Fetcher,
+  keyring: Keyring,
   module: ExternalModuleRow,
 ): Promise<void> {
   const parsed = recipeSchema.safeParse(module.recipe);
@@ -144,11 +152,16 @@ async function pollRecipe(
     return;
   }
 
-  const supplied =
+  const config = normaliseConfig(
+    recipe,
     module.config !== null && typeof module.config === 'object'
       ? (module.config as RecipeConfig)
-      : {};
-  const url = resolveFetchUrl(recipe, normaliseConfig(recipe, supplied));
+      : {},
+  );
+  const url = resolveFetchUrl(recipe, config);
+  // Decrypt the recipe's secrets here and nowhere else — they exist in memory
+  // only for the length of this request, and only inside the headers.
+  const headers = resolveHeaders(recipe, config, decryptSecrets(keyring, module.secretsEnvelope));
 
   const response = await fetcher.fetch({
     url,
@@ -156,6 +169,7 @@ async function pollRecipe(
     maxBytes: FETCH_LIMITS.json,
     acceptContentTypes: ['application/json'],
     timeoutMs: 10_000,
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
   });
   if (response.status !== 'ok') {
     writeExternalModuleError(db, module.id, 'The recipe’s source did not answer.');
@@ -170,9 +184,9 @@ async function pollRecipe(
     return;
   }
 
-  const outcome = runRecipePanel(recipe, body, now);
-  if (outcome.ok) writeExternalModulePanel(db, module.id, outcome.panel);
-  else writeExternalModuleError(db, module.id, outcome.error);
+  const panelOutcome = runRecipePanel(recipe, body, now);
+  if (panelOutcome.ok) writeExternalModulePanel(db, module.id, panelOutcome.panel);
+  else writeExternalModuleError(db, module.id, panelOutcome.error);
 
   // Signals come from the same body, and go to the same column a service's
   // `/signals` fills — so arming, source scoping and dismissal are all the
@@ -181,6 +195,29 @@ async function pollRecipe(
   if (recipe.signals.length > 0) {
     const signals = runRecipeSignals(recipe, body, now);
     if (signals.ok) writeExternalModuleSignals(db, module.id, signals.signals);
+  }
+}
+
+/**
+ * Decrypt a recipe's stored secrets envelope into `{key: value}`, or `{}`.
+ *
+ * A failure to decrypt (a rotated master key, a corrupt envelope) yields no
+ * secrets rather than throwing — the recipe then fetches without the header and
+ * its own upstream refuses it, which surfaces as the recipe's error, not a dead
+ * wall. The plaintext lives only in the returned object, for the one request.
+ */
+function decryptSecrets(keyring: Keyring, envelope: string | null): RecipeSecrets {
+  if (envelope === null) return {};
+  const result = keyring.decrypt(envelope, 'recipe-secret');
+  if (!result.ok) return {};
+  try {
+    const parsed: unknown = JSON.parse(result.value);
+    if (parsed === null || typeof parsed !== 'object') return {};
+    const out: RecipeSecrets = {};
+    for (const [k, v] of Object.entries(parsed)) if (typeof v === 'string') out[k] = v;
+    return out;
+  } catch {
+    return {};
   }
 }
 

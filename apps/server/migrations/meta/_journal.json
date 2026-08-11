@@ -134,6 +134,13 @@
       "when": 1786452997580,
       "tag": "0018_thankful_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1786455256993,
+      "tag": "0019_gifted_angel",
+      "breakpoints": true
     }
   ]
 }

@@ -207,7 +207,7 @@ async function main(): Promise<void> {
        * inside and surfaced on its card; the wall keeps its calendar regardless.
        */
       'external-modules': async () => {
-        await pollExternalModules(db, fetcher);
+        await pollExternalModules(db, fetcher, keyring);
         return { status: 'ok' };
       },
       'catalog-sources': async () => {

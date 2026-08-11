@@ -272,9 +272,27 @@ const signalSpec = z
   })
   .strict();
 
+/** A credential the household supplies at install: never defaulted, never shown. */
+const secretField = z
+  .object({
+    key: z.string().min(1).max(40).regex(/^[a-z0-9_]+$/, 'lower-case, digits and underscore only'),
+    label: z.string().min(1).max(60),
+  })
+  .strict();
+
+/** A request header name — a plain HTTP token, no separators. */
+const headerName = z.string().min(1).max(64).regex(/^[A-Za-z0-9-]+$/, 'a header name');
+/** A header value template: `{config}` and `{secret:key}` substitution, no formatters. */
+const headerValue = z.string().min(1).max(512);
+
+/** A placeholder in a header: `secret:key` names a secret, anything else a config key. */
+const SECRET_REF = /^secret:([a-z0-9_]+)$/;
+
 const fetchSpec = z
   .object({
     // May carry {config_key} placeholders, substituted before the request.
+    // Secrets are NOT allowed here — a URL is logged and stored; a credential in
+    // a query string is a credential leaked. Secrets go in headers only.
     url: z.string().min(1).max(2048),
     intervalSeconds: z.number().int().min(60).max(86_400).default(900),
     /**
@@ -285,6 +303,12 @@ const fetchSpec = z
      * act; the catalogue-install grant tick is Phase A2.
      */
     allowLan: z.boolean().default(false),
+    /**
+     * Request headers, each a template of `{config}` and `{secret:key}`. This is
+     * where a credential goes — injected server-side at fetch time, never in the
+     * manifest or the stored URL.
+     */
+    headers: z.record(headerName, headerValue).optional(),
   })
   .strict();
 
@@ -293,6 +317,7 @@ export const recipeSchema = z
     name: z.string().min(1).max(60),
     contract: z.literal(1),
     config: z.array(configField).max(8).default([]),
+    secrets: z.array(secretField).max(8).default([]),
     fetch: fetchSpec,
     panel: panelSpec,
     // Optional. A panel-only recipe omits it; the cap matches signalDataSchema.
@@ -300,12 +325,21 @@ export const recipeSchema = z
   })
   .strict()
   .superRefine((recipe, ctx) => {
+    const config = new Set(recipe.config.map((f) => f.key));
+    const secrets = new Set(recipe.secrets.map((f) => f.key));
+
     // Every `{placeholder}` in the fetch URL must name a declared config key —
-    // the URL is built before there is any fetched data to reference.
-    const declared = new Set(recipe.config.map((f) => f.key));
+    // the URL is built before there is any fetched data to reference, and a
+    // secret may never appear in it.
     for (const match of recipe.fetch.url.matchAll(PLACEHOLDER)) {
       const key = (match[1] ?? '').trim();
-      if (!declared.has(key)) {
+      if (SECRET_REF.test(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fetch', 'url'],
+          message: 'a secret may not appear in the address — put it in a header',
+        });
+      } else if (!config.has(key)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['fetch', 'url'],
@@ -313,10 +347,34 @@ export const recipeSchema = z
         });
       }
     }
+
+    // Every `{placeholder}` in a header must name a declared secret or config key.
+    for (const [name, template] of Object.entries(recipe.fetch.headers ?? {})) {
+      for (const match of template.matchAll(PLACEHOLDER)) {
+        const body = (match[1] ?? '').trim();
+        const secret = SECRET_REF.exec(body);
+        if (secret !== null) {
+          if (!secrets.has(secret[1] as string)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['fetch', 'headers', name],
+              message: `references {secret:${secret[1]}}, which is not a declared secret`,
+            });
+          }
+        } else if (!config.has(body)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['fetch', 'headers', name],
+            message: `references {${body}}, which is not a config field`,
+          });
+        }
+      }
+    }
   });
 
 export type Recipe = z.infer<typeof recipeSchema>;
 export type RecipeConfig = Record<string, string>;
+export type RecipeSecrets = Record<string, string>;
 
 // ---------------------------------------------------------------------------
 // Running a recipe
@@ -327,6 +385,40 @@ export function resolveFetchUrl(recipe: Recipe, config: RecipeConfig): string {
   return recipe.fetch.url.replace(PLACEHOLDER, (_whole, key: string) =>
     encodeURIComponent(config[key.trim()] ?? ''),
   );
+}
+
+/**
+ * Build the request headers, injecting config and decrypted secrets.
+ *
+ * The one place a credential enters a request, and it happens here, server-side,
+ * at fetch time — never in the manifest, never in the stored URL, never on the
+ * wall. A missing secret resolves to empty rather than leaking the placeholder.
+ */
+export function resolveHeaders(
+  recipe: Recipe,
+  config: RecipeConfig,
+  secrets: RecipeSecrets,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, template] of Object.entries(recipe.fetch.headers ?? {})) {
+    out[name] = template.replace(PLACEHOLDER, (_whole, body: string) => {
+      const trimmed = body.trim();
+      const secret = SECRET_REF.exec(trimmed);
+      if (secret !== null) return secrets[secret[1] as string] ?? '';
+      return config[trimmed] ?? '';
+    });
+  }
+  return out;
+}
+
+/** The host a recipe's fetch (and any secret in a header) is sent to, for the install page. */
+export function recipeFetchHost(recipe: Recipe): string {
+  try {
+    // Placeholders stand in as a dummy so the URL parses; only the host matters.
+    return new URL(recipe.fetch.url.replace(PLACEHOLDER, 'x')).host;
+  } catch {
+    return 'the recipe’s address';
+  }
 }
 
 /** The SSRF policy for a recipe: public https only, unless it opts into the LAN. */

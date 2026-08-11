@@ -227,8 +227,25 @@ module's **Alerts** control on (Add-ons screen, off by default), and even then a
 recipe can only raise a banner or cover the wall — never wake a dark screen. Its
 alert clears on its own when `when` stops holding.
 
-Not yet: credentials for a feed that needs an API key (`secrets`). That is the
-next step — see the RFC.
+### A feed behind an API key
+
+If the feed needs a credential, declare a `secret` and put it in a **header** —
+never in the address:
+
+```json
+"secrets": [{ "key": "api_key", "label": "API key" }],
+"fetch": {
+  "url": "https://api.example.com/price?symbol={symbol}",
+  "headers": { "Authorization": "Bearer {secret:api_key}" }
+}
+```
+
+The household types the value into a password field when they install the
+recipe. It is stored **encrypted**, injected into the request header at fetch
+time, and never appears in the manifest, on the wall, or in a log. A secret may
+**not** go in the URL (a URL is stored and logged), and a **remote** catalogue
+may not ask for one at all — a recipe that needs a secret is one a household
+pastes in themselves.
 
 ## Sharing a catalogue
 
