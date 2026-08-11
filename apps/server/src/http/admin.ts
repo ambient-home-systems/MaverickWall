@@ -566,7 +566,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             `Timezone ${escapeHtml(household.timezone)}`,
           ) +
           statCard(
-            'admin/screens', 'screens', scrTag, screens.length,
+            'admin/displays', 'screens', scrTag, screens.length,
             `Wall display${screens.length === 1 ? '' : 's'} paired`,
             screens.length === 0 ? 'Pair one on the Screens page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
           ) +
@@ -592,7 +592,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} screen${screens.length === 1 ? '' : 's'}</div>` +
           `<div class="row" style="margin-top:auto;padding-top:16px">` +
           `<a class="btn btn-ghost btn-sm" href="admin/display">Edit what shows</a>` +
-          `<a class="btn btn-ghost btn-sm" href="admin/layout">Arrange layout</a></div>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/displays/default">Arrange layout</a></div>` +
           `</div></div></div>` +
 
           // Sign-out lives in the sidebar footer now, shown on every page for a
@@ -1114,14 +1114,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Screens
   // -------------------------------------------------------------------------
 
-  app.get('/admin/screens', (c: Context) => c.html(screensPage()));
+  // The unified section. Screens and Layout were two pages for one thing; a
+  // display is now one place — its status, pairing, settings and layout.
+  app.get('/admin/displays', (c: Context) => c.html(displaysPage()));
+  app.get('/admin/displays/:id', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    if (id === 'default') return c.html(displayDetailPage(null));
+    if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/displays', 302);
+    return c.html(displayDetailPage(id));
+  });
+
+  // Old routes kept as redirects so bookmarks and any hand-typed links land in
+  // the new section rather than 404ing.
+  app.get('/admin/screens', (c: Context) => c.redirect('/admin/displays', 302));
 
   app.post('/admin/screens/:id', async (c: Context) => {
     const id = c.req.param('id') ?? '';
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
     const shaped = parse(screenBody, body);
-    if (!shaped.ok) return c.html(screensPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(displaysPage(shaped.message), 400);
 
     /*
      * Empty means "follow the household" on every one of these.
@@ -1139,21 +1151,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const timezone = shaped.value.timezone ?? '';
 
     if (theme !== '' && !THEMES.some((candidate) => candidate.key === theme)) {
-      return c.html(layoutPage(id, 'Choose a theme from the list.'), 400);
+      return c.html(displayDetailPage(id, 'Choose a theme from the list.'), 400);
     }
     if (daytimeTheme !== '' && !THEMES.some((candidate) => candidate.key === daytimeTheme)) {
-      return c.html(layoutPage(id, 'Choose a daylight theme from the list.'), 400);
+      return c.html(displayDetailPage(id, 'Choose a daylight theme from the list.'), 400);
     }
 
     const scheduled = daytimeTheme !== '';
     if (scheduled && (!HHMM_SHAPE.test(startsAt) || !HHMM_SHAPE.test(endsAt))) {
-      return c.html(layoutPage(id, 'Enter this wall’s daylight hours as HH:MM.'), 400);
+      return c.html(displayDetailPage(id, 'Enter this wall’s daylight hours as HH:MM.'), 400);
     }
     if (scheduled && startsAt === endsAt) {
-      return c.html(layoutPage(id, 'A daylight window of no length would never switch.'), 400);
+      return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.'), 400);
     }
     if (timezone !== '' && !supportedTimezones().includes(timezone)) {
-      return c.html(layoutPage(id, 'Choose a timezone from the list.'), 400);
+      return c.html(displayDetailPage(id, 'Choose a timezone from the list.'), 400);
     }
 
     // Density overrides: empty follows the household default, a number is
@@ -1174,11 +1186,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return { ok: true, value: n };
     };
     const today = density(shaped.value.today_events, 1, 20, 'Events today');
-    if (!today.ok) return c.html(layoutPage(id, today.message), 400);
+    if (!today.ok) return c.html(displayDetailPage(id, today.message), 400);
     const nextDays = density(shaped.value.next_days, 0, 14, 'Days ahead');
-    if (!nextDays.ok) return c.html(layoutPage(id, nextDays.message), 400);
+    if (!nextDays.ok) return c.html(displayDetailPage(id, nextDays.message), 400);
     const weeks = density(shaped.value.horizon_weeks, 1, 8, 'Weeks of month');
-    if (!weeks.ok) return c.html(layoutPage(id, weeks.message), 400);
+    if (!weeks.ok) return c.html(displayDetailPage(id, weeks.message), 400);
 
     if (
       !writeScreenSettings(deps.db, id, {
@@ -1196,10 +1208,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         displayHorizonWeeks: weeks.value,
       })
     ) {
-      return c.redirect('/admin/screens', 302);
+      return c.redirect('/admin/displays', 302);
     }
     // Back to the wall's own page; it picks the change up on its next poll.
-    return c.redirect(`/admin/layout?screen=${encodeURIComponent(id)}`, 302);
+    return c.redirect(`/admin/displays/${encodeURIComponent(id)}`, 302);
   });
 
   /**
@@ -1225,7 +1237,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/screens', async (c: Context) => {
     const shaped = parse(newScreenBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(screensPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(displaysPage(shaped.message), 400);
 
     const issued = issueDisplayToken();
     const id = randomBytes(6).toString('hex');
@@ -1243,7 +1255,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/screens/:id/regenerate', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = readAdminScreens(deps.db).find((candidate) => candidate.id === id);
-    if (screen === undefined) return c.html(screensPage('That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(displaysPage('That screen is no longer there.'), 404);
 
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
@@ -1252,7 +1264,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/screens/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/screens', 302);
+    return c.redirect('/admin/displays', 302);
   });
 
   // -------------------------------------------------------------------------
@@ -1353,9 +1365,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return activeScreens().some((s) => s.id === id) ? id : null;
   }
 
-  app.get('/admin/layout', (c: Context) =>
-    c.html(layoutPage(resolveOwner(c.req.query('screen')))),
-  );
+  app.get('/admin/layout', (c: Context) => {
+    const owner = resolveOwner(c.req.query('screen'));
+    return c.redirect(owner === null ? '/admin/displays/default' : `/admin/displays/${encodeURIComponent(owner)}`, 302);
+  });
 
   /**
    * The manifest the editor's live preview renders from — for the wall being
@@ -1931,7 +1944,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (portOff) {
       return page({
         title: 'Pair this screen',
-        nav: 'screens',
+        nav: 'displays',
         heading: `Pair ${name}`,
         intro: 'This screen cannot be paired until the display port is turned on.',
         body:
@@ -1942,13 +1955,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ) +
           `<p class="hint">Then come back to Screens and pair this screen again — ` +
           `the add-on will fill in the address for you once the port is on.</p>` +
-          `<p><a class="link" href="admin/screens">← Back to screens</a></p>`,
+          `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
       });
     }
 
     return page({
       title: 'Pair this screen',
-      nav: 'screens',
+      nav: 'displays',
       heading: `Pair ${name}`,
       intro:
         'Open this on the screen itself. It is shown once — if you lose it, ' +
@@ -1977,7 +1990,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">It works for the next day, and once — pairing a screen ` +
         `spends it. Or type this whole address on the screen instead:</p>` +
         `<p><span class="code">${escapeHtml(url)}</span></p>` +
-        `<p><a class="link" href="admin/screens">← Back to screens</a></p>`,
+        `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
     });
   }
 
@@ -2088,62 +2101,96 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+  /** Online if seen within a few minutes — enough to say "up", not to diagnose. */
+  function seenDot(lastSeenAt: number | null, at: number): string {
+    const fresh = lastSeenAt !== null && at - lastSeenAt < 5 * 60_000;
+    return fresh
+      ? `<span class="dot dot-ok pulse"></span>`
+      : `<span class="dot dot-idle"></span>`;
+  }
+
   /**
-   * A paired wall on the Screens page: what it is and its pairing, with the
-   * settings themselves moved to the wall's own page under Layout.
+   * A display on the unified Displays list: a summary that opens its own page,
+   * where its status, pairing, settings and layout all live together.
    */
-  function screenCard(screen: AdminScreenRow, at: number): string {
-    // Relative, like every other form action here — an absolute `/admin/...`
-    // bypasses the `<base href>` prefix and 404s behind ingress or a proxy.
-    const action = `admin/screens/${encodeURIComponent(screen.id)}`;
-    const configure = `admin/layout?screen=${encodeURIComponent(screen.id)}`;
+  function displayListCard(screen: AdminScreenRow, at: number): string {
+    const href = `admin/displays/${encodeURIComponent(screen.id)}`;
     return (
-      `<article class="card">` +
-      `<h2>${escapeHtml(screen.name)}</h2>` +
-      `<p class="host">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
+      `<a class="card" href="${href}">` +
+      `<div style="display:flex;align-items:center;gap:12px">` +
+      seenDot(screen.lastSeenAt, at) +
+      `<div style="flex:1;min-width:0">` +
+      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)}</div>` +
+      `<div class="host">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
       (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
-      `</p>` +
-      `<p><a class="link" href="${configure}">Configure this wall →</a> — its ` +
-      `layout, orientation, theme and how much it shows.</p>` +
-      `<div class="row">` +
-      `<form method="post" action="${action}/regenerate">` +
-      `<button class="secondary" type="submit">Show pairing link</button></form>` +
-      `<form method="post" action="${action}/revoke">` +
-      `<button class="secondary" type="submit">Unpair</button></form>` +
-      `</div>` +
-      `<p class="hint">Showing a new pairing link stops the old one working.</p>` +
-      `</article>`
+      `</div></div>` +
+      `<span class="link">Open ${icon('arrow')}</span>` +
+      `</div></a>`
     );
   }
 
-  function screensPage(error?: string): string {
+  /**
+   * The layout editor mount: the shell and the current layout as JSON; a
+   * first-party module makes it interactive. Same-origin, ships in the image
+   * (rule three); the src and its fetches are relative so the single `<base>`
+   * carries them through ingress. Path-independent — the editor posts to
+   * `admin/layout` regardless of which page hosts it.
+   */
+  function layoutEditorMount(initial: unknown): string {
+    return (
+      `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
+      `<noscript><p class="hint">The layout editor needs JavaScript. The stacked ` +
+      `layout on the Display defaults screen does not.</p></noscript>` +
+      `<script type="module" src="assets/layout-editor.js"></script>`
+    );
+  }
+
+  /**
+   * The Displays list: the shared Default plus every paired screen, each a card
+   * that opens its own page. Screens and Layout used to be two sections for one
+   * thing — this is the single door to a display.
+   */
+  function displaysPage(error?: string): string {
     const at = now();
     const all = readAdminScreens(deps.db);
     const active = all.filter((screen) => screen.revokedAt === null);
     const revoked = all.length - active.length;
 
+    const defaultCard =
+      `<a class="card" href="admin/displays/default">` +
+      `<div style="display:flex;align-items:center;gap:12px">` +
+      `<div class="ic">${icon('layout')}</div>` +
+      `<div style="flex:1;min-width:0">` +
+      `<div class="rname" style="font-size:16px">Default</div>` +
+      `<div class="host">What every wall shows until it has its own layout</div></div>` +
+      `<span class="link">Open ${icon('arrow')}</span>` +
+      `</div></a>`;
+
     return page({
-      title: 'Screens — Maverick Wall',
-      nav: 'screens',
-      heading: 'Screens',
-      action: { label: 'Pair a new screen', href: 'admin/screens#add' },
+      title: 'Displays — Maverick Wall',
+      nav: 'displays',
+      heading: 'Displays',
+      action: { label: 'Pair a new screen', href: 'admin/displays#add' },
       ...(active.length === 0
-        ? { intro: 'No screens paired yet. Add one below and open the link it gives you on the screen itself.' }
+        ? { intro: 'No screens paired yet. The Default below is what a wall shows until you pair one and give it its own layout.' }
         : {}),
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        active.map((screen) => screenCard(screen, at)).join('') +
+        `<div class="grid g2">` +
+        defaultCard +
+        active.map((screen) => displayListCard(screen, at)).join('') +
+        `</div>` +
         (revoked === 0
           ? ''
           : `<p class="hint">${revoked} unpaired screen${revoked === 1 ? '' : 's'} kept ` +
             `for the record. Their tokens no longer work.</p>`) +
-        `<h2 class="add" id="add">Add a screen</h2>` +
+        `<h2 class="add" id="add">Pair a new screen</h2>` +
         `<form method="post" action="admin/screens">` +
         `<label for="new-screen">Name</label>` +
         `<input id="new-screen" name="name" type="text" required maxlength="80" ` +
         `placeholder="Kitchen">` +
-        `<p class="hint">You get a QR code and a link to open on the screen itself. ` +
-        `An existing screen can be re-paired from its own card above.</p>` +
+        `<p class="hint">You get a QR code and a short code to enter on the screen ` +
+        `itself. Open its page afterwards to arrange its layout and settings.</p>` +
         `<button type="submit">Add screen</button></form>` +
         `<p class="hint">Over SSH instead: <span class="code">add-screen "Kitchen"</span>.</p>`,
     });
@@ -2185,25 +2232,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The layout editor, for one wall or the shared default.
+   * One display: the shared Default (`ownerId` null) or a paired screen.
    *
-   * `ownerId` null is the default a wall inherits until it is given its own; a
-   * screen id is that wall's own canvas. The switcher above the editor is plain
-   * server-rendered links — one page per wall — so the whole thing stays a
-   * document, and a wall's canvas, mode and aspect all come pre-resolved from
-   * the same fallback the manifest uses.
+   * Everything about that wall in one place — its status and pairing, the
+   * layout editor for its canvas, and (for a real screen) its own settings. The
+   * Default has no hardware, so no status or pairing; the household-wide stacked
+   * defaults still live on the Display screen and are linked to from here.
    */
-  function layoutPage(ownerId: string | null, error?: string): string {
+  function displayDetailPage(ownerId: string | null, error?: string): string {
+    const at = now();
     const household = readHousehold(deps.db);
-    const screens = activeScreens();
-    const owner = screens.find((s) => s.id === ownerId) ?? null;
-    const ownerKey = owner === null ? null : owner.id;
+    const owner = ownerId === null ? null : activeScreens().find((s) => s.id === ownerId) ?? null;
+    const ownerKey = owner?.id ?? null;
 
-    // The effective mode and aspect for this canvas: the wall's own if it has
-    // one, otherwise the household default.
     const mode = owner?.layoutMode ?? household.layoutMode;
     const aspect = owner?.layoutAspect ?? household.layoutAspect;
-
     const initial = {
       screen: ownerKey,
       mode: mode === 'freeform' ? 'freeform' : 'auto',
@@ -2219,44 +2262,48 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       })),
     };
 
-    const tab = (key: string | null, label: string): string => {
-      const href = key === null ? 'admin/layout' : `admin/layout?screen=${encodeURIComponent(key)}`;
-      const active = key === ownerKey ? ' class="active" aria-current="page"' : '';
-      return `<a href="${href}"${active}>${escapeHtml(label)}</a>`;
-    };
-    const switcher =
-      `<nav class="walls" aria-label="Walls">` +
-      tab(null, 'Default') +
-      screens.map((s) => tab(s.id, s.name)).join('') +
-      `</nav>` +
-      (screens.length === 0
-        ? `<p class="hint">This is the layout every wall shows until it has one of ` +
-          `its own. Pair a screen on the Screens page to give it a different one.</p>`
-        : owner === null
-          ? `<p class="hint">The <strong>Default</strong> — what a wall shows until you ` +
-            `give it its own. Pick a wall above to design just that one.</p>`
-          : `<p class="hint">Designing <strong>${escapeHtml(owner.name)}</strong>. Only this ` +
-            `wall changes; the rest keep the Default until you design them too.</p>`);
+    const statusAndPairing =
+      owner === null
+        ? ''
+        : `<article class="card">` +
+          `<div style="display:flex;align-items:center;gap:12px">` +
+          seenDot(owner.lastSeenAt, at) +
+          `<div style="flex:1;min-width:0"><div class="rname" style="font-size:15px">` +
+          `${owner.lastSeenAt !== null && at - owner.lastSeenAt < 5 * 60_000 ? 'Online' : 'Not seen recently'}</div>` +
+          `<div class="host">Last seen ${escapeHtml(ago(owner.lastSeenAt, at))}` +
+          (owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`) +
+          `</div></div></div>` +
+          `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
+          `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate">` +
+          `<button class="secondary" type="submit">Show pairing link</button></form>` +
+          `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/revoke">` +
+          `<button class="btn-danger" type="submit" style="margin-left:auto">Unpair</button></form>` +
+          `</div>` +
+          `<p class="hint">Showing a new pairing link stops the old one working.</p>` +
+          `</article>`;
 
     return page({
-      title: 'Layout — Maverick Wall',
-      nav: 'layout',
-      heading: 'Layout',
-      intro:
-        'Arrange a wall: add a widget, drag it to move, pull the corner to ' +
-        'resize. Turn it on to use this instead of the stacked layout. The wall ' +
-        'picks up a saved change within a minute.',
+      title: `${owner ? owner.name : 'Default display'} — Maverick Wall`,
+      nav: 'displays',
+      heading: owner ? owner.name : 'Default display',
+      intro: owner
+        ? 'Everything about this wall — its layout, how it is hung, its theme and how much it shows.'
+        : 'The layout every wall shows until you design one of its own.',
       body:
-        switcher +
+        `<p><a class="link" href="admin/displays">← All displays</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
-        // The editor mounts here. Data in an attribute, script from the image.
-        `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
-        `<noscript><p class="hint">The layout editor needs JavaScript. The ` +
-        `stacked layout on the Display screen does not.</p></noscript>` +
-        `<script type="module" src="assets/layout-editor.js"></script>` +
-        // A real wall also carries its own settings: how it is hung, its theme,
-        // how much it shows. The Default has none — those live on Display.
-        (owner === null ? '' : wallSettingsForm(owner)),
+        statusAndPairing +
+        `<h2 class="add">Layout</h2>` +
+        `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
+        `Turn it on to use this instead of the stacked layout — the wall picks up a ` +
+        `change within a minute.</p>` +
+        layoutEditorMount(initial) +
+        (owner === null
+          ? `<h2 class="add">Defaults</h2>` +
+            `<p class="hint">Theme, the stacked-layout block order and how much to show ` +
+            `are the household defaults, on the <a class="link" href="admin/display">Display ` +
+            `defaults</a> screen. Every wall follows them until it is given its own.</p>`
+          : `<h2 class="add">This wall’s settings</h2>` + wallSettingsForm(owner)),
     });
   }
 

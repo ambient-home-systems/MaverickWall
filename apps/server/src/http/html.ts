@@ -142,6 +142,9 @@ h1{font-family:var(--cond);font-weight:700;font-size:30px;line-height:1.02;
 p{color:var(--muted);margin:.5rem 0;line-height:1.55}
 a.link{color:var(--accent);text-decoration:none;font-weight:600}
 a.link:hover{text-decoration:underline}
+/* Any inline arrow inside a link (list "Open →", "Manage →") stays small. */
+.link{display:inline-flex;align-items:center;gap:4px}
+.link svg{width:14px;height:14px;stroke-width:2;flex:0 0 auto}
 .kick{font-family:var(--cond);font-weight:600;font-size:11.5px;letter-spacing:.2em;
   text-transform:uppercase;color:var(--faint)}
 .code{font-family:var(--mono);font-size:1rem;letter-spacing:.08em;
@@ -510,8 +513,9 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
     key: 'walls',
     label: 'Walls',
     items: [
-      { key: 'screens', label: 'Screens', href: 'admin/screens', icon: 'screens' },
-      { key: 'layout', label: 'Layout', href: 'admin/layout', icon: 'layout' },
+      // Screens (pairing) and Layout were two sections for one thing; a display
+      // is now a single place — its status, pairing, settings and layout.
+      { key: 'displays', label: 'Displays', href: 'admin/displays', icon: 'screens' },
     ],
   },
   {
