@@ -168,11 +168,17 @@ function renderWeather(model: DisplayModel): HTMLElement | undefined {
  * no entity id in the model and no way to ask for one. That boundary is what
  * keeps a compromised wall from being a way into somebody's house.
  */
-function renderHouse(model: DisplayModel): HTMLElement | undefined {
-  if (model.house.length === 0) return undefined;
+function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undefined {
+  // Which readings to show, by label — the manifest carries no entity id, so a
+  // per-widget selection can only ever be by the label the household sees.
+  // Empty means all, which is the default and what a bare widget draws.
+  const wanted = configStrings(widgetConfig(config)['readings']);
+  const readings =
+    wanted.length === 0 ? model.house : model.house.filter((r) => wanted.includes(r.label));
+  if (readings.length === 0) return undefined;
 
   const strip = el('section', 'house');
-  for (const reading of model.house) {
+  for (const reading of readings) {
     const cell = el('div', `hs-item hs-${reading.mode}${reading.stale ? ' hs-stale' : ''}`);
 
     if (reading.mode === 'icon_state' || reading.mode === 'presence') {
@@ -489,21 +495,121 @@ function renderShiftWidget(model: DisplayModel): HTMLElement | undefined {
  * never reaches here — the server drops it — and the `default` is only a
  * belt: an unknown type on a newer server draws nothing rather than throwing.
  */
-export function renderWidget(type: string, model: DisplayModel): HTMLElement | undefined {
+export function renderWidget(
+  type: string,
+  model: DisplayModel,
+  config?: unknown,
+): HTMLElement | undefined {
   switch (type) {
     case 'clock':
       return renderClockWidget(model);
     case 'calendar':
-      return renderHorizon(model);
+      return renderCalendarWidget(model, config);
     case 'weather':
       return renderWeather(model);
     case 'homeassistant':
-      return renderHouse(model);
+      return renderHouse(model, config);
     case 'shift':
       return renderShiftWidget(model);
     default:
       return undefined;
   }
+}
+
+/**
+ * A widget's stored options, read defensively.
+ *
+ * The server has already validated the shape (rule five, in `layoutWidgetBody`),
+ * but the renderer reads what this process wrote as untrusted all the same — a
+ * manifest one version ahead costs the widget its options, not the wall.
+ */
+function widgetConfig(config: unknown): Record<string, unknown> {
+  return typeof config === 'object' && config !== null ? (config as Record<string, unknown>) : {};
+}
+function configStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * The box-level format a widget carries — decorative only, so it is safe on
+ * every type and never changes what the section draws. The server has already
+ * validated the shape; this reads it back defensively all the same.
+ */
+function applyWidgetFormat(box: HTMLElement, config: unknown): void {
+  const c = widgetConfig(config);
+  if (c['align'] === 'center' || c['align'] === 'right' || c['align'] === 'left') {
+    box.style.textAlign = c['align'];
+  }
+  if (typeof c['background'] === 'string' && HEX6.test(c['background'])) {
+    const raw = c['opacity'];
+    const opacity = typeof raw === 'number' ? Math.min(100, Math.max(0, raw)) : 100;
+    box.style.background = hexToRgba(c['background'], opacity / 100);
+  }
+  if (c['corners'] === 'rounded') {
+    box.style.borderRadius = '0.6rem';
+    box.style.overflow = 'hidden';
+  }
+  if (c['shadow'] === true) box.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.35)';
+}
+
+/** Wrap a widget body with its title when one is set to show, else pass through. */
+function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
+  const c = widgetConfig(config);
+  const title = typeof c['title'] === 'string' ? c['title'].trim() : '';
+  if (c['showTitle'] !== true || title === '') return body;
+  const wrap = el('div', 'fw-content');
+  wrap.appendChild(el('div', 'fw-title', title));
+  wrap.appendChild(body);
+  return wrap;
+}
+
+/**
+ * The Calendar widget, in one of two modes.
+ *
+ * `month` (the default) is the same grid the responsive layout draws. `list` is
+ * an agenda of what is coming up, and the reason a widget has options at all:
+ * it can be limited to some calendars (`calendars`, by source id — already in
+ * the manifest, so filtering here leaks nothing) and to a number of events. A
+ * calendar the household did not select is simply not counted.
+ */
+function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const c = widgetConfig(config);
+  const calendars = configStrings(c['calendars']);
+  const keep = (event: EventModel): boolean =>
+    calendars.length === 0 || calendars.includes(event.sourceId);
+
+  if (c['mode'] !== 'list') return renderHorizon(model);
+
+  const limit =
+    typeof c['count'] === 'number' && c['count'] >= 1 ? Math.min(50, Math.trunc(c['count'])) : 12;
+  const source = [model.today, ...model.next].filter(
+    (day): day is DayModel => day !== undefined,
+  );
+
+  const section = el('section', 'next');
+  section.appendChild(el('div', 'section-label', 'Upcoming'));
+  let budget = limit;
+  let any = false;
+  for (const day of source) {
+    if (budget <= 0) break;
+    const events = day.events.filter(keep).slice(0, budget);
+    // Today always shows (even empty) so "nothing on today" reads as checked;
+    // an empty future day is skipped rather than drawn as a blank row.
+    if (events.length === 0 && !day.isToday) continue;
+    budget -= events.length;
+    any = any || events.length > 0;
+    section.appendChild(renderDayRow({ ...day, events, hiddenEventCount: 0 }));
+  }
+  if (!any) section.appendChild(el('div', 'dr-empty', 'Nothing coming up.'));
+  return section;
 }
 
 /**
@@ -552,13 +658,17 @@ export function renderFreeform(
     box.style.setProperty('--bw', String(widget.w));
     box.style.setProperty('--bh', String(widget.h));
 
-    const body = renderWidget(widget.type, model);
+    // Box-level format the household chose — a background, corners, a shadow,
+    // alignment. Applied whatever the widget draws inside.
+    applyWidgetFormat(box, widget.config);
+
+    const body = renderWidget(widget.type, model, widget.config);
     if (body === undefined) {
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
       box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
     } else if (widget.type === 'clock') {
-      // The clock already sizes itself to its box; nothing to scale.
+      // The clock already sizes itself to its box; a title would fight it.
       box.appendChild(body);
     } else {
       /*
@@ -571,7 +681,9 @@ export function renderFreeform(
        * screen, at the foot of this function.
        */
       const scale = el('div', 'fw-scale');
-      scale.appendChild(body);
+      // The title rides inside the scaled content, so it shrinks with the
+      // section and the fit measurement already accounts for it.
+      scale.appendChild(contentWithTitle(body, widget.config));
       box.appendChild(scale);
       toFit.push({ box, scale });
     }

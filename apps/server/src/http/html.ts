@@ -142,6 +142,9 @@ h1{font-family:var(--cond);font-weight:700;font-size:30px;line-height:1.02;
 p{color:var(--muted);margin:.5rem 0;line-height:1.55}
 a.link{color:var(--accent);text-decoration:none;font-weight:600}
 a.link:hover{text-decoration:underline}
+/* Any inline arrow inside a link (list "Open →", "Manage →") stays small. */
+.link{display:inline-flex;align-items:center;gap:4px}
+.link svg{width:14px;height:14px;stroke-width:2;flex:0 0 auto}
 .kick{font-family:var(--cond);font-weight:600;font-size:11.5px;letter-spacing:.2em;
   text-transform:uppercase;color:var(--faint)}
 .code{font-family:var(--mono);font-size:1rem;letter-spacing:.08em;
@@ -393,6 +396,23 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
+/* Per-widget options, shown under the stage when a widget is selected. */
+.le-config{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
+  padding:16px 18px;background:var(--panel)}
+.le-config>.kick{margin-bottom:12px}
+.le-cfg-field{display:block;margin:12px 0 0}
+.le-cfg-field>span{display:block;font-family:var(--cond);font-weight:600;font-size:12px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
+.le-cfg-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:2px}
+.le-cfg-check{display:inline-flex;align-items:center;gap:.45rem;font-size:14px;
+  color:var(--muted);cursor:pointer;margin:0}
+.le-cfg-check input{width:16px;height:16px;accent-color:var(--accent);margin:0}
+.le-cfg-btns{display:flex;gap:8px}
+.le-cfg-btn{margin:0;padding:.42rem .75rem;border:1px solid var(--rule);border-radius:7px;
+  background:var(--panel2);color:var(--ink);font-family:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer}
+.le-cfg-btn:hover{filter:none;border-color:var(--faint)}
 `;
 
 /**
@@ -510,8 +530,9 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
     key: 'walls',
     label: 'Walls',
     items: [
-      { key: 'screens', label: 'Screens', href: 'admin/screens', icon: 'screens' },
-      { key: 'layout', label: 'Layout', href: 'admin/layout', icon: 'layout' },
+      // Screens (pairing) and Layout were two sections for one thing; a display
+      // is now a single place — its status, pairing, settings and layout.
+      { key: 'displays', label: 'Displays', href: 'admin/displays', icon: 'screens' },
     ],
   },
   {

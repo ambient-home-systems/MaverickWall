@@ -495,10 +495,10 @@ describe('screens', () => {
   it('lists paired screens behind the session gate', async () => {
     const h = await harness();
     pair(h.db, 'Kitchen');
-    expect(await (await h.call('/admin/screens')).text()).toContain('Kitchen');
+    expect(await (await h.call('/admin/displays')).text()).toContain('Kitchen');
 
     h.jar.clear();
-    expect((await h.call('/admin/screens')).status).toBe(302);
+    expect((await h.call('/admin/displays')).status).toBe(302);
   });
 
   it('carries orientation and rotation to that screen and no other', async () => {
@@ -534,7 +534,7 @@ describe('screens', () => {
     await h.form(`/admin/screens/${screen.id}`, {
       name: 'Living room', orientation: 'auto', rotation: '0',
     });
-    expect(await (await h.call('/admin/screens')).text()).toContain('Living room');
+    expect(await (await h.call('/admin/displays')).text()).toContain('Living room');
   });
 
   it('refuses a rotation that is not a quarter turn', async () => {
