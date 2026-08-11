@@ -11,6 +11,7 @@ import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
+import { INGRESS_HEADER } from '../src/http/ingress.js';
 import type { SetupToken } from '../src/auth/tokens.js';
 
 /**
@@ -501,5 +502,150 @@ describe('after setup', () => {
     const reason = (body: string): string =>
       body.slice(body.indexOf('<strong>'), body.indexOf('</strong>'));
     expect(reason(await wrongPassword.text())).toBe(reason(await unknownEmail.text()));
+  });
+});
+
+/**
+ * Skipping the bootstrap code under trusted Home Assistant ingress.
+ *
+ * On the add-on the supervisor has already authenticated the household, so
+ * reaching `/setup` from its socket source is itself proof of owning the box —
+ * the same argument the post-setup gate already makes. These prove the skip
+ * fires only for a genuine supervisor request and fails closed to demanding the
+ * code for everything else: a plain docker run, a forged header from a LAN
+ * device, or no ingress at all. Driven with a real socket source, the one thing
+ * a header cannot forge.
+ */
+const INGRESS = '/api/hassio_ingress/SESSIONTOKEN';
+
+function ingressHarness(opts: { isAddon?: boolean } = {}) {
+  const idx = ++nextAddress;
+  // Distinct per harness: a distinct database, and a distinct supervisor address
+  // so each account creation lands in its own rate-limit bucket (the buckets are
+  // module-global and outlive the database — a documented trap in this codebase).
+  const sup = `172.30.${idx}.2`;
+  const base = `10.8.${idx}.1`;
+  const dataDir = mkdtempSync(join(tmpdir(), 'mw-wizard-ing-'));
+  roots.push(dataDir);
+  const { db } = openDatabase({ dataDir });
+  runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
+  const stamp = Date.now();
+  db.prepare(
+    `INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`,
+  ).run(stamp, stamp);
+
+  let source: string | undefined = base;
+  const setupToken = createSetupTokenHolder(() => {});
+  const app = createApp({
+    db,
+    appVersion: '0.1.0-test',
+    bootNotices: [],
+    auth: { secret: 'w'.repeat(32), baseUrl: 'http://localhost' },
+    keyring: createKeyring(randomBytes(32)),
+    fetcher: createFetcher(),
+    clientAddress: () => source,
+    ingressTrust: { isAddon: opts.isAddon ?? true, sources: [sup] },
+    setupToken,
+    dataDir,
+  });
+
+  const jar = new Map<string, string>();
+  const call = async (
+    path: string,
+    init: RequestInit & { from?: string; ingress?: string } = {},
+  ): Promise<Response> => {
+    source = init.from ?? base;
+    const headers = new Headers(init.headers);
+    const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+    if (cookie !== '') headers.set('cookie', cookie);
+    if (init.ingress !== undefined) headers.set(INGRESS_HEADER, init.ingress);
+    const res = await app.fetch(new Request(`http://localhost${path}`, { ...init, headers }));
+    for (const raw of res.headers.getSetCookie()) {
+      const [pair] = raw.split(';');
+      const [name, ...rest] = (pair ?? '').split('=');
+      if (name !== undefined && name !== '') jar.set(name, rest.join('='));
+    }
+    return res;
+  };
+  const post = (
+    path: string,
+    fields: Record<string, string>,
+    init: { from?: string; ingress?: string } = {},
+  ): Promise<Response> =>
+    call(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(fields).toString(),
+      ...init,
+    });
+
+  const userCount = (): number =>
+    (db.prepare('SELECT COUNT(*) AS n FROM user').get() as { n: number }).n;
+
+  return { db, call, post, jar, sup, userCount };
+}
+
+const ACCOUNT = {
+  name: 'Household',
+  email: 'ingress@home.local',
+  password: 'correct-horse-battery',
+  confirm: 'correct-horse-battery',
+};
+
+describe('first run under trusted Home Assistant ingress', () => {
+  it('shows the account form, not the code, when the supervisor forwards it', async () => {
+    const h = ingressHarness();
+    const body = await (await h.call('/setup', { from: h.sup, ingress: INGRESS })).text();
+    expect(body).toContain('Create your account');
+    expect(body).not.toContain('Enter the setup code');
+    expect(body).toContain('reached this through Home Assistant');
+  });
+
+  it('creates the only account with no code and no cookie', async () => {
+    const h = ingressHarness();
+    const res = await h.post('/setup/account', ACCOUNT, { from: h.sup, ingress: INGRESS });
+    expect(res.status).toBe(302);
+    expect(h.userCount()).toBe(1);
+  });
+
+  it('still demands the code for a plain docker run (not an add-on)', async () => {
+    const h = ingressHarness({ isAddon: false });
+    const body = await (await h.call('/setup', { from: h.sup, ingress: INGRESS })).text();
+    expect(body).toContain('Enter the setup code');
+    const res = await h.post('/setup/account', ACCOUNT, { from: h.sup, ingress: INGRESS });
+    expect(res.status).toBe(403);
+    expect(h.userCount()).toBe(0);
+  });
+
+  it('still demands the code when the ingress header is forged from a LAN device', async () => {
+    const h = ingressHarness();
+    // Right header, wrong socket source — the exact forgery the pin defends.
+    const body = await (await h.call('/setup', { from: '10.0.0.9', ingress: INGRESS })).text();
+    expect(body).toContain('Enter the setup code');
+    const res = await h.post('/setup/account', ACCOUNT, { from: '10.0.0.9', ingress: INGRESS });
+    expect(res.status).toBe(403);
+    expect(h.userCount()).toBe(0);
+  });
+
+  it('still demands the code with no ingress header, even from the supervisor address', async () => {
+    const h = ingressHarness();
+    const body = await (await h.call('/setup', { from: h.sup })).text();
+    expect(body).toContain('Enter the setup code');
+    const res = await h.post('/setup/account', ACCOUNT, { from: h.sup });
+    expect(res.status).toBe(403);
+    expect(h.userCount()).toBe(0);
+  });
+
+  it('does not create a second account, even from the supervisor', async () => {
+    const h = ingressHarness();
+    expect((await h.post('/setup/account', ACCOUNT, { from: h.sup, ingress: INGRESS })).status).toBe(302);
+    h.jar.clear();
+    const res = await h.post(
+      '/setup/account',
+      { ...ACCOUNT, email: 'second@home.local' },
+      { from: h.sup, ingress: INGRESS },
+    );
+    expect(res.status).toBe(403);
+    expect(h.userCount()).toBe(1);
   });
 });

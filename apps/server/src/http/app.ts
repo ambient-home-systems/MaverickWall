@@ -979,6 +979,11 @@ export function createApp(deps: AppDeps): Hono {
     sessions: gateDeps.sessions,
     setupToken: deps.setupToken ?? createSetupTokenHolder((): void => {}),
     signUp: (c: Context, input) => authApi(c, '/api/auth/sign-up/email', input),
+    // The same trust decision the session gate uses (gateDeps.ingressUser),
+    // one step earlier: a request the supervisor forwarded from an authenticated
+    // household may skip the bootstrap code. Fails closed off the add-on.
+    trustedIngress: (c: Context) =>
+      isTrustedIngress(c, clientAddress(c), { isAddon: ingressTrust.isAddon, sources: trustedSources }),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   });
 
