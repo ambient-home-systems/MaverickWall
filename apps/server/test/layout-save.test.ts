@@ -194,6 +194,20 @@ describe('saving a layout', () => {
     expect(layout.layout.widgets[0]?.config).toEqual({ target: '2026-12-25', title: 'Christmas' });
   });
 
+  it('carries an external-module widget reference through to the manifest', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [{ id: 'ext', type: 'external', x: 0.1, y: 0.1, w: 0.4, h: 0.3, z: 0,
+        config: { module: 'abc123' } }],
+    });
+    expect(res.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { widgets: { type: string; config?: unknown }[] } };
+    expect(layout.layout.widgets[0]).toMatchObject({ type: 'external', config: { module: 'abc123' } });
+  });
+
   it('rejects a countdown date that is not YYYY-MM-DD', async () => {
     const h = await harness();
     const res = await h.saveLayout({
