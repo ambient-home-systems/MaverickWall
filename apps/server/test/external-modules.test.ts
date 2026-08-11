@@ -12,7 +12,6 @@ import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { pollExternalModules } from '../src/modules/external/index.js';
-import { pollCatalogSources } from '../src/modules/catalog-sources.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
 
 /**
@@ -97,20 +96,6 @@ async function fakeModule(): Promise<FakeModule> {
     },
     lastHeaders: () => seenHeaders,
   };
-}
-
-/** A server that answers one URL with a catalogue index the test controls. */
-async function fakeCatalogue(index: unknown): Promise<{ url: string; setIndex: (i: unknown) => void }> {
-  let current = index;
-  const server = createServer((_request, response) => {
-    response.setHeader('content-type', 'application/json');
-    response.end(JSON.stringify(current));
-  });
-  servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  const port = typeof address === 'object' && address !== null ? address.port : 0;
-  return { url: `http://127.0.0.1:${port}/catalogue.json`, setIndex: (i) => (current = i) };
 }
 
 async function harness() {
@@ -200,7 +185,6 @@ async function harness() {
     form,
     manifest,
     poll: () => pollExternalModules(db, fetcher, keyring),
-    pollCatalogues: () => pollCatalogSources(db, fetcher),
   };
 }
 
@@ -384,30 +368,28 @@ describe('module signals and interrupts', () => {
   });
 });
 
-describe('the module catalogue (Phase A1)', () => {
-  it('lists the built-in catalogue on the Browse page', async () => {
+describe('the module store', () => {
+  it('lists the built-in catalogue on the Store page', async () => {
     const h = await harness();
-    const html = await (await h.call('/admin/modules/browse')).text();
+    const html = await (await h.call('/admin/modules')).text();
     expect(html).toContain('Countdown');
     expect(html).toContain('by Maverick Wall');
-    // Install deep-links back to the add form with the entry id.
-    expect(html).toContain('admin/modules?install=countdown-example#add');
   });
 
-  it('Install pre-fills the add form from the catalogue entry', async () => {
+  it('a service entry hands off to the Advanced add-by-URL form, pre-filled', async () => {
     const h = await harness();
-    const html = await (await h.call('/admin/modules?install=countdown-example')).text();
+    const html = await (await h.call('/admin/modules/advanced?install=countdown-example')).text();
     // The entry's suggested address is filled in, and its install hint is shown.
     expect(html).toContain('value="http://localhost:9000"');
     expect(html).toContain('examples/example-module');
   });
 
-  it('an unknown install id just shows the ordinary add form', async () => {
+  it('an unknown install id just shows the ordinary Advanced form', async () => {
     const h = await harness();
-    const html = await (await h.call('/admin/modules?install=nope')).text();
+    const html = await (await h.call('/admin/modules/advanced?install=nope')).text();
     // No prefilled value, and the page still renders.
     expect(html).not.toContain('value="http://localhost:9000"');
-    expect(html).toContain('Add a module');
+    expect(html).toContain('Add a module by URL');
   });
 
   it('a recipe entry offers a config-prompt install, and installs a recipe row', async () => {
@@ -436,12 +418,12 @@ describe('the module catalogue (Phase A1)', () => {
     expect(JSON.parse(row.config)).toEqual({ lat: '40.7', lon: '-74.0' });
   });
 
-  it('the Browse page routes a recipe entry to its install page, a service to the form', async () => {
+  it('the Store routes a recipe entry to its install page, a service to Advanced', async () => {
     const h = await harness();
-    const html = await (await h.call('/admin/modules/browse')).text();
-    // Recipe → dedicated install page; service → the pre-fill deep link.
+    const html = await (await h.call('/admin/modules')).text();
+    // Recipe → dedicated install page; service → the Advanced pre-fill deep link.
     expect(html).toContain('admin/modules/install/outside-temperature');
-    expect(html).toContain('admin/modules?install=countdown-example#add');
+    expect(html).toContain('admin/modules/advanced?install=countdown-example#add');
   });
 
   it('an unknown or service id on the recipe install route redirects to Browse', async () => {
@@ -630,107 +612,5 @@ describe('recipe modules (Phase B1)', () => {
     });
     expect(res.status).toBe(400);
     expect(h.db.prepare(`SELECT count(*) c FROM external_modules`).get()).toEqual({ c: 0 });
-  });
-});
-
-describe('remote catalogue sources (A2)', () => {
-  const sourceId = (db: ReturnType<typeof openDatabase>['db']): string =>
-    (db.prepare(`SELECT id FROM catalog_sources LIMIT 1`).get() as { id: string }).id;
-
-  const RECIPE = {
-    id: 'tides',
-    name: 'Tide times',
-    author: 'community',
-    description: 'The next tide, from a public feed.',
-    icon: '🌊',
-    kind: 'recipe',
-    recipe: {
-      name: 'Tide',
-      contract: 1,
-      config: [{ key: 'port', label: 'Port' }],
-      fetch: { url: 'https://api.example.com/tide?port={port}' },
-      panel: { kind: 'stat', value: '{next.height | round:1}', caption: 'm' },
-    },
-  };
-
-  it('adds a source, fetches it, and its entries appear when browsing', async () => {
-    const h = await harness();
-    const cat = await fakeCatalogue({ version: 1, modules: [RECIPE] });
-    await h.form('/admin/modules/catalogues', { url: cat.url, name: 'Community' });
-    await h.pollCatalogues();
-
-    const browse = await (await h.call('/admin/modules/browse')).text();
-    expect(browse).toContain('Tide times');
-    expect(browse).toContain('from Community');
-    // Its install link is namespaced to the source.
-    const id = sourceId(h.db);
-    expect(browse).toContain(`admin/modules/install/${id}~tides`);
-  });
-
-  it('refuses a whole source whose recipe asks to reach the LAN', async () => {
-    const h = await harness();
-    const lanRecipe = { ...RECIPE, recipe: { ...RECIPE.recipe, fetch: { url: 'http://10.0.0.1/x', allowLan: true } } };
-    const cat = await fakeCatalogue({ version: 1, modules: [lanRecipe] });
-    await h.form('/admin/modules/catalogues', { url: cat.url });
-    await h.pollCatalogues();
-
-    const id = sourceId(h.db);
-    const row = h.db.prepare(`SELECT entries, last_error FROM catalog_sources WHERE id = ?`).get(id) as {
-      entries: string | null;
-      last_error: string | null;
-    };
-    expect(row.entries).toBeNull();
-    expect(row.last_error).toContain('local network');
-    // And nothing from it appears when browsing.
-    expect(await (await h.call('/admin/modules/browse')).text()).not.toContain('Tide times');
-  });
-
-  it('installs a recipe from a remote source, resolving the namespaced id', async () => {
-    const h = await harness();
-    const cat = await fakeCatalogue({ version: 1, modules: [RECIPE] });
-    await h.form('/admin/modules/catalogues', { url: cat.url });
-    await h.pollCatalogues();
-    const id = sourceId(h.db);
-
-    // The install page resolves the remote entry and prompts for its config.
-    const form = await (await h.call(`/admin/modules/install/${id}~tides`)).text();
-    expect(form).toContain('Install Tide times');
-    expect(form).toContain('name="cfg_port"');
-
-    await h.form(`/admin/modules/install/${id}~tides`, { name: 'Tides', cfg_port: 'Dover' });
-    const row = h.db.prepare(`SELECT kind, config FROM external_modules LIMIT 1`).get() as {
-      kind: string;
-      config: string;
-    };
-    expect(row.kind).toBe('recipe');
-    expect(JSON.parse(row.config)).toEqual({ port: 'Dover' });
-  });
-
-  it('turning a source off hides its entries; removing it forgets it', async () => {
-    const h = await harness();
-    const cat = await fakeCatalogue({ version: 1, modules: [RECIPE] });
-    await h.form('/admin/modules/catalogues', { url: cat.url });
-    await h.pollCatalogues();
-    const id = sourceId(h.db);
-
-    await h.form(`/admin/modules/catalogues/${id}/toggle`, {});
-    expect(await (await h.call('/admin/modules/browse')).text()).not.toContain('Tide times');
-
-    await h.form(`/admin/modules/catalogues/${id}/remove`, {});
-    expect(h.db.prepare(`SELECT count(*) c FROM catalog_sources`).get()).toEqual({ c: 0 });
-  });
-
-  it('a source that returns junk records an error and keeps the built-ins', async () => {
-    const h = await harness();
-    const cat = await fakeCatalogue({ not: 'a catalogue' });
-    await h.form('/admin/modules/catalogues', { url: cat.url });
-    await h.pollCatalogues();
-    const id = sourceId(h.db);
-    const row = h.db.prepare(`SELECT last_error FROM catalog_sources WHERE id = ?`).get(id) as {
-      last_error: string | null;
-    };
-    expect(row.last_error).not.toBeNull();
-    // The built-in catalogue still shows.
-    expect(await (await h.call('/admin/modules/browse')).text()).toContain('Countdown');
   });
 });

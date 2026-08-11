@@ -668,8 +668,26 @@ secret at all (like `allowLan`): a stranger's recipe requesting the household's
 key is a phishing surface, so a secret recipe is one the household pastes and
 trusts. `pollExternalModules` now takes the keyring. The proof is the loopback
 feed receiving the header with the decrypted value while the stored column is an
-envelope that does not contain the plaintext. **RFC 002 is complete but for
-server-proxied catalogue screenshots (glyph-only, deliberate).**
+envelope that does not contain the plaintext.
+
+**The modules section is a Store, and the store is in the repo.** After all of
+the above shipped, the several add paths (service-by-URL, recipe paste, built-in
+catalogue, remote catalogue-by-URL) were too many doors for one household. The
+reframe: `/admin/modules` is **the Store** — browse the curated catalogue and
+what you've installed — and the two power tools (add a service module by URL,
+write a recipe by hand) moved to an **Advanced** screen. **Remote catalogue
+sources were removed** (migration `0020` drops `catalog_sources`): the store is a
+single, curated, in-repo list — one file per module under
+`apps/server/src/catalog/`, `index.ts` listing them, assembled into `CATALOG` in
+`http/catalog.ts` and validated by `test/catalog.test.ts` (a malformed entry
+fails the build, never a wall). A module is added by **pull request** against
+that directory and ships to everyone next release — the store is maintained *as
+part of the project*, not assembled by each household from URLs
+(`docs/adding-to-the-store.md`). Service modules survive as the Advanced escape
+hatch for what a recipe cannot do; they are just not the front door. The store is
+a *directory of source* rather than a fetched document on purpose: it bakes into
+the image and works on a wall with no internet. Only the RFC's optional
+glyph-only screenshots remain unbuilt.
 
 **Home Assistant is read-only, and that is a security property.** A long-lived
 access token has full control of a house and cannot be scoped, so the limit is

@@ -92,27 +92,6 @@ describe('module catalogue', () => {
     expect(catalogSchema.safeParse(catalog).success).toBe(false);
   });
 
-  it('a remote catalogue may not ask for a secret (nor reach the LAN)', async () => {
-    const { remoteCatalogSchema } = await import('../src/http/catalog.js');
-    const withSecret = {
-      version: 1,
-      modules: [
-        {
-          id: 'x', name: 'X', author: 'a', description: 'd', icon: '🔑', kind: 'recipe',
-          recipe: {
-            name: 'X', contract: 1, secrets: [{ key: 'api_key', label: 'Key' }],
-            fetch: { url: 'https://x/y', headers: { A: '{secret:api_key}' } },
-            panel: { kind: 'stat', value: '{v}' },
-          },
-        },
-      ],
-    };
-    // The built-in schema accepts it (a hand-pasted recipe may use secrets)…
-    expect(catalogSchema.safeParse(withSecret).success).toBe(true);
-    // …but a remote catalogue may not.
-    expect(remoteCatalogSchema.safeParse(withSecret).success).toBe(false);
-  });
-
   it('ships a working recipe entry to demonstrate the flow', () => {
     const entry = catalogEntry('outside-temperature');
     expect(entry?.kind).toBe('recipe');
