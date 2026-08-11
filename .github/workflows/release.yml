@@ -84,10 +84,37 @@ jobs:
 
       # Signed by digest rather than by tag: a tag can be moved afterwards and
       # a digest cannot, so this is a signature over the bytes somebody pulls.
+      #
+      # Fetch the OIDC token ourselves, with retries, rather than let cosign do
+      # it. Keyless signing needs one GitHub OIDC token; cosign fetches it
+      # automatically, but a *single* flaky fetch — a TLS handshake timeout to
+      # the Actions OIDC endpoint, which is exactly what killed the first
+      # v0.16.0 run — makes cosign fall back to an interactive device flow. That
+      # flow cannot complete on a runner, so it hangs to a 300s "expired_token"
+      # and the release fails with the image already pushed but unsigned. Fetching
+      # the token here (curl retries on the transient error) and handing it to
+      # cosign with --identity-token means there is no ambient detection and no
+      # interactive fallback to hang on, and the whole sign is retried besides.
       - name: Sign
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          fetch_token() {
+            curl -fsS --retry 5 --retry-all-errors --retry-delay 3 \
+              -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r '.value'
+          }
+          for attempt in 1 2 3; do
+            token=$(fetch_token) || { echo "OIDC token fetch attempt ${attempt} failed"; sleep 10; continue; }
+            if cosign sign --yes --identity-token="${token}" "${IMAGE}@${DIGEST}"; then
+              echo "signed on attempt ${attempt}"
+              exit 0
+            fi
+            echo "cosign sign attempt ${attempt} failed; retrying in 15s"
+            sleep 15
+          done
+          echo "::error::cosign keyless signing failed after 3 attempts (OIDC or Fulcio). Usually transient — re-run this job."
+          exit 1
 
       - name: Attach the bill of materials
         uses: anchore/sbom-action@v0
@@ -117,6 +144,8 @@ jobs:
     # broken. A logged-in check would hide exactly the failure this catches
     # (a package still private, a tag not actually pushed).
     steps:
+      - uses: sigstore/cosign-installer@v3
+
       - name: The version tag resolves, for both architectures
         run: |
           # `type=semver,pattern={{version}}` strips the leading v, so the
@@ -152,3 +181,26 @@ jobs:
           # resolves but whose layers never landed still fails here.
           VERSION="${GITHUB_REF_NAME#v}"
           docker pull "${IMAGE}:${VERSION}"
+
+      # And it is signed by this workflow. The Sign step can fail while the image
+      # is already pushed (a flaky OIDC fetch), leaving a published-but-unsigned
+      # image on `stable` — which the README and the checklist both tell a
+      # household to `cosign verify`. That is a silent break the pull checks above
+      # do not catch, so assert the signature here, anonymously, the way anyone
+      # verifying it would. A short retry rides out registry propagation of the
+      # freshly pushed signature.
+      - name: And it is signed by this workflow
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for attempt in 1 2 3 4 5; do
+            if cosign verify "${IMAGE}:${VERSION}" \
+                 --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/tags/" \
+                 --certificate-oidc-issuer "https://token.actions.githubusercontent.com" > /dev/null 2>&1; then
+              echo "signature verified for ${IMAGE}:${VERSION} (attempt ${attempt})"
+              exit 0
+            fi
+            echo "verify attempt ${attempt}: signature not confirmed yet; waiting 10s"
+            sleep 10
+          done
+          echo "::error::${IMAGE}:${VERSION} is published but has no valid cosign signature from this workflow — the Sign step likely failed while the push succeeded. Do not leave it on stable; re-run the release job."
+          exit 1
