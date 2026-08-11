@@ -838,6 +838,16 @@ export const externalModules = sqliteTable('external_modules', {
    */
   blockKey: text('block_key').notNull(),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * `service` (RFC 001 — a module the household runs, polled over HTTP) or
+   * `recipe` (RFC 002 B1 — a declarative fetch-and-transform Maverick Wall runs
+   * itself). Defaults to `service` so every existing row keeps its meaning.
+   */
+  kind: text('kind').notNull().default('service'),
+  /** For a recipe row: its manifest, as JSON this process validated and wrote. */
+  recipe: text('recipe', { mode: 'json' }).$type<unknown>(),
+  /** For a recipe row: the household's filled-in config values. */
+  config: text('config', { mode: 'json' }).$type<unknown>(),
   /** Order among external panels. Built-in blocks keep their own ordering. */
   sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
   /** Last validated Panel Data, as JSON this process wrote. */

@@ -6,6 +6,7 @@ import { ago } from './admin.js';
 import type { AdminDeps } from './admin.js';
 import {
   createExternalModule,
+  createRecipeModule,
   deleteExternalModule,
   ensureDisplayBlock,
   readExternalModules,
@@ -17,6 +18,7 @@ import {
 } from '../api/external-modules.js';
 import { deleteRule, moduleAlertRuleId, syncModuleAlertRule } from '../api/rules.js';
 import { signalDataSchema } from '../modules/external/signal-data.js';
+import { normaliseConfig, recipeSchema, type RecipeConfig } from '../modules/external/recipe.js';
 import { CATALOG, catalogEntry, type CatalogEntry } from './catalog.js';
 import { parse, text, z } from '../validation.js';
 
@@ -57,6 +59,56 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   app.get('/admin/modules/browse', (c: Context) => c.html(browsePage()));
+
+  app.get('/admin/modules/recipe', (c: Context) => c.html(recipePage()));
+
+  app.post('/admin/modules/recipe', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const manifestRaw = typeof body['manifest'] === 'string' ? body['manifest'] : '';
+    const configRaw = typeof body['config'] === 'string' ? body['config'] : '';
+    const nameOverride = typeof body['name'] === 'string' ? body['name'].trim() : '';
+
+    let manifestJson: unknown;
+    try {
+      manifestJson = JSON.parse(manifestRaw);
+    } catch {
+      return c.html(recipePage('That recipe is not valid JSON.', manifestRaw, configRaw), 400);
+    }
+    const parsed = recipeSchema.safeParse(manifestJson);
+    if (!parsed.success) {
+      // Name the first thing wrong, with its field — a recipe author is standing
+      // at a form, not reading a stack trace.
+      const first = parsed.error.issues[0];
+      const where = first && first.path.length > 0 ? `${first.path.join('.')}: ` : '';
+      const why = first?.message ?? 'not a valid recipe';
+      return c.html(recipePage(`This recipe is not valid — ${where}${why}.`, manifestRaw, configRaw), 400);
+    }
+    const recipe = parsed.data;
+
+    let configJson: unknown = {};
+    if (configRaw.trim() !== '') {
+      try {
+        configJson = JSON.parse(configRaw);
+      } catch {
+        return c.html(recipePage('The config is not valid JSON.', manifestRaw, configRaw), 400);
+      }
+    }
+    const supplied =
+      configJson !== null && typeof configJson === 'object' ? (configJson as RecipeConfig) : {};
+    const config = normaliseConfig(recipe, supplied);
+
+    const id = randomBytes(6).toString('hex');
+    const blockKey = createRecipeModule(deps.db, {
+      id,
+      name: nameOverride || recipe.name,
+      url: recipe.fetch.url,
+      recipe,
+      config,
+    });
+    ensureDisplayBlock(deps.db, blockKey);
+    deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
+    return c.redirect('/admin/modules', 302);
+  });
 
   app.post('/admin/modules', async (c: Context) => {
     const shaped = parse(addBody, (await c.req.parseBody()) as Record<string, unknown>);
@@ -255,7 +307,61 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         `<button type="submit">Add module</button></form>` +
         `<p class="hint">Only add a module you trust and run yourself. It never ` +
         `receives your calendars or your Home Assistant token; it only supplies ` +
-        `values for the wall to show.</p>`,
+        `values for the wall to show.</p>` +
+        `<p class="hint" style="margin-top:18px">Nothing to run? ` +
+        `<a class="link" href="admin/modules/recipe">Add a recipe</a> — a module ` +
+        `Maverick Wall runs itself from a public web feed, no service to host.</p>`,
+    });
+  }
+
+  const RECIPE_EXAMPLE = JSON.stringify(
+    {
+      name: 'Bitcoin',
+      contract: 1,
+      fetch: {
+        url: 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=gbp',
+        intervalSeconds: 900,
+      },
+      panel: { kind: 'stat', title: 'Bitcoin', value: '{bitcoin.gbp | currency:GBP}', caption: 'GBP' },
+    },
+    null,
+    2,
+  );
+
+  function recipePage(error?: string, manifest?: string, config?: string): string {
+    return page({
+      title: 'Add a recipe — Maverick Wall',
+      nav: 'modules',
+      heading: 'Add a recipe',
+      action: { label: 'Back to Add-ons', href: 'admin/modules' },
+      intro:
+        'A recipe is a module with no service to host: it names a public web feed ' +
+        'and how to draw it, and Maverick Wall does the fetching. A recipe is data, ' +
+        'never code — it can pull fields and format them, and nothing else.',
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        `<form method="post" action="admin/modules/recipe">` +
+        `<label for="name">Call it (optional)</label>` +
+        `<input id="name" name="name" type="text" maxlength="60" ` +
+        `placeholder="Leave empty to use the recipe’s own name">` +
+        `<label for="manifest">Recipe</label>` +
+        `<textarea id="manifest" name="manifest" rows="16" spellcheck="false" ` +
+        `style="width:100%;font-family:var(--mono);font-size:13px" required>` +
+        `${escapeHtml(manifest ?? RECIPE_EXAMPLE)}</textarea>` +
+        `<p class="hint">A recipe reaches the public internet over https only. To ` +
+        `point one at a service on your own network, add <span class="code">` +
+        `"allowLan": true</span> to its <span class="code">fetch</span>. It selects ` +
+        `values with dotted paths (<span class="code">{bitcoin.gbp}</span>) and a ` +
+        `fixed set of formatters (<span class="code">upper</span>, ` +
+        `<span class="code">round:1</span>, <span class="code">currency:GBP</span>, ` +
+        `<span class="code">date:relative</span>, <span class="code">truncate:40</span>).</p>` +
+        `<label for="config">Config values (optional JSON)</label>` +
+        `<textarea id="config" name="config" rows="3" spellcheck="false" ` +
+        `style="width:100%;font-family:var(--mono);font-size:13px" ` +
+        `placeholder='{ "station": "12345" }'>${escapeHtml(config ?? '')}</textarea>` +
+        `<p class="hint">If the recipe’s address has <span class="code">{placeholders}</span>, ` +
+        `fill them here. A tidier form is coming; for now this is the raw way in.</p>` +
+        `<button type="submit">Add recipe</button></form>`,
     });
   }
 

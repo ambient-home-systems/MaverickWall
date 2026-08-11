@@ -185,11 +185,12 @@ form{margin:1.4rem 0 0}
 label{display:block;margin:1rem 0 .35rem;font-family:var(--cond);font-weight:600;
   font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 input[type=text],input[type=email],input[type=password],input[type=number],
-input[type=time],select{
+input[type=time],select,textarea{
   width:100%;padding:.62rem .7rem;border-radius:7px;border:1px solid var(--rule);
   background:var(--panel2);color:var(--ink);font-family:inherit;font-size:14.5px}
-input::placeholder{color:var(--faint)}
-input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;
+textarea{resize:vertical;line-height:1.45}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;
   border-color:transparent}
 input[type=color]{width:100%;height:2.6rem;padding:.2rem;border-radius:7px;
   border:1px solid var(--rule);background:var(--panel2)}

@@ -120,6 +120,13 @@
       "when": 1786419516789,
       "tag": "0016_sweet_blackheart",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1786424992483,
+      "tag": "0017_equal_blindfold",
+      "breakpoints": true
     }
   ]
 }

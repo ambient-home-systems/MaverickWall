@@ -11,6 +11,9 @@ import type { SqliteDatabase } from '../db/open.js';
 export type AlertsAction = 'none' | 'banner' | 'takeover';
 const ALERTS_ACTIONS: readonly AlertsAction[] = ['none', 'banner', 'takeover'];
 
+/** How a module is fed: an HTTP service (RFC 001) or a recipe (RFC 002 B1). */
+export type ModuleKind = 'service' | 'recipe';
+
 export interface ExternalModuleRow {
   readonly id: string;
   readonly url: string;
@@ -18,6 +21,12 @@ export interface ExternalModuleRow {
   readonly blockKey: string;
   readonly enabled: number;
   readonly sortOrder: number;
+  /** `service` polls the module over HTTP; `recipe` runs a declarative fetch here. */
+  readonly kind: ModuleKind;
+  /** For a recipe: its manifest (raw JSON this process wrote). Null for a service. */
+  readonly recipe: unknown;
+  /** For a recipe: the household's filled-in config values. */
+  readonly config: unknown;
   readonly panel: unknown;
   /** Last validated signals this module offered; raw JSON this process wrote. */
   readonly signals: unknown;
@@ -34,6 +43,9 @@ interface RawRow {
   block_key: string;
   enabled: number;
   sort_order: number;
+  kind: string;
+  recipe: string | null;
+  config: string | null;
   panel: string | null;
   signals: string | null;
   alerts_action: string | null;
@@ -64,6 +76,9 @@ function shape(row: RawRow): ExternalModuleRow {
     blockKey: row.block_key,
     enabled: row.enabled,
     sortOrder: row.sort_order,
+    kind: row.kind === 'recipe' ? 'recipe' : 'service',
+    recipe: parseJson(row.recipe),
+    config: parseJson(row.config),
     panel: parseJson(row.panel),
     signals: parseJson(row.signals),
     alertsAction: action,
@@ -72,8 +87,9 @@ function shape(row: RawRow): ExternalModuleRow {
   };
 }
 
-const SELECT = `SELECT id, url, name, block_key, enabled, sort_order, panel, signals,
-  alerts_action, last_polled_at, last_error FROM external_modules ORDER BY sort_order, created_at`;
+const SELECT = `SELECT id, url, name, block_key, enabled, sort_order, kind, recipe, config,
+  panel, signals, alerts_action, last_polled_at, last_error
+  FROM external_modules ORDER BY sort_order, created_at`;
 
 export function readExternalModules(db: SqliteDatabase): ExternalModuleRow[] {
   return (db.prepare(SELECT).all() as RawRow[]).map(shape);
@@ -102,6 +118,39 @@ export function createExternalModule(
         last_polled_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)`,
   ).run(input.id, input.url, input.name, blockKey, order, at, at);
+  return blockKey;
+}
+
+/**
+ * A recipe module: no service to poll, its data comes from the manifest and the
+ * household's config. The `url` column keeps the recipe's fetch URL for the
+ * health line; the poll runs the recipe engine rather than a GET to `/panel`.
+ */
+export function createRecipeModule(
+  db: SqliteDatabase,
+  input: { id: string; name: string; url: string; recipe: unknown; config: unknown },
+): string {
+  const at = Date.now();
+  const blockKey = externalBlockKey(input.id);
+  const order =
+    (db.prepare(`SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM external_modules`).get() as {
+      n: number;
+    }).n;
+  db.prepare(
+    `INSERT INTO external_modules (id, url, name, block_key, enabled, kind, recipe, config,
+        sort_order, last_polled_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, 'recipe', ?, ?, ?, 0, ?, ?)`,
+  ).run(
+    input.id,
+    input.url,
+    input.name,
+    blockKey,
+    JSON.stringify(input.recipe),
+    JSON.stringify(input.config),
+    order,
+    at,
+    at,
+  );
   return blockKey;
 }
 

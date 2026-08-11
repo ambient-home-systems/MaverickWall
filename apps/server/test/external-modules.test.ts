@@ -38,11 +38,14 @@ interface FakeModule {
   setBody: (b: unknown) => void;
   /** null means the module serves no `/signals` at all (a 404). */
   setSignals: (s: unknown) => void;
+  /** Arbitrary JSON at `/data`, for a recipe to fetch and transform. */
+  setData: (d: unknown) => void;
 }
 
 async function fakeModule(): Promise<FakeModule> {
   let current: unknown = { kind: 'stat', title: 'Bins', value: '2', caption: 'days' };
   let signals: unknown = null;
+  let data: unknown = {};
   const server = createServer((request, response) => {
     const url = request.url ?? '';
     response.setHeader('content-type', 'application/json');
@@ -52,6 +55,10 @@ async function fakeModule(): Promise<FakeModule> {
     }
     if (url === '/panel') {
       response.end(JSON.stringify(current));
+      return;
+    }
+    if (url === '/data') {
+      response.end(JSON.stringify(data));
       return;
     }
     if (url === '/signals') {
@@ -79,6 +86,9 @@ async function fakeModule(): Promise<FakeModule> {
     },
     setSignals: (s) => {
       signals = s;
+    },
+    setData: (d) => {
+      data = d;
     },
   };
 }
@@ -387,5 +397,76 @@ describe('the module catalogue (Phase A1)', () => {
       value: '2',
       caption: 'days',
     });
+  });
+});
+
+describe('recipe modules (Phase B1)', () => {
+  it('runs a recipe against a real feed and draws the transformed panel', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setData({ bitcoin: { gbp: 51234.5 } });
+    // allowLan lets the recipe reach the loopback test server, the way a
+    // household would grant a recipe pointed at a service on their own network.
+    const manifest = JSON.stringify({
+      name: 'Bitcoin',
+      contract: 1,
+      fetch: { url: `${mod.base}/data`, allowLan: true },
+      panel: { kind: 'stat', title: 'Bitcoin', value: '{bitcoin.gbp | currency:GBP}', caption: 'GBP' },
+    });
+    const added = await h.form('/admin/modules/recipe', { manifest });
+    expect(added.status).toBe(302);
+
+    const id = moduleId(h.db);
+    // It is a recipe row, and its block is on the wall.
+    const row = h.db.prepare(`SELECT kind FROM external_modules WHERE id = ?`).get(id) as {
+      kind: string;
+    };
+    expect(row.kind).toBe('recipe');
+
+    await h.poll();
+    expect((await h.manifest()).panels[`ext:${id}`]).toEqual({
+      kind: 'stat',
+      title: 'Bitcoin',
+      value: '£51234.50',
+      caption: 'GBP',
+    });
+  });
+
+  it('refuses a loopback fetch unless the recipe opted into the LAN', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setData({ x: 1 });
+    // No allowLan → public https only. The SSRF guard blocks the loopback fetch.
+    const manifest = JSON.stringify({
+      name: 'Blocked',
+      contract: 1,
+      fetch: { url: `${mod.base}/data` },
+      panel: { kind: 'stat', value: '{x}' },
+    });
+    await h.form('/admin/modules/recipe', { manifest });
+    const id = moduleId(h.db);
+    await h.poll();
+
+    const row = h.db.prepare(`SELECT panel, last_error FROM external_modules WHERE id = ?`).get(id) as {
+      panel: string | null;
+      last_error: string | null;
+    };
+    expect(row.panel).toBeNull();
+    expect(row.last_error).not.toBeNull();
+  });
+
+  it('rejects an invalid recipe at the form, adding nothing', async () => {
+    const h = await harness();
+    const res = await h.form('/admin/modules/recipe', {
+      // `evil` is not an allowed formatter.
+      manifest: JSON.stringify({
+        name: 'x',
+        contract: 1,
+        fetch: { url: 'https://example.com/x' },
+        panel: { kind: 'stat', value: '{a | evil}' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(h.db.prepare(`SELECT count(*) c FROM external_modules`).get()).toEqual({ c: 0 });
   });
 });
