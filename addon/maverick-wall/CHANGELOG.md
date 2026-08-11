@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.0
+
+Recipes can now use a feed that needs an API key.
+
+- A recipe (a module with no service to host) can carry a **secret** — an API
+  key or token. You type it in when you add the recipe, in a masked field, and
+  Maverick Wall stores it **encrypted** and sends it only to that recipe's own
+  web address, in a request header.
+- Your key never appears on the wall, in a log, or in the web address itself,
+  and a **community** catalogue can never ask for one — a recipe that needs a key
+  is one you add yourself.
+
+Nothing changes for a recipe or module you already added.
+
 ## 0.13.0
 
 Add a community catalogue of modules.

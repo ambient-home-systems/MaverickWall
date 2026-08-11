@@ -652,9 +652,24 @@ with a plain reason, and the recipe engine's own public-only default enforces it
 a second time. It is discovery, not new capability: a remote entry can do nothing
 installing it by hand could not. The store/read path is one schema in both
 directions — a mismatch (storing the modules array, re-validating it as a
-catalogue object) made entries vanish and the test caught it at once. **Still
-deferred (the last of RFC 002):** recipe `secrets` (encrypted credentials in the
-fetch), and server-proxied screenshots (glyph-only for now).
+catalogue object) made entries vanish and the test caught it at once.
+
+**A recipe can reach a feed behind an API key (v0.14.0, RFC 002).** A recipe
+declares `secrets` (key/label) and references them in `fetch.headers` as
+`{secret:key}` — **never in the URL**, which is stored and logged (a credential
+in a query string is a credential leaked; the schema refuses it). The household
+types the value into a password field at install (or a JSON field on the paste
+form); it is sealed with the keyring (`recipe-secret` purpose) into one envelope
+in the encrypted `secrets` column (migration `0019`), decrypted only inside
+`pollRecipe` for the length of one request, into the request headers via
+`resolveHeaders` — never the manifest, the wall, or a log (rule six). The install
+page names the host a secret is sent to. A **remote** catalogue may not ask for a
+secret at all (like `allowLan`): a stranger's recipe requesting the household's
+key is a phishing surface, so a secret recipe is one the household pastes and
+trusts. `pollExternalModules` now takes the keyring. The proof is the loopback
+feed receiving the header with the decrypted value while the stored column is an
+envelope that does not contain the plaintext. **RFC 002 is complete but for
+server-proxied catalogue screenshots (glyph-only, deliberate).**
 
 **Home Assistant is read-only, and that is a security property.** A long-lived
 access token has full control of a house and cannot be scoped, so the limit is
