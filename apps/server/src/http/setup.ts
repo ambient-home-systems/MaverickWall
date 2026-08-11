@@ -130,6 +130,17 @@ export interface SetupDeps {
     c: Context,
     input: { name: string; email: string; password: string },
   ) => Promise<Response>;
+  /**
+   * True when this request reached the wizard through a trusted Home Assistant
+   * ingress — the supervisor forwarding a household already signed in, pinned to
+   * its socket source rather than the forgeable header. When it is, the bootstrap
+   * code is redundant: getting here is itself proof of owning the box, the same
+   * argument the post-setup gate already makes. Absent (plain `docker run`, and
+   * every test that does not set it) means "not trusted", so the code still
+   * stands. Built by `app.ts` from the same `isTrustedIngress` the session gate
+   * uses; never re-derived here.
+   */
+  readonly trustedIngress?: (c: Context) => boolean;
   readonly now?: () => number;
 }
 
@@ -177,6 +188,13 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     return user !== undefined;
   };
 
+  /**
+   * Did this request reach the wizard through a trusted supervisor source? If so
+   * the bootstrap code is redundant. Fails closed to `false` when no predicate
+   * was wired (plain `docker run` and every test that leaves it unset).
+   */
+  const trusted = (c: Context): boolean => deps.trustedIngress?.(c) === true;
+
   // -------------------------------------------------------------------------
   // Entry
   // -------------------------------------------------------------------------
@@ -197,7 +215,12 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         c.header('set-cookie', `${SETUP_COOKIE}=${fromUrl}; ${setupCookieAttrs(ingressPath(c))}`);
         return c.redirect('/setup', 302);
       }
-      if (hasSetupCookie(c, deps.setupToken, now())) return c.html(accountForm());
+      // A valid code (the cookie) or a trusted supervisor source both prove the
+      // household owns the box; either goes straight to creating the account.
+      const viaIngress = trusted(c);
+      if (hasSetupCookie(c, deps.setupToken, now()) || viaIngress) {
+        return c.html(accountForm(undefined, {}, viaIngress));
+      }
       return c.html(codeForm(fromUrl !== undefined ? 'That link has expired.' : undefined));
     }
 
@@ -241,7 +264,11 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     // Both, not either. The token alone must not create a second account, and
     // an account must not be creatable without it.
     if (state.hasUsers) return c.html(codeForm('An account already exists.'), 403);
-    if (!hasSetupCookie(c, deps.setupToken, now())) {
+    // The bootstrap code (the cookie) or a trusted supervisor source. On the
+    // add-on the supervisor forwarding an authenticated household is proof
+    // enough; off it, only the code is, and this fails closed to demanding it.
+    const viaIngress = trusted(c);
+    if (!hasSetupCookie(c, deps.setupToken, now()) && !viaIngress) {
       return c.html(codeForm('That setup link has expired. Check the logs for a new code.'), 403);
     }
 
@@ -250,10 +277,14 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     if (!shaped.ok) {
       // The values are echoed back so nobody retypes what was already right.
       return c.html(
-        accountForm(shaped.message, {
-          name: typeof body['name'] === 'string' ? body['name'] : '',
-          email: typeof body['email'] === 'string' ? body['email'] : '',
-        }),
+        accountForm(
+          shaped.message,
+          {
+            name: typeof body['name'] === 'string' ? body['name'] : '',
+            email: typeof body['email'] === 'string' ? body['email'] : '',
+          },
+          viaIngress,
+        ),
         400,
       );
     }
@@ -273,7 +304,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       } catch {
         // Keep the generic message.
       }
-      return c.html(accountForm(message, { name, email }), 400);
+      return c.html(accountForm(message, { name, email }, viaIngress), 400);
     }
 
     // Spent. Nothing consults it again, but holding a live credential in
@@ -441,7 +472,11 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     });
   }
 
-  function accountForm(error?: string, values: { name?: string; email?: string } = {}): string {
+  function accountForm(
+    error?: string,
+    values: { name?: string; email?: string } = {},
+    viaIngress = false,
+  ): string {
     return page({
       title: 'Set up Maverick Wall',
       step: 'Step 1 of 3',
@@ -449,6 +484,12 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       intro: 'This is the only account. There is no public sign-up.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
+        // Reached through Home Assistant: the supervisor already vouched for the
+        // household, so there was no code to find in the log.
+        (viaIngress
+          ? `<p class="hint">You reached this through Home Assistant, so there’s no ` +
+            `setup code to find — just create your account.</p>`
+          : '') +
         `<form method="post" action="setup/account">` +
         `<label for="name">Your name</label>` +
         `<input id="name" name="name" type="text" required value="${escapeHtml(values.name ?? '')}">` +
