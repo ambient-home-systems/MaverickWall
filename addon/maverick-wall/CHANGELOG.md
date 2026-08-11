@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0
+
+Weather is easier to set up, and shows that it is working.
+
+- **Use your Home Assistant home location.** A button fills the forecast’s
+  latitude and longitude from Home Assistant’s own home zone, so there are no
+  coordinates to look up. It only reads the location — Maverick Wall never
+  writes to Home Assistant.
+- **See the forecast on the settings page.** The current five-day forecast and
+  when it was last updated now show right where you turn it on, so you can tell
+  it is working instead of guessing.
+- A small fix: the “how much to show” numbers below the weather settings now
+  save reliably.
+
+The manual latitude and longitude are still there if you prefer them, and the
+forecast remains United States only.
+
 ## 0.4.0
 
 Choosing Home Assistant readings is far easier.

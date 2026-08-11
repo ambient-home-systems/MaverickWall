@@ -225,7 +225,7 @@ const layoutBody = z.object({
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
-import { resolveConnection } from '../modules/homeassistant/client.js';
+import { call, resolveConnection } from '../modules/homeassistant/client.js';
 
 /**
  * The admin screens.
@@ -1351,6 +1351,65 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.redirect('/admin/display', 302);
   });
 
+  /**
+   * Fill the location from Home Assistant's own home zone.
+   *
+   * The commonest install is an add-on, and the box already knows where home is
+   * — `zone.home` carries a latitude and longitude. So rather than ask a
+   * household to press-and-hold a map for two numbers, read them from the one
+   * connection we already have. Read-only, like everything else here: this only
+   * ever reads the zone's coordinates, never writes to Home Assistant.
+   */
+  app.post('/admin/display/weather/use-ha-location', async (c: Context) => {
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) {
+      return c.html(
+        displayPage({
+          message: 'Home Assistant is not connected.',
+          suggestion: 'Connect it on the Home Assistant screen, then try this again.',
+        }),
+        400,
+      );
+    }
+    const home = await call(deps.fetcher, resolved.connection, '/states/zone.home');
+    if (!home.ok) {
+      return c.html(
+        displayPage({
+          message: 'Could not read your Home Assistant home location.',
+          ...(home.suggestion !== undefined ? { suggestion: home.suggestion } : {}),
+        }),
+        400,
+      );
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(home.body);
+    } catch {
+      raw = null;
+    }
+    const located = parse(
+      z.object({ attributes: z.object({ latitude: z.number(), longitude: z.number() }) }),
+      raw,
+    );
+    if (!located.ok) {
+      return c.html(
+        displayPage({
+          message: 'Home Assistant did not return a home location.',
+          suggestion:
+            'Set your home zone in Home Assistant (Settings → Areas, labels & zones), then try again.',
+        }),
+        400,
+      );
+    }
+    const current = readWeatherSettings(deps.db);
+    writeWeatherSettings(deps.db, {
+      enabled: current.enabled,
+      latitude: located.value.attributes.latitude,
+      longitude: located.value.attributes.longitude,
+    });
+    return c.redirect('/admin/display', 302);
+  });
+
   app.post('/admin/display', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
@@ -1830,10 +1889,52 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function weatherSection(): string {
     const weather = readWeatherSettings(deps.db);
     const value = (n: number | null): string => (n === null ? '' : String(n));
+    const haConnected = resolveConnection(deps.db, deps.keyring).ok;
+    const located = weather.latitude !== null && weather.longitude !== null;
+
+    // What the forecast is doing right now, so it is visibly working rather than
+    // a switch that may or may not have taken (issue #6).
+    let forecastBlock = '';
+    const row = deps.db
+      .prepare(`SELECT payload, fetched_at AS fetchedAt FROM weather_cache WHERE cache_key = 'nws:forecast'`)
+      .get() as { payload: string; fetchedAt: number } | undefined;
+    if (row !== undefined) {
+      try {
+        const days = (JSON.parse(row.payload) as {
+          days?: { name: string; high: number | null; low: number | null; icon: string }[];
+        }).days ?? [];
+        if (days.length > 0) {
+          const strip = days
+            .slice(0, 5)
+            .map(
+              (day) =>
+                `<li><span class="when">${escapeHtml(day.name)}</span><span>` +
+                `${escapeHtml(day.icon)} ` +
+                (day.high === null ? '' : `${day.high}°`) +
+                (day.low === null ? '' : ` / ${day.low}°`) +
+                `</span></li>`,
+            )
+            .join('');
+          forecastBlock =
+            `<div class="preview"><h3>On the wall now</h3>` +
+            `<p class="host">National Weather Service · updated ${escapeHtml(ago(row.fetchedAt, now()))}</p>` +
+            `<ul>${strip}</ul></div>`;
+        }
+      } catch {
+        // A malformed cache is not worth failing the settings page over.
+      }
+    }
+
+    const status =
+      weather.enabled && located && forecastBlock === ''
+        ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
+        : '';
 
     return (
       `<p class="hint">A five-day forecast strip. Put it where you want it in the ` +
       `list above — it is a block like any other.</p>` +
+      forecastBlock +
+      status +
       `<form method="post" action="admin/display/weather">` +
       `<div class="checks"><label>` +
       `<input type="checkbox" name="weather_enabled" value="1"` +
@@ -1844,15 +1945,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `placeholder="38.8894" value="${escapeHtml(value(weather.latitude))}"></span>` +
       `<span><label for="longitude">Longitude</label>` +
       `<input id="longitude" name="longitude" type="text" inputmode="decimal" ` +
-      `placeholder="-77.0352" value="${escapeHtml(value(weather.longitude))}"></span>` +
+      `placeholder="-97.7431" value="${escapeHtml(value(weather.longitude))}"></span>` +
       `</div>` +
       `<p class="hint">Press and hold your house in a phone map app to get both numbers.</p>` +
+      `<button type="submit">Save</button></form>` +
+
+      // The easy way, for the common install: read the location Home Assistant
+      // already knows. Only offered when there is a connection to read it from.
+      (haConnected
+        ? `<form method="post" action="admin/display/weather/use-ha-location">` +
+          `<button class="secondary" type="submit">Use my Home Assistant home location</button>` +
+          `</form>` +
+          `<p class="hint">Fills the latitude and longitude from Home Assistant’s ` +
+          `home zone, so there are no numbers to look up.</p>`
+        : '') +
+
       errorBlock(
         'The forecast comes from the US National Weather Service.',
         'It covers the United States only. Elsewhere, leave this off — a second ' +
           'provider is the obvious next module.',
-      ) +
-      `<button type="submit">Save</button></form>`
+      )
     );
   }
 
@@ -2428,9 +2540,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `its own column and the rest stack beside it, in this order.</p>` +
         blockRows(parseBlocks(household.displayBlocks)) +
 
-        `<h2 class="add">Weather</h2>` +
-        weatherSection() +
-
         `<h2 class="add">How much to show</h2>` +
         number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
           'Anything past this is counted rather than listed.') +
@@ -2438,7 +2547,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'Set to 0 to hide the week ahead entirely.') +
         number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
           'The rotation shape. Five covers a month at a glance.') +
-        `<button type="submit">Save</button></form>`,
+        `<button type="submit">Save</button></form>` +
+
+        // Its own section, outside the form above — weather has its own forms
+        // (Save, and "use my Home Assistant location"), which cannot be nested.
+        `<h2 class="add">Weather</h2>` +
+        weatherSection(),
     });
   }
 
