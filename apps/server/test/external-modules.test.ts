@@ -469,4 +469,55 @@ describe('recipe modules (Phase B1)', () => {
     expect(res.status).toBe(400);
     expect(h.db.prepare(`SELECT count(*) c FROM external_modules`).get()).toEqual({ c: 0 });
   });
+
+  it('a recipe signal raises a banner once armed, and nothing until then', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setData({ alert: { active: true, id: 'w1', river: 'Thames' } });
+    const manifest = JSON.stringify({
+      name: 'Flood',
+      contract: 1,
+      fetch: { url: `${mod.base}/data`, allowLan: true },
+      panel: { kind: 'text', text: 'Flood watch' },
+      signals: [{ when: 'alert.active', key: '{alert.id}', title: 'Flood: {alert.river}' }],
+    });
+    await h.form('/admin/modules/recipe', { manifest });
+    const id = moduleId(h.db);
+    await h.poll();
+
+    // Signals are cached, but nothing fires until the household arms the module.
+    expect((await h.manifest()).interrupts).toEqual([]);
+
+    await h.form(`/admin/modules/${id}/alerts`, { action: 'banner' });
+    const interrupts = (await h.manifest()).interrupts;
+    expect(interrupts).toHaveLength(1);
+    expect(interrupts[0]!.action).toBe('banner');
+    expect(interrupts[0]!.title).toBe('Flood: Thames');
+    expect(interrupts[0]!.source).toBe(`ext:${id}`);
+  });
+
+  it('a recipe signal clears when its `when` stops holding', async () => {
+    const h = await harness();
+    const mod = await fakeModule();
+    mod.setData({ alert: { active: true, id: 'w1', river: 'Thames' } });
+    const manifest = JSON.stringify({
+      name: 'Flood',
+      contract: 1,
+      fetch: { url: `${mod.base}/data`, allowLan: true },
+      panel: { kind: 'text', text: 'Flood watch' },
+      signals: [{ when: 'alert.active', key: '{alert.id}', title: 'Flood: {alert.river}' }],
+    });
+    await h.form('/admin/modules/recipe', { manifest });
+    const id = moduleId(h.db);
+    await h.poll();
+    await h.form(`/admin/modules/${id}/alerts`, { action: 'banner' });
+    expect((await h.manifest()).interrupts).toHaveLength(1);
+
+    // The gauge drops. A recipe honours its own polling interval, so simulate
+    // its next due time rather than polling twice in the same millisecond.
+    mod.setData({ alert: { active: false, id: 'w1', river: 'Thames' } });
+    h.db.prepare(`UPDATE external_modules SET last_polled_at = 0 WHERE id = ?`).run(id);
+    await h.poll();
+    expect((await h.manifest()).interrupts).toEqual([]);
+  });
 });

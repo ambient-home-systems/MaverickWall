@@ -5,6 +5,7 @@ import {
   recipeSchema,
   resolveFetchUrl,
   runRecipePanel,
+  runRecipeSignals,
   type Recipe,
 } from '../src/modules/external/recipe.js';
 
@@ -158,6 +159,71 @@ describe('the interpreter', () => {
     // for every module). A value past the cap fails there rather than drawing.
     const out = runRecipePanel(recipe, { msg: 'x'.repeat(400) }, NOW);
     expect(out.ok).toBe(false);
+  });
+});
+
+describe('recipe signals', () => {
+  const alertRecipe = {
+    name: 'Flood',
+    contract: 1,
+    fetch: { url: 'https://api.example.com/gauge' },
+    panel: { kind: 'stat', value: '{level | round:1}', caption: 'm' },
+    signals: [
+      {
+        when: 'alert.active',
+        key: '{alert.id}',
+        title: 'Flood warning: {alert.river}',
+        severity: 'Severe',
+      },
+    ],
+  };
+
+  it('raises a signal when its truthy `when` holds', () => {
+    const recipe = parse(alertRecipe);
+    const body = { level: 3.2, alert: { active: true, id: 'w1', river: 'Thames' } };
+    expect(runRecipeSignals(recipe, body, NOW)).toEqual({
+      ok: true,
+      signals: { signals: [{ key: 'w1', title: 'Flood warning: Thames', severity: 'Severe' }] },
+    });
+  });
+
+  it('raises nothing when the `when` value is falsy', () => {
+    const recipe = parse(alertRecipe);
+    const body = { level: 0.4, alert: { active: false, id: 'w1', river: 'Thames' } };
+    expect(runRecipeSignals(recipe, body, NOW)).toEqual({ ok: true, signals: { signals: [] } });
+  });
+
+  it('supports an equals predicate', () => {
+    const recipe = parse({
+      name: 'Status',
+      contract: 1,
+      fetch: { url: 'https://x/status' },
+      panel: { kind: 'text', text: '{state}' },
+      signals: [{ when: { path: 'state', equals: 'disrupted' }, key: 'svc', title: 'Service disrupted' }],
+    });
+    expect(runRecipeSignals(recipe, { state: 'disrupted' }, NOW)).toEqual({
+      ok: true,
+      signals: { signals: [{ key: 'svc', title: 'Service disrupted' }] },
+    });
+    expect(runRecipeSignals(recipe, { state: 'operational' }, NOW)).toEqual({
+      ok: true,
+      signals: { signals: [] },
+    });
+  });
+
+  it('rejects a signal template that names an unknown formatter, at parse time', () => {
+    const bad = { ...alertRecipe, signals: [{ when: 'a', key: '{x | evil}', title: 't' }] };
+    expect(recipeSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a `when` that is not a selector path', () => {
+    const bad = { ...alertRecipe, signals: [{ when: 'a && b', key: 'k', title: 't' }] };
+    expect(recipeSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a panel-only recipe has no signals', () => {
+    const recipe = parse(fuelRecipe);
+    expect(recipe.signals).toEqual([]);
   });
 });
 

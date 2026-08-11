@@ -17,6 +17,7 @@ import {
   recipeSchema,
   resolveFetchUrl,
   runRecipePanel,
+  runRecipeSignals,
   type RecipeConfig,
 } from './recipe.js';
 import type { ExternalModuleRow } from '../../api/external-modules.js';
@@ -172,6 +173,15 @@ async function pollRecipe(
   const outcome = runRecipePanel(recipe, body, now);
   if (outcome.ok) writeExternalModulePanel(db, module.id, outcome.panel);
   else writeExternalModuleError(db, module.id, outcome.error);
+
+  // Signals come from the same body, and go to the same column a service's
+  // `/signals` fills — so arming, source scoping and dismissal are all the
+  // unchanged Phase 2b path. An authoritative replace: a signal whose `when`
+  // stopped holding drops out, and its interrupt clears.
+  if (recipe.signals.length > 0) {
+    const signals = runRecipeSignals(recipe, body, now);
+    if (signals.ok) writeExternalModuleSignals(db, module.id, signals.signals);
+  }
 }
 
 async function pollOne(
