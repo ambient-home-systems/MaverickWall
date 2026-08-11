@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0
+
+Recipes can now raise an alert.
+
+- A **recipe** — a module with no service to host, that reads a public web feed —
+  can now show a **banner** or **take over the wall** when something in that feed
+  becomes true: a river gauge, a service-status page, a disruption notice. You
+  give it a plain rule for when to fire and what to say.
+- As with any module, it stays **off until you turn it on**: a recipe's alerts
+  use the same **Alerts** setting on the Add-ons screen, Off by default. A recipe
+  can never wake a screen that has gone dark, and its alert clears on its own
+  once the feed says the thing is over.
+
+Nothing changes for a recipe or module you already added until you turn its
+alerts on.
+
 ## 0.10.0
 
 Browse modules to add, and add ones with no server to run.

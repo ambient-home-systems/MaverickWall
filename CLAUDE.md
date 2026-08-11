@@ -611,11 +611,24 @@ poll branch; the adapter is unchanged, and the built panel crosses the *same*
 `panelDataSchema` a service module's body does. The fetch is SSRF-guarded and
 **public-https-only by default** — `allowLan` is what lets a recipe reach a
 service on the household's own network, and the test that a loopback fetch is
-refused until a recipe opts in is the one that proves it. **Deferred:** recipe
-`secrets` (encrypted credentials in the fetch), recipe `signals` and their `when`
-predicate (B2), sourceless generators like a countdown (B2), the tidy
-catalogue-recipe install with a config prompt and remote community catalogues
-fetched with consent (A2).
+refused until a recipe opts in is the one that proves it.
+
+**A recipe can also raise an alert (v0.11.0, RFC 002 B2).** It reads `signals`
+out of the same fetched body the panel is, gated by a deliberately blunt `when`
+predicate — a selector path (fires when truthy) or `{ path, equals }`, and
+nothing that could grow into an expression (`a && b` is a rejected recipe). What
+it builds is validated against the *same* `signalDataSchema` a service module's
+`/signals` answers with and written to the *same* `signals` column, so
+everything downstream is the unchanged Phase 2b path: `source: ext:<id>`, inert
+until the household arms the module's Alerts control, source-scoped, dismissible,
+an authoritative replace each poll (a signal whose `when` stops holding clears
+its interrupt). `severity` is a literal the author declares, not a value mapped
+from the feed. **Sourceless generators (countdown) were deferred and may never be
+built** — a countdown already exists as the free-form widget and the example
+module, so a third would be redundant surface on a security-sensitive schema; the
+reasoning is in the RFC. **Still deferred:** recipe `secrets` (encrypted
+credentials in the fetch), and the tidy catalogue-recipe install with a config
+prompt plus remote community catalogues fetched with consent (A2).
 
 **Home Assistant is read-only, and that is a security property.** A long-lived
 access token has full control of a house and cannot be scoped, so the limit is
