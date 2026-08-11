@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.15.0
+
+The Add-ons screen is now a **Store**.
+
+- **Browse and install from one place.** The **Store** (formerly Add-ons) lists
+  modules to add — a countdown, the weather, a price — each installed in a click
+  and a couple of fields. Everything you install is shown there too.
+- **Simpler by design.** The old "add a module by web address" box and the
+  raw recipe editor have moved to an **Advanced** screen, off the everyday path.
+  Adding a community catalogue by URL has been removed — the store is now one
+  curated list that ships with Maverick Wall and grows over time.
+
+Every module you already installed keeps working, unchanged. If you had added a
+community catalogue by URL, that list is no longer shown; the modules you
+installed from it are unaffected.
+
 ## 0.14.0
 
 Recipes can now use a feed that needs an API key.
