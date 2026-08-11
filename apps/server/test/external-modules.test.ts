@@ -382,6 +382,46 @@ describe('the module catalogue (Phase A1)', () => {
     expect(html).toContain('Add a module');
   });
 
+  it('a recipe entry offers a config-prompt install, and installs a recipe row', async () => {
+    const h = await harness();
+    // The install page renders an input per config field, its default pre-filled.
+    const form = await (await h.call('/admin/modules/install/outside-temperature')).text();
+    expect(form).toContain('Install Outside temperature');
+    expect(form).toContain('name="cfg_lat"');
+    expect(form).toContain('value="51.5074"');
+    expect(form).toContain('name="cfg_lon"');
+
+    // Submitting the household's values creates a recipe row with that config —
+    // no JSON pasted. (Not polled: it would reach the real Open-Meteo feed.)
+    const added = await h.form('/admin/modules/install/outside-temperature', {
+      name: 'Weather',
+      cfg_lat: '40.7',
+      cfg_lon: '-74.0',
+    });
+    expect(added.status).toBe(302);
+
+    const row = h.db
+      .prepare(`SELECT kind, name, config FROM external_modules LIMIT 1`)
+      .get() as { kind: string; name: string; config: string };
+    expect(row.kind).toBe('recipe');
+    expect(row.name).toBe('Weather');
+    expect(JSON.parse(row.config)).toEqual({ lat: '40.7', lon: '-74.0' });
+  });
+
+  it('the Browse page routes a recipe entry to its install page, a service to the form', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/modules/browse')).text();
+    // Recipe → dedicated install page; service → the pre-fill deep link.
+    expect(html).toContain('admin/modules/install/outside-temperature');
+    expect(html).toContain('admin/modules?install=countdown-example#add');
+  });
+
+  it('an unknown or service id on the recipe install route redirects to Browse', async () => {
+    const h = await harness();
+    expect((await h.call('/admin/modules/install/countdown-example')).status).toBe(302);
+    expect((await h.call('/admin/modules/install/nope')).status).toBe(302);
+  });
+
   it('an installed catalogue module works end to end through the add form', async () => {
     // The catalogue is discovery, not a separate install path: it fills the same
     // form, which adds the same kind of module. Prove the module it points at is

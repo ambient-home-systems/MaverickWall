@@ -1,4 +1,5 @@
 import { z } from '../validation.js';
+import { recipeSchema } from '../modules/external/recipe.js';
 
 /**
  * The module catalogue (docs/rfc-002-module-catalog-and-recipes.md, Phase A1).
@@ -24,23 +25,24 @@ import { z } from '../validation.js';
 // Every string is capped, and rendered with `escapeHtml`. The caps matter more
 // once A2 lets these strings come from a stranger's catalogue over the network;
 // fixing them now means the schema does not change when the source does.
-const entrySchema = z
+const common = {
+  /** Stable, kebab-case. Referenced by the install deep-link. */
+  id: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9-]+$/, 'lower-case letters, digits and hyphens only'),
+  name: z.string().min(1).max(60),
+  author: z.string().min(1).max(60),
+  description: z.string().min(1).max(280),
+  /** A single glyph the device already has — never a fetched image (rule three). */
+  icon: z.string().min(1).max(4),
+};
+
+/** A module the household runs, added by URL (RFC 001). */
+const serviceEntry = z
   .object({
-    /** Stable, kebab-case. Referenced by the install deep-link. */
-    id: z
-      .string()
-      .min(1)
-      .max(64)
-      .regex(/^[a-z0-9-]+$/, 'lower-case letters, digits and hyphens only'),
-    name: z.string().min(1).max(60),
-    author: z.string().min(1).max(60),
-    description: z.string().min(1).max(280),
-    /** A single glyph the device already has — never a fetched image (rule three). */
-    icon: z.string().min(1).max(4),
-    /**
-     * Phase A1 is service modules only: a module the household runs, added by
-     * URL. `recipe` (a module Maverick Wall runs itself) is Phase B.
-     */
+    ...common,
     kind: z.literal('service'),
     install: z
       .object({
@@ -59,9 +61,28 @@ const entrySchema = z
   })
   .strict();
 
+/**
+ * A recipe the wall runs itself (RFC 002 B1/B2). The whole recipe manifest is
+ * embedded and validated by the *same* `recipeSchema` the raw-paste form uses —
+ * so a catalogue recipe can do nothing a hand-written one cannot, and the
+ * config fields to prompt for come straight off `recipe.config`. Installing it
+ * is filling those in, not pasting JSON.
+ */
+const recipeEntry = z
+  .object({
+    ...common,
+    kind: z.literal('recipe'),
+    recipe: recipeSchema,
+  })
+  .strict();
+
+const entrySchema = z.discriminatedUnion('kind', [serviceEntry, recipeEntry]);
+
 export const catalogSchema = z.object({ version: z.literal(1), modules: z.array(entrySchema) });
 
 export type CatalogEntry = z.infer<typeof entrySchema>;
+export type ServiceEntry = z.infer<typeof serviceEntry>;
+export type RecipeEntry = z.infer<typeof recipeEntry>;
 export type Catalog = z.infer<typeof catalogSchema>;
 
 /**
@@ -91,6 +112,37 @@ export const CATALOG: Catalog = {
           'then paste its address below. It answers on port 9000 by default.',
         url: 'http://localhost:9000',
         source: 'https://github.com/ambient-home-systems/MaverickWall/tree/main/examples/example-module',
+      },
+    },
+    {
+      id: 'outside-temperature',
+      name: 'Outside temperature',
+      author: 'Maverick Wall',
+      description:
+        'The current temperature where you live, from Open-Meteo — a free, ' +
+        'key-less public weather feed. A good first recipe: install it, fill in ' +
+        'your latitude and longitude, done.',
+      icon: '🌡️',
+      kind: 'recipe',
+      recipe: {
+        name: 'Outside temperature',
+        contract: 1,
+        config: [
+          { key: 'lat', label: 'Latitude', type: 'string', default: '51.5074' },
+          { key: 'lon', label: 'Longitude', type: 'string', default: '-0.1278' },
+        ],
+        fetch: {
+          url: 'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m',
+          intervalSeconds: 900,
+          allowLan: false,
+        },
+        panel: {
+          kind: 'stat',
+          title: 'Outside',
+          value: '{current.temperature_2m | round:1}',
+          caption: '°C',
+        },
+        signals: [],
       },
     },
   ],

@@ -19,7 +19,13 @@ import {
 import { deleteRule, moduleAlertRuleId, syncModuleAlertRule } from '../api/rules.js';
 import { signalDataSchema } from '../modules/external/signal-data.js';
 import { normaliseConfig, recipeSchema, type RecipeConfig } from '../modules/external/recipe.js';
-import { CATALOG, catalogEntry, type CatalogEntry } from './catalog.js';
+import {
+  CATALOG,
+  catalogEntry,
+  type CatalogEntry,
+  type RecipeEntry,
+  type ServiceEntry,
+} from './catalog.js';
 import { parse, text, z } from '../validation.js';
 
 /**
@@ -52,13 +58,50 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
   app.get('/admin/modules', (c: Context) => {
-    // `?install=<id>` deep-links from the catalogue and fills the add form in —
-    // a query parameter, not a script, the same "prefill" the rule templates use.
-    const prefill = catalogEntry(c.req.query('install') ?? '');
+    // `?install=<id>` deep-links a *service* entry from the catalogue and fills
+    // the add form in — a query parameter, not a script, the same "prefill" the
+    // rule templates use. A recipe entry installs on its own page instead.
+    const entry = catalogEntry(c.req.query('install') ?? '');
+    const prefill = entry?.kind === 'service' ? entry : undefined;
     return c.html(modulesPage(undefined, prefill));
   });
 
   app.get('/admin/modules/browse', (c: Context) => c.html(browsePage()));
+
+  app.get('/admin/modules/install/:id', (c: Context) => {
+    const entry = catalogEntry(c.req.param('id') ?? '');
+    if (entry === undefined || entry.kind !== 'recipe') return c.redirect('/admin/modules/browse', 302);
+    return c.html(installRecipePage(entry));
+  });
+
+  app.post('/admin/modules/install/:id', async (c: Context) => {
+    const entry = catalogEntry(c.req.param('id') ?? '');
+    if (entry === undefined || entry.kind !== 'recipe') return c.redirect('/admin/modules/browse', 302);
+
+    // The household filled in the recipe's own config fields, keyed by their
+    // `key`. Everything else about the recipe is fixed by the catalogue entry —
+    // the household is choosing values, not authoring a recipe.
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const supplied: RecipeConfig = {};
+    for (const field of entry.recipe.config) {
+      const raw = body[`cfg_${field.key}`];
+      if (typeof raw === 'string') supplied[field.key] = raw;
+    }
+    const config = normaliseConfig(entry.recipe, supplied);
+
+    const id = randomBytes(6).toString('hex');
+    const name = (typeof body['name'] === 'string' && body['name'].trim()) || entry.name;
+    const blockKey = createRecipeModule(deps.db, {
+      id,
+      name,
+      url: entry.recipe.fetch.url,
+      recipe: entry.recipe,
+      config,
+    });
+    ensureDisplayBlock(deps.db, blockKey);
+    deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
+    return c.redirect('/admin/modules', 302);
+  });
 
   app.get('/admin/modules/recipe', (c: Context) => c.html(recipePage()));
 
@@ -263,7 +306,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function modulesPage(error?: string, prefill?: CatalogEntry): string {
+  function modulesPage(error?: string, prefill?: ServiceEntry): string {
     const modules = readExternalModules(deps.db);
     // When the add form was reached from the catalogue, pre-fill its fields and
     // show the entry's install guidance above them.
@@ -374,16 +417,60 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
       `<div class="host">by ${escapeHtml(entry.author)}</div>` +
-      `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div></div>` +
+      `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div>` +
+      `<span class="tag" style="align-self:flex-start">${entry.kind === 'recipe' ? 'Recipe' : 'Service'}</span>` +
+      `</div>` +
       `<div class="row" style="margin-top:14px;padding-top:14px;` +
       `border-top:1px solid var(--ruleSoft)">` +
-      `<a class="btn" href="admin/modules?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
-      (entry.install.source === undefined
-        ? ''
-        : `<a class="link" style="margin-left:auto;align-self:center" ` +
-          `href="${escapeHtml(entry.install.source)}" rel="noreferrer noopener">Source</a>`) +
+      // A recipe installs on its own page (fill in its fields); a service
+      // pre-fills the add-by-URL form.
+      (entry.kind === 'recipe'
+        ? `<a class="btn" href="admin/modules/install/${encodeURIComponent(entry.id)}">Install</a>`
+        : `<a class="btn" href="admin/modules?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
+          (entry.install.source === undefined
+            ? ''
+            : `<a class="link" style="margin-left:auto;align-self:center" ` +
+              `href="${escapeHtml(entry.install.source)}" rel="noreferrer noopener">Source</a>`)) +
       `</div></article>`
     );
+  }
+
+  /**
+   * Installing a recipe from the catalogue: fill in its config, not JSON.
+   *
+   * The recipe manifest is fixed by the entry — the household is only choosing
+   * values for the fields the recipe declared (a latitude, a station id). An
+   * input per `recipe.config` field, its default pre-filled. A recipe with no
+   * config is just a confirm.
+   */
+  function installRecipePage(entry: RecipeEntry): string {
+    const fields = entry.recipe.config
+      .map(
+        (field) =>
+          `<label for="cfg_${field.key}">${escapeHtml(field.label)}</label>` +
+          `<input id="cfg_${field.key}" name="cfg_${field.key}" type="text" maxlength="280" ` +
+          `value="${escapeHtml(field.default ?? '')}">`,
+      )
+      .join('');
+    return page({
+      title: `Install ${entry.name} — Maverick Wall`,
+      nav: 'modules',
+      heading: `Install ${entry.name}`,
+      action: { label: 'Back to the catalogue', href: 'admin/modules/browse' },
+      intro: entry.description,
+      body:
+        `<form method="post" action="admin/modules/install/${encodeURIComponent(entry.id)}">` +
+        `<label for="name">Call it (optional)</label>` +
+        `<input id="name" name="name" type="text" maxlength="60" ` +
+        `value="${escapeHtml(entry.name)}">` +
+        (fields === ''
+          ? `<p class="hint">This recipe needs no settings.</p>`
+          : `<h2 class="add">Settings</h2>${fields}`) +
+        `<button type="submit" style="margin-top:16px">Add to the wall</button></form>` +
+        `<p class="hint">A recipe is data, never code. It reads a public web feed ` +
+        `over a secure connection and shows a value from it — it never runs ` +
+        `anything, and never receives anything about your household.</p>`,
+    });
   }
 
   function browsePage(): string {
@@ -393,9 +480,9 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       heading: 'Browse the catalogue',
       action: { label: 'Back to Add-ons', href: 'admin/modules' },
       intro:
-        'Modules people have built and shared. Choosing one shows you how to run ' +
-        'it and fills the address in for you — nothing is installed until you add ' +
-        'it yourself. A module only ever supplies values for the wall to show.',
+        'Modules people have built and shared. A recipe installs in a click and ' +
+        'a couple of fields; a service shows you how to run it and fills the ' +
+        'address in. Either way a module only ever supplies values to show.',
       body:
         CATALOG.modules.map(catalogCard).join('') +
         `<p class="hint">This list ships with Maverick Wall. A community-updated ` +
