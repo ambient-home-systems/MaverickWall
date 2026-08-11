@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.10.0
+
+Browse modules to add, and add ones with no server to run.
+
+- **Browse the catalogue.** The Add-ons screen has a new **Browse** button with
+  a list of modules to choose from. Pick one and it shows you how to run it and
+  fills its address in for you — nothing is added until you do it yourself.
+- **Recipes — a module with nothing to host.** Choose **Add a recipe** to put a
+  value from a public web feed on the wall — a price, a tide time, a countdown —
+  with no service of your own to run. You give the feed's address and how to draw
+  it; Maverick Wall does the fetching on a timer. A recipe is **data, never
+  code**: it can pull out fields and format them, and nothing else. It reaches
+  the public internet over a secure connection only, unless you deliberately
+  point it at a service on your own network.
+
+Every module, recipe and wall you already have is unchanged.
+
+## 0.9.0
+
+An add-on module can now raise an alert on the wall.
+
+- A module you have added can show a **banner**, or **take over the whole wall**,
+  when something it reports becomes true. It is **off until you say so**: each
+  module has an **Alerts** setting on the Add-ons screen — Off by default — where
+  you choose whether it may show a banner or take over.
+- Whatever a module shows, you can always clear it from the wall, and a module
+  can **never wake a screen that has gone dark** for the night. That is kept for
+  genuine safety alerts, like severe weather.
+- A module's alerts are only ever about that module — they can never set off your
+  weather alerts, and one module can never speak for another.
+
+A module you already had on the wall shows no alerts until you turn its Alerts
+setting on.
+
 ## 0.8.0
 
 Place an add-on module anywhere on a wall.

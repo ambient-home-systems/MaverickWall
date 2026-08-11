@@ -104,6 +104,24 @@ describe('the add-on manifest', () => {
     expect(addon.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
+  it('has a changelog entry for the version it ships', () => {
+    /*
+     * The supervisor reads this CHANGELOG.md straight from the repository and
+     * shows it beside the update button, so a release with no entry for its own
+     * version is a household told nothing about what they are about to install.
+     * It happened twice — 0.9.0 and 0.10.0 both shipped with the changelog
+     * stopped at 0.8.0 — because nothing was looking. This is the thing looking:
+     * the newest `## x.y.z` heading must be the version `config.yaml` ships.
+     *
+     * Only the *top* entry is checked, on purpose. The changelog is prepended
+     * to, so the first heading is the current release; older headings are
+     * history and not this test's business.
+     */
+    const changelog = read('addon/maverick-wall/CHANGELOG.md');
+    const firstHeading = changelog.match(/^##\s+(\d+\.\d+\.\d+)/m);
+    expect(firstHeading?.[1]).toBe(addon.version);
+  });
+
   it('maps a port as well as ingress, because wall displays cannot use ingress', () => {
     // Ingress is the settings, authenticated by Home Assistant. A screen
     // screwed to a wall has no Home Assistant session and never will, so
