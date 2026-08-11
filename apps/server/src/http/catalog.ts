@@ -1,5 +1,6 @@
 import { z } from '../validation.js';
 import { recipeSchema } from '../modules/external/recipe.js';
+import { STORE_ENTRIES } from '../catalog/index.js';
 
 /**
  * The module catalogue (docs/rfc-002-module-catalog-and-recipes.md, Phase A1).
@@ -80,107 +81,22 @@ const entrySchema = z.discriminatedUnion('kind', [serviceEntry, recipeEntry]);
 
 export const catalogSchema = z.object({ version: z.literal(1), modules: z.array(entrySchema) });
 
-/**
- * The schema a *remote* catalogue is held to (A2). Everything the built-in one
- * is, plus one hard refusal: a recipe entry may not ask to reach the LAN
- * (`fetch.allowLan`). The household authored neither the source nor its recipes,
- * so a community catalogue that wanted a recipe pointed at `192.168.x.x` — or at
- * `http://supervisor` — is refused outright, the whole source. A household that
- * genuinely wants a recipe on their own network pastes its manifest themselves
- * (B1), which is their own explicit act. Remote recipes are public-internet
- * only, and the SSRF guard enforces it a second time at fetch.
- */
-export const remoteCatalogSchema = catalogSchema.superRefine((cat, ctx) => {
-  cat.modules.forEach((entry, i) => {
-    if (entry.kind !== 'recipe') return;
-    if (entry.recipe.fetch.allowLan) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['modules', i],
-        message: 'a remote catalogue may not ask a recipe to reach your local network',
-      });
-    }
-    // A stranger's recipe may not ask the household for a credential: it would be
-    // a phishing surface (give me your API key, I decide where it goes). A recipe
-    // that needs a secret is one the household pastes themselves, and trusts.
-    if (entry.recipe.secrets.length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['modules', i],
-        message: 'a remote catalogue may not ask for a secret',
-      });
-    }
-  });
-});
-
 export type CatalogEntry = z.infer<typeof entrySchema>;
 export type ServiceEntry = z.infer<typeof serviceEntry>;
 export type RecipeEntry = z.infer<typeof recipeEntry>;
 export type Catalog = z.infer<typeof catalogSchema>;
 
 /**
- * The built-in catalogue.
+ * The store — the curated, in-repo list of modules a household can install.
  *
- * Starts with the one service module that actually exists and runs — the
- * example in `examples/example-module`. An entry that advertised a module
- * nobody could install would be worse than an empty list: the whole point of a
- * catalogue is that what it lists is real. Community entries arrive by pull
- * request against this list (and, in A2, a remote catalogue).
+ * The entries live one-file-per-module in `apps/server/src/catalog/`, listed by
+ * its `index.ts`; this is only the schema and the assembly. A module is added by
+ * pull request against that directory (`docs/adding-to-the-store.md`) and ships
+ * to everyone in the next release. Baked into the image, so it works on a wall
+ * with no internet. Every entry advertised here is real and installable — an
+ * entry for a module nobody could run would be worse than an empty list.
  */
-export const CATALOG: Catalog = {
-  version: 1,
-  modules: [
-    {
-      id: 'countdown-example',
-      name: 'Countdown',
-      author: 'Maverick Wall',
-      description:
-        'A big number counting down the days to a date you choose — the runnable ' +
-        'reference module. A good first module to try, and to copy.',
-      icon: '⏳',
-      kind: 'service',
-      install: {
-        hint:
-          'Run examples/example-module (node server.mjs, or set PORT/TARGET/LABEL), ' +
-          'then paste its address below. It answers on port 9000 by default.',
-        url: 'http://localhost:9000',
-        source: 'https://github.com/ambient-home-systems/MaverickWall/tree/main/examples/example-module',
-      },
-    },
-    {
-      id: 'outside-temperature',
-      name: 'Outside temperature',
-      author: 'Maverick Wall',
-      description:
-        'The current temperature where you live, from Open-Meteo — a free, ' +
-        'key-less public weather feed. A good first recipe: install it, fill in ' +
-        'your latitude and longitude, done.',
-      icon: '🌡️',
-      kind: 'recipe',
-      recipe: {
-        name: 'Outside temperature',
-        contract: 1,
-        config: [
-          { key: 'lat', label: 'Latitude', type: 'string', default: '51.5074' },
-          { key: 'lon', label: 'Longitude', type: 'string', default: '-0.1278' },
-        ],
-        secrets: [],
-        fetch: {
-          url: 'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m',
-          intervalSeconds: 900,
-          allowLan: false,
-        },
-        panel: {
-          kind: 'stat',
-          title: 'Outside',
-          value: '{current.temperature_2m | round:1}',
-          caption: '°C',
-        },
-        signals: [],
-      },
-    },
-  ],
-};
+export const CATALOG: Catalog = { version: 1, modules: [...STORE_ENTRIES] };
 
 export function catalogEntry(id: string): CatalogEntry | undefined {
   return CATALOG.modules.find((entry) => entry.id === id);

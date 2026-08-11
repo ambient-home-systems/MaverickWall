@@ -141,6 +141,13 @@
       "when": 1786455256993,
       "tag": "0019_gifted_angel",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1786469754730,
+      "tag": "0020_lyrical_sunspot",
+      "breakpoints": true
     }
   ]
 }

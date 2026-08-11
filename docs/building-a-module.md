@@ -1,15 +1,22 @@
 # Building a Maverick Wall module
 
 A module puts an extra panel on the wall — a bin-day countdown, fuel prices, a
-train time, whatever you like. It is **its own small HTTP service** that you run
-on your own network. Maverick Wall reads it and draws it, and **never runs
-anything it sends**.
+train time, whatever you like. There are two kinds, and **most of the time you
+want a recipe**:
 
-There is a complete, runnable example in
-[`examples/example-module`](../examples/example-module) — copy it and change the
-`panel()` function.
+- A **recipe** is declarative data — it names a public web feed and how to draw
+  it, and Maverick Wall does the fetching. No service to host. See
+  [Recipes](#recipes--a-module-with-no-server) below, and
+  [`adding-to-the-store.md`](./adding-to-the-store.md) to share one in the store.
+- A **service module** is its own small HTTP service you run on your own
+  network, for the rare thing a recipe cannot do. This document covers that
+  contract first; there is a runnable example in
+  [`examples/example-module`](../examples/example-module).
 
-## The contract
+Either way, Maverick Wall reads what the module supplies and draws it, and
+**never runs anything it sends**.
+
+## The service contract
 
 Your service answers two `GET` requests. That is the whole of it.
 

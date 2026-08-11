@@ -1,7 +1,26 @@
 # RFC 002 — A module catalogue, and recipe modules
 
-Status: **proposed, not started** · Owner: — · First drafted 2026-08-11 ·
+Status: **implemented, then simplified** · Owner: — · First drafted 2026-08-11 ·
 Builds on [RFC 001](./rfc-001-module-framework.md)
+
+> **Update — the store reframe.** The catalogue, recipes, alerts, secrets and the
+> config-prompt install all shipped as described below. Two later course
+> corrections, driven by how the result actually felt to use:
+>
+> - **Remote catalogue sources (add a catalogue by URL) were removed.** The store
+>   is now a single, curated, **in-repo** list — one file per module under
+>   `apps/server/src/catalog/`, added by pull request and shipped to everyone in
+>   the next release (see [`adding-to-the-store.md`](./adding-to-the-store.md)).
+>   "Maintain the store as part of the project" beat "let each household assemble
+>   it from URLs." The `catalog_sources` table is dropped in migration `0020`.
+> - **The two by-URL add paths moved off the everyday screen.** `/admin/modules`
+>   is now **the Store** (browse + what you've installed). Adding a service module
+>   by URL, and writing a recipe by hand, live on an **Advanced** screen. Service
+>   modules are kept — they are the escape hatch for what a recipe cannot do —
+>   just not the front door.
+>
+> Everything below is the design as built; where it says "remote catalogue" or
+> "catalogue sources by URL", read it as removed by this reframe.
 
 ## Summary
 

@@ -22,7 +22,6 @@ import { detectWallAddress } from './net/supervisor.js';
 import { countUsers, readHousehold, readUpdateState, recordUpdateCheck } from './api/queries.js';
 import { checkForUpdate } from './api/update-check.js';
 import { pollExternalModules } from './modules/external/index.js';
-import { pollCatalogSources } from './modules/catalog-sources.js';
 import type { ManifestNotice } from './api/manifest.js';
 
 /**
@@ -208,10 +207,6 @@ async function main(): Promise<void> {
        */
       'external-modules': async () => {
         await pollExternalModules(db, fetcher, keyring);
-        return { status: 'ok' };
-      },
-      'catalog-sources': async () => {
-        await pollCatalogSources(db, fetcher);
         return { status: 'ok' };
       },
       'update-check': async () => {
@@ -445,7 +440,6 @@ function registerJobs(db: SqliteDatabase): void {
   // Third-party module poll, registered always; does nothing when there are no
   // modules. Half a minute out so a restart never stampedes them.
   ensureJob(db, 'external-modules', 'external-modules', Date.now() + 30_000);
-  ensureJob(db, 'catalog-sources', 'catalog-sources', Date.now() + 45_000);
   // Module jobs, a minute out so a restart never stampedes an upstream.
   for (const module of MODULES) {
     if (module.job !== undefined) {
