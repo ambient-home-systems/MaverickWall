@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATALOG, catalogEntry, catalogSchema } from '../src/http/catalog.js';
+import { CATALOG, catalogEntry, catalogSchema, previewFor, recipePreview } from '../src/http/catalog.js';
 
 /**
  * The module catalogue (docs/rfc-002-module-catalog-and-recipes.md, Phase A1).
@@ -98,5 +98,49 @@ describe('module catalogue', () => {
     if (entry?.kind === 'recipe') {
       expect(entry.recipe.config.map((f) => f.key)).toEqual(['lat', 'lon']);
     }
+  });
+});
+
+describe('store card previews', () => {
+  it('derives a recipe preview from its own panel: labels kept, live value placeheld', () => {
+    // The shipped stat recipe: value is a {selector}, title and caption are
+    // literals — so the derived preview shows "— °C" over "Outside".
+    const entry = catalogEntry('outside-temperature');
+    if (entry?.kind !== 'recipe') throw new Error('expected the recipe entry');
+    expect(recipePreview(entry.recipe)).toEqual(['— °C', 'Outside']);
+  });
+
+  it('derives previews for the other panel kinds too', () => {
+    const stat = { kind: 'stat', value: '19', caption: '°C' } as const; // literal value
+    expect(recipePreview({ panel: stat } as never)).toEqual(['19 °C']);
+
+    const text = { kind: 'text', title: 'Note', text: '{body}' } as const;
+    expect(recipePreview({ panel: text } as never)).toEqual(['Note', '—']);
+
+    const readings = { kind: 'readings', items: { for: 'a', label: '{name}', value: '{v}' } } as const;
+    expect(recipePreview({ panel: readings } as never)).toEqual(['Readings', '— —']);
+  });
+
+  it('an authored preview wins over the derived one', () => {
+    const entry = catalogEntry('outside-temperature');
+    if (entry?.kind !== 'recipe') throw new Error('expected the recipe entry');
+    // The shipped entry authored ['19.4°','Outside']; previewFor returns that,
+    // not the derived '— °C'.
+    expect(entry.preview).toBeDefined();
+    expect(previewFor(entry)).toEqual(entry.preview);
+  });
+
+  it('a recipe with no authored preview falls back to the derived one', () => {
+    const entry = catalogEntry('outside-temperature');
+    if (entry?.kind !== 'recipe') throw new Error('expected the recipe entry');
+    const { preview: _omitted, ...bare } = entry;
+    expect(previewFor(bare as never)).toEqual(['— °C', 'Outside']);
+  });
+
+  it('a service with no authored preview has nothing to derive', () => {
+    const entry = catalogEntry('countdown-example');
+    if (entry?.kind !== 'service') throw new Error('expected the service entry');
+    const { preview: _omitted, ...bare } = entry;
+    expect(previewFor(bare as never)).toBeUndefined();
   });
 });

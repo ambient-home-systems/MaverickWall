@@ -24,7 +24,7 @@ import {
   recipeSchema,
   type RecipeConfig,
 } from '../modules/external/recipe.js';
-import { CATALOG, catalogEntry, type CatalogEntry, type RecipeEntry, type ServiceEntry } from './catalog.js';
+import { CATALOG, catalogEntry, previewFor, type CatalogEntry, type RecipeEntry, type ServiceEntry } from './catalog.js';
 import { parse, text, z } from '../validation.js';
 
 /**
@@ -503,13 +503,16 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
 
   /** One store card: glyph, name, author, description, and an Install link. */
   function catalogCard(entry: CatalogEntry): string {
-    // A glyph-only "screenshot" beside the icon, when the entry authored one:
-    // the first line is the headline, the rest captions, like a wall stat panel.
+    // A glyph-only "screenshot" beside the icon: the entry's authored preview,
+    // or one derived from a recipe's own panel shape. First line is the
+    // headline, the rest captions, like a wall stat panel. Absent for a service
+    // that authored none.
+    const lines = previewFor(entry);
     const preview =
-      entry.preview === undefined
+      lines === undefined
         ? ''
         : `<div class="cpreview">` +
-          entry.preview
+          lines
             .map((line, i) => (i === 0 ? `<b>${escapeHtml(line)}</b>` : `<i>${escapeHtml(line)}</i>`))
             .join('') +
           `</div>`;
