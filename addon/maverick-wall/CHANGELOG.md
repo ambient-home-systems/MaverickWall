@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+Place an add-on module anywhere on a wall.
+
+- A module's panel can now be added to a **free-form layout** as a widget, not
+  just stacked below the calendar. Add a **Module** widget on the Layout editor,
+  choose which of your add-ons it shows, and drag it wherever you like.
+
+Nothing changes for a module you already had on the wall.
+
 ## 0.7.0
 
 Add-ons: put a panel from another service on the wall.
