@@ -1,9 +1,20 @@
-# Tag → build for both architectures → sign → push → SBOM.
+# Tag → build each architecture on its own machine → sign → verify → advertise.
 #
 # Signing and the bill of materials are not ceremony here: this ships code to
 # other people's machines, on hardware nobody can reach, and there is no way to
 # patch a household remotely. Somebody has to be able to check that the image
 # they pulled is the one this repository built.
+#
+# The shape of this file is set by one rule: **nothing tells Home Assistant an
+# update exists until the image is published, pullable and signed.** The
+# supervisor watches `config.yaml` in this repository, not the registry, so the
+# version there is an advertisement. It used to be raised by hand at merge and
+# the image followed minutes later — or, when a tag was forgotten, not at all
+# (see the `verify` job's note about v0.1.9). In between, every household who
+# pressed Update got a registry error for something that did not exist yet.
+# `advertise` is the last job here for that reason: the bump is the final
+# consequence of a release that already worked, rather than the announcement of
+# one that might.
 name: Release
 
 on:
@@ -22,12 +33,38 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/maverick-wall
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  # One architecture per machine, each on metal that speaks it.
+  #
+  # This used to be a single `platforms: linux/amd64,linux/arm64` build on an
+  # amd64 runner, which meant arm64 was compiled under QEMU — and `arm64 under
+  # emulation` was, by itself, most of an eight-minute release. Native arm
+  # runners are free for public repositories, so the two builds now run side by
+  # side on their own hardware and the release takes about as long as its slower
+  # half rather than the sum.
+  #
+  # Each pushes *by digest* and nothing else: no tags are created here. A tag
+  # that exists before every architecture has landed is a manifest a supervisor
+  # could pull halfway through, which is the failure this whole file is about.
+  # The tags are created once, in `publish`, from digests that already exist.
+  build:
+    strategy:
+      # Both or neither. A tag naming one architecture is worse than no tag:
+      # `config.yaml` promises two, and the missing one fails at `docker pull`
+      # after the household has pressed the button.
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      # No setup-qemu-action. That is the point of this job.
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -36,7 +73,74 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: sigstore/cosign-installer@v3
+      # Stated here, not left to be derived.
+      #
+      # metadata-action builds its labels from the GitHub repository API and
+      # passes them to the build, where they override the `LABEL` lines in the
+      # Dockerfile. v0.1.0 went out with `org.opencontainers.image.licenses=` —
+      # empty — because the API had not detected the licence yet. That is the
+      # field scanners and registries read, and a blank one on an AGPL image is
+      # worse than silence: it reads as "no licence stated".
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.title=Maverick Wall
+            org.opencontainers.image.description=A self-hosted family calendar for a wall display.
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          provenance: mode=max
+          sbom: true
+          labels: ${{ steps.meta.outputs.labels }}
+          # Pushed by digest, unnamed and untagged. `publish` gives it a name.
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+          # Scoped per architecture: one cache shared by two different targets
+          # is a cache that misses on both.
+          cache-from: type=gha,scope=${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
+
+      - name: Hand the digest to the publish job
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.suffix }}
+          path: /tmp/digests/*
+          retention-days: 1
+          if-no-files-found: error
+
+  # The two architectures become one thing a household can pull.
+  publish:
+    name: Tag, sign and describe the image
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
         uses: docker/metadata-action@v5
@@ -50,37 +154,30 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
             type=raw,value=stable,enable=${{ !contains(github.ref, '-') }}
-          # Stated here, not left to be derived.
-          #
-          # This action builds its labels from the GitHub repository API and
-          # passes them to the build, where they override the `LABEL` lines in
-          # the Dockerfile. v0.1.0 went out with
-          # `org.opencontainers.image.licenses=` — empty — because the API had
-          # not detected the licence yet. That is the field scanners and
-          # registries read, and a blank one on an AGPL image is worse than
-          # silence: it reads as "no licence stated".
-          labels: |
-            org.opencontainers.image.title=Maverick Wall
-            org.opencontainers.image.description=A self-hosted family calendar for a wall display.
-            org.opencontainers.image.licenses=AGPL-3.0-or-later
 
-      - id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          # arm64 is not an afterthought: a Raspberry Pi and a Synology are the
-          # two likeliest machines this ever runs on.
-          platforms: linux/amd64,linux/arm64
-          push: true
-          provenance: mode=max
-          sbom: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ github.ref_name }}
-            REVISION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # The per-architecture images carry the labels; the index needs its own
+      # annotations or a registry reading only the top level sees none. Same
+      # reason they are written out longhand above.
+      - name: Create the manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            --annotation "index:org.opencontainers.image.title=Maverick Wall" \
+            --annotation "index:org.opencontainers.image.description=A self-hosted family calendar for a wall display." \
+            --annotation "index:org.opencontainers.image.licenses=AGPL-3.0-or-later" \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - id: digest
+        name: Read back the digest of what was just created
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          digest=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "manifest list ${IMAGE}:${VERSION} is ${digest}"
+
+      - uses: sigstore/cosign-installer@v3
 
       # Signed by digest rather than by tag: a tag can be moved afterwards and
       # a digest cannot, so this is a signature over the bytes somebody pulls.
@@ -97,7 +194,7 @@ jobs:
       # interactive fallback to hang on, and the whole sign is retried besides.
       - name: Sign
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           fetch_token() {
             curl -fsS --retry 5 --retry-all-errors --retry-delay 3 \
@@ -119,7 +216,7 @@ jobs:
       - name: Attach the bill of materials
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          image: ${{ env.IMAGE }}@${{ steps.digest.outputs.digest }}
           format: spdx-json
           upload-artifact: true
 
@@ -137,7 +234,7 @@ jobs:
   # in somebody's kitchen.
   verify:
     name: Verify the published image is pullable
-    needs: release
+    needs: publish
     runs-on: ubuntu-latest
     # No login step, deliberately. The whole point is to prove the anonymous
     # pull works — the path a household takes, and the one that was silently
@@ -204,3 +301,70 @@ jobs:
           done
           echo "::error::${IMAGE}:${VERSION} is published but has no valid cosign signature from this workflow — the Sign step likely failed while the push succeeded. Do not leave it on stable; re-run the release job."
           exit 1
+
+  # The last thing that happens, and the only thing a household sees.
+  #
+  # `config.yaml`'s version is what the supervisor compares against what is
+  # installed, so writing it is the moment the update appears on somebody's
+  # dashboard. Everything above had to succeed first: built for both
+  # architectures, tagged, signed, and pulled anonymously the way a supervisor
+  # pulls it. A household can now press Update and have it work, because the
+  # thing being advertised was proven to exist before the advertisement.
+  #
+  # The changelog moves in the same commit. The supervisor shows it beside the
+  # update button, so a version with no entry is a household told nothing about
+  # what they are about to install — and `addon-repository.test.ts` fails the
+  # build if the newest numbered heading and the shipped version disagree.
+  # Write the notes under `## Unreleased` while you work; this renames it.
+  advertise:
+    name: Tell Home Assistant the update exists
+    needs: verify
+    # Only a real tag, and never a pre-release: `stable` does not move for one,
+    # so neither should the thing a household is offered.
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The bump belongs on the branch the supervisor reads, not on the
+          # detached tag this run checked out.
+          ref: main
+          # Kept, so the push below can use them.
+          persist-credentials: true
+
+      - name: Raise the version and date the changelog
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Idempotent: re-running a release must not fail, and must not make
+          # an empty commit that looks like a second release.
+          current=$(grep -oP '^version:\s*"\K[^"]+' addon/maverick-wall/config.yaml)
+          if [ "$current" = "$VERSION" ]; then
+            echo "config.yaml already advertises ${VERSION}; nothing to do."
+            exit 0
+          fi
+
+          sed -i -E "s/^version: \".*\"$/version: \"${VERSION}\"/" addon/maverick-wall/config.yaml
+          # Only the first, and only if somebody wrote one.
+          sed -i "0,/^## Unreleased[[:space:]]*$/s//## ${VERSION}/" addon/maverick-wall/CHANGELOG.md
+
+          # The same rule the test enforces, checked here so a bad advertisement
+          # is never pushed: the newest numbered heading is the shipped version.
+          newest=$(grep -oP '^##\s+\K\d+\.\d+\.\d+' addon/maverick-wall/CHANGELOG.md | head -1)
+          if [ "$newest" != "$VERSION" ]; then
+            echo "::error::CHANGELOG.md's newest entry is ${newest:-none}, not ${VERSION}. Add the notes under '## Unreleased' before tagging — the supervisor shows this text beside the update button."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add addon/maverick-wall/config.yaml addon/maverick-wall/CHANGELOG.md
+          git commit \
+            -m "Advertise ${VERSION} to Home Assistant" \
+            -m "The image is published, signed, and was pulled anonymously before this commit was made, so the update the supervisor now offers is one that installs."
+          # main may have moved while the image built.
+          git pull --rebase origin main
+          git push origin HEAD:main

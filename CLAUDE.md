@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **sixty real bugs**, and the pattern in how is the most
+This project has found **sixty-one real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -138,6 +138,7 @@ useful thing in this document:
 | An add-on icon with the bottom of its corners sliced off | Headless Chrome screenshots the window, not the viewport |
 | **A logo that was a black box on Home Assistant's light theme** | Putting the one PNG on the other theme's card |
 | Three hand-drawn alphabets, each "cut off" in a new way | Somebody looking at the wordmark and saying so, three times |
+| **Home Assistant offered an update that could not install** | Pressing Update on a real supervisor, minutes after the merge |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -363,6 +364,35 @@ the first icon.
 **None of it has been seen on a real Home Assistant supervisor.** The tile in
 the store list and the lockup in the sidebar are the check, and by this
 project's history that is where an asset fault actually surfaces.
+
+**A release advertises itself last, and that ordering is the whole design.**
+The supervisor compares `config.yaml`'s `version:` against what is installed —
+it watches this repository, not the registry — so writing that field is the
+moment an update appears on somebody's dashboard. It used to be raised by hand
+when the release PR merged, and the image followed whenever the tag was pushed
+and the build finished: eighteen minutes on the day this was noticed, and
+unbounded when a tag was forgotten. Every household who pressed Update in that
+window got a registry error for something that did not exist yet. `verify`
+already caught the tagged-but-unbuilt case after the fact (v0.1.9, found by a
+household three days later); it could not catch an advertisement that simply
+ran ahead of its artifact.
+
+So `advertise` is now the last job in `release.yml`, and it is the only thing a
+household sees. By the time it writes the version, the image has been built for
+both architectures, tagged, signed, pulled anonymously the way a supervisor
+pulls it, and had its signature verified. The bump is the consequence of a
+release that already worked rather than the announcement of one that might.
+Write release notes under `## Unreleased` while you work; the same commit
+renames that heading and refuses to push if it is missing, because the
+supervisor shows that text beside the update button.
+
+**Each architecture is built on a machine that speaks it.** One runner building
+`linux/amd64,linux/arm64` meant arm64 under QEMU, which was most of an
+eight-minute release on its own. Native arm runners are free for public
+repositories, so the two run side by side and push *by digest*; `publish`
+creates the tags once, from digests that already exist. That ordering matters
+as much as the speed — a tag that appears before every architecture has landed
+is a manifest a supervisor can pull halfway through.
 
 **Before anybody is told about it:** the README's screenshots (a photograph of
 a real wall, which is the one thing on that page that cannot be written),
