@@ -181,6 +181,18 @@ export function customTokens(base: Readonly<Record<string, string>>): Record<str
 }
 
 /**
+ * The cell tint (the wash behind a shift) for a single explicit shift colour
+ * against a background — the same maths `customTokens` applies to the theme's
+ * shift tokens, so a per-type colour tints exactly as a theme colour does. A
+ * light background is washed more lightly (the design's rule).
+ */
+export function shiftTint(color: string, background: string): string {
+  const rgb = parseHex(background);
+  const light = rgb !== undefined && (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 > 0.5;
+  return mix(color, background, light ? 0.13 : 0.2);
+}
+
+/**
  * Which theme should be showing at this local time.
  *
  * The window is inclusive of its start and exclusive of its end, and a window

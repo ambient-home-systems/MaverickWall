@@ -8,6 +8,7 @@ import type {
 import { localDate } from './viewmodel.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget } from './manifest.js';
+import { shiftTint } from './theme.js';
 
 /**
  * The DOM, and no decisions.
@@ -36,7 +37,18 @@ function el(tag: string, className?: string, text?: string): HTMLElement {
  * per theme because `color-mix()` is too new for the browsers rule two exists
  * to keep working.
  */
-function paintShift(node: HTMLElement, token: string | undefined): void {
+function paintShift(node: HTMLElement, token: string | undefined, color?: string): void {
+  // An explicit per-type colour: the theme owns no token for it, so set the hue
+  // directly and derive its wash here against the *current* background — which
+  // changes with the theme and the daytime switch, so it cannot be baked in the
+  // manifest. `shiftTint` is the same maths the theme's own shift tints use.
+  if (color !== undefined) {
+    const background = getComputedStyle(node).getPropertyValue('--bg').trim() || '#0B0E11';
+    node.style.setProperty('--sc', color);
+    node.style.setProperty('--sc-tint', shiftTint(color, background));
+    node.classList.add('has-shift');
+    return;
+  }
   if (token === undefined) return;
   node.style.setProperty('--sc', `var(${token}, var(--s-straight))`);
   node.style.setProperty('--sc-tint', `var(${token}-tint, var(--panel))`);
@@ -89,7 +101,7 @@ function shiftBadge(model: DisplayModel): HTMLElement | undefined {
   if (shift === undefined) return undefined;
 
   const badge = el('div', 'shift-badge');
-  paintShift(badge, shift.colorToken);
+  paintShift(badge, shift.colorToken, shift.color);
   /*
    * The picture, where the person already is. Same-origin and behind the
    * display token — rule three, and the wall works with no internet.
@@ -211,7 +223,7 @@ function renderNext(model: DisplayModel): HTMLElement {
 function renderDayRow(day: DayModel): HTMLElement {
   const row = el('div', 'day-row');
   const shift = day.shifts[0];
-  paintShift(row, shift?.colorToken);
+  paintShift(row, shift?.colorToken, shift?.color);
 
   const when = el('div', 'dr-when');
   when.appendChild(el('div', 'dr-dow', day.weekday));
@@ -248,7 +260,7 @@ function renderCell(cell: HorizonCell): HTMLElement {
   if (!cell.inMonth) classes.push('outside');
 
   const node = el('div', classes.join(' '));
-  paintShift(node, cell.shiftToken);
+  paintShift(node, cell.shiftToken, cell.shiftColor);
   node.appendChild(el('div', 'hz-num', cell.dayNumber));
 
   if (cell.eventCount > 0) {

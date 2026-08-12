@@ -97,6 +97,8 @@ export interface ShiftModel {
   readonly label: string;
   readonly shortCode: string;
   readonly colorToken: string;
+  /** An explicit per-type colour that overrides the token, or absent for it. */
+  readonly color?: string;
   readonly isWorking: boolean;
 }
 
@@ -128,6 +130,8 @@ export interface HorizonCell {
    * different.
    */
   readonly shiftToken: string | undefined;
+  /** An explicit per-type colour for this cell, or undefined to use the token. */
+  readonly shiftColor: string | undefined;
   readonly shiftCode: string | undefined;
   /** The full name, for the legend that sits under the grid. */
   readonly shiftLabel: string | undefined;
@@ -549,6 +553,7 @@ function toShift(shift: ManifestShift): ShiftModel {
     label: shift.label,
     shortCode: shift.shortCode,
     colorToken: shift.colorToken,
+    ...(shift.color !== undefined ? { color: shift.color } : {}),
     isWorking: shift.isWorking,
   };
 }
@@ -655,6 +660,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
       isPast: date < today,
       inMonth: date.slice(0, 7) === todayMonth,
       shiftToken: shift?.colorToken,
+      shiftColor: shift?.color,
       shiftCode: shift?.shortCode,
       shiftLabel: shift?.label,
       eventCount: day?.events.length ?? 0,

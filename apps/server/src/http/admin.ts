@@ -5,6 +5,7 @@ import {
   deletePerson,
   deleteShiftPlan,
   deleteSource,
+  readShiftPlans,
   readShiftPlansAdmin,
   readShiftTypes,
   readTitleObservations,
@@ -67,7 +68,7 @@ import {
 } from './shifts.js';
 import { testFeed, type TestFeedResult } from '../api/test-feed.js';
 import { currentUser } from '../auth/session.js';
-import type { Fetcher } from '@maverick-wall/core';
+import type { Fetcher, ShiftPlan } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, icon, page, type NavModule } from './html.js';
@@ -226,6 +227,7 @@ const layoutBody = z.object({
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
+import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
@@ -520,6 +522,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerHaRoutes(app, deps);
   registerAlertRoutes(app, deps);
   registerModuleRoutes(app, deps);
+  registerShiftTypeRoutes(app, deps);
   registerThemeRoutes(app, deps);
 
   /**
@@ -651,7 +654,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           statCard(
             'admin/shifts', 'shifts',
             plans.length === 0 ? '<span class="tag">None set</span>' : `<span class="tag tag-accent">${plans.length} active</span>`,
-            plans.length, `Shift rotation${plans.length === 1 ? '' : 's'}`,
+            plans.length, `Rotation${plans.length === 1 ? '' : 's'}`,
             plans.length === 0 ? 'Colour each day by who is working' : escapeHtml(plans.map((p) => p.personName ?? 'Someone').join(' · ')),
           ) +
           `</div>` +
@@ -1122,7 +1125,45 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     };
   };
 
+  /** The inverse of `planFrom`: a saved plan back into an editable draft. */
+  const draftFromPlan = (plan: ShiftPlan, personId: string): Draft => {
+    const empty = Array.from({ length: MAX_CYCLE }, () => SLOT_UNUSED);
+    if (plan.kind === 'pattern') {
+      const slots = [...empty];
+      plan.cycle.forEach((key, index) => {
+        if (index < MAX_CYCLE) slots[index] = key === null ? SLOT_OFF : key;
+      });
+      return { personId, kind: 'pattern', sourceId: '', anchorDate: plan.anchorDate, slots, titleMap: [] };
+    }
+    // Calendar: start from the titles the feed has now, pre-select the saved
+    // mapping for each, and append any saved matcher whose title has since left
+    // the feed so it can still be seen and cleared.
+    const sourceId = plan.calendarSourceId;
+    const saved = new Map(
+      plan.matchers.map((m) => [m.pattern, m.shiftTypeKey === null ? SLOT_OFF : m.shiftTypeKey]),
+    );
+    const titleMap = suggestedTitleMap(sourceId).map((entry) => ({
+      title: entry.title,
+      key: saved.get(entry.title) ?? entry.key,
+    }));
+    for (const [title, key] of saved) {
+      if (!titleMap.some((entry) => entry.title === title)) titleMap.push({ title, key });
+    }
+    return { personId, kind: 'calendar', sourceId, anchorDate: '', slots: empty, titleMap };
+  };
+
   app.get('/admin/shifts', (c: Context) => c.html(shiftsPage()));
+
+  /** Edit a saved rotation: the same draft form, pre-filled from the plan. */
+  app.get('/admin/shifts/:id/edit', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const plan = readShiftPlans(deps.db).find((candidate) => candidate.id === id);
+    if (plan === undefined) return c.redirect('/admin/shifts', 302);
+    const owner = deps.db
+      .prepare('SELECT person_id AS personId FROM shift_plans WHERE id = ?')
+      .get(id) as { personId: string | null } | undefined;
+    return c.html(draftPage(draftFromPlan(plan, owner?.personId ?? '')));
+  });
 
   /** Step one: who, and where the answer comes from. */
   app.post('/admin/shifts/new', async (c: Context) => {
@@ -1581,7 +1622,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       modules: navModules(deps.db),
-      title: 'Shift rotation — Maverick Wall',
+      title: 'Work Schedule — Maverick Wall',
       nav: 'shifts',
       heading: `${person?.name ?? 'Someone'}'s rotation`,
       intro:
@@ -1625,20 +1666,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
         : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
       `</p>` +
+      `<div class="row">` +
+      `<a class="btn secondary btn-sm" href="admin/shifts/${encodeURIComponent(plan.id)}/edit">Edit</a>` +
       `<form method="post" action="admin/shifts/${encodeURIComponent(plan.id)}/delete">` +
-      `<button class="secondary" type="submit">Remove this rotation</button></form>` +
-      `</article>`;
+      `<button class="secondary" type="submit">Remove</button></form>` +
+      `</div></article>`;
 
     const canAdd = people.length > 0;
     return page({
       modules: navModules(deps.db),
-      title: 'Shifts — Maverick Wall',
+      title: 'Work Schedule — Maverick Wall',
       nav: 'shifts',
-      heading: 'Shift rotation',
+      heading: 'Work Schedule',
+      action: { label: 'Shift types', href: 'admin/shifts/types' },
       intro:
         'The wall colours each day by who is working. A rotation is either read ' +
         'from a calendar that already has the shifts in it, or set as a pattern ' +
-        'that repeats.',
+        'that repeats. Name and colour the shift types on the Shift types screen.',
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         plans.map(card).join('') +

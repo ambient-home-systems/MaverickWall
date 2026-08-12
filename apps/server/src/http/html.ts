@@ -699,7 +699,7 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
     label: 'Modules',
     items: [
       { key: 'calendars', label: 'Calendars', href: 'admin/calendars', icon: 'calendars' },
-      { key: 'shifts', label: 'Shifts', href: 'admin/shifts', icon: 'shifts' },
+      { key: 'shifts', label: 'Work Schedule', href: 'admin/shifts', icon: 'shifts' },
       { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
       { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
       { key: 'modules', label: 'Store', href: 'admin/modules', icon: 'addons' },

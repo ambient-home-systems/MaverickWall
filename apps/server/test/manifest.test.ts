@@ -465,3 +465,22 @@ describe('theme tokens in the manifest', () => {
     expect(manifest.theme.daytimeTokens).toEqual({ '--bg': '#ffffff' });
   });
 });
+
+describe('per-type shift colour and times', () => {
+  it("carries a type's explicit colour and window when set", () => {
+    const types: ShiftType[] = SHIFT_TYPES.map((t) =>
+      t.key === 'day' ? { ...t, color: '#ff8800', startTime: '07:00', endTime: '19:00' } : t,
+    );
+    const shift = dayOf(buildManifest({ ...BASE, shiftTypes: types }), '2026-09-13')?.shifts[0];
+    expect(shift?.color).toBe('#ff8800');
+    expect(shift?.startTime).toBe('07:00');
+    expect(shift?.endTime).toBe('19:00');
+  });
+
+  it('omits colour and times, keeping the token, when the type sets none', () => {
+    const shift = dayOf(buildManifest(BASE), '2026-09-13')?.shifts[0];
+    expect(shift?.color).toBeUndefined();
+    expect(shift?.startTime).toBeUndefined();
+    expect(shift?.colorToken).toBe('--s-day');
+  });
+});

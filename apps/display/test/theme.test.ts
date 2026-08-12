@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTheme, daytimeActive, themeAt, type Themeable } from '../src/theme.js';
+import { applyTheme, daytimeActive, shiftTint, themeAt, type Themeable } from '../src/theme.js';
 
 /**
  * The two theme paths on the display: a built-in resolved from this bundle by
@@ -64,5 +64,19 @@ describe('daytimeActive / themeAt', () => {
   it('themeAt picks daytime inside the window, active outside', () => {
     expect(themeAt('12:00', 'board', 'almanac', '07:00', '21:00')).toBe('almanac');
     expect(themeAt('23:00', 'board', 'almanac', '07:00', '21:00')).toBe('board');
+  });
+});
+
+describe('shiftTint (per-type shift colour wash)', () => {
+  it('washes a colour toward the background, and more lightly on a light one', () => {
+    const onDark = shiftTint('#ff0000', '#000000');
+    const onLight = shiftTint('#ff0000', '#ffffff');
+    expect(onDark).toMatch(/^#[0-9a-f]{6}$/);
+    expect(onLight).toMatch(/^#[0-9a-f]{6}$/);
+    // A light background is washed more lightly (0.13 vs 0.2), so the tint sits
+    // nearer white than the dark one sits to black.
+    expect(onDark).not.toBe(onLight);
+    // Dark bg, 20% of #ff0000 over black = #330000.
+    expect(onDark).toBe('#330000');
   });
 });

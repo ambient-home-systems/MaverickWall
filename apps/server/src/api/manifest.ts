@@ -145,6 +145,11 @@ export interface ManifestShift {
   readonly label: string;
   readonly shortCode: string;
   readonly colorToken: string;
+  /** An explicit per-type colour; the display derives its tints. Absent = token. */
+  readonly color?: string;
+  /** Optional `HH:MM` window, drawn on the wall. Absent = an untimed shift. */
+  readonly startTime?: string;
+  readonly endTime?: string;
   readonly isWorking: boolean;
   /** Where the answer came from, for the diagnostics overlay. */
   readonly source: string;
@@ -496,6 +501,11 @@ function shiftFor(
     label: type.label,
     shortCode: type.shortCode,
     colorToken: type.colorToken,
+    // Only present when the type set them, so the manifest stays lean and the
+    // display's "absent = token / untimed" fallbacks are the common path.
+    ...(type.color !== undefined && type.color !== null ? { color: type.color } : {}),
+    ...(type.startTime !== undefined && type.startTime !== null ? { startTime: type.startTime } : {}),
+    ...(type.endTime !== undefined && type.endTime !== null ? { endTime: type.endTime } : {}),
     isWorking: type.isWorking,
     source: resolved.source,
   };
