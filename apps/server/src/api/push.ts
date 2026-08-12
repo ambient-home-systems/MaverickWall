@@ -72,3 +72,13 @@ export function interruptPush(interrupts: readonly Interrupt[], sentAt: number):
     wakeScreen: interrupts.some((interrupt) => interrupt.wakeScreen),
   };
 }
+
+/** Build the manifest-changed nudge. */
+export function manifestChangedPush(etag: string, sentAt: number): ManifestChangedPush {
+  return {
+    type: 'MANIFEST_CHANGED',
+    protocol: PUSH_PROTOCOL_VERSION,
+    sentAt,
+    etag,
+  };
+}
