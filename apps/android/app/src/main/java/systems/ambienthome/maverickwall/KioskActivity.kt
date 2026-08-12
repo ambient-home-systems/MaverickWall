@@ -184,6 +184,11 @@ class KioskActivity : AppCompatActivity() {
         hideConnecting()
         healthJob?.cancel()
         healthJob = null
+        // A successful load is exactly when the display token cookie is fresh —
+        // most importantly right after pairing, which reloads the page. The push
+        // service started before pairing and would otherwise wait out its
+        // backoff before retrying with the token; this nudges it to connect now.
+        PushService.start(this)
     }
 
     private fun onLoadError() {

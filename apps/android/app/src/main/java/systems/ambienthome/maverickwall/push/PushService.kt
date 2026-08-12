@@ -74,6 +74,10 @@ class PushService : Service() {
             reconnectAttempt = 0
             connect()
         } else if (webSocket == null) {
+            // An explicit (re)start while disconnected — the wall just loaded
+            // with a fresh pairing cookie, say. Treat it as "try now" rather
+            // than continuing to back off from earlier unauthenticated attempts.
+            reconnectAttempt = 0
             connect()
         }
         // START_STICKY: a wall's push socket should come back if the system
