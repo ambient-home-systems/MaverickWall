@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.19.1
+
+A fix for the previews.
+
+- The live preview in the **theme builder**, and the wall preview in the layout
+  editor, no longer draw blown up and cut off — they now show the wall at the
+  right size as you work.
+
+Nothing else changes.
+
 ## 0.19.0
 
 Build your own theme for the wall.
