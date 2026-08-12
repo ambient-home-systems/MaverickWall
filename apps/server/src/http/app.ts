@@ -36,6 +36,7 @@ import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import { buildManifest, manifestEtag, type ManifestNotice } from '../api/manifest.js';
+import { resolveTheme } from '../api/themes.js';
 import {
   claimScreenPairing,
   countUsers,
@@ -581,6 +582,9 @@ export function createApp(deps: AppDeps): Hono {
 
     return buildManifest({
       household: effective,
+      // Resolve a theme reference to its tokens (custom) or just its shape
+      // (built-in). The closure over the db keeps the read out of assembly.
+      resolveTheme: (ref: string) => resolveTheme(deps.db, ref),
       layoutWidgets: readLayoutWidgets(deps.db, layoutOwner),
       events: readEvents(deps.db, from, to),
       sources: readSources(deps.db),

@@ -1,0 +1,68 @@
+import { describe, expect, it } from 'vitest';
+import { applyTheme, daytimeActive, themeAt, type Themeable } from '../src/theme.js';
+
+/**
+ * The two theme paths on the display: a built-in resolved from this bundle by
+ * key, and a custom theme whose tokens the server already resolved and sent.
+ * `applyTheme` writes to a tiny `Themeable`, so no DOM is needed.
+ */
+
+function fake(): Themeable & { readonly props: Record<string, string>; readonly attrs: Record<string, string> } {
+  const props: Record<string, string> = {};
+  const attrs: Record<string, string> = {};
+  return {
+    style: { setProperty: (k: string, v: string): void => void (props[k] = v) },
+    setAttribute: (k: string, v: string): void => void (attrs[k] = v),
+    props,
+    attrs,
+  };
+}
+
+describe('applyTheme', () => {
+  it('resolves a built-in from the bundle by key', () => {
+    const el = fake();
+    applyTheme(el, 'board');
+    expect(el.props['--bg']).toBeDefined();
+    expect(el.props['--s-day-tint']).toBeDefined(); // derived here for built-ins
+    expect(el.attrs['data-theme']).toBe('board');
+  });
+
+  it('applies supplied custom tokens verbatim with the given shape', () => {
+    const el = fake();
+    applyTheme(el, 'custom:x', { '--bg': '#123456', '--accent': '#abcdef' }, 'board');
+    expect(el.props['--bg']).toBe('#123456');
+    expect(el.props['--accent']).toBe('#abcdef');
+    expect(el.attrs['data-theme']).toBe('board');
+  });
+
+  it('defaults a custom theme to the board shape when none is named', () => {
+    const el = fake();
+    applyTheme(el, 'custom:x', { '--bg': '#000000' });
+    expect(el.attrs['data-theme']).toBe('board');
+  });
+
+  it('an unknown built-in key falls back to board', () => {
+    const el = fake();
+    applyTheme(el, 'nonsense');
+    expect(el.attrs['data-theme']).toBe('board');
+  });
+});
+
+describe('daytimeActive / themeAt', () => {
+  it('is inside a normal daytime window', () => {
+    expect(daytimeActive('12:00', 'almanac', '07:00', '21:00')).toBe(true);
+    expect(daytimeActive('23:00', 'almanac', '07:00', '21:00')).toBe(false);
+  });
+  it('honours a window that wraps midnight', () => {
+    expect(daytimeActive('02:00', 'glance', '23:00', '06:00')).toBe(true);
+    expect(daytimeActive('12:00', 'glance', '23:00', '06:00')).toBe(false);
+  });
+  it('is inactive without a full window', () => {
+    expect(daytimeActive('12:00', undefined, '07:00', '21:00')).toBe(false);
+    expect(daytimeActive('12:00', 'almanac', '08:00', '08:00')).toBe(false);
+  });
+  it('themeAt picks daytime inside the window, active outside', () => {
+    expect(themeAt('12:00', 'board', 'almanac', '07:00', '21:00')).toBe('almanac');
+    expect(themeAt('23:00', 'board', 'almanac', '07:00', '21:00')).toBe('board');
+  });
+});

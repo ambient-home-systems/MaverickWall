@@ -159,6 +159,28 @@ export const layoutWidgets = sqliteTable('layout_widgets', {
   ...timestamps,
 });
 
+/**
+ * A household-authored display theme.
+ *
+ * The four built-in directions (Board / Slate / Almanac / Glance) live in the
+ * display bundle's `theme.ts` as code; this table is only the *custom* themes a
+ * household builds. A theme is a token set — the base colours plus `--radius`
+ * (and, later, font choices) — stored as JSON this process wrote and validated
+ * with Zod on the way in. The derived tints (`--s-*-tint`) are computed at
+ * resolve time from the base hues, not stored, so the source of truth stays the
+ * handful of colours the household actually chose.
+ *
+ * Referenced from `household_settings.theme` / `screens.theme` as `custom:<id>`;
+ * a built-in keeps its bare key. Resolving an unknown id falls back to Board
+ * rather than blanking a wall (rule nine).
+ */
+export const themes = sqliteTable('themes', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  tokens: text('tokens', { mode: 'json' }).$type<Record<string, string>>().notNull(),
+  ...timestamps,
+});
+
 // ---------------------------------------------------------------------------
 // Auth. Shapes are dictated by Better Auth; do not rename columns.
 // ---------------------------------------------------------------------------

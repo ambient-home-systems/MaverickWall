@@ -165,6 +165,19 @@ export function themeTokens(name: string): ThemeTokens {
  * that wraps midnight is honoured — somebody working nights may well want the
  * light theme through the small hours.
  */
+export function daytimeActive(
+  localHhmm: string,
+  daytime?: string,
+  startsAt?: string,
+  endsAt?: string,
+): boolean {
+  if (daytime === undefined || startsAt === undefined || endsAt === undefined) return false;
+  if (startsAt === endsAt) return false;
+  return startsAt < endsAt
+    ? localHhmm >= startsAt && localHhmm < endsAt
+    : localHhmm >= startsAt || localHhmm < endsAt;
+}
+
 export function themeAt(
   localHhmm: string,
   active: string,
@@ -172,15 +185,9 @@ export function themeAt(
   startsAt?: string,
   endsAt?: string,
 ): string {
-  if (daytime === undefined || startsAt === undefined || endsAt === undefined) return active;
-  if (startsAt === endsAt) return active;
-
-  const inWindow =
-    startsAt < endsAt
-      ? localHhmm >= startsAt && localHhmm < endsAt
-      : localHhmm >= startsAt || localHhmm < endsAt;
-
-  return inWindow ? daytime : active;
+  return daytimeActive(localHhmm, daytime, startsAt, endsAt) && daytime !== undefined
+    ? daytime
+    : active;
 }
 
 export interface Themeable {
@@ -196,10 +203,28 @@ export interface Themeable {
  * cell fills to ledger rules, Glance hides the week ahead entirely — and those
  * cannot be expressed as a custom property.
  */
-export function applyTheme(element: Themeable, name: string): void {
-  const tokens = themeTokens(name);
-  for (const key of Object.keys(tokens)) {
-    const value = tokens[key];
+export function applyTheme(
+  element: Themeable,
+  name: string,
+  tokens?: Readonly<Record<string, string>>,
+  shape?: string,
+): void {
+  // A custom theme: the server resolved its tokens (base colours plus the tints)
+  // because this bundle has never heard of it. Apply them verbatim and take the
+  // shape the server chose — `board`, so it inherits the default shape CSS.
+  if (tokens !== undefined) {
+    for (const key of Object.keys(tokens)) {
+      const value = tokens[key];
+      if (value !== undefined) element.style.setProperty(key, value);
+    }
+    element.setAttribute('data-theme', shape ?? 'board');
+    return;
+  }
+
+  // A built-in (or a version-skew fallback): resolve the key from this bundle.
+  const resolved = themeTokens(name);
+  for (const key of Object.keys(resolved)) {
+    const value = resolved[key];
     if (value !== undefined) element.style.setProperty(key, value);
   }
   element.setAttribute('data-theme', name in THEMES ? name : 'board');
