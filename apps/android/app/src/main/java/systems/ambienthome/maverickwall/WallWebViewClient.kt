@@ -1,12 +1,17 @@
 package systems.ambienthome.maverickwall
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
+import android.os.Build
+import android.webkit.SslErrorHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import systems.ambienthome.maverickwall.net.TlsPinning
 
 /**
  * The WebView's gatekeeper: it may only ever be the household's own wall.
@@ -29,6 +34,7 @@ import android.webkit.WebViewClient
  * main document failing is a reason to cover the wall.
  */
 class WallWebViewClient(
+    private val context: Context,
     private val allowedOrigin: String,
     private val onPageError: () -> Unit,
     private val onPageOk: () -> Unit,
@@ -57,6 +63,31 @@ class WallWebViewClient(
         // answering (an unpaired wall's manifest is a 401, which the display
         // handles as its pairing screen), so those are left to the page.
         if (request.isForMainFrame && errorResponse.statusCode >= 500) onPageError()
+    }
+
+    /**
+     * Trust-on-pairing for a self-signed HTTPS server.
+     *
+     * Fires only over TLS — plain http never gets here. A public CA will not
+     * sign a `192.168.x.x` or `.local` box, so the default validation errors;
+     * the app instead proceeds **iff** the presented certificate matches the pin
+     * it learned at pairing (or learns it on first use), and cancels otherwise.
+     * Never a blanket `proceed()` — that would accept any certificate and throw
+     * the encryption away. A cert we cannot read (older WebView) is refused, the
+     * secure default.
+     */
+    override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+        val host = Uri.parse(error.url).host
+        val cert = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            error.certificate?.x509Certificate
+        } else {
+            null
+        }
+        if (host != null && cert != null && TlsPinning.matchesPin(context, host, cert)) {
+            handler.proceed()
+        } else {
+            handler.cancel()
+        }
     }
 
     override fun onPageFinished(view: WebView, url: String) {

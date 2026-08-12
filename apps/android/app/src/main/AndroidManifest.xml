@@ -9,6 +9,17 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Phase 2: hold the push socket alive so a warning can wake a dark screen.
+         WAKE_LOCK turns the screen on; the foreground service keeps the socket
+         connected through doze. `specialUse` is the honest service type for a
+         self-hosted push channel — not `dataSync`, whose 6-hour cap would drop
+         a 24/7 wall. POST_NOTIFICATIONS is for the mandatory ongoing FGS
+         notification on Android 13+. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- One APK for a TV and a tablet: neither a touchscreen nor leanback is
          required, so the app installs on a TV box with only a remote and on a
          wall tablet with only a touchscreen. -->
@@ -72,5 +83,17 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!-- The push socket, held alive as a foreground service so a warning can
+             wake a dark screen. `specialUse` because that is what it honestly
+             is: a persistent self-hosted push channel, not a bounded data sync. -->
+        <service
+            android:name=".push.PushService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Holds a self-hosted LAN push socket so a household's own server can wake a wall display for a weather warning. No cloud, no third party." />
+        </service>
     </application>
 </manifest>

@@ -16,4 +16,10 @@
     <string name="connecting_hint">Waiting for the server. This will clear on its own once it answers.</string>
     <string name="retry">Retry now</string>
     <string name="change_server">Change server</string>
+
+    <!-- Push service (foreground notification) -->
+    <string name="push_channel_name">Wall connection</string>
+    <string name="push_channel_desc">Keeps the link to your server open so the wall can wake for a warning.</string>
+    <string name="push_notif_title">Maverick Wall</string>
+    <string name="push_notif_text">Connected to your wall.</string>
 </resources>

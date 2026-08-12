@@ -290,6 +290,46 @@ function start(): void {
     void acknowledge(key);
   });
 
+  /*
+   * A narrow bridge for the native shell, and nothing else.
+   *
+   * The Android app hosts this exact page in a WebView (it does not re-implement
+   * the wall), and there are two things it needs that a page cannot do for
+   * itself. When a push says the manifest changed — or a dark screen has just
+   * been woken for a warning — it calls `poll()` so the wall reacts at once
+   * instead of waiting out the sixty-second interval. And when a remote's OK is
+   * pressed it calls `acknowledge()`, because D-pad focus is unreliable across
+   * the WebViews bolted to walls, so the app forwards the key here rather than
+   * hoping the page's own `keydown` sees it (`render.ts`/the handler above).
+   *
+   * This is not a plugin surface: it exposes only the two verbs the shell
+   * already drives through the UI, calls the same `poll`/`acknowledge` a
+   * fingertip does, and is inert in a browser where nothing ever calls it.
+   * `acknowledge()` clears whatever is showing, exactly as the OK key does, and
+   * a rule the server marked non-dismissible is still refused server-side (a
+   * 403), so the bridge cannot clear what a button could not.
+   */
+  const bridge = {
+    poll: (): void => void poll(),
+    acknowledge: (): void => {
+      const key = dismissTarget();
+      if (key !== undefined) void acknowledge(key);
+    },
+  };
+  (window as unknown as { maverickWall?: typeof bridge }).maverickWall = bridge;
+
+  /*
+   * Re-poll when the page becomes visible again.
+   *
+   * A screen woken from black for a tornado warning fires exactly this, so the
+   * warning is on the wall the moment it lights rather than up to a minute
+   * later. Harmless on a browser tab a household switches back to; it just gets
+   * a fresh calendar a little sooner.
+   */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void poll();
+  });
+
   // A wall does not usually get resized, but a kiosk browser reports its size
   // late often enough that assuming one measurement is wrong.
   window.addEventListener('resize', () => applyGeometry(geometry()));
