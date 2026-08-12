@@ -572,24 +572,45 @@ const THEME_SCRIPT =
 /**
  * The brand mark, inline and first-party.
  *
- * The zoom-pyramid the product is built around — today, the next days, the
- * month with one cell lit — the same shape as the add-on icon. Inlined rather
- * than fetched: rule three keeps the served HTML free of a third-party origin,
- * and a data-URI favicon and one `<svg>` need no network at all. Flat fills, no
- * gradient, so it stays crisp in a favicon and small in the markup.
+ * A month, quiet, with one cell lit — the whole product in one shape, drawn on
+ * the wall's own grid. Inlined rather than fetched: rule three keeps the served
+ * HTML free of a third-party origin, and a data-URI favicon and one `<svg>`
+ * need no network at all.
+ *
+ * This is deliberately the **five-column redraw**, not the seven-column mark in
+ * `docs/brand/marks/lit-cell.svg`. Everywhere this constant lands is small — a
+ * 34px sidebar brand, a 32px footer, a 16px favicon — and below about 20px a
+ * seven-column field stops being a grid and becomes grey texture with a dot in
+ * it. The 512 tile on the add-on keeps the full seven columns because it is
+ * looked at large. Same idea, two drawings, chosen by size.
+ *
+ * The dim cells are pre-mixed against the Board background rather than carrying
+ * an opacity, for the same reason `theme.ts` pre-mixes its tints: flat fills
+ * stay crisp when a browser rasterises this into a 16px favicon.
  */
 const MARK =
   `<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
-  `<rect width="512" height="512" rx="108" fill="#12181f"/>` +
-  `<rect x="96" y="112" width="320" height="118" rx="22" fill="#E0A33E"/>` +
-  `<rect x="96" y="252" width="150" height="58" rx="15" fill="#2c3a47"/>` +
-  `<rect x="266" y="252" width="150" height="58" rx="15" fill="#2c3a47"/>` +
-  `<rect x="96" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="152" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="208" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="264" y="332" width="40" height="52" rx="9" fill="#E0A33E"/>` +
-  `<rect x="320" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="376" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
+  `<rect width="512" height="512" rx="108" fill="#0B0E11"/>` +
+  `<rect x="73" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="73" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="73" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="73" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="187" width="62" height="62" rx="12" fill="#E8A33D"/>` +
   `</svg>`;
 
 /** The mark as a favicon. Same bytes, URL-encoded into a data URI. */

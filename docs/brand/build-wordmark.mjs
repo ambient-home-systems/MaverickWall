@@ -13,31 +13,45 @@ import { dirname } from 'node:path';
 */
 
 /*
-  A condensed geometric display alphabet, drawn rather than set.
+  A geometric display alphabet, drawn rather than set.
 
-  Cap height 64, stem 11, and every corner that would be a curve in a
-  humanist face is cut at 45 degrees instead. That is one decision applied
-  everywhere (C, R), which is what stops it reading as failed curves.
+  Cap height 64, stem 11. The bowls are true circles and the apexes are real
+  points: an earlier cut chamfered every curve at 45 degrees, and the whole
+  wordmark read as a typeface with its curves sliced off rather than as one
+  that was drawn that way. Flat-cut apexes on the A, V and W did the same
+  thing. Where a stroke ends in the open — the C's terminals — it is cut on
+  the vertical, which is the geometric convention and reads as a decision.
 */
 
 const GLYPHS = {
+  /* Stems at 0..11 and 41..52; the V's outer edges spring one unit inside the
+     stems' inner edges, so the counters never pinch to a hairline join. */
   M: { w: 52, d: 'M0 64 V0 H23 L26 11 L29 0 H52 V64 H41 V0 H40 L26 52 L12 0 H11 V64 Z' },
-  A: { w: 46, d: 'M0 64 L16 0 H30 L46 64 H35 L31 47 H15 L11 64 Z M23 17 L28 36 H18 Z' },
-  V: { w: 46, d: 'M0 0 H11 L23 47 L35 0 H46 L28 64 H18 Z' },
+
+  /* Pointed apex; the counter closes where the two inner edges meet at y=30.6. */
+  A: { w: 46, d: 'M0 64 L23 0 L46 64 H35 L31.77 55 H14.23 L11 64 Z M23 30.6 L27.8 44 H18.2 Z' },
+
+  V: { w: 46, d: 'M0 0 H11 L23 33.4 L35 0 H46 L23 64 Z' },
+
   E: { w: 40, d: 'M0 0 H40 V11 H11 V26 H34 V37 H11 V53 H40 V64 H0 Z' },
+
+  /* A true semicircular bowl (r 17 outer, 6 inner — an 11 stroke) and a
+     straight leg off its join. */
   R: {
-    w: 44,
-    d: 'M0 0 H33 L44 11 V28 L36 39 L44 64 H32 L24 39 H11 V64 H0 Z '
-     + 'M11 11 V28 H28 L33 23 V16 L28 11 Z',
+    w: 48,
+    d: 'M0 0 H31 A17 17 0 0 1 31 34 H24 L48 64 H35 L16 36 H11 V64 H0 Z '
+     + 'M11 11 H31 A6 6 0 0 1 31 23 H11 Z',
   },
+
   I: { w: 11, d: 'M0 0 H11 V64 H0 Z' },
-  C: {
-    w: 44,
-    d: 'M12 0 H32 L44 12 V19 H33 V16 L28 11 H16 L11 16 V48 L16 53 H28 L33 48 V45 H44 V52 '
-     + 'L32 64 H12 L0 52 V12 Z',
-  },
+
+  /* One circle, r 29 outer and 18 inner, opened by a vertical cut at x=43. */
+  C: { w: 58, d: 'M43 6.6 A29 29 0 1 0 43 57.4 V43.3 A18 18 0 1 1 43 20.7 Z' },
+
   K: { w: 47, d: 'M0 0 H11 V27 L33 0 H46 L26 32 L47 64 H34 L11 48 V64 H0 Z' },
-  W: { w: 66, d: 'M0 0 H11 L20 45 L28 8 H38 L46 45 L55 0 H66 L52 64 H40 L33 26 L26 64 H14 Z' },
+
+  W: { w: 66, d: 'M0 0 H11 L20 45 L28 8 H38 L46 45 L55 0 H66 L46 64 L33 26 L20 64 Z' },
+
   L: { w: 38, d: 'M0 0 H11 V53 H38 V64 H0 Z' },
 };
 
@@ -48,7 +62,7 @@ const SPACE = 22;
   Kerns for the pairs that leave a hole at cap height: a diagonal beside a
   vertical, or two L's, where even tracking reads as a word break.
 */
-const KERN = { WA: -6, AL: -4, LL: -3, AV: -3, VE: -3 };
+const KERN = { WA: -6, AL: -4, LL: -3, AV: -3, VE: -3, IC: -2, CK: -6, MA: -3 };
 
 function word(text) {
   let x = 0;

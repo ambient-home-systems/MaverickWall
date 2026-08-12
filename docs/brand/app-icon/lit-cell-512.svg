@@ -5,7 +5,7 @@
   -->
   <rect width="512" height="512" rx="112" fill="#0B0E11"/>
   <rect x="1" y="1" width="510" height="510" rx="111" fill="none" stroke="#242D38" stroke-width="2"/>
-  <g transform="translate(64 64) scale(6)">
+  <g transform="translate(-3.3 -3) scale(8.1)">
     <g fill="#6B7684" fill-opacity=".34">
       <rect x="8" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><rect x="22" y="15" width="6" height="6" rx="1"/><rect x="29" y="15" width="6" height="6" rx="1"/><rect x="36" y="15" width="6" height="6" rx="1"/><rect x="43" y="15" width="6" height="6" rx="1"/><rect x="50" y="15" width="6" height="6" rx="1"/>
       <rect x="8" y="22" width="6" height="6" rx="1"/><rect x="15" y="22" width="6" height="6" rx="1"/><rect x="22" y="22" width="6" height="6" rx="1"/><rect x="29" y="22" width="6" height="6" rx="1"/><rect x="36" y="22" width="6" height="6" rx="1"/><rect x="43" y="22" width="6" height="6" rx="1"/><rect x="50" y="22" width="6" height="6" rx="1"/>
