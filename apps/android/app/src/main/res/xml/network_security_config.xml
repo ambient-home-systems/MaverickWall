@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP is permitted, on purpose.
+
+  Android blocks http by default. But this app's entire job is to reach one
+  self-hosted server on the household's own LAN, and that server speaks plain
+  http there — a private IP or a `.local` name that no public CA will certify,
+  which is exactly why the project supports http and never mandates TLS
+  (docs/rfc-003-android-tv-app.md §7). Refusing cleartext would make the app
+  unable to load the wall for the ordinary household — a self-inflicted brick.
+
+  The blast radius is bounded: the manifest carries no HA entity id, no base
+  URL and no control token, and the only thing on the wire is the display
+  token, whose worst case is "someone on your Wi-Fi saw your calendar." A
+  security-conscious household upgrades to HTTPS, which the app makes secure on
+  a LAN by pinning the cert at pairing — that lands in Phase 2 and is why the
+  user trust anchor is already allowed here.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- Honour a local CA the household installed on the device, so a
+                 self-hosted HTTPS box with a private root works without the app
+                 having to bundle anything. -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,38 @@
+<!--
+  A vector launcher icon, on purpose: no binary PNG lives in the repo, and a
+  vector renders crisply at every density and on a TV launcher. A calendar mark
+  on the Board-dark ground with the amber accent — a wall glyph, not a logo,
+  which the household can replace before any store release.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Rounded dark tile. -->
+    <path
+        android:fillColor="#0B0E11"
+        android:pathData="M20,10 L88,10 A10,10 0 0 1 98,20 L98,88 A10,10 0 0 1 88,98 L20,98 A10,10 0 0 1 10,88 L10,20 A10,10 0 0 1 20,10 Z" />
+
+    <!-- Calendar body. -->
+    <path
+        android:fillColor="#141A20"
+        android:strokeColor="#E7A93C"
+        android:strokeWidth="3"
+        android:pathData="M30,34 L78,34 A4,4 0 0 1 82,38 L82,78 A4,4 0 0 1 78,82 L30,82 A4,4 0 0 1 26,78 L26,38 A4,4 0 0 1 30,34 Z" />
+
+    <!-- Header band. -->
+    <path
+        android:fillColor="#E7A93C"
+        android:pathData="M26,38 A4,4 0 0 1 30,34 L78,34 A4,4 0 0 1 82,38 L82,46 L26,46 Z" />
+
+    <!-- Binder rings. -->
+    <path android:fillColor="#E9EEF4" android:pathData="M38,28 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path android:fillColor="#E9EEF4" android:pathData="M70,28 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+
+    <!-- A marked day. -->
+    <path android:fillColor="#E7A93C" android:pathData="M58,60 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" />
+    <path android:fillColor="#9AA6B2" android:pathData="M34,56 h12 v5 h-12 Z" />
+    <path android:fillColor="#9AA6B2" android:pathData="M34,68 h12 v5 h-12 Z" />
+</vector>

@@ -1,3 +1,7 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  # The Android app is a Gradle project, not a pnpm package — it has no
+  # package.json and must not be treated as a workspace member. It lives in the
+  # monorepo so app/display/server tag as one commit (docs/rfc-003-android-tv-app.md).
+  - '!apps/android'

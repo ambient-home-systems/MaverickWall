@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Maverick Wall</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Connect your wall</string>
+    <string name="setup_description">Enter the address of your Maverick Wall server. You will find it on the server\'s setup screen — for example 192.168.1.10:8080.</string>
+    <string name="setup_field_label">Server address</string>
+    <string name="setup_field_hint">192.168.1.10:8080</string>
+    <string name="setup_error">That does not look like an address. Try something like 192.168.1.10:8080.</string>
+    <string name="setup_save">Connect</string>
+
+    <!-- Connecting status -->
+    <!-- %1$s is the server address the wall is trying to reach. -->
+    <string name="connecting_to">Connecting to %1$s…</string>
+    <string name="connecting_hint">Waiting for the server. This will clear on its own once it answers.</string>
+    <string name="retry">Retry now</string>
+    <string name="change_server">Change server</string>
+</resources>
