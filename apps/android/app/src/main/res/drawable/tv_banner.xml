@@ -1,0 +1,33 @@
+<!--
+  The Android TV launcher card. It must be 320x180; a vector at that aspect
+  scales cleanly and keeps a binary out of the repo. App name in amber on the
+  Board-dark ground, with the calendar mark — enough to recognise on a ten-foot
+  launcher row. Replaceable before any TV store listing.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <path android:fillColor="#0B0E11" android:pathData="M0,0 L320,0 L320,180 L0,180 Z" />
+
+    <!-- Calendar mark. -->
+    <path
+        android:fillColor="#141A20"
+        android:strokeColor="#E7A93C"
+        android:strokeWidth="3"
+        android:pathData="M36,58 L92,58 A4,4 0 0 1 96,62 L96,120 A4,4 0 0 1 92,124 L36,124 A4,4 0 0 1 32,120 L32,62 A4,4 0 0 1 36,58 Z" />
+    <path
+        android:fillColor="#E7A93C"
+        android:pathData="M32,62 A4,4 0 0 1 36,58 L92,58 A4,4 0 0 1 96,62 L96,72 L32,72 Z" />
+    <path android:fillColor="#E7A93C" android:pathData="M74,96 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0" />
+    <path android:fillColor="#9AA6B2" android:pathData="M40,90 h16 v6 h-16 Z" />
+    <path android:fillColor="#9AA6B2" android:pathData="M40,104 h16 v6 h-16 Z" />
+
+    <!-- Wordmark. -->
+    <path android:fillColor="#E9EEF4" android:pathData="M128,84 h1 v22 h-1 Z" />
+    <group>
+        <path android:fillColor="#E7A93C" android:pathData="M128,80 h150 v4 h-150 Z" />
+    </group>
+</vector>

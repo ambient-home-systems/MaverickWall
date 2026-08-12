@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Reach the household server over the LAN, know when the network is up,
+         and relaunch on boot. WAKE_LOCK is deliberately not requested yet — the
+         wake-on-takeover service is Phase 2, and a permission the app does not
+         use is one a household should not have to see. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- One APK for a TV and a tablet: neither a touchscreen nor leanback is
+         required, so the app installs on a TV box with only a remote and on a
+         wall tablet with only a touchscreen. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:banner="@drawable/tv_banner"
+        android:hardwareAccelerated="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MaverickWall"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!--
+          The wall itself. Kiosk-hosting the display over the LAN.
+
+          - LAUNCHER *and* LEANBACK_LAUNCHER, so it is the app you open on both a
+            phone/tablet home screen and a TV launcher.
+          - configChanges is load-bearing: without it a rotation or a dock
+            event destroys and recreates the activity, tearing down the WebView
+            (and its IndexedDB-backed manifest and any pairing in progress). The
+            display decides its own orientation, so the activity must not.
+          - singleTask, so a relaunch from boot or the launcher returns to the
+            one running wall rather than stacking a second.
+        -->
+        <activity
+            android:name=".KioskActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|navigation|uiMode|density"
+            android:theme="@style/Theme.MaverickWall.Fullscreen">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- First-run and reconfigure: enter the server address. Not exported —
+             only the app starts it. -->
+        <activity
+            android:name=".SetupActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MaverickWall" />
+
+        <!-- Relaunch the wall when the device powers on. QUICKBOOT_POWERON and
+             the HTC variant cover OEM TV boxes that never send the standard
+             BOOT_COMPLETED. LOCKED_BOOT_COMPLETED gets us up on a
+             direct-boot-aware device before the user unlocks. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

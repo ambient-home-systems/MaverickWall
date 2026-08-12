@@ -1,0 +1,18 @@
+# Android / Gradle build outputs and local machine state. The Gradle wrapper
+# jar is intentionally NOT ignored — it is committed so the build is
+# reproducible from a clean checkout (see README).
+.gradle/
+build/
+/local.properties
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+
+# Signing material never belongs in the repo (rule six).
+*.jks
+*.keystore
+keystore.properties

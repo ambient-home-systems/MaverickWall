@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The native chrome's palette, from the display's Board theme (dark, amber). The
+  wall itself gets its exact tokens from the server; these are only for the
+  setup and connecting screens, so they need to feel of a piece, not match to
+  the hex.
+-->
+<resources>
+    <color name="wall_background">#0B0E11</color>
+    <color name="wall_surface">#141A20</color>
+    <color name="wall_accent">#E7A93C</color>
+    <color name="wall_text">#E9EEF4</color>
+    <color name="wall_text_dim">#9AA6B2</color>
+</resources>
