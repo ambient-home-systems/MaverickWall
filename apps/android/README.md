@@ -10,7 +10,9 @@ handful of things a browser tab on a wall cannot — see
 [`docs/rfc-003-android-tv-app.md`](../../docs/rfc-003-android-tv-app.md) for the
 full design and the reasoning behind "the one thing we do not build."
 
-## What Phase 1 includes
+## What's implemented
+
+**Phase 1 — the kiosk shell:**
 
 - **A WebView kiosk** locked to the configured server origin, keep-awake,
   immersive fullscreen, BACK swallowed so the wall can't be navigated away.
@@ -24,13 +26,33 @@ full design and the reasoning behind "the one thing we do not build."
   display itself: read the code off the server's `/admin/screens` and type it on
   the wall.
 
-### Not in Phase 1 (later phases)
+**Phase 2 — wake, remote, HTTPS pinning:**
 
-- Wake-on-takeover over the WebSocket, D-pad OK → acknowledge, HTTPS cert
-  pinning (**Phase 2**).
+- **`PushService`** — a foreground service holding a WebSocket to the server's
+  `/d/push` (the Phase 0 endpoint), authenticated with the display cookie. On an
+  `INTERRUPT_PUSH` with `wakeScreen` it turns a dark screen on, shows over the
+  keyguard, and re-polls so the warning is on the glass; on `MANIFEST_CHANGED`
+  it just nudges a re-poll. The socket is an **optimisation, never a
+  dependency** — against a server with no `/d/push` it degrades cleanly to
+  poll-only and keeps retrying with backoff.
+- **D-pad OK → acknowledge** — `DPAD_CENTER`/`ENTER`/`NUMPAD_ENTER` are forwarded
+  into the display's `window.maverickWall.acknowledge()` bridge. BACK is not,
+  deliberately.
+- **Trust-on-pairing HTTPS** (`net/TlsPinning.kt`) — a self-signed LAN server is
+  made secure by pinning the exact certificate seen at first connection, in both
+  the socket (OkHttp) and the WebView (`onReceivedSslError`). http is untouched
+  and never mandated; **no HSTS**.
+
+### Not yet (later phases)
+
 - mDNS discovery + device-flow pairing + QR (**Phase 3**). Manual entry above is
   the always-available fallback that never goes away.
 - Signed release APK on GitHub, TV store polish (**Phase 4**).
+
+> **Phase 2 needs a push-capable server to exercise.** The socket, wake, and the
+> D-pad bridge require a server built from `main` (or later) — it must have
+> `/d/push` *and* serve the display bundle that carries the `window.maverickWall`
+> bridge. Against an older server the app runs exactly as Phase 1 did.
 
 ## Building
 

@@ -1,8 +1,11 @@
 package systems.ambienthome.maverickwall
 
+import android.app.KeyguardManager
 import android.app.admin.DevicePolicyManager
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.WebSettings
@@ -17,6 +20,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import systems.ambienthome.maverickwall.push.PushBus
+import systems.ambienthome.maverickwall.push.PushService
 
 /**
  * The wall.
@@ -83,10 +88,58 @@ class KioskActivity : AppCompatActivity() {
         consumeBackButton()
         tryEnterLockTask()
 
+        // Hold the push socket open so a warning can wake this screen when it is
+        // dark. A foreground service, because the socket must outlive the moment
+        // the panel turns off. It degrades to poll-only against a server with no
+        // /d/push, so it is safe to start unconditionally.
+        PushService.start(this)
+
+        // If we were launched by a wake push, honour it before the first paint.
+        handleWakeIntent(intent)
+
         // Show the native status straight away, so a cold boot is never blank
         // for the moment before the page paints; a good load takes it down.
         showConnecting()
         loadWall(useCache = false)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTask: a wake push while the wall is already the task re-enters
+        // here rather than recreating. Turn the screen on and re-poll so the
+        // warning is on the glass at once.
+        setIntent(intent)
+        handleWakeIntent(intent)
+    }
+
+    /**
+     * A push asked to wake this screen for a warning.
+     *
+     * `wakeScreen` was decided server-side (and against the household's night
+     * hours) — the app's job is only to obey it: show over the keyguard, turn
+     * the screen on, ask to dismiss the lock, and re-poll so the display draws
+     * the warning immediately rather than on its next interval.
+     */
+    private fun handleWakeIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(PushService.EXTRA_WAKE, false) != true) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            (getSystemService(KeyguardManager::class.java))?.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            )
+        }
+
+        // Re-poll if the WebView is up; if this wake is also what created the
+        // activity, the load that follows draws the warning anyway, and the
+        // display's own visibility-change re-poll covers the gap.
+        if (::webView.isInitialized) repoll()
     }
 
     private fun configureWebView() {
@@ -107,6 +160,7 @@ class KioskActivity : AppCompatActivity() {
             builtInZoomControls = false
         }
         webView.webViewClient = WallWebViewClient(
+            context = this,
             allowedOrigin = baseUrl,
             onPageError = ::onLoadError,
             onPageOk = ::onLoadOk,
@@ -189,6 +243,39 @@ class KioskActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * A remote's OK acknowledges whatever warning is showing.
+     *
+     * The keys a television remote's centre button actually produces —
+     * `DPAD_CENTER`, and `ENTER`/`NUMPAD_ENTER` on some — are forwarded into the
+     * display's own acknowledge handler via its `maverickWall.acknowledge()`
+     * bridge. That is deliberate over letting the WebView translate the key
+     * itself: D-pad focus is inconsistent across the WebViews bolted to walls,
+     * and "point at the wall, press OK" has to work on all of them. BACK is
+     * *not* handled here — Android BACK sends Escape, which must never clear a
+     * warning nobody has read.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP && isOkKey(event.keyCode) && ::webView.isInitialized) {
+            webView.evaluateJavascript(
+                "window.maverickWall && window.maverickWall.acknowledge()",
+                null,
+            )
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun isOkKey(keyCode: Int): Boolean =
+        keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+            keyCode == KeyEvent.KEYCODE_ENTER ||
+            keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+
+    /** Ask the display to poll now (a push nudge, or a wake). */
+    private fun repoll() {
+        webView.evaluateJavascript("window.maverickWall && window.maverickWall.poll()", null)
+    }
+
     private fun consumeBackButton() {
         // A wall must not exit or navigate on BACK. Android BACK also sends
         // Escape into the page, which must never clear a warning nobody has
@@ -219,10 +306,16 @@ class KioskActivity : AppCompatActivity() {
         // redirects to setup and finishes before the WebView is ever created,
         // so the lifecycle callbacks must not touch the lateinit — or the whole
         // process crashes on the way out (it did, on the first device launch).
-        if (::webView.isInitialized) webView.onResume()
+        if (::webView.isInitialized) {
+            webView.onResume()
+            // While this wall is the visible one, a push that only asks for a
+            // re-poll comes through here; a wake uses an Intent instead.
+            PushBus.setPollListener { if (::webView.isInitialized) repoll() }
+        }
     }
 
     override fun onPause() {
+        PushBus.setPollListener(null)
         if (::webView.isInitialized) webView.onPause()
         super.onPause()
     }

@@ -54,6 +54,9 @@ dependencies {
     // The health probe's backoff loop uses delay/withContext directly, so the
     // dependency is declared rather than leaned on transitively.
     implementation(libs.kotlinx.coroutines.android)
+    // The push socket client (Phase 2). Also carries the cert pinner and the
+    // TLS plumbing trust-on-pairing needs — one dependency, not a stack.
+    implementation(libs.okhttp)
 
     // Compose, for the setup and status chrome only.
     implementation(platform(libs.androidx.compose.bom))
