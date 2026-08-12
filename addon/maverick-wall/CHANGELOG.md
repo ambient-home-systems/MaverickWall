@@ -1,5 +1,21 @@
 # Changelog
 
+<!--
+  Write release notes here, under `## Unreleased`, as you go.
+
+  The release renames this heading to the version being shipped and raises
+  config.yaml to match, in one commit, after the image is built and verified.
+  Home Assistant shows this text beside the Update button, so it is written for
+  somebody standing in a kitchen: what changed for them, not what changed in
+  the repository.
+
+  A release refuses to start when this section is empty. That is deliberate —
+  an empty heading would otherwise be renamed and shipped as a release note
+  saying nothing.
+-->
+
+## Unreleased
+
 ## 0.21.1
 
 Nothing changes on the wall. This one exists to prove the update path itself.
