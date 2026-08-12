@@ -80,6 +80,7 @@ init: false
 options:
   base_url: ""
   ingress_trust_source: ""
+  mdns: true
 schema:
   # Only needed for the wall displays. They connect to the add-on's port
   # rather than through ingress, and the pairing link they are handed comes
@@ -97,3 +98,11 @@ schema:
   # rare setup with more than one. Wrong or empty simply means the ordinary
   # login stays — it can never open the settings to anything it should not.
   ingress_trust_source: "str?"
+  # Whether the add-on announces itself on the local network, so a wall screen
+  # can find it without anybody typing an address or hunting for a port. On by
+  # default. The announcement is link-local by construction and never leaves
+  # the household's own network segment, but a household fronting the box with
+  # a proxy — or one that simply wants nothing shouting on the LAN — can turn
+  # it off here. Off costs discovery only: every screen can still be paired by
+  # address, and nothing about the wall changes.
+  mdns: "bool?"

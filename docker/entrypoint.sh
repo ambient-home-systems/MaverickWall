@@ -108,6 +108,11 @@ fi
 #   - ingress_trust_source: the supervisor's address, which lets the settings
 #     trust a Home Assistant login instead of asking for a second one. The
 #     default in the app is right on a normal install; this only overrides it.
+#   - mdns: whether to announce the add-on on the LAN so a screen can find it
+#     without a typed address. A boolean rather than a string, so it needs its
+#     own reader: read_option returns strings only, and a `false` read through
+#     it would come back empty and be indistinguishable from "not set" — an
+#     option a household could turn off that did nothing.
 read_option() {
   # node is already here, and parsing JSON in sh is how quoting bugs are born.
   node -e '
@@ -115,6 +120,18 @@ read_option() {
       const o = require(process.argv[1]);
       const v = o && o[process.argv[2]];
       if (typeof v === "string" && v.trim() !== "") process.stdout.write(v.trim());
+    } catch {}
+  ' "$DATA_DIR/options.json" "$1" 2>/dev/null || true
+}
+
+# The same, for a boolean. Prints "true", "false", or nothing at all when the
+# key is absent — the three cases the caller has to tell apart.
+read_option_bool() {
+  node -e '
+    try {
+      const o = require(process.argv[1]);
+      const v = o && o[process.argv[2]];
+      if (typeof v === "boolean") process.stdout.write(String(v));
     } catch {}
   ' "$DATA_DIR/options.json" "$1" 2>/dev/null || true
 }
@@ -134,6 +151,14 @@ if [ -f "$DATA_DIR/options.json" ]; then
       export INGRESS_TRUST_SOURCE="$option_trust"
       echo "[entrypoint] INGRESS_TRUST_SOURCE from add-on options: $INGRESS_TRUST_SOURCE"
     fi
+  fi
+
+  # Only `false` does anything: the application advertises unless MDNS_DISABLE
+  # is set to something, so an unset or true option must leave it alone rather
+  # than export an empty value.
+  if [ -z "${MDNS_DISABLE:-}" ] && [ "$(read_option_bool mdns)" = "false" ]; then
+    export MDNS_DISABLE=1
+    echo "[entrypoint] mDNS advertising disabled by add-on options"
   fi
 fi
 

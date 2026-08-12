@@ -12,9 +12,10 @@ A look of its own, and the groundwork for a screen that wakes itself.
   next check. A wall you open in a browser still checks every minute and still
   gets every alert — this is groundwork for the Android app rather than
   something you will see today.
-- **The server announces itself on your network**, so a screen can find it
+- **Maverick Wall announces itself on your network**, so a screen can find it
   without anybody typing an address or hunting for a port. The announcement
-  stays on your own network and never leaves it.
+  stays on your own network and never leaves it, and there is a new **mdns**
+  option in the Configuration tab if you would rather it did not.
 
 Nothing you have set up changes, and this release alters no data.
 
