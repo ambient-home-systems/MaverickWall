@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Maverick Wall">
+  <!-- The abstract alternate, on the Board theme's own ground and rule. -->
+  <rect width="512" height="512" rx="112" fill="#0B0E11"/>
+  <rect x="1" y="1" width="510" height="510" rx="111" fill="none" stroke="#242D38" stroke-width="2"/>
+  <g transform="translate(76 76) scale(5.625)">
+    <path d="M13 12 H36 V28 H52 V51 A5 5 0 0 1 47 56 H13 A5 5 0 0 1 8 51 V17 A5 5 0 0 1 13 12 Z" fill="#6B7684"/>
+    <rect x="40" y="8" width="16" height="16" rx="3" fill="#E8A33D"/>
+  </g>
+</svg>

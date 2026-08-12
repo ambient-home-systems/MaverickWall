@@ -34,6 +34,19 @@ const STYLE = `
   font-display:swap;src:url('assets/fonts/roboto-condensed.woff2') format('woff2')}
 
 /*
+ * Oswald, for the brand lockup and nothing else.
+ *
+ * The wordmark in docs/brand is set in this face, and the name beside the mark
+ * in the sidebar and the wizard IS that wordmark — rendered as live text
+ * rather than as an image so it stays selectable and crisp at any zoom. Set in
+ * a different face it reads as a near-miss of the logo, which is worse than an
+ * obvious difference. Every other heading stays on Roboto Condensed: this is
+ * the identity, not a new heading style.
+ */
+@font-face{font-family:'Oswald';font-style:normal;font-weight:700;
+  font-display:swap;src:url('assets/fonts/oswald-700.woff2') format('woff2')}
+
+/*
  * Dark by default — the Board palette, the wall's own — with a light option and
  * an "auto" that follows the device. The choice is per-browser (localStorage,
  * applied by a tiny inline script before first paint, so there is no flash) and
@@ -43,6 +56,7 @@ const STYLE = `
  */
 :root{
   --cond:'Roboto Condensed','Arial Narrow','Helvetica Neue',system-ui,sans-serif;
+  --wordmark:'Oswald','Roboto Condensed','Arial Narrow',system-ui,sans-serif;
   --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
@@ -84,7 +98,7 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
 .side .brand{display:flex;align-items:center;gap:11px;padding:20px 20px 16px;
   text-decoration:none;color:inherit}
 .side .brand svg{width:34px;height:34px;flex:0 0 auto;border-radius:8px}
-.side .brand b{font-family:var(--cond);font-weight:700;font-size:19px;
+.side .brand b{font-family:var(--wordmark);font-weight:700;font-size:19px;
   letter-spacing:.02em;line-height:1;display:block}
 .side .brand small{display:block;color:var(--faint);font-size:11px;
   letter-spacing:.16em;text-transform:uppercase;margin-top:3px}
@@ -164,7 +178,7 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
 .wizbox .brand{display:flex;align-items:center;gap:11px;text-decoration:none;
   color:inherit;margin:0 0 4px}
 .wizbox .brand svg{width:34px;height:34px;border-radius:8px}
-.wizbox .brand b{font-family:var(--cond);font-weight:700;font-size:19px}
+.wizbox .brand b{font-family:var(--wordmark);font-weight:700;font-size:19px}
 .steps{display:flex;gap:8px;margin:22px 0 26px;padding:0;list-style:none}
 .steps .step{flex:1;text-align:center}
 .steps .step .bar{height:4px;border-radius:2px;background:var(--rule)}
@@ -572,24 +586,45 @@ const THEME_SCRIPT =
 /**
  * The brand mark, inline and first-party.
  *
- * The zoom-pyramid the product is built around — today, the next days, the
- * month with one cell lit — the same shape as the add-on icon. Inlined rather
- * than fetched: rule three keeps the served HTML free of a third-party origin,
- * and a data-URI favicon and one `<svg>` need no network at all. Flat fills, no
- * gradient, so it stays crisp in a favicon and small in the markup.
+ * A month, quiet, with one cell lit — the whole product in one shape, drawn on
+ * the wall's own grid. Inlined rather than fetched: rule three keeps the served
+ * HTML free of a third-party origin, and a data-URI favicon and one `<svg>`
+ * need no network at all.
+ *
+ * This is deliberately the **five-column redraw**, not the seven-column mark in
+ * `docs/brand/marks/lit-cell.svg`. Everywhere this constant lands is small — a
+ * 34px sidebar brand, a 32px footer, a 16px favicon — and below about 20px a
+ * seven-column field stops being a grid and becomes grey texture with a dot in
+ * it. The 512 tile on the add-on keeps the full seven columns because it is
+ * looked at large. Same idea, two drawings, chosen by size.
+ *
+ * The dim cells are pre-mixed against the Board background rather than carrying
+ * an opacity, for the same reason `theme.ts` pre-mixes its tints: flat fills
+ * stay crisp when a browser rasterises this into a 16px favicon.
  */
 const MARK =
   `<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
-  `<rect width="512" height="512" rx="108" fill="#12181f"/>` +
-  `<rect x="96" y="112" width="320" height="118" rx="22" fill="#E0A33E"/>` +
-  `<rect x="96" y="252" width="150" height="58" rx="15" fill="#2c3a47"/>` +
-  `<rect x="266" y="252" width="150" height="58" rx="15" fill="#2c3a47"/>` +
-  `<rect x="96" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="152" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="208" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="264" y="332" width="40" height="52" rx="9" fill="#E0A33E"/>` +
-  `<rect x="320" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
-  `<rect x="376" y="332" width="40" height="52" rx="9" fill="#26323d"/>` +
+  `<rect width="512" height="512" rx="108" fill="#0B0E11"/>` +
+  `<rect x="73" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="111" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="73" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="187" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="73" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="263" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="73" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="149" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="301" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="377" y="339" width="62" height="62" rx="12" fill="#363D45"/>` +
+  `<rect x="225" y="187" width="62" height="62" rx="12" fill="#E8A33D"/>` +
   `</svg>`;
 
 /** The mark as a favicon. Same bytes, URL-encoded into a data URI. */

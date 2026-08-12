@@ -1,0 +1,992 @@
+<title>Maverick Wall Marks</title>
+<style>
+  /*
+    The page wears the product's own two themes: Paper Almanac in light, Board
+    in dark. Tokens lifted from apps/display/src/theme.ts, so no colour on this
+    page is one somebody invented for a slide.
+  */
+  :root {
+    --ground: #F1EDE6;
+    --panel: #FBF9F3;
+    --sunk: #E7E1D4;
+    --ink: #191713;
+    --muted: #6B6558;
+    --faint: #A9A294;
+    --rule: #D9D3C5;
+    --accent: #A8701A;
+    --accent-soft: #EFE2CB;
+    --radius: 3px;
+
+    --font-display: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+      "DejaVu Sans Mono", "Liberation Mono", monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", "Liberation Sans", Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0B0E11;
+      --panel: #151A21;
+      --sunk: #10141A;
+      --ink: #E9EEF4;
+      --muted: #7E8C9C;
+      --faint: #4A5563;
+      --rule: #242D38;
+      --accent: #E8A33D;
+      --accent-soft: #2A2214;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0B0E11;
+    --panel: #151A21;
+    --sunk: #10141A;
+    --ink: #E9EEF4;
+    --muted: #7E8C9C;
+    --faint: #4A5563;
+    --rule: #242D38;
+    --accent: #E8A33D;
+    --accent-soft: #2A2214;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px 96px; }
+
+  /* ---------- type ---------- */
+
+  .eyebrow {
+    font-family: var(--font-display);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(30px, 5.2vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+    margin: 14px 0 0;
+    text-wrap: balance;
+  }
+
+  h2 {
+    font-family: var(--font-display);
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--muted);
+    margin: 0 0 20px;
+  }
+
+  .standfirst {
+    max-width: 62ch;
+    font-size: 18px;
+    line-height: 1.6;
+    margin: 20px 0 0;
+  }
+
+  p { margin: 0 0 14px; max-width: 64ch; }
+  p:last-child { margin-bottom: 0; }
+  strong { font-weight: 650; }
+
+  code {
+    font-family: var(--font-display);
+    font-size: 0.88em;
+    background: var(--sunk);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 1px 5px;
+  }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead { border-bottom: 1px solid var(--rule); padding: 56px 0 36px; }
+
+  .constraints {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px;
+    margin-top: 40px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .constraint { background: var(--panel); padding: 14px 16px; }
+
+  .constraint dt {
+    font-family: var(--font-display);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .constraint dd { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+
+  /* ---------- the axis ---------- */
+
+  .axis { display: flex; align-items: baseline; gap: 16px; padding: 34px 0 8px; flex-wrap: wrap; }
+
+  .axis-line {
+    flex: 1 1 260px;
+    height: 1px;
+    background: linear-gradient(to right, var(--rule), var(--accent));
+    min-width: 120px;
+    transform: translateY(-4px);
+  }
+
+  .axis-label {
+    font-family: var(--font-display);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- plates ---------- */
+
+  .plate {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 44px;
+    padding: 44px 0;
+    border-top: 1px solid var(--rule);
+    align-items: start;
+  }
+
+  .plate:first-of-type { border-top: none; }
+
+  @media (max-width: 860px) {
+    .plate { grid-template-columns: 1fr; gap: 28px; }
+    .specimen-stack { position: static !important; }
+  }
+
+  .specimen-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: sticky;
+    top: 24px;
+  }
+
+  /*
+    The ground swatches carry literal colours on purpose: they are the shipped
+    Board and Almanac token sets, and they must stay themselves whichever theme
+    the reader happens to be in.
+  */
+  .ground-board { background: #0B0E11; --mw-neutral: #6B7684; --mw-accent: #E8A33D; --mw-ink: #E9EEF4; }
+  .ground-paper { background: #F6F3EC; --mw-neutral: #6B6558; --mw-accent: #C98A16; --mw-ink: #1A1815; }
+  .ground-mono  { background: #FFFFFF; --mw-neutral: #1A1815; --mw-accent: #1A1815; --mw-ink: #1A1815; }
+
+  .tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .tile-hero { aspect-ratio: 4 / 3; }
+
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pair .tile { aspect-ratio: 3 / 2; }
+
+  .tile-caption {
+    font-family: var(--font-display);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 6px 0 0;
+    max-width: none;
+  }
+
+  .rail {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 14px 16px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .rail-item { text-align: center; }
+
+  .rail-item span {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 9.5px;
+    color: var(--faint);
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rail .mark { margin: 0 auto; }
+
+  /* ---------- plate copy ---------- */
+
+  .plate-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+
+  .plate-number {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .plate-name {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .tag {
+    font-family: var(--font-display);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 3px 10px;
+  }
+
+  .thesis {
+    font-size: 19px;
+    line-height: 1.5;
+    margin: 10px 0 22px;
+    max-width: 52ch;
+    text-wrap: balance;
+  }
+
+  .field { margin-bottom: 18px; }
+
+  .field-label {
+    font-family: var(--font-display);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .field-body { font-size: 15px; }
+
+  .breaks {
+    border-left: 2px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 14px 16px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+
+  .breaks .field-label { color: var(--accent); }
+
+  /* ---------- sections ---------- */
+
+  section.block { padding: 52px 0 0; border-top: 1px solid var(--rule); margin-top: 44px; }
+
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .strip-cell { background: var(--panel); padding: 20px 12px 14px; text-align: center; }
+  .strip-rows { display: flex; justify-content: center; gap: 8px; }
+  .strip-rows .tile { width: 34px; height: 34px; border: none; border-radius: 2px; }
+
+  .strip-cell p {
+    font-family: var(--font-display);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 12px 0 0;
+    max-width: none;
+  }
+
+  /* ---------- wordmark specimens ---------- */
+
+  .specimen {
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 30px 28px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+  }
+
+  .specimen .mark { max-width: 100%; }
+
+  .lockups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  @media (max-width: 720px) { .lockups { grid-template-columns: 1fr; } }
+
+  /* ---------- recommendation ---------- */
+
+  .recommend {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 32px;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 28px;
+  }
+
+  @media (max-width: 720px) { .recommend { grid-template-columns: 1fr; } }
+
+  .recommend .tile { aspect-ratio: 1 / 1; }
+
+  .filelist {
+    font-family: var(--font-display);
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--muted);
+    background: var(--sunk);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .filelist b { color: var(--ink); font-weight: 600; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--font-display);
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+  }
+
+  .mark { display: block; }
+</style>
+
+<!-- The marks, defined once. Colour arrives through inherited custom properties. -->
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <symbol id="m-panel" viewBox="0 0 64 64">
+    <rect x="17" y="6" width="30" height="52" rx="4" fill="none" stroke="var(--mw-neutral)" stroke-width="3.5"/>
+    <rect x="22" y="14" width="20" height="10" rx="1.5" fill="var(--mw-accent)"/>
+    <rect x="22" y="29" width="20" height="4" rx="1" fill="var(--mw-neutral)" fill-opacity=".7"/>
+    <rect x="22" y="37" width="13" height="4" rx="1" fill="var(--mw-neutral)" fill-opacity=".7"/>
+    <g fill="var(--mw-neutral)" fill-opacity=".5">
+      <rect x="22" y="46" width="4" height="4" rx="1"/><rect x="32.7" y="46" width="4" height="4" rx="1"/><rect x="38" y="46" width="4" height="4" rx="1"/>
+    </g>
+    <rect x="27.3" y="46" width="4" height="4" rx="1" fill="var(--mw-accent)"/>
+  </symbol>
+
+  <symbol id="m-seven" viewBox="0 0 64 64">
+    <g fill="var(--mw-neutral)" fill-opacity=".55">
+      <rect x="5" y="20" width="6" height="24" rx="1.5"/><rect x="13" y="20" width="6" height="24" rx="1.5"/><rect x="21" y="20" width="6" height="24" rx="1.5"/><rect x="37" y="20" width="6" height="24" rx="1.5"/><rect x="45" y="20" width="6" height="24" rx="1.5"/><rect x="53" y="20" width="6" height="24" rx="1.5"/>
+    </g>
+    <rect x="29" y="10" width="6" height="44" rx="1.5" fill="var(--mw-accent)"/>
+  </symbol>
+
+  <symbol id="m-lit-cell" viewBox="0 0 64 64">
+    <g fill="var(--mw-neutral)" fill-opacity=".34">
+      <rect x="8" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><rect x="22" y="15" width="6" height="6" rx="1"/><rect x="29" y="15" width="6" height="6" rx="1"/><rect x="36" y="15" width="6" height="6" rx="1"/><rect x="43" y="15" width="6" height="6" rx="1"/><rect x="50" y="15" width="6" height="6" rx="1"/>
+      <rect x="8" y="22" width="6" height="6" rx="1"/><rect x="15" y="22" width="6" height="6" rx="1"/><rect x="22" y="22" width="6" height="6" rx="1"/><rect x="29" y="22" width="6" height="6" rx="1"/><rect x="36" y="22" width="6" height="6" rx="1"/><rect x="43" y="22" width="6" height="6" rx="1"/><rect x="50" y="22" width="6" height="6" rx="1"/>
+      <rect x="8" y="29" width="6" height="6" rx="1"/><rect x="15" y="29" width="6" height="6" rx="1"/><rect x="22" y="29" width="6" height="6" rx="1"/><rect x="36" y="29" width="6" height="6" rx="1"/><rect x="43" y="29" width="6" height="6" rx="1"/><rect x="50" y="29" width="6" height="6" rx="1"/>
+      <rect x="8" y="36" width="6" height="6" rx="1"/><rect x="15" y="36" width="6" height="6" rx="1"/><rect x="22" y="36" width="6" height="6" rx="1"/><rect x="29" y="36" width="6" height="6" rx="1"/><rect x="36" y="36" width="6" height="6" rx="1"/><rect x="43" y="36" width="6" height="6" rx="1"/><rect x="50" y="36" width="6" height="6" rx="1"/>
+      <rect x="8" y="43" width="6" height="6" rx="1"/><rect x="15" y="43" width="6" height="6" rx="1"/><rect x="22" y="43" width="6" height="6" rx="1"/><rect x="29" y="43" width="6" height="6" rx="1"/><rect x="36" y="43" width="6" height="6" rx="1"/><rect x="43" y="43" width="6" height="6" rx="1"/><rect x="50" y="43" width="6" height="6" rx="1"/>
+    </g>
+    <rect x="29" y="29" width="6" height="6" rx="1" fill="var(--mw-accent)"/>
+  </symbol>
+
+  <symbol id="m-lit-cell-small" viewBox="0 0 64 64">
+    <g fill="var(--mw-neutral)" fill-opacity=".34">
+      <rect x="3" y="9" width="10" height="10" rx="2"/><rect x="15" y="9" width="10" height="10" rx="2"/><rect x="27" y="9" width="10" height="10" rx="2"/><rect x="39" y="9" width="10" height="10" rx="2"/><rect x="51" y="9" width="10" height="10" rx="2"/>
+      <rect x="3" y="21" width="10" height="10" rx="2"/><rect x="15" y="21" width="10" height="10" rx="2"/><rect x="39" y="21" width="10" height="10" rx="2"/><rect x="51" y="21" width="10" height="10" rx="2"/>
+      <rect x="3" y="33" width="10" height="10" rx="2"/><rect x="15" y="33" width="10" height="10" rx="2"/><rect x="27" y="33" width="10" height="10" rx="2"/><rect x="39" y="33" width="10" height="10" rx="2"/><rect x="51" y="33" width="10" height="10" rx="2"/>
+      <rect x="3" y="45" width="10" height="10" rx="2"/><rect x="15" y="45" width="10" height="10" rx="2"/><rect x="27" y="45" width="10" height="10" rx="2"/><rect x="39" y="45" width="10" height="10" rx="2"/><rect x="51" y="45" width="10" height="10" rx="2"/>
+    </g>
+    <rect x="27" y="21" width="10" height="10" rx="2" fill="var(--mw-accent)"/>
+  </symbol>
+
+  <symbol id="m-out-of-line" viewBox="0 0 64 64">
+    <g fill="var(--mw-neutral)" fill-opacity=".34">
+      <rect x="8" y="20" width="6" height="6" rx="1"/><rect x="15" y="20" width="6" height="6" rx="1"/><rect x="22" y="20" width="6" height="6" rx="1"/><rect x="36" y="20" width="6" height="6" rx="1"/><rect x="43" y="20" width="6" height="6" rx="1"/><rect x="50" y="20" width="6" height="6" rx="1"/>
+      <rect x="8" y="27" width="6" height="6" rx="1"/><rect x="15" y="27" width="6" height="6" rx="1"/><rect x="22" y="27" width="6" height="6" rx="1"/><rect x="29" y="27" width="6" height="6" rx="1"/><rect x="36" y="27" width="6" height="6" rx="1"/><rect x="43" y="27" width="6" height="6" rx="1"/><rect x="50" y="27" width="6" height="6" rx="1"/>
+      <rect x="8" y="34" width="6" height="6" rx="1"/><rect x="15" y="34" width="6" height="6" rx="1"/><rect x="22" y="34" width="6" height="6" rx="1"/><rect x="29" y="34" width="6" height="6" rx="1"/><rect x="36" y="34" width="6" height="6" rx="1"/><rect x="43" y="34" width="6" height="6" rx="1"/><rect x="50" y="34" width="6" height="6" rx="1"/>
+      <rect x="8" y="41" width="6" height="6" rx="1"/><rect x="15" y="41" width="6" height="6" rx="1"/><rect x="22" y="41" width="6" height="6" rx="1"/><rect x="29" y="41" width="6" height="6" rx="1"/><rect x="36" y="41" width="6" height="6" rx="1"/><rect x="43" y="41" width="6" height="6" rx="1"/><rect x="50" y="41" width="6" height="6" rx="1"/>
+      <rect x="8" y="48" width="6" height="6" rx="1"/><rect x="15" y="48" width="6" height="6" rx="1"/><rect x="22" y="48" width="6" height="6" rx="1"/><rect x="29" y="48" width="6" height="6" rx="1"/><rect x="36" y="48" width="6" height="6" rx="1"/><rect x="43" y="48" width="6" height="6" rx="1"/><rect x="50" y="48" width="6" height="6" rx="1"/>
+    </g>
+    <rect x="32.5" y="10" width="6" height="6" rx="1" fill="var(--mw-accent)"/>
+  </symbol>
+
+  <symbol id="m-corner" viewBox="0 0 64 64">
+    <path d="M13 12 H36 V28 H52 V51 A5 5 0 0 1 47 56 H13 A5 5 0 0 1 8 51 V17 A5 5 0 0 1 13 12 Z" fill="var(--mw-neutral)"/>
+    <rect x="40" y="8" width="16" height="16" rx="3" fill="var(--mw-accent)"/>
+  </symbol>
+</svg>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Maverick Wall · identity</p>
+    <h1>Five marks and a wordmark</h1>
+    <p class="standfirst">
+      A clean-sheet identity: nothing here descends from the tile currently
+      shipping on the add-on. Five marks, drawn in the product's own geometry
+      and its own colours, plus a wordmark drawn from scratch so the logo owes
+      nothing to a font that has to be installed. Every one is shown on the
+      Board and Paper Almanac themes, in flat monochrome, and at the sizes it
+      will really be used at.
+    </p>
+
+    <dl class="constraints">
+      <div class="constraint">
+        <dt>512 px</dt>
+        <dd>The Home Assistant add-on tile, in a grid beside a dozen others.</dd>
+      </div>
+      <div class="constraint">
+        <dt>16 px</dt>
+        <dd>The browser tab on the admin screens, and the sidebar glyph.</dd>
+      </div>
+      <div class="constraint">
+        <dt>Two themes</dt>
+        <dd>One mark has to hold on near-black and on paper, with no redraw.</dd>
+      </div>
+      <div class="constraint">
+        <dt>One colour</dt>
+        <dd>Flat monochrome for a printer, a stencil, a social card.</dd>
+      </div>
+    </dl>
+  </header>
+
+  <div class="axis">
+    <span class="axis-label">Literal</span>
+    <span class="axis-line"></span>
+    <span class="axis-label">Abstract</span>
+  </div>
+  <p style="color: var(--muted); font-size: 15px; margin-top: 10px;">
+    The five are ordered by how much they depict. 01 draws the hardware, 02
+    draws a week, 03 draws the idea, 04 draws the name, 05 draws nothing at
+    all. The numbers are that axis, not a ranking.
+  </p>
+
+  <!-- 01 -->
+  <article class="plate">
+    <div class="specimen-stack">
+      <div class="tile tile-hero ground-board">
+        <svg class="mark" width="132" height="132" role="img" aria-label="Panel on the Board theme"><use href="#m-panel"/></svg>
+      </div>
+      <div class="pair">
+        <div>
+          <div class="tile ground-paper"><svg class="mark" width="56" height="56" role="img" aria-label="Panel on the Almanac theme"><use href="#m-panel"/></svg></div>
+          <p class="tile-caption">Almanac</p>
+        </div>
+        <div>
+          <div class="tile ground-mono"><svg class="mark" width="56" height="56" role="img" aria-label="Panel in one colour"><use href="#m-panel"/></svg></div>
+          <p class="tile-caption">One colour</p>
+        </div>
+      </div>
+      <div class="rail ground-board">
+        <div class="rail-item"><svg class="mark" width="40" height="40" aria-hidden="true"><use href="#m-panel"/></svg><span>40</span></div>
+        <div class="rail-item"><svg class="mark" width="32" height="32" aria-hidden="true"><use href="#m-panel"/></svg><span>32</span></div>
+        <div class="rail-item"><svg class="mark" width="24" height="24" aria-hidden="true"><use href="#m-panel"/></svg><span>24</span></div>
+        <div class="rail-item"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-panel"/></svg><span>16</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="plate-head">
+        <span class="plate-number">01</span>
+        <h3 class="plate-name">Panel</h3>
+        <span class="tag">Draws the hardware</span>
+      </div>
+      <p class="thesis">The thing itself: a portrait screen, lit, with a calendar on it.</p>
+
+      <div class="field">
+        <div class="field-label">Why it works</div>
+        <div class="field-body">
+          <p>
+            It names the category in one look — this is a wall display, not
+            another web app you open when you remember to. The portrait ratio is
+            the product's real default (1080&times;1920), and nothing else in
+            this category has a portrait icon, so it stands out in a row of
+            square ones.
+          </p>
+        </div>
+      </div>
+
+      <div class="field breaks">
+        <div class="field-label">Where it breaks</div>
+        <div class="field-body">
+          <p>
+            Small, it reads as a phone — a lit portrait rectangle with rounded
+            corners <em>is</em> a phone, and this is the one product that must
+            not be mistaken for something you hold. The outline is the second
+            problem: a 3.5-unit stroke on a 64 grid is sub-pixel at 16 px, so
+            the favicon needs a filled redraw, which makes it two marks rather
+            than one.
+          </p>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 02 -->
+  <article class="plate">
+    <div class="specimen-stack">
+      <div class="tile tile-hero ground-board">
+        <svg class="mark" width="132" height="132" role="img" aria-label="Seven on the Board theme"><use href="#m-seven"/></svg>
+      </div>
+      <div class="pair">
+        <div>
+          <div class="tile ground-paper"><svg class="mark" width="56" height="56" role="img" aria-label="Seven on the Almanac theme"><use href="#m-seven"/></svg></div>
+          <p class="tile-caption">Almanac</p>
+        </div>
+        <div>
+          <div class="tile ground-mono"><svg class="mark" width="56" height="56" role="img" aria-label="Seven in one colour"><use href="#m-seven"/></svg></div>
+          <p class="tile-caption">One colour</p>
+        </div>
+      </div>
+      <div class="rail ground-board">
+        <div class="rail-item"><svg class="mark" width="40" height="40" aria-hidden="true"><use href="#m-seven"/></svg><span>40</span></div>
+        <div class="rail-item"><svg class="mark" width="32" height="32" aria-hidden="true"><use href="#m-seven"/></svg><span>32</span></div>
+        <div class="rail-item"><svg class="mark" width="24" height="24" aria-hidden="true"><use href="#m-seven"/></svg><span>24</span></div>
+        <div class="rail-item"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-seven"/></svg><span>16</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="plate-head">
+        <span class="plate-number">02</span>
+        <h3 class="plate-name">Seven</h3>
+        <span class="tag">Draws a week</span>
+      </div>
+      <p class="thesis">
+        Seven strokes, and the one you are standing in. The week, without
+        drawing a calendar.
+      </p>
+
+      <div class="field">
+        <div class="field-label">Why it works</div>
+        <div class="field-body">
+          <p>
+            It is the only mark in the set built on rhythm rather than a grid,
+            which makes it the most distinct silhouette of the five — you can
+            pick it out of a sidebar without resolving any detail. It reduces
+            better than anything except 05, because vertical strokes stay
+            vertical strokes at any size, and the tall amber one carries the
+            whole idea on height alone, so monochrome costs nothing.
+          </p>
+        </div>
+      </div>
+
+      <div class="field breaks">
+        <div class="field-label">Where it breaks</div>
+        <div class="field-body">
+          <p>
+            Seven bars with a tall middle is also what an audio equaliser looks
+            like, and a media-player reading is a real risk on a device that
+            hangs on a wall next to a television. The count is doing the work
+            here, and nobody counts an icon — so it says "a week" only to
+            somebody who has already been told.
+          </p>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 03 -->
+  <article class="plate">
+    <div class="specimen-stack">
+      <div class="tile tile-hero ground-board">
+        <svg class="mark" width="132" height="132" role="img" aria-label="Lit Cell on the Board theme"><use href="#m-lit-cell"/></svg>
+      </div>
+      <div class="pair">
+        <div>
+          <div class="tile ground-paper"><svg class="mark" width="56" height="56" role="img" aria-label="Lit Cell on the Almanac theme"><use href="#m-lit-cell"/></svg></div>
+          <p class="tile-caption">Almanac</p>
+        </div>
+        <div>
+          <div class="tile ground-mono"><svg class="mark" width="56" height="56" role="img" aria-label="Lit Cell in one colour"><use href="#m-lit-cell"/></svg></div>
+          <p class="tile-caption">One colour</p>
+        </div>
+      </div>
+      <div class="rail ground-board">
+        <div class="rail-item"><svg class="mark" width="40" height="40" aria-hidden="true"><use href="#m-lit-cell"/></svg><span>40</span></div>
+        <div class="rail-item"><svg class="mark" width="32" height="32" aria-hidden="true"><use href="#m-lit-cell"/></svg><span>32</span></div>
+        <div class="rail-item"><svg class="mark" width="24" height="24" aria-hidden="true"><use href="#m-lit-cell-small"/></svg><span>24*</span></div>
+        <div class="rail-item"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-lit-cell-small"/></svg><span>16*</span></div>
+      </div>
+      <p class="tile-caption">* the 5&times;4 redraw, below 20 px</p>
+    </div>
+
+    <div>
+      <div class="plate-head">
+        <span class="plate-number">03</span>
+        <h3 class="plate-name">Lit Cell</h3>
+        <span class="tag">Draws the idea</span>
+      </div>
+      <p class="thesis">
+        A month, quiet. One cell lit. The only mark here that says what the
+        product is <em>for</em> rather than what it looks like.
+      </p>
+
+      <div class="field">
+        <div class="field-label">Why it works</div>
+        <div class="field-body">
+          <p>
+            Seven columns, because the wall's month grid is seven columns — the
+            mark is the product's real geometry rather than a drawing of it. And
+            it behaves the way the wall behaves: the field falls away to
+            texture, the amber cell is the last thing standing, and what
+            survives the reduction is exactly what somebody walking past is
+            meant to read.
+          </p>
+          <p>
+            The contrast is opacity rather than hue, so monochrome needs no
+            special handling and one-colour print, a social card and a stencil
+            all come off the same file.
+          </p>
+        </div>
+      </div>
+
+      <div class="field breaks">
+        <div class="field-label">Where it breaks</div>
+        <div class="field-body">
+          <p>
+            Thirty-five cells is too many below about 20 px: the field turns to
+            grey mush and only the amber square reads. That needs the 5&times;4
+            redraw (<code>lit-cell-small.svg</code>), which is a second file to
+            keep in step. And a grid of squares is not an unheard-of shape — the
+            ownership is entirely in the single lit cell, so the amber must
+            never be dropped to make a "simplified" version.
+          </p>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 04 -->
+  <article class="plate">
+    <div class="specimen-stack">
+      <div class="tile tile-hero ground-board">
+        <svg class="mark" width="132" height="132" role="img" aria-label="Out of Line on the Board theme"><use href="#m-out-of-line"/></svg>
+      </div>
+      <div class="pair">
+        <div>
+          <div class="tile ground-paper"><svg class="mark" width="56" height="56" role="img" aria-label="Out of Line on the Almanac theme"><use href="#m-out-of-line"/></svg></div>
+          <p class="tile-caption">Almanac</p>
+        </div>
+        <div>
+          <div class="tile ground-mono"><svg class="mark" width="56" height="56" role="img" aria-label="Out of Line in one colour"><use href="#m-out-of-line"/></svg></div>
+          <p class="tile-caption">One colour</p>
+        </div>
+      </div>
+      <div class="rail ground-board">
+        <div class="rail-item"><svg class="mark" width="40" height="40" aria-hidden="true"><use href="#m-out-of-line"/></svg><span>40</span></div>
+        <div class="rail-item"><svg class="mark" width="32" height="32" aria-hidden="true"><use href="#m-out-of-line"/></svg><span>32</span></div>
+        <div class="rail-item"><svg class="mark" width="24" height="24" aria-hidden="true"><use href="#m-out-of-line"/></svg><span>24</span></div>
+        <div class="rail-item"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-out-of-line"/></svg><span>16</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="plate-head">
+        <span class="plate-number">04</span>
+        <h3 class="plate-name">Out of Line</h3>
+        <span class="tag">Draws the name</span>
+      </div>
+      <p class="thesis">
+        A maverick is the one that will not run with the herd. One cell steps
+        out of rank, and its slot is left empty behind it.
+      </p>
+
+      <div class="field">
+        <div class="field-label">Why it works</div>
+        <div class="field-body">
+          <p>
+            It is the only option that earns the word <em>Maverick</em> rather
+            than working around it, and it explains itself in a sentence to
+            somebody standing in a kitchen. The half-cell horizontal offset is
+            doing real work: aligned to the column it left, the displacement
+            reads as a missing row; offset, it reads as a decision.
+          </p>
+        </div>
+      </div>
+
+      <div class="field breaks">
+        <div class="field-label">Where it breaks</div>
+        <div class="field-body">
+          <p>
+            This project's ninth rule is that the wall never looks broken — and
+            here is a mark whose whole subject is a cell out of alignment. At 24
+            px and below, the empty slot and the escaped cell stop reading as a
+            story and start reading as a rendering fault or a half-loaded image.
+            It is the cleverest of the five and the one most likely to be
+            quietly mistaken for a bug.
+          </p>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 05 -->
+  <article class="plate">
+    <div class="specimen-stack">
+      <div class="tile tile-hero ground-board">
+        <svg class="mark" width="132" height="132" role="img" aria-label="Corner on the Board theme"><use href="#m-corner"/></svg>
+      </div>
+      <div class="pair">
+        <div>
+          <div class="tile ground-paper"><svg class="mark" width="56" height="56" role="img" aria-label="Corner on the Almanac theme"><use href="#m-corner"/></svg></div>
+          <p class="tile-caption">Almanac</p>
+        </div>
+        <div>
+          <div class="tile ground-mono"><svg class="mark" width="56" height="56" role="img" aria-label="Corner in one colour"><use href="#m-corner"/></svg></div>
+          <p class="tile-caption">One colour</p>
+        </div>
+      </div>
+      <div class="rail ground-board">
+        <div class="rail-item"><svg class="mark" width="40" height="40" aria-hidden="true"><use href="#m-corner"/></svg><span>40</span></div>
+        <div class="rail-item"><svg class="mark" width="32" height="32" aria-hidden="true"><use href="#m-corner"/></svg><span>32</span></div>
+        <div class="rail-item"><svg class="mark" width="24" height="24" aria-hidden="true"><use href="#m-corner"/></svg><span>24</span></div>
+        <div class="rail-item"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-corner"/></svg><span>16</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="plate-head">
+        <span class="plate-number">05</span>
+        <h3 class="plate-name">Corner</h3>
+        <span class="tag">Draws nothing</span>
+      </div>
+      <p class="thesis">
+        Two shapes: the wall, and today. The calendar reduced until only the
+        relationship is left.
+      </p>
+
+      <div class="field">
+        <div class="field-label">Why it works</div>
+        <div class="field-body">
+          <p>
+            The most trademarkable of the five and the one that will age best,
+            because it depicts no interface that can go out of date. It also
+            holds its shape further down than anything else here — two solid
+            forms with four units of clear space between them still read as two
+            forms at 16 px. On a 512 tile it has presence with no detail to fuss
+            over.
+          </p>
+        </div>
+      </div>
+
+      <div class="field breaks">
+        <div class="field-label">Where it breaks</div>
+        <div class="field-body">
+          <p>
+            It says nothing about calendars. It bought its legibility with
+            meaning, so without the wordmark beside it, it is a shape — which
+            makes it the option most dependent on the lockup. The notched square
+            also carries a faint whiff of a file manager.
+          </p>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <section class="block">
+    <h2>At sixteen pixels</h2>
+    <p style="color: var(--muted); margin-bottom: 24px;">
+      The favicon is where marks are decided, not where they are checked last.
+      Board on the left of each pair, Almanac on the right, both at true size.
+    </p>
+    <div class="strip">
+      <div class="strip-cell">
+        <div class="strip-rows">
+          <div class="tile ground-board"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-panel"/></svg></div>
+          <div class="tile ground-paper"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-panel"/></svg></div>
+        </div>
+        <p>01 Panel</p>
+      </div>
+      <div class="strip-cell">
+        <div class="strip-rows">
+          <div class="tile ground-board"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-seven"/></svg></div>
+          <div class="tile ground-paper"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-seven"/></svg></div>
+        </div>
+        <p>02 Seven</p>
+      </div>
+      <div class="strip-cell">
+        <div class="strip-rows">
+          <div class="tile ground-board"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-lit-cell-small"/></svg></div>
+          <div class="tile ground-paper"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-lit-cell-small"/></svg></div>
+        </div>
+        <p>03 Lit Cell</p>
+      </div>
+      <div class="strip-cell">
+        <div class="strip-rows">
+          <div class="tile ground-board"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-out-of-line"/></svg></div>
+          <div class="tile ground-paper"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-out-of-line"/></svg></div>
+        </div>
+        <p>04 Out of Line</p>
+      </div>
+      <div class="strip-cell">
+        <div class="strip-rows">
+          <div class="tile ground-board"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-corner"/></svg></div>
+          <div class="tile ground-paper"><svg class="mark" width="16" height="16" aria-hidden="true"><use href="#m-corner"/></svg></div>
+        </div>
+        <p>05 Corner</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>The wordmark</h2>
+    <p style="margin-bottom: 24px;">
+      Set in <strong>Oswald 700</strong> and outlined to paths at build time, so
+      the committed file needs no font installed anywhere and cannot silently
+      fall back to Arial &mdash; but the letterforms are a type designer's, not
+      ours. Oswald is already bundled in the image for the display themes
+      (SIL Open Font License 1.1), so the wordmark adds no new file, no new
+      licence and nothing to download. It is the only face in that set drawn for
+      signage rather than for paragraphs, which is what a name on a wall is, and
+      being condensed it sits beside a wide grid mark without crowding it.
+    </p>
+    <p style="margin-bottom: 24px;">
+      Three rounds of this were drawn by hand first, and all three came back
+      &ldquo;cut off&rdquo;. The first chamfered every curve at 45&deg;; the
+      second fixed the curves but left an M too narrow to hold a counter; the
+      third fixed the M and the whole thing still read as messy, because a
+      display alphabet drawn on the way to something else is a worse alphabet
+      than one somebody spent a year on. The honest lesson is the same one the
+      QR encoder taught: draw the thing the product actually needs, and use
+      somebody else's work for the thing that is already solved.
+    </p>
+
+    <div class="specimen ground-board">
+      <svg class="mark" viewBox="0 0 537.35 64" width="880" height="105" role="img" aria-label="MAVERICK WALL"><g fill="var(--mw-ink)"><path d="M4.50 64.00 5.61 0.00H20.78L27.81 37.21L35.40 0.00H50.01L51.12 64.00H41.09L39.90 21.41L32.47 64.00H23.55L15.64 21.10L14.70 64.00Z"/><path d="M58.28 64.00 70.37 0.00H86.49L98.42 64.00H85.39L83.25 50.49H73.85L71.64 64.00ZM75.11 42.03H81.91L78.51 17.07Z"/><path d="M114.43 64.00 102.90 0.00H114.99L121.86 43.46L128.26 0.00H141.06L129.37 64.00Z"/><path d="M148.46 64.00V0.00H177.22V9.64H162.60V25.52H173.75V35.32H162.60V54.44H177.38V64.00Z"/><path d="M184.78 64.00V0.00H202.40Q208.88 0.00 213.62 1.42Q218.36 2.84 221.01 6.52Q223.65 10.19 223.65 16.91Q223.65 20.86 223.02 23.94Q222.39 27.02 220.69 29.27Q218.99 31.53 215.83 33.03L224.60 64.00H209.99L202.95 35.32H198.92V64.00ZM198.92 27.18H202.87Q205.88 27.18 207.54 26.11Q209.20 25.05 209.87 23.03Q210.54 21.02 210.54 18.17Q210.54 14.06 209.04 11.77Q207.54 9.48 203.51 9.48H198.92Z"/><path d="M233.27 64.00V0.00H247.41V64.00Z"/><path d="M276.30 64.95Q269.03 64.95 264.80 62.30Q260.58 59.65 258.84 54.87Q257.10 50.09 257.10 43.61V20.54Q257.10 13.91 258.84 9.13Q260.58 4.35 264.80 1.74Q269.03 -0.87 276.30 -0.87Q283.41 -0.87 287.40 1.46Q291.39 3.79 293.05 7.98Q294.71 12.17 294.71 17.62V23.15H280.88V16.75Q280.88 14.85 280.69 13.12Q280.49 11.38 279.54 10.23Q278.59 9.09 276.30 9.09Q274.09 9.09 273.02 10.27Q271.96 11.46 271.68 13.23Q271.40 15.01 271.40 16.99V47.09Q271.40 49.22 271.76 51.00Q272.11 52.78 273.18 53.85Q274.25 54.91 276.30 54.91Q278.51 54.91 279.46 53.77Q280.41 52.62 280.65 50.80Q280.88 48.99 280.88 47.09V40.38H294.71V45.91Q294.71 51.36 293.09 55.66Q291.47 59.97 287.48 62.46Q283.49 64.95 276.30 64.95Z"/><path d="M303.45 64.00V0.00H317.60V26.15L328.34 0.00H342.17L330.32 28.92L342.72 64.00H328.34L319.10 35.71L317.60 38.24V64.00Z"/><path d="M375.62 64.00 367.87 0.00H379.88L383.68 37.29L388.50 0.08H397.90L402.96 37.06L406.83 0.00H418.68L411.01 64.00H398.69L393.24 25.36L388.10 64.00Z"/><path d="M423.47 64.00 435.56 0.00H451.68L463.61 64.00H450.57L448.44 50.49H439.04L436.82 64.00ZM440.30 42.03H447.10L443.70 17.07Z"/><path d="M471.09 64.00V0.00H485.23V54.44H499.93V64.00Z"/><path d="M507.09 64.00V0.00H521.23V54.44H535.93V64.00Z"/></g></svg>
+    </div>
+    <div class="specimen ground-paper">
+      <svg class="mark" viewBox="0 0 537.35 64" width="430" height="51" role="img" aria-label="MAVERICK WALL"><g fill="var(--mw-ink)"><path d="M4.50 64.00 5.61 0.00H20.78L27.81 37.21L35.40 0.00H50.01L51.12 64.00H41.09L39.90 21.41L32.47 64.00H23.55L15.64 21.10L14.70 64.00Z"/><path d="M58.28 64.00 70.37 0.00H86.49L98.42 64.00H85.39L83.25 50.49H73.85L71.64 64.00ZM75.11 42.03H81.91L78.51 17.07Z"/><path d="M114.43 64.00 102.90 0.00H114.99L121.86 43.46L128.26 0.00H141.06L129.37 64.00Z"/><path d="M148.46 64.00V0.00H177.22V9.64H162.60V25.52H173.75V35.32H162.60V54.44H177.38V64.00Z"/><path d="M184.78 64.00V0.00H202.40Q208.88 0.00 213.62 1.42Q218.36 2.84 221.01 6.52Q223.65 10.19 223.65 16.91Q223.65 20.86 223.02 23.94Q222.39 27.02 220.69 29.27Q218.99 31.53 215.83 33.03L224.60 64.00H209.99L202.95 35.32H198.92V64.00ZM198.92 27.18H202.87Q205.88 27.18 207.54 26.11Q209.20 25.05 209.87 23.03Q210.54 21.02 210.54 18.17Q210.54 14.06 209.04 11.77Q207.54 9.48 203.51 9.48H198.92Z"/><path d="M233.27 64.00V0.00H247.41V64.00Z"/><path d="M276.30 64.95Q269.03 64.95 264.80 62.30Q260.58 59.65 258.84 54.87Q257.10 50.09 257.10 43.61V20.54Q257.10 13.91 258.84 9.13Q260.58 4.35 264.80 1.74Q269.03 -0.87 276.30 -0.87Q283.41 -0.87 287.40 1.46Q291.39 3.79 293.05 7.98Q294.71 12.17 294.71 17.62V23.15H280.88V16.75Q280.88 14.85 280.69 13.12Q280.49 11.38 279.54 10.23Q278.59 9.09 276.30 9.09Q274.09 9.09 273.02 10.27Q271.96 11.46 271.68 13.23Q271.40 15.01 271.40 16.99V47.09Q271.40 49.22 271.76 51.00Q272.11 52.78 273.18 53.85Q274.25 54.91 276.30 54.91Q278.51 54.91 279.46 53.77Q280.41 52.62 280.65 50.80Q280.88 48.99 280.88 47.09V40.38H294.71V45.91Q294.71 51.36 293.09 55.66Q291.47 59.97 287.48 62.46Q283.49 64.95 276.30 64.95Z"/><path d="M303.45 64.00V0.00H317.60V26.15L328.34 0.00H342.17L330.32 28.92L342.72 64.00H328.34L319.10 35.71L317.60 38.24V64.00Z"/><path d="M375.62 64.00 367.87 0.00H379.88L383.68 37.29L388.50 0.08H397.90L402.96 37.06L406.83 0.00H418.68L411.01 64.00H398.69L393.24 25.36L388.10 64.00Z"/><path d="M423.47 64.00 435.56 0.00H451.68L463.61 64.00H450.57L448.44 50.49H439.04L436.82 64.00ZM440.30 42.03H447.10L443.70 17.07Z"/><path d="M471.09 64.00V0.00H485.23V54.44H499.93V64.00Z"/><path d="M507.09 64.00V0.00H521.23V54.44H535.93V64.00Z"/></g></svg>
+    </div>
+
+    <h2 style="margin-top: 40px;">The lockups</h2>
+    <p style="margin-bottom: 24px;">
+      Shown with 03. In both, the mark is scaled so its <em>ink</em> height
+      matches the cap height — dropped in at its icon size the grid reads a size
+      smaller than the type beside it, which is the commonest way a lockup goes
+      subtly wrong.
+    </p>
+    <div class="lockups">
+      <div class="specimen ground-board"><svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 456 44.0" width="100%" role="img" aria-label="Maverick Wall">
+  <g transform="scale(1.29412) translate(-8 -15)">
+    <g fill="var(--mw-neutral, #6B7684)" fill-opacity=".34"><rect x="8" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><rect x="22" y="15" width="6" height="6" rx="1"/><rect x="29" y="15" width="6" height="6" rx="1"/><rect x="36" y="15" width="6" height="6" rx="1"/><rect x="43" y="15" width="6" height="6" rx="1"/><rect x="50" y="15" width="6" height="6" rx="1"/><rect x="8" y="22" width="6" height="6" rx="1"/><rect x="15" y="22" width="6" height="6" rx="1"/><rect x="22" y="22" width="6" height="6" rx="1"/><rect x="29" y="22" width="6" height="6" rx="1"/><rect x="36" y="22" width="6" height="6" rx="1"/><rect x="43" y="22" width="6" height="6" rx="1"/><rect x="50" y="22" width="6" height="6" rx="1"/><rect x="8" y="29" width="6" height="6" rx="1"/><rect x="15" y="29" width="6" height="6" rx="1"/><rect x="22" y="29" width="6" height="6" rx="1"/><rect x="36" y="29" width="6" height="6" rx="1"/><rect x="43" y="29" width="6" height="6" rx="1"/><rect x="50" y="29" width="6" height="6" rx="1"/><rect x="8" y="36" width="6" height="6" rx="1"/><rect x="15" y="36" width="6" height="6" rx="1"/><rect x="22" y="36" width="6" height="6" rx="1"/><rect x="29" y="36" width="6" height="6" rx="1"/><rect x="36" y="36" width="6" height="6" rx="1"/><rect x="43" y="36" width="6" height="6" rx="1"/><rect x="50" y="36" width="6" height="6" rx="1"/><rect x="8" y="43" width="6" height="6" rx="1"/><rect x="15" y="43" width="6" height="6" rx="1"/><rect x="22" y="43" width="6" height="6" rx="1"/><rect x="29" y="43" width="6" height="6" rx="1"/><rect x="36" y="43" width="6" height="6" rx="1"/><rect x="43" y="43" width="6" height="6" rx="1"/><rect x="50" y="43" width="6" height="6" rx="1"/></g>
+    <rect x="29" y="29" width="6" height="6" rx="1" fill="var(--mw-accent, #E8A33D)"/>
+  </g>
+  <g fill="var(--mw-ink, #E9EEF4)">
+    <g transform="translate(86.12 0.00) scale(0.68750)"><path d="M4.50 64.00 5.61 0.00H20.78L27.81 37.21L35.40 0.00H50.01L51.12 64.00H41.09L39.90 21.41L32.47 64.00H23.55L15.64 21.10L14.70 64.00Z"/><path d="M58.28 64.00 70.37 0.00H86.49L98.42 64.00H85.39L83.25 50.49H73.85L71.64 64.00ZM75.11 42.03H81.91L78.51 17.07Z"/><path d="M114.43 64.00 102.90 0.00H114.99L121.86 43.46L128.26 0.00H141.06L129.37 64.00Z"/><path d="M148.46 64.00V0.00H177.22V9.64H162.60V25.52H173.75V35.32H162.60V54.44H177.38V64.00Z"/><path d="M184.78 64.00V0.00H202.40Q208.88 0.00 213.62 1.42Q218.36 2.84 221.01 6.52Q223.65 10.19 223.65 16.91Q223.65 20.86 223.02 23.94Q222.39 27.02 220.69 29.27Q218.99 31.53 215.83 33.03L224.60 64.00H209.99L202.95 35.32H198.92V64.00ZM198.92 27.18H202.87Q205.88 27.18 207.54 26.11Q209.20 25.05 209.87 23.03Q210.54 21.02 210.54 18.17Q210.54 14.06 209.04 11.77Q207.54 9.48 203.51 9.48H198.92Z"/><path d="M233.27 64.00V0.00H247.41V64.00Z"/><path d="M276.30 64.95Q269.03 64.95 264.80 62.30Q260.58 59.65 258.84 54.87Q257.10 50.09 257.10 43.61V20.54Q257.10 13.91 258.84 9.13Q260.58 4.35 264.80 1.74Q269.03 -0.87 276.30 -0.87Q283.41 -0.87 287.40 1.46Q291.39 3.79 293.05 7.98Q294.71 12.17 294.71 17.62V23.15H280.88V16.75Q280.88 14.85 280.69 13.12Q280.49 11.38 279.54 10.23Q278.59 9.09 276.30 9.09Q274.09 9.09 273.02 10.27Q271.96 11.46 271.68 13.23Q271.40 15.01 271.40 16.99V47.09Q271.40 49.22 271.76 51.00Q272.11 52.78 273.18 53.85Q274.25 54.91 276.30 54.91Q278.51 54.91 279.46 53.77Q280.41 52.62 280.65 50.80Q280.88 48.99 280.88 47.09V40.38H294.71V45.91Q294.71 51.36 293.09 55.66Q291.47 59.97 287.48 62.46Q283.49 64.95 276.30 64.95Z"/><path d="M303.45 64.00V0.00H317.60V26.15L328.34 0.00H342.17L330.32 28.92L342.72 64.00H328.34L319.10 35.71L317.60 38.24V64.00Z"/><path d="M375.62 64.00 367.87 0.00H379.88L383.68 37.29L388.50 0.08H397.90L402.96 37.06L406.83 0.00H418.68L411.01 64.00H398.69L393.24 25.36L388.10 64.00Z"/><path d="M423.47 64.00 435.56 0.00H451.68L463.61 64.00H450.57L448.44 50.49H439.04L436.82 64.00ZM440.30 42.03H447.10L443.70 17.07Z"/><path d="M471.09 64.00V0.00H485.23V54.44H499.93V64.00Z"/><path d="M507.09 64.00V0.00H521.23V54.44H535.93V64.00Z"/></g>
+  </g>
+</svg></div>
+      <div class="specimen ground-board"><svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 238 60.0" width="100%" role="img" aria-label="Maverick Wall">
+  <g transform="scale(1.76471) translate(-8 -15)">
+    <g fill="var(--mw-neutral, #6B7684)" fill-opacity=".34"><rect x="8" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><rect x="22" y="15" width="6" height="6" rx="1"/><rect x="29" y="15" width="6" height="6" rx="1"/><rect x="36" y="15" width="6" height="6" rx="1"/><rect x="43" y="15" width="6" height="6" rx="1"/><rect x="50" y="15" width="6" height="6" rx="1"/><rect x="8" y="22" width="6" height="6" rx="1"/><rect x="15" y="22" width="6" height="6" rx="1"/><rect x="22" y="22" width="6" height="6" rx="1"/><rect x="29" y="22" width="6" height="6" rx="1"/><rect x="36" y="22" width="6" height="6" rx="1"/><rect x="43" y="22" width="6" height="6" rx="1"/><rect x="50" y="22" width="6" height="6" rx="1"/><rect x="8" y="29" width="6" height="6" rx="1"/><rect x="15" y="29" width="6" height="6" rx="1"/><rect x="22" y="29" width="6" height="6" rx="1"/><rect x="36" y="29" width="6" height="6" rx="1"/><rect x="43" y="29" width="6" height="6" rx="1"/><rect x="50" y="29" width="6" height="6" rx="1"/><rect x="8" y="36" width="6" height="6" rx="1"/><rect x="15" y="36" width="6" height="6" rx="1"/><rect x="22" y="36" width="6" height="6" rx="1"/><rect x="29" y="36" width="6" height="6" rx="1"/><rect x="36" y="36" width="6" height="6" rx="1"/><rect x="43" y="36" width="6" height="6" rx="1"/><rect x="50" y="36" width="6" height="6" rx="1"/><rect x="8" y="43" width="6" height="6" rx="1"/><rect x="15" y="43" width="6" height="6" rx="1"/><rect x="22" y="43" width="6" height="6" rx="1"/><rect x="29" y="43" width="6" height="6" rx="1"/><rect x="36" y="43" width="6" height="6" rx="1"/><rect x="43" y="43" width="6" height="6" rx="1"/><rect x="50" y="43" width="6" height="6" rx="1"/></g>
+    <rect x="29" y="29" width="6" height="6" rx="1" fill="var(--mw-accent, #E8A33D)"/>
+  </g>
+  <g fill="var(--mw-ink, #E9EEF4)">
+    <g transform="translate(98.71 0.00) scale(0.40625)"><path d="M4.50 64.00 5.61 0.00H20.78L27.81 37.21L35.40 0.00H50.01L51.12 64.00H41.09L39.90 21.41L32.47 64.00H23.55L15.64 21.10L14.70 64.00Z"/><path d="M58.28 64.00 70.37 0.00H86.49L98.42 64.00H85.39L83.25 50.49H73.85L71.64 64.00ZM75.11 42.03H81.91L78.51 17.07Z"/><path d="M114.43 64.00 102.90 0.00H114.99L121.86 43.46L128.26 0.00H141.06L129.37 64.00Z"/><path d="M148.46 64.00V0.00H177.22V9.64H162.60V25.52H173.75V35.32H162.60V54.44H177.38V64.00Z"/><path d="M184.78 64.00V0.00H202.40Q208.88 0.00 213.62 1.42Q218.36 2.84 221.01 6.52Q223.65 10.19 223.65 16.91Q223.65 20.86 223.02 23.94Q222.39 27.02 220.69 29.27Q218.99 31.53 215.83 33.03L224.60 64.00H209.99L202.95 35.32H198.92V64.00ZM198.92 27.18H202.87Q205.88 27.18 207.54 26.11Q209.20 25.05 209.87 23.03Q210.54 21.02 210.54 18.17Q210.54 14.06 209.04 11.77Q207.54 9.48 203.51 9.48H198.92Z"/><path d="M233.27 64.00V0.00H247.41V64.00Z"/><path d="M276.30 64.95Q269.03 64.95 264.80 62.30Q260.58 59.65 258.84 54.87Q257.10 50.09 257.10 43.61V20.54Q257.10 13.91 258.84 9.13Q260.58 4.35 264.80 1.74Q269.03 -0.87 276.30 -0.87Q283.41 -0.87 287.40 1.46Q291.39 3.79 293.05 7.98Q294.71 12.17 294.71 17.62V23.15H280.88V16.75Q280.88 14.85 280.69 13.12Q280.49 11.38 279.54 10.23Q278.59 9.09 276.30 9.09Q274.09 9.09 273.02 10.27Q271.96 11.46 271.68 13.23Q271.40 15.01 271.40 16.99V47.09Q271.40 49.22 271.76 51.00Q272.11 52.78 273.18 53.85Q274.25 54.91 276.30 54.91Q278.51 54.91 279.46 53.77Q280.41 52.62 280.65 50.80Q280.88 48.99 280.88 47.09V40.38H294.71V45.91Q294.71 51.36 293.09 55.66Q291.47 59.97 287.48 62.46Q283.49 64.95 276.30 64.95Z"/><path d="M303.45 64.00V0.00H317.60V26.15L328.34 0.00H342.17L330.32 28.92L342.72 64.00H328.34L319.10 35.71L317.60 38.24V64.00Z"/></g>
+    <g transform="translate(98.71 34.00) scale(0.40625)"><path d="M9.88 64.00 2.13 0.00H14.14L17.94 37.29L22.76 0.08H32.16L37.21 37.06L41.09 0.00H52.94L45.27 64.00H32.95L27.50 25.36L22.36 64.00Z"/><path d="M57.73 64.00 69.82 0.00H85.94L97.87 64.00H84.83L82.70 50.49H73.30L71.08 64.00ZM74.56 42.03H81.36L77.96 17.07Z"/><path d="M105.35 64.00V0.00H119.49V54.44H134.19V64.00Z"/><path d="M141.35 64.00V0.00H155.49V54.44H170.19V64.00Z"/></g>
+  </g>
+</svg></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>The recommendation</h2>
+    <div class="recommend">
+      <div class="tile ground-board">
+        <svg class="mark" width="120" height="120" role="img" aria-label="Lit Cell"><use href="#m-lit-cell"/></svg>
+      </div>
+      <div>
+        <p>
+          <strong>03, Lit Cell, with the wordmark.</strong> It is the only one
+          of the five that says what the product is for rather than what it
+          looks like, and it is built from the wall's own seven-column grid, so
+          it stays true after the next redesign of the interface it is not
+          depicting. Its reduction behaviour is the argument: the month becomes
+          texture, today stays lit. That is the product.
+        </p>
+        <p>
+          <strong>05, Corner</strong> is the alternate worth arguing for. It is
+          the better trademark and it is the one that survives smallest; it just
+          needs the wordmark doing more of the work, which the lockup now does.
+        </p>
+        <p style="color: var(--muted);">
+          04 is the one to reach for if the name should do the talking, but not
+          before somebody has looked at it at 16 px in a real tab and decided it
+          does not look broken. 02 is the wildcard — the most distinct
+          silhouette here, and the one most likely to be read as a music player.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>What is in the repository</h2>
+    <div class="filelist"><b>docs/brand/</b>
+  README.md                      how to use them, and the two colour rules
+  logo-options.html              this page
+  <b>marks/</b>
+    panel.svg                    01
+    seven.svg                    02
+    lit-cell.svg                 03
+    lit-cell-small.svg           03, the 5×4 redraw for below 20 px
+    out-of-line.svg              04
+    corner.svg                   05
+  <b>wordmark/</b>
+    wordmark.svg                 MAVERICK WALL, outlined
+    lockup-horizontal.svg        mark + one line
+    lockup-stacked.svg           mark + two lines
+  <b>app-icon/</b>
+    lit-cell-512.svg             the add-on tile, on Board
+    logo-1000x300.svg            the wide add-on logo, transparent ground
+    corner-512.svg               the 05 alternate</div>
+    <p style="margin-top: 22px;">
+      Each file takes its colours from <code>--mw-neutral</code>,
+      <code>--mw-accent</code> and <code>--mw-ink</code> with the Board values
+      as fallbacks, so an inline SVG follows whatever theme surrounds it and a
+      file loaded through <code>&lt;img&gt;</code> still comes out right. On a
+      light ground set the Almanac values — <code>#6B6558</code>,
+      <code>#C98A16</code>, <code>#1A1815</code> — because Board's amber has too
+      little contrast on paper.
+    </p>
+  </section>
+
+  <footer>
+    Drawn on a 64-unit grid · colours from apps/display/src/theme.ts · every
+    size on this page rendered and looked at, not assumed
+  </footer>
+
+</div>
