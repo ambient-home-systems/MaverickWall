@@ -1,7 +1,7 @@
 import { createClock } from './clock.js';
 import { createManifestClient, type Manifest } from './manifest.js';
 import { render, renderFreeform, renderMessage, renderPairing } from './render.js';
-import { applyTheme, themeAt } from './theme.js';
+import { applyTheme, daytimeActive } from './theme.js';
 import {
   geometryFor,
   normaliseOrientation,
@@ -95,15 +95,18 @@ function start(): void {
     // The theme is re-evaluated on every draw rather than only on a new
     // manifest, or the switch to the daylight theme would wait for a calendar
     // to change rather than for the sun to come up.
+    const local = localTime(now, manifest.timezone);
+    const day = daytimeActive(
+      local,
+      manifest.theme.daytime,
+      manifest.theme.daytimeStartsAt,
+      manifest.theme.daytimeEndsAt,
+    );
     applyTheme(
       document.documentElement,
-      themeAt(
-        localTime(now, manifest.timezone),
-        manifest.theme.active,
-        manifest.theme.daytime,
-        manifest.theme.daytimeStartsAt,
-        manifest.theme.daytimeEndsAt,
-      ),
+      day && manifest.theme.daytime !== undefined ? manifest.theme.daytime : manifest.theme.active,
+      day ? manifest.theme.daytimeTokens : manifest.theme.activeTokens,
+      day ? manifest.theme.daytimeShape : manifest.theme.activeShape,
     );
     /*
      * Free-form when the household arranged a canvas, the responsive layout

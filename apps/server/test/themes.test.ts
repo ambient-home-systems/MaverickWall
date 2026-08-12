@@ -1,0 +1,192 @@
+import { afterAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
+import { openDatabase, type SqliteDatabase } from '../src/db/open.js';
+import { runMigrations } from '../src/db/migrate.js';
+import { createApp } from '../src/http/app.js';
+import { createSetupTokenHolder } from '../src/http/setup.js';
+import { createKeyring } from '../src/secrets/keyring.js';
+import { createFetcher } from '../src/net/fetcher.js';
+import { issueDisplayToken } from '../src/auth/tokens.js';
+import {
+  createTheme,
+  mix,
+  readThemes,
+  resolveTheme,
+  themeTokensSchema,
+  withTints,
+  type ThemeTokens,
+} from '../src/api/themes.js';
+
+/**
+ * Custom themes: the token maths that has to match the display, the schema that
+ * keeps a stranger's value out of the wall's CSS, and resolution to what the
+ * manifest carries. The `mix` test is the parity guard against the copy in the
+ * display bundle (`apps/display/src/theme.ts`), which the two share by test
+ * rather than by import.
+ */
+
+const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+const roots: string[] = [];
+afterAll(() => {
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+});
+
+function db(): SqliteDatabase {
+  const dataDir = mkdtempSync(join(tmpdir(), 'mw-themes-'));
+  roots.push(dataDir);
+  const { db: database } = openDatabase({ dataDir });
+  runMigrations(database, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
+  return database;
+}
+
+// A dark theme and a light one, both valid.
+const DARK: ThemeTokens = {
+  '--bg': '#101418',
+  '--panel': '#1b2028',
+  '--rule': '#2a333f',
+  '--ink': '#e9eef4',
+  '--muted': '#9ba7b4',
+  '--faint': '#68727e',
+  '--accent': '#e0a33e',
+  '--s-day': '#e0a33e',
+  '--s-night': '#4c7fd1',
+  '--s-break': '#35916a',
+  '--s-straight': '#6b7684',
+  '--radius': '0.4rem',
+};
+const LIGHT: ThemeTokens = { ...DARK, '--bg': '#f6f3ec', '--panel': '#ffffff', '--ink': '#1a1815' };
+
+describe('mix (parity with the display bundle)', () => {
+  it('blends foreground over background by amount', () => {
+    expect(mix('#ffffff', '#000000', 0.5)).toBe('#808080');
+    expect(mix('#ff0000', '#000000', 0.2)).toBe('#330000');
+    expect(mix('#ffffff', '#000000', 0)).toBe('#000000');
+    expect(mix('#123456', '#123456', 1)).toBe('#123456');
+  });
+});
+
+describe('withTints', () => {
+  it('derives a cell tint and badge tint for each shift hue', () => {
+    const t = withTints(DARK);
+    for (const s of ['--s-day', '--s-night', '--s-break', '--s-straight']) {
+      expect(t[`${s}-tint`]).toMatch(/^#[0-9a-f]{6}$/);
+      expect(t[`${s}-badge`]).toMatch(/^#[0-9a-f]{6}$/);
+    }
+    // The base tokens survive untouched.
+    expect(t['--accent']).toBe(DARK['--accent']);
+  });
+
+  it('washes a light background more lightly than a dark one', () => {
+    // Same hue, different background: paper (0.13) sits closer to its bg than
+    // slate (0.2) does, so the tint is nearer the background on light.
+    const dark = withTints({ ...DARK, '--s-day': '#ff0000' })['--s-day-tint'];
+    const light = withTints({ ...LIGHT, '--s-day': '#ff0000' })['--s-day-tint'];
+    expect(dark).not.toBe(light);
+  });
+});
+
+describe('themeTokensSchema', () => {
+  it('accepts a full valid token set', () => {
+    expect(themeTokensSchema.safeParse(DARK).success).toBe(true);
+  });
+  it('refuses a non-hex colour', () => {
+    expect(themeTokensSchema.safeParse({ ...DARK, '--accent': 'red' }).success).toBe(false);
+  });
+  it('refuses an unknown key (rule five)', () => {
+    expect(themeTokensSchema.safeParse({ ...DARK, '--evil': '#000000' }).success).toBe(false);
+  });
+  it('refuses an out-of-range radius', () => {
+    expect(themeTokensSchema.safeParse({ ...DARK, '--radius': '9999px' }).success).toBe(false);
+    expect(themeTokensSchema.safeParse({ ...DARK, '--radius': 'calc(1px)' }).success).toBe(false);
+  });
+});
+
+describe('resolveTheme', () => {
+  it('carries only the shape for a built-in — the bundle owns its tokens', () => {
+    const resolved = resolveTheme(db(), 'board');
+    expect(resolved).toEqual({ shape: 'board' });
+    expect(resolved.tokens).toBeUndefined();
+  });
+
+  it('carries the full resolved token set for a custom theme, with board shape', () => {
+    const d = db();
+    const created = createTheme(d, { name: 'Sunset', tokens: DARK });
+    const resolved = resolveTheme(d, `custom:${created.id}`);
+    expect(resolved.shape).toBe('board');
+    expect(resolved.tokens?.['--bg']).toBe(DARK['--bg']);
+    expect(resolved.tokens?.['--s-day-tint']).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  it('falls back to board for a missing custom id rather than blanking a wall', () => {
+    expect(resolveTheme(db(), 'custom:does-not-exist')).toEqual({ shape: 'board' });
+  });
+});
+
+describe('storage round-trip', () => {
+  it('creates a theme and reads it back', () => {
+    const d = db();
+    const created = createTheme(d, { name: 'Sunset', tokens: DARK });
+    const all = readThemes(d);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.id).toBe(created.id);
+    expect(all[0]?.name).toBe('Sunset');
+    expect(all[0]?.tokens['--accent']).toBe(DARK['--accent']);
+  });
+});
+
+describe('a custom theme reaches a paired wall via /d/manifest', () => {
+  it('carries the resolved tokens in the manifest a screen polls', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'mw-themes-app-'));
+    roots.push(dataDir);
+    const { db: database } = openDatabase({ dataDir });
+    runMigrations(database, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
+
+    const at = Date.now();
+    database
+      .prepare(`INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`)
+      .run(at, at);
+
+    // A household that has finished setup and chosen a custom theme.
+    const theme = createTheme(database, { name: 'Sunset', tokens: DARK });
+    database
+      .prepare(`UPDATE household_settings SET theme = ?, setup_completed_at = ? WHERE id = 'singleton'`)
+      .run(`custom:${theme.id}`, at);
+
+    // A paired screen, so /d/manifest answers with a real token.
+    const issued = issueDisplayToken();
+    database
+      .prepare(
+        `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+         VALUES ('scr1', 'Kitchen', ?, ?, ?, ?)`,
+      )
+      .run(issued.tokenHash, at, at, at);
+
+    const app = createApp({
+      db: database,
+      appVersion: '0.1.0-test',
+      bootNotices: [],
+      auth: { secret: 't'.repeat(32), baseUrl: 'http://localhost' },
+      keyring: createKeyring(randomBytes(32)),
+      fetcher: createFetcher(),
+      clientAddress: () => '10.20.0.1',
+      setupToken: createSetupTokenHolder(() => {}),
+      dataDir,
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/d/manifest', {
+        headers: { authorization: `Bearer ${issued.token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const manifest = (await res.json()) as { theme: { active: string; activeShape?: string; activeTokens?: Record<string, string> } };
+    expect(manifest.theme.active).toBe(`custom:${theme.id}`);
+    expect(manifest.theme.activeShape).toBe('board');
+    expect(manifest.theme.activeTokens?.['--bg']).toBe(DARK['--bg']);
+    expect(manifest.theme.activeTokens?.['--s-day-tint']).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});

@@ -430,3 +430,38 @@ describe('two people', () => {
     expect(legacy.days.some((day) => day.shifts.some((shift) => shift.personName === 'Josh'))).toBe(true);
   });
 });
+
+describe('theme tokens in the manifest', () => {
+  it('carries only the shape for a built-in — the display bundle owns its tokens', () => {
+    const manifest = buildManifest({
+      ...BASE,
+      resolveTheme: (ref) => ({ shape: ref }),
+    });
+    expect(manifest.theme.active).toBe('board');
+    expect(manifest.theme.activeShape).toBe('board');
+    expect(manifest.theme.activeTokens).toBeUndefined();
+  });
+
+  it('carries the resolved token set for a custom active theme', () => {
+    const manifest = buildManifest({
+      ...BASE,
+      household: { ...HOUSEHOLD, theme: 'custom:abc' },
+      resolveTheme: (ref) =>
+        ref === 'custom:abc' ? { tokens: { '--bg': '#123456' }, shape: 'board' } : { shape: ref },
+    });
+    expect(manifest.theme.active).toBe('custom:abc');
+    expect(manifest.theme.activeShape).toBe('board');
+    expect(manifest.theme.activeTokens).toEqual({ '--bg': '#123456' });
+  });
+
+  it('resolves the daytime theme too', () => {
+    const manifest = buildManifest({
+      ...BASE,
+      household: { ...HOUSEHOLD, daytimeTheme: 'custom:day' },
+      resolveTheme: (ref) =>
+        ref === 'custom:day' ? { tokens: { '--bg': '#ffffff' }, shape: 'board' } : { shape: ref },
+    });
+    expect(manifest.theme.daytime).toBe('custom:day');
+    expect(manifest.theme.daytimeTokens).toEqual({ '--bg': '#ffffff' });
+  });
+});

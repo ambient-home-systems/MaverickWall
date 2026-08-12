@@ -224,6 +224,18 @@ export interface Manifest {
     readonly daytime?: string;
     readonly daytimeStartsAt?: string;
     readonly daytimeEndsAt?: string;
+    /**
+     * The `data-theme` shape for the active/daytime theme, and — for a *custom*
+     * theme the display bundle has never heard of — its fully-resolved token
+     * set. A built-in carries no tokens (the bundle owns them) and a shape equal
+     * to its key; a custom theme carries the tokens and `board` as its shape, so
+     * it inherits the default shape CSS. Absent on an older server, which is why
+     * the display falls back to resolving the key itself.
+     */
+    readonly activeShape?: string;
+    readonly activeTokens?: Readonly<Record<string, string>>;
+    readonly daytimeShape?: string;
+    readonly daytimeTokens?: Readonly<Record<string, string>>;
   };
   readonly window: { readonly from: CivilDate; readonly to: CivilDate };
   /**
@@ -414,6 +426,15 @@ export interface BuildManifestInput {
     readonly daytimeStartsAt?: string | null;
     readonly daytimeEndsAt?: string | null;
   };
+  /**
+   * Resolve a theme reference to its shape and (for a custom theme) its tokens.
+   * Injected so assembly stays free of a database read — the caller closes over
+   * the db, exactly as the module panels are collected outside `buildManifest`.
+   * Absent leaves the theme as bare keys, which is the built-in-only behaviour.
+   */
+  readonly resolveTheme?: (
+    ref: string,
+  ) => { readonly tokens?: Readonly<Record<string, string>>; readonly shape: string };
   /** Anything the caller already knows is wrong: a failed migration, say. */
   readonly notices?: readonly ManifestNotice[];
 }
@@ -676,9 +697,18 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   const daytimeStartsAt = pick(input.screen?.daytimeStartsAt, input.household.daytimeStartsAt);
   const daytimeEndsAt = pick(input.screen?.daytimeEndsAt, input.household.daytimeEndsAt);
 
+  // Resolve the active (and any daytime) theme to what the display needs: a
+  // built-in yields just its shape, a custom theme its token set too. Falls back
+  // to bare keys when no resolver was injected.
+  const active = input.resolveTheme?.(activeTheme) ?? { shape: activeTheme };
+  const day = daytimeTheme !== null ? input.resolveTheme?.(daytimeTheme) : undefined;
   const theme = {
     active: activeTheme,
+    activeShape: active.shape,
+    ...(active.tokens !== undefined ? { activeTokens: active.tokens } : {}),
     ...(daytimeTheme !== null ? { daytime: daytimeTheme } : {}),
+    ...(day?.shape !== undefined ? { daytimeShape: day.shape } : {}),
+    ...(day?.tokens !== undefined ? { daytimeTokens: day.tokens } : {}),
     ...(daytimeStartsAt !== null ? { daytimeStartsAt } : {}),
     ...(daytimeEndsAt !== null ? { daytimeEndsAt } : {}),
   };

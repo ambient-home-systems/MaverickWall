@@ -90,6 +90,16 @@ export interface Manifest {
     readonly daytime?: string;
     readonly daytimeStartsAt?: string;
     readonly daytimeEndsAt?: string;
+    /**
+     * For a custom theme, the resolved token set to apply and the `data-theme`
+     * shape to set. Built-in themes carry no tokens — this bundle owns them and
+     * resolves them from the key. Absent on an older server, so both are
+     * optional and the key path is the fallback.
+     */
+    readonly activeShape?: string;
+    readonly activeTokens?: Readonly<Record<string, string>>;
+    readonly daytimeShape?: string;
+    readonly daytimeTokens?: Readonly<Record<string, string>>;
   };
   readonly window: { readonly from: CivilDate; readonly to: CivilDate };
   /** How much to show. Chosen by the household, not by this bundle. */
