@@ -132,7 +132,56 @@ def build(font_file, weight, tracking, label):
     )
     (OUT / "wordmark/lockup-horizontal.svg").write_text(lockup(44, [line], 0))
     (OUT / "wordmark/lockup-stacked.svg").write_text(lockup(26, [mav, wal], 8))
+    logo_wide(line, OUT / "app-icon/logo-1000x300.svg")
     print(f"{label}: wordmark {line['width']}, maverick {mav['width']}")
+
+
+def logo_wide(line, path):
+    """
+    The 1000x300 Home Assistant add-on logo.
+
+    One PNG has to sit on both of Home Assistant's themes, and a plate that
+    looks like a deliberate badge on a white card looks like a stray dark box
+    on a dark one. So the background is transparent and only the mark carries a
+    ground: the tile is the app icon, which the mark needs because its whole
+    idea is a quiet field with one cell lit, and a field with no ground behind
+    it cannot be quiet.
+
+    That leaves the wordmark to stand on whatever is behind it, so its colour is
+    chosen for the worse of the two rather than for either. #A8701A is 4.20:1 on
+    white and 4.06:1 on Home Assistant's dark card. It is derived for this one
+    constraint rather than lifted from theme.ts: Board's #E8A33D is 2.16:1 on
+    white and Almanac's #C98A16 is 2.95:1, and both wash out on a light card.
+    """
+    cap = 76.0
+    scale = cap / CAP
+    tile = 141  # the grid's ink fills 54% of the tile's height, matching the cap
+    gap = 40
+    wm_w = line["width"] * scale
+    x0 = (1000 - (tile + gap + wm_w)) / 2
+    ty = (300 - tile) / 2
+
+    k = (tile * 0.76) / 48.0
+    gx = x0 + (tile - 48 * k) / 2 - 8 * k
+    gy = ty + (tile - 34 * k) / 2 - 15 * k
+    cells = []
+    for row in range(5):
+        for col in range(7):
+            cx, cy = 8 + col * 7, 15 + row * 7
+            lit = (col, row) == (3, 2)
+            fill = "#E8A33D" if lit else "#363D45"
+            cells.append(f'<rect x="{cx}" y="{cy}" width="6" height="6" rx="1" fill="{fill}"/>')
+
+    body = (
+        f'  <rect x="{x0:.1f}" y="{ty:.1f}" width="{tile}" height="{tile}" '
+        f'rx="{tile * 0.22:.1f}" fill="#0B0E11"/>\n'
+        f'  <rect x="{x0 + 0.5:.1f}" y="{ty + 0.5:.1f}" width="{tile - 1}" height="{tile - 1}" '
+        f'rx="{tile * 0.22 - 0.5:.1f}" fill="none" stroke="#242D38"/>\n'
+        f'  <g transform="translate({gx:.2f} {gy:.2f}) scale({k:.4f})">{"".join(cells)}</g>\n'
+        f'  <g transform="translate({x0 + tile + gap:.1f} {(300 - cap) / 2:.1f}) '
+        f'scale({scale:.5f})" fill="#A8701A">{line["body"]}</g>'
+    )
+    path.write_text(svg(1000, 300, body))
 
 
 if __name__ == "__main__":
