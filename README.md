@@ -16,6 +16,18 @@
 -->
 ##THIS IS UNDER ACTIVE DEVELOPMENT
 
+<!--
+  The mark, not the lockup: the wordmark would only repeat the heading under
+  it. This is the add-on's own icon rather than a copy of it, because a second
+  file that has to be kept in step is how this repository ended up with two
+  identical licence files nobody could tell apart.
+
+  It reads on both of GitHub's themes because the tile carries its own ground.
+  A bare SVG would not: docs/brand's sources take their colours from CSS
+  variables, and the fallback ink is near-white — invisible on the light theme.
+-->
+<img src="addon/maverick-wall/icon.png" alt="" width="84">
+
 # Maverick Wall
 
 A family calendar for a wall display. One container, one volume, no
