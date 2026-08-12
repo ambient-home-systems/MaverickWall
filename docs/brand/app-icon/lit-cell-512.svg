@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Maverick Wall">
+  <!--
+    Home Assistant add-on tile: the Board theme's own ground and rule, so the
+    icon and the wall it configures are demonstrably the same product.
+  -->
+  <rect width="512" height="512" rx="112" fill="#0B0E11"/>
+  <rect x="1" y="1" width="510" height="510" rx="111" fill="none" stroke="#242D38" stroke-width="2"/>
+  <g transform="translate(64 64) scale(6)">
+    <g fill="#6B7684" fill-opacity=".34">
+      <rect x="8" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><rect x="22" y="15" width="6" height="6" rx="1"/><rect x="29" y="15" width="6" height="6" rx="1"/><rect x="36" y="15" width="6" height="6" rx="1"/><rect x="43" y="15" width="6" height="6" rx="1"/><rect x="50" y="15" width="6" height="6" rx="1"/>
+      <rect x="8" y="22" width="6" height="6" rx="1"/><rect x="15" y="22" width="6" height="6" rx="1"/><rect x="22" y="22" width="6" height="6" rx="1"/><rect x="29" y="22" width="6" height="6" rx="1"/><rect x="36" y="22" width="6" height="6" rx="1"/><rect x="43" y="22" width="6" height="6" rx="1"/><rect x="50" y="22" width="6" height="6" rx="1"/>
+      <rect x="8" y="29" width="6" height="6" rx="1"/><rect x="15" y="29" width="6" height="6" rx="1"/><rect x="22" y="29" width="6" height="6" rx="1"/><rect x="36" y="29" width="6" height="6" rx="1"/><rect x="43" y="29" width="6" height="6" rx="1"/><rect x="50" y="29" width="6" height="6" rx="1"/>
+      <rect x="8" y="36" width="6" height="6" rx="1"/><rect x="15" y="36" width="6" height="6" rx="1"/><rect x="22" y="36" width="6" height="6" rx="1"/><rect x="29" y="36" width="6" height="6" rx="1"/><rect x="36" y="36" width="6" height="6" rx="1"/><rect x="43" y="36" width="6" height="6" rx="1"/><rect x="50" y="36" width="6" height="6" rx="1"/>
+      <rect x="8" y="43" width="6" height="6" rx="1"/><rect x="15" y="43" width="6" height="6" rx="1"/><rect x="22" y="43" width="6" height="6" rx="1"/><rect x="29" y="43" width="6" height="6" rx="1"/><rect x="36" y="43" width="6" height="6" rx="1"/><rect x="43" y="43" width="6" height="6" rx="1"/><rect x="50" y="43" width="6" height="6" rx="1"/>
+    </g>
+    <rect x="29" y="29" width="6" height="6" rx="1" fill="#E8A33D"/>
+  </g>
+</svg>

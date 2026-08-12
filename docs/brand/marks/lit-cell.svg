@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Maverick Wall — Lit Cell">
+  <!--
+    A month, quiet. One cell lit.
+
+    Seven columns because the wall's month grid is seven columns; the contrast
+    is opacity rather than hue, so the mark survives monochrome and one-colour
+    print with no redraw. Below ~20px use lit-cell-small.svg.
+  -->
+  <g fill="var(--mw-neutral, #6B7684)" fill-opacity=".34">
+    <rect x="8" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><rect x="22" y="15" width="6" height="6" rx="1"/><rect x="29" y="15" width="6" height="6" rx="1"/><rect x="36" y="15" width="6" height="6" rx="1"/><rect x="43" y="15" width="6" height="6" rx="1"/><rect x="50" y="15" width="6" height="6" rx="1"/>
+    <rect x="8" y="22" width="6" height="6" rx="1"/><rect x="15" y="22" width="6" height="6" rx="1"/><rect x="22" y="22" width="6" height="6" rx="1"/><rect x="29" y="22" width="6" height="6" rx="1"/><rect x="36" y="22" width="6" height="6" rx="1"/><rect x="43" y="22" width="6" height="6" rx="1"/><rect x="50" y="22" width="6" height="6" rx="1"/>
+    <rect x="8" y="29" width="6" height="6" rx="1"/><rect x="15" y="29" width="6" height="6" rx="1"/><rect x="22" y="29" width="6" height="6" rx="1"/><rect x="36" y="29" width="6" height="6" rx="1"/><rect x="43" y="29" width="6" height="6" rx="1"/><rect x="50" y="29" width="6" height="6" rx="1"/>
+    <rect x="8" y="36" width="6" height="6" rx="1"/><rect x="15" y="36" width="6" height="6" rx="1"/><rect x="22" y="36" width="6" height="6" rx="1"/><rect x="29" y="36" width="6" height="6" rx="1"/><rect x="36" y="36" width="6" height="6" rx="1"/><rect x="43" y="36" width="6" height="6" rx="1"/><rect x="50" y="36" width="6" height="6" rx="1"/>
+    <rect x="8" y="43" width="6" height="6" rx="1"/><rect x="15" y="43" width="6" height="6" rx="1"/><rect x="22" y="43" width="6" height="6" rx="1"/><rect x="29" y="43" width="6" height="6" rx="1"/><rect x="36" y="43" width="6" height="6" rx="1"/><rect x="43" y="43" width="6" height="6" rx="1"/><rect x="50" y="43" width="6" height="6" rx="1"/>
+  </g>
+  <rect x="29" y="29" width="6" height="6" rx="1" fill="var(--mw-accent, #E8A33D)"/>
+</svg>

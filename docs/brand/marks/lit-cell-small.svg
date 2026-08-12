@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Maverick Wall — Lit Cell (small)">
+  <!--
+    The favicon redraw of lit-cell.svg: five columns by four, fewer and fatter.
+
+    At 16px a seven-column field is texture rather than a grid, and the lit cell
+    stops being a cell. This is a redraw, not a scale — use it below ~20px.
+  -->
+  <g fill="var(--mw-neutral, #6B7684)" fill-opacity=".34">
+    <rect x="3" y="9" width="10" height="10" rx="2"/><rect x="15" y="9" width="10" height="10" rx="2"/><rect x="27" y="9" width="10" height="10" rx="2"/><rect x="39" y="9" width="10" height="10" rx="2"/><rect x="51" y="9" width="10" height="10" rx="2"/>
+    <rect x="3" y="21" width="10" height="10" rx="2"/><rect x="15" y="21" width="10" height="10" rx="2"/><rect x="39" y="21" width="10" height="10" rx="2"/><rect x="51" y="21" width="10" height="10" rx="2"/>
+    <rect x="3" y="33" width="10" height="10" rx="2"/><rect x="15" y="33" width="10" height="10" rx="2"/><rect x="27" y="33" width="10" height="10" rx="2"/><rect x="39" y="33" width="10" height="10" rx="2"/><rect x="51" y="33" width="10" height="10" rx="2"/>
+    <rect x="3" y="45" width="10" height="10" rx="2"/><rect x="15" y="45" width="10" height="10" rx="2"/><rect x="27" y="45" width="10" height="10" rx="2"/><rect x="39" y="45" width="10" height="10" rx="2"/><rect x="51" y="45" width="10" height="10" rx="2"/>
+  </g>
+  <rect x="27" y="21" width="10" height="10" rx="2" fill="var(--mw-accent, #E8A33D)"/>
+</svg>

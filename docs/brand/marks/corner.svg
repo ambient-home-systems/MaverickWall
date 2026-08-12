@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Maverick Wall — Corner">
+  <!-- Two shapes: the wall, and today. The notch keeps 4 units of clear space. -->
+  <path d="M13 12 H36 V28 H52 V51 A5 5 0 0 1 47 56 H13 A5 5 0 0 1 8 51 V17 A5 5 0 0 1 13 12 Z" fill="var(--mw-neutral, #6B7684)"/>
+  <rect x="40" y="8" width="16" height="16" rx="3" fill="var(--mw-accent, #E8A33D)"/>
+</svg>
