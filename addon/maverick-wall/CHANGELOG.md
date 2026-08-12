@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.19.0
+
+Build your own theme for the wall.
+
+- **A theme builder.** A new **Themes** screen (under Settings) lets you make
+  your own look — a colour for each part of the wall, rounded or sharp corners,
+  and a choice of fonts — with a live preview and a note on what each colour
+  does. A gentle warning appears if a combination might be hard to read from
+  across the room; it never stops you.
+- **A choice of fonts, built in.** Six typefaces ship with Maverick Wall
+  (nothing is downloaded), so a theme can pick a heading, body, and numbers face
+  that actually show on the wall.
+- **Use it anywhere a built-in theme goes.** A theme you build is selectable as
+  the default for every wall, or for a single screen, right beside the four
+  built-in ones (Board, Kitchen Slate, Paper Almanac, Glance).
+
+The four built-in themes are unchanged, and a wall already set up keeps its look.
+
 ## 0.18.0
 
 Setting up from the Home Assistant sidebar no longer needs a code.
