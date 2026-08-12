@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.21.1
 
 Nothing changes on the wall. This one exists to prove the update path itself.
 
