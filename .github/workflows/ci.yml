@@ -33,6 +33,14 @@ jobs:
   # front page, so it is the one thing that must never be broken by a change
   # nobody thought was about packaging.
   one-liner:
+    # Only on pushes to main, never on pull requests. This job builds the full
+    # image and boots it four ways — the expensive part of CI — to catch
+    # packaging bugs that are release-blockers (uid 1000, the bind-mount
+    # ownership case, the README one-liner). Releases are cut from main by tag,
+    # so running this when something lands on main still catches a broken image
+    # before it can ship; running it on every PR commit rebuilt the image for
+    # each push and bought little the main-push run does not.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
