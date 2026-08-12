@@ -387,6 +387,25 @@ Write release notes under `## Unreleased` while you work; the same commit
 renames that heading and refuses to push if it is missing, because the
 supervisor shows that text beside the update button.
 
+**A release is one click, and does not depend on who can push a tag.** The
+whole v0.21.0 release stalled on an HTTP 403 pushing a tag ref while every
+branch push from the same session went through, so `release.yml` takes a
+`version` on `workflow_dispatch` as well as a pushed tag: write the notes under
+`## Unreleased`, run the workflow, type the version. A dispatched run cannot
+create the tag and wait for the push to trigger the file — GitHub does not fire
+workflows for refs made with `GITHUB_TOKEN`, or a workflow could trigger itself
+forever — so it does the release inline and `advertise` writes the tag at the
+end, beside the version bump, pointing at the commit that was *built* rather
+than at the bump that followed it.
+
+`prepare` is the only place the version is decided, and it is deliberately the
+first job: it refuses a version that is not one, and refuses a release with no
+`## Unreleased` notes, *before* anything is built rather than after the image is
+already public. The signature check is stricter as a result — the certificate
+names the ref the workflow ran from, and the run knows whether that was a tag or
+a branch, so `verify` asserts the whole identity instead of an `@refs/tags/`
+prefix.
+
 **How a tag is created changes what the release workflow does.** v0.21.0 went
 red after the image was already pushed and signed: `anchore/sbom-action`
 attaches the SBOM to the **GitHub Release** when one exists for the tag, which

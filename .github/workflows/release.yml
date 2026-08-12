@@ -21,6 +21,11 @@ on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the v (e.g. 0.21.2)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -33,6 +38,68 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/maverick-wall
 
 jobs:
+  # Where the version comes from, and the only place it is decided.
+  #
+  # Two ways in. A pushed tag is the old path and still works. `Run workflow`
+  # with a version is the new one, and it exists because pushing a tag is a
+  # permission not everybody driving this repository has — the whole release
+  # was blocked once by a 403 on a tag ref while every other push went
+  # through. A release should not depend on who is holding the keyboard.
+  #
+  # A dispatched run cannot simply create the tag and wait for the push to
+  # trigger this file: GitHub does not fire workflows for refs created with
+  # GITHUB_TOKEN, by design, or a workflow could trigger itself forever. So the
+  # dispatch does the release inline and `advertise` writes the tag at the end,
+  # next to the version bump, where every other irreversible thing lives.
+  prepare:
+    name: Work out what is being released
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      major_minor: ${{ steps.v.outputs.major_minor }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - id: v
+        name: Decide the version, and refuse a release nobody wrote notes for
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'${VERSION}' is not a version. Expected x.y.z, optionally with a -suffix."
+            exit 1
+          fi
+
+          # The changelog check runs *here*, before anything is built, rather
+          # than in `advertise` where it would fail with the image already
+          # published. Either there are notes waiting under `## Unreleased`, or
+          # the changelog already names this version because this is a re-run.
+          newest=$(grep -oP '^##\s+\K[0-9]+\.[0-9]+\.[0-9]+' addon/maverick-wall/CHANGELOG.md | head -1 || true)
+          if ! grep -q '^## Unreleased[[:space:]]*$' addon/maverick-wall/CHANGELOG.md && [ "$newest" != "$VERSION" ]; then
+            echo "::error::CHANGELOG.md has no '## Unreleased' section and its newest entry is ${newest:-none}, not ${VERSION}. The supervisor shows those notes beside the Update button, so a release without them tells a household nothing."
+            exit 1
+          fi
+
+          # Strip any -suffix before taking major.minor, or 0.22.0-rc.1 yields
+          # "0.22.0-rc" — which is not a version and would be published as one.
+          case "$VERSION" in *-*) pre=true ;; *) pre=false ;; esac
+          base="${VERSION%%-*}"
+          {
+            echo "version=${VERSION}"
+            echo "major_minor=${base%.*}"
+            echo "prerelease=${pre}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing ${VERSION} (prerelease: ${pre}) from ${GITHUB_EVENT_NAME}"
+
   # One architecture per machine, each on metal that speaks it.
   #
   # This used to be a single `platforms: linux/amd64,linux/arm64` build on an
@@ -60,6 +127,7 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
             suffix: arm64
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -101,7 +169,7 @@ jobs:
           # Pushed by digest, unnamed and untagged. `publish` gives it a name.
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ needs.prepare.outputs.version }}
             REVISION=${{ github.sha }}
           # Scoped per architecture: one cache shared by two different targets
           # is a cache that misses on both.
@@ -125,7 +193,7 @@ jobs:
   # The two architectures become one thing a household can pull.
   publish:
     name: Tag, sign and describe the image
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     # Job-level permissions replace the workflow's outright, so all three are
     # listed. `contents: write` is the one that matters and it is not
@@ -166,11 +234,14 @@ jobs:
           # `stable` moves only for a real release, never for a pre-release —
           # it is what docker-compose.yml points at, so a household that never
           # thinks about tags gets releases and not release candidates.
+          # Raw, not `type=semver`. Semver patterns read the git ref, which is
+          # a tag on one path and `main` on the other; the version is decided
+          # once in `prepare` and everything downstream uses that answer.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
-            type=raw,value=stable,enable=${{ !contains(github.ref, '-') }}
+            type=raw,value=${{ needs.prepare.outputs.version }}
+            type=raw,value=${{ needs.prepare.outputs.major_minor }},enable=${{ needs.prepare.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.prerelease == 'false' }}
+            type=raw,value=stable,enable=${{ needs.prepare.outputs.prerelease == 'false' }}
 
       # The per-architecture images carry the labels; the index needs its own
       # annotations or a registry reading only the top level sees none. Same
@@ -188,7 +259,7 @@ jobs:
       - id: digest
         name: Read back the digest of what was just created
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           digest=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
             --format '{{json .Manifest.Digest}}' | tr -d '"')
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
@@ -251,7 +322,7 @@ jobs:
   # in somebody's kitchen.
   verify:
     name: Verify the published image is pullable
-    needs: publish
+    needs: [prepare, publish]
     runs-on: ubuntu-latest
     # No login step, deliberately. The whole point is to prove the anonymous
     # pull works — the path a household takes, and the one that was silently
@@ -264,7 +335,7 @@ jobs:
         run: |
           # `type=semver,pattern={{version}}` strips the leading v, so the
           # image tag for v0.1.9 is 0.1.9 — mirror that here.
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           echo "Anonymously inspecting ${IMAGE}:${VERSION} (no credentials, as a supervisor pulls it)"
           docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw > manifest.json
           python3 - "$VERSION" <<'PY'
@@ -293,9 +364,16 @@ jobs:
         run: |
           # imagetools reads the manifest; this fetches the blobs, so a tag that
           # resolves but whose layers never landed still fails here.
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           docker pull "${IMAGE}:${VERSION}"
 
+      # An exact identity, not a pattern. The certificate names the ref the
+      # workflow ran from — `refs/tags/v0.21.2` for a pushed tag, `refs/heads/main`
+      # for a dispatched one — and this run knows which it was, so it can assert
+      # the whole string instead of a prefix. That is stricter than the
+      # `@refs/tags/` regexp it replaces, not looser: it pins the ref as well as
+      # the repository and the workflow file.
+      #
       # And it is signed by this workflow. The Sign step can fail while the image
       # is already pushed (a flaky OIDC fetch), leaving a published-but-unsigned
       # image on `stable` — which the README and the checklist both tell a
@@ -305,10 +383,10 @@ jobs:
       # freshly pushed signature.
       - name: And it is signed by this workflow
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           for attempt in 1 2 3 4 5; do
             if cosign verify "${IMAGE}:${VERSION}" \
-                 --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/tags/" \
+                 --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
                  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" > /dev/null 2>&1; then
               echo "signature verified for ${IMAGE}:${VERSION} (attempt ${attempt})"
               exit 0
@@ -335,10 +413,10 @@ jobs:
   # Write the notes under `## Unreleased` while you work; this renames it.
   advertise:
     name: Tell Home Assistant the update exists
-    needs: verify
-    # Only a real tag, and never a pre-release: `stable` does not move for one,
-    # so neither should the thing a household is offered.
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')
+    needs: [prepare, verify]
+    # Never a pre-release: `stable` does not move for one, so neither should
+    # the thing a household is offered.
+    if: needs.prepare.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -354,7 +432,7 @@ jobs:
       - name: Raise the version and date the changelog
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
 
           # Idempotent: re-running a release must not fail, and must not make
           # an empty commit that looks like a second release.
@@ -378,6 +456,18 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # The tag, if this run was dispatched rather than triggered by one.
+          # It points at the commit that was *built* — not at the bump below,
+          # which did not exist when the image was made. Written before the
+          # advertisement on purpose: a tag with no version bump is a tidy
+          # record nobody sees, while a bump with no tag is a released version
+          # with nothing naming what it was built from.
+          if ! git ls-remote --exit-code --tags origin "v${VERSION}" >/dev/null 2>&1; then
+            git tag "v${VERSION}" "${GITHUB_SHA}"
+            git push origin "v${VERSION}"
+            echo "tagged v${VERSION} at ${GITHUB_SHA}"
+          fi
           git add addon/maverick-wall/config.yaml addon/maverick-wall/CHANGELOG.md
           git commit \
             -m "Advertise ${VERSION} to Home Assistant" \
