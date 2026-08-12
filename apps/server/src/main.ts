@@ -19,10 +19,19 @@ import { applyStagedRestore } from './db/restore.js';
 import { createSetupTokenHolder } from './http/setup.js';
 import { normalizeBaseUrl } from './validation.js';
 import { detectWallAddress } from './net/supervisor.js';
-import { countUsers, readHousehold, readUpdateState, recordUpdateCheck } from './api/queries.js';
+import {
+  countUsers,
+  readHousehold,
+  readScreens,
+  readUpdateState,
+  recordUpdateCheck,
+  type ScreenRow,
+} from './api/queries.js';
 import { checkForUpdate } from './api/update-check.js';
 import { pollExternalModules } from './modules/external/index.js';
-import type { ManifestNotice } from './api/manifest.js';
+import { manifestEtag, type Manifest, type ManifestNotice } from './api/manifest.js';
+import { PushHub, PUSH_PATH } from './net/push-hub.js';
+import { startMdnsAdvertiser, MDNS_DEFAULT_NAME, type MdnsHandle } from './net/mdns.js';
 
 /**
  * Boot.
@@ -50,6 +59,16 @@ function env(name: string, fallback: string): string {
  * "unversioned" rather than as some specific release it is not.
  */
 const APP_VERSION = env('MW_VERSION', '0.0.0').replace(/^v/, '');
+
+/**
+ * How often the push server checks each screen for changes.
+ *
+ * The wall polls every sixty seconds, so anything faster than that is pure win
+ * on interrupt latency; five seconds keeps a tornado warning near-instant
+ * without spinning. The tick returns immediately when nobody is connected, so
+ * this costs nothing on a wall that never opens the socket.
+ */
+const PUSH_TICK_MS = 5_000;
 
 async function main(): Promise<void> {
   const startedAt = Date.now();
@@ -288,6 +307,14 @@ async function main(): Promise<void> {
   });
   if (countUsers(db) === 0) setupToken.current();
 
+  /*
+   * The push server needs the very same per-screen manifest the poll route
+   * builds. `createApp` hands it over here rather than us rebuilding it, so the
+   * socket and the poll can never compute two different walls — the drift this
+   * project keeps being bitten by, designed out rather than tested against.
+   */
+  let buildScreenManifest: ((screen: ScreenRow) => Manifest) | undefined;
+
   const app = createApp({
     db,
     appVersion: APP_VERSION,
@@ -304,6 +331,9 @@ async function main(): Promise<void> {
     },
     startedAt,
     log,
+    onManifestBuilder: (build) => {
+      buildScreenManifest = build;
+    },
   });
   /*
    * Said out loud, like the database path.
@@ -327,6 +357,92 @@ async function main(): Promise<void> {
   }
 
   const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
+
+  /*
+   * The self-hosted push channel (RFC 003 §8). Optional everywhere: a wall that
+   * never opens it still gets every interrupt on its sixty-second poll, so this
+   * only shortens the gap between an alert landing and the wall reacting. No
+   * cloud, no relay — the household's own server talking to its own screens.
+   *
+   * `buildScreenManifest` is set synchronously inside `createApp` above, so it
+   * is defined by now; the guard is for the impossible case rather than a real
+   * one, and keeps a socket from ever pushing an undefined wall.
+   */
+  const pushHub = new PushHub({
+    screens: () => readScreens(db),
+    evaluate: (screen) => {
+      if (buildScreenManifest === undefined) {
+        throw new Error('manifest builder not wired');
+      }
+      const manifest = buildScreenManifest(screen);
+      return { etag: manifestEtag(manifest), interrupts: manifest.interrupts };
+    },
+    log: (message) => console.log(message),
+  });
+
+  /*
+   * Route only `/d/push` into the hub; anything else upgrading is refused.
+   *
+   * A wall connects here with its display token — a cookie set at pairing, or a
+   * bearer from the native app — exactly the credential the poll uses. Under
+   * Home Assistant ingress `ingress_stream: true` is already set for this.
+   */
+  server.on?.('upgrade', (request, socket, head) => {
+    let pathname = '/';
+    try {
+      pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+    } catch {
+      // A malformed request-target: refuse rather than guess.
+    }
+    if (pathname === PUSH_PATH) {
+      pushHub.handleUpgrade(request, socket, head);
+    } else {
+      socket.destroy();
+    }
+  });
+
+  /*
+   * Every few seconds, push what changed. Far tighter than the sixty-second
+   * poll — a tornado warning reaches the wall in seconds — and cheap: a
+   * household has a handful of screens and the tick does nothing when none are
+   * connected. Unref'd so it never holds the process open on its own.
+   */
+  const pushTimer = setInterval(() => pushHub.tick(), PUSH_TICK_MS);
+  pushTimer.unref?.();
+
+  /*
+   * Advertise the wall on the LAN so the Android app finds it with no typed
+   * address (RFC 003 §8). A convenience, never load-bearing — the app always
+   * has manual host entry, so this only removes a step and can never brick a
+   * wall (rule nine): `startMdnsAdvertiser` catches every failure and returns.
+   *
+   * The port advertised is the one a *screen* reaches, which is the mapped host
+   * port under the add-on, not the container-internal one. When the supervisor
+   * says that port is turned off (`mappedPort === null`) there is nothing
+   * discoverable to point at, so we do not advertise a dead address; on a plain
+   * `docker run` there is no supervisor and the listen port is the right answer.
+   * `MDNS_DISABLE` turns it off for a household fronting the box with a proxy.
+   */
+  let mdns: MdnsHandle | undefined;
+  const mdnsDisabled = env('MDNS_DISABLE', '') !== '';
+  const advertisePort =
+    detection.mappedPort === null
+      ? undefined
+      : typeof detection.mappedPort === 'number'
+        ? detection.mappedPort
+        : port;
+  if (mdnsDisabled) {
+    console.log('[mdns] disabled by MDNS_DISABLE');
+  } else if (advertisePort === undefined) {
+    console.log('[mdns] not advertising — the wall display port is turned off');
+  } else {
+    mdns = startMdnsAdvertiser({
+      port: advertisePort,
+      name: env('MDNS_NAME', MDNS_DEFAULT_NAME),
+      version: APP_VERSION,
+      log: (message) => console.log(message),
+    });
+  }
 
   // Reported only once the socket is actually bound. Announcing it before
   // binding meant a failed start still claimed to be listening, which is worse
@@ -361,6 +477,13 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     console.log(`[shutdown] ${signal}`);
     scheduler.stop();
+    clearInterval(pushTimer);
+    // Close the sockets before the HTTP server, so a held-open push connection
+    // is not what keeps `server.close` waiting.
+    pushHub.close();
+    // Withdraw the mDNS record so an app drops us promptly instead of waiting
+    // out the TTL and offering a server that has gone.
+    mdns?.stop();
     server.close(() => {
       db.close();
       process.exit(0);

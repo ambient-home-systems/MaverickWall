@@ -5,6 +5,11 @@ import {
   shortCodeHashMatches,
   verifyDisplayToken,
 } from '../auth/tokens.js';
+import {
+  DISPLAY_COOKIE,
+  DISPLAY_COOKIE_ATTRS,
+  authenticateScreenToken,
+} from '../auth/screen-token.js';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import {
   createAuth,
@@ -22,6 +27,7 @@ import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } fr
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.js';
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
+import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { weatherModule } from '../modules/weather/index.js';
@@ -35,7 +41,7 @@ import { errorBlock, escapeHtml, page } from './html.js';
 import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
-import { buildManifest, manifestEtag, type ManifestNotice } from '../api/manifest.js';
+import { buildManifest, manifestEtag, type Manifest, type ManifestNotice } from '../api/manifest.js';
 import { resolveTheme } from '../api/themes.js';
 import {
   claimScreenPairing,
@@ -126,6 +132,18 @@ export interface AppDeps {
    * test can prove both the trusted and the forged case without a supervisor.
    */
   readonly ingressTrust?: { readonly isAddon: boolean; readonly sources: readonly string[] };
+  /**
+   * The socket addresses a TLS-terminating reverse proxy connects from.
+   *
+   * When a request's real socket source is one of these, its
+   * `X-Forwarded-Proto` is honoured — so the cross-origin guard and the display
+   * cookie's `Secure` follow the scheme the browser actually used, not the http
+   * the container sees behind the proxy. Empty by default (the header is
+   * ignored), so a direct-to-box or plain `docker run` household is unaffected.
+   * Defaults from `TRUSTED_PROXY_SOURCE`; injectable so a test proves both the
+   * trusted and the forged case without a proxy. See `http/forwarded.ts`.
+   */
+  readonly trustedProxySources?: readonly string[];
   /** Encrypts calendar URLs added through the wizard. */
   readonly keyring: Keyring;
   /** Tests a feed before the wizard stores it. */
@@ -171,6 +189,19 @@ export interface AppDeps {
    * request and miss every line about why the start went badly.
    */
   readonly log?: LogBuffer;
+  /**
+   * Hand the WebSocket push server the very builder the `/d/manifest` route
+   * uses.
+   *
+   * Called once during construction with a function that builds a paired
+   * screen's manifest. The push hub derives its etag and interrupt set from
+   * exactly that document, so a pushed `MANIFEST_CHANGED` can never disagree
+   * with what the next poll returns — the drift class of bug, designed out.
+   *
+   * Optional: a test that only drives `app.fetch` has no socket and passes no
+   * callback, and the route behaves exactly as before.
+   */
+  readonly onManifestBuilder?: (build: (screen: ScreenRow) => Manifest) => void;
 }
 
 /**
@@ -187,43 +218,24 @@ export function bytesOf(buffer: Buffer): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
-const DISPLAY_COOKIE = 'mw_display';
-
-/** Ten years. A wall is paired once and left alone; see the `/pair` routes. */
-const DISPLAY_COOKIE_ATTRS = 'Path=/; HttpOnly; SameSite=Lax; Max-Age=315360000';
-
 /** The pairing-code guess limit: how many, and over how long. */
 const PAIR_WINDOW_MS = 5 * 60_000;
 const PAIR_MAX_ATTEMPTS = 20;
-
-function cookieValue(header: string | undefined, name: string): string | undefined {
-  if (!header) return undefined;
-  for (const part of header.split(';')) {
-    const [key, ...rest] = part.trim().split('=');
-    if (key === name) return rest.join('=');
-  }
-  return undefined;
-}
 
 /**
  * Identify the screen behind a request.
  *
  * A token may arrive as a bearer header or as a cookie. The cookie exists
  * because a kiosk browser loads `/` with no way to set headers; it is set once
- * during pairing so the token never has to appear in a URL again.
+ * during pairing so the token never has to appear in a URL again. The rule
+ * itself lives in `auth/screen-token.ts` so the WebSocket push server, which
+ * sees a raw Node upgrade rather than a Hono context, checks it identically.
  */
 function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRow | undefined {
-  const authorization = c.req.header('authorization');
-  const bearer = authorization?.toLowerCase().startsWith('bearer ')
-    ? authorization.slice(7).trim()
-    : undefined;
-  const presented = bearer ?? cookieValue(c.req.header('cookie'), DISPLAY_COOKIE);
-  if (!presented) return undefined;
-
-  // Linear scan over every screen. A household has a handful, and comparing
-  // against each is what keeps the comparison constant-time per candidate
-  // rather than turning the token into a lookup key.
-  return screens.find((screen) => verifyDisplayToken(presented, screen.tokenHash));
+  return authenticateScreenToken(screens, {
+    authorization: c.req.header('authorization'),
+    cookie: c.req.header('cookie'),
+  });
 }
 
 /**
@@ -324,6 +336,31 @@ export function createApp(deps: AppDeps): Hono {
   };
   const trustedSources = new Set(ingressTrust.sources);
 
+  /*
+   * The reverse-proxy sources whose `X-Forwarded-Proto` we honour. Read once,
+   * from the caller or the environment; empty means the header is ignored, so
+   * the common direct-to-box case runs exactly as before. See `forwarded.ts`.
+   */
+  const trustedProxies = new Set(
+    deps.trustedProxySources ??
+      (process.env['TRUSTED_PROXY_SOURCE'] ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s !== ''),
+  );
+
+  /*
+   * The display cookie, with `Secure` added only when the browser reached us
+   * over HTTPS. Never unconditional: an unconditional `Secure` strips the
+   * cookie from every plain-http wall screen — the ordinary LAN case — and a
+   * screen that cannot keep its display cookie cannot pair (rule nine). Both
+   * `/pair` paths mint the cookie through here so neither can forget the rule.
+   */
+  const displayCookie = (token: string, c: Context): string => {
+    const secure = isSecureRequest(c, clientAddress(c), trustedProxies) ? '; Secure' : '';
+    return `${DISPLAY_COOKIE}=${token}; ${DISPLAY_COOKIE_ATTRS}${secure}`;
+  };
+
   const gateDeps: GateDeps = {
     sessions: createSessionResolver(auth),
     setupState: () => readSetupState(deps.db),
@@ -413,7 +450,12 @@ export function createApp(deps: AppDeps): Hono {
       return;
     }
     const origin = c.req.header('origin');
-    if (origin !== undefined && origin !== new URL(c.req.url).origin) {
+    // The effective origin, so a genuine post from behind a trusted TLS proxy —
+    // where the browser's Origin is `https://…` but the container sees http — is
+    // not refused as foreign. Untrusted or unconfigured, this is the request's
+    // own origin exactly as before, so a forged `X-Forwarded-Proto` buys
+    // nothing: the guard still compares against http and turns the post away.
+    if (origin !== undefined && origin !== effectiveOrigin(c, clientAddress(c), trustedProxies)) {
       return c.json(
         {
           error: 'cross-origin',
@@ -631,12 +673,16 @@ export function createApp(deps: AppDeps): Hono {
     });
   };
 
-  app.get('/d/manifest', (c: Context) => {
-    const screen = c.get('screen') as ScreenRow;
-    const manifest = buildDisplayManifest({
-      // The document is already screen-specific — served behind a display
-      // token — so how that screen is hung, and anything it has arranged for
-      // itself, travels with it.
+  /**
+   * A paired screen's whole manifest, from its row.
+   *
+   * The document is already screen-specific — served behind a display token —
+   * so how that screen is hung, and anything it has arranged for itself,
+   * travels with it. One mapping, shared by the poll route, the layout
+   * preview, and the WebSocket push server, so all three build a wall the same.
+   */
+  const manifestForScreen = (screen: ScreenRow): Manifest =>
+    buildDisplayManifest({
       id: screen.id,
       timezone: screen.timezone,
       orientation: screen.orientation,
@@ -653,6 +699,13 @@ export function createApp(deps: AppDeps): Hono {
       layoutMode: screen.layoutMode,
       layoutAspect: screen.layoutAspect,
     });
+
+  // The push server, if boot wired one, builds from exactly this — see the dep.
+  deps.onManifestBuilder?.(manifestForScreen);
+
+  app.get('/d/manifest', (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    const manifest = manifestForScreen(screen);
 
     // Recorded after building, so a screen that is failing to render still
     // shows as last seen. Failing to update this would make a broken display
@@ -782,23 +835,7 @@ export function createApp(deps: AppDeps): Hono {
           ? undefined
           : readScreens(deps.db).find((s) => s.id === screenId);
       if (screen !== undefined) {
-        return buildDisplayManifest({
-          id: screen.id,
-          timezone: screen.timezone,
-          orientation: screen.orientation,
-          rotation: screen.rotation,
-          allowDismiss: screen.allowDismiss === 1,
-          theme: screen.theme,
-          daytimeTheme: screen.daytimeTheme,
-          daytimeStartsAt: screen.daytimeStartsAt,
-          daytimeEndsAt: screen.daytimeEndsAt,
-          displayTodayEvents: screen.displayTodayEvents,
-          displayNextDays: screen.displayNextDays,
-          displayHorizonWeeks: screen.displayHorizonWeeks,
-          displayBlocks: screen.displayBlocks,
-          layoutMode: screen.layoutMode,
-          layoutAspect: screen.layoutAspect,
-        });
+        return manifestForScreen(screen);
       }
       return buildDisplayManifest({
         timezone: null,
@@ -839,7 +876,7 @@ export function createApp(deps: AppDeps): Hono {
     // Ten years. A wall display is paired once and then left alone; an expiry
     // would mean a screen going blank at some arbitrary future moment with
     // nobody around to notice why.
-    c.header('set-cookie', `${DISPLAY_COOKIE}=${token}; ${DISPLAY_COOKIE_ATTRS}`);
+    c.header('set-cookie', displayCookie(token, c));
     return c.redirect('/', 302);
   });
 
@@ -890,7 +927,7 @@ export function createApp(deps: AppDeps): Hono {
     // Lost the race with another submission of the same code — it is spent now.
     if (!claimed) return c.json(rejected, 400);
 
-    c.header('set-cookie', `${DISPLAY_COOKIE}=${issued.token}; ${DISPLAY_COOKIE_ATTRS}`);
+    c.header('set-cookie', displayCookie(issued.token, c));
     return c.json({ ok: true });
   });
 
