@@ -56,12 +56,21 @@ licence to track, and it cannot silently fall back to Arial. Geometric caps on
 the same 64-unit grid as the marks, with 11-unit stems, true circular bowls on
 the C and the R, and real points on the A, V, W and M.
 
-The first cut of this alphabet chamfered every curve at 45° and cut the apexes
-flat, on the theory that one decision applied everywhere would read as a
-deliberate style. It did not: it read as a typeface with its curves sliced off
-— "cropped or cut off" was the verdict, and it was right. Curves are curves
-here now, and the only flat cuts left are the C's terminals, where a stroke
-genuinely ends in the open and the vertical cut is the geometric convention.
+Two rounds of this were wrong, and both failed the same way — "cropped or cut
+off" was the verdict on each, and it was right both times.
+
+The first chamfered every curve at 45° and cut the apexes flat, on the theory
+that one decision applied everywhere would read as a deliberate style. It did
+not: it read as a typeface with its curves sliced off. Curves are curves now,
+and the only flat cuts left are the C's terminals, where a stroke genuinely
+ends in the open and the vertical cut is the geometric convention.
+
+The second fixed the curves and left the M alone, which was still wrong for a
+reason that is arithmetic rather than taste — see the note on it in
+`build-wordmark.mjs`. At 52 units wide, two 11-unit stems and two 11-unit arms
+leave almost nothing for the counter, so the V came out a near-solid triangle
+with a nick in the top edge. Width, lighter arms and a vertex on the baseline
+are what fixed it, and it needed all three.
 
 Edit `build-wordmark.mjs` and re-run it rather than editing the path data:
 

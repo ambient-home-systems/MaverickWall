@@ -24,9 +24,26 @@ import { dirname } from 'node:path';
 */
 
 const GLYPHS = {
-  /* Stems at 0..11 and 41..52; the V's outer edges spring one unit inside the
-     stems' inner edges, so the counters never pinch to a hairline join. */
-  M: { w: 52, d: 'M0 64 V0 H23 L26 11 L29 0 H52 V64 H41 V0 H40 L26 52 L12 0 H11 V64 Z' },
+  /*
+    The M is 64 wide, and that is the whole of it working.
+
+    At 52 the two 11-unit stems leave 30 for the middle V, and two arms of the
+    same weight ate 22 of that — so the V came out a near-solid triangle with a
+    token nick in the top edge, and the letter read as filled in and chopped
+    off. Three things buy the counter back, and it needed all three:
+
+      - width, because the notch falls at (W/2 - 12 - arm)/(W/2 - 12) of the
+        vertex, which is 21% of it at W=52 and 55% at W=64;
+      - arms of 9 against stems of 11, which is the ordinary compensation for a
+        diagonal reading heavier than a vertical at the same measure;
+      - the vertex on the baseline rather than short of it. Stopping at y=60
+        left the counters closed at the bottom as well as pinched at the top,
+        which is most of what "cut off" was describing.
+
+    Stems at 0..11 and 53..64; the V's outer edges spring one unit inside the
+    stems' inner edges, so the counters never pinch to a hairline join.
+  */
+  M: { w: 64, d: 'M0 64 V0 H21 L32 35.2 L43 0 H64 V64 H53 V0 H52 L32 64 L12 0 H11 V64 Z' },
 
   /* Pointed apex; the counter closes where the two inner edges meet at y=30.6. */
   A: { w: 46, d: 'M0 64 L23 0 L46 64 H35 L31.77 55 H14.23 L11 64 Z M23 30.6 L27.8 44 H18.2 Z' },
