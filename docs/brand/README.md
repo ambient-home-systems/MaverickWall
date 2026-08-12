@@ -50,36 +50,36 @@ truth. If a theme token changes there, these change with it.
 
 ## The wordmark
 
-`wordmark/wordmark.svg` is **drawn, not set**: every glyph is an outlined path,
-so it renders identically on a machine with no fonts installed, there is no
-licence to track, and it cannot silently fall back to Arial. Geometric caps on
-the same 64-unit grid as the marks, with 11-unit stems, true circular bowls on
-the C and the R, and real points on the A, V, W and M.
+`wordmark/wordmark.svg` is **Oswald 700, outlined to paths at build time**. The
+committed file needs no font installed anywhere and cannot silently fall back
+to Arial, but the letterforms are a type designer's rather than ours.
 
-Two rounds of this were wrong, and both failed the same way — "cropped or cut
-off" was the verdict on each, and it was right both times.
+Oswald is already bundled in `apps/server/assets/fonts` for the display themes
+under the SIL Open Font License 1.1, so the wordmark adds no new file, no new
+licence and nothing to download. It is the only face in that set drawn for
+signage rather than for paragraphs, which is what a name on a wall is, and
+being condensed it sits beside a wide grid mark without crowding it.
 
-The first chamfered every curve at 45° and cut the apexes flat, on the theory
-that one decision applied everywhere would read as a deliberate style. It did
-not: it read as a typeface with its curves sliced off. Curves are curves now,
-and the only flat cuts left are the C's terminals, where a stroke genuinely
-ends in the open and the vertical cut is the geometric convention.
+Three earlier rounds drew the alphabet by hand and all three came back "cut
+off": the first chamfered every curve at 45°, the second fixed the curves but
+left an M too narrow to hold a counter, the third fixed the M and the result
+still read as messy. A display alphabet drawn on the way to something else is a
+worse alphabet than one somebody spent a year on. The rule that came out of it
+is the same one behind `http/qr.ts` in reverse: draw what the product actually
+needs and nobody else supplies, and use somebody else's work for what is
+already solved.
 
-The second fixed the curves and left the M alone, which was still wrong for a
-reason that is arithmetic rather than taste — see the note on it in
-`build-wordmark.mjs`. At 52 units wide, two 11-unit stems and two 11-unit arms
-leave almost nothing for the counter, so the V came out a near-solid triangle
-with a nick in the top edge. Width, lighter arms and a vertex on the baseline
-are what fixed it, and it needed all three.
-
-Edit `build-wordmark.mjs` and re-run it rather than editing the path data:
+Rebuild it with:
 
 ```bash
-node docs/brand/build-wordmark.mjs
+pip install fonttools brotli
+python3 docs/brand/build-wordmark.py
 ```
 
-The glyphs, the tracking and the kern pairs are all readable in that file. The
-output is committed; nothing in the build or the image runs it.
+To try a different face, change the one `build()` call at the bottom of that
+file — every bundled family is a candidate and the script takes the file, an
+optional variable-font weight, and tracking. The output is committed; nothing
+in the build or the image runs this.
 
 Two lockups, both with the mark scaled so its **ink** height matches the cap
 height. Dropped in at its icon size the grid reads a size smaller than the type
