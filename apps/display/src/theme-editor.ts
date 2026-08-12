@@ -4,15 +4,24 @@
  * The form is server-rendered and saves with a plain POST — this only
  * *enhances* it, so a household with no scripting can still build and save a
  * theme. Two additions: a live preview of a real wall drawn through the display's
- * own renderer inside a shadow root (the same technique the layout editor uses,
- * so the CSS never leaks into the admin page), re-themed as the colours change;
- * and non-blocking contrast guidance, because a wall read at ten feet is
- * unforgiving and nothing here should hard-block a household's choice.
+ * own renderer inside an **iframe**, re-themed as the colours change; and
+ * non-blocking contrast guidance, because a wall read at ten feet is unforgiving
+ * and nothing here should hard-block a household's choice.
+ *
+ * The preview is an iframe rather than a shadow root because the display styles
+ * everything off the document root: the rem basis is
+ * `html { font-size: var(--root-size, calc(100vh/100)) }`, and every layout and
+ * theme rule is `:root[data-layout]` / `:root[data-theme]`. A shadow tree has no
+ * `<html>` and no viewport of its own, so none of that applies and the wall
+ * renders unscaled — which it did. An iframe is a real document with its own
+ * viewport, so the wall sizes and lays itself out exactly as on a screen, and
+ * its stylesheet is isolated from the admin page for free.
  */
 
 import { render } from './render.js';
 import { buildModel } from './viewmodel.js';
 import { applyTheme, customTokens } from './theme.js';
+import { geometryFor } from './orientation.js';
 import type { Manifest } from './manifest.js';
 
 const mount = document.getElementById('theme-editor');
@@ -34,7 +43,9 @@ function init(root: HTMLElement): void {
     | HTMLSelectElement
     | null;
 
-  let previewWall: HTMLElement | undefined;
+  // The iframe's <html>, once it has loaded — where the theme tokens are set so
+  // they cascade through the whole preview document.
+  let previewRoot: HTMLElement | undefined;
 
   const readBase = (): Record<string, string> => {
     const base: Record<string, string> = {};
@@ -47,7 +58,7 @@ function init(root: HTMLElement): void {
 
   const apply = (): void => {
     const base = readBase();
-    if (previewWall !== undefined) applyTheme(previewWall, 'custom', customTokens(base), 'board');
+    if (previewRoot !== undefined) applyTheme(previewRoot, 'custom', customTokens(base), 'board');
     if (contrastBox !== null) renderContrast(contrastBox, base);
   };
 
@@ -76,26 +87,44 @@ function init(root: HTMLElement): void {
       const manifest = (await manifestRes.json()) as Manifest;
       const css = await cssRes.text();
 
-      const shadow = previewBox.attachShadow({ mode: 'open' });
-      const styleEl = document.createElement('style');
-      styleEl.textContent = css;
-      const wall = document.createElement('div');
-      wall.className = 'preview-wall';
-      shadow.append(styleEl, wall);
-      previewWall = wall;
-
-      const box = previewBox.getBoundingClientRect();
-      const w = box.width > 0 ? box.width : 300;
-      const h = w * (16 / 9); // portrait, the design's own aspect
-      wall.style.width = `${w}px`;
-      wall.style.height = `${h}px`;
-      wall.style.setProperty('--frame-w', `${w}px`);
-      wall.style.setProperty('--frame-h', `${h}px`);
-      wall.style.setProperty('--root-size', `${h / 100}px`);
-
+      // Render the wall once here, then hand its static HTML to the iframe. The
+      // preview has no interactions, so the markup is all it needs.
       const at = Date.now();
-      render(wall, buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false }));
-      apply();
+      const model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });
+      const built = document.createElement('div');
+      render(built, model);
+
+      const boxW = previewBox.getBoundingClientRect().width || 300;
+      const frame = document.createElement('iframe');
+      frame.title = 'Wall preview';
+      frame.setAttribute('scrolling', 'no');
+      // Portrait, the design's own aspect. The iframe's viewport is what the
+      // display's `100vh`-based sizing reads, so this box *is* the wall.
+      frame.style.cssText = `display:block;border:0;width:${boxW}px;height:${boxW * (16 / 9)}px`;
+      frame.addEventListener('load', () => {
+        const doc = frame.contentDocument;
+        const wall = doc?.getElementById('wall');
+        if (doc === null || doc === undefined || wall === null || wall === undefined) return;
+        wall.innerHTML = built.innerHTML;
+
+        // Set the frame up exactly as a real portrait screen does (orientation.ts):
+        // the layout, the block set, the frame size and the rem basis. The CSS
+        // fallbacks already point at this iframe's viewport, so this only makes
+        // it identical to a wall rather than merely close.
+        const g = geometryFor({ width: frame.clientWidth, height: frame.clientHeight }, 0, 'portrait');
+        const html = doc.documentElement;
+        html.setAttribute('data-layout', g.layout);
+        html.setAttribute('data-blocks', model.blocks.join(' '));
+        html.style.setProperty('--frame-w', g.frame.width);
+        html.style.setProperty('--frame-h', g.frame.height);
+        html.style.setProperty('--root-size', g.rootFontSize);
+        previewRoot = html;
+        apply();
+      });
+      frame.srcdoc =
+        `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+        `<style>${css}</style></head><body><div id="wall"></div></body></html>`;
+      previewBox.replaceChildren(frame);
     } catch {
       apply();
     }
