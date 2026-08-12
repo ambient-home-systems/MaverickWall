@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Nothing changes on the wall. This one exists to prove the update path itself.
+
+0.21.0 was published while two faults in that path were still there: Home
+Assistant was told an update existed several minutes before the image did, and
+the release run went red after the image had already shipped. Both are fixed,
+and a release with nothing in it is the cheapest honest way to prove the fix —
+better than finding out during a release that matters.
+
 ## 0.21.0
 
 A look of its own, and the groundwork for a screen that wakes itself.
