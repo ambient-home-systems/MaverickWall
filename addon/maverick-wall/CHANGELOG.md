@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.20.0
+
+Shifts is now **Work Schedule**, and you can shape it to how you actually work.
+
+- **Name your own shifts.** The rigid Days / Mids / Straights are gone — rename
+  any shift, pick its colour, mark it working or off, add your own (a Swing, an
+  On-call), and reorder them. A new **Shift types** screen holds all of it.
+- **Time-off types built in.** One-click **Vacation**, **Sick** and **On-call**
+  types you can drop into a rotation.
+- **Shift times on the wall.** Give a shift a start and end time (say 07:00–19:00)
+  and the wall shows it — so it says *when*, not just *that* someone is working.
+- **Edit a rotation.** You can now change a saved rotation instead of removing
+  it and starting over.
+
+Your existing rotations and shift colours carry over unchanged.
+
 ## 0.19.1
 
 A fix for the previews.
