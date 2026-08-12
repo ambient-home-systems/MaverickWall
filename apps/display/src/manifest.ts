@@ -29,6 +29,11 @@ export interface ManifestShift {
   readonly label: string;
   readonly shortCode: string;
   readonly colorToken: string;
+  /** An explicit per-type colour; the display derives its tint. Absent = token. */
+  readonly color?: string;
+  /** Optional `HH:MM` window drawn on the wall. Absent = an untimed shift. */
+  readonly startTime?: string;
+  readonly endTime?: string;
   readonly isWorking: boolean;
   readonly source: string;
   readonly personId: string;

@@ -582,8 +582,23 @@ export const shiftTypes = sqliteTable('shift_types', {
   key: text('key').notNull().unique(),
   label: text('label').notNull(),
   shortCode: text('short_code').notNull(),
-  /** A CSS custom property name. Themes own the value. */
+  /**
+   * The default colour, as a CSS custom property the active theme owns
+   * (`--s-day`, …). Left in place as the fallback and the "match theme" choice.
+   */
   colorToken: text('color_token').notNull(),
+  /**
+   * An explicit per-type colour that overrides `colorToken` when set. Null means
+   * "match theme" — follow the token above, so a custom theme re-colours it. A
+   * 6-digit hex; the display derives its tints against the current background.
+   */
+  color: text('color'),
+  /**
+   * Optional start/end of the shift, `HH:MM`, shown on the wall. Null is an
+   * untimed shift (the common case — a rota that only says "day" or "night").
+   */
+  startTime: text('start_time'),
+  endTime: text('end_time'),
   isWorking: integer('is_working', { mode: 'boolean' }).notNull().default(true),
   sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
   ...timestamps,

@@ -25,6 +25,11 @@ export interface ShiftType {
   readonly shortCode: string;
   /** A CSS custom property name, e.g. `--s-night`. Themes own the value. */
   readonly colorToken: string;
+  /** An explicit colour that overrides the token, or absent to follow the theme. */
+  readonly color?: string;
+  /** Optional `HH:MM` start/end of the shift, shown on the wall. */
+  readonly startTime?: string;
+  readonly endTime?: string;
   /** False for rest days, leave, and similar. Drives "days until next shift". */
   readonly isWorking: boolean;
 }

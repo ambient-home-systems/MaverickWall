@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { ShiftOverride, ShiftPlan, ShiftType } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import type { SetupState } from '../auth/session.js';
@@ -255,24 +256,122 @@ export function readPeople(db: SqliteDatabase): PersonRow[] {
     .all() as PersonRow[];
 }
 
-export function readShiftTypes(db: SqliteDatabase): ShiftType[] {
+/** A shift type as the admin edits it — the id and sort order the core type omits. */
+export interface ShiftTypeRow extends ShiftType {
+  readonly id: string;
+  readonly sortOrder: number;
+}
+
+export function readShiftTypes(db: SqliteDatabase): ShiftTypeRow[] {
   return db
     .prepare(
-      `SELECT key, label, short_code AS shortCode, color_token AS colorToken,
-              is_working AS isWorking
+      `SELECT id, key, label, short_code AS shortCode, color_token AS colorToken,
+              color, start_time AS startTime, end_time AS endTime,
+              is_working AS isWorking, sort_order AS sortOrder
          FROM shift_types ORDER BY sort_order, key`,
     )
     .all()
     .map((row) => {
       const record = row as Record<string, unknown>;
+      const opt = (value: unknown): string | undefined =>
+        typeof value === 'string' && value !== '' ? value : undefined;
+      const color = opt(record['color']);
+      const startTime = opt(record['startTime']);
+      const endTime = opt(record['endTime']);
       return {
+        id: String(record['id']),
         key: String(record['key']),
         label: String(record['label']),
         shortCode: String(record['shortCode']),
         colorToken: String(record['colorToken']),
+        ...(color !== undefined ? { color } : {}),
+        ...(startTime !== undefined ? { startTime } : {}),
+        ...(endTime !== undefined ? { endTime } : {}),
         isWorking: record['isWorking'] === 1,
+        sortOrder: Number(record['sortOrder'] ?? 0),
       };
     });
+}
+
+/** A new or edited shift type. `key` is stable once set — only the rest changes. */
+export interface ShiftTypeInput {
+  readonly label: string;
+  readonly shortCode: string;
+  readonly colorToken: string;
+  readonly color: string | null;
+  readonly startTime: string | null;
+  readonly endTime: string | null;
+  readonly isWorking: boolean;
+}
+
+/** Create a shift type. `key` is derived from the label, made unique. */
+export function createShiftType(db: SqliteDatabase, input: ShiftTypeInput): void {
+  const at = Date.now();
+  const id = randomBytes(8).toString('hex');
+  const key = uniqueShiftKey(db, input.label);
+  const next =
+    (db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS n FROM shift_types').get() as { n: number }).n + 1;
+  db.prepare(
+    `INSERT INTO shift_types
+       (id, key, label, short_code, color_token, color, start_time, end_time, is_working, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, key, input.label, input.shortCode, input.colorToken, input.color, input.startTime, input.endTime, input.isWorking ? 1 : 0, next, at, at);
+}
+
+/** Update everything about a type but its stable key. */
+export function updateShiftType(db: SqliteDatabase, id: string, input: ShiftTypeInput): void {
+  db.prepare(
+    `UPDATE shift_types SET label = ?, short_code = ?, color_token = ?, color = ?,
+        start_time = ?, end_time = ?, is_working = ?, updated_at = ? WHERE id = ?`,
+  ).run(input.label, input.shortCode, input.colorToken, input.color, input.startTime, input.endTime, input.isWorking ? 1 : 0, Date.now(), id);
+}
+
+/**
+ * Remove a shift type — unless a rotation still references its key, which would
+ * leave those days pointing at nothing. The caller surfaces the refusal.
+ */
+export function deleteShiftType(db: SqliteDatabase, id: string): { ok: true } | { ok: false; message: string } {
+  const row = db.prepare('SELECT key FROM shift_types WHERE id = ?').get(id) as { key: string } | undefined;
+  if (row === undefined) return { ok: true };
+  const used = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM shift_plans WHERE cycle LIKE ? OR matchers LIKE ?`,
+    )
+    .get(`%"${row.key}"%`, `%"${row.key}"%`) as { n: number };
+  if (used.n > 0) {
+    return { ok: false, message: 'A rotation still uses this type. Change or remove those rotations first.' };
+  }
+  db.prepare('DELETE FROM shift_types WHERE id = ?').run(id);
+  return { ok: true };
+}
+
+/** Nudge a type up or down in the order the wall lists them. */
+export function moveShiftType(db: SqliteDatabase, id: string, direction: 'up' | 'down'): void {
+  const rows = db
+    .prepare('SELECT id, sort_order AS sortOrder FROM shift_types ORDER BY sort_order, key')
+    .all() as { id: string; sortOrder: number }[];
+  const index = rows.findIndex((r) => r.id === id);
+  if (index < 0) return;
+  const swapWith = direction === 'up' ? index - 1 : index + 1;
+  if (swapWith < 0 || swapWith >= rows.length) return;
+  const at = Date.now();
+  const a = rows[index]!;
+  const b = rows[swapWith]!;
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE shift_types SET sort_order = ?, updated_at = ? WHERE id = ?').run(b.sortOrder, at, a.id);
+    db.prepare('UPDATE shift_types SET sort_order = ?, updated_at = ? WHERE id = ?').run(a.sortOrder, at, b.id);
+  });
+  tx();
+}
+
+/** A stable, unique key from a label: lower-kebab, suffixed if taken. */
+function uniqueShiftKey(db: SqliteDatabase, label: string): string {
+  const base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'shift';
+  let key = base;
+  let n = 1;
+  const exists = db.prepare('SELECT 1 FROM shift_types WHERE key = ?');
+  while (exists.get(key) !== undefined) key = `${base}-${++n}`;
+  return key;
 }
 
 export function readShiftPlans(db: SqliteDatabase): ShiftPlan[] {
