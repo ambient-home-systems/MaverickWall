@@ -46,6 +46,12 @@ the new one in the pairing link.
 
 It has no effect on the sidebar: ingress handles that address itself.
 
+**mdns** — whether Maverick Wall announces itself on your network, so a wall
+screen can find it without anybody typing an address or hunting for a port. On
+by default. The announcement never leaves your own network, and turning it off
+costs discovery only: every screen can still be paired by address, and nothing
+about the wall changes.
+
 ## Weather alerts
 
 United States only, from the National Weather Service. No account and no API

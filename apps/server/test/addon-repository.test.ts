@@ -132,6 +132,37 @@ describe('the add-on manifest', () => {
   });
 });
 
+describe('the add-on options', () => {
+  it('are every one of them actually read by the entrypoint', () => {
+    /*
+     * An option the supervisor renders, a household ticks, and nothing reads
+     * is worse than no option at all: it is a control that reports success and
+     * does nothing, and there is no way to tell from the Configuration tab.
+     * This repository has shipped that once already.
+     *
+     * `options.json` is written by the supervisor and read in exactly one
+     * place — docker/entrypoint.sh — so the check is simply that every key
+     * offered is named there. It cannot prove the wiring is *correct*, only
+     * that it exists, which is the failure that actually happened.
+     */
+    const addon = readYaml('addon/maverick-wall/config.yaml');
+    const entrypoint = read('docker/entrypoint.sh');
+    const offered = Object.keys(addon.options as Record<string, unknown>);
+
+    expect(offered.length).toBeGreaterThan(0);
+    for (const key of offered) {
+      expect(entrypoint, `add-on option "${key}" is offered but never read`).toContain(key);
+    }
+  });
+
+  it('declare a schema entry for each, so the supervisor renders the right control', () => {
+    const addon = readYaml('addon/maverick-wall/config.yaml');
+    const offered = Object.keys(addon.options as Record<string, unknown>).sort();
+    const declared = Object.keys(addon.schema as Record<string, unknown>).sort();
+    expect(declared).toEqual(offered);
+  });
+});
+
 describe('the working tree', () => {
   it('has no file-sync collision duplicates committed', () => {
     /*

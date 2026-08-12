@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.21.0
+
+A look of its own, and the groundwork for a screen that wakes itself.
+
+- **Maverick Wall has a mark now.** A month grid with one cell lit — on the
+  add-on tile, beside the name in the sidebar and the setup wizard, and on the
+  browser tab. Only the picture changes: the wall draws exactly as before.
+- **Screens can be told the moment a warning is issued.** The server now offers
+  a push channel over your own network, instead of every screen waiting for its
+  next check. A wall you open in a browser still checks every minute and still
+  gets every alert — this is groundwork for the Android app rather than
+  something you will see today.
+- **Maverick Wall announces itself on your network**, so a screen can find it
+  without anybody typing an address or hunting for a port. The announcement
+  stays on your own network and never leaves it, and there is a new **mdns**
+  option in the Configuration tab if you would rather it did not.
+
+Nothing you have set up changes, and this release alters no data.
+
 ## 0.20.0
 
 Shifts is now **Work Schedule**, and you can shape it to how you actually work.
