@@ -55,6 +55,16 @@ function paintShift(node: HTMLElement, token: string | undefined, color?: string
   node.classList.add('has-shift');
 }
 
+/** The shift's `HH:MM` window as one line, or undefined when it has no times. */
+function shiftWindow(shift: { readonly startTime?: string; readonly endTime?: string }): string | undefined {
+  if (shift.startTime !== undefined && shift.endTime !== undefined) {
+    return `${shift.startTime}–${shift.endTime}`;
+  }
+  if (shift.startTime !== undefined) return `from ${shift.startTime}`;
+  if (shift.endTime !== undefined) return `until ${shift.endTime}`;
+  return undefined;
+}
+
 /* ---------------------------------------------------------------- NOW ---- */
 
 function renderNow(model: DisplayModel): HTMLElement {
@@ -120,6 +130,8 @@ function shiftBadge(model: DisplayModel): HTMLElement | undefined {
   who.appendChild(document.createTextNode(shift.personName));
   badge.appendChild(who);
   badge.appendChild(el('div', 'what', shift.label));
+  const window = shiftWindow(shift);
+  if (window !== undefined) badge.appendChild(el('div', 'shift-when', window));
   if (model.shiftRun !== undefined) badge.appendChild(el('div', 'until', model.shiftRun));
   return badge;
 }
@@ -228,7 +240,11 @@ function renderDayRow(day: DayModel): HTMLElement {
   const when = el('div', 'dr-when');
   when.appendChild(el('div', 'dr-dow', day.weekday));
   when.appendChild(el('div', 'dr-num', day.dayNumber));
-  if (shift !== undefined) when.appendChild(el('div', 'dr-shift', shift.label));
+  if (shift !== undefined) {
+    when.appendChild(el('div', 'dr-shift', shift.label));
+    const window = shiftWindow(shift);
+    if (window !== undefined) when.appendChild(el('div', 'dr-when', window));
+  }
   row.appendChild(when);
 
   const events = el('div', 'dr-events');

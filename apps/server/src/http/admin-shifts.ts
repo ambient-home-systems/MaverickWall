@@ -8,7 +8,7 @@ import {
   updateShiftType,
   type ShiftTypeRow,
 } from '../api/queries.js';
-import { checkbox, colour, parse, text, z } from '../validation.js';
+import { checkbox, colour, optionalText, parse, text, z } from '../validation.js';
 import { navModules, type AdminDeps } from './admin.js';
 
 /**
@@ -41,6 +41,8 @@ const editBody = z.object({
   label: text('A name for the shift', 40),
   short_code: text('A short code', 3),
   color: colour(),
+  start_time: optionalText(5),
+  end_time: optionalText(5),
   is_working: checkbox(),
   match_theme: checkbox(),
 });
@@ -49,8 +51,15 @@ const addBody = z.object({
   label: text('A name for the shift', 40),
   short_code: text('A short code', 3),
   color: colour(),
+  start_time: optionalText(5),
+  end_time: optionalText(5),
   is_working: checkbox(),
 });
+
+/** An `HH:MM` time, or null. A `<input type=time>` submits this shape or empty. */
+function normaliseTime(value: string | undefined): string | null {
+  return value !== undefined && /^\d{2}:\d{2}$/.test(value) ? value : null;
+}
 
 export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/shifts/types', (c: Context) => c.html(typesPage()));
@@ -65,8 +74,8 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
       // into "match theme"; until then its own colour is what shows.
       colorToken: '--s-straight',
       color: shaped.value.color,
-      startTime: null,
-      endTime: null,
+      startTime: normaliseTime(shaped.value.start_time),
+      endTime: normaliseTime(shaped.value.end_time),
       isWorking: shaped.value.is_working,
     });
     return c.redirect('/admin/shifts/types', 302);
@@ -101,8 +110,8 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
       colorToken: existing.colorToken,
       // "Match theme" clears the explicit colour so the theme's slot shows again.
       color: shaped.value.match_theme ? null : shaped.value.color,
-      startTime: existing.startTime ?? null,
-      endTime: existing.endTime ?? null,
+      startTime: normaliseTime(shaped.value.start_time),
+      endTime: normaliseTime(shaped.value.end_time),
       isWorking: shaped.value.is_working,
     });
     return c.redirect('/admin/shifts/types', 302);
@@ -136,6 +145,12 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
       `<input id="sc-${type.id}" name="short_code" type="text" required maxlength="3" value="${escapeHtml(type.shortCode)}"></span>` +
       `<span><label for="c-${type.id}">Colour</label>` +
       `<input id="c-${type.id}" name="color" type="color" value="${escapeHtml(swatch)}"></span>` +
+      `</div>` +
+      `<div class="row-fields">` +
+      `<span><label for="st-${type.id}">Starts (optional)</label>` +
+      `<input id="st-${type.id}" name="start_time" type="time" value="${escapeHtml(type.startTime ?? '')}"></span>` +
+      `<span><label for="et-${type.id}">Ends (optional)</label>` +
+      `<input id="et-${type.id}" name="end_time" type="time" value="${escapeHtml(type.endTime ?? '')}"></span>` +
       `</div>` +
       `<div class="checks">` +
       `<label><input type="checkbox" name="is_working" value="1"${type.isWorking ? ' checked' : ''}> This is a working shift</label>` +
@@ -186,6 +201,14 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
         `<span><label for="new-color">Colour</label>` +
         `<input id="new-color" name="color" type="color" value="#6b7684"></span>` +
         `</div>` +
+        `<div class="row-fields">` +
+        `<span><label for="new-start">Starts (optional)</label>` +
+        `<input id="new-start" name="start_time" type="time"></span>` +
+        `<span><label for="new-end">Ends (optional)</label>` +
+        `<input id="new-end" name="end_time" type="time"></span>` +
+        `</div>` +
+        `<p class="hint">A window like 07:00–19:00 shows on the wall. Leave blank for ` +
+        `a shift with no set time.</p>` +
         `<div class="checks"><label><input type="checkbox" name="is_working" value="1" checked> ` +
         `This is a working shift</label></div>` +
         `<button type="submit">Add</button></form>` +
