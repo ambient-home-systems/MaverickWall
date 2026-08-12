@@ -131,8 +131,10 @@ const screenBody = z.object({
       error: () => 'Rotation has to be a quarter turn.',
     })
     .transform((value) => Number(value)),
-  theme: optionalText(20),
-  daytime_theme: optionalText(20),
+  // A built-in key or a `custom:<id>`; blank follows the household. Wide enough
+  // for `custom:` + a 16-char id. Existence is checked in the handler.
+  theme: optionalText(64),
+  daytime_theme: optionalText(64),
   daytime_starts_at: optionalText(5),
   daytime_ends_at: optionalText(5),
   timezone: optionalText(64),
@@ -224,6 +226,8 @@ const layoutBody = z.object({
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
+import { registerThemeRoutes } from './admin-themes.js';
+import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
@@ -361,8 +365,10 @@ const themeKeys = ['board', 'slate', 'almanac', 'glance'] as const;
 
 const displayBody = z
   .object({
-    theme: oneOf('a theme', themeKeys),
-    daytime_theme: optionalText(20),
+    // A built-in key or a `custom:<id>` — existence is checked in the handler
+    // against the themes table, since the schema cannot see the database.
+    theme: text('a theme', 64),
+    daytime_theme: optionalText(64),
     daytime_starts_at: optionalText(5),
     daytime_ends_at: optionalText(5),
     today_events: bounded('Events listed for today', 1, 20),
@@ -423,25 +429,33 @@ const THEME_SWATCHES: Readonly<Record<string, readonly [string, string, string]>
  * the checked card is pure CSS (`:has(input:checked)`), which is fine in the
  * admin — rule two is about the locked wall tablet, not the household's phone.
  */
-function themeCards(selected: string): string {
-  return (
-    `<div class="themegrid">` +
-    THEMES.map((theme) => {
-      const [name, ...rest] = theme.label.split(' — ');
-      const swatches = THEME_SWATCHES[theme.key] ?? ['#0B0E11', '#E0A33E', '#4C7FD1'];
-      return (
-        `<label class="themecard">` +
-        `<input type="radio" name="theme" value="${escapeHtml(theme.key)}"${theme.key === selected ? ' checked' : ''}>` +
-        `<div class="sw">` +
-        swatches.map((c) => `<i style="background:${escapeHtml(c)}"></i>`).join('') +
-        `</div>` +
-        `<div class="cap"><b>${escapeHtml(name ?? theme.key)}</b>` +
-        `<small>${escapeHtml(rest.join(' — '))}</small></div>` +
-        `</label>`
-      );
-    }).join('') +
-    `</div>`
-  );
+function themeCards(selected: string, custom: readonly ThemeRow[] = []): string {
+  const cardFor = (value: string, name: string, caption: string, swatches: readonly string[]): string =>
+    `<label class="themecard">` +
+    `<input type="radio" name="theme" value="${escapeHtml(value)}"${value === selected ? ' checked' : ''}>` +
+    `<div class="sw">` +
+    swatches.map((c) => `<i style="background:${escapeHtml(c)}"></i>`).join('') +
+    `</div>` +
+    `<div class="cap"><b>${escapeHtml(name)}</b><small>${escapeHtml(caption)}</small></div>` +
+    `</label>`;
+
+  const builtins = THEMES.map((theme) => {
+    const [name, ...rest] = theme.label.split(' — ');
+    const swatches = THEME_SWATCHES[theme.key] ?? ['#0B0E11', '#E0A33E', '#4C7FD1'];
+    return cardFor(theme.key, name ?? theme.key, rest.join(' — '), swatches);
+  }).join('');
+
+  const customCards = custom
+    .map((theme) =>
+      cardFor(`custom:${theme.id}`, theme.name, 'Your theme', [
+        theme.tokens['--bg'] ?? '#0B0E11',
+        theme.tokens['--accent'] ?? '#E8A33D',
+        theme.tokens['--s-night'] ?? '#4C7FD1',
+      ]),
+    )
+    .join('');
+
+  return `<div class="themegrid">${builtins}${customCards}</div>`;
 }
 
 /** A six-digit hex colour, which is what `<input type="color">` submits. */
@@ -506,6 +520,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerHaRoutes(app, deps);
   registerAlertRoutes(app, deps);
   registerModuleRoutes(app, deps);
+  registerThemeRoutes(app, deps);
 
   /**
    * What the index says about Home Assistant.
@@ -1217,10 +1232,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const endsAt = shaped.value.daytime_ends_at ?? '';
     const timezone = shaped.value.timezone ?? '';
 
-    if (theme !== '' && !THEMES.some((candidate) => candidate.key === theme)) {
+    if (!isValidThemeRef(deps.db, theme, themeKeys)) {
       return c.html(displayDetailPage(id, 'Choose a theme from the list.'), 400);
     }
-    if (daytimeTheme !== '' && !THEMES.some((candidate) => candidate.key === daytimeTheme)) {
+    if (!isValidThemeRef(deps.db, daytimeTheme, themeKeys)) {
       return c.html(displayDetailPage(id, 'Choose a daylight theme from the list.'), 400);
     }
 
@@ -1350,6 +1365,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const shaped = parse(displayBody, body);
     if (!shaped.ok) return c.html(displayDetailPage(null, shaped.message), 400);
 
+    // A built-in or a custom theme that still exists — the schema let any string
+    // through so the check could see the database.
+    if (!isValidThemeRef(deps.db, shaped.value.theme, themeKeys)) {
+      return c.html(displayDetailPage(null, 'Choose a theme from the list.'), 400);
+    }
+
     /*
      * "Same theme all day" is a choice, not a missing value.
      *
@@ -1359,6 +1380,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      */
     const daytimeRaw = shaped.value.daytime_theme;
     const scheduled = daytimeRaw !== undefined && daytimeRaw !== 'none';
+    if (scheduled && !isValidThemeRef(deps.db, daytimeRaw, themeKeys)) {
+      return c.html(displayDetailPage(null, 'Choose a daylight theme from the list.'), 400);
+    }
 
     const order = blockOrder(body, readHousehold(deps.db).displayBlocks);
     if ('error' in order) return c.html(displayDetailPage(null, order.error), 400);
@@ -2012,6 +2036,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
     // Relative, so the `<base href>` prefix carries it through ingress/a proxy.
     const action = `admin/screens/${encodeURIComponent(screen.id)}`;
+    // The household's own themes, offered beside the built-ins on both selects.
+    const customThemeOptions = (selected: string | null): string =>
+      readThemes(deps.db)
+        .map((theme) => option(`custom:${theme.id}`, theme.name, selected === `custom:${theme.id}`))
+        .join('');
     // A density field: this wall's number, or blank showing the household's as a
     // placeholder so the default is visible without being typed.
     const density = (name: string, value: number | null, fallback: number): string =>
@@ -2050,6 +2079,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<select id="theme-${screen.id}" name="theme">` +
       option('', 'Follow the default', screen.theme === null) +
       THEMES.map((theme) => option(theme.key, theme.label, screen.theme === theme.key)).join('') +
+      customThemeOptions(screen.theme) +
       `</select></span>` +
       `<span><label for="night-${screen.id}">During the day</label>` +
       `<select id="night-${screen.id}" name="daytime_theme">` +
@@ -2057,6 +2087,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       THEMES.map((theme) =>
         option(theme.key, theme.label, screen.daytimeTheme === theme.key),
       ).join('') +
+      customThemeOptions(screen.daytimeTheme) +
       `</select></span>` +
       `</div>` +
 
@@ -2379,6 +2410,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   function defaultsForm(): string {
     const household = readHousehold(deps.db);
+    const custom = readThemes(deps.db);
     const scheduled = household.daytimeTheme !== null && household.daytimeTheme !== '';
 
     const themeOptions = (selected: string, includeNone: boolean): string =>
@@ -2389,7 +2421,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (theme) =>
           `<option value="${escapeHtml(theme.key)}"${theme.key === selected ? ' selected' : ''}>` +
           `${escapeHtml(theme.label)}</option>`,
-      ).join('');
+      ).join('') +
+      custom
+        .map(
+          (theme) =>
+            `<option value="custom:${escapeHtml(theme.id)}"${`custom:${theme.id}` === selected ? ' selected' : ''}>` +
+            `${escapeHtml(theme.name)}</option>`,
+        )
+        .join('');
 
     const number = (name: string, label: string, value: number, low: number, high: number, hint: string): string =>
       `<label for="${name}">${escapeHtml(label)}</label>` +
@@ -2400,8 +2439,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<form method="post" action="admin/display">` +
       `<label>Theme</label>` +
-      themeCards(household.theme) +
-      `<p class="hint">Board separates the shift colours best from across a room.</p>` +
+      themeCards(household.theme, custom) +
+      `<p class="hint">Board separates the shift colours best from across a room. ` +
+      `Build your own on the <a class="link" href="admin/themes">Themes</a> screen.</p>` +
 
       `<label for="daytime_theme">During the day</label>` +
       `<select id="daytime_theme" name="daytime_theme">` +

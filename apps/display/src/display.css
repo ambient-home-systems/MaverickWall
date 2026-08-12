@@ -7,13 +7,41 @@
  * pre-mixed per theme in theme.ts instead, against that theme's own
  * background, which is what sits behind every tinted surface here.
  *
- * Rule three: no web font is fetched. The design's stacks name Roboto
- * Condensed and Roboto Mono first, which are used if the device already has
- * them and fall back to the narrow and monospace faces every platform ships.
+ * Rule three: no web font is *fetched*. A curated set ships inside the image
+ * and is served same-origin from `/assets/fonts` (licences beside the files),
+ * so a custom theme can choose a face that actually renders on a bare wall
+ * tablet — not one it merely hopes the device already has. `font-display:swap`
+ * means a missing file just falls back rather than blocking the wall. The path
+ * is absolute because the display is served at the origin root over its port,
+ * never through the ingress prefix.
  *
  * Every colour is a custom property written by theme.ts. Nothing here names
  * one, so a theme swap is a token swap.
  */
+
+/* Bundled, self-hosted, first-party. See /assets/fonts/LICENSES.md. */
+@font-face{font-family:'Roboto Condensed';font-style:normal;font-weight:400 700;
+  font-display:swap;src:url('/assets/fonts/roboto-condensed.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;
+  src:url('/assets/fonts/inter-400.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;
+  src:url('/assets/fonts/inter-700.woff2') format('woff2')}
+@font-face{font-family:'Oswald';font-style:normal;font-weight:400;font-display:swap;
+  src:url('/assets/fonts/oswald-400.woff2') format('woff2')}
+@font-face{font-family:'Oswald';font-style:normal;font-weight:700;font-display:swap;
+  src:url('/assets/fonts/oswald-700.woff2') format('woff2')}
+@font-face{font-family:'Fraunces';font-style:normal;font-weight:400;font-display:swap;
+  src:url('/assets/fonts/fraunces-400.woff2') format('woff2')}
+@font-face{font-family:'Fraunces';font-style:normal;font-weight:700;font-display:swap;
+  src:url('/assets/fonts/fraunces-700.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;
+  src:url('/assets/fonts/jetbrains-mono-400.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:700;font-display:swap;
+  src:url('/assets/fonts/jetbrains-mono-700.woff2') format('woff2')}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400;font-display:swap;
+  src:url('/assets/fonts/space-grotesk-400.woff2') format('woff2')}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;
+  src:url('/assets/fonts/space-grotesk-700.woff2') format('woff2')}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

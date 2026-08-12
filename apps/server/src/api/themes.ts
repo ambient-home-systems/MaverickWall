@@ -42,6 +42,34 @@ export const COLOUR_TOKENS = [
 const SHIFT_TOKENS = ['--s-day', '--s-night', '--s-break', '--s-straight'] as const;
 
 /**
+ * The optional font tokens a theme can set: the heading face, the body face and
+ * the data/times face. Each value is a whole font-family *stack*, chosen from
+ * the closed list below — never a free string, so nothing a household types can
+ * reach the wall's stylesheet. Omitted tokens leave the display's own defaults.
+ */
+export const FONT_TOKENS = ['--disp', '--f-sans', '--f-mono'] as const;
+
+/**
+ * The bundled, self-hosted faces (see `apps/server/assets/fonts` and the
+ * `@font-face` declarations in `display.css`). The `stack` is exactly the CSS
+ * value stored in a theme's tokens, so the allowlist below is the whole of the
+ * safety: a font token must equal one of these strings.
+ */
+export const FONTS: readonly { readonly label: string; readonly stack: string }[] = [
+  { label: 'Inter', stack: "'Inter', system-ui, sans-serif" },
+  { label: 'Roboto Condensed', stack: "'Roboto Condensed', 'Arial Narrow', sans-serif" },
+  { label: 'Oswald', stack: "'Oswald', 'Arial Narrow', sans-serif" },
+  { label: 'Space Grotesk', stack: "'Space Grotesk', system-ui, sans-serif" },
+  { label: 'Fraunces', stack: "'Fraunces', Georgia, serif" },
+  { label: 'JetBrains Mono', stack: "'JetBrains Mono', ui-monospace, monospace" },
+];
+
+const FONT_STACKS = new Set(FONTS.map((f) => f.stack));
+const fontStack = z.string().refine((s) => FONT_STACKS.has(s), {
+  error: () => 'Choose a font from the list.',
+});
+
+/**
  * A theme's stored tokens: every colour a 6-digit hex, plus a bounded `--radius`.
  * `.strict()` refuses any other key (rule five), so a stray property can never
  * reach the wall's stylesheet. Fonts join this schema in a later phase.
@@ -62,6 +90,11 @@ export const themeTokensSchema = z
     '--radius': z
       .string()
       .regex(/^(0|[0-9]{1,2}(\.[0-9]{1,2})?(rem|px|em))$/, 'a small length like 0.4rem or 0'),
+    // Optional font choices — a whole stack from the bundled allowlist, or absent
+    // to keep the display's defaults.
+    '--disp': fontStack.optional(),
+    '--f-sans': fontStack.optional(),
+    '--f-mono': fontStack.optional(),
   })
   .strict();
 
@@ -121,7 +154,10 @@ function isLight(hex: string): boolean {
 export function withTints(base: ThemeTokens): Record<string, string> {
   const background = base['--bg'];
   const cell = isLight(background) ? 0.13 : 0.2;
-  const out: Record<string, string> = { ...base };
+  // Copy only the tokens that are set — the optional font tokens may be absent,
+  // and an undefined value has no place in the CSS custom-property map.
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(base)) if (value !== undefined) out[key] = value;
   for (const token of SHIFT_TOKENS) {
     const hue = base[token];
     out[`${token}-tint`] = mix(hue, background, cell);
@@ -204,4 +240,32 @@ export function createTheme(db: SqliteDatabase, input: { name: string; tokens: T
     'INSERT INTO themes (id, name, tokens, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
   ).run(id, input.name, JSON.stringify(input.tokens), at, at);
   return { id, name: input.name, tokens: input.tokens };
+}
+
+/** Update a theme's name and tokens. Returns false when the id is unknown. */
+export function updateTheme(
+  db: SqliteDatabase,
+  id: string,
+  input: { name: string; tokens: ThemeTokens },
+): boolean {
+  const result = db
+    .prepare('UPDATE themes SET name = ?, tokens = ?, updated_at = ? WHERE id = ?')
+    .run(input.name, JSON.stringify(input.tokens), Date.now(), id);
+  return result.changes > 0;
+}
+
+export function deleteTheme(db: SqliteDatabase, id: string): void {
+  db.prepare('DELETE FROM themes WHERE id = ?').run(id);
+}
+
+/**
+ * Is a stored theme reference one the wall can actually draw? Empty (follow the
+ * default), a built-in key, or a `custom:<id>` that still exists. Used by the
+ * form validators so a household cannot pin a wall to a theme that was deleted.
+ */
+export function isValidThemeRef(db: SqliteDatabase, ref: string, builtins: readonly string[]): boolean {
+  if (ref === '') return true;
+  if (builtins.includes(ref)) return true;
+  if (!ref.startsWith(CUSTOM_PREFIX)) return false;
+  return readTheme(db, ref.slice(CUSTOM_PREFIX.length)) !== undefined;
 }
