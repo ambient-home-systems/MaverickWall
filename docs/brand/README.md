@@ -108,7 +108,10 @@ two products:
 2. `addon/maverick-wall/logo.png` — 1000x300, the horizontal lockup on Board.
    The file this replaced was nearly blank: a dark bar across the top of white
 3. `apps/server/src/http/html.ts` — the `MARK` constant, which is the admin
-   sidebar, the wizard, and the data-URI favicon
+   sidebar, the wizard, and the data-URI favicon; and `--wordmark`, which sets
+   the name beside that mark in Oswald so the lockup on screen is the lockup in
+   this directory. Every other heading stays on Roboto Condensed — the brand
+   lockup is the identity, not a new heading style
 4. `apps/display/src/index.html` — the wall's own tab icon, inline
 
 **Both of the small ones use the five-column redraw**, and its dim cells are

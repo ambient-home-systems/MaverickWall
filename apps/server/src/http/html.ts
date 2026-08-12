@@ -34,6 +34,19 @@ const STYLE = `
   font-display:swap;src:url('assets/fonts/roboto-condensed.woff2') format('woff2')}
 
 /*
+ * Oswald, for the brand lockup and nothing else.
+ *
+ * The wordmark in docs/brand is set in this face, and the name beside the mark
+ * in the sidebar and the wizard IS that wordmark — rendered as live text
+ * rather than as an image so it stays selectable and crisp at any zoom. Set in
+ * a different face it reads as a near-miss of the logo, which is worse than an
+ * obvious difference. Every other heading stays on Roboto Condensed: this is
+ * the identity, not a new heading style.
+ */
+@font-face{font-family:'Oswald';font-style:normal;font-weight:700;
+  font-display:swap;src:url('assets/fonts/oswald-700.woff2') format('woff2')}
+
+/*
  * Dark by default — the Board palette, the wall's own — with a light option and
  * an "auto" that follows the device. The choice is per-browser (localStorage,
  * applied by a tiny inline script before first paint, so there is no flash) and
@@ -43,6 +56,7 @@ const STYLE = `
  */
 :root{
   --cond:'Roboto Condensed','Arial Narrow','Helvetica Neue',system-ui,sans-serif;
+  --wordmark:'Oswald','Roboto Condensed','Arial Narrow',system-ui,sans-serif;
   --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
@@ -84,7 +98,7 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
 .side .brand{display:flex;align-items:center;gap:11px;padding:20px 20px 16px;
   text-decoration:none;color:inherit}
 .side .brand svg{width:34px;height:34px;flex:0 0 auto;border-radius:8px}
-.side .brand b{font-family:var(--cond);font-weight:700;font-size:19px;
+.side .brand b{font-family:var(--wordmark);font-weight:700;font-size:19px;
   letter-spacing:.02em;line-height:1;display:block}
 .side .brand small{display:block;color:var(--faint);font-size:11px;
   letter-spacing:.16em;text-transform:uppercase;margin-top:3px}
@@ -164,7 +178,7 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
 .wizbox .brand{display:flex;align-items:center;gap:11px;text-decoration:none;
   color:inherit;margin:0 0 4px}
 .wizbox .brand svg{width:34px;height:34px;border-radius:8px}
-.wizbox .brand b{font-family:var(--cond);font-weight:700;font-size:19px}
+.wizbox .brand b{font-family:var(--wordmark);font-weight:700;font-size:19px}
 .steps{display:flex;gap:8px;margin:22px 0 26px;padding:0;list-style:none}
 .steps .step{flex:1;text-align:center}
 .steps .step .bar{height:4px;border-radius:2px;background:var(--rule)}
