@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **fifty-six real bugs**, and the pattern in how is the most
+This project has found **sixty real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -134,6 +134,10 @@ useful thing in this document:
 | **The add-on installed and could not start: root-owned `/data`** | A real Home Assistant supervisor, which no stand-in had |
 | **No way to pair the first screen without a shell** | Trying to pair a screen on the add-on, which has no shell |
 | **A pairing QR that scanned as an unreachable internal address** | Reading the origin the link is built from, under ingress |
+| **A mark that vanished at 34px into a black square with a dot** | Rendering the wizard and looking at its own sidebar |
+| An add-on icon with the bottom of its corners sliced off | Headless Chrome screenshots the window, not the viewport |
+| **A logo that was a black box on Home Assistant's light theme** | Putting the one PNG on the other theme's card |
+| Three hand-drawn alphabets, each "cut off" in a new way | Somebody looking at the wordmark and saying so, three times |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -299,9 +303,71 @@ flow has been proven against the app but not yet on real hardware — a househol
 adding a screen from the sidebar and opening the link on a tablet is the next
 real-hardware check.
 
+**The project has a mark and a wordmark now, and they are in the four places
+that carry an identity.** The mark is a month grid, quiet, with one cell lit —
+seven columns because the wall's month grid is seven columns, so it is the
+product's real geometry rather than a drawing of it. It behaves the way the
+wall does under reduction: the field falls away to texture and the amber cell
+is the last thing standing, which is the whole promise in one shape. Four other
+directions were drawn and are kept in `docs/brand/marks/` with what each was
+good at and where it fell over, because a chosen mark is easier to defend
+against the ones it beat. `docs/brand/logo-options.html` is that argument.
+
+**It is two drawings chosen by size, not one drawing scaled.** Below about
+20px a seven-column field stops being a grid and becomes grey texture with a
+dot in it, so the favicon and the 34px sidebar use a five-column redraw
+(`lit-cell-small.svg`). Its dim cells are also *lifted*, to `#363D45`, because
+at 34px the `#6B7684` at 34% the large mark uses vanished and the mark read as
+a black square with an orange dot. The small ones are that colour **pre-mixed
+against the Board background** rather than an opacity, the way `theme.ts`
+pre-mixes its tints — a flat fill stays crisp when a browser rasterises it into
+a 16px favicon, and a data-URI favicon has no theme around it to be relative
+to. The SVG sources keep the opacity, because they *do* have a ground to follow.
+
+**The wordmark is Oswald 700, outlined to paths, and getting there is the
+lesson.** Three rounds were drawn by hand and all three came back "cut off" —
+the first chamfered every curve at 45°, the second fixed the curves and left an
+M too narrow to hold a counter, the third fixed the M and the whole thing still
+read as messy. A display alphabet drawn on the way to something else is a worse
+alphabet than one somebody spent a year on. Oswald was already bundled in
+`apps/server/assets/fonts` for the display themes under the SIL Open Font
+License 1.1, so it added no file, no licence and no download. Outlining at
+build time keeps the property the hand-drawn version had for free: the
+committed SVG needs no font installed anywhere and cannot silently fall back to
+Arial. It is the mirror of `http/qr.ts` — draw what nobody else supplies, and
+use somebody else's work for what is already solved.
+
+**One PNG cannot change colour with the theme, so the add-on logo stopped
+depending on the theme.** It was a full-bleed dark plate: at home on Home
+Assistant's dark card and a stray black box on its light one. It is transparent
+now, and only the mark carries a ground — it has to, because a quiet field with
+nothing behind it cannot be quiet, and that ground is the app icon, so the two
+assets are visibly the same object. The wordmark stands on whatever is there,
+so its colour is picked for the *worse* of the two grounds rather than for
+either: `#A8701A` is 4.20:1 on white and 4.06:1 on the dark card, where Board's
+`#E8A33D` is 2.16:1 on white and Almanac's `#C98A16` is 2.95:1. That value is
+derived for the constraint rather than lifted from `theme.ts`, and the
+docstring says so, so nobody restores it to a brand token and re-breaks it.
+
+The identity lives in `addon/maverick-wall/icon.png` and `logo.png`, the `MARK`
+constant and the `--wordmark` token in `http/html.ts` (the sidebar, the wizard
+and the data-URI favicon), and one inline `<link rel="icon">` in the display's
+`index.html` — rule three again, since a fetched favicon is a third-party
+origin and a wall with no internet would show a broken one for months. The SVG
+sources and both build scripts are in `docs/brand/`; the wide logo is generated
+from the same typeset line as the wordmark, so it follows it instead of being
+re-made by hand. `crop-png.py` exists because headless Chrome screenshots the
+whole window while the viewport is 87px shorter, which sliced the bottom off
+the first icon.
+
+**None of it has been seen on a real Home Assistant supervisor.** The tile in
+the store list and the lockup in the sidebar are the check, and by this
+project's history that is where an asset fault actually surfaces.
+
 **Before anybody is told about it:** the README's screenshots (a photograph of
-a real wall, which is the one thing on that page that cannot be written), and
-whether `packages/calendar` moves to its own MIT repository now or later.
+a real wall, which is the one thing on that page that cannot be written),
+whether the README carries the mark now that there is one to carry, and whether
+`packages/calendar` moves to its own MIT repository now or later.
 
 **The repository and the package are two separate visibility switches**, and
 for a while only one of them was on. The image was public and `docker run`
