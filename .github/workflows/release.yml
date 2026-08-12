@@ -83,9 +83,20 @@ jobs:
           # than in `advertise` where it would fail with the image already
           # published. Either there are notes waiting under `## Unreleased`, or
           # the changelog already names this version because this is a re-run.
+          #
+          # The section must have *words in it*, not just a heading. A bare
+          # `## Unreleased` scaffold sits in the changelog between releases by
+          # design, and checking only for the heading would let it be renamed
+          # and shipped as a release note that says nothing at all.
           newest=$(grep -oP '^##\s+\K[0-9]+\.[0-9]+\.[0-9]+' addon/maverick-wall/CHANGELOG.md | head -1 || true)
-          if ! grep -q '^## Unreleased[[:space:]]*$' addon/maverick-wall/CHANGELOG.md && [ "$newest" != "$VERSION" ]; then
-            echo "::error::CHANGELOG.md has no '## Unreleased' section and its newest entry is ${newest:-none}, not ${VERSION}. The supervisor shows those notes beside the Update button, so a release without them tells a household nothing."
+          notes=$(awk '
+            /^## Unreleased[[:space:]]*$/ { inside = 1; next }
+            /^## / { inside = 0 }
+            inside { print }
+          ' addon/maverick-wall/CHANGELOG.md | grep -vE '^[[:space:]]*$|^[[:space:]]*<!--|^[[:space:]]*-->' | head -1 || true)
+
+          if [ -z "$notes" ] && [ "$newest" != "$VERSION" ]; then
+            echo "::error::CHANGELOG.md has no release notes under '## Unreleased', and its newest entry is ${newest:-none}, not ${VERSION}. The supervisor shows that text beside the Update button, so a release without it tells a household nothing about what they are installing."
             exit 1
           fi
 
