@@ -127,6 +127,23 @@ jobs:
     name: Tag, sign and describe the image
     needs: build
     runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow's outright, so all three are
+    # listed. `contents: write` is the one that matters and it is not
+    # decoration: `anchore/sbom-action` attaches the SBOM to the **GitHub
+    # Release** when one exists for the tag, and that needs write.
+    #
+    # v0.21.0 is why this is here. Every release before it was tagged with a
+    # plain `git push origin <tag>`, which creates no Release object — so the
+    # action found nothing to attach to, skipped the step, and the job passed.
+    # v0.21.0's tag was made through the Releases UI, a Release object existed,
+    # the attach was attempted, and it died with "Resource not accessible by
+    # integration" *after* the image was already pushed and signed. A red
+    # release with a good image on `stable` is the worst of both: it looks
+    # broken and it shipped anyway.
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:

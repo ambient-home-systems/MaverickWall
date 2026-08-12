@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **sixty-one real bugs**, and the pattern in how is the most
+This project has found **sixty-two real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -139,6 +139,7 @@ useful thing in this document:
 | **A logo that was a black box on Home Assistant's light theme** | Putting the one PNG on the other theme's card |
 | Three hand-drawn alphabets, each "cut off" in a new way | Somebody looking at the wordmark and saying so, three times |
 | **Home Assistant offered an update that could not install** | Pressing Update on a real supervisor, minutes after the merge |
+| **A release that went red only because the tag was cut in the UI** | Reading the failed step, which ran after the image had shipped |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -385,6 +386,18 @@ release that already worked rather than the announcement of one that might.
 Write release notes under `## Unreleased` while you work; the same commit
 renames that heading and refuses to push if it is missing, because the
 supervisor shows that text beside the update button.
+
+**How a tag is created changes what the release workflow does.** v0.21.0 went
+red after the image was already pushed and signed: `anchore/sbom-action`
+attaches the SBOM to the **GitHub Release** when one exists for the tag, which
+needs `contents: write`, and the workflow only had `contents: read`. Every
+release before it was tagged with a plain `git push origin <tag>`, which
+creates no Release object — so the action found nothing to attach to, skipped
+the step, and the job passed for twenty releases. Cutting the tag from the
+Releases UI is what made the step run at all. The `publish` job carries
+`contents: write` now, and the lesson generalises past this action: a workflow
+that behaves differently depending on how a ref was created has a branch in it
+nobody has tested.
 
 **Each architecture is built on a machine that speaks it.** One runner building
 `linux/amd64,linux/arm64` meant arm64 under QEMU, which was most of an
