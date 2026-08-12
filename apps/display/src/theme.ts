@@ -159,6 +159,28 @@ export function themeTokens(name: string): ThemeTokens {
 }
 
 /**
+ * A custom theme's base tokens with the derived shift tints added — the client
+ * mirror of the server's `withTints` (`apps/server/src/api/themes.ts`), so the
+ * builder's live preview matches the wall the manifest will draw. A light
+ * background is washed more lightly than a dark one (the design's own rule),
+ * decided by measuring the background rather than naming a theme.
+ */
+export function customTokens(base: Readonly<Record<string, string>>): Record<string, string> {
+  const background = base['--bg'] ?? '#000000';
+  const rgb = parseHex(background);
+  const light = rgb !== undefined && (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 > 0.5;
+  const cell = light ? 0.13 : 0.2;
+  const out: Record<string, string> = { ...base };
+  for (const token of SHIFT_TOKENS) {
+    const hue = base[token];
+    if (hue === undefined) continue;
+    out[`${token}-tint`] = mix(hue, background, cell);
+    out[`${token}-badge`] = mix(hue, background, BADGE_TINT);
+  }
+  return out;
+}
+
+/**
  * Which theme should be showing at this local time.
  *
  * The window is inclusive of its start and exclusive of its end, and a window

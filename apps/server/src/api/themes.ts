@@ -205,3 +205,31 @@ export function createTheme(db: SqliteDatabase, input: { name: string; tokens: T
   ).run(id, input.name, JSON.stringify(input.tokens), at, at);
   return { id, name: input.name, tokens: input.tokens };
 }
+
+/** Update a theme's name and tokens. Returns false when the id is unknown. */
+export function updateTheme(
+  db: SqliteDatabase,
+  id: string,
+  input: { name: string; tokens: ThemeTokens },
+): boolean {
+  const result = db
+    .prepare('UPDATE themes SET name = ?, tokens = ?, updated_at = ? WHERE id = ?')
+    .run(input.name, JSON.stringify(input.tokens), Date.now(), id);
+  return result.changes > 0;
+}
+
+export function deleteTheme(db: SqliteDatabase, id: string): void {
+  db.prepare('DELETE FROM themes WHERE id = ?').run(id);
+}
+
+/**
+ * Is a stored theme reference one the wall can actually draw? Empty (follow the
+ * default), a built-in key, or a `custom:<id>` that still exists. Used by the
+ * form validators so a household cannot pin a wall to a theme that was deleted.
+ */
+export function isValidThemeRef(db: SqliteDatabase, ref: string, builtins: readonly string[]): boolean {
+  if (ref === '') return true;
+  if (builtins.includes(ref)) return true;
+  if (!ref.startsWith(CUSTOM_PREFIX)) return false;
+  return readTheme(db, ref.slice(CUSTOM_PREFIX.length)) !== undefined;
+}
