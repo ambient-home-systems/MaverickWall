@@ -215,20 +215,26 @@ class KioskActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        webView.onResume()
+        // Guarded: on first run with no server configured this activity
+        // redirects to setup and finishes before the WebView is ever created,
+        // so the lifecycle callbacks must not touch the lateinit — or the whole
+        // process crashes on the way out (it did, on the first device launch).
+        if (::webView.isInitialized) webView.onResume()
     }
 
     override fun onPause() {
-        webView.onPause()
+        if (::webView.isInitialized) webView.onPause()
         super.onPause()
     }
 
     override fun onDestroy() {
         healthJob?.cancel()
-        // Detach before destroy so the view hierarchy is not left holding a
-        // dead WebView.
-        (webView.parent as? android.view.ViewGroup)?.removeView(webView)
-        webView.destroy()
+        if (::webView.isInitialized) {
+            // Detach before destroy so the view hierarchy is not left holding a
+            // dead WebView.
+            (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+            webView.destroy()
+        }
         super.onDestroy()
     }
 }

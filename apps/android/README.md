@@ -37,16 +37,52 @@ full design and the reasoning behind "the one thing we do not build."
 Requires the Android SDK and JDK 17. The easiest path is **Android Studio**
 (Koala or newer): open the `apps/android` directory and let it sync.
 
-From the command line you need the Gradle wrapper. **The wrapper jar is not
-committed** (it is a binary that must be generated on a machine with Gradle):
+### With Android Studio (recommended)
+
+Android Studio bundles its own JDK and installs the SDK for you — nothing else
+to set up.
+
+1. **Install it.** Download from
+   [developer.android.com/studio](https://developer.android.com/studio) — pick
+   the **Apple chip** build on an M-series Mac, **Intel chip** otherwise — or
+   `brew install --cask android-studio`. Run it once and let the setup wizard
+   install the SDK and platform-tools.
+2. **Open `apps/android`** (that folder, not the repo root — it is a standalone
+   Gradle project) and let Gradle sync. It offers to install any missing SDK
+   pieces (`compileSdk 34`, build-tools) — accept.
+3. **Build & run:** press ▶︎ against an emulator or a connected device, or
+   **Build → Build APK(s)** for a sideloadable APK.
+
+Seeing it against a **real dev server:**
+
+- On the **emulator**, the host machine is reachable at `10.0.2.2`, not
+  `localhost` — so enter `10.0.2.2:8080` on the app's setup screen. The emulator
+  is fine for the setup screen and the phone/tablet layout; the boot-start and
+  connecting-fallback behaviour are better judged on hardware.
+- On a **real device** (the meaningful check), enter the server's LAN address,
+  e.g. `192.168.1.10:8080`.
+
+### From the command line
+
+The Gradle wrapper is committed, so a clean checkout builds directly:
 
 ```bash
 cd apps/android
-gradle wrapper --gradle-version 8.9   # one-time, or let Android Studio do it
 ./gradlew assembleDebug
 ```
 
-The debug APK lands at `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK lands at `app/build/outputs/apk/debug/app-debug.apk`. Install it
+onto a running emulator or device with `adb install -r <that path>`.
+
+> **If the build fails with `Type … is defined multiple times` (a dex merge
+> error):** a file-sync tool (iCloud/Dropbox/OneDrive) has dropped `… 2.jar`
+> duplicates into `build/`. This is the Android echo of the `… 2` sync
+> collisions CLAUDE.md documents. Fix it with a clean — the outputs are
+> disposable:
+> ```bash
+> rm -rf app/build build .gradle/configuration-cache && ./gradlew assembleDebug
+> ```
+> Keeping the working copy out of a synced folder avoids it entirely.
 
 > This project lives in the monorepo so app, display and server tag as one
 > commit, but it is **excluded from the pnpm workspace** — it builds with Gradle
