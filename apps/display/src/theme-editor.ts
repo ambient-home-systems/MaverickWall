@@ -24,9 +24,11 @@ function init(root: HTMLElement): void {
   const contrastBox = document.getElementById('theme-contrast');
   if (form === null) return;
 
-  const colourInputs = Array.from(
-    form.querySelectorAll('input[name^="--"]'),
-  ) as HTMLInputElement[];
+  // Every token control — the colour inputs and the radius / font selects, all
+  // named after their `--token`.
+  const tokenControls = Array.from(
+    form.querySelectorAll('[name^="--"]'),
+  ) as (HTMLInputElement | HTMLSelectElement)[];
   const radiusInput = form.querySelector('[name="radius"]') as
     | HTMLInputElement
     | HTMLSelectElement
@@ -36,7 +38,9 @@ function init(root: HTMLElement): void {
 
   const readBase = (): Record<string, string> => {
     const base: Record<string, string> = {};
-    for (const input of colourInputs) base[input.name] = input.value;
+    // An empty value (a font left on "Default") is left out, so the display's
+    // own default applies rather than an empty font-family.
+    for (const control of tokenControls) if (control.value !== '') base[control.name] = control.value;
     base['--radius'] = radiusInput?.value ?? '0.4rem';
     return base;
   };
@@ -47,7 +51,10 @@ function init(root: HTMLElement): void {
     if (contrastBox !== null) renderContrast(contrastBox, base);
   };
 
-  for (const input of colourInputs) input.addEventListener('input', apply);
+  for (const control of tokenControls) {
+    control.addEventListener('input', apply);
+    control.addEventListener('change', apply);
+  }
   radiusInput?.addEventListener('change', apply);
 
   // The preview: the real wall, drawn once, then re-themed live. A failure just

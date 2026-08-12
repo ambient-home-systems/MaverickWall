@@ -13,6 +13,7 @@ import { createFetcher } from '../src/net/fetcher.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
 import {
   createTheme,
+  FONTS,
   mix,
   readThemes,
   resolveTheme,
@@ -102,6 +103,26 @@ describe('themeTokensSchema', () => {
   it('refuses an out-of-range radius', () => {
     expect(themeTokensSchema.safeParse({ ...DARK, '--radius': '9999px' }).success).toBe(false);
     expect(themeTokensSchema.safeParse({ ...DARK, '--radius': 'calc(1px)' }).success).toBe(false);
+  });
+});
+
+describe('font tokens', () => {
+  const heading = FONTS[0]?.stack ?? '';
+  const mono = FONTS[FONTS.length - 1]?.stack ?? '';
+
+  it('accepts a bundled font stack, and none is fine (fonts are optional)', () => {
+    expect(themeTokensSchema.safeParse(DARK).success).toBe(true);
+    expect(themeTokensSchema.safeParse({ ...DARK, '--disp': heading }).success).toBe(true);
+  });
+
+  it('refuses an arbitrary font-family string (closed allowlist)', () => {
+    expect(themeTokensSchema.safeParse({ ...DARK, '--disp': 'Comic Sans, cursive' }).success).toBe(false);
+  });
+
+  it('carries a chosen font through resolution', () => {
+    const d = db();
+    const created = createTheme(d, { name: 'Typed', tokens: { ...DARK, '--f-mono': mono } });
+    expect(resolveTheme(d, `custom:${created.id}`).tokens?.['--f-mono']).toBe(mono);
   });
 });
 

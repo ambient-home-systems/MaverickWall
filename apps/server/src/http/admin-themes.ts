@@ -5,6 +5,8 @@ import {
   COLOUR_TOKENS,
   createTheme,
   deleteTheme,
+  FONTS,
+  FONT_TOKENS,
   readTheme,
   readThemes,
   themeTokensSchema,
@@ -65,7 +67,7 @@ const RADII: readonly { readonly value: string; readonly label: string }[] = [
 const nameBody = text('A name for the theme', 60);
 
 /** Three representative colours for a swatch strip. */
-function swatch(tokens: Readonly<Record<string, string>>): readonly string[] {
+function swatch(tokens: Readonly<Record<string, string | undefined>>): readonly string[] {
   return [tokens['--bg'] ?? '#0B0E11', tokens['--accent'] ?? '#E8A33D', tokens['--s-night'] ?? '#4C7FD1'];
 }
 
@@ -118,6 +120,12 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const raw: Record<string, unknown> = {};
     for (const token of COLOUR_TOKENS) raw[token] = body[token];
     raw['--radius'] = body['radius'];
+    // Fonts are optional: an empty select is "keep the default", so only a
+    // chosen stack is carried into the token set.
+    for (const token of FONT_TOKENS) {
+      const value = body[token];
+      if (typeof value === 'string' && value !== '') raw[token] = value;
+    }
 
     const tokens = themeTokensSchema.safeParse(raw);
     if (!tokens.success) {
@@ -188,6 +196,18 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       `<div><b>${escapeHtml(token.label)}</b><small>${escapeHtml(token.help)}</small></div>` +
       `</div>`;
 
+    const fontField = (token: string, label: string, help: string): string =>
+      `<label for="font-${escapeHtml(token)}">${escapeHtml(label)}</label>` +
+      `<select id="font-${escapeHtml(token)}" name="${escapeHtml(token)}">` +
+      `<option value=""${val(token, '') === '' ? ' selected' : ''}>Default</option>` +
+      FONTS.map(
+        (font) =>
+          `<option value="${escapeHtml(font.stack)}"${val(token, '') === font.stack ? ' selected' : ''}>` +
+          `${escapeHtml(font.label)}</option>`,
+      ).join('') +
+      `</select>` +
+      `<p class="hint">${escapeHtml(help)}</p>`;
+
     const action = editing ? `admin/themes/${encodeURIComponent(theme.id)}` : 'admin/themes';
 
     return page({
@@ -218,6 +238,11 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
             `${escapeHtml(r.label)}</option>`,
         ).join('') +
         `</select>` +
+
+        `<label class="tb-group">Fonts</label>` +
+        fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
+        fontField('--f-sans', 'Body', 'Event titles and the everyday text.') +
+        fontField('--f-mono', 'Times & numbers', 'Clock digits, times, and data readings.') +
 
         `<button type="submit">${editing ? 'Save theme' : 'Create theme'}</button>` +
         `</div>` +
