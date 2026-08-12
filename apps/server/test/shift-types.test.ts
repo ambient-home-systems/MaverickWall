@@ -66,6 +66,18 @@ describe('shift type CRUD', () => {
     expect(after.isWorking).toBe(false);
   });
 
+  it('stores and reads back an optional HH:MM window', () => {
+    const d = db();
+    createShiftType(d, { ...base, label: 'Day', startTime: '07:00', endTime: '19:00' });
+    const type = readShiftTypes(d).find((t) => t.label === 'Day')!;
+    expect(type.startTime).toBe('07:00');
+    expect(type.endTime).toBe('19:00');
+    updateShiftType(d, type.id, { ...base, label: 'Day', startTime: null, endTime: null });
+    const cleared = readShiftTypes(d).find((t) => t.id === type.id)!;
+    expect(cleared.startTime).toBeUndefined();
+    expect(cleared.endTime).toBeUndefined();
+  });
+
   it('reorders types by moving one up', () => {
     const d = db();
     createShiftType(d, { ...base, label: 'Alpha' });

@@ -99,6 +99,9 @@ export interface ShiftModel {
   readonly colorToken: string;
   /** An explicit per-type colour that overrides the token, or absent for it. */
   readonly color?: string;
+  /** Optional `HH:MM` window for the shift, drawn on the wall. */
+  readonly startTime?: string;
+  readonly endTime?: string;
   readonly isWorking: boolean;
 }
 
@@ -554,6 +557,8 @@ function toShift(shift: ManifestShift): ShiftModel {
     shortCode: shift.shortCode,
     colorToken: shift.colorToken,
     ...(shift.color !== undefined ? { color: shift.color } : {}),
+    ...(shift.startTime !== undefined ? { startTime: shift.startTime } : {}),
+    ...(shift.endTime !== undefined ? { endTime: shift.endTime } : {}),
     isWorking: shift.isWorking,
   };
 }
