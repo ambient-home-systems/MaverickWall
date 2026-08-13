@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.24.3
 
 A display is one page now, not two tabs. Appearance and Layout were separate
 tabs with overlapping controls; a display's settings and its layout editor now
