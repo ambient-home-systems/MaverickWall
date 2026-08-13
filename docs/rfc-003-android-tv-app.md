@@ -396,9 +396,16 @@ Per the repo's own doctrine — prefer tests that touch something real:
   8-character user code is only ever approvable from behind the household login,
   so a LAN attacker with the code can approve nothing. Still unproven on real
   hardware — a TV cold-pairing from the QR is the check that counts.
-- **Phase 4 — Distribution & polish.** Signed APK on GitHub releases
-  (sideload-first, matching the self-hosted ethos), TV banner art, device-owner
-  kiosk docs; Play Store / TV listing considered later.
+- **Phase 4 — Distribution & polish. ✅ built.** Signed APK on GitHub releases
+  (sideload-first, matching the self-hosted ethos). `release.yml`'s `android` job
+  builds `assembleRelease` with the release version injected and attaches
+  `maverick-wall-X.Y.Z.apk` to the Release, from the same commit as the server
+  image; the signing config is in `app/build.gradle.kts` and the key comes from
+  repository secrets (`docs/releasing-the-app.md`). `KioskDeviceAdminReceiver` is
+  the device-owner hook for lock-task; a TV banner drawable ships. Play Store /
+  TV listing is deliberately later — it adds review/policy work and is not on the
+  path to a working wall. Unproven until the first signed release actually runs
+  the job and a household installs the APK.
 
 ## Decisions taken
 

@@ -486,3 +486,94 @@ jobs:
           # main may have moved while the image built.
           git pull --rebase origin main
           git push origin HEAD:main
+
+  # The signed Android APK, attached to this release (RFC 003 Phase 4).
+  #
+  # Sideload-first: the wall app is distributed as a signed APK on the GitHub
+  # Release, not through a store — matching the no-cloud ethos, and built from
+  # the same one commit as the server image, so the app and the image can never
+  # disagree about what a release is.
+  #
+  # Runs after `advertise` on purpose. On the one-click (dispatch) path the tag
+  # is created there, at the end — and GitHub does not fire a tag-triggered
+  # workflow for a tag made with GITHUB_TOKEN, so a *separate* tag-triggered APK
+  # workflow would silently never run for the common release path. By the time
+  # this job runs the tag exists on either path, and the APK attaches to it.
+  # Stable only, like `advertise` and the `stable` image tag: a household
+  # sideloads releases, not release candidates.
+  android:
+    name: Build and attach the signed Android APK
+    needs: [prepare, verify, advertise]
+    if: needs.prepare.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The signing material comes from repository secrets, never the tree (rule
+      # six). A missing keystore is a hard error here rather than a silent
+      # unsigned APK: a build a household cannot install is worse than a red
+      # release that names the missing secret. See docs/releasing-the-app.md.
+      - name: Decode the signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "${KEYSTORE_B64}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. Add the release keystore and its passwords as repository secrets (docs/releasing-the-app.md) before releasing the APK."
+            exit 1
+          fi
+          echo "${KEYSTORE_B64}" | base64 -d > "${RUNNER_TEMP}/release.jks"
+
+      - name: Build the signed APK
+        working-directory: apps/android
+        env:
+          MW_KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          MW_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MW_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MW_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          # A monotonic integer versionCode from x.y.z, so a later release always
+          # outranks an earlier one for an on-device upgrade.
+          base="${VERSION%%-*}"
+          IFS=. read -r MA MI PA <<< "${base}"
+          CODE=$(( 10#${MA} * 10000 + 10#${MI} * 100 + 10#${PA} ))
+          ./gradlew assembleRelease --no-daemon --no-configuration-cache \
+            -PmwVersionName="${VERSION}" -PmwVersionCode="${CODE}"
+
+      - name: Confirm it is actually signed
+        run: |
+          set -euo pipefail
+          apk=apps/android/app/build/outputs/apk/release/app-release.apk
+          [ -f "${apk}" ] || { echo "::error::no signed APK at ${apk}"; exit 1; }
+          apksigner=$(ls "${ANDROID_SDK_ROOT}"/build-tools/*/apksigner | sort | tail -1)
+          "${apksigner}" verify --print-certs "${apk}"
+
+      - name: Attach the APK to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          dest="maverick-wall-${VERSION}.apk"
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "${dest}"
+          # The tag exists by now (advertise made it, or it triggered this run).
+          # Create the Release for it, or add the asset if a re-run already did.
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "${dest}" --clobber
+          else
+            gh release create "v${VERSION}" \
+              --title "v${VERSION}" \
+              --notes "Sideload APK for the Maverick Wall Android / Google TV wall app. Install with \`adb install -r ${dest}\`. See [apps/android/README.md](apps/android/README.md)." \
+              "${dest}"
+          fi

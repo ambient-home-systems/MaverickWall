@@ -93,6 +93,22 @@
             </intent-filter>
         </receiver>
 
+        <!-- Device-owner hook (Phase 4). Present so a managed install can pin the
+             kiosk with lock-task; a plain sideload never provisions this and runs
+             unpinned. Requests no policies (res/xml/device_admin.xml). BIND is the
+             system-only permission every device-admin receiver must carry. -->
+        <receiver
+            android:name=".KioskDeviceAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <!-- The push socket, held alive as a foreground service so a warning can
              wake a dark screen. `specialUse` because that is what it honestly
              is: a persistent self-hosted push channel, not a bounded data sync. -->

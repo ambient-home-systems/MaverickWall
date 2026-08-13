@@ -21,10 +21,28 @@ under a cabinet; use a proper 2A supply or it will discharge while plugged in.
 
 A television you already own, or a £30 dongle.
 
-1. Install **Fully Kiosk** or any browser that can be pinned.
-2. Open the pairing link once.
+**The Maverick Wall app is the best way to run one** — it boots straight into the
+wall, keeps the screen on, pairs itself with a code and a QR (no typing an
+address on a remote), and can turn a dark screen *on* for a tornado warning,
+which no browser can. Download the signed APK from the repository's
+[Releases](https://github.com/ambient-home-systems/maverick-wall/releases)
+(`maverick-wall-X.Y.Z.apk`) and sideload it:
+
+1. Enable **Developer options → USB/Network debugging** on the TV, then
+   `adb install -r maverick-wall-X.Y.Z.apk` (or use a file-manager sideload).
+2. Open it. Pick the server it found on the network — or type its address — and
+   approve the pairing from your phone or the Maverick Wall settings.
 3. On the screen's settings in the admin, turn on **This screen can acknowledge
    alerts** — the remote's OK button then clears whatever the wall is showing.
+
+See [`apps/android/README.md`](../apps/android/README.md) for the app, and
+[`docs/releasing-the-app.md`](releasing-the-app.md) for cutting a release. A
+managed install can pin it as a locked-down kiosk (device-owner provisioning);
+a plain sideload runs unpinned, which is fine for most walls.
+
+No app? Any browser that can be pinned — **Fully Kiosk** is the usual pick —
+works too: open the pairing link once and it becomes a cookie. You lose only the
+native wake and boot-start.
 
 A television is landscape, so it gets the two-column layout. If you have hung
 it on its end, set the rotation per screen rather than fighting the
