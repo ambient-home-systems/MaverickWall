@@ -558,7 +558,11 @@ export const calendarEventsCache = sqliteTable(
 export const people = sqliteTable('people', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  color: text('color').notNull().default('#E8A33D'),
+  // Belt-and-suspenders: the form always sends a colour, so this default is
+  // never actually hit. Kept in step with the form's own default (blue) so the
+  // two do not contradict each other — no migration, because a dead column
+  // default is not worth a table recreate.
+  color: text('color').notNull().default('#4C7FD1'),
   /** Path under /data/media, never an external URL. */
   avatarPath: text('avatar_path'),
   sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
