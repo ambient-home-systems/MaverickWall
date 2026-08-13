@@ -14,9 +14,10 @@ import { issueDisplayToken } from '../src/auth/tokens.js';
 
 /**
  * The display detail page is one page, not two tabs (Appearance + Layout were
- * merged). The value here is that both halves are drawn together and the two
- * orientation controls are told apart in the copy — that was the whole point of
- * the merge, and a regression would silently split them again.
+ * merged), and the layout leads: it is the wall being built, and the theme and
+ * the screen's settings customise it beneath. Both halves are drawn together and
+ * the two orientation controls are told apart in the copy — a regression would
+ * silently split them again or bury the layout below the settings.
  */
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
@@ -111,9 +112,9 @@ describe('the unified display page', () => {
     expect(html).not.toContain('?view=');
     expect(html).not.toContain('class="subtab');
 
-    // Settings come first, then the Layout section — the editor is not above
-    // the identity/appearance controls.
-    expect(html.indexOf('name="orientation"')).toBeLessThan(html.indexOf('id="layout-editor"'));
+    // The Layout section leads: the editor comes before the theme and the
+    // screen's other settings, which customise the layout beneath it.
+    expect(html.indexOf('id="layout-editor"')).toBeLessThan(html.indexOf('name="orientation"'));
   });
 
   it('tells the two orientation controls apart in the copy', async () => {

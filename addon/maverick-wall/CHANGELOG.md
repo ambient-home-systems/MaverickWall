@@ -14,6 +14,16 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Setting up a display is clearer. A display's settings now lead with its
+**layout** — what's on the wall, and where — and the **theme** sits underneath
+as how that layout looks, so the two no longer read as competing choices. When
+you start from a template it tells you which theme it looks best in (and you can
+still change it), and the "lighter theme during the day" option is tucked in
+under the theme rather than standing on its own. Nothing on the wall itself
+changes — this is only the settings screen.
+
 ## 0.25.0
 
 The wall has a new set of looks. The default dark theme now reads as a

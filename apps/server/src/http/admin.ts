@@ -426,6 +426,13 @@ function displayThemeRef(ref: string): string {
   return LEGACY_THEME_ALIASES[ref] ?? ref;
 }
 
+/** The bare display name of a built-in theme key, e.g. `panels` → "Panels".
+ *  Used to tell a household which theme a template was designed for. */
+function themeName(key: string): string {
+  const found = THEMES.find((t) => t.key === key);
+  return found ? found.label.split(' — ')[0] ?? found.label : key;
+}
+
 /**
  * The theme picker as selectable cards, scriptless.
  *
@@ -2360,12 +2367,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `reports itself — right for almost every wall. Pick <i>Always portrait</i> ` +
       `or <i>Always landscape</i> only for a kiosk frame that reports the wrong ` +
       `size. This is not the Portrait/Landscape buttons in the layout editor ` +
-      `below: those choose which canvas you are arranging (you arrange both), ` +
+      `above: those choose which canvas you are arranging (you arrange both), ` +
       `while this decides which of the two the wall actually draws.</p>` +
       `<p class="hint"><b>Rotation</b> is for a screen physically mounted on its ` +
       `side. The layout follows the turned picture, so a rotated widescreen gets ` +
       `the portrait wall.</p>` +
 
+      `<h2 class="add">Theme</h2>` +
+      `<p class="hint">How this wall looks. “Follow the default” inherits the ` +
+      `household's theme; set one here only to make this wall different. ` +
+      `<b>The preview above updates when you save.</b></p>` +
       `<div class="row-fields">` +
       `<span><label for="theme-${screen.id}">Theme</label>` +
       `<select id="theme-${screen.id}" name="theme">` +
@@ -2697,10 +2708,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // one because the page title already says "Default display".
     const appearance = owner === null ? defaultsForm() : wallSettingsForm(owner);
 
-    // One page, no tabs: settings then the layout editor. The `#layout` anchor
-    // is where the "Arrange layout" links and the apply-a-template redirect land.
+    // One page, no tabs, and the layout leads: it is the wall you are building,
+    // and the theme below only changes how that layout looks. The `#layout`
+    // anchor is where the "Arrange layout" links and the apply-a-template
+    // redirect land.
     const layout =
       `<h2 class="add" id="layout">Layout</h2>` +
+      `<p class="hint sect-lede">Start here — <b>what's on the wall, and where</b>. ` +
+      `Pick a ready-made layout or arrange your own; the theme below only changes ` +
+      `how it looks.</p>` +
       `<div class="row" style="gap:10px;align-items:center">` +
       `<a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
       `Start from a template</a>` +
@@ -2711,7 +2727,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
       `The <b>Portrait</b> and <b>Landscape</b> buttons below switch which canvas ` +
       `you are arranging — you arrange both, and the wall draws the one matching ` +
-      `how it is hung (or the Orientation set above). Turn it on to use this ` +
+      `how it is hung (or the Orientation set below). Turn it on to use this ` +
       `instead of the stacked layout; the wall picks up a change within a minute. ` +
       `Or start from a ready-made layout above.</p>` +
       layoutEditorMount(initial);
@@ -2722,14 +2738,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'displays',
       heading: owner ? owner.name : 'Default display',
       intro: owner
-        ? 'Everything about this wall — how it is hung, its theme, how much it shows, and its layout.'
-        : 'The appearance and layout every wall inherits until it is given its own.',
+        ? 'This wall — its layout first, then the theme that dresses it, how much it shows, and how it is hung.'
+        : 'The layout every wall starts from, and the theme that dresses it.',
       body:
         `<p><a class="link" href="admin/displays">← All displays</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         statusAndPairing +
-        appearance +
-        layout,
+        layout +
+        appearance,
     });
   }
 
@@ -2754,6 +2770,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="tpl-body">` +
       `<div class="tpl-name">${escapeHtml(t.name)}</div>` +
       `<div class="tpl-blurb">${escapeHtml(t.blurb)}</div>` +
+      (t.theme !== undefined
+        ? `<div class="hint" style="margin:0 0 .6rem">Looks best in ` +
+          `<b style="color:var(--accent)">${escapeHtml(themeName(t.theme))}</b> ` +
+          `— you can change it after.</div>`
+        : '') +
       `<form method="post" action="admin/displays/${ownerParam}/apply-template" ` +
       `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with ${escapeHtml(t.name)}?">` +
       `<input type="hidden" name="templateId" value="${escapeHtml(t.id)}">` +
@@ -2854,15 +2875,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return (
       `<form method="post" action="admin/display">` +
-      `<label>Theme</label>` +
+      `<h2 class="add">Theme</h2>` +
+      `<p class="hint">How the layout above looks — its colours and type. Panels ` +
+      `separates the shift colours best from across a room. Build your own on the ` +
+      `<a class="link" href="admin/themes">Themes</a> screen. ` +
+      `<b>The preview above updates when you save.</b></p>` +
       themeCards(displayThemeRef(household.theme), custom) +
-      `<p class="hint">Panels separates the shift colours best from across a room. ` +
-      `Build your own on the <a class="link" href="admin/themes">Themes</a> screen.</p>` +
 
-      `<label for="daytime_theme">During the day</label>` +
+      `<label for="daytime_theme">Switch to a lighter theme during the day</label>` +
       `<select id="daytime_theme" name="daytime_theme">` +
       `${themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true)}</select>` +
-      `<p class="hint">A dark theme at noon is a hole in the wall; a light one at 2am is a lamp.</p>` +
+      `<p class="hint">Optional. A dark theme at noon is a hole in the wall; a light ` +
+      `one at 2am is a lamp. The times below are used only when a daytime theme is set.</p>` +
 
       `<div class="row-fields">` +
       `<span><label for="daytime_starts_at">From</label>` +
@@ -2873,9 +2897,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `value="${escapeHtml(household.daytimeEndsAt ?? '21:00')}"></span>` +
       `</div>` +
 
-      `<h2 class="add">What the wall shows</h2>` +
-      `<p class="hint">Top to bottom in portrait. In landscape the month takes ` +
-      `its own column and the rest stack beside it, in this order.</p>` +
+      `<h2 class="add">What the stacked layout shows</h2>` +
+      `<p class="hint">For the stacked (Auto) layout: which blocks appear, top to ` +
+      `bottom in portrait. In landscape the month takes its own column and the rest ` +
+      `stack beside it, in this order. A free-form layout uses its own widgets instead.</p>` +
       blockRows(parseBlocks(household.displayBlocks)) +
 
       `<h2 class="add">How much to show</h2>` +
