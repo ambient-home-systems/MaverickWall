@@ -586,6 +586,42 @@ body {
 .hz-dots { display: flex; gap: 0.28rem; margin-top: 0.42rem; flex-wrap: wrap; }
 .hz-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--ink); opacity: 0.55; }
 
+/* Skylight-style event pills in a month cell (calendar widget, cellEvents:pills). */
+.horizon-pills .hz-cell { min-height: 6.6rem; }
+.hz-pills { display: flex; flex-direction: column; gap: 0.24rem; margin-top: 0.4rem; }
+.hz-pill {
+  font-size: 1.15rem; line-height: 1.2; padding: 0.12rem 0.42rem;
+  border-radius: 0.28rem; background: var(--pc); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* An all-day pill reads as a tint with its own colour, like the agenda's. */
+.hz-pill.allday { background: transparent; color: var(--ink); border-left: 0.28rem solid var(--pc); border-radius: 0 0.28rem 0.28rem 0; }
+.hz-pill-more { font-size: 1.05rem; color: var(--muted); padding-left: 0.42rem; }
+
+/* The week-columns mode: the current Mon–Sun week as vertical day columns. */
+.weekcols { min-height: 0; overflow: hidden; }
+.wc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.4rem; height: 100%; }
+.wc-col { display: flex; flex-direction: column; gap: 0.3rem; min-height: 0; overflow: hidden; }
+.wc-col.dim { opacity: 0.5; }
+.wc-head {
+  text-align: center; padding-bottom: 0.4rem; margin-bottom: 0.15rem;
+  border-bottom: 1px solid var(--rule);
+}
+.wc-col.is-today .wc-head { border-bottom-color: var(--accent); }
+.wc-wd {
+  display: block; font-size: 1.05rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--faint);
+}
+.wc-col.is-today .wc-wd, .wc-col.is-today .wc-num { color: var(--accent); }
+.wc-num { font-family: var(--disp); font-size: 1.7rem; font-weight: 700; line-height: 1; }
+:root[data-theme="almanac"] .wc-num { font-weight: 400; }
+.wc-ev {
+  font-size: 1.15rem; line-height: 1.2; padding: 0.16rem 0.42rem;
+  border-radius: 0.28rem; background: var(--pc); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wc-ev.allday { background: transparent; color: var(--ink); border-left: 0.28rem solid var(--pc); border-radius: 0 0.28rem 0.28rem 0; }
+
 .legend {
   display: flex; gap: 2.2rem; flex-wrap: wrap;
   margin-top: 1.3rem; padding-top: 1.1rem;

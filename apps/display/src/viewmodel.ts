@@ -145,8 +145,25 @@ export interface DayModel {
   readonly hiddenEventCount: number;
 }
 
+/**
+ * A slim event for a month cell or a week column (RFC 005).
+ *
+ * The month grid's dots need only a count, but the Skylight-style `pills` and
+ * `week` calendar-widget modes draw the events themselves — a coloured, labelled
+ * bar per event. `sourceId` is carried so the week columns can honour the
+ * widget's `calendars` filter, exactly as the agenda mode does; it is already in
+ * the manifest, so it leaks nothing.
+ */
+export interface HorizonEvent {
+  readonly title: string;
+  readonly color: string;
+  readonly allDay: boolean;
+  readonly sourceId: string;
+}
+
 export interface HorizonCell {
   readonly date: CivilDate;
+  readonly weekday: string;
   readonly dayNumber: string;
   readonly isToday: boolean;
   readonly isPast: boolean;
@@ -166,6 +183,12 @@ export interface HorizonCell {
   /** The full name, for the legend that sits under the grid. */
   readonly shiftLabel: string | undefined;
   readonly eventCount: number;
+  /**
+   * A few of the day's events, for the `pills` and `week` calendar modes. Capped
+   * because a cell or a column has room for a handful; `eventCount` above is the
+   * true total the month dots and any "+N" read from.
+   */
+  readonly events: readonly HorizonEvent[];
 }
 
 export interface WeatherDayModel {
@@ -732,8 +755,11 @@ export function buildModel(options: BuildOptions): DisplayModel {
     const day = byDate.get(date);
     // The first shift of the day, whether or not it is a working one.
     const shift = day?.shifts[0];
+    const events = day?.events ?? [];
     cells.push({
       date,
+      // Short weekday for the week-columns header (Mon, Tue, …).
+      weekday: parts(date, timezone).weekday,
       dayNumber: String(Number(date.slice(8, 10))),
       isToday: date === today,
       isPast: date < today,
@@ -742,7 +768,15 @@ export function buildModel(options: BuildOptions): DisplayModel {
       shiftColor: shift?.color,
       shiftCode: shift?.shortCode,
       shiftLabel: shift?.label,
-      eventCount: day?.events.length ?? 0,
+      eventCount: events.length,
+      // A handful, for the pills and week modes; four fits a column and slices
+      // to three for a month cell.
+      events: events.slice(0, 4).map((e) => ({
+        title: e.title,
+        color: e.color,
+        allDay: e.allDay,
+        sourceId: e.sourceId,
+      })),
     });
   }
 

@@ -174,6 +174,35 @@ describe('saving a layout', () => {
     expect(byType['homeassistant']).toEqual({ readings: ['Front door'] });
   });
 
+  it('accepts the week mode and month pills, and round-trips them (RFC 005)', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [
+        { id: 'wk', type: 'calendar', x: 0, y: 0, w: 1, h: 0.5, z: 0, config: { mode: 'week', calendars: ['fam'] } },
+        { id: 'mo', type: 'calendar', x: 0, y: 0.5, w: 1, h: 0.5, z: 1, config: { cellEvents: 'pills' } },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { portrait: { widgets: { id: string; config?: unknown }[] } } };
+    const byId = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.id, w.config]));
+    expect(byId['wk']).toEqual({ mode: 'week', calendars: ['fam'] });
+    expect(byId['mo']).toEqual({ cellEvents: 'pills' });
+  });
+
+  it('rejects a calendar mode or cellEvents value it cannot draw (rule five)', async () => {
+    const h = await harness();
+    for (const config of [{ mode: 'agenda' }, { cellEvents: 'bars' }]) {
+      const res = await h.saveLayout({
+        mode: 'freeform', aspect: 0.5625,
+        widgets: [{ id: 'x', type: 'calendar', x: 0, y: 0, w: 0.5, h: 0.5, z: 0, config }],
+      });
+      expect(res.status, JSON.stringify(config)).toBe(400);
+    }
+  });
+
   it('rejects a background that is not a hex colour', async () => {
     const h = await harness();
     const res = await h.saveLayout({
