@@ -16,7 +16,8 @@ export type CivilDate = string;
  */
 export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
-  | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number };
+  | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
+  | { readonly type: 'image'; readonly image: string };
 
 export interface ManifestEvent {
   readonly id: string;

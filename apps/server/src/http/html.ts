@@ -520,6 +520,18 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   border-radius:7px;background:var(--panel2)}
 .le-bg input[type=number]{width:5rem;padding:.42rem .5rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
+.le-bg .le-media{flex-basis:100%}
+
+/* The image picker — a grid of uploaded pictures plus an upload input. */
+.le-media{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.le-media-grid{display:flex;flex-wrap:wrap;gap:8px}
+.le-media-item{width:64px;height:64px;padding:0;margin:0;border-radius:8px;cursor:pointer;
+  border:2px solid var(--rule);background-size:cover;background-position:center}
+.le-media-item:hover{border-color:var(--faint)}
+.le-media-item.is-on{border-color:var(--accent)}
+.le-media-upload{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.le-media-upload input{font-size:12px}
+.le-media-status{font-family:var(--mono);font-size:12px;color:var(--faint)}
 
 /* The layers list — every widget, front on top; drag a row to restack. */
 .le-layers{margin-top:16px;border:1px solid var(--rule);border-radius:10px;

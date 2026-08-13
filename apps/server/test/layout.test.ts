@@ -128,6 +128,14 @@ describe('parseBackground (RFC 005 Phase 3)', () => {
     expect(parseBackground(JSON.stringify({ type: 'gradient', from: '#000000', to: '#ffffff' }))).toMatchObject({ angle: 180 });
   });
 
+  it('reads an image background by its stored name, and rejects a non-name', () => {
+    const name = 'a'.repeat(64) + '.png';
+    expect(parseBackground(JSON.stringify({ type: 'image', image: name }))).toEqual({ type: 'image', image: name });
+    // A path or a bare word is not a stored name — dropped, never a traversal.
+    expect(parseBackground(JSON.stringify({ type: 'image', image: '../secret.png' }))).toBeUndefined();
+    expect(parseBackground(JSON.stringify({ type: 'image', image: 'photo.png' }))).toBeUndefined();
+  });
+
   it('drops rubbish to no background rather than handing it to the wall', () => {
     expect(parseBackground(null)).toBeUndefined();
     expect(parseBackground('')).toBeUndefined();

@@ -36,7 +36,8 @@ interface Widget {
 
 type Background =
   | { type: 'solid'; color: string }
-  | { type: 'gradient'; from: string; to: string; angle: number };
+  | { type: 'gradient'; from: string; to: string; angle: number }
+  | { type: 'image'; image: string };
 
 interface Canvas {
   aspect: number;
@@ -75,8 +76,12 @@ const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
   { type: 'countdown', label: 'Countdown' },
   { type: 'notes', label: 'Notes' },
   { type: 'todo', label: 'To-do' },
+  { type: 'image', label: 'Image' },
   { type: 'external', label: 'Module' },
 ];
+
+/** The editor is on the admin page, so its preview reads media behind the session. */
+const EDITOR_MEDIA_BASE = 'admin/media/';
 
 const ASPECTS: readonly { readonly value: number; readonly label: string }[] = [
   { value: 0.5625, label: 'Portrait 9:16' },
@@ -130,6 +135,7 @@ function boot(): void {
     if (b['type'] === 'gradient' && typeof b['from'] === 'string' && typeof b['to'] === 'string') {
       return { type: 'gradient', from: b['from'], to: b['to'], angle: typeof b['angle'] === 'number' ? b['angle'] : 180 };
     }
+    if (b['type'] === 'image' && typeof b['image'] === 'string') return { type: 'image', image: b['image'] };
     return undefined;
   };
   const canvasFrom = (raw: RawCanvas | undefined, fallbackAspect: number): Canvas => {
@@ -429,7 +435,7 @@ function boot(): void {
         aspect: state.aspect,
         widgets: state.widgets.map((w) => ({ ...w })),
         ...(state.background !== undefined ? { background: state.background } : {}),
-      });
+      }, EDITOR_MEDIA_BASE);
     } else {
       renderStacked(rect);
     }
@@ -640,7 +646,9 @@ function boot(): void {
 
     const kind = state.background?.type ?? 'none';
     const select = document.createElement('select');
-    for (const [value, label] of [['none', 'None'], ['solid', 'Solid colour'], ['gradient', 'Gradient']] as const) {
+    for (const [value, label] of [
+      ['none', 'None'], ['solid', 'Solid colour'], ['gradient', 'Gradient'], ['image', 'Image'],
+    ] as const) {
       const opt = document.createElement('option');
       opt.value = value;
       opt.textContent = label;
@@ -651,6 +659,9 @@ function boot(): void {
       if (select.value === 'solid') state.background = { type: 'solid', color: '#111820' };
       else if (select.value === 'gradient') {
         state.background = { type: 'gradient', from: '#0B0E11', to: '#242D38', angle: 180 };
+      } else if (select.value === 'image') {
+        // Empty until a picture is chosen; saved as "no background" until then.
+        state.background = { type: 'image', image: '' };
       } else state.background = undefined;
       drawBackgroundPanel();
       renderPreview();
@@ -667,7 +678,15 @@ function boot(): void {
     };
 
     const bg = state.background;
-    if (bg?.type === 'solid') {
+    if (bg?.type === 'image') {
+      backgroundPanel.appendChild(
+        mediaPicker(bg.image === '' ? undefined : bg.image, (name) => {
+          state.background = { type: 'image', image: name };
+          renderPreview();
+          markDirty();
+        }),
+      );
+    } else if (bg?.type === 'solid') {
       backgroundPanel.appendChild(colour(bg.color, (v) => { bg.color = v; }));
     } else if (bg?.type === 'gradient') {
       backgroundPanel.appendChild(colour(bg.from, (v) => { bg.from = v; }));
@@ -781,6 +800,7 @@ function boot(): void {
     else if (widget.type === 'external') buildExternalConfig(widget, cfg);
     else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
     else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
+    else if (widget.type === 'image') buildImageConfig(widget, cfg);
     // Every widget gets the Format section — it is all box-level.
     buildFormatConfig(widget, cfg);
   }
@@ -833,6 +853,99 @@ function boot(): void {
     );
     dateField.appendChild(date);
     configPanel.appendChild(dateField);
+  }
+
+  /**
+   * The image picker, shared by the Image widget and the image background
+   * (RFC 005 Phase 3b): a grid of the household's uploaded pictures plus an
+   * upload. Reads the list behind the session; on a pick or a fresh upload it
+   * calls back with the stored name. Rule three throughout — every image is the
+   * household's own, served from the media store, never an external URL.
+   */
+  function mediaPicker(current: string | undefined, onPick: (name: string) => void): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'le-media';
+    const grid = document.createElement('div');
+    grid.className = 'le-media-grid';
+    const status = document.createElement('span');
+    status.className = 'le-media-status';
+
+    let selected = current;
+    let images: { name: string; originalName: string }[] = [];
+
+    const drawGrid = (): void => {
+      grid.textContent = '';
+      if (images.length === 0) {
+        const note = document.createElement('p');
+        note.className = 'hint';
+        note.textContent = 'No pictures yet — upload one below.';
+        grid.appendChild(note);
+        return;
+      }
+      for (const img of images) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'le-media-item' + (img.name === selected ? ' is-on' : '');
+        button.style.backgroundImage = `url("admin/media/${img.name}")`;
+        button.title = img.originalName;
+        button.addEventListener('click', () => {
+          selected = img.name;
+          onPick(img.name);
+          drawGrid();
+        });
+        grid.appendChild(button);
+      }
+    };
+
+    void fetch('admin/media/list')
+      .then((r) => (r.ok ? r.json() : { images: [] }))
+      .then((data: { images?: { name: string; originalName: string }[] }) => {
+        images = Array.isArray(data.images) ? data.images : [];
+        drawGrid();
+      })
+      .catch(() => drawGrid());
+
+    const label = document.createElement('label');
+    label.className = 'le-media-upload';
+    label.appendChild(document.createTextNode('Upload a picture'));
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = 'image/png,image/jpeg,image/gif,image/webp';
+    file.addEventListener('change', () => {
+      const picked = file.files?.[0];
+      if (picked === undefined) return;
+      status.textContent = 'Uploading…';
+      const form = new FormData();
+      form.append('image', picked);
+      void fetch('admin/media/upload', { method: 'POST', body: form })
+        .then((r) => r.json())
+        .then((data: { ok?: boolean; name?: string; message?: string }) => {
+          if (data.ok === true && typeof data.name === 'string') {
+            if (!images.some((i) => i.name === data.name)) {
+              images.unshift({ name: data.name, originalName: picked.name });
+            }
+            selected = data.name;
+            onPick(data.name);
+            drawGrid();
+            status.textContent = '';
+          } else {
+            status.textContent = data.message ?? 'That did not upload.';
+          }
+        })
+        .catch(() => { status.textContent = 'Could not reach the server.'; });
+      file.value = '';
+    });
+    label.appendChild(file);
+
+    wrap.append(grid, label, status);
+    return wrap;
+  }
+
+  function buildImageConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const field = cfgField('Picture');
+    const current = typeof cfg['image'] === 'string' ? (cfg['image'] as string) : undefined;
+    field.appendChild(mediaPicker(current, (name) => setConfig(widget, 'image', name)));
+    configPanel.appendChild(field);
   }
 
   function buildNotesConfig(widget: Widget, cfg: Record<string, unknown>): void {
@@ -1285,8 +1398,12 @@ function boot(): void {
           aspect: round3(aspect),
           widgets: widgetsForSave(widgets),
           // The canvas background object, or null for none — the shape the
-          // server's backgroundSchema validates.
-          background: background ?? null,
+          // server's backgroundSchema validates. An image type with no picture
+          // chosen yet is "no background", not a save the server would refuse.
+          background:
+            background !== undefined && !(background.type === 'image' && background.image === '')
+              ? background
+              : null,
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };

@@ -52,7 +52,7 @@ import { backupTo, databasePath, integrityCheck } from '../db/open.js';
 import { bytesOf, type WallAddress } from './app.js';
 import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
-import { readImage, storeImage } from '../api/media.js';
+import { readImage, storeImage, listImages } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import type { LogBuffer } from '../logbuffer.js';
 import { parseBlocks, parseBackground } from '../api/manifest.js';
@@ -1001,6 +1001,34 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     createPerson(deps.db, randomBytes(8).toString('hex'), shaped.value.name, shaped.value.color);
     return c.redirect('/admin/people', 302);
+  });
+
+  /**
+   * The images a canvas can use — for the editor's picker (RFC 005 Phase 3b).
+   * JSON behind the session; the bytes come from `/admin/media/:name`. Declared
+   * before `/:name` so `list` is not swallowed as a filename.
+   */
+  app.get('/admin/media/list', (c: Context) =>
+    c.json({ images: listImages(deps.db, 'background') }),
+  );
+
+  /**
+   * Upload a canvas image, answered as JSON for the editor's fetch (RFC 005
+   * Phase 3b). The same `storeImage` the avatar path uses — sniffed from magic
+   * bytes, SVG refused, the stored name derived from the content hash, so a
+   * filename can never reach the filesystem.
+   */
+  app.post('/admin/media/upload', async (c: Context) => {
+    const body = await c.req.parseBody();
+    const file = body['image'];
+    if (!(file instanceof File) || file.size === 0) {
+      return c.json({ ok: false, message: 'Choose an image to upload.' }, 400);
+    }
+    const stored = storeImage(deps.db, deps.dataDir, Buffer.from(await file.arrayBuffer()), file.name, 'background');
+    if (!stored.ok) {
+      return c.json({ ok: false, message: stored.message, suggestion: stored.suggestion }, 400);
+    }
+    return c.json({ ok: true, name: stored.name });
   });
 
   /** The same bytes as `/d/media`, behind the session instead of a screen token. */

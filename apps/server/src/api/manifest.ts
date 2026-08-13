@@ -114,9 +114,11 @@ const aspectOf = (value: number, fallback: number): number =>
  */
 export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
-  | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number };
+  | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
+  | { readonly type: 'image'; readonly image: string };
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
+const STORED_IMAGE = /^[a-f0-9]{64}\.(png|jpg|gif|webp)$/;
 
 /**
  * Parse the stored background JSON into a background the wall can draw.
@@ -148,6 +150,9 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
       ? ((Math.round(bg['angle']) % 360) + 360) % 360
       : 180;
     return { type: 'gradient', from: bg['from'], to: bg['to'], angle };
+  }
+  if (bg['type'] === 'image' && typeof bg['image'] === 'string' && STORED_IMAGE.test(bg['image'])) {
+    return { type: 'image', image: bg['image'] };
   }
   return undefined;
 }

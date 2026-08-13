@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
-import { isStoredName, mediaDir, readImage, sniffImage, storeImage } from '../src/api/media.js';
+import { isStoredName, listImages, mediaDir, readImage, sniffImage, storeImage } from '../src/api/media.js';
 
 /**
  * Uploaded images.
@@ -37,6 +37,23 @@ const WEBP = Buffer.concat([
   Buffer.from('RIFF', 'latin1'), Buffer.alloc(4, 0), Buffer.from('WEBP', 'latin1'),
   Buffer.alloc(64, 2),
 ]);
+
+describe('listImages (RFC 005 Phase 3b)', () => {
+  it('lists the images of a usage, newest first, and keeps usages apart', () => {
+    const { db, dataDir } = scratch();
+    const bg1 = storeImage(db, dataDir, PNG, 'wall.png', 'background');
+    const bg2 = storeImage(db, dataDir, JPEG, 'photo.jpg', 'background');
+    storeImage(db, dataDir, GIF, 'face.gif', 'avatar');
+    expect(bg1.ok && bg2.ok).toBe(true);
+
+    const backgrounds = listImages(db, 'background');
+    // Both backgrounds, and no avatar among them.
+    expect(backgrounds.map((i) => i.originalName).sort()).toEqual(['photo.jpg', 'wall.png']);
+    // Every listed name is a stored name (a hash, never a filename).
+    expect(backgrounds.every((i) => isStoredName(i.name))).toBe(true);
+    expect(listImages(db, 'avatar').map((i) => i.originalName)).toEqual(['face.gif']);
+  });
+});
 
 describe('sniffing', () => {
   it('recognises the formats a wall can draw', () => {
