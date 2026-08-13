@@ -14,6 +14,14 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The forecast now works anywhere in the world. Alongside the US National
+Weather Service, you can choose **Open-Meteo** — it covers the whole world and
+needs no account or key — and pick Fahrenheit or Celsius. Set it on the Weather
+screen. Existing walls are unchanged; weather alerts are still the National
+Weather Service and the United States only.
+
 ## 0.22.0
 
 People now colour the calendar. Give a calendar an owner on the Calendars
