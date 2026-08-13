@@ -10,6 +10,7 @@ export const template: DisplayTemplate = {
   name: 'Ops Dashboard',
   category: 'office',
   blurb: 'Home Assistant readings and a module panel over a month grid.',
+  theme: 'slate',
   portrait: {
     aspect: 0.5625,
     widgets: [
@@ -17,6 +18,7 @@ export const template: DisplayTemplate = {
       { type: 'external', x: 0.05, y: 0.29, w: 0.9, h: 0.2 },
       { type: 'calendar', x: 0.05, y: 0.51, w: 0.9, h: 0.46 },
     ],
+    background: { type: 'gradient', from: '#191713', to: '#23201A', angle: 160 },
   },
   landscape: {
     aspect: 1.7778,
@@ -25,5 +27,6 @@ export const template: DisplayTemplate = {
       { type: 'external', x: 0.04, y: 0.52, w: 0.3, h: 0.42 },
       { type: 'calendar', x: 0.37, y: 0.06, w: 0.59, h: 0.88 },
     ],
+    background: { type: 'gradient', from: '#191713', to: '#23201A', angle: 160 },
   },
 };

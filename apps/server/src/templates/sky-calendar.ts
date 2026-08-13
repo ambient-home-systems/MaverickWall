@@ -11,6 +11,7 @@ export const template: DisplayTemplate = {
   name: 'Sky Calendar',
   category: 'home',
   blurb: 'A bright, near-full-bleed month with colour-coded event pills per family member.',
+  theme: 'almanac',
   portrait: {
     aspect: 0.5625,
     widgets: [
@@ -18,6 +19,7 @@ export const template: DisplayTemplate = {
       { type: 'weather', x: 0.53, y: 0.03, w: 0.43, h: 0.09 },
       { type: 'calendar', x: 0.04, y: 0.15, w: 0.92, h: 0.82, config: { cellEvents: 'pills' } },
     ],
+    background: { type: 'gradient', from: '#FFFFFF', to: '#E8EFF5', angle: 165 },
   },
   landscape: {
     aspect: 1.7778,
@@ -26,5 +28,6 @@ export const template: DisplayTemplate = {
       { type: 'weather', x: 0.63, y: 0.05, w: 0.34, h: 0.12 },
       { type: 'calendar', x: 0.03, y: 0.21, w: 0.94, h: 0.76, config: { cellEvents: 'pills' } },
     ],
+    background: { type: 'gradient', from: '#FFFFFF', to: '#E8EFF5', angle: 165 },
   },
 };

@@ -15,12 +15,15 @@
 import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
-import type { Manifest, ManifestWidget } from './manifest.js';
+import type { Manifest, ManifestWidget, CanvasBackground } from './manifest.js';
 
 interface TemplatePreview {
   readonly id: string;
   readonly aspect: number;
   readonly widgets: readonly ManifestWidget[];
+  /** The template's designed theme and background, previewed on the card. */
+  readonly theme?: string;
+  readonly background?: CanvasBackground;
 }
 interface GalleryData {
   readonly owner: string | null;
@@ -92,10 +95,16 @@ function boot(): void {
       wall.style.setProperty('--frame-h', `${rect.height}px`);
       wall.style.setProperty('--root-size', `${rect.height / 100}px`);
       shadow.append(style, wall);
-      applyTheme(wall, manifest.theme.active);
+      // The template's own theme, so the card shows the look applying it gives —
+      // not the household's current theme (RFC 005 3c).
+      applyTheme(wall, template.theme ?? manifest.theme.active);
 
       // On the admin page, so any image reads media behind the session.
-      renderFreeform(wall, model, { aspect: template.aspect, widgets: template.widgets }, 'admin/media/');
+      renderFreeform(wall, model, {
+        aspect: template.aspect,
+        widgets: template.widgets,
+        ...(template.background !== undefined ? { background: template.background } : {}),
+      }, 'admin/media/');
       // The fallback label is only for when this never runs.
       const fallback = thumb.querySelector('.tpl-fallback');
       if (fallback instanceof HTMLElement) fallback.style.display = 'none';

@@ -57,6 +57,14 @@ describe('the shipped templates', () => {
     }
   });
 
+  it('every template names a built-in theme and gives both canvases a background (Phase 3c)', () => {
+    for (const t of TEMPLATES) {
+      expect(['board', 'slate', 'almanac', 'glance'], t.id).toContain(t.theme);
+      expect(t.portrait.background, `${t.id} portrait bg`).toBeDefined();
+      expect(t.landscape.background, `${t.id} landscape bg`).toBeDefined();
+    }
+  });
+
   it('leads the gallery with the two Skylight-style clones, which use the new modes', () => {
     expect(TEMPLATES[0]?.id).toBe('sky-calendar');
     expect(TEMPLATES[1]?.id).toBe('sky-week');
@@ -110,6 +118,21 @@ describe('applying a template', () => {
       .prepare(`SELECT layout_aspect AS p, layout_landscape_aspect AS l FROM household_settings`)
       .get() as { p: number; l: number };
     expect(aspects).toEqual({ p: sky.portrait.aspect, l: sky.landscape.aspect });
+  });
+
+  it('sets the template theme and per-orientation backgrounds (Phase 3c)', () => {
+    const d = db();
+    const sky = findTemplate('sky-calendar')!;
+    applyTemplate(d, null, sky);
+    const row = d
+      .prepare(
+        `SELECT theme, layout_background AS p, layout_landscape_background AS l FROM household_settings`,
+      )
+      .get() as { theme: string; p: string; l: string };
+    expect(row.theme).toBe('almanac');
+    // Stored as JSON, and it is the template's own background.
+    expect(JSON.parse(row.p)).toEqual(sky.portrait.background);
+    expect(JSON.parse(row.l)).toEqual(sky.landscape.background);
   });
 
   it('carries a widget config through — the pills option lands on the wall', () => {

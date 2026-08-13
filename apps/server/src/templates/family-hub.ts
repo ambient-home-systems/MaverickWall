@@ -9,6 +9,7 @@ export const template: DisplayTemplate = {
   name: 'Family Hub',
   category: 'home',
   blurb: 'Month grid, clock, weather and a to-do list — the classic kitchen calendar.',
+  theme: 'board',
   portrait: {
     aspect: 0.5625,
     widgets: [
@@ -17,6 +18,7 @@ export const template: DisplayTemplate = {
       { type: 'calendar', x: 0.05, y: 0.19, w: 0.9, h: 0.49 },
       { type: 'todo', x: 0.05, y: 0.7, w: 0.9, h: 0.27 },
     ],
+    background: { type: 'gradient', from: '#0B0E11', to: '#171F29', angle: 160 },
   },
   landscape: {
     aspect: 1.7778,
@@ -26,5 +28,6 @@ export const template: DisplayTemplate = {
       { type: 'todo', x: 0.04, y: 0.6, w: 0.28, h: 0.34 },
       { type: 'calendar', x: 0.35, y: 0.06, w: 0.61, h: 0.88 },
     ],
+    background: { type: 'gradient', from: '#0B0E11', to: '#171F29', angle: 160 },
   },
 };

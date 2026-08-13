@@ -9,6 +9,7 @@ export const template: DisplayTemplate = {
   name: 'Today Focus',
   category: 'home',
   blurb: 'A large upcoming-agenda with a weather strip and a quiet clock.',
+  theme: 'almanac',
   portrait: {
     aspect: 0.5625,
     widgets: [
@@ -16,6 +17,7 @@ export const template: DisplayTemplate = {
       { type: 'weather', x: 0.05, y: 0.14, w: 0.9, h: 0.14 },
       { type: 'calendar', x: 0.05, y: 0.31, w: 0.9, h: 0.66, config: { mode: 'list' } },
     ],
+    background: { type: 'gradient', from: '#FBFAF6', to: '#F0ECE2', angle: 160 },
   },
   landscape: {
     aspect: 1.7778,
@@ -24,5 +26,6 @@ export const template: DisplayTemplate = {
       { type: 'weather', x: 0.04, y: 0.4, w: 0.3, h: 0.53 },
       { type: 'calendar', x: 0.37, y: 0.06, w: 0.59, h: 0.88, config: { mode: 'list' } },
     ],
+    background: { type: 'gradient', from: '#FBFAF6', to: '#F0ECE2', angle: 160 },
   },
 };
