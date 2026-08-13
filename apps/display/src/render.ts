@@ -1066,37 +1066,39 @@ export function renderFreeform(
   root.textContent = '';
   root.appendChild(screen);
 
-  // Now that everything has a size, scale each reused section to fit its box.
-  // The reference is the whole canvas width, so a grid's columns have the room
-  // they get on a full wall before the whole thing is shrunk into the box.
-  const canvasWidth = canvas.clientWidth;
-  for (const { box, scale } of toFit) fitToBox(box, scale, canvasWidth);
+  // Now that everything has a size, fit each reused section to its box.
+  for (const { box, scale } of toFit) fitToBox(box, scale);
 }
 
 /**
- * Scale a reused section to fit its widget box.
+ * Fit a reused section (weather, house, shift, notes…) to its widget box.
  *
- * The section is first laid out at the *canvas* width — the width it would have
- * filling the wall — so a seven-column month grid resolves its `fr` tracks with
- * room to spare instead of being squeezed until a column clips. Then the whole
- * thing is scaled down uniformly to the box, from the top-left, so the design's
- * proportions are kept and only its size changes. The width reference means the
- * factor is at most one, so nothing is ever blown up past its natural scale.
+ * The section is laid out at the *box* width, so its rem-based type stays the
+ * size the design intends. It used to lay out at the whole canvas width and
+ * scale the result down to the box — which, in a narrow column, shrank a
+ * short weather strip to a fraction of its type and left it an unreadable
+ * sliver next to a full-height calendar. Laying out at the box width instead
+ * keeps the type at its natural size; the section is then scaled *down* only if
+ * it is still too tall or too wide to fit, and never up — a strip in a tall box
+ * keeps its natural size at the top rather than being blown up to fill it.
  */
-export function fitToBox(box: HTMLElement, scale: HTMLElement, canvasWidth: number): void {
+export function fitToBox(box: HTMLElement, scale: HTMLElement): void {
   const style = getComputedStyle(box);
   const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
   const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
   const availW = box.clientWidth - padX;
   const availH = box.clientHeight - padY;
-  if (canvasWidth <= 0 || availW <= 0 || availH <= 0) return;
+  if (availW <= 0 || availH <= 0) return;
 
-  // Lay the section out at the full canvas width, then measure how tall it is.
-  scale.style.width = `${canvasWidth}px`;
+  // Lay the section out at the box width, then measure it.
+  scale.style.width = `${availW}px`;
   const contentH = scale.scrollHeight;
+  const contentW = scale.scrollWidth;
   if (contentH <= 0) return;
 
-  const factor = Math.min(availW / canvasWidth, availH / contentH);
+  // Down only (capped at 1): the type is already at its intended size, so we
+  // shrink to avoid a clip but never magnify past the design's proportions.
+  const factor = Math.min(1, availW / contentW, availH / contentH);
   scale.style.transform = `scale(${factor})`;
 }
 
