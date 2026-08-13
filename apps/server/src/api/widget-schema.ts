@@ -67,6 +67,27 @@ export const widgetConfigBody = z
   })
   .strict();
 
+/**
+ * A canvas background (RFC 005 Phase 3): a solid colour or a two-stop gradient.
+ *
+ * Colours are the same `#rrggbb` hex the format controls use, rejected not
+ * coerced (rule five). A first-party image background is Phase 3b and adds a
+ * variant here. Shared so the editor's save route and the templates validate it
+ * the same way — a template can set no background a household could not.
+ */
+const hex6 = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'A colour has to be a #rrggbb hex.');
+export const backgroundSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('solid'), color: hex6 }).strict(),
+  z
+    .object({
+      type: z.literal('gradient'),
+      from: hex6,
+      to: hex6,
+      angle: z.number().int().min(0).max(359).optional(),
+    })
+    .strict(),
+]);
+
 /** The coordinate and size bounds a widget shares wherever it is placed. */
 const box = {
   type: z.enum(WIDGET_TYPES),

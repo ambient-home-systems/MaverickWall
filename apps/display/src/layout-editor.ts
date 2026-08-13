@@ -34,9 +34,14 @@ interface Widget {
   config?: Record<string, unknown>;
 }
 
+type Background =
+  | { type: 'solid'; color: string }
+  | { type: 'gradient'; from: string; to: string; angle: number };
+
 interface Canvas {
   aspect: number;
   widgets: Widget[];
+  background?: Background | undefined;
 }
 
 interface LayoutState {
@@ -50,6 +55,7 @@ interface LayoutState {
   // swap on the orientation toggle. Each is saved under its own orientation.
   aspect: number;
   widgets: Widget[];
+  background?: Background | undefined;
   stash: Canvas;
   /** The calendars that exist, for the Calendar widget's "which calendars". */
   calendars: readonly { readonly id: string; readonly name: string }[];
@@ -115,11 +121,25 @@ function boot(): void {
   interface RawCanvas {
     readonly aspect?: unknown;
     readonly widgets?: unknown;
+    readonly background?: unknown;
   }
-  const canvasFrom = (raw: RawCanvas | undefined, fallbackAspect: number): Canvas => ({
-    aspect: typeof raw?.aspect === 'number' && raw.aspect > 0 ? raw.aspect : fallbackAspect,
-    widgets: Array.isArray(raw?.widgets) ? (raw.widgets as Widget[]) : [],
-  });
+  const bgFrom = (raw: unknown): Background | undefined => {
+    if (typeof raw !== 'object' || raw === null) return undefined;
+    const b = raw as Record<string, unknown>;
+    if (b['type'] === 'solid' && typeof b['color'] === 'string') return { type: 'solid', color: b['color'] };
+    if (b['type'] === 'gradient' && typeof b['from'] === 'string' && typeof b['to'] === 'string') {
+      return { type: 'gradient', from: b['from'], to: b['to'], angle: typeof b['angle'] === 'number' ? b['angle'] : 180 };
+    }
+    return undefined;
+  };
+  const canvasFrom = (raw: RawCanvas | undefined, fallbackAspect: number): Canvas => {
+    const bg = bgFrom(raw?.background);
+    return {
+      aspect: typeof raw?.aspect === 'number' && raw.aspect > 0 ? raw.aspect : fallbackAspect,
+      widgets: Array.isArray(raw?.widgets) ? (raw.widgets as Widget[]) : [],
+      ...(bg !== undefined ? { background: bg } : {}),
+    };
+  };
 
   // The viewport this screen last reported, for the "match screen" button.
   // Editor-only, so it lives beside the state rather than in it.
@@ -151,6 +171,7 @@ function boot(): void {
       orientation: 'portrait',
       aspect: portrait.aspect,
       widgets: portrait.widgets,
+      ...(portrait.background !== undefined ? { background: portrait.background } : {}),
       stash: landscape,
       calendars: Array.isArray(parsed.calendars) ? (parsed.calendars as LayoutState['calendars']) : [],
       readings: Array.isArray(parsed.readings) ? (parsed.readings as string[]) : [],
@@ -326,6 +347,11 @@ function boot(): void {
     'Nothing is placed yet — add a widget above. Turning the layout on with an ' +
     'empty canvas keeps the stacked layout, so the wall is never blank.';
 
+  // The canvas background control (RFC 005 Phase 3): none, a solid colour, or a
+  // gradient. Per canvas, so it swaps with the orientation like the widgets do.
+  const backgroundPanel = document.createElement('div');
+  backgroundPanel.className = 'le-bg';
+
   // The layers list — every widget, front on top, drag a row to restack, click
   // to select. It replaces the per-widget send-to-back/bring-to-front buttons.
   const layersPanel = document.createElement('div');
@@ -337,7 +363,7 @@ function boot(): void {
   configPanel.className = 'le-config';
   configPanel.style.display = 'none';
 
-  mount.append(toolbar, stage, layersPanel, configPanel, hint);
+  mount.append(toolbar, backgroundPanel, stage, layersPanel, configPanel, hint);
 
   // ---- the live preview ------------------------------------------------
 
@@ -402,6 +428,7 @@ function boot(): void {
       renderFreeform(previewWall, model, {
         aspect: state.aspect,
         widgets: state.widgets.map((w) => ({ ...w })),
+        ...(state.background !== undefined ? { background: state.background } : {}),
       });
     } else {
       renderStacked(rect);
@@ -600,11 +627,73 @@ function boot(): void {
     window.addEventListener('pointerup', up);
   }
 
-  /** Everything: size the canvas, redraw the overlay and layers, then preview. */
+  /**
+   * The canvas background control: none, a solid colour, or a two-stop gradient.
+   * A property of the active canvas, so it is redrawn on an orientation switch.
+   */
+  function drawBackgroundPanel(): void {
+    backgroundPanel.textContent = '';
+    const kick = document.createElement('span');
+    kick.className = 'le-bg-label';
+    kick.textContent = 'Background';
+    backgroundPanel.appendChild(kick);
+
+    const kind = state.background?.type ?? 'none';
+    const select = document.createElement('select');
+    for (const [value, label] of [['none', 'None'], ['solid', 'Solid colour'], ['gradient', 'Gradient']] as const) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (kind === value) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => {
+      if (select.value === 'solid') state.background = { type: 'solid', color: '#111820' };
+      else if (select.value === 'gradient') {
+        state.background = { type: 'gradient', from: '#0B0E11', to: '#242D38', angle: 180 };
+      } else state.background = undefined;
+      drawBackgroundPanel();
+      renderPreview();
+      markDirty();
+    });
+    backgroundPanel.appendChild(select);
+
+    const colour = (value: string, onChange: (v: string) => void): HTMLInputElement => {
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#111820';
+      input.addEventListener('change', () => { onChange(input.value); renderPreview(); markDirty(); });
+      return input;
+    };
+
+    const bg = state.background;
+    if (bg?.type === 'solid') {
+      backgroundPanel.appendChild(colour(bg.color, (v) => { bg.color = v; }));
+    } else if (bg?.type === 'gradient') {
+      backgroundPanel.appendChild(colour(bg.from, (v) => { bg.from = v; }));
+      backgroundPanel.appendChild(colour(bg.to, (v) => { bg.to = v; }));
+      const angle = document.createElement('input');
+      angle.type = 'number';
+      angle.min = '0';
+      angle.max = '359';
+      angle.value = String(bg.angle);
+      angle.title = 'Gradient angle in degrees';
+      angle.addEventListener('change', () => {
+        const n = Math.round(Number(angle.value));
+        bg.angle = Number.isFinite(n) ? ((n % 360) + 360) % 360 : 180;
+        renderPreview();
+        markDirty();
+      });
+      backgroundPanel.appendChild(angle);
+    }
+  }
+
+  /** Everything: size the canvas, redraw the overlay, layers and background, then preview. */
   function draw(): void {
     sizeCanvas();
     drawOverlay();
     drawLayers();
+    drawBackgroundPanel();
     renderPreview();
   }
 
@@ -1124,11 +1213,16 @@ function boot(): void {
    */
   async function switchOrientation(which: 'portrait' | 'landscape'): Promise<void> {
     if (which === state.orientation) return;
-    if (dirty) await postCanvas(state.orientation, state.aspect, state.widgets, false);
+    if (dirty) await postCanvas(state.orientation, state.aspect, state.widgets, state.background, false);
 
-    const leaving: Canvas = { aspect: state.aspect, widgets: state.widgets };
+    const leaving: Canvas = {
+      aspect: state.aspect,
+      widgets: state.widgets,
+      ...(state.background !== undefined ? { background: state.background } : {}),
+    };
     state.aspect = state.stash.aspect;
     state.widgets = state.stash.widgets;
+    state.background = state.stash.background;
     state.stash = leaving;
     state.orientation = which;
     selected = undefined;
@@ -1172,6 +1266,7 @@ function boot(): void {
     orientation: 'portrait' | 'landscape',
     aspect: number,
     widgets: readonly Widget[],
+    background: Background | undefined,
     announce = true,
   ): Promise<boolean> {
     if (announce) {
@@ -1189,6 +1284,9 @@ function boot(): void {
           mode: state.mode,
           aspect: round3(aspect),
           widgets: widgetsForSave(widgets),
+          // The canvas background object, or null for none — the shape the
+          // server's backgroundSchema validates.
+          background: background ?? null,
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };
@@ -1218,7 +1316,7 @@ function boot(): void {
 
   /** The Save button: save the canvas being edited now. */
   async function save(): Promise<void> {
-    await postCanvas(state.orientation, state.aspect, state.widgets);
+    await postCanvas(state.orientation, state.aspect, state.widgets, state.background);
   }
 
   window.addEventListener('beforeunload', (event) => {

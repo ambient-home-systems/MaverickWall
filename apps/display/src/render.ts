@@ -7,7 +7,7 @@ import type {
 } from './viewmodel.js';
 import { localDate } from './viewmodel.js';
 import type { PanelData } from './viewmodel.js';
-import type { ManifestWidget } from './manifest.js';
+import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
 
 /**
@@ -918,10 +918,26 @@ export function renderGenericPanel(data: PanelData): HTMLElement {
  * A takeover still wins — a warning is a warning, canvas or no canvas — and a
  * banner still draws over the top, the same as it does over the blocks.
  */
+/**
+ * A canvas background as a CSS `background` value, or undefined for none.
+ *
+ * `#rrggbb` is validated server-side; this only shapes it. A solid is the colour;
+ * a gradient is a two-stop `linear-gradient` at the stored angle.
+ */
+function backgroundCss(background: CanvasBackground | undefined): string | undefined {
+  if (background === undefined) return undefined;
+  if (background.type === 'solid') return background.color;
+  return `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})`;
+}
+
 export function renderFreeform(
   root: HTMLElement,
   model: DisplayModel,
-  layout: { readonly aspect: number; readonly widgets: readonly ManifestWidget[] },
+  layout: {
+    readonly aspect: number;
+    readonly widgets: readonly ManifestWidget[];
+    readonly background?: CanvasBackground;
+  },
 ): void {
   const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
   if (takeover !== undefined) {
@@ -933,6 +949,11 @@ export function renderFreeform(
   const screen = el('div', 'screen freeform');
   const canvas = el('div', 'canvas');
   canvas.style.setProperty('--aspect', String(layout.aspect));
+  // The canvas background (RFC 005 Phase 3): a solid colour or a gradient behind
+  // the widgets. `background` is a shorthand, so it overrides the theme's wall
+  // colour on this canvas only; absent leaves the theme showing through.
+  const bg = backgroundCss(layout.background);
+  if (bg !== undefined) canvas.style.background = bg;
 
   // Widgets whose body is a section from the responsive layout are scaled to
   // their box after they are on screen — see below.

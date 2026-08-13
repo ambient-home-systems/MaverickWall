@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { openDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { readLayoutWidgets, replaceLayout, effectiveDisplay } from '../src/api/queries.js';
-import { buildLayout, type HouseholdRow, type PlacedWidgetRow } from '../src/api/manifest.js';
+import { buildLayout, parseBackground, type HouseholdRow, type PlacedWidgetRow } from '../src/api/manifest.js';
 
 /**
  * The free-form layout, from a stored row to the shape the wall reads.
@@ -38,6 +38,8 @@ const HOUSEHOLD = (over: Partial<HouseholdRow> = {}): HouseholdRow => ({
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,
+  layoutBackground: null,
+  layoutLandscapeBackground: null,
   ...over,
 });
 
@@ -111,6 +113,42 @@ describe('buildLayout', () => {
     // Portrait falls back to 9:16, landscape to 16:9.
     expect(buildLayout(HOUSEHOLD({ layoutAspect: 0 }), [], []).portrait.aspect).toBe(0.5625);
     expect(buildLayout(HOUSEHOLD({ layoutLandscapeAspect: NaN }), [], []).landscape.aspect).toBe(1.7778);
+  });
+});
+
+describe('parseBackground (RFC 005 Phase 3)', () => {
+  it('reads a solid and a gradient, and clamps the angle', () => {
+    expect(parseBackground(JSON.stringify({ type: 'solid', color: '#112233' }))).toEqual({
+      type: 'solid', color: '#112233',
+    });
+    expect(parseBackground(JSON.stringify({ type: 'gradient', from: '#000000', to: '#ffffff', angle: 400 }))).toEqual({
+      type: 'gradient', from: '#000000', to: '#ffffff', angle: 40,
+    });
+    // A gradient with no angle defaults to a top-to-bottom 180.
+    expect(parseBackground(JSON.stringify({ type: 'gradient', from: '#000000', to: '#ffffff' }))).toMatchObject({ angle: 180 });
+  });
+
+  it('drops rubbish to no background rather than handing it to the wall', () => {
+    expect(parseBackground(null)).toBeUndefined();
+    expect(parseBackground('')).toBeUndefined();
+    expect(parseBackground('{not json')).toBeUndefined();
+    expect(parseBackground(JSON.stringify({ type: 'solid', color: 'red' }))).toBeUndefined();
+    expect(parseBackground(JSON.stringify({ type: 'image', url: 'x' }))).toBeUndefined();
+    expect(parseBackground(JSON.stringify({ type: 'gradient', from: '#000000' }))).toBeUndefined();
+  });
+
+  it('buildLayout attaches the per-orientation background from the household', () => {
+    const layout = buildLayout(
+      HOUSEHOLD({
+        layoutMode: 'freeform',
+        layoutBackground: JSON.stringify({ type: 'solid', color: '#0b0e11' }),
+        layoutLandscapeBackground: null,
+      }),
+      [widget({})],
+      [],
+    );
+    expect(layout.portrait.background).toEqual({ type: 'solid', color: '#0b0e11' });
+    expect(layout.landscape.background).toBeUndefined();
   });
 });
 
@@ -226,9 +264,9 @@ describe('per-wall settings', () => {
     it('keeps each wall and the default apart', () => {
       const d = freshDb();
       const w = (id: string) => [{ id, type: 'clock', x: 0.1, y: 0.1, w: 0.3, h: 0.2, z: 0 }];
-      replaceLayout(d, null, 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('default') });
-      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a1').concat(w('a2') as never) });
-      replaceLayout(d, 'wallB', 'portrait', { mode: 'freeform', aspect: 1.78, widgets: w('b1') });
+      replaceLayout(d, null, 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('default'), background: null });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a1').concat(w('a2') as never), background: null });
+      replaceLayout(d, 'wallB', 'portrait', { mode: 'freeform', aspect: 1.78, widgets: w('b1'), background: null });
 
       expect(readLayoutWidgets(d, null).map((x) => x.id)).toEqual(['default']);
       expect(readLayoutWidgets(d, 'wallA').map((x) => x.id)).toEqual(['a1', 'a2']);
@@ -246,9 +284,9 @@ describe('per-wall settings', () => {
     it('re-saving one wall does not disturb another or the default', () => {
       const d = freshDb();
       const w = (id: string) => [{ id, type: 'clock', x: 0, y: 0, w: 0.5, h: 0.5, z: 0 }];
-      replaceLayout(d, null, 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('default') });
-      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a-old') });
-      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a-new') });
+      replaceLayout(d, null, 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('default'), background: null });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a-old'), background: null });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a-new'), background: null });
 
       expect(readLayoutWidgets(d, 'wallA').map((x) => x.id)).toEqual(['a-new']);
       expect(readLayoutWidgets(d, null).map((x) => x.id)).toEqual(['default']);
@@ -257,10 +295,10 @@ describe('per-wall settings', () => {
     it('saving one orientation leaves the other untouched, and writes its own aspect column', () => {
       const d = freshDb();
       const w = (id: string) => [{ id, type: 'clock', x: 0, y: 0, w: 0.5, h: 0.5, z: 0 }];
-      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('p1') });
-      replaceLayout(d, 'wallA', 'landscape', { mode: 'freeform', aspect: 1.7778, widgets: w('l1') });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('p1'), background: null });
+      replaceLayout(d, 'wallA', 'landscape', { mode: 'freeform', aspect: 1.7778, widgets: w('l1'), background: null });
       // Re-saving portrait must not clear the landscape canvas.
-      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 0.75, widgets: w('p2') });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 0.75, widgets: w('p2'), background: null });
 
       expect(readLayoutWidgets(d, 'wallA', 'portrait').map((x) => x.id)).toEqual(['p2']);
       expect(readLayoutWidgets(d, 'wallA', 'landscape').map((x) => x.id)).toEqual(['l1']);

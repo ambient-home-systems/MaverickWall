@@ -55,8 +55,8 @@ import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import type { LogBuffer } from '../logbuffer.js';
-import { parseBlocks } from '../api/manifest.js';
-import { layoutWidgetBody } from '../api/widget-schema.js';
+import { parseBlocks, parseBackground } from '../api/manifest.js';
+import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
 import { applyTemplate, copyLayout, findTemplate } from '../api/templates.js';
 import { TEMPLATES } from '../templates/index.js';
 import {
@@ -195,6 +195,9 @@ const layoutBody = z.object({
   aspect: z.number().min(0.2).max(5),
   // A wall is a few widgets, not a dashboard. The cap is a guard, not a target.
   widgets: z.array(layoutWidgetBody).max(50),
+  // The canvas background (RFC 005 Phase 3): a solid colour or a gradient, or
+  // null for none. Absent is treated as null so an older editor still saves.
+  background: backgroundSchema.nullable().optional(),
 });
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
@@ -1569,6 +1572,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       mode: shaped.value.mode,
       aspect: shaped.value.aspect,
       widgets: shaped.value.widgets,
+      // Stored as JSON; null when the canvas has no background.
+      background: shaped.value.background != null ? JSON.stringify(shaped.value.background) : null,
     });
     return c.json({ ok: true });
   });
@@ -1638,8 +1643,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/displays/:id/reset-layout', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const owner = resolveOwner(id === 'default' ? null : id);
-    replaceLayout(deps.db, owner, 'portrait', { mode: 'auto', aspect: 0.5625, widgets: [] });
-    replaceLayout(deps.db, owner, 'landscape', { mode: 'auto', aspect: 1.7778, widgets: [] });
+    replaceLayout(deps.db, owner, 'portrait', { mode: 'auto', aspect: 0.5625, widgets: [], background: null });
+    replaceLayout(deps.db, owner, 'landscape', { mode: 'auto', aspect: 1.7778, widgets: [], background: null });
     return c.redirect(layoutUrl(owner), 302);
   });
 
@@ -2572,11 +2577,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const canvasFor = (orientation: 'portrait' | 'landscape'): {
       readonly aspect: number;
       readonly widgets: readonly unknown[];
+      readonly background?: unknown;
     } => ({
       aspect:
         orientation === 'landscape'
           ? owner?.layoutLandscapeAspect ?? household.layoutLandscapeAspect
           : owner?.layoutAspect ?? household.layoutAspect,
+      // The stored background as an object, for the editor's control to reflect.
+      background: parseBackground(
+        orientation === 'landscape'
+          ? owner?.layoutLandscapeBackground ?? household.layoutLandscapeBackground
+          : owner?.layoutBackground ?? household.layoutBackground,
+      ),
       widgets: readLayoutWidgets(deps.db, ownerKey, orientation).map((widget) => ({
         id: widget.id,
         type: widget.type,

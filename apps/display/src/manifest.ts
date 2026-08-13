@@ -10,6 +10,14 @@
 
 export type CivilDate = string;
 
+/**
+ * A canvas background (RFC 005 Phase 3): a solid colour or a two-stop gradient.
+ * The server validated and clamped it; the wall draws it behind the widgets.
+ */
+export type CanvasBackground =
+  | { readonly type: 'solid'; readonly color: string }
+  | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number };
+
 export interface ManifestEvent {
   readonly id: string;
   readonly uid: string;
@@ -135,8 +143,8 @@ export interface Manifest {
    */
   readonly layout?: {
     readonly mode?: string;
-    readonly portrait?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[] };
-    readonly landscape?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[] };
+    readonly portrait?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[]; readonly background?: CanvasBackground };
+    readonly landscape?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[]; readonly background?: CanvasBackground };
     /** Legacy single-canvas shape (pre-RFC-005). Width ÷ height, and its widgets. */
     readonly aspect?: number;
     readonly widgets?: readonly ManifestWidget[];

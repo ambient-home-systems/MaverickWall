@@ -190,6 +190,13 @@
       "when": 1786629099038,
       "tag": "0026_lazy_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1786630128200,
+      "tag": "0027_awesome_jackpot",
+      "breakpoints": true
     }
   ]
 }

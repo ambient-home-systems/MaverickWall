@@ -31,6 +31,8 @@ const HOUSEHOLD: HouseholdRow = {
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,
+  layoutBackground: null,
+  layoutLandscapeBackground: null,
 };
 
 const SOURCES: SourceRow[] = [

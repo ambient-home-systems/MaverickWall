@@ -510,6 +510,17 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
+/* The canvas background control — none / solid / gradient, per canvas. */
+.le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 0}
+.le-bg-label{font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.le-bg select{width:auto;padding:.42rem .6rem;background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:7px}
+.le-bg input[type=color]{width:36px;height:32px;padding:2px;border:1px solid var(--rule);
+  border-radius:7px;background:var(--panel2)}
+.le-bg input[type=number]{width:5rem;padding:.42rem .5rem;background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:7px}
+
 /* The layers list — every widget, front on top; drag a row to restack. */
 .le-layers{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
   padding:14px 16px;background:var(--panel)}

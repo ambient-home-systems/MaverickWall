@@ -132,6 +132,14 @@ export const householdSettings = sqliteTable('household_settings', {
    * a landscape canvas is arranged.
    */
   layoutLandscapeAspect: real('layout_landscape_aspect').notNull().default(1.7778),
+  /**
+   * The canvas background, per orientation, as JSON this process wrote (RFC 005
+   * Phase 3): a solid colour or a gradient. Null is no background — the theme's
+   * own wall colour shows through, which is what every existing wall has. The
+   * shape is validated at the editor boundary; read back defensively here.
+   */
+  layoutBackground: text('layout_background'),
+  layoutLandscapeBackground: text('layout_landscape_background'),
 
   /**
    * The one thing in this product that talks to anybody else.
@@ -355,6 +363,9 @@ export const screens = sqliteTable(
     layoutAspect: real('layout_aspect'),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */
     layoutLandscapeAspect: real('layout_landscape_aspect'),
+    /** Per-orientation canvas background as JSON; null is none (RFC 005 Phase 3). */
+    layoutBackground: text('layout_background'),
+    layoutLandscapeBackground: text('layout_landscape_background'),
 
     /**
      * The viewport this screen last reported, in device pixels (RFC 005).

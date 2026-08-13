@@ -1,5 +1,5 @@
 import { createClock } from './clock.js';
-import { createManifestClient, type Manifest, type ManifestWidget } from './manifest.js';
+import { createManifestClient, type Manifest, type ManifestWidget, type CanvasBackground } from './manifest.js';
 import { render, renderFreeform, renderMessage, renderPairing } from './render.js';
 import { applyTheme, daytimeActive } from './theme.js';
 import {
@@ -26,16 +26,24 @@ import { assess, DEFAULT_LIMITS } from './watchdog.js';
 function pickCanvas(
   layout: Manifest['layout'],
   orientation: 'portrait' | 'landscape',
-): { readonly aspect: number; readonly widgets: readonly ManifestWidget[] } | undefined {
+): { readonly aspect: number; readonly widgets: readonly ManifestWidget[]; readonly background?: CanvasBackground } | undefined {
   if (layout === undefined || layout.mode !== 'freeform') return undefined;
   const landscape = orientation === 'landscape';
   const primary = landscape ? layout.landscape : layout.portrait;
   const secondary = landscape ? layout.portrait : layout.landscape;
   if (primary?.widgets !== undefined && primary.widgets.length > 0) {
-    return { aspect: primary.aspect ?? (landscape ? 1.7778 : 0.5625), widgets: primary.widgets };
+    return {
+      aspect: primary.aspect ?? (landscape ? 1.7778 : 0.5625),
+      widgets: primary.widgets,
+      ...(primary.background !== undefined ? { background: primary.background } : {}),
+    };
   }
   if (secondary?.widgets !== undefined && secondary.widgets.length > 0) {
-    return { aspect: secondary.aspect ?? (landscape ? 0.5625 : 1.7778), widgets: secondary.widgets };
+    return {
+      aspect: secondary.aspect ?? (landscape ? 0.5625 : 1.7778),
+      widgets: secondary.widgets,
+      ...(secondary.background !== undefined ? { background: secondary.background } : {}),
+    };
   }
   if (layout.widgets !== undefined && layout.widgets.length > 0) {
     return { aspect: layout.aspect ?? 0.5625, widgets: layout.widgets };

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { z } from '../validation.js';
-import { templateWidgetSchema } from './widget-schema.js';
+import { templateWidgetSchema, backgroundSchema } from './widget-schema.js';
 import {
   readLayoutWidgets,
   replaceLayout,
@@ -33,6 +33,8 @@ export const templateCanvasSchema = z.object({
   aspect: z.number().min(0.2).max(5),
   // A wall is a few widgets, not a dashboard. The cap is a guard, not a target.
   widgets: z.array(templateWidgetSchema).max(50),
+  // An optional canvas background (RFC 005 Phase 3); templates gain them in 3c.
+  background: backgroundSchema.optional(),
 });
 
 export const templateSchema = z
@@ -93,28 +95,32 @@ export function applyTemplate(
         z: widget.z ?? index,
         ...(widget.config !== undefined ? { config: widget.config } : {}),
       })),
+      // A template may carry a background (RFC 005 Phase 3); JSON-stringified for
+      // storage, or null when it has none.
+      background: canvas.background !== undefined ? JSON.stringify(canvas.background) : null,
     });
   }
 }
 
-/** The mode and per-orientation aspect a display owns, resolved for copy. */
+/** The mode, per-orientation aspect and background a display owns, for copy. */
 function ownerLayout(
   db: SqliteDatabase,
   owner: string | null,
-): { mode: string; portraitAspect: number; landscapeAspect: number } {
+): {
+  mode: string;
+  portraitAspect: number;
+  landscapeAspect: number;
+  portraitBackground: string | null;
+  landscapeBackground: string | null;
+} {
   const household = readHousehold(db);
-  if (owner === null) {
-    return {
-      mode: household.layoutMode,
-      portraitAspect: household.layoutAspect,
-      landscapeAspect: household.layoutLandscapeAspect,
-    };
-  }
-  const screen = readScreens(db).find((s) => s.id === owner);
+  const screen = owner === null ? undefined : readScreens(db).find((s) => s.id === owner);
   return {
     mode: screen?.layoutMode ?? household.layoutMode,
     portraitAspect: screen?.layoutAspect ?? household.layoutAspect,
     landscapeAspect: screen?.layoutLandscapeAspect ?? household.layoutLandscapeAspect,
+    portraitBackground: screen?.layoutBackground ?? household.layoutBackground,
+    landscapeBackground: screen?.layoutLandscapeBackground ?? household.layoutLandscapeBackground,
   };
 }
 
@@ -144,6 +150,7 @@ export function copyLayout(db: SqliteDatabase, from: string | null, to: string |
       mode: source.mode,
       aspect: orientation === 'landscape' ? source.landscapeAspect : source.portraitAspect,
       widgets,
+      background: orientation === 'landscape' ? source.landscapeBackground : source.portraitBackground,
     });
   }
 }
