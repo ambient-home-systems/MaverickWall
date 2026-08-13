@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.26.0
 
 Setting up a display is clearer. A display's settings now lead with its
 **layout** — what's on the wall, and where — and the **theme** sits underneath
