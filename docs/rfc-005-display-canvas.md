@@ -287,10 +287,14 @@ so the "require both" rule is satisfied out of the box. They lean on theme token
 for colour and carry no photo, so they are complete under Phase-1's
 no-backgrounds constraint and gain a background pass in Phase 3.
 
-The design mock that settled these is a live gallery rendering all twelve through
-the real theme tokens (both orientations), built and reviewed before any source
-was written — the "look at it, then measure the DOM" step this project keeps
-learning it cannot skip.
+The design mock that settled these is a live gallery
+([`rfc-005-template-gallery.html`](./rfc-005-template-gallery.html)) rendering all
+twelve through the real theme tokens (both orientations), built and reviewed
+before any source was written — the "look at it, then measure the DOM" step this
+project keeps learning it cannot skip. It is a **review artifact, not product
+code**: it uses a system font stack (the CSP-blocked webfont is the wall's, not
+the mock's) and builds the walls from a data structure shaped like the proposed
+template source, so it previews the format as well as the designs.
 
 ### The two renderer widenings the Sky templates need
 
