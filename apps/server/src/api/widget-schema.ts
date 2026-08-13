@@ -46,6 +46,11 @@ export const widgetConfigBody = z
       .optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
+    // Notes — free text the household typed, drawn as written (line breaks kept).
+    text: z.string().max(2000).optional(),
+    // To-do — a static checklist. Each item is a line the household typed; the
+    // wall is read-only, so items are shown, not ticked (edited in the admin).
+    items: z.array(z.string().max(200)).max(40).optional(),
     // Format (every widget) — box-level, so it applies whatever the type draws.
     title: z.string().max(60).optional(),
     showTitle: z.boolean().optional(),

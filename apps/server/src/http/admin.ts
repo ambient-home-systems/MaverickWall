@@ -185,6 +185,9 @@ const layoutBody = z.object({
   // screen id is that wall's own. Validated against the real screens in the
   // handler — a stranger's id must not write onto a wall.
   screen: z.string().min(1).max(64).nullable().optional(),
+  // Which of the display's two canvases this save is (RFC 005). Absent is
+  // portrait, so an older editor that only knows one canvas still writes it.
+  orientation: z.enum(['portrait', 'landscape']).optional(),
   mode: z.enum(['auto', 'freeform']),
   // Portrait phone through wide television, and nothing degenerate.
   aspect: z.number().min(0.2).max(5),
@@ -1550,11 +1553,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     // Null is the shared default; a valid screen id is that wall's own canvas.
     // An id that is not a real wall falls back to the default rather than
-    // conjuring a row for a screen that does not exist.
-    // The editor is single-canvas until Phase 1 adds an orientation switch, so
-    // it reads and writes the portrait canvas; the landscape one letterboxes it
-    // until it is arranged (RFC 005).
-    replaceLayout(deps.db, resolveOwner(shaped.value.screen), 'portrait', {
+    // conjuring a row for a screen that does not exist. The editor posts one
+    // orientation at a time; absent is portrait (RFC 005).
+    replaceLayout(deps.db, resolveOwner(shaped.value.screen), shaped.value.orientation ?? 'portrait', {
       mode: shaped.value.mode,
       aspect: shaped.value.aspect,
       widgets: shaped.value.widgets,
@@ -2535,12 +2536,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const detailId = ownerKey ?? 'default';
 
     const mode = owner?.layoutMode ?? household.layoutMode;
-    const aspect = owner?.layoutAspect ?? household.layoutAspect;
-    const initial = {
-      screen: ownerKey,
-      mode: mode === 'freeform' ? 'freeform' : 'auto',
-      aspect,
-      widgets: readLayoutWidgets(deps.db, ownerKey, 'portrait').map((widget) => ({
+    const canvasFor = (orientation: 'portrait' | 'landscape'): {
+      readonly aspect: number;
+      readonly widgets: readonly unknown[];
+    } => ({
+      aspect:
+        orientation === 'landscape'
+          ? owner?.layoutLandscapeAspect ?? household.layoutLandscapeAspect
+          : owner?.layoutAspect ?? household.layoutAspect,
+      widgets: readLayoutWidgets(deps.db, ownerKey, orientation).map((widget) => ({
         id: widget.id,
         type: widget.type,
         x: widget.x,
@@ -2550,6 +2554,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         z: widget.z,
         config: widget.config,
       })),
+    });
+    const initial = {
+      screen: ownerKey,
+      mode: mode === 'freeform' ? 'freeform' : 'auto',
+      // Both canvases: the editor toggles between them and saves per orientation
+      // (RFC 005).
+      portrait: canvasFor('portrait'),
+      landscape: canvasFor('landscape'),
       // Everything the config panel needs to offer a choice: the calendars that
       // exist (id + name), and the Home Assistant reading labels currently
       // resolving. Read here rather than fetched again so the editor can build
@@ -2593,8 +2605,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p><a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
       `Start from a template</a></p>` +
       `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
-      `Turn it on to use this instead of the stacked layout — the wall picks up a ` +
-      `change within a minute. Or start from a ready-made layout above.</p>` +
+      `Arrange <b>Portrait</b> and <b>Landscape</b> separately — the wall draws the ` +
+      `one matching how it is hung. Turn it on to use this instead of the stacked ` +
+      `layout; the wall picks up a change within a minute. Or start from a ready-made ` +
+      `layout above.</p>` +
       layoutEditorMount(initial);
 
     return page({

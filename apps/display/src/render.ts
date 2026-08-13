@@ -630,9 +630,56 @@ export function renderWidget(
       return renderCountdownWidget(model, config);
     case 'external':
       return renderExternalWidget(model, config);
+    case 'notes':
+      return renderNotesWidget(config);
+    case 'todo':
+      return renderTodoWidget(config);
     default:
       return undefined;
   }
+}
+
+/**
+ * The Notes widget: free text the household typed, drawn as written.
+ *
+ * `textContent` line by line — never `innerHTML` — so a note can carry no markup,
+ * and its own line breaks are kept (a note is written in lines). Empty until the
+ * household types something, which it says rather than drawing a blank box.
+ */
+function renderNotesWidget(config: unknown): HTMLElement {
+  const text = widgetConfig(config)['text'];
+  if (typeof text !== 'string' || text.trim() === '') {
+    return el('div', 'cd-empty', 'Add a note in this widget’s options.');
+  }
+  const notes = el('div', 'nt');
+  for (const line of text.split('\n')) {
+    // A blank line is a paragraph break, kept as an empty row so the spacing the
+    // household typed survives.
+    notes.appendChild(el('div', line.trim() === '' ? 'nt-gap' : 'nt-line', line));
+  }
+  return notes;
+}
+
+/**
+ * The To-do widget: a static checklist the household typed.
+ *
+ * The wall is read-only, so items are shown rather than ticked — the list is
+ * edited in the admin. Each line is drawn through `textContent`, so an item can
+ * carry no markup.
+ */
+function renderTodoWidget(config: unknown): HTMLElement {
+  const items = configStrings(widgetConfig(config)['items']).filter((item) => item.trim() !== '');
+  if (items.length === 0) {
+    return el('div', 'cd-empty', 'Add items in this widget’s options.');
+  }
+  const list = el('div', 'td');
+  for (const item of items) {
+    const row = el('div', 'td-row');
+    row.appendChild(el('span', 'td-box'));
+    row.appendChild(el('span', 'td-text', item));
+    list.appendChild(row);
+  }
+  return list;
 }
 
 /**
