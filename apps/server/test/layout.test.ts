@@ -36,6 +36,7 @@ const HOUSEHOLD = (over: Partial<HouseholdRow> = {}): HouseholdRow => ({
   displayBlocks: 'now,next,horizon',
   layoutMode: 'auto',
   layoutAspect: 0.5625,
+  layoutLandscapeAspect: 1.7778,
   ...over,
 });
 
@@ -45,26 +46,39 @@ const widget = (over: Partial<PlacedWidgetRow>): PlacedWidgetRow => ({
 
 describe('buildLayout', () => {
   it('stays on auto unless the household chose free-form', () => {
-    const layout = buildLayout(HOUSEHOLD({ layoutMode: 'auto' }), [widget({})]);
+    const layout = buildLayout(HOUSEHOLD({ layoutMode: 'auto' }), [widget({})], []);
     expect(layout.mode).toBe('auto');
   });
 
-  it('stays on auto when free-form is chosen but the canvas is empty', () => {
+  it('stays on auto when free-form is chosen but both canvases are empty', () => {
     // A blank wall is the one outcome rule nine forbids.
-    expect(buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), []).mode).toBe('auto');
+    expect(buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), [], []).mode).toBe('auto');
   });
 
-  it('draws free-form once there is a widget to draw', () => {
-    const layout = buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), [widget({})]);
-    expect(layout.mode).toBe('freeform');
-    expect(layout.widgets).toHaveLength(1);
+  it('draws free-form once either canvas has a widget to draw', () => {
+    // A household that arranged only landscape still gets free-form; the display
+    // letterboxes it onto portrait.
+    const onlyLandscape = buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), [], [widget({})]);
+    expect(onlyLandscape.mode).toBe('freeform');
+    expect(onlyLandscape.portrait.widgets).toHaveLength(0);
+    expect(onlyLandscape.landscape.widgets).toHaveLength(1);
+  });
+
+  it('builds the two canvases independently', () => {
+    const layout = buildLayout(
+      HOUSEHOLD({ layoutMode: 'freeform' }),
+      [widget({ id: 'p1' }), widget({ id: 'p2' })],
+      [widget({ id: 'l1' })],
+    );
+    expect(layout.portrait.widgets.map((w) => w.id)).toEqual(['p1', 'p2']);
+    expect(layout.landscape.widgets.map((w) => w.id)).toEqual(['l1']);
   });
 
   it('clamps a widget onto the wall and gives a zero size a default', () => {
     const layout = buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), [
       widget({ x: -0.5, y: 2, w: 5, h: 0 }),
-    ]);
-    const w = layout.widgets[0]!;
+    ], []);
+    const w = layout.portrait.widgets[0]!;
     expect(w.x).toBe(0);
     expect(w.y).toBe(1);
     expect(w.w).toBe(1);
@@ -76,8 +90,8 @@ describe('buildLayout', () => {
       widget({ id: 'ok', type: 'calendar' }),
       widget({ id: 'nope', type: 'website' }),
       widget({ id: 'nope2', type: 'iframe' }),
-    ]);
-    expect(layout.widgets.map((w) => w.id)).toEqual(['ok']);
+    ], []);
+    expect(layout.portrait.widgets.map((w) => w.id)).toEqual(['ok']);
   });
 
   it('draws back to front by z', () => {
@@ -85,14 +99,17 @@ describe('buildLayout', () => {
       widget({ id: 'top', z: 5 }),
       widget({ id: 'bottom', z: 1 }),
       widget({ id: 'mid', z: 3 }),
-    ]);
-    expect(layout.widgets.map((w) => w.id)).toEqual(['bottom', 'mid', 'top']);
+    ], []);
+    expect(layout.portrait.widgets.map((w) => w.id)).toEqual(['bottom', 'mid', 'top']);
   });
 
-  it('falls back to a portrait aspect when the stored one is nonsense', () => {
-    expect(buildLayout(HOUSEHOLD({ layoutAspect: 0 }), []).aspect).toBe(0.5625);
-    expect(buildLayout(HOUSEHOLD({ layoutAspect: NaN }), []).aspect).toBe(0.5625);
-    expect(buildLayout(HOUSEHOLD({ layoutAspect: 1.7778 }), []).aspect).toBe(1.7778);
+  it('gives each canvas its own aspect and falls back when one is nonsense', () => {
+    const layout = buildLayout(HOUSEHOLD({ layoutAspect: 0.75, layoutLandscapeAspect: 1.6 }), [], []);
+    expect(layout.portrait.aspect).toBe(0.75);
+    expect(layout.landscape.aspect).toBe(1.6);
+    // Portrait falls back to 9:16, landscape to 16:9.
+    expect(buildLayout(HOUSEHOLD({ layoutAspect: 0 }), [], []).portrait.aspect).toBe(0.5625);
+    expect(buildLayout(HOUSEHOLD({ layoutLandscapeAspect: NaN }), [], []).landscape.aspect).toBe(1.7778);
   });
 });
 
@@ -132,6 +149,26 @@ describe('readLayoutWidgets', () => {
     const rows = readLayoutWidgets(d);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.config).toBeUndefined();
+  });
+
+  it('reads only the orientation asked for, and defaults pre-column rows to portrait', () => {
+    const d = db();
+    const at = Date.now();
+    // A row inserted without the orientation column — as a pre-RFC-005 row is —
+    // must read back as portrait, the aspect it was authored at.
+    d.prepare(
+      `INSERT INTO layout_widgets (id, type, x, y, w, h, z, config, created_at, updated_at)
+       VALUES ('old', 'clock', 0, 0, 0.5, 0.5, 0, NULL, ?, ?)`,
+    ).run(at, at);
+    d.prepare(
+      `INSERT INTO layout_widgets (id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+       VALUES ('land', 'landscape', 'calendar', 0, 0, 1, 1, 0, NULL, ?, ?)`,
+    ).run(at, at);
+
+    expect(readLayoutWidgets(d, null, 'portrait').map((r) => r.id)).toEqual(['old']);
+    expect(readLayoutWidgets(d, null, 'landscape').map((r) => r.id)).toEqual(['land']);
+    // The default argument is portrait.
+    expect(readLayoutWidgets(d).map((r) => r.id)).toEqual(['old']);
   });
 });
 
@@ -188,9 +225,9 @@ describe('per-wall settings', () => {
     it('keeps each wall and the default apart', () => {
       const d = freshDb();
       const w = (id: string) => [{ id, type: 'clock', x: 0.1, y: 0.1, w: 0.3, h: 0.2, z: 0 }];
-      replaceLayout(d, null, { mode: 'freeform', aspect: 0.5625, widgets: w('default') });
-      replaceLayout(d, 'wallA', { mode: 'freeform', aspect: 1, widgets: w('a1').concat(w('a2') as never) });
-      replaceLayout(d, 'wallB', { mode: 'freeform', aspect: 1.78, widgets: w('b1') });
+      replaceLayout(d, null, 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('default') });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a1').concat(w('a2') as never) });
+      replaceLayout(d, 'wallB', 'portrait', { mode: 'freeform', aspect: 1.78, widgets: w('b1') });
 
       expect(readLayoutWidgets(d, null).map((x) => x.id)).toEqual(['default']);
       expect(readLayoutWidgets(d, 'wallA').map((x) => x.id)).toEqual(['a1', 'a2']);
@@ -208,12 +245,28 @@ describe('per-wall settings', () => {
     it('re-saving one wall does not disturb another or the default', () => {
       const d = freshDb();
       const w = (id: string) => [{ id, type: 'clock', x: 0, y: 0, w: 0.5, h: 0.5, z: 0 }];
-      replaceLayout(d, null, { mode: 'freeform', aspect: 0.5625, widgets: w('default') });
-      replaceLayout(d, 'wallA', { mode: 'freeform', aspect: 1, widgets: w('a-old') });
-      replaceLayout(d, 'wallA', { mode: 'freeform', aspect: 1, widgets: w('a-new') });
+      replaceLayout(d, null, 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('default') });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a-old') });
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 1, widgets: w('a-new') });
 
       expect(readLayoutWidgets(d, 'wallA').map((x) => x.id)).toEqual(['a-new']);
       expect(readLayoutWidgets(d, null).map((x) => x.id)).toEqual(['default']);
+    });
+
+    it('saving one orientation leaves the other untouched, and writes its own aspect column', () => {
+      const d = freshDb();
+      const w = (id: string) => [{ id, type: 'clock', x: 0, y: 0, w: 0.5, h: 0.5, z: 0 }];
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 0.5625, widgets: w('p1') });
+      replaceLayout(d, 'wallA', 'landscape', { mode: 'freeform', aspect: 1.7778, widgets: w('l1') });
+      // Re-saving portrait must not clear the landscape canvas.
+      replaceLayout(d, 'wallA', 'portrait', { mode: 'freeform', aspect: 0.75, widgets: w('p2') });
+
+      expect(readLayoutWidgets(d, 'wallA', 'portrait').map((x) => x.id)).toEqual(['p2']);
+      expect(readLayoutWidgets(d, 'wallA', 'landscape').map((x) => x.id)).toEqual(['l1']);
+      const row = d
+        .prepare(`SELECT layout_aspect AS p, layout_landscape_aspect AS l FROM screens WHERE id='wallA'`)
+        .get() as { p: number; l: number };
+      expect(row).toEqual({ p: 0.75, l: 1.7778 });
     });
   });
 });

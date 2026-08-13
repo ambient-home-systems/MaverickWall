@@ -86,6 +86,8 @@ async function harness() {
   });
   await postForm('/setup/household', { timezone: 'Europe/London' });
 
+  // The editor saves the portrait canvas (Phase 0), so that is where round-tripped
+  // widgets land; the manifest carries both canvases.
   const manifestLayout = async (): Promise<{ mode: string; widgets: { type: string }[] }> => {
     const issued = issueDisplayToken();
     const at = Date.now();
@@ -94,8 +96,10 @@ async function harness() {
        VALUES ('s1','Wall',?,?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`,
     ).run(issued.tokenHash, at, at, at);
     const res = await call('/d/manifest', { headers: { authorization: `Bearer ${issued.token}` } });
-    const m = (await res.json()) as { layout: { mode: string; widgets: { type: string }[] } };
-    return m.layout;
+    const m = (await res.json()) as {
+      layout: { mode: string; portrait: { widgets: { type: string }[] } };
+    };
+    return { mode: m.layout.mode, widgets: m.layout.portrait.widgets };
   };
 
   // A save with no session cookie, to prove the gate.
@@ -160,8 +164,8 @@ describe('saving a layout', () => {
 
     const layout = (await (
       await h.call('/admin/layout/preview.json')
-    ).json()) as { layout: { widgets: { type: string; config?: unknown }[] } };
-    const byType = Object.fromEntries(layout.layout.widgets.map((w) => [w.type, w.config]));
+    ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
+    const byType = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.type, w.config]));
     expect(byType['calendar']).toEqual({
       mode: 'list', calendars: ['fam'], count: 5,
       title: 'This week', showTitle: true, align: 'center',
@@ -190,8 +194,8 @@ describe('saving a layout', () => {
     expect(res.status).toBe(200);
     const layout = (await (
       await h.call('/admin/layout/preview.json')
-    ).json()) as { layout: { widgets: { type: string; config?: unknown }[] } };
-    expect(layout.layout.widgets[0]?.config).toEqual({ target: '2026-12-25', title: 'Christmas' });
+    ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
+    expect(layout.layout.portrait.widgets[0]?.config).toEqual({ target: '2026-12-25', title: 'Christmas' });
   });
 
   it('carries an external-module widget reference through to the manifest', async () => {
@@ -204,8 +208,8 @@ describe('saving a layout', () => {
     expect(res.status).toBe(200);
     const layout = (await (
       await h.call('/admin/layout/preview.json')
-    ).json()) as { layout: { widgets: { type: string; config?: unknown }[] } };
-    expect(layout.layout.widgets[0]).toMatchObject({ type: 'external', config: { module: 'abc123' } });
+    ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
+    expect(layout.layout.portrait.widgets[0]).toMatchObject({ type: 'external', config: { module: 'abc123' } });
   });
 
   it('rejects a countdown date that is not YYYY-MM-DD', async () => {
@@ -238,13 +242,13 @@ describe('the editor preview manifest', () => {
     const res = await h.call('/admin/layout/preview.json');
     expect(res.status).toBe(200);
     const manifest = (await res.json()) as {
-      layout: { mode: string; widgets: { type: string }[] };
+      layout: { mode: string; portrait: { widgets: { type: string }[] } };
       days: unknown[];
     };
     // The same document a wall polls: it has the days grid and the saved layout.
     expect(Array.isArray(manifest.days)).toBe(true);
     expect(manifest.layout.mode).toBe('freeform');
-    expect(manifest.layout.widgets.map((w) => w.type)).toEqual(['clock', 'calendar']);
+    expect(manifest.layout.portrait.widgets.map((w) => w.type)).toEqual(['clock', 'calendar']);
   });
 
   it('is not served without a session', async () => {
@@ -324,14 +328,14 @@ describe('a per-wall layout', () => {
 
     const manifestFor = async (token: string) => {
       const res = await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } });
-      return (await res.json()) as { layout: { mode: string; widgets: { type: string }[] } };
+      return (await res.json()) as { layout: { mode: string; portrait: { widgets: { type: string }[] } } };
     };
 
     const kitchen = await manifestFor(tokens['wA']!);
     const hall = await manifestFor(tokens['wB']!);
 
     // The Kitchen draws its own calendar; the Hall, untouched, draws the default.
-    expect(kitchen.layout.widgets.map((w) => w.type)).toEqual(['calendar']);
-    expect(hall.layout.widgets.map((w) => w.type)).toEqual(['clock']);
+    expect(kitchen.layout.portrait.widgets.map((w) => w.type)).toEqual(['calendar']);
+    expect(hall.layout.portrait.widgets.map((w) => w.type)).toEqual(['clock']);
   });
 });

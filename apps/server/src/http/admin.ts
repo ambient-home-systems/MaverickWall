@@ -1602,7 +1602,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // Null is the shared default; a valid screen id is that wall's own canvas.
     // An id that is not a real wall falls back to the default rather than
     // conjuring a row for a screen that does not exist.
-    replaceLayout(deps.db, resolveOwner(shaped.value.screen), {
+    // The editor is single-canvas until Phase 1 adds an orientation switch, so
+    // it reads and writes the portrait canvas; the landscape one letterboxes it
+    // until it is arranged (RFC 005).
+    replaceLayout(deps.db, resolveOwner(shaped.value.screen), 'portrait', {
       mode: shaped.value.mode,
       aspect: shaped.value.aspect,
       widgets: shaped.value.widgets,
@@ -2532,7 +2535,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       screen: ownerKey,
       mode: mode === 'freeform' ? 'freeform' : 'auto',
       aspect,
-      widgets: readLayoutWidgets(deps.db, ownerKey).map((widget) => ({
+      widgets: readLayoutWidgets(deps.db, ownerKey, 'portrait').map((widget) => ({
         id: widget.id,
         type: widget.type,
         x: widget.x,

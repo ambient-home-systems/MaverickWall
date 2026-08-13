@@ -29,6 +29,7 @@ const HOUSEHOLD: HouseholdRow = {
   displayBlocks: 'now,next,horizon',
   layoutMode: 'auto',
   layoutAspect: 0.5625,
+  layoutLandscapeAspect: 1.7778,
 };
 
 const SOURCES: SourceRow[] = [
