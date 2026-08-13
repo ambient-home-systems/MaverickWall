@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.24.5
 
 A restart shows a "server is booting" page instead of a dead link. While the
 add-on starts up — after an update, or a reboot — the server was unreachable
