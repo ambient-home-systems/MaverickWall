@@ -146,6 +146,8 @@ const screenBody = z.object({
   daytime_ends_at: optionalText(5),
   timezone: optionalText(64),
   allow_dismiss: checkbox(),
+  // '' follows the household, '1' forces 24-hour, '0' forces 12-hour (RFC 005).
+  clock_24: optionalText(1),
   // How much this wall shows. Empty follows the household default; a number is
   // range-checked in the handler, next to the theme and zone checks.
   today_events: optionalText(3),
@@ -353,6 +355,9 @@ const displayBody = z
     today_events: bounded('Events listed for today', 1, 20),
     next_days: bounded('Days in the week ahead', 0, 14),
     horizon_weeks: bounded('Weeks in the month grid', 1, 8),
+    // The household-wide clock format. Checked is 24-hour (the wall's original
+    // behaviour); unchecked is 12-hour (RFC 005).
+    clock_24: checkbox(),
   })
   .superRefine((value, ctx) => {
     const chosen = value.daytime_theme;
@@ -1320,6 +1325,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * process rather than about the shape of the request.
      */
     const { name, orientation, rotation, allow_dismiss: allowDismiss } = shaped.value;
+    // '' follows the household, '1' forces 24-hour, '0' forces 12-hour.
+    const clockRaw = shaped.value.clock_24 ?? '';
+    const clock24 = clockRaw === '1' ? 1 : clockRaw === '0' ? 0 : null;
     const theme = shaped.value.theme ?? '';
     const daytimeTheme = shaped.value.daytime_theme ?? '';
     const startsAt = shaped.value.daytime_starts_at ?? '';
@@ -1382,6 +1390,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         displayTodayEvents: today.value,
         displayNextDays: nextDays.value,
         displayHorizonWeeks: weeks.value,
+        clock24,
       })
     ) {
       return c.redirect('/admin/displays', 302);
@@ -1493,6 +1502,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nextDays: shaped.value.next_days,
       horizonWeeks: shaped.value.horizon_weeks,
       blocks: order.blocks,
+      clock24: shaped.value.clock_24 ? 1 : 0,
     });
 
     // Back to the Default display; the wall picks it up on its next poll.
@@ -1617,6 +1627,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
     copyLayout(deps.db, from, to);
     return c.redirect(layoutUrl(to), 302);
+  });
+
+  /**
+   * Reset a display's layout to the responsive default — the "Reset" beside the
+   * "Remove" (unpair) a paired screen already has. Clears both canvases and turns
+   * free-form off, so the wall goes back to the stacked layout it draws by
+   * default; a template or a hand-built canvas can be applied again afterwards.
+   */
+  app.post('/admin/displays/:id/reset-layout', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const owner = resolveOwner(id === 'default' ? null : id);
+    replaceLayout(deps.db, owner, 'portrait', { mode: 'auto', aspect: 0.5625, widgets: [] });
+    replaceLayout(deps.db, owner, 'landscape', { mode: 'auto', aspect: 1.7778, widgets: [] });
+    return c.redirect(layoutUrl(owner), 302);
   });
 
   // -------------------------------------------------------------------------
@@ -2338,14 +2362,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `Acknowledging is household-wide: one wall clears it and every wall goes ` +
       `quiet. Some alerts cannot be cleared at all, and no wall overrides that.</p>` +
 
-      `<label for="tz-${screen.id}">Timezone</label>` +
+      `<div class="row-fields">` +
+      `<span><label for="tz-${screen.id}">Timezone</label>` +
       `<select id="tz-${screen.id}" name="timezone">` +
       option('', 'Follow the default', screen.timezone === null) +
       supportedTimezones()
         .map((zone) => option(zone, zone, screen.timezone === zone))
         .join('') +
-      `</select>` +
-      `<p class="hint">Only for a wall somewhere else — a holiday home, say.</p>` +
+      `</select></span>` +
+      `<span><label for="clock-${screen.id}">Clock</label>` +
+      `<select id="clock-${screen.id}" name="clock_24">` +
+      option('', 'Follow the default', screen.clock24 === null) +
+      option('1', '24-hour', screen.clock24 === 1) +
+      option('0', '12-hour', screen.clock24 === 0) +
+      `</select></span>` +
+      `</div>` +
+      `<p class="hint">The timezone is only for a wall somewhere else — a holiday ` +
+      `home, say.</p>` +
       `<button type="submit">Save this wall</button></form>`
     );
   }
@@ -2608,8 +2641,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const appearance = owner === null ? defaultsForm() : wallSettingsForm(owner);
 
     const layout =
-      `<p><a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
-      `Start from a template</a></p>` +
+      `<div class="row" style="gap:10px;align-items:center">` +
+      `<a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
+      `Start from a template</a>` +
+      `<form method="post" action="admin/displays/${encodeURIComponent(detailId)}/reset-layout" ` +
+      `data-confirm="Reset this display to the default layout? Its canvas is cleared." style="margin:0">` +
+      `<button class="btn-ghost btn-sm" type="submit">Reset to default</button></form>` +
+      `</div>` +
       `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
       `Arrange <b>Portrait</b> and <b>Landscape</b> separately — the wall draws the ` +
       `one matching how it is hung. Turn it on to use this instead of the stacked ` +
@@ -2778,6 +2816,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'Set to 0 to hide the week ahead entirely.') +
       number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
         'The rotation shape. Five covers a month at a glance.') +
+
+      `<div class="checks"><label>` +
+      `<input type="checkbox" name="clock_24" value="1"${household.clock24 !== 0 ? ' checked' : ''}> ` +
+      `24-hour clock</label></div>` +
+      `<p class="hint">Off shows a 12-hour clock (9:30 pm) on the wall and in event ` +
+      `times. On shows 24-hour (21:30).</p>` +
+
       `<button type="submit">Save</button></form>`
     );
   }

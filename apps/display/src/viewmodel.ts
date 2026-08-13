@@ -540,12 +540,16 @@ export function localDate(at: number, timezone: string): CivilDate {
   return `${find('year')}-${find('month')}-${find('day')}`;
 }
 
-export function localTime(at: number, timezone: string): string {
+export function localTime(at: number, timezone: string, hour12 = false): string {
+  // `hour12` defaults false (24-hour), which is the wall's original behaviour and
+  // what the daytime-theme comparison needs; the clock and event times pass the
+  // household's choice (RFC 005). `hour12` (not `hourCycle`) because the display
+  // targets ES2019, whose lib types do not know `hourCycle`.
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: timezone,
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
+    hour12,
   }).format(new Date(at));
 }
 
@@ -563,9 +567,9 @@ function parts(date: CivilDate, timezone: string): { weekday: string; day: strin
   return { weekday: find('weekday'), day: find('day'), month: find('month') };
 }
 
-function eventTime(event: ManifestEvent, timezone: string): string {
+function eventTime(event: ManifestEvent, timezone: string, hour12: boolean): string {
   if (event.allDay) return 'All day';
-  return localTime(event.startsAt, timezone);
+  return localTime(event.startsAt, timezone, hour12);
 }
 
 /**
@@ -593,6 +597,7 @@ function toPerson(person: ManifestPerson): PersonModel {
 function toEvent(
   event: ManifestEvent,
   timezone: string,
+  hour12: boolean,
   people: ReadonlyMap<string, PersonModel>,
   marks: { isPast: boolean; isNext: boolean } = { isPast: false, isNext: false },
 ): EventModel {
@@ -600,7 +605,7 @@ function toEvent(
     id: event.id,
     sourceId: event.sourceId,
     title: event.title,
-    time: eventTime(event, timezone),
+    time: eventTime(event, timezone, hour12),
     allDay: event.allDay,
     color: event.color,
     location: event.location,
@@ -622,6 +627,7 @@ function markToday(
   events: readonly ManifestEvent[],
   now: number,
   timezone: string,
+  hour12: boolean,
   people: ReadonlyMap<string, PersonModel>,
 ): EventModel[] {
   let foundNext = false;
@@ -629,7 +635,7 @@ function markToday(
     const past = !event.allDay && event.endsAt <= now;
     const isNext = !past && !event.allDay && !foundNext && event.startsAt > now;
     if (isNext) foundNext = true;
-    return toEvent(event, timezone, people, { isPast: past, isNext });
+    return toEvent(event, timezone, hour12, people, { isPast: past, isNext });
   });
 }
 
@@ -652,6 +658,7 @@ function toDay(
   day: ManifestDay,
   today: CivilDate,
   timezone: string,
+  hour12: boolean,
   limit: number,
   people: ReadonlyMap<string, PersonModel>,
 ): DayModel {
@@ -665,7 +672,7 @@ function toDay(
     isToday: day.date === today,
     isPast: day.date < today,
     shifts: day.shifts.map(toShift),
-    events: shown.map((event) => toEvent(event, timezone, people)),
+    events: shown.map((event) => toEvent(event, timezone, hour12, people)),
     hiddenEventCount: day.events.length - shown.length,
   };
 }
@@ -717,6 +724,9 @@ export function buildModel(options: BuildOptions): DisplayModel {
   const nextDays = bounded(chosen?.nextDays, 0, 14, NEXT_DAY_COUNT);
   const horizonWeeks = bounded(chosen?.horizonWeeks, 1, 8, HORIZON_WEEKS);
   const blocks = resolveBlocks(chosen?.blocks);
+  // 24-hour by default (the wall's original behaviour); 12-hour only when the
+  // household has explicitly turned the setting off (RFC 005).
+  const hour12 = chosen?.clock24 === false;
 
   // The household, once, for the legend strip and the per-event owner cue. The
   // map is keyed by id so an event resolves its owner in one lookup; the list
@@ -741,7 +751,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     const date = addDays(today, offset);
     if (date > manifest.window.to) break;
     const day = byDate.get(date) ?? { date, shifts: [], events: [] };
-    next.push(toDay(day, today, timezone, NEXT_EVENT_LIMIT, peopleById));
+    next.push(toDay(day, today, timezone, hour12, NEXT_EVENT_LIMIT, peopleById));
   }
 
   // The horizon starts on the Monday of the week containing today, so the grid
@@ -811,13 +821,13 @@ export function buildModel(options: BuildOptions): DisplayModel {
     timezone,
     theme: manifest.theme.active,
     todayLabel: `${weekday} ${dayNumber} ${month}`,
-    clock: localTime(now, timezone),
+    clock: localTime(now, timezone, hour12),
     today:
       todayDay === undefined
         ? undefined
         : {
-            ...toDay(todayDay, today, timezone, todayLimit, peopleById),
-            events: markToday(todayDay.events.slice(0, todayLimit), now, timezone, peopleById),
+            ...toDay(todayDay, today, timezone, hour12, todayLimit, peopleById),
+            events: markToday(todayDay.events.slice(0, todayLimit), now, timezone, hour12, peopleById),
           },
     people,
     todayShift: todayDay?.shifts[0],

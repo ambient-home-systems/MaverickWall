@@ -29,6 +29,7 @@ const HOUSEHOLD_DEFAULTS: HouseholdRow = {
   displayNextDays: 6,
   displayHorizonWeeks: 5,
   displayBlocks: 'now,next,horizon',
+  clock24: 1,
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,
@@ -44,6 +45,7 @@ export function readHousehold(db: SqliteDatabase): HouseholdRow {
               display_next_days AS displayNextDays,
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
+              clock_24 AS clock24,
               layout_mode AS layoutMode,
               layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect
@@ -203,6 +205,7 @@ export function effectiveDisplay(
     readonly displayNextDays?: number | null;
     readonly displayHorizonWeeks?: number | null;
     readonly displayBlocks?: string | null;
+    readonly clock24?: number | null;
     readonly layoutMode?: string | null;
     readonly layoutAspect?: number | null;
     readonly layoutLandscapeAspect?: number | null;
@@ -221,6 +224,7 @@ export function effectiveDisplay(
       displayNextDays: screen.displayNextDays ?? household.displayNextDays,
       displayHorizonWeeks: screen.displayHorizonWeeks ?? household.displayHorizonWeeks,
       displayBlocks: screen.displayBlocks ?? household.displayBlocks,
+      clock24: screen.clock24 ?? household.clock24,
       layoutMode: screen.layoutMode ?? household.layoutMode,
       layoutAspect: screen.layoutAspect ?? household.layoutAspect,
       layoutLandscapeAspect: screen.layoutLandscapeAspect ?? household.layoutLandscapeAspect,
@@ -746,6 +750,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               display_next_days AS displayNextDays,
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
+              clock_24 AS clock24,
               layout_mode AS layoutMode, layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect,
               report_w AS reportW, report_h AS reportH,
@@ -771,6 +776,8 @@ export interface ScreenSettings {
   readonly displayTodayEvents: number | null;
   readonly displayNextDays: number | null;
   readonly displayHorizonWeeks: number | null;
+  /** 24-hour override: 1 forces 24-hour, 0 forces 12-hour, null follows household. */
+  readonly clock24: number | null;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -782,7 +789,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
                 daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
                 allow_dismiss = ?,
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
-                updated_at = ?
+                clock_24 = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -790,7 +797,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt,
         s.allowDismiss ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
-        Date.now(), id,
+        s.clock24, Date.now(), id,
       ).changes > 0
   );
 }
@@ -1079,6 +1086,7 @@ export interface DisplaySettings {
   readonly nextDays: number;
   readonly horizonWeeks: number;
   readonly blocks: string;
+  readonly clock24: number;
 }
 
 /**
@@ -1093,7 +1101,7 @@ export function writeDisplaySettings(db: SqliteDatabase, settings: DisplaySettin
     `UPDATE household_settings
         SET theme = ?, daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
             display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
-            display_blocks = ?, updated_at = ?
+            display_blocks = ?, clock_24 = ?, updated_at = ?
       WHERE id = 'singleton'`,
   ).run(
     settings.theme,
@@ -1104,6 +1112,7 @@ export function writeDisplaySettings(db: SqliteDatabase, settings: DisplaySettin
     settings.nextDays,
     settings.horizonWeeks,
     settings.blocks,
+    settings.clock24,
     Date.now(),
   );
 }
@@ -1235,6 +1244,7 @@ export interface ScreenRow {
   readonly displayNextDays: number | null;
   readonly displayHorizonWeeks: number | null;
   readonly displayBlocks: string | null;
+  readonly clock24: number | null;
   readonly layoutMode: string | null;
   readonly layoutAspect: number | null;
   readonly layoutLandscapeAspect: number | null;
@@ -1251,6 +1261,7 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               display_next_days AS displayNextDays,
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
+              clock_24 AS clock24,
               layout_mode AS layoutMode, layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect
          FROM screens WHERE revoked_at IS NULL`,

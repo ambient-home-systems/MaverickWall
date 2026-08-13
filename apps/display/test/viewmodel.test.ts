@@ -210,6 +210,24 @@ describe('the next few days', () => {
   });
 });
 
+describe('the clock format (RFC 005)', () => {
+  const dinner = () => day('2026-07-15', [event({ title: 'Dinner', startsAt: Date.parse('2026-07-15T18:30:00Z') })]);
+
+  it('draws a 24-hour clock and event times by default', () => {
+    const built = model([dinner()]);
+    expect(built.clock).toMatch(/^\d{2}:\d{2}$/);
+    expect(built.today?.events[0]?.time).toBe('19:30'); // 18:30 UTC is 19:30 in BST
+  });
+
+  it('draws a 12-hour clock and event times when the household turns it off', () => {
+    const built = model([dinner()], {
+      display: { todayEvents: 8, nextDays: 6, horizonWeeks: 5, clock24: false },
+    });
+    expect(built.clock).toMatch(/am|pm/i);
+    expect(built.today?.events[0]?.time).toMatch(/7:30\s*pm/i);
+  });
+});
+
 describe('the horizon', () => {
   it('is five rectangular weeks starting on a Monday', () => {
     // A ragged first row reads as a rendering fault from across a room.

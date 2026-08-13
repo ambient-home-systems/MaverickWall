@@ -159,6 +159,19 @@ describe('the template gallery routes', () => {
     expect(mode).toBe('freeform');
   });
 
+  it('resets a display to the default layout, clearing both canvases (RFC 005)', async () => {
+    const h = await ready();
+    await h.postForm('/admin/displays/default/apply-template', { templateId: 'sky-week' });
+    // Sanity: the template gave it a free-form canvas.
+    expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBeGreaterThan(0);
+
+    const res = await h.postForm('/admin/displays/default/reset-layout', {});
+    expect(res.status).toBe(302);
+    expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBe(0);
+    const mode = (h.db.prepare(`SELECT layout_mode AS m FROM household_settings`).get() as { m: string }).m;
+    expect(mode).toBe('auto');
+  });
+
   it('is behind the session gate — an unauthenticated apply writes nothing', async () => {
     const h = await ready();
     const res = await h.applyBare('/admin/displays/default/apply-template', { templateId: 'sky-calendar' });
