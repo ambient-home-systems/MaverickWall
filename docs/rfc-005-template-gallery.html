@@ -1,0 +1,551 @@
+<title>Maverick Wall — Template Gallery</title>
+<style>
+  /* ---- chrome palette: warm neutral biased to the product's amber ---- */
+  :root{
+    --bg:#F7F5F1; --surface:#FFFFFF; --sunk:#EEEBE3;
+    --ink:#1F2227; --muted:#6E6A60; --line:#E4DFD5; --line-2:#D8D2C6;
+    --accent:#A8621A;
+  }
+  :root:not([data-theme="light"]){ @media (prefers-color-scheme: dark){
+    --bg:#0F1216; --surface:#171B21; --sunk:#12161B;
+    --ink:#E7EBF0; --muted:#8C93A0; --line:#262C34; --line-2:#313945;
+    --accent:#E0A24A;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0F1216; --surface:#171B21; --sunk:#12161B;
+    --ink:#E7EBF0; --muted:#8C93A0; --line:#262C34; --line-2:#313945;
+    --accent:#E0A24A;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1140px; margin:0 auto; padding:clamp(28px,5vw,64px) clamp(18px,4vw,40px) 96px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  /* ---- header ---- */
+  header .eyebrow{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--accent); margin:0 0 14px;
+  }
+  h1{
+    font-size:clamp(30px,5vw,46px); line-height:1.05; margin:0 0 16px;
+    letter-spacing:-.02em; font-weight:650; text-wrap:balance; max-width:20ch;
+  }
+  .lede{font-size:clamp(16px,2vw,18px); color:var(--muted); max-width:62ch; margin:0}
+  .note{
+    margin:22px 0 0; padding:12px 16px; background:var(--sunk);
+    border:1px solid var(--line); border-radius:8px; font-size:13.5px; color:var(--muted); max-width:70ch;
+  }
+  .note b{color:var(--ink); font-weight:600}
+
+  /* ---- theme legend ---- */
+  .legend{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;
+    margin:34px 0 8px;
+  }
+  .lchip{
+    display:flex; gap:12px; align-items:flex-start; padding:13px 14px;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+  }
+  .sw{width:34px; height:34px; border-radius:7px; flex:0 0 auto; position:relative; overflow:hidden; border:1px solid rgba(0,0,0,.15)}
+  .sw i{position:absolute; right:5px; bottom:5px; width:9px; height:9px; border-radius:2px}
+  .lchip h4{margin:0 0 2px; font-size:13.5px; letter-spacing:.01em}
+  .lchip p{margin:0; font-size:12px; color:var(--muted); line-height:1.4}
+
+  /* ---- section band ---- */
+  .band{
+    display:flex; align-items:center; gap:16px; margin:56px 0 8px;
+  }
+  .band h2{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; letter-spacing:.22em; text-transform:uppercase; color:var(--muted);
+    margin:0; white-space:nowrap; font-weight:500;
+  }
+  .band .rule{height:1px; background:var(--line-2); flex:1}
+
+  /* ---- template card ---- */
+  .card{padding:28px 0; border-bottom:1px solid var(--line)}
+  .card:last-child{border-bottom:0}
+  .card .kick{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0 0 6px;
+  }
+  .card .kick b{color:var(--accent); font-weight:600}
+  .card h3{font-size:22px; margin:0 0 4px; letter-spacing:-.01em; font-weight:640}
+  .card .desc{margin:0 0 20px; color:var(--muted); font-size:14.5px; max-width:64ch}
+
+  .pair{display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start}
+  .frame{display:flex; flex-direction:column; gap:9px}
+  .frame .olabel{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    display:flex; gap:8px; align-items:center;
+  }
+  .frame .olabel b{color:var(--ink); font-weight:600}
+
+  /* the mock wall */
+  .shell{
+    border-radius:9px; padding:6px; background:var(--sunk);
+    border:1px solid var(--line-2); box-shadow:0 10px 30px -18px rgba(0,0,0,.5);
+  }
+  .wall{
+    position:relative; container-type:size; overflow:hidden; border-radius:4px;
+    background:var(--w-bg); color:var(--w-ink); font-family:"Roboto Condensed",ui-sans-serif,system-ui,sans-serif;
+  }
+  .wall.port{width:236px; aspect-ratio:9/16; --u:1cqh}
+  .wall.land{width:496px; aspect-ratio:16/9; --u:1.02cqw}
+  @media(max-width:560px){
+    .wall.port{width:44vw} .wall.land{width:92vw}
+  }
+
+  /* widget shell */
+  .w{position:absolute; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; min-height:0}
+  .w.panel{
+    background:var(--w-panel); border:1px solid var(--w-rule); border-radius:var(--w-r);
+    padding:calc(var(--u)*1.5) calc(var(--u)*1.7);
+  }
+  /* the content, scaled to fit its box the way the wall's fitToBox does */
+  .wfit{flex:1 1 auto; min-height:0; width:100%; display:flex; flex-direction:column; transform-origin:top left}
+  .w:not(.panel) .wfit{transform-origin:center}
+  .wt{
+    font-family:"Roboto Mono",ui-monospace,monospace; font-weight:600;
+    font-size:calc(var(--u)*2.15); letter-spacing:.1em; text-transform:uppercase;
+    color:var(--w-muted); margin-bottom:calc(var(--u)*1.1); flex:0 0 auto; white-space:nowrap;
+  }
+
+  /* month grid */
+  .mhead{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:calc(var(--u)*.9)}
+  .mhead .mtitle{font-size:calc(var(--u)*3); font-weight:600; letter-spacing:-.01em}
+  .mhead .myr{font-size:calc(var(--u)*2.2); color:var(--w-muted)}
+  .dow{display:grid; grid-template-columns:repeat(7,1fr); gap:calc(var(--u)*.5); margin-bottom:calc(var(--u)*.5)}
+  .dow span{font-size:calc(var(--u)*1.9); color:var(--w-faint); text-align:center; font-family:"Roboto Mono",monospace}
+  .grid{flex:1; display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:1fr; gap:calc(var(--u)*.5)}
+  .cell{
+    position:relative; border-radius:calc(var(--u)*.5); border:1px solid var(--w-rule);
+    font-size:calc(var(--u)*2.1); padding:calc(var(--u)*.5) 0 0 calc(var(--u)*.7); color:var(--w-ink);
+    font-variant-numeric:tabular-nums; line-height:1;
+  }
+  .cell.out{color:var(--w-faint); border-color:transparent}
+  .cell.today{background:var(--w-accent); color:var(--w-accent-ink); border-color:transparent; font-weight:700}
+  .dots{position:absolute; left:calc(var(--u)*.6); bottom:calc(var(--u)*.6); display:flex; gap:calc(var(--u)*.4)}
+  .dot{width:calc(var(--u)*.85); height:calc(var(--u)*.85); border-radius:50%}
+  /* Skylight-style: date top, colour-coded event pills stacked below */
+  .cell.pills{padding:calc(var(--u)*.5) calc(var(--u)*.55) calc(var(--u)*.5); display:flex; flex-direction:column; gap:calc(var(--u)*.4); overflow:hidden}
+  .cell.pills .dn{font-size:calc(var(--u)*1.9); line-height:1; margin-bottom:calc(var(--u)*.2)}
+  .evbar{border-radius:calc(var(--u)*.4); padding:calc(var(--u)*.25) calc(var(--u)*.5); font-size:calc(var(--u)*1.55); line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500}
+  /* today in pills mode: emphasise the frame, keep the pills readable */
+  .cell.pills.today{background:transparent; color:var(--w-ink); border-color:var(--w-accent); box-shadow:inset 0 0 0 calc(var(--u)*.28) var(--w-accent)}
+  .cell.pills.today .dn{color:var(--w-accent); font-weight:700}
+
+  /* agenda */
+  .rows{display:flex; flex-direction:column; gap:calc(var(--u)*1.15); overflow:hidden}
+  .arow{display:flex; gap:calc(var(--u)*1.1); align-items:flex-start}
+  .arow .tick{width:calc(var(--u)*.7); align-self:stretch; border-radius:calc(var(--u)*.4); flex:0 0 auto; min-height:calc(var(--u)*3)}
+  .arow .when{font-family:"Roboto Mono",monospace; font-size:calc(var(--u)*2); color:var(--w-muted); width:calc(var(--u)*9.5); flex:0 0 auto; padding-top:calc(var(--u)*.15)}
+  .arow .ev{font-size:calc(var(--u)*2.5); line-height:1.15}
+  .arow .ev small{display:block; font-size:calc(var(--u)*1.9); color:var(--w-muted)}
+  .daygroup{font-family:"Roboto Mono",monospace; font-size:calc(var(--u)*1.95); letter-spacing:.08em; text-transform:uppercase; color:var(--w-accent); margin-top:calc(var(--u)*.4)}
+
+  /* week columns (Skylight week view) */
+  .weekcols{flex:1; min-height:0; display:grid; grid-template-columns:repeat(7,1fr); gap:calc(var(--u)*.6)}
+  .wcol{display:flex; flex-direction:column; gap:calc(var(--u)*.5); min-height:0; overflow:hidden}
+  .wch{text-align:center; padding-bottom:calc(var(--u)*.5); margin-bottom:calc(var(--u)*.3); border-bottom:1px solid var(--w-rule)}
+  .wch .wd{font-family:"Roboto Mono",monospace; font-size:calc(var(--u)*1.6); letter-spacing:.06em; color:var(--w-faint); display:block}
+  .wch .wnum{font-size:calc(var(--u)*2.5); font-weight:600; font-variant-numeric:tabular-nums}
+  .wcol.today .wch{border-color:var(--w-accent)}
+  .wcol.today .wch .wnum{color:var(--w-accent)}
+  .wcol.today .wch .wd{color:var(--w-accent)}
+
+  /* clock */
+  .clock{display:flex; flex-direction:column; justify-content:center; height:100%}
+  .ctime{font-weight:600; letter-spacing:-.02em; line-height:.9; font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:calc(var(--u)*1.2)}
+  .ctime b{font-weight:600}
+  .cap{font-size:calc(var(--u)*3); color:var(--w-muted); font-family:"Roboto Mono",monospace}
+  .cdate{font-size:calc(var(--u)*2.7); color:var(--w-muted); margin-top:calc(var(--u)*1)}
+
+  /* weather */
+  .wnow{display:flex; align-items:center; gap:calc(var(--u)*1.4)}
+  .wnow .wtemp{font-size:calc(var(--u)*5.4); font-weight:600; line-height:1; font-variant-numeric:tabular-nums}
+  .wnow .wglyph{font-size:calc(var(--u)*4.2)}
+  .wnow .wdesc{font-size:calc(var(--u)*2.1); color:var(--w-muted); line-height:1.1}
+  .wdays{display:flex; gap:calc(var(--u)*1); margin-top:auto; padding-top:calc(var(--u)*1)}
+  .wdays.col{flex-direction:column; gap:calc(var(--u)*1.1)}
+  .wday{display:flex; flex-direction:column; align-items:center; gap:calc(var(--u)*.4); flex:1; font-family:"Roboto Mono",monospace}
+  .wdays.col .wday{flex-direction:row; justify-content:space-between; align-items:center}
+  .wday .d{font-size:calc(var(--u)*1.7); color:var(--w-faint)}
+  .wday .g{font-size:calc(var(--u)*2.3)}
+  .wday .t{font-size:calc(var(--u)*2); font-variant-numeric:tabular-nums}
+
+  /* todo / notes */
+  .list{display:flex; flex-direction:column; gap:calc(var(--u)*1.35)}
+  .li{display:flex; gap:calc(var(--u)*1.2); align-items:flex-start; font-size:calc(var(--u)*2.55); line-height:1.2}
+  .box{width:calc(var(--u)*2.2); height:calc(var(--u)*2.2); border:calc(var(--u)*.28) solid var(--w-muted); border-radius:calc(var(--u)*.45); flex:0 0 auto; margin-top:calc(var(--u)*.15); position:relative}
+  .box.on{background:var(--w-accent); border-color:var(--w-accent)}
+  .box.on::after{content:"✓"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--w-accent-ink); font-size:calc(var(--u)*1.7)}
+  .li.done{color:var(--w-muted); text-decoration:line-through; text-decoration-color:var(--w-faint)}
+  .notetext{font-size:calc(var(--u)*2.5); line-height:1.4}
+  .notetext em{color:var(--w-accent); font-style:normal}
+
+  /* countdown */
+  .cd{display:flex; flex-direction:column; justify-content:center; height:100%}
+  .cd .num{font-size:calc(var(--u)*22); font-weight:650; line-height:.82; letter-spacing:-.03em; font-variant-numeric:tabular-nums}
+  .cd .unit{font-size:calc(var(--u)*3.4); color:var(--w-muted); font-family:"Roboto Mono",monospace; letter-spacing:.06em; text-transform:uppercase}
+  .cd .lab{font-size:calc(var(--u)*3.2); margin-top:calc(var(--u)*1.4)}
+
+  /* home assistant */
+  .harow{display:flex; align-items:center; justify-content:space-between; gap:calc(var(--u)*1); padding:calc(var(--u)*.9) 0; border-bottom:1px solid var(--w-rule); font-size:calc(var(--u)*2.4)}
+  .harow:last-child{border-bottom:0}
+  .harow .k{color:var(--w-ink)}
+  .harow .v{font-variant-numeric:tabular-nums; color:var(--w-muted)}
+  .pill{font-size:calc(var(--u)*1.95); font-family:"Roboto Mono",monospace; padding:calc(var(--u)*.3) calc(var(--u)*1.1); border-radius:calc(var(--u)*4); background:var(--w-panel-2); color:var(--w-ink); border:1px solid var(--w-rule)}
+  .pill.hot{color:var(--w-accent-ink); background:var(--w-accent); border-color:transparent}
+  .pill.go{color:#fff; background:var(--w-go); border-color:transparent}
+
+  /* shift */
+  .swk{display:flex; gap:calc(var(--u)*.7); margin-top:calc(var(--u)*.6)}
+  .sd{flex:1; display:flex; flex-direction:column; align-items:center; gap:calc(var(--u)*.5)}
+  .sd .sdl{font-size:calc(var(--u)*1.6); color:var(--w-faint); font-family:"Roboto Mono",monospace}
+  .sd .sb{width:100%; aspect-ratio:1; border-radius:calc(var(--u)*.5); display:flex; align-items:center; justify-content:center; font-size:calc(var(--u)*2); font-weight:700; font-family:"Roboto Mono",monospace}
+  .who{font-size:calc(var(--u)*2.4); margin-bottom:calc(var(--u)*.4)}
+
+  footer{margin-top:64px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:13px}
+  footer code{font-family:ui-monospace,monospace; background:var(--sunk); padding:1px 6px; border-radius:4px; color:var(--ink)}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">RFC 005 · Design review</p>
+    <h1>Maverick Wall template gallery</h1>
+    <p class="lede">Ten starting layouts a household picks from when adding a display — each authored for portrait <em>and</em> landscape, drawn here with the product's real theme tokens. Judge the arrangement and colour; the exact typeface is approximate.</p>
+    <p class="note"><b>What's a mock and what's real.</b> Layout, widget placement, and every colour come from the shipping themes (<span class="mono">theme.ts</span>). No photo backgrounds — those are Phase&nbsp;3, so these are colour-and-layout only. The lit amber cell in a month grid is <b>today</b>, mirroring the product's mark.</p>
+  </header>
+
+  <div class="legend" id="legend"></div>
+
+  <div id="gallery"></div>
+
+  <footer>
+    Mocks render from a data structure shaped like the proposed template source (<span class="mono">{ portrait, landscape }</span>, widgets by canvas fraction). Home first, then Office · <code>docs/rfc-005-display-canvas.md</code>
+  </footer>
+</div>
+
+<script>
+/* Real theme tokens, copied from apps/display/src/theme.ts */
+const THEMES = {
+  board:  {name:"Board", blurb:"Dark, amber. The default — shift hues separate best at ten feet.",
+    bg:"#0B0E11", panel:"#151A21", panel2:"#1B222B", rule:"#242D38", ink:"#E9EEF4", muted:"#7E8C9C", faint:"#4A5563",
+    accent:"#E8A33D", accentInk:"#0B0E11", night:"#4C7FD1", brk:"#35916A", straight:"#6B7684", go:"#35916A", r:"3px"},
+  slate:  {name:"Kitchen Slate", blurb:"Warm dark, gold, soft rounded corners.",
+    bg:"#191713", panel:"#23201A", panel2:"#2C2820", rule:"#3A342A", ink:"#F4EFE4", muted:"#9C9384", faint:"#635C50",
+    accent:"#D2A93F", accentInk:"#191713", night:"#6C8FAB", brk:"#83A173", straight:"#8A8074", go:"#6f9160", r:"10px"},
+  almanac:{name:"Paper Almanac", blurb:"Light paper, red. Scheduled for daylight hours.",
+    bg:"#F6F3EC", panel:"#FFFFFF", panel2:"#EFEBE0", rule:"#D6D0C2", ink:"#1A1815", muted:"#6B6558", faint:"#A9A294",
+    accent:"#B3372B", accentInk:"#FFFFFF", night:"#2F5D8C", brk:"#4A8556", straight:"#8C8578", go:"#4A8556", r:"0px"},
+  glance: {name:"Glance", blurb:"Near-black, white. The at-a-glance minimal direction.",
+    bg:"#07080A", panel:"#0E1014", panel2:"#151920", rule:"#1C2028", ink:"#FFFFFF", muted:"#7C848F", faint:"#464D57",
+    accent:"#FFFFFF", accentInk:"#07080A", night:"#4F86DE", brk:"#35A87A", straight:"#78838F", go:"#35A87A", r:"4px"}
+};
+
+/* ---------- widget content builders (real-ish content, not lorem) ---------- */
+function monthW(){
+  const events={5:1,9:1,13:2,17:1,18:1,22:1,27:1,29:2}; // day -> dot count
+  const dotColors=["accent","night","brk"];
+  let cells="";
+  for(let i=1;i<=35;i++){
+    const day=i<=31?i:i-31;
+    const out=i>31;
+    const today=(!out&&day===13);
+    let dots="";
+    const n=out?0:(events[day]||0);
+    for(let d=0;d<n;d++){ dots+=`<span class="dot" style="background:var(--w-${today?'accent-ink':dotColors[d%3]})"></span>`; }
+    cells+=`<div class="cell${out?' out':''}${today?' today':''}">${day}${dots?`<span class="dots">${dots}</span>`:""}</div>`;
+  }
+  return `<div class="mhead"><span class="mtitle">August</span><span class="myr">2026</span></div>`+
+    `<div class="dow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>`+
+    `<div class="grid">${cells}</div>`;
+}
+/* Skylight-style month: full-bleed grid with colour-coded event pills per person */
+function monthPills(){
+  const ev={
+    3:[["Gym","night"]], 5:[["Soccer","accent"]], 8:[["Dentist","brk"]],
+    12:[["Payday","straight"]], 13:[["Parkrun","brk"],["Soccer 3pm","accent"]],
+    15:[["Book club","accent"]], 17:[["Anna away","brk"]], 19:[["Piano","night"]],
+    22:[["Swim","night"]], 24:[["Bins","straight"]], 26:[["Market","accent"]],
+    28:[["Trip","night"],["Party","accent"]]
+  };
+  let cells="";
+  for(let i=1;i<=35;i++){
+    const day=i<=31?i:i-31;
+    const out=i>31;
+    const today=(!out&&day===13);
+    let bars="";
+    const list=out?[]:(ev[day]||[]);
+    for(const [label,tok] of list){
+      bars+=`<span class="evbar" style="background:var(--w-${tok});color:#fff">${label}</span>`;
+    }
+    cells+=`<div class="cell pills${out?' out':''}${today?' today':''}"><span class="dn">${day}</span>${bars}</div>`;
+  }
+  return `<div class="mhead"><span class="mtitle">August 2026</span><span class="myr">Everyone home</span></div>`+
+    `<div class="dow"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>`+
+    `<div class="grid">${cells}</div>`;
+}
+/* Skylight week view: vertical day columns with colour-coded event pills */
+function weekColsW(){
+  const days=[
+    ["MON","11",[["Gym 7am","night"]]],
+    ["TUE","12",[["Dentist","brk"],["Payday","straight"]]],
+    ["WED","13",[["Parkrun","brk"],["Soccer 3pm","accent"]],true],
+    ["THU","14",[["Piano","night"]]],
+    ["FRI","15",[["Book club","accent"]]],
+    ["SAT","16",[["Market 9am","accent"],["Swim","night"]]],
+    ["SUN","17",[["Anna away","brk"]]],
+  ];
+  let cols="";
+  for(const [wd,num,evs,today] of days){
+    let bars="";
+    for(const [label,tok] of evs){ bars+=`<span class="evbar" style="background:var(--w-${tok});color:#fff">${label}</span>`; }
+    cols+=`<div class="wcol${today?' today':''}"><div class="wch"><span class="wd">${wd}</span><span class="wnum">${num}</span></div>${bars}</div>`;
+  }
+  return `<div class="wt">Aug 11 – 17</div><div class="weekcols">${cols}</div>`;
+}
+const AG=[
+  ["tick-brk","9:00","Parkrun"],
+  ["tick-accent","15:30","Soccer practice","Riverside pitch"],
+  ["tick-straight","all day","Bin day — recycling"],
+  ["tick-night","8:30","Dentist · Maya"],
+  ["tick-accent","18:00","Book club"],
+];
+function agendaW(title){
+  let r="";
+  for(const [c,when,ev,sub] of AG){
+    r+=`<div class="arow"><span class="tick" style="background:var(--w-${c.split('-')[1]})"></span>`+
+       `<span class="when">${when}</span><span class="ev">${ev}${sub?`<small>${sub}</small>`:""}</span></div>`;
+  }
+  return `<div class="wt">${title||"Up next"}</div><div class="rows">${r}</div>`;
+}
+function weekW(){
+  const groups=[
+    ["Today · Sat 13",[["brk","9:00","Parkrun"],["accent","15:30","Soccer practice"]]],
+    ["Sun 14",[["straight","all day","Bin day"]]],
+    ["Mon 15",[["night","8:30","Dentist"],["accent","18:00","Book club"]]],
+    ["Wed 17",[["brk","all day","Anna away"]]],
+  ];
+  let out="";
+  for(const [g,evs] of groups){
+    out+=`<div class="daygroup">${g}</div>`;
+    for(const [c,when,ev] of evs){
+      out+=`<div class="arow"><span class="tick" style="background:var(--w-${c})"></span>`+
+           `<span class="when">${when}</span><span class="ev">${ev}</span></div>`;
+    }
+  }
+  return `<div class="wt">This week</div><div class="rows">${out}</div>`;
+}
+function clockW(big){
+  return `<div class="clock"><div class="ctime" style="font-size:calc(var(--u)*${big?15:10})"><b>2:32</b><span class="cap">PM</span></div>`+
+    `<div class="cdate">Thursday, 13 August</div></div>`;
+}
+function weatherW(vertical){
+  const days=[["Fri","☀","25°"],["Sat","⛅","23°"],["Sun","☀","26°"],["Mon","☁","22°"],["Tue","⛅","24°"]];
+  let d="";
+  for(const [dl,g,t] of days){ d+=`<div class="wday"><span class="d">${dl}</span><span class="g">${g}</span><span class="t">${t}</span></div>`; }
+  return `<div class="wt">Weather</div>`+
+    `<div class="wnow"><span class="wglyph">⛅</span><span class="wtemp">24°</span>`+
+    `<span class="wdesc">Partly cloudy<br>Feels 23°</span></div>`+
+    `<div class="wdays${vertical?' col':''}">${d}</div>`;
+}
+function todoW(){
+  const items=[["Pick up milk",0],["Walk the dog",0],["Finish homework",1],["Put out recycling",0]];
+  let l="";
+  for(const [t,done] of items){ l+=`<div class="li${done?' done':''}"><span class="box${done?' on':''}"></span><span>${t}</span></div>`; }
+  return `<div class="wt">To do</div><div class="list">${l}</div>`;
+}
+function notesW(){
+  return `<div class="wt">Notes</div><div class="notetext">Grandma visiting <em>Sunday</em> — make up the spare room.<br><br>Piano lessons move to <em>Thursdays</em> from next week.</div>`;
+}
+function countdownW(){
+  return `<div class="cd"><span class="num">42</span><span class="unit">days until</span><span class="lab">Summer holiday</span></div>`;
+}
+function haW(){
+  return `<div class="wt">House</div>`+
+    `<div class="harow"><span class="k">Living room</span><span class="v">21.4°</span></div>`+
+    `<div class="harow"><span class="k">Front door</span><span class="pill">Closed</span></div>`+
+    `<div class="harow"><span class="k">Garage</span><span class="pill">Closed</span></div>`+
+    `<div class="harow"><span class="k">Washing machine</span><span class="pill go">Running</span></div>`;
+}
+function moduleW(){
+  return `<div class="wt">Outside · Open-Meteo</div>`+
+    `<div class="harow"><span class="k">Temperature</span><span class="v">18°</span></div>`+
+    `<div class="harow"><span class="k">Wind</span><span class="v">12 km/h</span></div>`+
+    `<div class="harow"><span class="k">Rain next hour</span><span class="v">10%</span></div>`;
+}
+function shiftW(){
+  const wk=[["M","day","D"],["T","day","D"],["W","off","·"],["T","night","N"],["F","night","N"],["S","off","·"],["S","off","·"]];
+  let s="";
+  for(const [dl,kind,code] of wk){
+    const col=kind==="day"?"var(--w-accent)":kind==="night"?"var(--w-night)":"var(--w-panel-2)";
+    const ink=kind==="off"?"var(--w-faint)":"var(--w-accent-ink)";
+    s+=`<div class="sd"><span class="sdl">${dl}</span><span class="sb" style="background:${col};color:${ink}">${code}</span></div>`;
+  }
+  return `<div class="wt">Rota · Sam</div><div class="who">Nights Thu–Fri</div><div class="swk">${s}</div>`;
+}
+
+const BUILD={
+  month:()=>monthW(), monthpills:()=>monthPills(), minimonth:()=>monthW(), weekcols:()=>weekColsW(),
+  agenda:()=>agendaW(), todaylist:()=>agendaW("Today"), week:()=>weekW(),
+  clock:()=>clockW(false), bigclock:()=>clockW(true), weather:()=>weatherW(false), weathercol:()=>weatherW(true),
+  todo:()=>todoW(), notes:()=>notesW(), countdown:()=>countdownW(), ha:()=>haW(), module:()=>moduleW(), shift:()=>shiftW()
+};
+const BARE=new Set(["clock","bigclock","countdown"]); // sit on the wall, no panel
+
+/* ---------- templates: widgets placed by canvas fraction ---------- */
+const T=[
+  {n:11,cat:"home",name:"Sky Calendar",theme:"almanac",
+   desc:"A Skylight-style clone: a bright, near-full-bleed month with colour-coded event pills per family member, and a slim header carrying the day and weather. Paper Almanac for the white look.",
+   port:[["clock",.04,.03,.47,.09],["weather",.53,.03,.43,.09],["monthpills",.04,.15,.92,.82]],
+   land:[["clock",.03,.05,.40,.12],["weather",.63,.05,.34,.12],["monthpills",.03,.21,.94,.76]]},
+
+  {n:12,cat:"home",name:"Sky Week",theme:"almanac",
+   desc:"Skylight's other signature view: a left rail with the month at a glance and the weather, beside the week as vertical day columns with colour-coded events. Today's column is picked out.",
+   port:[["minimonth",.04,.03,.45,.24],["weather",.51,.03,.45,.24],["weekcols",.04,.30,.92,.67]],
+   land:[["minimonth",.03,.05,.22,.46],["weather",.03,.54,.22,.41],["weekcols",.27,.05,.70,.90]]},
+
+  {n:1,cat:"home",name:"Family Hub",theme:"board",
+   desc:"The classic kitchen wall: the month at a glance, the time, the weather, and the chores. Board's default amber.",
+   port:[["clock",.05,.03,.50,.11],["weather",.56,.03,.39,.13],["month",.05,.19,.90,.49],["todo",.05,.70,.90,.27]],
+   land:[["clock",.04,.06,.28,.17],["weather",.04,.26,.28,.30],["todo",.04,.60,.28,.34],["month",.35,.06,.61,.88]]},
+
+  {n:2,cat:"home",name:"Today Focus",theme:"almanac",
+   desc:"One big agenda for the day, a weather strip, a quiet clock. For a household that lives off 'what's next', on daylight paper.",
+   port:[["clock",.05,.03,.60,.09],["weather",.05,.14,.90,.14],["agenda",.05,.31,.90,.66]],
+   land:[["bigclock",.04,.07,.30,.30],["weathercol",.04,.40,.30,.53],["agenda",.37,.06,.59,.88]]},
+
+  {n:3,cat:"home",name:"Command Center",theme:"slate",
+   desc:"Calendar up top, the house and the rota underneath — the wall for a home that runs on shifts and sensors.",
+   port:[["clock",.05,.03,.90,.08],["month",.05,.13,.90,.46],["ha",.05,.62,.43,.35],["shift",.51,.62,.44,.35]],
+   land:[["month",.04,.06,.57,.88],["clock",.64,.06,.32,.17],["ha",.64,.27,.32,.33],["shift",.64,.63,.32,.31]]},
+
+  {n:4,cat:"home",name:"Chore Board",theme:"board",
+   desc:"To-dos and notes side by side with a short agenda — the fridge door, made legible from across the room.",
+   port:[["agenda",.05,.03,.90,.30],["todo",.05,.36,.44,.61],["notes",.51,.36,.44,.61]],
+   land:[["todo",.04,.06,.29,.88],["notes",.35,.06,.29,.88],["agenda",.67,.06,.29,.88]]},
+
+  {n:5,cat:"home",name:"Countdown",theme:"glance",
+   desc:"A single number nobody can miss, over the month it's counting down within. Glance, for one thing said loudly.",
+   port:[["countdown",.05,.05,.90,.40],["month",.05,.50,.90,.46]],
+   land:[["countdown",.05,.12,.42,.76],["month",.52,.06,.44,.88]]},
+
+  {n:6,cat:"home",name:"Minimal Clock",theme:"glance",
+   desc:"The time, big, with the day's weather beneath it. A hallway or bedside wall that answers two questions and stops.",
+   port:[["bigclock",.06,.28,.88,.26],["weather",.06,.60,.88,.16]],
+   land:[["bigclock",.05,.24,.58,.44],["weather",.66,.30,.30,.40]]},
+
+  {n:7,cat:"office",name:"Team Week",theme:"almanac",
+   desc:"The whole week grouped by day, with the time and weather kept small. A shared-team board for a studio wall.",
+   port:[["clock",.05,.03,.55,.08],["weather",.05,.13,.90,.13],["week",.05,.29,.90,.68]],
+   land:[["clock",.04,.06,.30,.16],["weather",.04,.25,.30,.28],["week",.37,.06,.59,.88]]},
+
+  {n:8,cat:"office",name:"Meeting Room",theme:"board",
+   desc:"Today's bookings, large, with an oversized clock. The panel outside a room that says what's on now and next.",
+   port:[["bigclock",.05,.04,.90,.18],["todaylist",.05,.27,.90,.70]],
+   land:[["bigclock",.04,.10,.42,.52],["todaylist",.50,.06,.46,.88]]},
+
+  {n:9,cat:"office",name:"Ops Dashboard",theme:"slate",
+   desc:"Home Assistant readings and a module panel over the calendar — for a workshop or maker-space status wall.",
+   port:[["ha",.05,.03,.90,.24],["module",.05,.29,.90,.20],["month",.05,.51,.90,.46]],
+   land:[["ha",.04,.06,.30,.42],["module",.04,.52,.30,.42],["month",.37,.06,.59,.88]]},
+
+  {n:10,cat:"office",name:"Reception",theme:"almanac",
+   desc:"A welcoming clock and weather with a notes panel for the day's message. Lobby-friendly, on daylight paper.",
+   port:[["bigclock",.05,.06,.90,.20],["weather",.05,.30,.90,.16],["notes",.05,.50,.90,.46]],
+   land:[["bigclock",.04,.12,.44,.40],["weather",.04,.56,.44,.34],["notes",.52,.08,.44,.84]]},
+];
+
+/* ---------- render ---------- */
+function applyTheme(el,t){
+  const th=THEMES[t];
+  const map={"w-bg":th.bg,"w-panel":th.panel,"w-panel-2":th.panel2,"w-rule":th.rule,"w-ink":th.ink,
+    "w-muted":th.muted,"w-faint":th.faint,"w-accent":th.accent,"w-accent-ink":th.accentInk,
+    "w-night":th.night,"w-brk":th.brk,"w-straight":th.straight,"w-go":th.go,"w-r":th.r};
+  for(const k in map) el.style.setProperty("--"+k,map[k]);
+}
+function wall(t,orient){
+  const w=document.createElement("div");
+  w.className="wall "+(orient==="port"?"port":"land");
+  applyTheme(w,t.theme);
+  const specs=orient==="port"?t.port:t.land;
+  for(const [type,x,y,ww,hh] of specs){
+    const el=document.createElement("div");
+    el.className="w"+(BARE.has(type)?"":" panel");
+    el.style.left=(x*100)+"%"; el.style.top=(y*100)+"%";
+    el.style.width=(ww*100)+"%"; el.style.height=(hh*100)+"%";
+    el.innerHTML=`<div class="wfit">${(BUILD[type]||(()=>type))()}</div>`;
+    w.appendChild(el);
+  }
+  return w;
+}
+
+/* Scale each widget's content to fit its box — the mock's fitToBox. */
+function fitWalls(){
+  document.querySelectorAll('.w').forEach(w=>{
+    const fit=w.querySelector('.wfit'); if(!fit) return;
+    fit.style.transform='none';
+    const cs=getComputedStyle(w);
+    const padY=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+    const padX=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
+    const availH=w.clientHeight-padY, availW=w.clientWidth-padX;
+    const ch=fit.scrollHeight, cw=fit.scrollWidth;
+    if(ch<=0||cw<=0) return;
+    const s=Math.min(1, availH/ch, availW/cw);
+    if(s<0.999) fit.style.transform='scale('+s.toFixed(3)+')';
+  });
+}
+function frame(t,orient,label,aspect){
+  const f=document.createElement("div"); f.className="frame";
+  const l=document.createElement("div"); l.className="olabel";
+  l.innerHTML=`<b>${label}</b> ${aspect}`;
+  const shell=document.createElement("div"); shell.className="shell";
+  shell.appendChild(wall(t,orient));
+  f.append(l,shell);
+  return f;
+}
+
+/* legend */
+const legend=document.getElementById("legend");
+for(const key of ["board","slate","almanac","glance"]){
+  const th=THEMES[key];
+  const c=document.createElement("div"); c.className="lchip";
+  c.innerHTML=`<span class="sw" style="background:${th.bg}"><i style="background:${th.accent}"></i></span>`+
+    `<div><h4>${th.name}</h4><p>${th.blurb}</p></div>`;
+  legend.appendChild(c);
+}
+
+/* gallery */
+const g=document.getElementById("gallery");
+let lastCat="";
+for(const t of T){
+  if(t.cat!==lastCat){
+    lastCat=t.cat;
+    const band=document.createElement("div"); band.className="band";
+    band.innerHTML=`<h2>${t.cat==="home"?"Home":"Office"}</h2><span class="rule"></span>`;
+    g.appendChild(band);
+  }
+  const card=document.createElement("div"); card.className="card";
+  const head=document.createElement("div");
+  head.innerHTML=`<p class="kick">Template ${String(t.n).padStart(2,"0")} · ${t.cat.toUpperCase()} · <b>${THEMES[t.theme].name}</b></p>`+
+    `<h3>${t.name}</h3><p class="desc">${t.desc}</p>`;
+  const pair=document.createElement("div"); pair.className="pair";
+  pair.appendChild(frame(t,"port","Portrait","9:16"));
+  pair.appendChild(frame(t,"land","Landscape","16:9"));
+  card.append(head,pair);
+  g.appendChild(card);
+}
+
+/* fit after layout settles, and keep it fitted on resize */
+requestAnimationFrame(()=>requestAnimationFrame(fitWalls));
+let rt; addEventListener('resize',()=>{clearTimeout(rt); rt=setTimeout(fitWalls,150);});
+</script>
