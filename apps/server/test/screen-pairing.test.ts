@@ -131,6 +131,25 @@ describe('adding a screen from the admin UI', () => {
     });
     expect(manifest.status).toBe(200);
   });
+
+  it('records the viewport a wall reports on its poll, and ignores rubbish (RFC 005)', async () => {
+    const h = await harness();
+    const html = await (await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' })).text();
+    const token = new URL(pairUrl(html) ?? '').searchParams.get('token');
+    const id = () => (h.db.prepare(`SELECT id, report_w AS w, report_h AS h FROM screens LIMIT 1`).get() as { id: string; w: number | null; h: number | null });
+
+    // A sane viewport is stored, so the editor can offer "match this screen".
+    await h.call('http://192.168.1.10:8080/d/manifest?w=1080&h=1920', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(id()).toMatchObject({ w: 1080, h: 1920 });
+
+    // A rubbish size does not overwrite the good one — bounds are on the server.
+    await h.call('http://192.168.1.10:8080/d/manifest?w=0&h=999999', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(id()).toMatchObject({ w: 1080, h: 1920 });
+  });
 });
 
 describe('pairing through Home Assistant ingress', () => {

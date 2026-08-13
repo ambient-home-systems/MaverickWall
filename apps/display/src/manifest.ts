@@ -216,14 +216,31 @@ type FetchLike = (input: string, init?: { headers?: Record<string, string> }) =>
  * still carries it — a display that is correctly getting 304s all day would
  * otherwise never correct its clock drift.
  */
-export function createManifestClient(fetchImpl: FetchLike, url = '/d/manifest'): ManifestClient {
+export function createManifestClient(
+  fetchImpl: FetchLike,
+  url = '/d/manifest',
+  // The wall's own viewport, reported so the editor can offer "match this
+  // screen's size" (RFC 005). Optional and dimension-only — the DOM access stays
+  // in the caller, so this module remains testable without a window.
+  viewport?: () => { w: number; h: number },
+): ManifestClient {
   let etag: string | undefined;
 
   return {
     async poll(): Promise<FetchOutcome> {
+      // Append the viewport as query params. A stable size means a stable URL,
+      // so the ETag path is unaffected; a resize just costs one full fetch.
+      let requestUrl = url;
+      if (viewport !== undefined) {
+        const { w, h } = viewport();
+        if (w > 0 && h > 0) {
+          requestUrl += `${url.includes('?') ? '&' : '?'}w=${Math.round(w)}&h=${Math.round(h)}`;
+        }
+      }
+
       let response;
       try {
-        response = await fetchImpl(url, {
+        response = await fetchImpl(requestUrl, {
           headers: etag === undefined ? {} : { 'if-none-match': etag },
         });
       } catch (error) {

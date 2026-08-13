@@ -145,6 +145,29 @@ describe('polling', () => {
     expect((await client.poll()).status).toBe('fresh');
   });
 
+  it('reports the wall viewport as query params, so the editor can match it', async () => {
+    // RFC 005: the wall sends its own size on each poll; the server stores it so
+    // the layout editor can offer "match this screen's real resolution".
+    let seenUrl = '';
+    const server = createServer((request, response) => {
+      seenUrl = request.url ?? '';
+      response.writeHead(200, { 'content-type': 'application/json', etag: '"v1"', 'x-server-time': String(Date.now()) });
+      response.end(JSON.stringify(MANIFEST));
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    const client = createManifestClient(
+      (input, init) => fetch(input, init),
+      `http://127.0.0.1:${port}/d/manifest`,
+      () => ({ w: 1080, h: 1920 }),
+    );
+    expect((await client.poll()).status).toBe('fresh');
+    expect(seenUrl).toContain('w=1080');
+    expect(seenUrl).toContain('h=1920');
+  });
+
   it('refuses a manifest version this bundle does not understand', () => {
     expect(isRenderableManifest({ ...MANIFEST, manifestVersion: 2 })).toBe(false);
     expect(isRenderableManifest(MANIFEST)).toBe(true);

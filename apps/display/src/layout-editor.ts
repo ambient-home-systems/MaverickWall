@@ -112,6 +112,10 @@ function boot(): void {
     widgets: Array.isArray(raw?.widgets) ? (raw.widgets as Widget[]) : [],
   });
 
+  // The viewport this screen last reported, for the "match screen" button.
+  // Editor-only, so it lives beside the state rather than in it.
+  let report: { readonly w: number; readonly h: number } | undefined;
+
   let state: LayoutState;
   try {
     const parsed = JSON.parse(mount.dataset['json'] ?? '{}') as {
@@ -122,7 +126,12 @@ function boot(): void {
       readonly calendars?: unknown;
       readonly readings?: unknown;
       readonly modules?: unknown;
+      readonly report?: { readonly w?: unknown; readonly h?: unknown };
     };
+    const r = parsed.report;
+    if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
+      report = { w: r.w, h: r.h };
+    }
     // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
     // are the per-orientation defaults when a canvas has no aspect yet.
     const portrait = canvasFrom(parsed.portrait, 0.5625);
@@ -205,6 +214,27 @@ function boot(): void {
     aspectSelect.appendChild(opt);
   }
 
+  // "Match screen" — set the active canvas's aspect to this screen's real
+  // reported size, for the orientation being edited. Only a paired screen that
+  // has checked in reports one; the shared Default has no single size to match.
+  const matchButton = document.createElement('button');
+  matchButton.type = 'button';
+  matchButton.className = 'le-add';
+  if (report !== undefined) {
+    const big = Math.max(report.w, report.h);
+    const small = Math.min(report.w, report.h);
+    matchButton.textContent = `Match screen (${report.w}×${report.h})`;
+    matchButton.addEventListener('click', () => {
+      // Wide for landscape, tall for portrait, from the same reported pixels.
+      state.aspect = round3(state.orientation === 'landscape' ? big / small : small / big);
+      syncAspectSelect();
+      draw();
+      markDirty();
+    });
+  } else {
+    matchButton.style.display = 'none';
+  }
+
   const snapToggle = document.createElement('label');
   snapToggle.className = 'le-toggle';
   const snapInput = document.createElement('input');
@@ -239,7 +269,33 @@ function boot(): void {
   const status = document.createElement('span');
   status.className = 'le-status';
 
-  toolbar.append(onToggle, orientToggle, aspectSelect, snapToggle, palette, deleteButton, saveButton, status);
+  toolbar.append(onToggle, orientToggle, aspectSelect, matchButton, snapToggle, palette, deleteButton, saveButton, status);
+
+  /**
+   * Make the aspect dropdown reflect `state.aspect`: select a matching preset,
+   * or show a "Custom" option when a matched or hand-set aspect is not one of
+   * them (a real screen is rarely exactly 9:16). One stale custom option at
+   * most — it is rebuilt each call.
+   */
+  function syncAspectSelect(): void {
+    for (const opt of Array.from(aspectSelect.options)) {
+      if (opt.dataset['custom'] === '1') aspectSelect.removeChild(opt);
+    }
+    let matched = false;
+    for (const opt of Array.from(aspectSelect.options)) {
+      const on = Math.abs(Number(opt.value) - state.aspect) < 0.01;
+      opt.selected = on;
+      matched = matched || on;
+    }
+    if (!matched) {
+      const opt = document.createElement('option');
+      opt.value = String(state.aspect);
+      opt.textContent = `Custom (${round3(state.aspect)})`;
+      opt.dataset['custom'] = '1';
+      opt.selected = true;
+      aspectSelect.appendChild(opt);
+    }
+  }
 
   const stage = document.createElement('div');
   stage.className = 'le-stage';
@@ -1073,9 +1129,7 @@ function boot(): void {
     for (const key of ['portrait', 'landscape'] as const) {
       orientButtons[key].classList.toggle('is-on', key === which);
     }
-    for (const option of Array.from(aspectSelect.options)) {
-      option.selected = Math.abs(Number(option.value) - state.aspect) < 0.01;
-    }
+    syncAspectSelect();
     status.textContent = `Editing ${which}`;
     status.className = 'le-status';
     draw();

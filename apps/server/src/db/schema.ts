@@ -349,6 +349,17 @@ export const screens = sqliteTable(
     layoutLandscapeAspect: real('layout_landscape_aspect'),
 
     /**
+     * The viewport this screen last reported, in device pixels (RFC 005).
+     *
+     * The wall sends its `window.innerWidth`/`innerHeight` on each manifest poll,
+     * so the layout editor can offer "match this screen's real size" instead of
+     * only aspect presets. Null until a paired wall has checked in at least once;
+     * it is a convenience, never depended on to draw.
+     */
+    reportW: integer('report_w', { mode: 'number' }),
+    reportH: integer('report_h', { mode: 'number' }),
+
+    /**
      * Which layout to draw, regardless of what the browser reports.
      *
      * `auto` follows the viewport, which is right until it isn't: a panel in a
