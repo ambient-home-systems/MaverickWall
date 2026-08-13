@@ -1025,6 +1025,16 @@ export function renderFreeform(
       // The clock sizes itself to its box, and the image covers it — both fill
       // the box on their own and would only be fought by the scale-to-fit.
       box.appendChild(body);
+    } else if (widget.type === 'calendar') {
+      // The calendar fills its box: its rows stretch to the box height rather
+      // than keeping the rem-based natural height the stacked layout gives it.
+      // Scale-to-fit sized the whole month grid to ~30% of the wall (the height
+      // the design chose for it as one block among several), then dropped it
+      // into an 88%-tall freeform box — leaving two thirds of the box empty and
+      // the cells so small only a dot fit. Filling the box means a large
+      // calendar is a large calendar, with room for labelled event pills.
+      box.classList.add('fw-fill');
+      box.appendChild(contentWithTitle(body, widget.config));
     } else {
       /*
        * The calendar, weather, house and shift widgets reuse sections built

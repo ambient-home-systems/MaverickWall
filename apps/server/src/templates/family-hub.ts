@@ -15,7 +15,7 @@ export const template: DisplayTemplate = {
     widgets: [
       { type: 'clock', x: 0.05, y: 0.03, w: 0.5, h: 0.11 },
       { type: 'weather', x: 0.56, y: 0.03, w: 0.39, h: 0.13 },
-      { type: 'calendar', x: 0.05, y: 0.19, w: 0.9, h: 0.49 },
+      { type: 'calendar', x: 0.05, y: 0.19, w: 0.9, h: 0.49, config: { cellEvents: 'pills' } },
       { type: 'todo', x: 0.05, y: 0.7, w: 0.9, h: 0.27 },
     ],
     background: { type: 'gradient', from: '#0B0E11', to: '#171F29', angle: 160 },
@@ -26,7 +26,7 @@ export const template: DisplayTemplate = {
       { type: 'clock', x: 0.04, y: 0.06, w: 0.28, h: 0.17 },
       { type: 'weather', x: 0.04, y: 0.26, w: 0.28, h: 0.3 },
       { type: 'todo', x: 0.04, y: 0.6, w: 0.28, h: 0.34 },
-      { type: 'calendar', x: 0.35, y: 0.06, w: 0.61, h: 0.88 },
+      { type: 'calendar', x: 0.35, y: 0.06, w: 0.61, h: 0.88, config: { cellEvents: 'pills' } },
     ],
     background: { type: 'gradient', from: '#0B0E11', to: '#171F29', angle: 160 },
   },
