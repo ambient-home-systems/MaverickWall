@@ -14,6 +14,14 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Template calendars now fill their space and show event names. A month calendar
+placed in one of the built-in templates was drawing small in the top of its
+box, leaving it mostly empty, and showing only a dot on days with something on.
+It now stretches to fill the box, and busy days show the event names on
+labelled pills instead of dots.
+
 ## 0.24.0
 
 Build your wall exactly how you want it. This turns the display into a canvas

@@ -598,6 +598,32 @@ body {
 .hz-pill.allday { background: transparent; color: var(--ink); border-left: 0.28rem solid var(--pc); border-radius: 0 0.28rem 0.28rem 0; }
 .hz-pill-more { font-size: 1.05rem; color: var(--muted); padding-left: 0.42rem; }
 
+/*
+ * A calendar widget in a freeform box fills the box: its month rows (or week
+ * columns) stretch to the box height instead of keeping the rem-based natural
+ * height the stacked layout gives the grid — which left a tall box mostly empty
+ * and the cells too small for anything but a dot. The header row stays auto and
+ * the week rows share the rest as 1fr, so it fills whatever the month's shape
+ * (four to six weeks) turns out to be.
+ */
+/* The calendar body (or its title wrapper) grows to fill the box height. Only
+   the box and the title wrapper become flex columns; the sections keep their
+   own display (the month is a grid, the agenda is a grid) and merely stretch. */
+.fw-fill > .fw-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.fw-fill > .horizon, .fw-fill > .weekcols, .fw-fill > .next,
+.fw-fill > .fw-content > .horizon,
+.fw-fill > .fw-content > .weekcols,
+.fw-fill > .fw-content > .next { flex: 1 1 auto; min-height: 0; }
+/* The month's rows share the box height: header auto, weeks 1fr, so it fills
+   whatever a given month's four-to-six-week shape turns out to be. */
+.fw-fill .horizon { display: flex; flex-direction: column; }
+.fw-fill .horizon .hz-grid {
+  flex: 1 1 auto; min-height: 0; height: auto;
+  grid-template-rows: auto; grid-auto-rows: 1fr;
+}
+.fw-fill .hz-cell { min-height: 0; }
+.fw-fill .weekcols .wc-grid { height: 100%; }
+
 /* The week-columns mode: the current Mon–Sun week as vertical day columns. */
 .weekcols { min-height: 0; overflow: hidden; }
 .wc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.4rem; height: 100%; }
