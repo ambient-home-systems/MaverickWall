@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.25.0
 
 The wall has a new set of looks. The default dark theme now reads as a
 dashboard — the clock, the week ahead, the weather and the month each sit on
