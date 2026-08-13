@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.23.0
 
 The forecast now works anywhere in the world. Alongside the US National
 Weather Service, you can choose **Open-Meteo** — it covers the whole world and
