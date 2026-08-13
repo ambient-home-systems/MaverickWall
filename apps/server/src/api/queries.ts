@@ -345,6 +345,25 @@ export function deleteShiftType(db: SqliteDatabase, id: string): { ok: true } | 
   return { ok: true };
 }
 
+/** Nudge a person up or down in the order the wall lists them and the legend. */
+export function movePerson(db: SqliteDatabase, id: string, direction: 'up' | 'down'): void {
+  const rows = db
+    .prepare('SELECT id, sort_order AS sortOrder FROM people ORDER BY sort_order, name')
+    .all() as { id: string; sortOrder: number }[];
+  const index = rows.findIndex((r) => r.id === id);
+  if (index < 0) return;
+  const swapWith = direction === 'up' ? index - 1 : index + 1;
+  if (swapWith < 0 || swapWith >= rows.length) return;
+  const at = Date.now();
+  const a = rows[index]!;
+  const b = rows[swapWith]!;
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE people SET sort_order = ?, updated_at = ? WHERE id = ?').run(b.sortOrder, at, a.id);
+    db.prepare('UPDATE people SET sort_order = ?, updated_at = ? WHERE id = ?').run(a.sortOrder, at, b.id);
+  });
+  tx();
+}
+
 /** Nudge a type up or down in the order the wall lists them. */
 export function moveShiftType(db: SqliteDatabase, id: string, direction: 'up' | 'down'): void {
   const rows = db

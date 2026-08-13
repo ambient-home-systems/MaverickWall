@@ -746,6 +746,28 @@ describe('people', () => {
     expect(body).toContain('&lt;script&gt;');
   });
 
+  it('reorders people, and the ends do not offer a move that goes nowhere', async () => {
+    const h = await harness();
+    await add(h, 'Mum');
+    await add(h, 'Dad');
+    const order = () =>
+      (h.db.prepare('SELECT name FROM people ORDER BY sort_order, name').all() as { name: string }[]).map(
+        (r) => r.name,
+      );
+    expect(order()).toEqual(['Mum', 'Dad']);
+
+    const dad = h.db.prepare("SELECT id FROM people WHERE name = 'Dad'").get() as { id: string };
+    expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
+    expect(order()).toEqual(['Dad', 'Mum']);
+
+    // Dad is first now, so his card offers no "up"; a move that would fall off
+    // the end is a no-op rather than an error.
+    const body = await (await h.call('/admin/people')).text();
+    expect(body).toContain('↓ Down');
+    expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
+    expect(order()).toEqual(['Dad', 'Mum']);
+  });
+
   it('assigns a calendar to a person and back to everyone', async () => {
     const h = await harness();
     await add(h, 'Sam');

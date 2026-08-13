@@ -3,6 +3,7 @@ import { addCalendarSource } from '../api/sources.js';
 import {
   createPerson,
   deletePerson,
+  movePerson,
   deleteShiftPlan,
   deleteSource,
   readShiftPlans,
@@ -1091,6 +1092,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.redirect('/admin/people', 302);
   });
 
+  app.post('/admin/people/:id/move', async (c: Context) => {
+    const dir = String(((await c.req.parseBody()) as Record<string, unknown>)['dir'] ?? '');
+    movePerson(deps.db, c.req.param('id') ?? '', dir === 'up' ? 'up' : 'down');
+    return c.redirect('/admin/people', 302);
+  });
+
   app.get('/admin/people/:id/delete', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const person = readPeopleAdmin(deps.db).find((candidate) => candidate.id === id);
@@ -1998,7 +2005,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function peoplePage(error?: string, suggestion?: string): string {
     const people = readPeopleAdmin(deps.db);
 
-    const card = (person: PersonRecord): string =>
+    const card = (person: PersonRecord, first: boolean, last: boolean): string =>
       `<article class="card">` +
       `<h2>` +
       (person.avatarPath === null
@@ -2032,8 +2039,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<button class="secondary" type="submit">` +
       `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
 
+      // Up/Down reorder the wall's legend and its shift order; the ends drop
+      // the button that would do nothing, the way the shift-type card does.
+      `<div class="row">` +
+      (first
+        ? ''
+        : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
+          `<input type="hidden" name="dir" value="up">` +
+          `<button class="secondary" type="submit">↑ Up</button></form>`) +
+      (last
+        ? ''
+        : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
+          `<input type="hidden" name="dir" value="down">` +
+          `<button class="secondary" type="submit">↓ Down</button></form>`) +
       `<form method="get" action="admin/people/${encodeURIComponent(person.id)}/delete">` +
-      `<button class="secondary" type="submit">Remove</button></form>` +
+      `<button class="secondary" type="submit" style="margin-left:auto">Remove</button></form>` +
+      `</div>` +
       `</article>`;
 
     return page({
@@ -2047,7 +2068,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'their shifts, so pick ones that are easy to tell apart from across a room.',
       body:
         (error === undefined ? '' : errorBlock(error, suggestion)) +
-        people.map(card).join('') +
+        people.map((person, index) => card(person, index === 0, index === people.length - 1)).join('') +
         `<h2 class="add" id="add">Add someone</h2>` +
         `<form method="post" action="admin/people">` +
         `<div class="row-fields">` +
