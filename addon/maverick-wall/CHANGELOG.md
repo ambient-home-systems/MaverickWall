@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.22.0
 
 People now colour the calendar. Give a calendar an owner on the Calendars
 screen and their events take that person's colour everywhere on the wall — Mum
