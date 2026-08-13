@@ -14,6 +14,14 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Weather and the other panels are readable next to the calendar. In a template
+or layout box, a panel like the weather forecast was shrunk to a fraction of
+its type — an unreadable sliver beside a full-height calendar. Panels now keep
+their type at its intended size in the box, shrinking only when they genuinely
+do not fit.
+
 ## 0.24.3
 
 A display is one page now, not two tabs. Appearance and Layout were separate
