@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.24.2
 
 The layout editor reopens on the orientation you last edited. Portrait and
 landscape are each saved on their own, but the editor always opened on
