@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.24.1
 
 Template calendars now fill their space and show event names. A month calendar
 placed in one of the built-in templates was drawing small in the top of its
