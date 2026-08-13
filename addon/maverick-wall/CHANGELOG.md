@@ -14,6 +14,29 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Build your wall exactly how you want it. This turns the display into a canvas
+you arrange yourself.
+
+- **Start from a template.** Add a display and choose one of a dozen ready-made
+  layouts — two of them look like a Skylight family calendar — or start from a
+  blank canvas. Every one previews before you pick it.
+- **Arrange it yourself.** Drag anything to move it, pull a corner to resize, and
+  add a clock, calendar, weather, the house, a rota, notes, a to-do list, a
+  countdown or a picture. Portrait and landscape are arranged separately, and the
+  wall draws whichever way the screen is actually hung.
+- **Backgrounds.** Give a canvas a solid colour, a gradient, or a photo you
+  upload.
+- **More ways to show the calendar** — a month with colour-coded event labels, or
+  the week as day columns, as well as the grid you already have.
+- **Choose a 24-hour or 12-hour clock** on the Display settings.
+- Snap-to-grid, a layers list, and a "match this screen's size" button keep
+  arranging tidy.
+
+Everything a wall already showed stays exactly the same until you pick a template
+or start arranging.
+
 ## 0.23.0
 
 The forecast now works anywhere in the world. Alongside the US National
