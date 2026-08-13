@@ -83,6 +83,13 @@ const ASPECTS: readonly { readonly value: number; readonly label: string }[] = [
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 
+/**
+ * The snap grid: 24 steps across each axis (a fraction of the canvas, so it is
+ * the same relative grid at any resolution of the authored aspect). Fine enough
+ * to place things where you mean, coarse enough to line them up.
+ */
+const SNAP = 1 / 24;
+
 function labelFor(type: string): string {
   return PALETTE.find((p) => p.type === type)?.label ?? type;
 }
@@ -144,6 +151,11 @@ function boot(): void {
 
   let selected: string | undefined;
   let dirty = false;
+  // Snap to the grid while dragging. An editor affordance only — the stored
+  // coordinates stay fractional, so snapping changes where a widget lands, never
+  // how it is saved.
+  let snap = false;
+  const snapv = (n: number): number => (snap ? round3(Math.round(n / SNAP) * SNAP) : round3(n));
 
   // The live preview, once it has loaded. Until then the overlay draws with
   // labels, which is a fine fallback and the whole editor if the fetch fails.
@@ -193,6 +205,14 @@ function boot(): void {
     aspectSelect.appendChild(opt);
   }
 
+  const snapToggle = document.createElement('label');
+  snapToggle.className = 'le-toggle';
+  const snapInput = document.createElement('input');
+  snapInput.type = 'checkbox';
+  snapInput.checked = snap;
+  snapToggle.appendChild(snapInput);
+  snapToggle.appendChild(document.createTextNode(' Snap to grid'));
+
   const palette = document.createElement('div');
   palette.className = 'le-palette';
   for (const item of PALETTE) {
@@ -219,7 +239,7 @@ function boot(): void {
   const status = document.createElement('span');
   status.className = 'le-status';
 
-  toolbar.append(onToggle, orientToggle, aspectSelect, palette, deleteButton, saveButton, status);
+  toolbar.append(onToggle, orientToggle, aspectSelect, snapToggle, palette, deleteButton, saveButton, status);
 
   const stage = document.createElement('div');
   stage.className = 'le-stage';
@@ -241,12 +261,18 @@ function boot(): void {
     'Nothing is placed yet — add a widget above. Turning the layout on with an ' +
     'empty canvas keeps the stacked layout, so the wall is never blank.';
 
+  // The layers list — every widget, front on top, drag a row to restack, click
+  // to select. It replaces the per-widget send-to-back/bring-to-front buttons.
+  const layersPanel = document.createElement('div');
+  layersPanel.className = 'le-layers';
+  layersPanel.style.display = 'none';
+
   // The per-widget options, shown under the stage when a widget is selected.
   const configPanel = document.createElement('div');
   configPanel.className = 'le-config';
   configPanel.style.display = 'none';
 
-  mount.append(toolbar, stage, configPanel, hint);
+  mount.append(toolbar, stage, layersPanel, configPanel, hint);
 
   // ---- the live preview ------------------------------------------------
 
@@ -418,10 +444,102 @@ function boot(): void {
     box.style.height = `${widget.h * 100}%`;
   }
 
-  /** Everything: size the canvas, redraw the overlay, then the live preview. */
+  /**
+   * The layers list, front (highest z) first — the order the eye reads a stack,
+   * top of the list nearest the viewer. Drag a row by its grip to restack;
+   * click a row to select its widget on the canvas.
+   */
+  function drawLayers(): void {
+    layersPanel.textContent = '';
+    if (state.widgets.length === 0) {
+      layersPanel.style.display = 'none';
+      return;
+    }
+    layersPanel.style.display = '';
+    const heading = document.createElement('div');
+    heading.className = 'kick';
+    heading.textContent = 'Layers';
+    layersPanel.appendChild(heading);
+
+    for (const widget of [...state.widgets].sort((a, b) => b.z - a.z)) {
+      const row = document.createElement('div');
+      row.className = 'le-layer' + (widget.id === selected ? ' is-selected' : '');
+      row.dataset['id'] = widget.id;
+
+      const grip = document.createElement('span');
+      grip.className = 'le-layer-grip';
+      grip.textContent = '⋮⋮';
+      grip.addEventListener('pointerdown', (event) => startReorder(event, widget));
+
+      const name = document.createElement('span');
+      name.className = 'le-layer-name';
+      name.textContent = labelFor(widget.type);
+
+      row.append(grip, name);
+      row.addEventListener('click', () => {
+        selected = widget.id;
+        drawOverlay();
+        drawLayers();
+      });
+      layersPanel.appendChild(row);
+    }
+  }
+
+  /**
+   * Drag a layer row to restack. The dragged row follows the pointer; the row it
+   * is over decides the new order, and z is reassigned from the list on release
+   * so the canvas stacking matches the list. Pointer-based, like the canvas drag,
+   * for the same reason — a synthetic pointer and a drag that leaves the row.
+   */
+  function startReorder(event: PointerEvent, widget: Widget): void {
+    event.preventDefault();
+    event.stopPropagation();
+    // Front-first working order of ids.
+    let order = [...state.widgets].sort((a, b) => b.z - a.z).map((w) => w.id);
+
+    const move = (moveEvent: PointerEvent): void => {
+      const rows = Array.from(layersPanel.querySelectorAll<HTMLElement>('.le-layer'));
+      // Which row is the pointer over? Insert the dragged id before it.
+      let target = order.length;
+      for (let index = 0; index < rows.length; index++) {
+        const rect = rows[index]!.getBoundingClientRect();
+        if (moveEvent.clientY < rect.top + rect.height / 2) {
+          target = index;
+          break;
+        }
+      }
+      const from = order.indexOf(widget.id);
+      if (from === -1) return;
+      // Account for the removal shifting indices when moving downward.
+      const insertAt = target > from ? target - 1 : target;
+      if (insertAt === from) return;
+      order.splice(from, 1);
+      order.splice(insertAt, 0, widget.id);
+      // Reflect the tentative order live, so the list follows the pointer.
+      const byId = new Map(state.widgets.map((w) => [w.id, w]));
+      order = order.filter((id) => byId.has(id));
+      order.forEach((id, index) => {
+        const w = byId.get(id);
+        if (w !== undefined) w.z = order.length - 1 - index;
+      });
+      selected = widget.id;
+      drawLayers();
+    };
+    const up = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      draw();
+      markDirty();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  /** Everything: size the canvas, redraw the overlay and layers, then preview. */
   function draw(): void {
     sizeCanvas();
     drawOverlay();
+    drawLayers();
     renderPreview();
   }
 
@@ -500,27 +618,8 @@ function boot(): void {
     title.textContent = labelFor(widget.type) + ' options';
     configPanel.appendChild(title);
 
-    // Layering — where this widget sits against the others. Only meaningful
-    // once there is something to stack against.
-    if (state.widgets.length > 1) {
-      const layer = cfgField('Layer');
-      const row = document.createElement('div');
-      row.className = 'le-cfg-btns';
-      const back = document.createElement('button');
-      back.type = 'button';
-      back.className = 'le-cfg-btn';
-      back.textContent = 'Send to back';
-      back.addEventListener('click', () => restack(false));
-      const front = document.createElement('button');
-      front.type = 'button';
-      front.className = 'le-cfg-btn';
-      front.textContent = 'Bring to front';
-      front.addEventListener('click', () => restack(true));
-      row.append(back, front);
-      layer.appendChild(row);
-      configPanel.appendChild(layer);
-    }
-
+    // Layering moved to the Layers list below the canvas (drag a row to
+    // restack); the per-widget front/back buttons it replaces are gone.
     const cfg = widget.config ?? {};
     if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
     else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
@@ -855,6 +954,7 @@ function boot(): void {
     box.classList.add('is-selected');
     deleteButton.disabled = false;
     renderConfigPanel();
+    drawLayers();
 
     const rect = canvas.getBoundingClientRect();
     const startX = event.clientX;
@@ -873,11 +973,11 @@ function boot(): void {
       const dx = (moveEvent.clientX - startX) / rect.width;
       const dy = (moveEvent.clientY - startY) / rect.height;
       if (resizing) {
-        widget.w = round3(Math.min(1 - widget.x, Math.max(0.05, origin.w + dx)));
-        widget.h = round3(Math.min(1 - widget.y, Math.max(0.05, origin.h + dy)));
+        widget.w = snapv(Math.min(1 - widget.x, Math.max(0.05, origin.w + dx)));
+        widget.h = snapv(Math.min(1 - widget.y, Math.max(0.05, origin.h + dy)));
       } else {
-        widget.x = round3(clamp01(Math.min(1 - widget.w, origin.x + dx)));
-        widget.y = round3(clamp01(Math.min(1 - widget.h, origin.y + dy)));
+        widget.x = snapv(clamp01(Math.min(1 - widget.w, origin.x + dx)));
+        widget.y = snapv(clamp01(Math.min(1 - widget.h, origin.y + dy)));
       }
       positionBox(box, widget);
       markDirty();
@@ -918,16 +1018,6 @@ function boot(): void {
     markDirty();
   }
 
-  /** Change how the selected widget stacks against the others. */
-  function restack(toFront: boolean): void {
-    const widget = state.widgets.find((w) => w.id === selected);
-    if (widget === undefined) return;
-    const zs = state.widgets.map((w) => w.z);
-    widget.z = toFront ? Math.max(0, ...zs) + 1 : Math.min(0, ...zs) - 1;
-    draw();
-    markDirty();
-  }
-
   onInput.addEventListener('change', () => {
     state.mode = onInput.checked ? 'freeform' : 'auto';
     // The preview follows the switch: free-form draft on, stacked blocks off.
@@ -938,6 +1028,14 @@ function boot(): void {
     state.aspect = Number(aspectSelect.value) || 0.5625;
     draw();
     markDirty();
+  });
+  snapInput.addEventListener('change', () => {
+    snap = snapInput.checked;
+    // The grid is drawn on the overlay only while snapping, as a placement aid;
+    // it is not part of the wall. Sizes are a percentage of the canvas, so the
+    // lines fall exactly on the snap steps at any canvas size.
+    overlay.classList.toggle('is-snapping', snap);
+    overlay.style.backgroundSize = snap ? `${SNAP * 100}% ${SNAP * 100}%` : '';
   });
   // A pointer on the empty canvas clears the selection.
   overlay.addEventListener('pointerdown', () => {
