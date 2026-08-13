@@ -14,6 +14,17 @@
   saying nothing.
 -->
 
+## Unreleased
+
+A restart shows a "server is booting" page instead of a dead link. While the
+add-on starts up — after an update, or a reboot — the server was unreachable
+for a few seconds, so a screen or a browser opening a pairing link in that
+window just failed to connect, which looks like a broken box. A tiny holder now
+answers the port during startup with a clear, self-refreshing "Maverick Wall
+server is booting — your calendar will be back soon" page, and hands over to the
+real server the moment it is ready. Existing walls were already fine; this is
+for anyone who opens the page mid-restart.
+
 ## 0.24.4
 
 Weather and the other panels are readable next to the calendar. In a template
