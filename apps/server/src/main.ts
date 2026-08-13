@@ -14,6 +14,8 @@ import { createApp, MODULES } from './http/app.js';
 import { defaultDisplayDir } from './http/static.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createLogBuffer } from './logbuffer.js';
 import { applyStagedRestore } from './db/restore.js';
 import { createSetupTokenHolder } from './http/setup.js';
@@ -70,6 +72,54 @@ const APP_VERSION = env('MW_VERSION', '0.0.0').replace(/^v/, '');
  */
 const PUSH_TICK_MS = 5_000;
 
+/**
+ * Start the boot holder: a separate process that owns the port and serves a
+ * "booting" page while this process runs its (synchronous) migrations and
+ * setup. It has to be a separate process — a single event loop cannot answer a
+ * request while better-sqlite3 is mid-migration — and it is handed the port
+ * back just before we bind, so nothing proxies in steady state.
+ *
+ * Purely additive. If it cannot spawn or cannot bind (a leftover already on the
+ * port), it steps aside and boot proceeds exactly as it did before the holder
+ * existed — the real server's own bind is still the one that reports a conflict.
+ */
+function startBootHolder(port: number): ChildProcess | undefined {
+  try {
+    const holderPath = fileURLToPath(new URL('./boot-holder.js', import.meta.url));
+    const child = spawn(process.execPath, [holderPath, String(port)], { stdio: 'inherit' });
+    // A spawn error (binary missing, permissions) must never take down boot.
+    child.on('error', () => {});
+    return child;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Hand the port back from the holder, then wait for it to actually exit so the
+ * socket is free before we bind. `SIGTERM` first; `SIGKILL` after a grace so a
+ * holder that somehow will not close cannot leave us binding onto a held port
+ * (which would exit the process). Resolves only on the child's real `exit`.
+ */
+async function stopBootHolder(holder: ChildProcess | undefined): Promise<void> {
+  if (holder === undefined || holder.exitCode !== null || holder.killed) return;
+  await new Promise<void>((resolve) => {
+    holder.once('exit', () => resolve());
+    // Exited between the check above and attaching the listener: don't wait for
+    // an event that has already fired.
+    if (holder.exitCode !== null) return resolve();
+    holder.kill('SIGTERM');
+    const force = setTimeout(() => {
+      try {
+        holder.kill('SIGKILL');
+      } catch {
+        // Already gone.
+      }
+    }, 1_500);
+    force.unref();
+  });
+}
+
 async function main(): Promise<void> {
   const startedAt = Date.now();
   const dataDir = env('DATA_DIR', '/data');
@@ -84,6 +134,23 @@ async function main(): Promise<void> {
    */
   const log = createLogBuffer();
   log.capture();
+
+  // Hold the port with a "booting" page before anything blocking runs, so a
+  // screen or a browser arriving during a restart gets a clear, self-refreshing
+  // message instead of a connection refusal. Handed back just before we bind.
+  const bootHolder = startBootHolder(port);
+  if (bootHolder !== undefined) {
+    // Never leave the holder serving "booting" forever if this process exits
+    // before the handover — a fatal migration, a thrown boot. In a container
+    // the stop kills it anyway; this covers a bare process too.
+    process.once('exit', () => {
+      try {
+        bootHolder.kill('SIGKILL');
+      } catch {
+        // Already gone.
+      }
+    });
+  }
 
   /*
    * A staged restore is applied here, before anything opens the database.
@@ -356,6 +423,10 @@ async function main(): Promise<void> {
     console.log(`[boot] display bundle ${displayDir}`);
   }
 
+  // Take the port back from the holder and wait for it to release the socket,
+  // then bind the real server. A brief gap here (holder closed, not yet bound)
+  // is milliseconds against a multi-second boot.
+  await stopBootHolder(bootHolder);
   const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
 
   /*
