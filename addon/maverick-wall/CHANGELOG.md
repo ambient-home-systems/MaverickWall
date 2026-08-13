@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.24.0
 
 Build your wall exactly how you want it. This turns the display into a canvas
 you arrange yourself.

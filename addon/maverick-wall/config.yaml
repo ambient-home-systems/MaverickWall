@@ -11,7 +11,7 @@
 #     without it there is a beautiful settings page and nothing to look at.
 name: Maverick Wall
 slug: maverick_wall
-version: "0.23.0"
+version: "0.24.0"
 description: A family calendar for a wall display, with your Home Assistant calendars and sensors.
 url: https://github.com/ambient-home-systems/MaverickWall
 image: ghcr.io/ambient-home-systems/maverick-wall
