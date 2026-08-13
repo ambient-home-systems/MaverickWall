@@ -192,7 +192,11 @@ const widgetConfigBody = z
   .object({
     // Calendar
     calendars: z.array(z.string().max(64)).max(50).optional(),
-    mode: z.enum(['month', 'list']).optional(),
+    // month (grid), week (day columns), or list (agenda). RFC 005 added week.
+    mode: z.enum(['month', 'week', 'list']).optional(),
+    // How a month cell draws its events: quiet dots (default) or Skylight-style
+    // labelled pills. Absent means dots, so an existing wall is unchanged.
+    cellEvents: z.enum(['dots', 'pills']).optional(),
     count: z.number().int().min(1).max(50).optional(),
     showTimes: z.boolean().optional(),
     showLocations: z.boolean().optional(),

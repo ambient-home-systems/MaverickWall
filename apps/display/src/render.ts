@@ -339,7 +339,7 @@ function renderDayRow(day: DayModel): HTMLElement {
 
 /* ------------------------------------------------------------ HORIZON ---- */
 
-function renderCell(cell: HorizonCell): HTMLElement {
+function renderCell(cell: HorizonCell, pills = false): HTMLElement {
   const classes = ['hz-cell'];
   if (cell.isToday) classes.push('is-today');
   if (cell.isPast) classes.push('dim');
@@ -349,7 +349,21 @@ function renderCell(cell: HorizonCell): HTMLElement {
   paintShift(node, cell.shiftToken, cell.shiftColor);
   node.appendChild(el('div', 'hz-num', cell.dayNumber));
 
-  if (cell.eventCount > 0) {
+  if (pills) {
+    // Skylight-style: a coloured, labelled bar per event, in the owning
+    // calendar's colour (`--pc`). `el` uses textContent, so a stranger's title
+    // is drawn, never interpreted. Three fit a cell; the rest read as "+N".
+    if (cell.events.length > 0) {
+      const list = el('div', 'hz-pills');
+      for (const ev of cell.events.slice(0, 3)) {
+        const pill = el('div', ev.allDay ? 'hz-pill allday' : 'hz-pill', ev.title);
+        pill.style.setProperty('--pc', ev.color);
+        list.appendChild(pill);
+      }
+      if (cell.eventCount > 3) list.appendChild(el('div', 'hz-pill-more', `+${cell.eventCount - 3}`));
+      node.appendChild(list);
+    }
+  } else if (cell.eventCount > 0) {
     const dots = el('div', 'hz-dots');
     // Three at most. Beyond that the count stops being countable at a glance
     // and the cell only needs to read as "busy".
@@ -361,14 +375,15 @@ function renderCell(cell: HorizonCell): HTMLElement {
   return node;
 }
 
-function renderHorizon(model: DisplayModel): HTMLElement {
-  const horizon = el('section', 'horizon');
+function renderHorizon(model: DisplayModel, opts: { readonly pills?: boolean } = {}): HTMLElement {
+  const pills = opts.pills === true;
+  const horizon = el('section', pills ? 'horizon horizon-pills' : 'horizon');
   const grid = el('div', 'hz-grid');
   for (const name of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
     grid.appendChild(el('div', 'hz-head', name));
   }
   for (const week of model.horizon) {
-    for (const cell of week) grid.appendChild(renderCell(cell));
+    for (const cell of week) grid.appendChild(renderCell(cell, pills));
   }
   horizon.appendChild(grid);
 
@@ -726,21 +741,25 @@ function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
 }
 
 /**
- * The Calendar widget, in one of two modes.
+ * The Calendar widget, in one of three modes.
  *
- * `month` (the default) is the same grid the responsive layout draws. `list` is
- * an agenda of what is coming up, and the reason a widget has options at all:
- * it can be limited to some calendars (`calendars`, by source id — already in
- * the manifest, so filtering here leaks nothing) and to a number of events. A
+ * `month` (the default) is the same grid the responsive layout draws — with
+ * quiet dots, or Skylight-style event `pills` when `cellEvents: 'pills'`. `week`
+ * is the current Monday–Sunday week as vertical day columns. `list` is an agenda
+ * of what is coming up, and the reason a widget has options at all: it can be
+ * limited to some calendars (`calendars`, by source id — already in the
+ * manifest, so filtering here leaks nothing) and to a number of events. A
  * calendar the household did not select is simply not counted.
  */
 function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
   const c = widgetConfig(config);
+  const mode = c['mode'];
+  if (mode === 'week') return renderWeekColumns(model, config);
+  if (mode !== 'list') return renderHorizon(model, { pills: c['cellEvents'] === 'pills' });
+
   const calendars = configStrings(c['calendars']);
   const keep = (event: EventModel): boolean =>
     calendars.length === 0 || calendars.includes(event.sourceId);
-
-  if (c['mode'] !== 'list') return renderHorizon(model);
 
   const limit =
     typeof c['count'] === 'number' && c['count'] >= 1 ? Math.min(50, Math.trunc(c['count'])) : 12;
@@ -763,6 +782,41 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
     section.appendChild(renderDayRow({ ...day, events, hiddenEventCount: 0 }));
   }
   if (!any) section.appendChild(el('div', 'dr-empty', 'Nothing coming up.'));
+  return section;
+}
+
+/**
+ * The Calendar widget's `week` mode: the current week as vertical day columns.
+ *
+ * The first horizon week already starts on the Monday of the week containing
+ * today (`viewmodel.ts`), so it is exactly the Skylight-style seven columns —
+ * reused rather than re-derived, so a week and the month grid agree on which
+ * week is current. Each column headers its weekday and date and stacks its
+ * events as coloured pills; today's column is picked out and past days dimmed.
+ * The `calendars` filter is honoured, the same as the agenda mode.
+ */
+function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
+  const calendars = configStrings(widgetConfig(config)['calendars']);
+  const keep = (sourceId: string): boolean =>
+    calendars.length === 0 || calendars.includes(sourceId);
+
+  const week = model.horizon[0] ?? [];
+  const section = el('section', 'weekcols');
+  const grid = el('div', 'wc-grid');
+  for (const cell of week) {
+    const col = el('div', `wc-col${cell.isToday ? ' is-today' : ''}${cell.isPast ? ' dim' : ''}`);
+    const head = el('div', 'wc-head');
+    head.appendChild(el('span', 'wc-wd', cell.weekday));
+    head.appendChild(el('span', 'wc-num', cell.dayNumber));
+    col.appendChild(head);
+    for (const ev of cell.events.filter((e) => keep(e.sourceId))) {
+      const pill = el('div', ev.allDay ? 'wc-ev allday' : 'wc-ev', ev.title);
+      pill.style.setProperty('--pc', ev.color);
+      col.appendChild(pill);
+    }
+    grid.appendChild(col);
+  }
+  section.appendChild(grid);
   return section;
 }
 

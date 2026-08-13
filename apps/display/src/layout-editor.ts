@@ -652,29 +652,65 @@ function boot(): void {
   }
 
   function buildCalendarConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const currentMode = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : 'month';
     const modeField = cfgField('Show as');
     const modeSelect = document.createElement('select');
     for (const [value, label] of [
       ['month', 'Month grid'],
+      ['week', 'Week columns'],
       ['list', 'Upcoming list'],
     ] as const) {
       const opt = document.createElement('option');
       opt.value = value;
       opt.textContent = label;
-      if ((cfg['mode'] ?? 'month') === value) opt.selected = true;
+      if (currentMode === value) opt.selected = true;
       modeSelect.appendChild(opt);
     }
     modeSelect.addEventListener('change', () => {
       // 'month' is the default, so it is stored as an absence rather than a key.
-      setConfig(widget, 'mode', modeSelect.value === 'list' ? 'list' : undefined);
+      setConfig(widget, 'mode', modeSelect.value === 'month' ? undefined : modeSelect.value);
       renderConfigPanel();
     });
     modeField.appendChild(modeSelect);
     configPanel.appendChild(modeField);
 
-    // Filtering only means something for the list — the month grid is a whole
-    // month at a glance — so the options that would do nothing are not shown.
-    if ((cfg['mode'] ?? 'month') === 'list') {
+    // Month cells: quiet dots, or Skylight-style labelled event pills.
+    if (currentMode === 'month') {
+      const eventsField = cfgField('Events in a day');
+      eventsField.appendChild(
+        optionSelect(
+          [
+            ['dots', 'Dots'],
+            ['pills', 'Labelled pills'],
+          ],
+          cfg['cellEvents'] === 'pills' ? 'pills' : 'dots',
+          (value) => setConfig(widget, 'cellEvents', value === 'pills' ? 'pills' : undefined),
+        ),
+      );
+      configPanel.appendChild(eventsField);
+    }
+
+    // Which calendars to show — for the week columns and the agenda, where
+    // filtering means something; the month grid is a whole month at a glance.
+    if (currentMode === 'week') {
+      const which = cfgField('Calendars to show');
+      which.appendChild(
+        checkList(
+          state.calendars.map((c) => ({ value: c.id, label: c.name })),
+          Array.isArray(cfg['calendars']) ? (cfg['calendars'] as string[]) : [],
+          (values) => setConfig(widget, 'calendars', values),
+          'No calendars yet — add one on the Calendars screen.',
+        ),
+      );
+      configPanel.appendChild(which);
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'None ticked shows them all.';
+      configPanel.appendChild(note);
+    }
+
+    // Filtering plus a count for the list — the agenda.
+    if (currentMode === 'list') {
       const which = cfgField('Calendars to show');
       which.appendChild(
         checkList(
