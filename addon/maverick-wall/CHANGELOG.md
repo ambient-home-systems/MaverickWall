@@ -14,6 +14,13 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The layout editor reopens on the orientation you last edited. Portrait and
+landscape are each saved on their own, but the editor always opened on
+portrait — so after arranging landscape it looked like the change had been
+lost. It now reopens where you left it.
+
 ## 0.24.1
 
 Template calendars now fill their space and show event names. A month calendar
