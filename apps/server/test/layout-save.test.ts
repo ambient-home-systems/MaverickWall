@@ -203,6 +203,24 @@ describe('saving a layout', () => {
     }
   });
 
+  it('carries notes text and to-do items through to the manifest (RFC 005 palette)', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [
+        { id: 'n', type: 'notes', x: 0, y: 0, w: 0.9, h: 0.4, z: 0, config: { text: 'Grandma\nSunday' } },
+        { id: 't', type: 'todo', x: 0, y: 0.5, w: 0.9, h: 0.4, z: 1, config: { items: ['Milk', 'Dog'] } },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
+    const byType = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.type, w.config]));
+    expect(byType['notes']).toEqual({ text: 'Grandma\nSunday' });
+    expect(byType['todo']).toEqual({ items: ['Milk', 'Dog'] });
+  });
+
   it('rejects a background that is not a hex colour', async () => {
     const h = await harness();
     const res = await h.saveLayout({
@@ -260,6 +278,55 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(400);
     expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBe(0);
+  });
+});
+
+describe('saving each orientation on its own (RFC 005)', () => {
+  it('writes the orientation asked for, leaving the other canvas untouched', async () => {
+    const h = await harness();
+    // Portrait first (no orientation field defaults to portrait, back-compatible).
+    await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [{ id: 'p', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    // Then landscape explicitly.
+    await h.saveLayout({
+      mode: 'freeform', orientation: 'landscape', aspect: 1.7778,
+      widgets: [{ id: 'l', type: 'calendar', x: 0, y: 0, w: 1, h: 1, z: 0 }],
+    });
+
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as {
+      layout: {
+        portrait: { aspect: number; widgets: { type: string }[] };
+        landscape: { aspect: number; widgets: { type: string }[] };
+      };
+    };
+    expect(layout.layout.portrait.widgets.map((w) => w.type)).toEqual(['clock']);
+    expect(layout.layout.portrait.aspect).toBe(0.5625);
+    expect(layout.layout.landscape.widgets.map((w) => w.type)).toEqual(['calendar']);
+    expect(layout.layout.landscape.aspect).toBe(1.7778);
+
+    // Re-saving portrait must not disturb the landscape canvas.
+    await h.saveLayout({
+      mode: 'freeform', orientation: 'portrait', aspect: 0.5625,
+      widgets: [{ id: 'p2', type: 'weather', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    const after = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { portrait: { widgets: { type: string }[] }; landscape: { widgets: { type: string }[] } } };
+    expect(after.layout.portrait.widgets.map((w) => w.type)).toEqual(['weather']);
+    expect(after.layout.landscape.widgets.map((w) => w.type)).toEqual(['calendar']);
+  });
+
+  it('rejects an orientation it does not know (rule five)', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', orientation: 'sideways', aspect: 1,
+      widgets: [{ id: 'x', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    expect(res.status).toBe(400);
   });
 });
 

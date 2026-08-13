@@ -34,12 +34,23 @@ interface Widget {
   config?: Record<string, unknown>;
 }
 
+interface Canvas {
+  aspect: number;
+  widgets: Widget[];
+}
+
 interface LayoutState {
   /** The wall this canvas is for: a screen id, or null for the shared default. */
   screen: string | null;
   mode: 'auto' | 'freeform';
+  /** Which of the two canvases is being edited (RFC 005). */
+  orientation: 'portrait' | 'landscape';
+  // The active canvas is held flat as `aspect`/`widgets` so the whole editor
+  // reads and mutates it directly; the other canvas waits in `stash` and the two
+  // swap on the orientation toggle. Each is saved under its own orientation.
   aspect: number;
   widgets: Widget[];
+  stash: Canvas;
   /** The calendars that exist, for the Calendar widget's "which calendars". */
   calendars: readonly { readonly id: string; readonly name: string }[];
   /** The Home Assistant reading labels resolving now, for the HA widget picker. */
@@ -56,6 +67,8 @@ const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
   { type: 'homeassistant', label: 'Home Assistant' },
   { type: 'shift', label: 'Shift' },
   { type: 'countdown', label: 'Countdown' },
+  { type: 'notes', label: 'Notes' },
+  { type: 'todo', label: 'To-do' },
   { type: 'external', label: 'Module' },
 ];
 
@@ -83,21 +96,45 @@ function boot(): void {
   const mount = document.getElementById('layout-editor');
   if (mount === null) return;
 
+  interface RawCanvas {
+    readonly aspect?: unknown;
+    readonly widgets?: unknown;
+  }
+  const canvasFrom = (raw: RawCanvas | undefined, fallbackAspect: number): Canvas => ({
+    aspect: typeof raw?.aspect === 'number' && raw.aspect > 0 ? raw.aspect : fallbackAspect,
+    widgets: Array.isArray(raw?.widgets) ? (raw.widgets as Widget[]) : [],
+  });
+
   let state: LayoutState;
   try {
-    const parsed = JSON.parse(mount.dataset['json'] ?? '{}') as Partial<LayoutState>;
+    const parsed = JSON.parse(mount.dataset['json'] ?? '{}') as {
+      readonly screen?: unknown;
+      readonly mode?: unknown;
+      readonly portrait?: RawCanvas;
+      readonly landscape?: RawCanvas;
+      readonly calendars?: unknown;
+      readonly readings?: unknown;
+      readonly modules?: unknown;
+    };
+    // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
+    // are the per-orientation defaults when a canvas has no aspect yet.
+    const portrait = canvasFrom(parsed.portrait, 0.5625);
+    const landscape = canvasFrom(parsed.landscape, 1.7778);
     state = {
       screen: typeof parsed.screen === 'string' ? parsed.screen : null,
       mode: parsed.mode === 'freeform' ? 'freeform' : 'auto',
-      aspect: typeof parsed.aspect === 'number' && parsed.aspect > 0 ? parsed.aspect : 0.5625,
-      widgets: Array.isArray(parsed.widgets) ? (parsed.widgets as Widget[]) : [],
-      calendars: Array.isArray(parsed.calendars) ? parsed.calendars : [],
-      readings: Array.isArray(parsed.readings) ? parsed.readings : [],
-      modules: Array.isArray(parsed.modules) ? parsed.modules : [],
+      orientation: 'portrait',
+      aspect: portrait.aspect,
+      widgets: portrait.widgets,
+      stash: landscape,
+      calendars: Array.isArray(parsed.calendars) ? (parsed.calendars as LayoutState['calendars']) : [],
+      readings: Array.isArray(parsed.readings) ? (parsed.readings as string[]) : [],
+      modules: Array.isArray(parsed.modules) ? (parsed.modules as LayoutState['modules']) : [],
     };
   } catch {
     state = {
-      screen: null, mode: 'auto', aspect: 0.5625, widgets: [],
+      screen: null, mode: 'auto', orientation: 'portrait', aspect: 0.5625, widgets: [],
+      stash: { aspect: 1.7778, widgets: [] },
       calendars: [], readings: [], modules: [],
     };
   }
@@ -129,6 +166,22 @@ function boot(): void {
   onInput.checked = state.mode === 'freeform';
   onToggle.appendChild(onInput);
   onToggle.appendChild(document.createTextNode(' Use this layout on the wall'));
+
+  // Portrait | Landscape — which of the display's two canvases is being edited.
+  const orientToggle = document.createElement('div');
+  orientToggle.className = 'le-orient';
+  const orientButtons: Record<'portrait' | 'landscape', HTMLButtonElement> = {
+    portrait: document.createElement('button'),
+    landscape: document.createElement('button'),
+  };
+  for (const which of ['portrait', 'landscape'] as const) {
+    const button = orientButtons[which];
+    button.type = 'button';
+    button.textContent = which === 'portrait' ? 'Portrait' : 'Landscape';
+    button.className = 'le-orient-btn' + (state.orientation === which ? ' is-on' : '');
+    button.addEventListener('click', () => void switchOrientation(which));
+    orientToggle.appendChild(button);
+  }
 
   const aspectSelect = document.createElement('select');
   aspectSelect.className = 'le-aspect';
@@ -166,7 +219,7 @@ function boot(): void {
   const status = document.createElement('span');
   status.className = 'le-status';
 
-  toolbar.append(onToggle, aspectSelect, palette, deleteButton, saveButton, status);
+  toolbar.append(onToggle, orientToggle, aspectSelect, palette, deleteButton, saveButton, status);
 
   const stage = document.createElement('div');
   stage.className = 'le-stage';
@@ -473,6 +526,8 @@ function boot(): void {
     else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
     else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
     else if (widget.type === 'external') buildExternalConfig(widget, cfg);
+    else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
+    else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
     // Every widget gets the Format section — it is all box-level.
     buildFormatConfig(widget, cfg);
   }
@@ -525,6 +580,36 @@ function boot(): void {
     );
     dateField.appendChild(date);
     configPanel.appendChild(dateField);
+  }
+
+  function buildNotesConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const field = cfgField('Note');
+    const area = document.createElement('textarea');
+    area.rows = 5;
+    area.maxLength = 2000;
+    area.placeholder = 'Anything the wall should show — one line per line.';
+    area.value = typeof cfg['text'] === 'string' ? (cfg['text'] as string) : '';
+    area.addEventListener('input', () => setConfig(widget, 'text', area.value));
+    field.appendChild(area);
+    configPanel.appendChild(field);
+  }
+
+  function buildTodoConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const field = cfgField('Items (one per line)');
+    const area = document.createElement('textarea');
+    area.rows = 6;
+    area.maxLength = 4000;
+    area.placeholder = 'Pick up milk\nWalk the dog\nPut the bins out';
+    const items = Array.isArray(cfg['items']) ? (cfg['items'] as string[]) : [];
+    area.value = items.join('\n');
+    area.addEventListener('input', () => {
+      const lines = area.value.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+      // Cap to the schema's limit so a paste of a hundred lines is a clean 40,
+      // not a rejected save.
+      setConfig(widget, 'items', lines.slice(0, 40));
+    });
+    field.appendChild(area);
+    configPanel.appendChild(field);
   }
 
   function optionSelect(
@@ -863,56 +948,116 @@ function boot(): void {
   });
   window.addEventListener('resize', draw);
 
+  // ---- orientation ------------------------------------------------------
+
+  /**
+   * Swap the active canvas for the other orientation's.
+   *
+   * The canvas you leave is saved first if it has unsaved changes, so a
+   * household that arranges portrait, flips to landscape and arranges that loses
+   * neither — each orientation is its own row set on the server (RFC 005). The
+   * active canvas lives flat in `aspect`/`widgets`; the other waits in `stash`,
+   * and this is the one place they trade.
+   */
+  async function switchOrientation(which: 'portrait' | 'landscape'): Promise<void> {
+    if (which === state.orientation) return;
+    if (dirty) await postCanvas(state.orientation, state.aspect, state.widgets, false);
+
+    const leaving: Canvas = { aspect: state.aspect, widgets: state.widgets };
+    state.aspect = state.stash.aspect;
+    state.widgets = state.stash.widgets;
+    state.stash = leaving;
+    state.orientation = which;
+    selected = undefined;
+    dirty = false;
+
+    // Reflect the switch in the toolbar: the active button, and the aspect select.
+    for (const key of ['portrait', 'landscape'] as const) {
+      orientButtons[key].classList.toggle('is-on', key === which);
+    }
+    for (const option of Array.from(aspectSelect.options)) {
+      option.selected = Math.abs(Number(option.value) - state.aspect) < 0.01;
+    }
+    status.textContent = `Editing ${which}`;
+    status.className = 'le-status';
+    draw();
+  }
+
   // ---- save -------------------------------------------------------------
 
-  async function save(): Promise<void> {
-    saveButton.disabled = true;
-    status.textContent = 'Saving…';
-    status.className = 'le-status';
+  /** The widgets, sorted back-to-front and clamped, as the server wants them. */
+  function widgetsForSave(widgets: readonly Widget[]): unknown[] {
+    return [...widgets]
+      .sort((a, b) => a.z - b.z)
+      .map((w, index) => ({
+        id: w.id,
+        type: w.type,
+        x: round3(clamp01(w.x)),
+        y: round3(clamp01(w.y)),
+        w: round3(Math.max(0.05, Math.min(1, w.w))),
+        h: round3(Math.max(0.05, Math.min(1, w.h))),
+        z: index,
+        // Only when it holds something, so an untouched widget stores no config
+        // row and the server sees a clean absence rather than `{}`.
+        ...(w.config !== undefined && Object.keys(w.config).length > 0 ? { config: w.config } : {}),
+      }));
+  }
+
+  /**
+   * Save one orientation's canvas. `announce` shows the status line — the Save
+   * button announces; the auto-save on an orientation switch is quiet.
+   */
+  async function postCanvas(
+    orientation: 'portrait' | 'landscape',
+    aspect: number,
+    widgets: readonly Widget[],
+    announce = true,
+  ): Promise<boolean> {
+    if (announce) {
+      saveButton.disabled = true;
+      status.textContent = 'Saving…';
+      status.className = 'le-status';
+    }
     try {
       const response = await fetch('admin/layout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           screen: state.screen,
+          orientation,
           mode: state.mode,
-          aspect: round3(state.aspect),
-          // Saved back-to-front, so the stacking the household set in the
-          // editor is the stacking a wall draws — the interactive `z` was being
-          // discarded for insertion order before. Normalised to 0..n-1.
-          widgets: [...state.widgets]
-            .sort((a, b) => a.z - b.z)
-            .map((w, index) => ({
-            id: w.id,
-            type: w.type,
-            x: round3(clamp01(w.x)),
-            y: round3(clamp01(w.y)),
-            w: round3(Math.max(0.05, Math.min(1, w.w))),
-            h: round3(Math.max(0.05, Math.min(1, w.h))),
-            z: index,
-            // Only when it holds something, so an untouched widget stores no
-            // config row and the server sees a clean absence rather than `{}`.
-            ...(w.config !== undefined && Object.keys(w.config).length > 0
-              ? { config: w.config }
-              : {}),
-          })),
+          aspect: round3(aspect),
+          widgets: widgetsForSave(widgets),
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (response.ok) {
         dirty = false;
-        status.textContent = 'Saved. The wall updates within a minute.';
-        status.className = 'le-status is-ok';
-      } else {
+        if (announce) {
+          status.textContent = 'Saved. The wall updates within a minute.';
+          status.className = 'le-status is-ok';
+        }
+        return true;
+      }
+      if (announce) {
         status.textContent = body.message ?? 'That did not save.';
         status.className = 'le-status is-error';
       }
+      return false;
     } catch {
-      status.textContent = 'Could not reach the server.';
-      status.className = 'le-status is-error';
+      if (announce) {
+        status.textContent = 'Could not reach the server.';
+        status.className = 'le-status is-error';
+      }
+      return false;
     } finally {
-      saveButton.disabled = false;
+      if (announce) saveButton.disabled = false;
     }
+  }
+
+  /** The Save button: save the canvas being edited now. */
+  async function save(): Promise<void> {
+    await postCanvas(state.orientation, state.aspect, state.widgets);
   }
 
   window.addEventListener('beforeunload', (event) => {

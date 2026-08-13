@@ -459,6 +459,12 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-toggle input{width:17px;height:17px;accent-color:var(--accent)}
 .le-aspect{width:auto;padding:.42rem .6rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
+/* Portrait | Landscape segmented control — which of the two canvases is edited. */
+.le-orient{display:inline-flex;border:1px solid var(--rule);border-radius:7px;overflow:hidden}
+.le-orient-btn{margin:0;padding:.42rem .8rem;background:var(--panel2);color:var(--muted);
+  border:0;border-radius:0;font-family:var(--cond);font-weight:600;font-size:13px;cursor:pointer}
+.le-orient-btn+.le-orient-btn{border-left:1px solid var(--rule)}
+.le-orient-btn.is-on{background:var(--accent);color:#0b0e11}
 /* The palette sits inline in the toolbar (the display bundle builds it there),
    so it is a row of dashed add-chips rather than the mockup's side column. */
 .le-palette{display:flex;flex-wrap:wrap;gap:6px}
@@ -506,6 +512,9 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-cfg-field>span{display:block;font-family:var(--cond);font-weight:600;font-size:12px;
   letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
+.le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;
+  border:1px solid var(--rule);border-radius:8px;background:var(--panel2);color:var(--ink);
+  resize:vertical;line-height:1.4}
 .le-cfg-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:2px}
 .le-cfg-check{display:inline-flex;align-items:center;gap:.45rem;font-size:14px;
   color:var(--muted);cursor:pointer;margin:0}
