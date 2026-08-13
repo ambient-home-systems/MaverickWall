@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.24.4
 
 Weather and the other panels are readable next to the calendar. In a template
 or layout box, a panel like the weather forecast was shrunk to a fraction of
