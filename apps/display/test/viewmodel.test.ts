@@ -289,6 +289,38 @@ describe('the horizon', () => {
     expect(cells.find((cell) => cell.date === '2026-08-10')?.inMonth).toBe(false);
     expect(cells.find((cell) => cell.date === '2026-07-15')?.inMonth).toBe(true);
   });
+
+  it('carries a few of the day events on the cell, for the pills and week modes', () => {
+    // The month grid draws dots from `eventCount`, but the Skylight-style pills
+    // and the week columns draw the events themselves — so the cell has to carry
+    // them, with the colour and source the widget filters and paints by.
+    const built = model([
+      day('2026-07-15', [
+        event({ title: 'Soccer', startsAt: Date.parse('2026-07-15T15:00:00Z'), color: '#E8A33D' }),
+        event({ title: 'Dentist', startsAt: Date.parse('2026-07-15T09:00:00Z'), color: '#4C7FD1' }),
+      ]),
+    ]);
+    const cell = built.horizon.flat().find((c) => c.date === '2026-07-15');
+    expect(cell?.eventCount).toBe(2);
+    expect(cell?.events.map((e) => e.title)).toEqual(['Soccer', 'Dentist']);
+    expect(cell?.events[0]).toMatchObject({ color: '#E8A33D', sourceId: 'src-1', allDay: false });
+  });
+
+  it('caps the cell events at four while eventCount stays the true total', () => {
+    const many = Array.from({ length: 6 }, (_, i) =>
+      event({ title: `E${i}`, startsAt: Date.parse('2026-07-15T09:00:00Z') + i }),
+    );
+    const cell = model([day('2026-07-15', many)]).horizon.flat().find((c) => c.isToday);
+    expect(cell?.eventCount).toBe(6); // the "+N" and the dots read from this
+    expect(cell?.events).toHaveLength(4); // a column has room for a handful
+  });
+
+  it('gives each cell its weekday, for the week-columns header', () => {
+    const built = model([day('2026-07-15')]);
+    // 2026-07-13 is the Monday the grid starts on.
+    expect(built.horizon[0]?.[0]?.weekday).toBe('Mon');
+    expect(built.horizon.flat().find((c) => c.date === '2026-07-15')?.weekday).toBe('Wed');
+  });
 });
 
 describe('saying when it last heard from the server', () => {
