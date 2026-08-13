@@ -27,10 +27,11 @@ function event(partial: Partial<ManifestEvent> & { title: string; startsAt: numb
     endsAt: partial.startsAt + 3_600_000,
     allDay: partial.allDay ?? false,
     sourceId: 'src-1',
-    color: '#4C7FD1',
+    color: partial.color ?? '#4C7FD1',
     status: 'CONFIRMED',
     continues: partial.continues ?? false,
     ...(partial.location !== undefined ? { location: partial.location } : {}),
+    ...(partial.personId !== undefined ? { personId: partial.personId } : {}),
   };
 }
 
@@ -463,5 +464,44 @@ describe('text from somewhere else', () => {
     ]);
     expect(interrupt?.title).toBe('TornadoWarning');
     expect(interrupt?.headline).toBe('TAKE COVER NOW');
+  });
+});
+
+describe('people, for the legend and the per-event owner cue', () => {
+  const TODAY = '2026-07-15';
+
+  it('carries the household through, in order, with initials for a photoless face', () => {
+    const built = model([day(TODAY)], {
+      people: [
+        { id: 'p1', name: 'Mary Jane', color: '#22AA88', avatarUrl: null },
+        { id: 'p2', name: 'Sam', color: '#C86', avatarUrl: '/d/media/sam.png' },
+      ],
+    });
+    expect(built.people.map((p) => p.id)).toEqual(['p1', 'p2']);
+    expect(built.people[0]!.initials).toBe('MJ');
+    expect(built.people[1]!.initials).toBe('SA');
+    expect(built.people[1]!.avatarUrl).toBe('/d/media/sam.png');
+  });
+
+  it('resolves an owned event to its person, and leaves an unowned one alone', () => {
+    const built = model(
+      [
+        day(TODAY, [
+          event({ title: 'Owned', startsAt: NOON + 3_600_000, color: '#22AA88', personId: 'p1' }),
+          event({ title: 'Shared', startsAt: NOON + 7_200_000 }),
+        ]),
+      ],
+      { people: [{ id: 'p1', name: 'Mary', color: '#22AA88', avatarUrl: null }] },
+    );
+    const events = built.today?.events ?? [];
+    const owned = events.find((e) => e.title === 'Owned');
+    const shared = events.find((e) => e.title === 'Shared');
+    expect(owned?.owner?.name).toBe('Mary');
+    expect(owned?.owner?.initials).toBe('MA');
+    expect(shared?.owner).toBeUndefined();
+  });
+
+  it('empties the legend when nobody is defined, so the strip never draws', () => {
+    expect(model([day(TODAY)]).people).toEqual([]);
   });
 });

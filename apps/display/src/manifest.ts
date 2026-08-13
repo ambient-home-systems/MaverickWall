@@ -22,6 +22,8 @@ export interface ManifestEvent {
   readonly color: string;
   readonly status: string;
   readonly continues: boolean;
+  /** Whose event this is, when its calendar has an owner. Looked up in `people`. */
+  readonly personId?: string;
 }
 
 export interface ManifestShift {

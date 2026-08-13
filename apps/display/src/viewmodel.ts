@@ -1,4 +1,11 @@
-import type { CivilDate, Manifest, ManifestDay, ManifestEvent, ManifestShift } from './manifest.js';
+import type {
+  CivilDate,
+  Manifest,
+  ManifestDay,
+  ManifestEvent,
+  ManifestPerson,
+  ManifestShift,
+} from './manifest.js';
 export type { ManifestShift };
 
 /**
@@ -88,6 +95,26 @@ export interface EventModel {
   readonly isPast: boolean;
   /** The next one due. The only thing on the wall that is highlighted. */
   readonly isNext: boolean;
+  /**
+   * Whose event this is, when its calendar has an owner — the per-event cue.
+   * Absent for a shared ("Everyone") calendar. The colour is already the
+   * owner's (owner colour wins in the manifest), so this carries the face.
+   */
+  readonly owner: PersonModel | undefined;
+}
+
+/**
+ * A member of the household, for the legend that teaches the wall's colours and
+ * for the avatar on an owned event. One shape serves both so a face and a
+ * colour never disagree between the strip and the row it explains.
+ */
+export interface PersonModel {
+  readonly id: string;
+  readonly name: string;
+  /** One or two letters, the fallback when there is no photo. */
+  readonly initials: string;
+  readonly color: string;
+  readonly avatarUrl: string | undefined;
 }
 
 export interface ShiftModel {
@@ -159,6 +186,12 @@ export interface DisplayModel {
   readonly todayLabel: string;
   readonly clock: string;
   readonly today: DayModel | undefined;
+  /**
+   * The household, in their chosen order, for the legend strip that teaches
+   * which colour is whose. Empty when nobody is defined — then the wall draws
+   * no strip and reads exactly as it did before people existed.
+   */
+  readonly people: readonly PersonModel[];
   /** The badge: the single most important element on the wall. */
   readonly todayShift: ManifestShift | undefined;
   /** "Day 2 of 4 · 2 more", or undefined when there is no rota today. */
@@ -512,9 +545,32 @@ function eventTime(event: ManifestEvent, timezone: string): string {
   return localTime(event.startsAt, timezone);
 }
 
+/**
+ * One or two letters for a face with no photo. The first letter of the first
+ * two words, or the first two letters of a single-word name — "Sam" is "SA",
+ * "Mary Jane" is "MJ". Upper-cased, because a legend chip is not a sentence.
+ */
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter((word) => word.length > 0);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return (words[0]![0]! + words[1]![0]!).toUpperCase();
+}
+
+function toPerson(person: ManifestPerson): PersonModel {
+  return {
+    id: person.id,
+    name: person.name,
+    initials: initialsOf(person.name),
+    color: person.color,
+    avatarUrl: person.avatarUrl ?? undefined,
+  };
+}
+
 function toEvent(
   event: ManifestEvent,
   timezone: string,
+  people: ReadonlyMap<string, PersonModel>,
   marks: { isPast: boolean; isNext: boolean } = { isPast: false, isNext: false },
 ): EventModel {
   return {
@@ -528,6 +584,7 @@ function toEvent(
     continues: event.continues,
     isPast: marks.isPast,
     isNext: marks.isNext,
+    owner: event.personId !== undefined ? people.get(event.personId) : undefined,
   };
 }
 
@@ -538,13 +595,18 @@ function toEvent(
  * time to be next at, and highlighting it would push the actual next thing
  * down the page.
  */
-function markToday(events: readonly ManifestEvent[], now: number, timezone: string): EventModel[] {
+function markToday(
+  events: readonly ManifestEvent[],
+  now: number,
+  timezone: string,
+  people: ReadonlyMap<string, PersonModel>,
+): EventModel[] {
   let foundNext = false;
   return events.map((event) => {
     const past = !event.allDay && event.endsAt <= now;
     const isNext = !past && !event.allDay && !foundNext && event.startsAt > now;
     if (isNext) foundNext = true;
-    return toEvent(event, timezone, { isPast: past, isNext });
+    return toEvent(event, timezone, people, { isPast: past, isNext });
   });
 }
 
@@ -563,7 +625,13 @@ function toShift(shift: ManifestShift): ShiftModel {
   };
 }
 
-function toDay(day: ManifestDay, today: CivilDate, timezone: string, limit: number): DayModel {
+function toDay(
+  day: ManifestDay,
+  today: CivilDate,
+  timezone: string,
+  limit: number,
+  people: ReadonlyMap<string, PersonModel>,
+): DayModel {
   const { weekday, day: dayNumber, month } = parts(day.date, timezone);
   const shown = day.events.slice(0, limit);
   return {
@@ -574,7 +642,7 @@ function toDay(day: ManifestDay, today: CivilDate, timezone: string, limit: numb
     isToday: day.date === today,
     isPast: day.date < today,
     shifts: day.shifts.map(toShift),
-    events: shown.map((event) => toEvent(event, timezone)),
+    events: shown.map((event) => toEvent(event, timezone, people)),
     hiddenEventCount: day.events.length - shown.length,
   };
 }
@@ -627,6 +695,12 @@ export function buildModel(options: BuildOptions): DisplayModel {
   const horizonWeeks = bounded(chosen?.horizonWeeks, 1, 8, HORIZON_WEEKS);
   const blocks = resolveBlocks(chosen?.blocks);
 
+  // The household, once, for the legend strip and the per-event owner cue. The
+  // map is keyed by id so an event resolves its owner in one lookup; the list
+  // keeps the server's order for the strip.
+  const people = manifest.people.map(toPerson);
+  const peopleById = new Map(people.map((person) => [person.id, person]));
+
   const byDate = new Map<CivilDate, ManifestDay>();
   for (const day of manifest.days) byDate.set(day.date, day);
 
@@ -644,7 +718,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     const date = addDays(today, offset);
     if (date > manifest.window.to) break;
     const day = byDate.get(date) ?? { date, shifts: [], events: [] };
-    next.push(toDay(day, today, timezone, NEXT_EVENT_LIMIT));
+    next.push(toDay(day, today, timezone, NEXT_EVENT_LIMIT, peopleById));
   }
 
   // The horizon starts on the Monday of the week containing today, so the grid
@@ -708,9 +782,10 @@ export function buildModel(options: BuildOptions): DisplayModel {
       todayDay === undefined
         ? undefined
         : {
-            ...toDay(todayDay, today, timezone, todayLimit),
-            events: markToday(todayDay.events.slice(0, todayLimit), now, timezone),
+            ...toDay(todayDay, today, timezone, todayLimit, peopleById),
+            events: markToday(todayDay.events.slice(0, todayLimit), now, timezone, peopleById),
           },
+    people,
     todayShift: todayDay?.shifts[0],
     shiftRun: todayDay === undefined ? undefined : describeRun(byDate, today, timezone),
     next,

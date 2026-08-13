@@ -87,6 +87,11 @@ function renderNow(model: DisplayModel): HTMLElement {
 
   now.appendChild(top);
 
+  // The family, across the top of the calendar the way Skylight puts them —
+  // it teaches which colour is whose before the eye reaches the agenda below.
+  const strip = renderPeopleStrip(model);
+  if (strip !== undefined) now.appendChild(strip);
+
   const events = el('div', 'today-events');
   if (model.today === undefined || model.today.events.length === 0) {
     events.appendChild(el('div', 'dr-empty', 'Nothing scheduled today.'));
@@ -136,6 +141,39 @@ function shiftBadge(model: DisplayModel): HTMLElement | undefined {
   return badge;
 }
 
+/**
+ * The colour-and-face that marks whose event this is.
+ *
+ * Three cases, quietest to loudest: a plain colour dot for a calendar nobody
+ * owns (its own colour, so the agenda is still colour-coded); the owner's
+ * initials in their colour when they have no photo; the photo itself when they
+ * do. The colour is always `event.color`, which the manifest has already
+ * resolved to the owner's when the calendar has one — so the dot, the chip and
+ * the legend can never disagree about who is which colour.
+ *
+ * Same-origin and behind the display token, like the shift face — rule three,
+ * and the wall still draws with no internet.
+ */
+function ownerMark(event: EventModel, className: string): HTMLElement {
+  const owner = event.owner;
+  if (owner !== undefined && owner.avatarUrl !== undefined && owner.avatarUrl !== '') {
+    const image = document.createElement('img');
+    image.className = `${className} ev-face`;
+    image.src = owner.avatarUrl;
+    // Decorative: the title is right beside it and the legend names the face.
+    image.alt = '';
+    return image;
+  }
+  if (owner !== undefined) {
+    const chip = el('span', `${className} ev-initials`, owner.initials);
+    chip.style.setProperty('--ev', event.color);
+    return chip;
+  }
+  const dot = el('span', `${className} ev-dot`);
+  dot.style.setProperty('--ev', event.color);
+  return dot;
+}
+
 function renderTodayEvent(event: EventModel): HTMLElement {
   const classes = ['te'];
   if (event.isPast) classes.push('is-past');
@@ -143,12 +181,41 @@ function renderTodayEvent(event: EventModel): HTMLElement {
   const row = el('div', classes.join(' '));
   row.appendChild(el('div', 'te-time', event.allDay ? 'all day' : event.time));
 
-  const title = el('div', 'te-title', event.title);
+  const title = el('div', 'te-title');
+  title.appendChild(ownerMark(event, 'te-mark'));
+  title.appendChild(document.createTextNode(event.title));
   if (event.location !== undefined && event.location !== '') {
     title.appendChild(el('span', 'te-where', event.location));
   }
   row.appendChild(title);
   return row;
+}
+
+/**
+ * The legend that teaches the wall's colours: the household, each as a face or
+ * a colour dot and their name. Absent when nobody is defined, so a wall with no
+ * people reads exactly as it did before.
+ */
+function renderPeopleStrip(model: DisplayModel): HTMLElement | undefined {
+  if (model.people.length === 0) return undefined;
+  const strip = el('div', 'people-strip');
+  for (const person of model.people) {
+    const chip = el('div', 'person-chip');
+    if (person.avatarUrl !== undefined && person.avatarUrl !== '') {
+      const image = document.createElement('img');
+      image.className = 'pc-face';
+      image.src = person.avatarUrl;
+      image.alt = '';
+      chip.appendChild(image);
+    } else {
+      const dot = el('span', 'pc-dot');
+      dot.style.setProperty('--pc', person.color);
+      chip.appendChild(dot);
+    }
+    chip.appendChild(el('span', 'pc-name', person.name));
+    strip.appendChild(chip);
+  }
+  return strip;
 }
 
 /* ------------------------------------------------------------ WEATHER ---- */
@@ -256,7 +323,10 @@ function renderDayRow(day: DayModel): HTMLElement {
     for (const event of day.events) {
       const entry = el('div', event.allDay ? 'dr-ev allday' : 'dr-ev');
       if (!event.allDay) entry.appendChild(el('div', 'dr-ev-time', event.time));
-      entry.appendChild(el('div', 'dr-ev-title', event.title));
+      const title = el('div', 'dr-ev-title');
+      title.appendChild(ownerMark(event, 'dr-ev-mark'));
+      title.appendChild(document.createTextNode(event.title));
+      entry.appendChild(title);
       events.appendChild(entry);
     }
     if (day.hiddenEventCount > 0) {

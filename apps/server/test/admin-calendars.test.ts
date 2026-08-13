@@ -124,10 +124,11 @@ async function harness() {
   });
   await form('/setup/household', { timezone: 'Europe/London' });
 
-  const addFeed = async (name = 'Family'): Promise<string> => {
+  const addFeed = async (name = 'Family', personId?: string): Promise<string> => {
     const url = await icsServer();
     const response = await form('/admin/calendars', {
       name, url, allow_loopback: '1', allow_http: '1',
+      ...(personId !== undefined ? { person_id: personId } : {}),
     });
     expect(response.status).toBe(302);
     return url;
@@ -745,6 +746,28 @@ describe('people', () => {
     expect(body).toContain('&lt;script&gt;');
   });
 
+  it('reorders people, and the ends do not offer a move that goes nowhere', async () => {
+    const h = await harness();
+    await add(h, 'Mum');
+    await add(h, 'Dad');
+    const order = () =>
+      (h.db.prepare('SELECT name FROM people ORDER BY sort_order, name').all() as { name: string }[]).map(
+        (r) => r.name,
+      );
+    expect(order()).toEqual(['Mum', 'Dad']);
+
+    const dad = h.db.prepare("SELECT id FROM people WHERE name = 'Dad'").get() as { id: string };
+    expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
+    expect(order()).toEqual(['Dad', 'Mum']);
+
+    // Dad is first now, so his card offers no "up"; a move that would fall off
+    // the end is a no-op rather than an error.
+    const body = await (await h.call('/admin/people')).text();
+    expect(body).toContain('↓ Down');
+    expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
+    expect(order()).toEqual(['Dad', 'Mum']);
+  });
+
   it('assigns a calendar to a person and back to everyone', async () => {
     const h = await harness();
     await add(h, 'Sam');
@@ -763,6 +786,24 @@ describe('people', () => {
       name: 'Sam calendar', color: '#AA3311', person_id: '', enabled: '1',
     });
     expect(h.db.prepare('SELECT person_id AS p FROM calendar_sources').get()).toEqual({ p: null });
+  });
+
+  it('assigns the owner at add time, so it is not a second trip through settings', async () => {
+    const h = await harness();
+    await add(h, 'Sam');
+    const person = h.db.prepare('SELECT id FROM people').get() as { id: string };
+    await h.addFeed('Sam calendar', person.id);
+    expect(h.db.prepare('SELECT person_id AS p FROM calendar_sources').get()).toEqual({
+      p: person.id,
+    });
+  });
+
+  it('treats an owner who has since gone as Everyone rather than refusing the feed', async () => {
+    const h = await harness();
+    await h.addFeed('Orphan calendar', 'nobody-here');
+    expect(h.db.prepare('SELECT COUNT(*) AS n, person_id AS p FROM calendar_sources').get()).toEqual(
+      { n: 1, p: null },
+    );
   });
 
   it('turning a calendar off stops it reaching the wall', async () => {

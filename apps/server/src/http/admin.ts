@@ -3,6 +3,7 @@ import { addCalendarSource } from '../api/sources.js';
 import {
   createPerson,
   deletePerson,
+  movePerson,
   deleteShiftPlan,
   deleteSource,
   readShiftPlans,
@@ -85,6 +86,7 @@ import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '
 const feedBody = z.object({
   name: optionalText(80),
   url: text('An address', 2048),
+  person_id: optionalText(40),
   allow_lan: checkbox(),
   allow_loopback: checkbox(),
   allow_http: checkbox(),
@@ -784,9 +786,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // Nothing stored yet: this is the person checking their own work.
     if (testOnly) return c.html(calendarsPage(values, undefined, tested));
 
+    // Membership is a question for the database, not the schema. An owner who
+    // has since gone is treated as "Everyone" rather than rejected — losing the
+    // attribution is a smaller harm than refusing a valid feed.
+    const owner = shaped.value.person_id;
+    const personId =
+      owner !== undefined && readPeopleAdmin(deps.db).some((p) => p.id === owner) ? owner : null;
+
     const added = addCalendarSource(deps.db, deps.keyring, {
       name,
       url,
+      personId,
       allowPrivateNetwork,
       allowLoopback,
       allowHttp,
@@ -1079,6 +1089,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (!shaped.ok) return c.html(peoplePage(shaped.message), 400);
 
     updatePerson(deps.db, c.req.param('id') ?? '', shaped.value.name, shaped.value.color);
+    return c.redirect('/admin/people', 302);
+  });
+
+  app.post('/admin/people/:id/move', async (c: Context) => {
+    const dir = String(((await c.req.parseBody()) as Record<string, unknown>)['dir'] ?? '');
+    movePerson(deps.db, c.req.param('id') ?? '', dir === 'up' ? 'up' : 'down');
     return c.redirect('/admin/people', 302);
   });
 
@@ -1989,7 +2005,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function peoplePage(error?: string, suggestion?: string): string {
     const people = readPeopleAdmin(deps.db);
 
-    const card = (person: PersonRecord): string =>
+    const card = (person: PersonRecord, first: boolean, last: boolean): string =>
       `<article class="card">` +
       `<h2>` +
       (person.avatarPath === null
@@ -2023,8 +2039,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<button class="secondary" type="submit">` +
       `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
 
+      // Up/Down reorder the wall's legend and its shift order; the ends drop
+      // the button that would do nothing, the way the shift-type card does.
+      `<div class="row">` +
+      (first
+        ? ''
+        : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
+          `<input type="hidden" name="dir" value="up">` +
+          `<button class="secondary" type="submit">↑ Up</button></form>`) +
+      (last
+        ? ''
+        : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
+          `<input type="hidden" name="dir" value="down">` +
+          `<button class="secondary" type="submit">↓ Down</button></form>`) +
       `<form method="get" action="admin/people/${encodeURIComponent(person.id)}/delete">` +
-      `<button class="secondary" type="submit">Remove</button></form>` +
+      `<button class="secondary" type="submit" style="margin-left:auto">Remove</button></form>` +
+      `</div>` +
       `</article>`;
 
     return page({
@@ -2038,7 +2068,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'their shifts, so pick ones that are easy to tell apart from across a room.',
       body:
         (error === undefined ? '' : errorBlock(error, suggestion)) +
-        people.map(card).join('') +
+        people.map((person, index) => card(person, index === 0, index === people.length - 1)).join('') +
         `<h2 class="add" id="add">Add someone</h2>` +
         `<form method="post" action="admin/people">` +
         `<div class="row-fields">` +
@@ -2677,17 +2707,34 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="host">${escapeHtml(source.urlHost ?? 'unknown host')}</p>` +
       status +
 
-      `<form method="post" action="admin/calendars/${id}/settings">` +
-      `<div class="row-fields">` +
-      `<span><label for="n-${source.id}">Name</label>` +
-      `<input id="n-${source.id}" name="name" type="text" required ` +
-      `value="${escapeHtml(source.name)}"></span>` +
-      `<span><label for="c-${source.id}">Colour</label>` +
-      `<input id="c-${source.id}" name="color" type="color" ` +
-      `value="${escapeHtml(source.color)}"></span>` +
-      `<span><label for="p-${source.id}">Belongs to</label>` +
-      `<select id="p-${source.id}" name="person_id">${personOptions}</select></span>` +
-      `</div>` +
+      // When a calendar belongs to someone, their colour wins on the wall — so
+      // the picker becomes a dead control. Show it as owned rather than let a
+      // household set a colour that silently does nothing; the hidden field
+      // keeps the stored colour so it returns intact if they pick "Everyone".
+      (() => {
+        const owner =
+          source.personId === null ? null : (people.find((p) => p.id === source.personId) ?? null);
+        const colourField =
+          owner === null
+            ? `<span><label for="c-${source.id}">Colour</label>` +
+              `<input id="c-${source.id}" name="color" type="color" ` +
+              `value="${escapeHtml(source.color)}"></span>`
+            : `<span><label>Colour</label>` +
+              `<span class="owned-colour"><span class="swatch" ` +
+              `style="--swatch:${escapeHtml(owner.color)}"></span>Uses ${escapeHtml(owner.name)}’s colour</span>` +
+              `<input type="hidden" name="color" value="${escapeHtml(source.color)}"></span>`;
+        return (
+          `<form method="post" action="admin/calendars/${id}/settings">` +
+          `<div class="row-fields">` +
+          `<span><label for="n-${source.id}">Name</label>` +
+          `<input id="n-${source.id}" name="name" type="text" required ` +
+          `value="${escapeHtml(source.name)}"></span>` +
+          colourField +
+          `<span><label for="p-${source.id}">Belongs to</label>` +
+          `<select id="p-${source.id}" name="person_id">${personOptions}</select></span>` +
+          `</div>`
+        );
+      })() +
 
       `<div class="checks">` +
       `<label><input type="checkbox" name="enabled" value="1"` +
@@ -2782,6 +2829,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<input id="name" name="name" type="text" required placeholder="Family" value="${escapeHtml(values.name ?? '')}">` +
         `<label for="url">Address</label>` +
         `<input id="url" name="url" type="text" required placeholder="https://…/basic.ics" value="${escapeHtml(values.url ?? '')}">` +
+        // Owner is offered at add time only when there is someone to pick, so a
+        // household with no people never sees a control that does nothing.
+        (people.length === 0
+          ? ''
+          : `<label for="new-owner">Belongs to</label>` +
+            `<select id="new-owner" name="person_id">` +
+            `<option value="" selected>Everyone</option>` +
+            people
+              .map(
+                (person) =>
+                  `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
+              )
+              .join('') +
+            `</select>` +
+            `<p class="hint">When a calendar belongs to someone, its events take ` +
+            `their colour on the wall.</p>`) +
         `<div class="checks">` +
         box('allow_lan', 'This feed is on my local network', values.allowPrivateNetwork === true) +
         box('allow_loopback', 'This feed is on this machine', values.allowLoopback === true) +

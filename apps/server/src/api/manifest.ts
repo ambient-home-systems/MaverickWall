@@ -138,6 +138,12 @@ export interface ManifestEvent {
   readonly status: string;
   /** True when the event covers more than the day it is listed under. */
   readonly continues: boolean;
+  /**
+   * Whose event this is, when its calendar has an owner. The display looks the
+   * id up in `people` for the avatar and name — the per-event owner cue. Absent
+   * for an "Everyone" calendar, which belongs to nobody in particular.
+   */
+  readonly personId?: string;
 }
 
 export interface ManifestShift {
@@ -339,6 +345,12 @@ export interface SourceRow {
   readonly lastError: string | null;
   readonly consecutiveFailures: number;
   readonly eventCount: number;
+  /**
+   * Whose calendar this is, when it is one person's. When set, the person's
+   * colour wins over `color` above, so a household's "Mum is blue everywhere"
+   * holds across every event of hers — the whole point of assigning an owner.
+   */
+  readonly personId: string | null;
 }
 
 export interface HouseholdRow {
@@ -556,7 +568,28 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   const visible = new Set(
     input.sources.filter((source) => source.visible === 1).map((source) => source.id),
   );
-  const colours = new Map(input.sources.map((source) => [source.id, source.color]));
+  // Owner colour wins. A calendar that belongs to a person draws in that
+  // person's colour, not its own, so their events read the same everywhere —
+  // the wall's version of Skylight's colour-per-person. An owner whose colour
+  // cannot be resolved (a dangling id) falls back to the calendar's own colour
+  // rather than a grey nothing.
+  const personColour = new Map(input.people.map((person) => [person.id, person.color]));
+  // The owner of each source, but only when that owner still exists — a person
+  // removed after the calendar was assigned to them leaves a dangling id, and a
+  // dangling owner is no owner: the calendar keeps its own colour and attributes
+  // to nobody rather than shipping a stale id the wall cannot resolve.
+  const ownerOf = new Map(
+    input.sources.map((source) => [
+      source.id,
+      source.personId !== null && personColour.has(source.personId) ? source.personId : null,
+    ]),
+  );
+  const colours = new Map(
+    input.sources.map((source) => {
+      const owner = ownerOf.get(source.id);
+      return [source.id, owner != null ? personColour.get(owner)! : source.color];
+    }),
+  );
 
   const shiftEnabled = input.household.shiftEnabled === 1;
 
@@ -676,6 +709,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         color: colours.get(row.sourceId) ?? '#888888',
         status: row.status,
         continues: multiDay,
+        ...(ownerOf.get(row.sourceId) != null ? { personId: ownerOf.get(row.sourceId)! } : {}),
       });
       byDate.set(date, bucket);
     }

@@ -18,6 +18,8 @@ export interface AddSourceInput {
   readonly allowPrivateNetwork?: boolean;
   readonly allowLoopback?: boolean;
   readonly allowHttp?: boolean;
+  /** Whose calendar this is, set at add time. Null or absent means "Everyone". */
+  readonly personId?: string | null;
 }
 
 export type AddSourceResult =
@@ -52,14 +54,15 @@ export function addCalendarSource(
 
   db.prepare(
     `INSERT INTO calendar_sources
-       (id, name, url_encrypted, url_host, allow_private_network, allow_loopback,
+       (id, name, url_encrypted, url_host, person_id, allow_private_network, allow_loopback,
         allow_http, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.name,
     keyring.encrypt(input.url, 'calendar-source-url'),
     validated.value.hostname,
+    input.personId ?? null,
     input.allowPrivateNetwork === true ? 1 : 0,
     input.allowLoopback === true ? 1 : 0,
     input.allowHttp === true ? 1 : 0,

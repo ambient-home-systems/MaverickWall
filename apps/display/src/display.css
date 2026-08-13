@@ -373,6 +373,44 @@ body {
 }
 .te-title { font-size: 2.35rem; font-weight: 500; line-height: 1.18; }
 .te-where { color: var(--faint); font-size: 1.5rem; margin-left: 0.8rem; }
+
+/* --- people: the legend strip and the per-event owner cue ------------- */
+
+/*
+ * The family across the top of the calendar. Wraps rather than scrolls: a wall
+ * never gets a second interaction, so a household with more people than fit on
+ * one line gets two lines, not a clipped row.
+ */
+.people-strip {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 0.8rem 1.8rem;
+  padding-bottom: 0.4rem;
+}
+.person-chip { display: inline-flex; align-items: center; gap: 0.7rem; }
+.pc-name { font-size: 1.65rem; color: var(--muted); font-weight: 500; }
+.pc-dot { width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--pc); flex: 0 0 auto; }
+.pc-face {
+  width: 2.4rem; height: 2.4rem; border-radius: 50%;
+  object-fit: cover; flex: 0 0 auto;
+}
+
+/*
+ * The mark before an event title. `--ev` is the event's colour, which the
+ * server has already resolved to the owner's when the calendar has one, so the
+ * dot, the initials chip and the legend agree by construction.
+ */
+.ev-dot, .ev-initials, .ev-face { flex: 0 0 auto; }
+.te-mark, .dr-ev-mark { margin-right: 0.9rem; vertical-align: middle; }
+.ev-dot { display: inline-block; width: 1.15rem; height: 1.15rem; border-radius: 50%; background: var(--ev); }
+.ev-initials {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--ev); color: #fff;
+  font-weight: 700; line-height: 1;
+}
+.ev-face { display: inline-block; border-radius: 50%; object-fit: cover; }
+.te-mark.ev-initials, .te-mark.ev-face { width: 2rem; height: 2rem; font-size: 1.05rem; }
+.dr-ev-mark.ev-initials, .dr-ev-mark.ev-face { width: 1.7rem; height: 1.7rem; font-size: 0.95rem; }
+.dr-ev-mark.ev-dot { width: 1rem; height: 1rem; }
 /* The only highlight on the screen, so it has to mean something. */
 .te.is-next .te-title { color: var(--accent); font-weight: 700; }
 .te.is-next .te-time { color: var(--accent); }
