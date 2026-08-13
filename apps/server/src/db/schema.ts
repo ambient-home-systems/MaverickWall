@@ -60,6 +60,19 @@ export const householdSettings = sqliteTable('household_settings', {
   /** Feature switches. A household with no shift worker never sees any of it. */
   shiftEnabled: integer('shift_enabled', { mode: 'boolean' }).notNull().default(false),
   weatherEnabled: integer('weather_enabled', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * Which forecast provider draws the strip. `nws` is the US National Weather
+   * Service (the original, US-only); `openmeteo` is Open-Meteo, key-less and
+   * worldwide. Defaults to `nws` so an existing US wall is untouched. Alerts are
+   * a separate matter and stay NWS-only — Open-Meteo has no alert feed.
+   */
+  weatherProvider: text('weather_provider').notNull().default('nws'),
+  /**
+   * `imperial` (°F) or `metric` (°C). NWS answers in Fahrenheit regardless;
+   * this is what a worldwide provider is asked for. Defaults to `imperial` to
+   * match what NWS installs already show.
+   */
+  weatherUnits: text('weather_units').notNull().default('imperial'),
   alertsEnabled: integer('alerts_enabled', { mode: 'boolean' }).notNull().default(true),
 
   /**
@@ -558,11 +571,12 @@ export const calendarEventsCache = sqliteTable(
 export const people = sqliteTable('people', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  // Belt-and-suspenders: the form always sends a colour, so this default is
-  // never actually hit. Kept in step with the form's own default (blue) so the
-  // two do not contradict each other — no migration, because a dead column
-  // default is not worth a table recreate.
-  color: text('color').notNull().default('#4C7FD1'),
+  // The form always sends a colour, so this column default is never actually
+  // hit — the Add-someone form's blue #4C7FD1 is the real default a new person
+  // gets. This value is deliberately left as the migrations created it: changing
+  // a SQLite column default forces a table recreate, and a dead default is not
+  // worth one. The form is authoritative; do not "align" this without a reason.
+  color: text('color').notNull().default('#E8A33D'),
   /** Path under /data/media, never an external URL. */
   avatarPath: text('avatar_path'),
   sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),

@@ -896,19 +896,34 @@ export interface WeatherSettings {
   readonly enabled: boolean;
   readonly latitude: number | null;
   readonly longitude: number | null;
+  /** `nws` (US only) or `openmeteo` (worldwide, key-less). */
+  readonly provider: 'nws' | 'openmeteo';
+  /** `imperial` (°F) or `metric` (°C). */
+  readonly units: 'imperial' | 'metric';
 }
 
 export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
   const row = db
     .prepare(
-      `SELECT weather_enabled AS enabled, latitude, longitude
+      `SELECT weather_enabled AS enabled, latitude, longitude,
+              weather_provider AS provider, weather_units AS units
          FROM household_settings WHERE id = 'singleton'`,
     )
-    .get() as { enabled: number; latitude: number | null; longitude: number | null } | undefined;
+    .get() as
+    | {
+        enabled: number;
+        latitude: number | null;
+        longitude: number | null;
+        provider: string | null;
+        units: string | null;
+      }
+    | undefined;
   return {
     enabled: row?.enabled === 1,
     latitude: row?.latitude ?? null,
     longitude: row?.longitude ?? null,
+    provider: row?.provider === 'openmeteo' ? 'openmeteo' : 'nws',
+    units: row?.units === 'metric' ? 'metric' : 'imperial',
   };
 }
 
@@ -921,17 +936,31 @@ export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
  */
 export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettings): void {
   const previous = readWeatherSettings(db);
-  const moved =
-    previous.latitude !== settings.latitude || previous.longitude !== settings.longitude;
+  // Move, provider swap or a units change all make the cached forecast wrong —
+  // it is for the old place, the old service, or the old scale. Drop it so the
+  // wall never shows the previous answer while the new one is on its way.
+  const invalidated =
+    previous.latitude !== settings.latitude ||
+    previous.longitude !== settings.longitude ||
+    previous.provider !== settings.provider ||
+    previous.units !== settings.units;
 
   const write = db.transaction(() => {
     db.prepare(
       `UPDATE household_settings
-          SET weather_enabled = ?, latitude = ?, longitude = ?, updated_at = ?
+          SET weather_enabled = ?, latitude = ?, longitude = ?,
+              weather_provider = ?, weather_units = ?, updated_at = ?
         WHERE id = 'singleton'`,
-    ).run(settings.enabled ? 1 : 0, settings.latitude, settings.longitude, Date.now());
+    ).run(
+      settings.enabled ? 1 : 0,
+      settings.latitude,
+      settings.longitude,
+      settings.provider,
+      settings.units,
+      Date.now(),
+    );
 
-    if (moved) db.prepare('DELETE FROM weather_cache').run();
+    if (invalidated) db.prepare('DELETE FROM weather_cache').run();
 
     /*
      * Switching a module on puts its block on the wall.
