@@ -13,6 +13,7 @@ import { ago } from '../src/http/admin.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
+import { readWeatherSettings } from '../src/api/queries.js';
 
 /**
  * The Calendars screen, driven through the real app with a real feed.
@@ -718,6 +719,34 @@ describe('testing a feed before saving it', () => {
     });
     expect(response.status).toBe(302);
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM calendar_sources').get()).toEqual({ n: 1 });
+  });
+});
+
+describe('weather provider', () => {
+  it('saves the forecast provider and units, and shows both in the settings', async () => {
+    const h = await harness();
+    const response = await h.form('/admin/weather', {
+      weather_enabled: '1', latitude: '51.5074', longitude: '-0.1278',
+      weather_provider: 'openmeteo', weather_units: 'metric',
+    });
+    expect(response.status).toBe(302);
+
+    const w = readWeatherSettings(h.db);
+    expect(w.provider).toBe('openmeteo');
+    expect(w.units).toBe('metric');
+
+    const page = await (await h.call('/admin/alerts')).text();
+    expect(page).toContain('Open-Meteo (worldwide)');
+    expect(page).toContain('Celsius (°C)');
+    // The US-only warning is gone once a worldwide provider is chosen.
+    expect(page).not.toContain('covers the United States only');
+  });
+
+  it('defaults to NWS in imperial, the shipped behaviour', async () => {
+    const h = await harness();
+    const w = readWeatherSettings(h.db);
+    expect(w.provider).toBe('nws');
+    expect(w.units).toBe('imperial');
   });
 });
 

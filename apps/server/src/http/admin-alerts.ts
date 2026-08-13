@@ -17,6 +17,11 @@ const weatherBody = z.object({
   weather_enabled: checkbox(),
   latitude: optionalText(20),
   longitude: optionalText(20),
+  // A select always sends its value, so these are plain optional text with a
+  // safe fallback in the handler rather than a required enum that would reject
+  // an older form. Only the two known values are honoured.
+  weather_provider: optionalText(20),
+  weather_units: optionalText(20),
 });
 
 /**
@@ -89,6 +94,8 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       enabled: shaped.value.weather_enabled,
       latitude: lat.ok ? lat.value : null,
       longitude: lon.ok ? lon.value : null,
+      provider: shaped.value.weather_provider === 'openmeteo' ? 'openmeteo' : 'nws',
+      units: shaped.value.weather_units === 'metric' ? 'metric' : 'imperial',
     });
     return c.redirect('/admin/alerts', 302);
   });
@@ -136,6 +143,8 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       enabled: current.enabled,
       latitude: located.value.attributes.latitude,
       longitude: located.value.attributes.longitude,
+      provider: current.provider,
+      units: current.units,
     });
     return c.redirect('/admin/alerts', 302);
   });
@@ -146,13 +155,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const value = (n: number | null): string => (n === null ? '' : String(n));
     const haConnected = resolveConnection(deps.db, deps.keyring).ok;
     const located = weather.latitude !== null && weather.longitude !== null;
+    const providerName = weather.provider === 'openmeteo' ? 'Open-Meteo' : 'National Weather Service';
 
     // What the forecast is doing right now, so it is visibly working rather than
-    // a switch that may or may not have taken.
+    // a switch that may or may not have taken. Reads the active provider's own
+    // cache, so switching provider shows the new one filling in.
     let forecastBlock = '';
     const row = deps.db
-      .prepare(`SELECT payload, fetched_at AS fetchedAt FROM weather_cache WHERE cache_key = 'nws:forecast'`)
-      .get() as { payload: string; fetchedAt: number } | undefined;
+      .prepare(`SELECT payload, fetched_at AS fetchedAt FROM weather_cache WHERE cache_key = ?`)
+      .get(`${weather.provider}:forecast`) as { payload: string; fetchedAt: number } | undefined;
     if (row !== undefined) {
       try {
         const days = (JSON.parse(row.payload) as {
@@ -172,7 +183,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             .join('');
           forecastBlock =
             `<div class="preview"><h3>On the wall now</h3>` +
-            `<p class="host">National Weather Service · updated ${escapeHtml(ago(row.fetchedAt, now()))}</p>` +
+            `<p class="host">${escapeHtml(providerName)} · updated ${escapeHtml(ago(row.fetchedAt, now()))}</p>` +
             `<ul>${strip}</ul></div>`;
         }
       } catch {
@@ -204,6 +215,22 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       `</div>` +
       `<p class="hint">Press and hold your house in a phone map app to get both numbers. ` +
       `The alert zones below are worked out from the same location.</p>` +
+      `<div class="row-fields">` +
+      `<span><label for="weather_provider">Forecast from</label>` +
+      `<select id="weather_provider" name="weather_provider">` +
+      `<option value="nws"${weather.provider === 'nws' ? ' selected' : ''}>` +
+      `National Weather Service (US only)</option>` +
+      `<option value="openmeteo"${weather.provider === 'openmeteo' ? ' selected' : ''}>` +
+      `Open-Meteo (worldwide)</option>` +
+      `</select></span>` +
+      `<span><label for="weather_units">Units</label>` +
+      `<select id="weather_units" name="weather_units">` +
+      `<option value="imperial"${weather.units === 'imperial' ? ' selected' : ''}>Fahrenheit (°F)</option>` +
+      `<option value="metric"${weather.units === 'metric' ? ' selected' : ''}>Celsius (°C)</option>` +
+      `</select></span>` +
+      `</div>` +
+      `<p class="hint">The National Weather Service always reports in Fahrenheit; ` +
+      `the units choice applies to Open-Meteo.</p>` +
       `<button type="submit">Save</button></form>` +
 
       // The easy way, for the common install: read the location Home Assistant
@@ -216,11 +243,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           `home zone, so there are no numbers to look up.</p>`
         : '') +
 
-      errorBlock(
-        'The forecast comes from the US National Weather Service.',
-        'It covers the United States only. Elsewhere, leave this off — a second ' +
-          'provider is the obvious next module.',
-      )
+      (weather.provider === 'openmeteo'
+        ? `<p class="hint">Open-Meteo covers the whole world and needs no account ` +
+          `or key. Weather alerts, below, are still the US National Weather Service ` +
+          `only — Open-Meteo has no alert feed.</p>`
+        : errorBlock(
+            'The forecast comes from the US National Weather Service.',
+            'It covers the United States only. Outside the US, switch “Forecast from” ' +
+              'to Open-Meteo above.',
+          ))
     );
   }
 

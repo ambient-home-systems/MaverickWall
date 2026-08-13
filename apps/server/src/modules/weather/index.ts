@@ -2,6 +2,10 @@ import type { Signal } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 import { fetchForecast, resolveForecastUrl, type Forecast } from './nws.js';
+import {
+  fetchForecast as fetchOpenMeteo,
+  type Units,
+} from './open-meteo.js';
 import { alertSignals } from './alert-store.js';
 
 /**
@@ -18,28 +22,63 @@ import { alertSignals } from './alert-store.js';
 
 export const WEATHER_BLOCK = 'weather';
 
-/** Where the resolved gridpoint and the forecast live. */
-const FORECAST_KEY = 'nws:forecast';
+export type Provider = 'nws' | 'openmeteo';
+
+/**
+ * Where each provider's forecast lives, and the NWS gridpoint.
+ *
+ * The forecast key is namespaced by provider so switching from one to the other
+ * never reads the other's cached document — the wall shows the active
+ * provider's forecast or nothing, never a stale mix.
+ */
+const forecastKey = (provider: Provider): string => `${provider}:forecast`;
 const POINT_KEY = 'nws:point';
 
 interface HouseholdWeather {
   readonly enabled: boolean;
   readonly latitude: number | null;
   readonly longitude: number | null;
+  readonly provider: Provider;
+  readonly units: Units;
+  readonly timezone: string;
 }
 
 function settings(db: SqliteDatabase): HouseholdWeather {
   const row = db
     .prepare(
-      `SELECT weather_enabled AS enabled, latitude, longitude
+      `SELECT weather_enabled AS enabled, latitude, longitude,
+              weather_provider AS provider, weather_units AS units, timezone
          FROM household_settings WHERE id = 'singleton'`,
     )
-    .get() as { enabled: number; latitude: number | null; longitude: number | null } | undefined;
+    .get() as
+    | {
+        enabled: number;
+        latitude: number | null;
+        longitude: number | null;
+        provider: string | null;
+        units: string | null;
+        timezone: string | null;
+      }
+    | undefined;
   return {
     enabled: row?.enabled === 1,
     latitude: row?.latitude ?? null,
     longitude: row?.longitude ?? null,
+    // Anything but the two known providers falls back to NWS, the shipped
+    // default, rather than drawing nothing on a typo.
+    provider: row?.provider === 'openmeteo' ? 'openmeteo' : 'nws',
+    units: row?.units === 'metric' ? 'metric' : 'imperial',
+    timezone: row?.timezone ?? 'America/New_York',
   };
+}
+
+/** The household's local date, for labelling Open-Meteo's first day "Today". */
+function localToday(timezone: string, now: number): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(now);
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(now);
+  }
 }
 
 function readCache(db: SqliteDatabase, key: string): { payload: unknown; expiresAt: number | null } | undefined {
@@ -54,17 +93,24 @@ function readCache(db: SqliteDatabase, key: string): { payload: unknown; expires
   }
 }
 
-function writeCache(db: SqliteDatabase, key: string, payload: unknown, expiresAt: number | null, at: number): void {
+function writeCache(
+  db: SqliteDatabase,
+  provider: Provider,
+  key: string,
+  payload: unknown,
+  expiresAt: number | null,
+  at: number,
+): void {
   db.prepare(
     `INSERT INTO weather_cache (id, provider, cache_key, payload, fetched_at, expires_at)
-     VALUES (?, 'nws', ?, ?, ?, ?)
-     ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload,
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(cache_key) DO UPDATE SET provider = excluded.provider, payload = excluded.payload,
        fetched_at = excluded.fetched_at, expires_at = excluded.expires_at`,
-  ).run(key.replace(/[^a-z0-9]/gi, '').slice(0, 32), key, JSON.stringify(payload), at, expiresAt);
+  ).run(key.replace(/[^a-z0-9]/gi, '').slice(0, 32), provider, key, JSON.stringify(payload), at, expiresAt);
 }
 
 export interface WeatherPanel {
-  readonly provider: 'nws';
+  readonly provider: Provider;
   readonly days: Forecast['days'];
   readonly fetchedAt: number;
   /** Set when the last attempt failed, so the wall can say so quietly. */
@@ -83,7 +129,8 @@ export const weatherModule: PanelModule = {
   },
 
   contribute(context: ModuleContext): WeatherPanel | null {
-    const cached = readCache(context.db, FORECAST_KEY);
+    const provider = settings(context.db).provider;
+    const cached = readCache(context.db, forecastKey(provider));
     if (cached === undefined) return null;
 
     const forecast = cached.payload as Partial<Forecast>;
@@ -100,7 +147,7 @@ export const weatherModule: PanelModule = {
     const stale = age > 6 * 60 * 60_000;
 
     return {
-      provider: 'nws',
+      provider,
       days: forecast.days,
       fetchedAt: forecast.fetchedAt ?? 0,
       note: stale ? 'The forecast is more than six hours old.' : null,
@@ -131,6 +178,21 @@ export const weatherModule: PanelModule = {
 
       const at = { latitude: config.latitude, longitude: config.longitude };
 
+      // Open-Meteo is one request and needs no gridpoint; its own branch keeps
+      // the NWS two-step below untouched.
+      if (config.provider === 'openmeteo') {
+        const result = await fetchOpenMeteo(context.fetcher, at, {
+          units: config.units,
+          todayIso: localToday(config.timezone, context.now),
+          now: context.now,
+        });
+        // A failed refresh costs freshness, not the panel: the old forecast
+        // stays in place, the same as the NWS branch.
+        if (!result.ok) return;
+        writeCache(context.db, 'openmeteo', forecastKey('openmeteo'), result.forecast, result.expiresAt, context.now);
+        return;
+      }
+
       /*
        * The gridpoint is resolved once and kept.
        *
@@ -147,11 +209,11 @@ export const weatherModule: PanelModule = {
       if (forecastUrl === undefined) {
         const resolved = await resolveForecastUrl(context.fetcher, at);
         if (!('url' in resolved)) {
-          writeCache(context.db, FORECAST_KEY, { days: [], error: resolved.message }, null, context.now);
+          writeCache(context.db, 'nws', forecastKey('nws'), { days: [], error: resolved.message }, null, context.now);
           return;
         }
         forecastUrl = resolved.url;
-        writeCache(context.db, POINT_KEY, { key: pointKey, url: forecastUrl }, null, context.now);
+        writeCache(context.db, 'nws', POINT_KEY, { key: pointKey, url: forecastUrl }, null, context.now);
       }
 
       const result = await fetchForecast(context.fetcher, forecastUrl, context.now);
@@ -160,7 +222,7 @@ export const weatherModule: PanelModule = {
         // freshness, not the panel.
         return;
       }
-      writeCache(context.db, FORECAST_KEY, result.forecast, result.expiresAt, context.now);
+      writeCache(context.db, 'nws', forecastKey('nws'), result.forecast, result.expiresAt, context.now);
     },
   },
 };

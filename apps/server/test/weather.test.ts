@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { afterAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { foldPeriods, iconFor, parseForecast, pointsUrl } from '../src/modules/weather/nws.js';
+import { weatherModule, type WeatherPanel } from '../src/modules/weather/index.js';
 import { collectPanels, type PanelModule } from '../src/modules/registry.js';
+import { openDatabase } from '../src/db/open.js';
+import { runMigrations } from '../src/db/migrate.js';
 
 /**
  * Weather, against bytes the National Weather Service actually sent.
@@ -137,5 +141,67 @@ describe('the module seam', () => {
     expect(collectPanels(modules, context)).toEqual({
       fine: { v: 'ok' },
     });
+  });
+});
+
+describe('which provider draws the strip', () => {
+  const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+  const roots: string[] = [];
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  function db() {
+    const dataDir = mkdtempSync(join(tmpdir(), 'mw-wx-'));
+    roots.push(dataDir);
+    const { db } = openDatabase({ dataDir });
+    runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
+    db.prepare(
+      `INSERT INTO household_settings (id, latitude, longitude, weather_enabled, created_at, updated_at)
+       VALUES ('singleton', 51, 0, 1, ?, ?)`,
+    ).run(NOW, NOW);
+    return db;
+  }
+
+  const seed = (d: ReturnType<typeof db>, key: string, name: string): void => {
+    d.prepare(
+      `INSERT INTO weather_cache (id, provider, cache_key, payload, fetched_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, NULL)`,
+    ).run(
+      key.replace(/[^a-z0-9]/gi, ''),
+      key.split(':')[0],
+      key,
+      JSON.stringify({ days: [{ name, high: 20, low: 10, unit: '°C', summary: '', icon: '☁' }], fetchedAt: NOW }),
+      NOW,
+    );
+  };
+
+  const NOW = 1_800_000_000_000;
+  const contribute = (d: ReturnType<typeof db>): WeatherPanel | null =>
+    weatherModule.contribute?.({ db: d, fetcher: {} as never, keyring: {} as never, now: NOW, timezone: 'UTC' }) as
+      | WeatherPanel
+      | null;
+
+  it('reads the active provider’s own cache, never the other one’s', () => {
+    const d = db();
+    seed(d, 'nws:forecast', 'From NWS');
+    seed(d, 'openmeteo:forecast', 'From Open-Meteo');
+
+    // Default is NWS.
+    expect(contribute(d)?.provider).toBe('nws');
+    expect(contribute(d)?.days[0]?.name).toBe('From NWS');
+
+    d.prepare(`UPDATE household_settings SET weather_provider = 'openmeteo' WHERE id = 'singleton'`).run();
+    expect(contribute(d)?.provider).toBe('openmeteo');
+    expect(contribute(d)?.days[0]?.name).toBe('From Open-Meteo');
+  });
+
+  it('shows nothing rather than the wrong provider when its cache is empty', () => {
+    const d = db();
+    // Only NWS is cached, but the household switched to Open-Meteo: better an
+    // absent strip than yesterday's NWS forecast relabelled.
+    seed(d, 'nws:forecast', 'From NWS');
+    d.prepare(`UPDATE household_settings SET weather_provider = 'openmeteo' WHERE id = 'singleton'`).run();
+    expect(contribute(d)).toBeNull();
   });
 });
