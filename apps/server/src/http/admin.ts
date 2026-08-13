@@ -42,6 +42,7 @@ import {
   PAIRING_CODE_TTL_MS,
 } from '../auth/tokens.js';
 import type { IssuedToken } from '../auth/tokens.js';
+import type { DeviceFlowStore } from '../auth/device-flow.js';
 import { encodeQr, qrSvg } from './qr.js';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -149,6 +150,21 @@ const screenBody = z.object({
 
 /** Creating a screen asks for one thing; everything else follows the household. */
 const newScreenBody = z.object({ name: text('A name for the screen', 80) });
+
+/**
+ * Approving (or declining) a screen that started a device-authorization flow.
+ *
+ * The `code` is the short user code shown on the wall; the household reached
+ * this form either by scanning the screen's QR (which pre-fills it) or by typing
+ * it at the Screens page. `action` is which button they pressed. Everything is
+ * behind the session gate, which is the entire reason an 8-character code is
+ * safe here — see `auth/device-flow.ts`.
+ */
+const approveDeviceBody = z.object({
+  code: text('A pairing code', 32),
+  name: text('A name for the screen', 80),
+  action: oneOf('an action', ['approve', 'deny']),
+});
 
 /**
  * A saved free-form layout, as the editor posts it — JSON, not a form.
@@ -265,6 +281,13 @@ export interface AdminDeps {
    * LAN can reach.
    */
   readonly baseUrl: string;
+  /**
+   * The device-authorization pairing store, shared with the `/d/pair/*` routes
+   * in `app.ts`. The screen starts a flow there; the household approves it here,
+   * behind the session — which is the whole security model (an 8-character code
+   * is safe because approving it requires the login). See `auth/device-flow.ts`.
+   */
+  readonly deviceFlow: DeviceFlowStore;
   /**
    * What boot detected from the supervisor about the wall's own address — the
    * mapped port and a best-guess host. The Screens page pre-fills the pairing
@@ -1251,6 +1274,68 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // the new section rather than 404ing.
   app.get('/admin/screens', (c: Context) => c.redirect('/admin/displays', 302));
 
+  /**
+   * Approve (or decline) a screen waiting in a device-authorization flow.
+   *
+   * This is the household half of frictionless pairing (RFC 003 Phase 3): the
+   * screen began the flow at `/d/pair/device-start` and is polling; the QR it
+   * shows leads here with the code pre-filled, or the household types the code
+   * at the Screens page. Behind the session gate — which is what makes the short
+   * code safe, because approval is impossible without the login.
+   *
+   * Registered *before* `POST /admin/screens/:id` on purpose: `approve` would
+   * otherwise be swallowed as an `:id`, and the settings-save handler would
+   * answer instead. A static segment must be declared ahead of the param it
+   * would collide with.
+   */
+  app.get('/admin/screens/approve', (c: Context) => {
+    const code = c.req.query('code') ?? '';
+    const flow = deps.deviceFlow.lookupByUserCode(code, now());
+    if (flow === undefined || flow.state !== 'pending') {
+      return c.html(approveResultPage(
+        'Nothing to approve',
+        'That pairing code has expired or was already used. Start pairing again on ' +
+          'the screen, then approve the new code here.',
+      ), flow === undefined ? 404 : 409);
+    }
+    return c.html(approvePromptPage(flow.userCode));
+  });
+
+  app.post('/admin/screens/approve', async (c: Context) => {
+    const shaped = parse(approveDeviceBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(approveResultPage('That did not work', shaped.message), 400);
+    const { code, name, action } = shaped.value;
+    const at = now();
+
+    if (action === 'deny') {
+      deps.deviceFlow.deny(code, at);
+      return c.html(approveResultPage(
+        'Screen declined',
+        'That screen will not be paired. It is safe to close it, or start again.',
+      ));
+    }
+
+    // Issue the token first, then try to bind it to the still-pending flow.
+    // Binding before creating the screen row is what prevents an orphan: if the
+    // flow expired or was already approved (a double submit, or a scan racing a
+    // manual entry), `approve` returns false and no screen is ever written.
+    const issued = issueDisplayToken();
+    if (!deps.deviceFlow.approve(code, issued.token, name, at)) {
+      return c.html(approveResultPage(
+        'Nothing to approve',
+        'That pairing code has expired or was already used. Start pairing again on ' +
+          'the screen, then approve the new code here.',
+      ), 409);
+    }
+    const id = randomBytes(6).toString('hex');
+    createScreen(deps.db, id, name, pairingSecret(issued));
+    return c.html(approveResultPage(
+      `${escapeHtml(name)} is paired`,
+      'The screen will pick up its token on its next check, within a few seconds, ' +
+        'and start drawing. You can rename or remove it from the Screens page.',
+    ));
+  });
+
   app.post('/admin/screens/:id', async (c: Context) => {
     const id = c.req.param('id') ?? '';
     const body = (await c.req.parseBody()) as Record<string, unknown>;
@@ -2066,6 +2151,49 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `spends it. Or type this whole address on the screen instead:</p>` +
         `<p><span class="code">${escapeHtml(url)}</span></p>` +
         `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
+    });
+  }
+
+  /**
+   * The confirm page for a device-flow pairing: name the screen, approve or
+   * decline. Reached from the QR the screen shows (code pre-filled) or by typing
+   * the code at the Screens page. The code travels in a hidden field so the one
+   * form carries it to whichever button the household presses.
+   */
+  function approvePromptPage(userCode: string): string {
+    return page({
+      modules: navModules(deps.db),
+      title: 'Approve this screen',
+      nav: 'displays',
+      heading: 'A screen wants to pair',
+      intro:
+        'A screen on your network is asking to become a wall display. Give it a ' +
+        'name and approve it, or decline if you did not start this.',
+      body:
+        `<p class="hint">Pairing code from the screen: ` +
+        `<span class="code">${escapeHtml(formatShortCode(userCode))}</span></p>` +
+        `<form method="post" action="admin/screens/approve">` +
+        `<input type="hidden" name="code" value="${escapeHtml(userCode)}">` +
+        `<label for="approve-name">Name</label>` +
+        `<input id="approve-name" name="name" type="text" required maxlength="80" ` +
+        `value="New screen" placeholder="Kitchen">` +
+        `<p class="hint">This is how the screen shows up on the Screens page.</p>` +
+        `<button type="submit" name="action" value="approve">Approve</button> ` +
+        `<button class="secondary" type="submit" name="action" value="deny" ` +
+        `formnovalidate>Decline</button>` +
+        `</form>`,
+    });
+  }
+
+  /** A plain outcome page for the approve/decline actions. */
+  function approveResultPage(heading: string, message: string): string {
+    return page({
+      modules: navModules(deps.db),
+      title: heading,
+      nav: 'displays',
+      heading,
+      intro: message,
+      body: `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
     });
   }
 

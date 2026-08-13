@@ -10,6 +10,7 @@ import {
   DISPLAY_COOKIE_ATTRS,
   authenticateScreenToken,
 } from '../auth/screen-token.js';
+import { createDeviceFlowStore, type DeviceFlowStore } from '../auth/device-flow.js';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import {
   createAuth,
@@ -323,6 +324,29 @@ export function createApp(deps: AppDeps): Hono {
   };
 
   /*
+   * The device-authorization pairing store, and a separate rate limit on
+   * *starting* a flow. The poll route is deliberately not limited this way — a
+   * screen is meant to poll every few seconds, and the device code it polls with
+   * is 32 bytes, so there is nothing to guess. What an unauthenticated caller
+   * could abuse is `device-start`, by filling the pending map; that is what the
+   * per-address limit and the store's own `MAX_PENDING` ceiling bound together.
+   * Shared with the admin approve route through `AdminDeps` so both halves of
+   * one pairing see the same pending entry.
+   */
+  const deviceFlow: DeviceFlowStore = createDeviceFlowStore();
+  const deviceStartAttempts = new Map<string, { count: number; resetAt: number }>();
+  const deviceStartRateLimited = (address: string | undefined, at: number): boolean => {
+    const key = address ?? 'shared';
+    const bucket = deviceStartAttempts.get(key);
+    if (bucket === undefined || at > bucket.resetAt) {
+      deviceStartAttempts.set(key, { count: 1, resetAt: at + PAIR_WINDOW_MS });
+      return false;
+    }
+    bucket.count += 1;
+    return bucket.count > PAIR_MAX_ATTEMPTS;
+  };
+
+  /*
    * When to accept a Home Assistant login in place of ours. Off unless we are
    * an add-on, and pinned to the supervisor's socket address — see
    * `isTrustedIngress`. Read once, from the caller or the environment.
@@ -497,6 +521,12 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   const requireScreen = async (c: Context, next: Next): Promise<Response | void> => {
+    // The device-authorization pairing endpoints are the one part of `/d/*` a
+    // screen reaches *before* it holds a token — that is their whole purpose, so
+    // they cannot sit behind the paired-screen gate. Same path shape the session
+    // gate matches on, and un-prefixed under ingress for the same reason.
+    if (c.req.path.startsWith('/d/pair/')) return next();
+
     const screens = readScreens(deps.db);
     const screen = authenticateScreen(c, screens);
     if (!screen) {
@@ -825,6 +855,7 @@ export function createApp(deps: AppDeps): Hono {
     signOut: (c: Context) => authApi(c, '/api/auth/sign-out'),
     appVersion: deps.appVersion,
     baseUrl: deps.auth.baseUrl,
+    deviceFlow,
     ...(deps.wallAddress !== undefined ? { wallAddress: deps.wallAddress } : {}),
     previewManifest: (screenId?: string | null) => {
       // A named wall previews as itself — its zone, its density, its own
@@ -929,6 +960,85 @@ export function createApp(deps: AppDeps): Hono {
 
     c.header('set-cookie', displayCookie(issued.token, c));
     return c.json({ ok: true });
+  });
+
+  /*
+   * The origin a wall screen can actually reach, for a link the app puts in a
+   * QR. Identical reasoning to the admin pairing page: through ingress the
+   * request origin is an internal supervisor address a tablet cannot open, so
+   * the link comes from `base_url`; on the port the request origin is exactly
+   * what the household reached us on and is better than a possibly-default
+   * `base_url`. `device-start` is only ever hit on the port by the app, so in
+   * practice this is the request origin — but the ingress branch keeps it
+   * correct if it is ever reached the other way.
+   */
+  const reachableOrigin = (c: Context): string => {
+    const base = ingressPath(c) !== '' ? deps.auth.baseUrl : new URL(c.req.url).origin;
+    return base.replace(/\/+$/, '');
+  };
+
+  /*
+   * Device-authorization pairing — the frictionless flow (RFC 003 Phase 3).
+   *
+   * A screen with no keyboard begins here, shows the short user code and a QR of
+   * `verifyUrl`, and the household approves it from behind their session. See
+   * `auth/device-flow.ts` for why an 8-character code is safe: approval requires
+   * the login, so nobody on the LAN can approve a code they guessed.
+   *
+   * Open, like the rest of `/d/*`: the whole point is a fresh screen that holds
+   * no credential yet. The token is never handed out here — only once the
+   * household has approved, and only to the holder of the 32-byte device code.
+   */
+  app.post('/d/pair/device-start', (c: Context) => {
+    if (deviceStartRateLimited(clientAddress(c), now())) {
+      return c.json(
+        { error: 'rate-limited', message: 'Too many pairing attempts. Wait a few minutes.' },
+        429,
+      );
+    }
+    const started = deviceFlow.start(now());
+    // The store is full of live pending flows — vanishingly rare for a
+    // household, and it clears itself as they expire. Ask the app to retry
+    // rather than fail the screen; polling and manual entry are both still there.
+    if (started === undefined) {
+      return c.json(
+        { error: 'busy', message: 'Too many screens are pairing right now. Try again shortly.' },
+        503,
+      );
+    }
+    // The household approves at the Screens page; the code is pre-filled so a
+    // scanned QR lands ready to confirm. Built with the display's own short-code
+    // spacing so the code on the wall and the code in the link read the same.
+    const origin = reachableOrigin(c);
+    const verifyUrl = `${origin}/admin/screens/approve?code=${encodeURIComponent(started.userCode)}`;
+    return c.json({
+      deviceCode: started.deviceCode,
+      userCode: started.userCode,
+      verifyUrl,
+      pollIntervalSec: started.pollIntervalSec,
+      expiresInSec: Math.max(0, Math.round((started.expiresAt - now()) / 1000)),
+    });
+  });
+
+  /*
+   * The screen's poll. Returns `pending` until the household acts, then
+   * `approved` with the token exactly once (the store consumes it), or
+   * `denied` / `expired`. On approval the screen hands the token to its WebView
+   * via `/pair?token=…`, reusing the same cookie exchange every other pairing
+   * ends with — so nothing downstream can tell a device-flow screen from a
+   * QR-paired one.
+   *
+   * Not behind the start route's rate limit: a screen is supposed to poll
+   * steadily, and the 32-byte device code is not a guessing target.
+   */
+  app.post('/d/pair/device-poll', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(text('A device code', 200), body['deviceCode']);
+    if (!shaped.ok) {
+      return c.json({ error: 'missing-device-code', message: 'No device code in the request.' }, 400);
+    }
+    const result = deviceFlow.poll(shaped.value, now());
+    return c.json(result);
   });
 
   /**

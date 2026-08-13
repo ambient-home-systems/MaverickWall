@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 
 /**
  * Display tokens.
@@ -58,6 +58,30 @@ function shortCodeFrom(token: string): string {
 export function issueDisplayToken(): IssuedToken {
   const token = randomBytes(TOKEN_BYTES).toString('base64url');
   return { token, tokenHash: hashToken(token), shortCode: shortCodeFrom(token) };
+}
+
+/**
+ * A fresh short code that is *not* derived from any token.
+ *
+ * The screen pairing code above is derived from the display token, because the
+ * two are minted together and only one secret should be storable. The
+ * device-authorization flow is the other shape: the short "user code" a
+ * household approves exists *before* any token — the token is only issued once
+ * they approve — so it is generated independently here.
+ *
+ * `randomInt` gives a uniform draw over the alphabet with no modulo bias; the
+ * bias in `shortCodeFrom`'s `% length` is harmless because that code is a
+ * one-way function of an already-random token, whereas this one *is* the
+ * secret. Its low entropy (~38 bits) is not the defence anyway — a device code
+ * can only be approved from behind the household session, so nobody on the LAN
+ * can search the space. See `device-flow.ts`.
+ */
+export function randomUserCode(): string {
+  let code = '';
+  for (let i = 0; i < SHORT_CODE_LENGTH; i++) {
+    code += SHORT_CODE_ALPHABET[randomInt(0, SHORT_CODE_ALPHABET.length)];
+  }
+  return code;
 }
 
 /**

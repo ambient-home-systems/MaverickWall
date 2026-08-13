@@ -376,18 +376,26 @@ Per the repo's own doctrine — prefer tests that touch something real:
 
 ## Phasing
 
-- **Phase 0 — Server socket + mDNS + TLS-behind-proxy.** Build the WebSocket
-  server, the mDNS advertiser, and `X-Forwarded-Proto` trust, each with
+- **Phase 0 — Server socket + mDNS + TLS-behind-proxy. ✅ shipped.** The
+  WebSocket server, the mDNS advertiser, and `X-Forwarded-Proto` trust, each with
   real-connection tests. Nothing app-side depends on a stub.
-- **Phase 1 — Kiosk shell MVP.** WebView loads the server; keep-awake,
-  boot-start, lock-task, the native "connecting…" fallback. Pairs via the
-  existing admin-created screen link. A usable wall on day one.
-- **Phase 2 — Wake + remote + HTTPS pinning.** `PushService` socket client,
-  `wakeScreen`/`piercesNightMode` handling, D-pad OK → acknowledge, and
-  trust-on-pairing cert pinning with a `wss://` socket that follows the page
-  scheme.
-- **Phase 3 — Frictionless pairing.** mDNS discovery + device-authorization flow
-  + QR, LAN-only.
+- **Phase 1 — Kiosk shell MVP. ✅ shipped.** WebView loads the server; keep-awake,
+  boot-start, lock-task, the native "connecting…" fallback. A usable wall on day
+  one.
+- **Phase 2 — Wake + remote + HTTPS pinning. ✅ shipped.** `PushService` socket
+  client, `wakeScreen`/`piercesNightMode` handling, D-pad OK → acknowledge, and
+  trust-on-pairing cert pinning.
+- **Phase 3 — Frictionless pairing. ✅ built.** mDNS discovery + device-authorization
+  flow + QR, LAN-only. Server: `/d/pair/device-start`, `/d/pair/device-poll` and
+  the session-gated `/admin/screens/approve`, with the in-memory device-flow store
+  (`auth/device-flow.ts`) and an end-to-end test that drives a session-less screen
+  and a signed-in household at once (`test/device-flow.test.ts`). App:
+  `net/ServerFinder.kt` (NsdManager), `pairing/DeviceFlow.kt` +
+  `pairing/PairingActivity.kt` (start → code + QR → poll → `/pair?token=`),
+  `pairing/QrCode.kt` (offline ZXing). The security property that carries it: the
+  8-character user code is only ever approvable from behind the household login,
+  so a LAN attacker with the code can approve nothing. Still unproven on real
+  hardware — a TV cold-pairing from the QR is the check that counts.
 - **Phase 4 — Distribution & polish.** Signed APK on GitHub releases
   (sideload-first, matching the self-hosted ethos), TV banner art, device-owner
   kiosk docs; Play Store / TV listing considered later.

@@ -55,6 +55,16 @@ class KioskActivity : AppCompatActivity() {
     private var triedCache = false
     private var healthJob: Job? = null
 
+    /**
+     * A one-shot pairing token from the device-flow, consumed on the first load.
+     *
+     * When the app paired the screen itself (Phase 3), the very first navigation
+     * goes to `/pair?token=…` so the server sets the display cookie and redirects
+     * to the wall — after which the cookie carries it and this is never used
+     * again. Null on every ordinary boot, where the cookie already exists.
+     */
+    private var pendingPairToken: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -67,6 +77,7 @@ class KioskActivity : AppCompatActivity() {
             return
         }
         baseUrl = configured
+        pendingPairToken = intent.getStringExtra(EXTRA_PAIR_TOKEN)?.takeIf { it.isNotBlank() }
 
         // Keep the display awake and in the foreground for as long as it is
         // showing. FLAG_KEEP_SCREEN_ON is scoped to this window, so it lifts
@@ -176,7 +187,16 @@ class KioskActivity : AppCompatActivity() {
     private fun loadWall(useCache: Boolean) {
         webView.settings.cacheMode =
             if (useCache) WebSettings.LOAD_CACHE_ELSE_NETWORK else WebSettings.LOAD_DEFAULT
-        webView.loadUrl(baseUrl)
+        // A pairing token is spent on the first load only: exchange it for the
+        // cookie at `/pair`, which redirects to the wall. Cleared immediately so
+        // a retry or a cache pass loads the wall root, never re-pairs.
+        val token = pendingPairToken
+        if (token != null) {
+            pendingPairToken = null
+            webView.loadUrl("$baseUrl/pair?token=${android.net.Uri.encode(token)}")
+        } else {
+            webView.loadUrl(baseUrl)
+        }
     }
 
     private fun onLoadOk() {
@@ -334,5 +354,14 @@ class KioskActivity : AppCompatActivity() {
             webView.destroy()
         }
         super.onDestroy()
+    }
+
+    companion object {
+        /**
+         * A one-shot device-flow pairing token (Phase 3). When present, the wall
+         * loads `/pair?token=…` first to claim its cookie, then behaves exactly
+         * as an already-paired screen.
+         */
+        const val EXTRA_PAIR_TOKEN = "systems.ambienthome.maverickwall.PAIR_TOKEN"
     }
 }

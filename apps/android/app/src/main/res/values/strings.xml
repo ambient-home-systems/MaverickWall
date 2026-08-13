@@ -9,6 +9,18 @@
     <string name="setup_field_hint">192.168.1.10:8080</string>
     <string name="setup_error">That does not look like an address. Try something like 192.168.1.10:8080.</string>
     <string name="setup_save">Connect</string>
+    <string name="setup_found_label">Found on your network</string>
+    <string name="setup_or_type">Or type the address instead</string>
+
+    <!-- Pairing (device-authorization flow) -->
+    <string name="pair_preparing">Preparing to pair…</string>
+    <string name="pair_title">Pair this screen</string>
+    <string name="pair_instructions">Scan this with a phone on the same network, or approve it from your Maverick Wall settings.</string>
+    <string name="pair_code_hint">No phone? Open your Maverick Wall settings and enter this code:</string>
+    <string name="pair_on_screen_instead">Pair on the screen instead</string>
+    <string name="pair_try_again">Try again</string>
+    <string name="pair_declined">This screen was declined. Try again, or pair on the screen instead.</string>
+    <string name="pair_expired">That pairing timed out. Try again to get a fresh code.</string>
 
     <!-- Connecting status -->
     <!-- %1$s is the server address the wall is trying to reach. -->
