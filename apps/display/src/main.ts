@@ -74,7 +74,11 @@ function start(): void {
   applyTheme(document.documentElement, 'board');
 
   const clock = createClock();
-  const client = createManifestClient((input, init) => fetch(input, init));
+  const client = createManifestClient(
+    (input, init) => fetch(input, init),
+    '/d/manifest',
+    () => ({ w: window.innerWidth, h: window.innerHeight }),
+  );
   const store = createManifestStore();
 
   let manifest: Manifest | undefined;

@@ -63,6 +63,7 @@ import {
   readShiftTypes,
   readSources,
   touchScreen,
+  recordScreenViewport,
   type ScreenRow,
 } from '../api/queries.js';
 import type { SqliteDatabase } from '../db/open.js';
@@ -748,6 +749,15 @@ export function createApp(deps: AppDeps): Hono {
     // look like an absent one.
     try {
       touchScreen(deps.db, screen.id, null, c.req.header('user-agent') ?? null);
+      // The wall reports its viewport so the editor can offer "match this
+      // screen's size" (RFC 005). Bounds here, not in the query — a rubbish
+      // string cannot write a rubbish size, and nothing depends on it to draw.
+      const w = Number(c.req.query('w'));
+      const h = Number(c.req.query('h'));
+      const sane = (n: number): boolean => Number.isFinite(n) && n >= 120 && n <= 16384;
+      if (sane(w) && sane(h)) {
+        recordScreenViewport(deps.db, screen.id, Math.round(w), Math.round(h));
+      }
     } catch {
       // Diagnostics only; never worth failing a poll over.
     }

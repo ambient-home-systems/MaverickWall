@@ -2570,6 +2570,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       readings: haReadingLabels(),
       // The registered modules, for the External widget's module picker.
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+      // The viewport this screen last reported, so the editor can offer "match
+      // this screen's size" (RFC 005). Only a paired screen reports one — the
+      // shared Default has no single size to match.
+      ...(owner?.reportW != null && owner?.reportH != null
+        ? { report: { w: owner.reportW, h: owner.reportH } }
+        : {}),
     };
 
     const statusAndPairing =

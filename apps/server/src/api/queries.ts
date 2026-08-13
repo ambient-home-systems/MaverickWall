@@ -729,6 +729,9 @@ export function deleteShiftPlan(db: SqliteDatabase, id: string): void {
 export interface AdminScreenRow extends ScreenRow {
   readonly lastSeenAt: number | null;
   readonly appVersion: string | null;
+  /** The viewport this screen last reported, for the editor's "match" (RFC 005). */
+  readonly reportW: number | null;
+  readonly reportH: number | null;
 }
 
 /** Every screen, revoked ones included, for the admin list. */
@@ -744,6 +747,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
               layout_mode AS layoutMode, layout_aspect AS layoutAspect,
+              layout_landscape_aspect AS layoutLandscapeAspect,
+              report_w AS reportW, report_h AS reportH,
               last_seen_at AS lastSeenAt, app_version AS appVersion
          FROM screens ORDER BY name`,
     )
@@ -1258,4 +1263,16 @@ export function touchScreen(db: SqliteDatabase, id: string, ip: string | null, a
     `UPDATE screens SET last_seen_at = ?, last_seen_ip = ?, last_seen_user_agent = ?
       WHERE id = ?`,
   ).run(Date.now(), ip, agent, id);
+}
+
+/**
+ * Record the viewport a wall reported on its poll (RFC 005).
+ *
+ * A convenience for the layout editor's "match this screen's size" — never
+ * depended on to draw. Bounds are enforced by the caller (the manifest route),
+ * so a rubbish query string cannot write a rubbish size; only sane pixel
+ * dimensions reach here.
+ */
+export function recordScreenViewport(db: SqliteDatabase, id: string, w: number, h: number): void {
+  db.prepare('UPDATE screens SET report_w = ?, report_h = ? WHERE id = ?').run(w, h, id);
 }
