@@ -9,12 +9,14 @@ export const template: DisplayTemplate = {
   name: 'Meeting Room',
   category: 'office',
   blurb: 'Today’s schedule, large, with an oversized clock — what’s on now and next.',
+  theme: 'board',
   portrait: {
     aspect: 0.5625,
     widgets: [
       { type: 'clock', x: 0.05, y: 0.04, w: 0.9, h: 0.18 },
       { type: 'calendar', x: 0.05, y: 0.27, w: 0.9, h: 0.7, config: { mode: 'list' } },
     ],
+    background: { type: 'gradient', from: '#0B0E11', to: '#181009', angle: 160 },
   },
   landscape: {
     aspect: 1.7778,
@@ -22,5 +24,6 @@ export const template: DisplayTemplate = {
       { type: 'clock', x: 0.04, y: 0.1, w: 0.42, h: 0.52 },
       { type: 'calendar', x: 0.5, y: 0.06, w: 0.46, h: 0.88, config: { mode: 'list' } },
     ],
+    background: { type: 'gradient', from: '#0B0E11', to: '#181009', angle: 160 },
   },
 };

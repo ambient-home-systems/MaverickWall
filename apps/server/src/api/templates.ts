@@ -6,6 +6,7 @@ import {
   replaceLayout,
   readHousehold,
   readScreens,
+  setOwnerTheme,
   type LayoutWidgetInput,
 } from './queries.js';
 import type { SqliteDatabase } from '../db/open.js';
@@ -49,6 +50,13 @@ export const templateSchema = z
     category: z.enum(['home', 'office']),
     /** A one-line description of what the template shows. */
     blurb: z.string().min(1).max(200),
+    /**
+     * The built-in theme this template was designed for (RFC 005 Phase 3c).
+     * Applying the template sets it, so the theme and the canvas backgrounds land
+     * together — a white background under a dark theme would be unreadable. Only
+     * the four built-ins; a household's custom theme is theirs to choose.
+     */
+    theme: z.enum(['board', 'slate', 'almanac', 'glance']).optional(),
     // Both orientations are always authored (RFC 005's "require both"), so a
     // template-started display is never in the letterbox-one-side case.
     portrait: templateCanvasSchema,
@@ -80,6 +88,9 @@ export function applyTemplate(
   owner: string | null,
   template: DisplayTemplate,
 ): void {
+  // Set the designed theme first, so it and the canvas backgrounds are
+  // consistent — a template's light background must not land under a dark theme.
+  if (template.theme !== undefined) setOwnerTheme(db, owner, template.theme);
   for (const orientation of ORIENTATIONS) {
     const canvas = template[orientation];
     replaceLayout(db, owner, orientation, {

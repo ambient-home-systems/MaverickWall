@@ -2769,7 +2769,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // The client needs each template's portrait canvas to draw a preview.
     const galleryData = JSON.stringify({
       owner,
-      templates: TEMPLATES.map((t) => ({ id: t.id, aspect: t.portrait.aspect, widgets: t.portrait.widgets })),
+      templates: TEMPLATES.map((t) => ({
+        id: t.id,
+        aspect: t.portrait.aspect,
+        widgets: t.portrait.widgets,
+        // The template's own theme and background, so the card previews the look
+        // applying it produces, not the household's current one (RFC 005 3c).
+        ...(t.theme !== undefined ? { theme: t.theme } : {}),
+        ...(t.portrait.background !== undefined ? { background: t.portrait.background } : {}),
+      })),
     });
 
     return page({

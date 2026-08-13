@@ -1293,6 +1293,20 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
     .all() as ScreenRow[];
 }
 
+/**
+ * Set a display's theme — used when applying a template that names one so its
+ * backgrounds are readable (RFC 005 Phase 3c). The owner is the shared Default
+ * (null) or a screen; a built-in key, validated by the caller.
+ */
+export function setOwnerTheme(db: SqliteDatabase, owner: string | null, theme: string): void {
+  const at = Date.now();
+  if (owner === null) {
+    db.prepare(`UPDATE household_settings SET theme = ?, updated_at = ? WHERE id = 'singleton'`).run(theme, at);
+  } else {
+    db.prepare('UPDATE screens SET theme = ?, updated_at = ? WHERE id = ?').run(theme, at, owner);
+  }
+}
+
 export function touchScreen(db: SqliteDatabase, id: string, ip: string | null, agent: string | null): void {
   db.prepare(
     `UPDATE screens SET last_seen_at = ?, last_seen_ip = ?, last_seen_user_agent = ?

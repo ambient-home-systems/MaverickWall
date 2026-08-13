@@ -9,6 +9,7 @@ export const template: DisplayTemplate = {
   name: 'Command Center',
   category: 'home',
   blurb: 'A month grid over Home Assistant readings and the shift rota.',
+  theme: 'slate',
   portrait: {
     aspect: 0.5625,
     widgets: [
@@ -17,6 +18,7 @@ export const template: DisplayTemplate = {
       { type: 'homeassistant', x: 0.05, y: 0.62, w: 0.43, h: 0.35 },
       { type: 'shift', x: 0.51, y: 0.62, w: 0.44, h: 0.35 },
     ],
+    background: { type: 'gradient', from: '#191713', to: '#262016', angle: 160 },
   },
   landscape: {
     aspect: 1.7778,
@@ -26,5 +28,6 @@ export const template: DisplayTemplate = {
       { type: 'homeassistant', x: 0.64, y: 0.27, w: 0.32, h: 0.33 },
       { type: 'shift', x: 0.64, y: 0.63, w: 0.32, h: 0.31 },
     ],
+    background: { type: 'gradient', from: '#191713', to: '#262016', angle: 160 },
   },
 };

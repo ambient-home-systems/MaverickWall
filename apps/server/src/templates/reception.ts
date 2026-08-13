@@ -9,6 +9,7 @@ export const template: DisplayTemplate = {
   name: 'Reception',
   category: 'office',
   blurb: 'A welcoming clock and weather with a notes panel for the day’s message.',
+  theme: 'almanac',
   portrait: {
     aspect: 0.5625,
     widgets: [
@@ -16,6 +17,7 @@ export const template: DisplayTemplate = {
       { type: 'weather', x: 0.05, y: 0.3, w: 0.9, h: 0.16 },
       { type: 'notes', x: 0.05, y: 0.5, w: 0.9, h: 0.45 },
     ],
+    background: { type: 'gradient', from: '#FBFAF6', to: '#F2EEE4', angle: 160 },
   },
   landscape: {
     aspect: 1.7778,
@@ -24,5 +26,6 @@ export const template: DisplayTemplate = {
       { type: 'weather', x: 0.04, y: 0.54, w: 0.44, h: 0.36 },
       { type: 'notes', x: 0.5, y: 0.08, w: 0.46, h: 0.84 },
     ],
+    background: { type: 'gradient', from: '#FBFAF6', to: '#F2EEE4', angle: 160 },
   },
 };
