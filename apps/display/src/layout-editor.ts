@@ -1315,6 +1315,32 @@ function boot(): void {
 
   // ---- orientation ------------------------------------------------------
 
+  /*
+   * Which orientation the editor was last on, remembered per display so it
+   * reopens where the household left it. Each orientation's canvas is saved on
+   * its own server rows (RFC 005), but the editor always opened on portrait —
+   * so a household that arranged landscape saw portrait next time and read it
+   * as "it didn't save". This is only which tab was open, a per-browser UI
+   * preference, so localStorage is the right home rather than a schema column;
+   * it survives the ingress path changing because it is keyed to the origin.
+   */
+  const ORIENT_KEY = 'mw-layout-orientation';
+  function rememberedOrientation(screen: string | null): 'portrait' | 'landscape' | null {
+    try {
+      const v = localStorage.getItem(`${ORIENT_KEY}:${screen ?? 'default'}`);
+      return v === 'landscape' || v === 'portrait' ? v : null;
+    } catch {
+      return null;
+    }
+  }
+  function rememberOrientation(screen: string | null, which: 'portrait' | 'landscape'): void {
+    try {
+      localStorage.setItem(`${ORIENT_KEY}:${screen ?? 'default'}`, which);
+    } catch {
+      // A browser with storage disabled (private mode) simply forgets the tab.
+    }
+  }
+
   /**
    * Swap the active canvas for the other orientation's.
    *
@@ -1338,6 +1364,7 @@ function boot(): void {
     state.background = state.stash.background;
     state.stash = leaving;
     state.orientation = which;
+    rememberOrientation(state.screen, which);
     selected = undefined;
     dirty = false;
 
@@ -1445,7 +1472,14 @@ function boot(): void {
   // Keep the preview from being referenced-as-unused when a build tightens up.
   void previewShadow;
 
-  draw();
+  // Reopen on the orientation last edited on this device. Both canvases loaded
+  // from the server above; switching is a local swap (not dirty at boot, so it
+  // saves nothing) and draws the restored canvas itself.
+  if (rememberedOrientation(state.screen) === 'landscape' && state.orientation === 'portrait') {
+    void switchOrientation('landscape');
+  } else {
+    draw();
+  }
 }
 
 if (document.readyState === 'loading') {
