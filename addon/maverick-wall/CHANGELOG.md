@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+People now colour the calendar. Give a calendar an owner on the Calendars
+screen and their events take that person's colour everywhere on the wall — Mum
+in blue, Dad in green, the way a family calendar reads at a glance. A strip
+across the top shows who's who, and each event carries a small face or their
+initials so you can tell whose it is without reading it.
+
+You can also reorder people on the People screen with Up and Down, and that
+order is the order they appear across the wall.
+
 ## 0.21.1
 
 Nothing changes on the wall. This one exists to prove the update path itself.
