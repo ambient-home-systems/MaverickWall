@@ -350,15 +350,6 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
   margin-right:.4rem;vertical-align:-.4rem;background:var(--panel2)}
 
 /* ---- Sub-view switcher (per-wall Appearance | Layout) -------------------- */
-/* Server-rendered tabs: each is a plain <a> to the same page with a ?view, so
- * there is no client state — the active one is marked when the server draws it. */
-.subnav{display:flex;gap:4px;margin:20px 0 22px;border-bottom:1px solid var(--rule)}
-.subtab{padding:8px 14px 10px;margin-bottom:-1px;border-bottom:2px solid transparent;
-  color:var(--muted);text-decoration:none;font-family:var(--cond);font-weight:600;
-  font-size:14px;letter-spacing:.02em}
-.subtab:hover{color:var(--ink)}
-.subtab.active{color:var(--ink);border-bottom-color:var(--accent)}
-
 /* ---- Store card glyph preview ("screenshot" spelled out in glyphs) -------- */
 /* A little inset tile beside the icon, styled like a wall stat panel: a big
  * headline line then a caption or two. First-party glyphs only, no image. */
