@@ -488,6 +488,12 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   background:var(--panel2);border:1px solid var(--rule);border-radius:10px;min-height:420px}
 .le-canvas{position:relative;background:var(--bg);border-radius:6px;overflow:hidden;
   box-shadow:inset 0 0 0 1px var(--rule);touch-action:none}
+/* The snap grid, on the overlay so it sits over the live preview but under the
+ * draggable boxes. Shown only while snapping; background-size is set in script to
+ * the snap step as a percentage. A placement aid, never on the wall. */
+.le-overlay.is-snapping{background-repeat:repeat;
+  background-image:linear-gradient(to right,var(--ruleSoft) 1px,transparent 1px),
+    linear-gradient(to bottom,var(--ruleSoft) 1px,transparent 1px)}
 .le-preview{position:absolute;inset:0;z-index:0;pointer-events:none}
 .le-preview .preview-wall{overflow:hidden}
 .le-overlay{position:absolute;inset:0;z-index:1}
@@ -504,6 +510,18 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
+/* The layers list — every widget, front on top; drag a row to restack. */
+.le-layers{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
+  padding:14px 16px;background:var(--panel)}
+.le-layers>.kick{margin-bottom:10px}
+.le-layer{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:7px;
+  border:1px solid transparent;cursor:pointer;user-select:none}
+.le-layer:hover{background:var(--panel2)}
+.le-layer.is-selected{border-color:var(--accent);background:var(--panel2)}
+.le-layer-grip{flex:0 0 auto;color:var(--faint);cursor:grab;letter-spacing:-2px;
+  font-size:14px;touch-action:none;padding:0 2px}
+.le-layer-name{font-size:14px;font-weight:500}
+
 /* Per-widget options, shown under the stage when a widget is selected. */
 .le-config{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
   padding:16px 18px;background:var(--panel)}
