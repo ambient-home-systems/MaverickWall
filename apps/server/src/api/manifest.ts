@@ -109,6 +109,50 @@ const aspectOf = (value: number, fallback: number): number =>
   Number.isFinite(value) && value > 0 ? value : fallback;
 
 /**
+ * A canvas background (RFC 005 Phase 3): a solid colour or a two-stop gradient.
+ * A first-party image background is Phase 3b and adds a variant here.
+ */
+export type CanvasBackground =
+  | { readonly type: 'solid'; readonly color: string }
+  | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number };
+
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Parse the stored background JSON into a background the wall can draw.
+ *
+ * This process wrote the string (the editor validated its shape with Zod), but
+ * it is read back defensively all the same — a colour that is not a hex or a
+ * type the renderer has no arm for is dropped to "no background" rather than
+ * handed to the wall, so a bad row costs a background, never the canvas.
+ */
+export function parseBackground(raw: string | null | undefined): CanvasBackground | undefined {
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof value !== 'object' || value === null) return undefined;
+  const bg = value as Record<string, unknown>;
+  if (bg['type'] === 'solid' && typeof bg['color'] === 'string' && HEX6.test(bg['color'])) {
+    return { type: 'solid', color: bg['color'] };
+  }
+  if (
+    bg['type'] === 'gradient' &&
+    typeof bg['from'] === 'string' && HEX6.test(bg['from']) &&
+    typeof bg['to'] === 'string' && HEX6.test(bg['to'])
+  ) {
+    const angle = typeof bg['angle'] === 'number' && Number.isFinite(bg['angle'])
+      ? ((Math.round(bg['angle']) % 360) + 360) % 360
+      : 180;
+    return { type: 'gradient', from: bg['from'], to: bg['to'], angle };
+  }
+  return undefined;
+}
+
+/**
  * The free-form layout the display switches on.
  *
  * A display authors two canvases — portrait and landscape — and the wall draws
@@ -135,10 +179,21 @@ export function buildLayout(
       ? 'freeform'
       : 'auto';
 
+  const portraitBg = parseBackground(household.layoutBackground);
+  const landscapeBg = parseBackground(household.layoutLandscapeBackground);
+
   return {
     mode,
-    portrait: { aspect: aspectOf(household.layoutAspect, 0.5625), widgets: portrait },
-    landscape: { aspect: aspectOf(household.layoutLandscapeAspect, 1.7778), widgets: landscape },
+    portrait: {
+      aspect: aspectOf(household.layoutAspect, 0.5625),
+      widgets: portrait,
+      ...(portraitBg !== undefined ? { background: portraitBg } : {}),
+    },
+    landscape: {
+      aspect: aspectOf(household.layoutLandscapeAspect, 1.7778),
+      widgets: landscape,
+      ...(landscapeBg !== undefined ? { background: landscapeBg } : {}),
+    },
   };
 }
 
@@ -295,8 +350,16 @@ export interface Manifest {
    */
   readonly layout: {
     readonly mode: 'auto' | 'freeform';
-    readonly portrait: { readonly aspect: number; readonly widgets: readonly PlacedWidgetRow[] };
-    readonly landscape: { readonly aspect: number; readonly widgets: readonly PlacedWidgetRow[] };
+    readonly portrait: {
+      readonly aspect: number;
+      readonly widgets: readonly PlacedWidgetRow[];
+      readonly background?: CanvasBackground;
+    };
+    readonly landscape: {
+      readonly aspect: number;
+      readonly widgets: readonly PlacedWidgetRow[];
+      readonly background?: CanvasBackground;
+    };
   };
   /**
    * How this particular screen is hung.
@@ -391,6 +454,9 @@ export interface HouseholdRow {
   readonly layoutAspect: number;
   /** The landscape canvas's aspect (RFC 005); the portrait one is layoutAspect. */
   readonly layoutLandscapeAspect: number;
+  /** Per-orientation canvas background JSON, or null (RFC 005 Phase 3). */
+  readonly layoutBackground: string | null;
+  readonly layoutLandscapeBackground: string | null;
 }
 
 /**

@@ -33,6 +33,8 @@ const HOUSEHOLD_DEFAULTS: HouseholdRow = {
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,
+  layoutBackground: null,
+  layoutLandscapeBackground: null,
 };
 
 export function readHousehold(db: SqliteDatabase): HouseholdRow {
@@ -48,7 +50,9 @@ export function readHousehold(db: SqliteDatabase): HouseholdRow {
               clock_24 AS clock24,
               layout_mode AS layoutMode,
               layout_aspect AS layoutAspect,
-              layout_landscape_aspect AS layoutLandscapeAspect
+              layout_landscape_aspect AS layoutLandscapeAspect,
+              layout_background AS layoutBackground,
+              layout_landscape_background AS layoutLandscapeBackground
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as HouseholdRow | undefined;
@@ -137,21 +141,28 @@ export function replaceLayout(
   db: SqliteDatabase,
   screenId: string | null,
   orientation: 'portrait' | 'landscape',
-  layout: { readonly mode: string; readonly aspect: number; readonly widgets: readonly LayoutWidgetInput[] },
+  layout: {
+    readonly mode: string;
+    readonly aspect: number;
+    readonly widgets: readonly LayoutWidgetInput[];
+    /** The canvas background as JSON, or null for none (RFC 005 Phase 3). */
+    readonly background: string | null;
+  },
 ): void {
   const at = Date.now();
-  // The aspect column depends on which canvas is being written.
+  // The aspect and background columns depend on which canvas is being written.
   const aspectCol = orientation === 'landscape' ? 'layout_landscape_aspect' : 'layout_aspect';
+  const bgCol = orientation === 'landscape' ? 'layout_landscape_background' : 'layout_background';
   const tx = db.transaction(() => {
     if (screenId === null) {
       db.prepare(
-        `UPDATE household_settings SET layout_mode = ?, ${aspectCol} = ?, updated_at = ?
+        `UPDATE household_settings SET layout_mode = ?, ${aspectCol} = ?, ${bgCol} = ?, updated_at = ?
           WHERE id = 'singleton'`,
-      ).run(layout.mode, layout.aspect, at);
+      ).run(layout.mode, layout.aspect, layout.background, at);
     } else {
       db.prepare(
-        `UPDATE screens SET layout_mode = ?, ${aspectCol} = ?, updated_at = ? WHERE id = ?`,
-      ).run(layout.mode, layout.aspect, at, screenId);
+        `UPDATE screens SET layout_mode = ?, ${aspectCol} = ?, ${bgCol} = ?, updated_at = ? WHERE id = ?`,
+      ).run(layout.mode, layout.aspect, layout.background, at, screenId);
     }
 
     db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ? AND orientation = ?').run(
@@ -209,6 +220,8 @@ export function effectiveDisplay(
     readonly layoutMode?: string | null;
     readonly layoutAspect?: number | null;
     readonly layoutLandscapeAspect?: number | null;
+    readonly layoutBackground?: string | null;
+    readonly layoutLandscapeBackground?: string | null;
   },
 ): {
   /** The household row with each field resolved to this wall's effective value. */
@@ -228,6 +241,11 @@ export function effectiveDisplay(
       layoutMode: screen.layoutMode ?? household.layoutMode,
       layoutAspect: screen.layoutAspect ?? household.layoutAspect,
       layoutLandscapeAspect: screen.layoutLandscapeAspect ?? household.layoutLandscapeAspect,
+      // A wall with its own canvas owns its background too; otherwise the
+      // household's. `undefined` (screen has none) falls through to the household;
+      // `null` cannot occur here because only a canvas-owning screen is read.
+      layoutBackground: screen.layoutBackground ?? household.layoutBackground,
+      layoutLandscapeBackground: screen.layoutLandscapeBackground ?? household.layoutLandscapeBackground,
     },
     layoutOwner: ownsLayout ? (screen.id ?? null) : null,
   };
@@ -753,6 +771,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               clock_24 AS clock24,
               layout_mode AS layoutMode, layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect,
+              layout_background AS layoutBackground,
+              layout_landscape_background AS layoutLandscapeBackground,
               report_w AS reportW, report_h AS reportH,
               last_seen_at AS lastSeenAt, app_version AS appVersion
          FROM screens ORDER BY name`,
@@ -1248,6 +1268,8 @@ export interface ScreenRow {
   readonly layoutMode: string | null;
   readonly layoutAspect: number | null;
   readonly layoutLandscapeAspect: number | null;
+  readonly layoutBackground: string | null;
+  readonly layoutLandscapeBackground: string | null;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
@@ -1263,7 +1285,9 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               display_blocks AS displayBlocks,
               clock_24 AS clock24,
               layout_mode AS layoutMode, layout_aspect AS layoutAspect,
-              layout_landscape_aspect AS layoutLandscapeAspect
+              layout_landscape_aspect AS layoutLandscapeAspect,
+              layout_background AS layoutBackground,
+              layout_landscape_background AS layoutLandscapeBackground
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

@@ -628,6 +628,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly layoutMode?: string | null;
     readonly layoutAspect?: number | null;
     readonly layoutLandscapeAspect?: number | null;
+    readonly layoutBackground?: string | null;
+    readonly layoutLandscapeBackground?: string | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -737,6 +739,8 @@ export function createApp(deps: AppDeps): Hono {
       layoutMode: screen.layoutMode,
       layoutAspect: screen.layoutAspect,
       layoutLandscapeAspect: screen.layoutLandscapeAspect,
+      layoutBackground: screen.layoutBackground,
+      layoutLandscapeBackground: screen.layoutLandscapeBackground,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.

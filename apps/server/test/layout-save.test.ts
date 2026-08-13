@@ -221,6 +221,30 @@ describe('saving a layout', () => {
     expect(byType['todo']).toEqual({ items: ['Milk', 'Dog'] });
   });
 
+  it('carries a canvas background through, and rejects a bad colour (RFC 005 Phase 3)', async () => {
+    const h = await harness();
+    const ok = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      background: { type: 'gradient', from: '#0B0E11', to: '#242D38', angle: 90 },
+      widgets: [{ id: 'a', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    expect(ok.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { portrait: { background?: unknown } } };
+    expect(layout.layout.portrait.background).toEqual({
+      type: 'gradient', from: '#0B0E11', to: '#242D38', angle: 90,
+    });
+
+    // A colour the wall would not draw is a 400, not a coerced default (rule five).
+    const bad = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      background: { type: 'solid', color: 'red' },
+      widgets: [{ id: 'a', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it('rejects a background that is not a hex colour', async () => {
     const h = await harness();
     const res = await h.saveLayout({
