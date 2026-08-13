@@ -554,6 +554,24 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .hep-footer .btn-primary{margin-top:0}
 .hep-status{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
 .hep-status.is-error{color:var(--danger)}
+
+/* ---- Template gallery (RFC 005) ----------------------------------------- */
+.tpl-cat{font-family:var(--cond);font-weight:600;font-size:13px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);margin:26px 0 12px}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+.tpl-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--rule);
+  border-radius:12px;overflow:hidden}
+.tpl-thumb{position:relative;width:100%;aspect-ratio:9/16;max-height:340px;background:var(--panel2);
+  overflow:hidden;border-bottom:1px solid var(--rule)}
+.tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  padding:12px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--faint)}
+.tpl-body{padding:13px 14px 15px;display:flex;flex-direction:column;gap:7px;flex:1}
+.tpl-name{font-family:var(--cond);font-weight:700;font-size:16px}
+.tpl-blurb{font-size:13px;color:var(--muted);line-height:1.4;flex:1}
+.tpl-card form{margin:0}
+.tpl-card .btn-sm{margin-top:2px}
+.tpl-copy{margin-top:30px;padding-top:20px;border-top:1px solid var(--rule)}
+.tpl-copy .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 `;
 
 /**

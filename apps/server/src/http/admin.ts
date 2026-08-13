@@ -55,7 +55,10 @@ import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import type { LogBuffer } from '../logbuffer.js';
-import { parseBlocks, WIDGET_TYPES } from '../api/manifest.js';
+import { parseBlocks } from '../api/manifest.js';
+import { layoutWidgetBody } from '../api/widget-schema.js';
+import { applyTemplate, copyLayout, findTemplate } from '../api/templates.js';
+import { TEMPLATES } from '../templates/index.js';
 import {
   candidatesFor,
   cycleFrom,
@@ -177,64 +180,6 @@ const approveDeviceBody = z.object({
  * a widget cannot be nudged off the wall or shrunk to nothing; the display
  * clamps again regardless, because a form is a boundary and so is a manifest.
  */
-/**
- * A widget's stored options.
- *
- * One shape for every type rather than a discriminated union: the keys a type
- * ignores are simply not read by its renderer, and a single strict object is
- * easier to reason about than five. `.strict()` rejects an unknown key rather
- * than coercing it away (rule five) — a typo in a saved config is a 400, not a
- * silently dropped option. Selections are by identifiers already in the
- * manifest: calendar `source id`s and Home Assistant reading `label`s, never an
- * entity id, which the manifest deliberately does not carry.
- */
-const widgetConfigBody = z
-  .object({
-    // Calendar
-    calendars: z.array(z.string().max(64)).max(50).optional(),
-    // month (grid), week (day columns), or list (agenda). RFC 005 added week.
-    mode: z.enum(['month', 'week', 'list']).optional(),
-    // How a month cell draws its events: quiet dots (default) or Skylight-style
-    // labelled pills. Absent means dots, so an existing wall is unchanged.
-    cellEvents: z.enum(['dots', 'pills']).optional(),
-    count: z.number().int().min(1).max(50).optional(),
-    showTimes: z.boolean().optional(),
-    showLocations: z.boolean().optional(),
-    // Home Assistant
-    readings: z.array(z.string().max(80)).max(50).optional(),
-    // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
-    target: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown date has to be YYYY-MM-DD.')
-      .optional(),
-    // External module widget — which registered module's panel to draw (its id).
-    module: z.string().max(64).optional(),
-    // Format (every widget) — box-level, so it applies whatever the type draws.
-    title: z.string().max(60).optional(),
-    showTitle: z.boolean().optional(),
-    align: z.enum(['left', 'center', 'right']).optional(),
-    // A six-digit hex, the only colour shape `<input type=color>` submits, and
-    // the only one the renderer will honour — rejected here, not coerced.
-    background: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/, 'A background colour has to be a #rrggbb hex.')
-      .optional(),
-    opacity: z.number().int().min(0).max(100).optional(),
-    corners: z.enum(['square', 'rounded']).optional(),
-    shadow: z.boolean().optional(),
-  })
-  .strict();
-
-const layoutWidgetBody = z.object({
-  id: z.string().min(1).max(64),
-  type: z.enum(WIDGET_TYPES),
-  x: z.number().min(0).max(1),
-  y: z.number().min(0).max(1),
-  w: z.number().min(0.02).max(1),
-  h: z.number().min(0.02).max(1),
-  z: z.number().int().min(0).max(9999),
-  config: widgetConfigBody.optional(),
-});
 const layoutBody = z.object({
   // Which wall this canvas is for. Null (or absent) is the shared default; a
   // screen id is that wall's own. Validated against the real screens in the
@@ -1617,6 +1562,62 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.json({ ok: true });
   });
 
+  /** The layout view of a display's page, where apply/copy return to. */
+  const layoutUrl = (owner: string | null): string =>
+    `/admin/displays/${owner === null ? 'default' : encodeURIComponent(owner)}?view=layout`;
+
+  /**
+   * The template gallery — pick a starting layout for this display (RFC 005).
+   *
+   * A server-rendered page: the cards, the categories, and a plain form per
+   * template so applying works with no JavaScript at all. A first-party script
+   * then draws each card's live preview through the wall's own `renderFreeform`,
+   * so what you pick is what the wall will draw — progressive enhancement, never
+   * a requirement.
+   */
+  app.get('/admin/displays/:id/gallery', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    if (id !== 'default' && !activeScreens().some((s) => s.id === id)) {
+      return c.redirect('/admin/displays', 302);
+    }
+    return c.html(templateGalleryPage(resolveOwner(id === 'default' ? null : id)));
+  });
+
+  /**
+   * Apply a template to a display. A plain form POST, because the whole gallery
+   * works without script; an unknown id is a no-op with a message rather than a
+   * half-applied layout. Writes both canvases (`applyTemplate`).
+   */
+  app.post('/admin/displays/:id/apply-template', async (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const owner = resolveOwner(id === 'default' ? null : id);
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const template = typeof body['templateId'] === 'string' ? findTemplate(body['templateId']) : undefined;
+    if (template === undefined) {
+      return c.html(templateGalleryPage(owner, 'That template is not one we ship.'), 400);
+    }
+    applyTemplate(deps.db, owner, template);
+    return c.redirect(layoutUrl(owner), 302);
+  });
+
+  /**
+   * Copy another display's layout onto this one — the "start from another wall"
+   * convenience the hybrid model gives in place of shared profiles. A one-shot
+   * copy; the source is untouched and the two are not linked.
+   */
+  app.post('/admin/displays/:id/copy-from', async (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const to = resolveOwner(id === 'default' ? null : id);
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const src = typeof body['sourceOwner'] === 'string' ? body['sourceOwner'] : '';
+    const from = resolveOwner(src === 'default' ? null : src);
+    if (from === to) {
+      return c.html(templateGalleryPage(to, 'Pick a different display to copy from.'), 400);
+    }
+    copyLayout(deps.db, from, to);
+    return c.redirect(layoutUrl(to), 302);
+  });
+
   // -------------------------------------------------------------------------
   // Pages
   // -------------------------------------------------------------------------
@@ -2589,9 +2590,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const appearance = owner === null ? defaultsForm() : wallSettingsForm(owner);
 
     const layout =
+      `<p><a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
+      `Start from a template</a></p>` +
       `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
       `Turn it on to use this instead of the stacked layout — the wall picks up a ` +
-      `change within a minute.</p>` +
+      `change within a minute. Or start from a ready-made layout above.</p>` +
       layoutEditorMount(initial);
 
     return page({
@@ -2608,6 +2611,83 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         statusAndPairing +
         subnav +
         (view === 'layout' ? layout : appearance),
+    });
+  }
+
+  /**
+   * The template gallery for one display (RFC 005).
+   *
+   * Server-rendered cards with a plain apply form each, so picking a layout works
+   * with no JavaScript. The `template-gallery` mount carries every template's
+   * portrait canvas as JSON; a first-party script draws each card's live preview
+   * through the wall's own renderer, so the card shows what the wall will draw.
+   */
+  function templateGalleryPage(owner: string | null, error?: string): string {
+    const ownerName = owner === null
+      ? 'Default display'
+      : activeScreens().find((s) => s.id === owner)?.name ?? 'this display';
+    const ownerParam = owner === null ? 'default' : encodeURIComponent(owner);
+
+    const card = (t: (typeof TEMPLATES)[number]): string =>
+      `<article class="tpl-card">` +
+      `<div class="tpl-thumb" data-tpl="${escapeHtml(t.id)}">` +
+      `<div class="tpl-fallback">${escapeHtml(t.name)}</div></div>` +
+      `<div class="tpl-body">` +
+      `<div class="tpl-name">${escapeHtml(t.name)}</div>` +
+      `<div class="tpl-blurb">${escapeHtml(t.blurb)}</div>` +
+      `<form method="post" action="admin/displays/${ownerParam}/apply-template" ` +
+      `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with ${escapeHtml(t.name)}?">` +
+      `<input type="hidden" name="templateId" value="${escapeHtml(t.id)}">` +
+      `<button class="btn-sm" type="submit">Use this layout</button></form>` +
+      `</div></article>`;
+
+    const group = (label: string, cat: 'home' | 'office'): string => {
+      const cards = TEMPLATES.filter((t) => t.category === cat).map(card).join('');
+      return `<div class="tpl-cat">${label}</div><div class="tpl-grid">${cards}</div>`;
+    };
+
+    // Every other display, to copy a layout from. Empty when this is the only one.
+    const others = [
+      ...(owner === null ? [] : [{ id: null as string | null, name: 'Default display' }]),
+      ...activeScreens()
+        .filter((s) => s.id !== owner)
+        .map((s) => ({ id: s.id as string | null, name: s.name })),
+    ];
+    const copyFrom = others.length === 0
+      ? ''
+      : `<div class="tpl-copy"><div class="tpl-cat">Or copy another display</div>` +
+        `<form method="post" action="admin/displays/${ownerParam}/copy-from" ` +
+        `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with a copy?"><div class="row">` +
+        `<label class="hep-field"><span>From</span><select name="sourceOwner">` +
+        others
+          .map(
+            (o) =>
+              `<option value="${o.id === null ? 'default' : escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`,
+          )
+          .join('') +
+        `</select></label>` +
+        `<button class="secondary" type="submit">Copy its layout</button></div></form></div>`;
+
+    // The client needs each template's portrait canvas to draw a preview.
+    const galleryData = JSON.stringify({
+      owner,
+      templates: TEMPLATES.map((t) => ({ id: t.id, aspect: t.portrait.aspect, widgets: t.portrait.widgets })),
+    });
+
+    return page({
+      modules: navModules(deps.db),
+      title: `Templates — ${ownerName} — Maverick Wall`,
+      nav: 'displays',
+      heading: 'Start from a template',
+      intro: `Pick a starting layout for ${ownerName}. You can move, remove and add to it afterwards.`,
+      body:
+        `<p><a class="link" href="admin/displays/${ownerParam}?view=layout">← Back to ${escapeHtml(ownerName)}</a></p>` +
+        (error === undefined ? '' : errorBlock(error)) +
+        `<div id="template-gallery" data-json="${escapeHtml(galleryData)}"></div>` +
+        group('Home', 'home') +
+        group('Office', 'office') +
+        copyFrom +
+        `<script type="module" src="assets/template-gallery.js"></script>`,
     });
   }
 
