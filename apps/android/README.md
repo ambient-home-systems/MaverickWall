@@ -65,9 +65,25 @@ full design and the reasoning behind "the one thing we do not build."
   `Unsupported`), or a household that would rather type the code into the wall
   itself, both fall straight through to the display's own on-screen pairing.
 
+**Phase 4 — distribution:**
+
+- **Signed release APK on every stable release.** `release.yml` builds
+  `assembleRelease` with the release version injected and attaches
+  `maverick-wall-X.Y.Z.apk` to the GitHub Release — the same commit the server
+  image is built from, so the app and the image never disagree. Sideload-first,
+  no store. The signing config lives in `app/build.gradle.kts`; the key and
+  passwords come from repository secrets, never the tree
+  ([`docs/releasing-the-app.md`](../../docs/releasing-the-app.md)).
+- **Device-owner kiosk hook** (`KioskDeviceAdminReceiver`) — present so a managed
+  install can pin the wall with lock-task. A plain sideload never provisions it
+  and runs unpinned, deliberately.
+
 ### Not yet (later phases)
 
-- Signed release APK on GitHub, TV store polish (**Phase 4**).
+- Play Store / TV store listing (adds review/policy work; not on the path to a
+  working wall, so deliberately later).
+- A real-hardware pass on the whole flow: a TV cold-pairing from the QR, and a
+  signed release APK installed and upgraded on a device.
 
 > **Phase 2 needs a push-capable server to exercise.** The socket, wake, and the
 > D-pad bridge require a server built from `main` (or later) — it must have
@@ -132,6 +148,17 @@ onto a running emulator or device with `adb install -r <that path>`.
 
 ## Installing on a device (sideload)
 
+For a real wall, download the **signed release APK** from the repository's
+[Releases](https://github.com/ambient-home-systems/maverick-wall/releases)
+(`maverick-wall-X.Y.Z.apk`) and install it — no build toolchain needed:
+
+```bash
+adb install -r maverick-wall-X.Y.Z.apk
+adb shell monkey -p systems.ambienthome.maverickwall 1   # launch it
+```
+
+To install a local development build instead:
+
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell monkey -p systems.ambienthome.maverickwall 1   # launch it
@@ -150,14 +177,16 @@ shows its own pairing screen and you type a code created at `/admin/screens`.)
 Lock-task mode (`startLockTask`) is used **only** where the device permits it
 (device-owner provisioning). A plain sideload runs unpinned — deliberately, so a
 household is never stranded by a hard requirement. To pin, provision the app as
-device owner:
+device owner on a **factory-fresh device with no accounts** (Android's rule for
+device owner, not this app's):
 
 ```bash
-adb shell dpm set-device-owner systems.ambienthome.maverickwall/.DummyDeviceAdmin
+adb shell dpm set-device-owner systems.ambienthome.maverickwall/.KioskDeviceAdminReceiver
 ```
 
-(A device-admin receiver for this is a Phase 4 polish item; unpinned kiosk works
-today.)
+`KioskDeviceAdminReceiver` requests no policies — it exists only to become the
+owner so lock-task is available. Once set, the kiosk pins itself with no
+screen-pinning prompt. Unpinned kiosk works today without any of this.
 
 ## Verifying
 
@@ -183,6 +212,7 @@ app/src/main/
     WallWebViewClient.kt              URL allowlist + load-error → native status
     HealthProbe.kt                    polls /healthz with backoff
     BootReceiver.kt                   relaunch on boot
+    KioskDeviceAdminReceiver.kt       device-owner hook for lock-task pinning (Phase 4)
     SetupActivity.kt                  server chooser: mDNS list + typed address (Compose)
     ServerConfig.kt                   the one stored fact: which box to talk to
     Theme.kt                          dark Board-ish chrome for setup/status

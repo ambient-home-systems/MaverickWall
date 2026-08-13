@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The policy set for KioskDeviceAdminReceiver — deliberately empty.
+
+  A device-admin receiver must declare this resource, but this one asks for no
+  policies at all. It exists only so the app can be provisioned as *device
+  owner*, which is what grants lock-task (kiosk pinning); it does not want to
+  force passwords, wipe data, or watch anything. Keeping <uses-policies> empty is
+  the statement that this admin's whole power is pinning one calendar.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies />
+</device-admin>
