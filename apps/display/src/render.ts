@@ -614,6 +614,7 @@ export function renderWidget(
   type: string,
   model: DisplayModel,
   config?: unknown,
+  mediaBase: string = MEDIA_BASE,
 ): HTMLElement | undefined {
   switch (type) {
     case 'clock':
@@ -634,9 +635,30 @@ export function renderWidget(
       return renderNotesWidget(config);
     case 'todo':
       return renderTodoWidget(config);
+    case 'image':
+      return renderImageWidget(config, mediaBase);
     default:
       return undefined;
   }
+}
+
+/**
+ * The Image widget: an uploaded picture, covering its box (RFC 005 Phase 3b).
+ *
+ * Drawn as a background on a div, not an `<img>`, so `cover` handles any aspect
+ * without stretching — the same treatment the canvas background uses. The name
+ * is a stored hash the server validated; `url()` around it and nothing else, so
+ * there is no path and no external origin (rule three). Empty until a picture is
+ * chosen, which it says rather than drawing a blank box.
+ */
+function renderImageWidget(config: unknown, mediaBase: string): HTMLElement {
+  const name = widgetConfig(config)['image'];
+  if (typeof name !== 'string' || name === '') {
+    return el('div', 'cd-empty', 'Choose a picture in this widget’s options.');
+  }
+  const box = el('div', 'fw-image');
+  box.style.backgroundImage = `url("${mediaBase}${name}")`;
+  return box;
 }
 
 /**
@@ -919,15 +941,31 @@ export function renderGenericPanel(data: PanelData): HTMLElement {
  * banner still draws over the top, the same as it does over the blocks.
  */
 /**
+ * Where media (uploaded images) is served from. The wall reads it behind its
+ * display token at `/d/media/`; the editor preview, on the admin page, reads the
+ * same bytes behind the session at `admin/media/`. Passed in so one renderer
+ * draws for both (RFC 005 Phase 3b).
+ */
+const MEDIA_BASE = '/d/media/';
+
+/**
  * A canvas background as a CSS `background` value, or undefined for none.
  *
- * `#rrggbb` is validated server-side; this only shapes it. A solid is the colour;
- * a gradient is a two-stop `linear-gradient` at the stored angle.
+ * `#rrggbb` and the stored image name are validated server-side; this only
+ * shapes them. A solid is the colour; a gradient is a two-stop `linear-gradient`
+ * at the stored angle; an image covers the canvas, served from the media store —
+ * `url()` around the name only, never anything a stranger wrote (rule three; the
+ * name is 64 hex the server minted).
  */
-function backgroundCss(background: CanvasBackground | undefined): string | undefined {
+function backgroundCss(background: CanvasBackground | undefined, mediaBase: string): string | undefined {
   if (background === undefined) return undefined;
   if (background.type === 'solid') return background.color;
-  return `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})`;
+  if (background.type === 'gradient') {
+    return `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})`;
+  }
+  // An image with no picture yet (a transient editor state) is no background.
+  if (background.image === '') return undefined;
+  return `center / cover no-repeat url("${mediaBase}${background.image}")`;
 }
 
 export function renderFreeform(
@@ -938,6 +976,7 @@ export function renderFreeform(
     readonly widgets: readonly ManifestWidget[];
     readonly background?: CanvasBackground;
   },
+  mediaBase: string = MEDIA_BASE,
 ): void {
   const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
   if (takeover !== undefined) {
@@ -952,7 +991,7 @@ export function renderFreeform(
   // The canvas background (RFC 005 Phase 3): a solid colour or a gradient behind
   // the widgets. `background` is a shorthand, so it overrides the theme's wall
   // colour on this canvas only; absent leaves the theme showing through.
-  const bg = backgroundCss(layout.background);
+  const bg = backgroundCss(layout.background, mediaBase);
   if (bg !== undefined) canvas.style.background = bg;
 
   // Widgets whose body is a section from the responsive layout are scaled to
@@ -977,13 +1016,14 @@ export function renderFreeform(
     // alignment. Applied whatever the widget draws inside.
     applyWidgetFormat(box, widget.config);
 
-    const body = renderWidget(widget.type, model, widget.config);
+    const body = renderWidget(widget.type, model, widget.config, mediaBase);
     if (body === undefined) {
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
       box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
-    } else if (widget.type === 'clock') {
-      // The clock already sizes itself to its box; a title would fight it.
+    } else if (widget.type === 'clock' || widget.type === 'image') {
+      // The clock sizes itself to its box, and the image covers it — both fill
+      // the box on their own and would only be fought by the scale-to-fit.
       box.appendChild(body);
     } else {
       /*

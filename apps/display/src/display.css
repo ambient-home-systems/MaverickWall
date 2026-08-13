@@ -1019,6 +1019,10 @@ body {
   text-align: center;
 }
 
+/* Image widget: an uploaded picture covering its box. */
+.fw-image { width: 100%; height: 100%; background-position: center; background-size: cover;
+  background-repeat: no-repeat; }
+
 /* Notes: free text, kept as written. */
 .nt { display: flex; flex-direction: column; min-width: 0; }
 .nt-line { font-size: 2.1rem; line-height: 1.35; }

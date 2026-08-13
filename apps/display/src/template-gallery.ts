@@ -94,7 +94,8 @@ function boot(): void {
       shadow.append(style, wall);
       applyTheme(wall, manifest.theme.active);
 
-      renderFreeform(wall, model, { aspect: template.aspect, widgets: template.widgets });
+      // On the admin page, so any image reads media behind the session.
+      renderFreeform(wall, model, { aspect: template.aspect, widgets: template.widgets }, 'admin/media/');
       // The fallback label is only for when this never runs.
       const fallback = thumb.querySelector('.tpl-fallback');
       if (fallback instanceof HTMLElement) fallback.style.display = 'none';

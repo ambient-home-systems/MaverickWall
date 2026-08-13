@@ -136,6 +136,28 @@ export function storeImage(
   return { ok: true, name, reused: false };
 }
 
+export interface MediaListItem {
+  readonly name: string;
+  readonly originalName: string;
+}
+
+/**
+ * The stored images of a usage, newest first — for the editor's image picker
+ * (RFC 005 Phase 3b). Only the stored name and the original filename; the bytes
+ * are served separately, behind the session or a display token.
+ */
+export function listImages(
+  db: SqliteDatabase,
+  usage: 'avatar' | 'background' | 'other' = 'background',
+): MediaListItem[] {
+  return db
+    .prepare(
+      `SELECT path AS name, original_name AS originalName
+         FROM media_assets WHERE usage = ? ORDER BY created_at DESC`,
+    )
+    .all(usage) as MediaListItem[];
+}
+
 export interface StoredImage {
   readonly bytes: Buffer;
   readonly contentType: string;

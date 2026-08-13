@@ -245,6 +245,47 @@ describe('saving a layout', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('uploads a picture, lists it, and carries an image background and widget through (RFC 005 Phase 3b)', async () => {
+    const h = await harness();
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
+    const form = new FormData();
+    form.append('image', new File([png], 'wall.png', { type: 'image/png' }));
+    const up = await h.call('/admin/media/upload', { method: 'POST', body: form });
+    expect(up.status).toBe(200);
+    const { name } = (await up.json()) as { name: string };
+    expect(name).toMatch(/^[a-f0-9]{64}\.png$/);
+
+    const list = (await (await h.call('/admin/media/list')).json()) as { images: { name: string }[] };
+    expect(list.images.some((i) => i.name === name)).toBe(true);
+
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      background: { type: 'image', image: name },
+      widgets: [{ id: 'img', type: 'image', x: 0, y: 0, w: 1, h: 1, z: 0, config: { image: name } }],
+    });
+    expect(res.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { portrait: { background?: unknown; widgets: { type: string; config?: unknown }[] } } };
+    expect(layout.layout.portrait.background).toEqual({ type: 'image', image: name });
+    expect(layout.layout.portrait.widgets[0]).toMatchObject({ type: 'image', config: { image: name } });
+  });
+
+  it('rejects an image reference that is not a stored name — no path, ever (rule three/five)', async () => {
+    const h = await harness();
+    const bg = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      background: { type: 'image', image: '../secret.png' },
+      widgets: [{ id: 'a', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    expect(bg.status).toBe(400);
+    const widget = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [{ id: 'i', type: 'image', x: 0, y: 0, w: 1, h: 1, z: 0, config: { image: 'photo.png' } }],
+    });
+    expect(widget.status).toBe(400);
+  });
+
   it('rejects a background that is not a hex colour', async () => {
     const h = await harness();
     const res = await h.saveLayout({
