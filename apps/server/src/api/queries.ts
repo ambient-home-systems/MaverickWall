@@ -216,7 +216,7 @@ export function effectiveDisplay(
 export function readSources(db: SqliteDatabase): SourceRow[] {
   return db
     .prepare(
-      `SELECT id, name, color, visible,
+      `SELECT id, name, color, visible, person_id AS personId,
               last_success_at AS lastSuccessAt, last_error AS lastError,
               consecutive_failures AS consecutiveFailures, event_count AS eventCount
          FROM calendar_sources

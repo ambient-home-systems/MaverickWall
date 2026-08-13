@@ -32,8 +32,8 @@ const HOUSEHOLD: HouseholdRow = {
 };
 
 const SOURCES: SourceRow[] = [
-  { id: 's1', name: 'Family', color: '#E8A33D', visible: 1, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 2 },
-  { id: 's2', name: 'School', color: '#4C7FD1', visible: 1, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 1 },
+  { id: 's1', name: 'Family', color: '#E8A33D', visible: 1, personId: null, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 2 },
+  { id: 's2', name: 'School', color: '#4C7FD1', visible: 1, personId: null, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 1 },
 ];
 
 const EVENTS: EventCacheRow[] = [
@@ -117,6 +117,39 @@ describe('events', () => {
     const manifest = buildManifest(BASE);
     expect(dayOf(manifest, '2026-09-11')?.events.find((e) => e.title === 'Disney Trip')?.continues).toBe(true);
     expect(dayOf(manifest, '2026-09-10')?.events.find((e) => e.title === 'Dentist')?.continues).toBe(false);
+  });
+
+  it('paints an owned calendar in its owner’s colour, not its own', () => {
+    // The whole point of assigning an owner: "Josh is amber everywhere". The
+    // Family feed's own #E8A33D happens to match, so give the owner a distinct
+    // colour and give the feed a different one, then prove the owner wins.
+    const manifest = buildManifest({
+      ...BASE,
+      people: [{ ...PEOPLE[0]!, color: '#22AA88' }],
+      sources: [{ ...SOURCES[0]!, color: '#111111', personId: 'p1' }, SOURCES[1]!],
+    });
+    const dentist = dayOf(manifest, '2026-09-10')?.events.find((e) => e.title === 'Dentist');
+    expect(dentist?.color).toBe('#22AA88');
+    expect(dentist?.personId).toBe('p1');
+  });
+
+  it('leaves an unowned calendar its own colour and no owner', () => {
+    const manifest = buildManifest(BASE);
+    const halfDay = dayOf(manifest, '2026-09-11')?.events.find((e) => e.title === 'Half day');
+    expect(halfDay?.color).toBe('#4C7FD1');
+    expect(halfDay?.personId).toBeUndefined();
+  });
+
+  it('falls back to the calendar’s colour when the owner id is dangling', () => {
+    // A person removed after the calendar was assigned to them: better a real
+    // colour than a grey nothing.
+    const manifest = buildManifest({
+      ...BASE,
+      people: [],
+      sources: [{ ...SOURCES[0]!, color: '#123456', personId: 'gone' }, SOURCES[1]!],
+    });
+    const dentist = dayOf(manifest, '2026-09-10')?.events.find((e) => e.title === 'Dentist');
+    expect(dentist?.color).toBe('#123456');
   });
 
   it('sorts all-day above timed', () => {

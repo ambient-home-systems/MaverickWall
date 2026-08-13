@@ -124,10 +124,11 @@ async function harness() {
   });
   await form('/setup/household', { timezone: 'Europe/London' });
 
-  const addFeed = async (name = 'Family'): Promise<string> => {
+  const addFeed = async (name = 'Family', personId?: string): Promise<string> => {
     const url = await icsServer();
     const response = await form('/admin/calendars', {
       name, url, allow_loopback: '1', allow_http: '1',
+      ...(personId !== undefined ? { person_id: personId } : {}),
     });
     expect(response.status).toBe(302);
     return url;
@@ -763,6 +764,24 @@ describe('people', () => {
       name: 'Sam calendar', color: '#AA3311', person_id: '', enabled: '1',
     });
     expect(h.db.prepare('SELECT person_id AS p FROM calendar_sources').get()).toEqual({ p: null });
+  });
+
+  it('assigns the owner at add time, so it is not a second trip through settings', async () => {
+    const h = await harness();
+    await add(h, 'Sam');
+    const person = h.db.prepare('SELECT id FROM people').get() as { id: string };
+    await h.addFeed('Sam calendar', person.id);
+    expect(h.db.prepare('SELECT person_id AS p FROM calendar_sources').get()).toEqual({
+      p: person.id,
+    });
+  });
+
+  it('treats an owner who has since gone as Everyone rather than refusing the feed', async () => {
+    const h = await harness();
+    await h.addFeed('Orphan calendar', 'nobody-here');
+    expect(h.db.prepare('SELECT COUNT(*) AS n, person_id AS p FROM calendar_sources').get()).toEqual(
+      { n: 1, p: null },
+    );
   });
 
   it('turning a calendar off stops it reaching the wall', async () => {
