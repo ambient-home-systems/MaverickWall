@@ -27,6 +27,7 @@ const HOUSEHOLD: HouseholdRow = {
   displayNextDays: 6,
   displayHorizonWeeks: 5,
   displayBlocks: 'now,next,horizon',
+  clock24: 1,
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,
@@ -91,6 +92,11 @@ describe('shape', () => {
     // A wall tablet's clock drifts and some never get NTP. The display tracks
     // its offset from this and never trusts its own clock.
     expect(buildManifest(BASE).generatedAt).toBe(NOW);
+  });
+
+  it('carries the clock format, defaulting to 24-hour (RFC 005)', () => {
+    expect(buildManifest(BASE).display.clock24).toBe(true);
+    expect(buildManifest({ ...BASE, household: { ...HOUSEHOLD, clock24: 0 } }).display.clock24).toBe(false);
   });
 
   it('reserves the fields for features not yet built', () => {

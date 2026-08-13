@@ -140,7 +140,7 @@ async function harness() {
     instance: { db: typeof db },
   ): Promise<{
     theme: { active: string; daytime?: string; daytimeStartsAt?: string };
-    display?: { todayEvents: number; nextDays: number; horizonWeeks: number; blocks: string[] };
+    display?: { todayEvents: number; nextDays: number; horizonWeeks: number; blocks: string[]; clock24: boolean };
   }> => {
     const issued = issueDisplayToken();
     const stamp2 = Date.now();
@@ -391,6 +391,7 @@ describe('display settings', () => {
       today_events: '5',
       next_days: '4',
       horizon_weeks: '6',
+      clock_24: '1',
     });
     expect(response.status).toBe(302);
 
@@ -399,7 +400,7 @@ describe('display settings', () => {
     expect(manifest.theme.daytime).toBe('almanac');
     expect(manifest.theme.daytimeStartsAt).toBe('06:30');
     expect(manifest.display).toEqual({
-      todayEvents: 5, nextDays: 4, horizonWeeks: 6, blocks: ['now', 'next', 'horizon'],
+      todayEvents: 5, nextDays: 4, horizonWeeks: 6, blocks: ['now', 'next', 'horizon'], clock24: true,
     });
   });
 
@@ -457,9 +458,9 @@ describe('display settings', () => {
       });
       expect(response.status).toBe(400);
     }
-    // Nothing was written by any of them.
+    // Nothing was written by any of them; the default 24-hour clock stands.
     expect((await h.manifestFor(h)).display).toEqual({
-      todayEvents: 8, nextDays: 6, horizonWeeks: 5, blocks: ['now', 'next', 'horizon'],
+      todayEvents: 8, nextDays: 6, horizonWeeks: 5, blocks: ['now', 'next', 'horizon'], clock24: true,
     });
   });
 

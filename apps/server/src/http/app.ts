@@ -624,6 +624,7 @@ export function createApp(deps: AppDeps): Hono {
     readonly displayNextDays?: number | null;
     readonly displayHorizonWeeks?: number | null;
     readonly displayBlocks?: string | null;
+    readonly clock24?: number | null;
     readonly layoutMode?: string | null;
     readonly layoutAspect?: number | null;
     readonly layoutLandscapeAspect?: number | null;
@@ -732,6 +733,7 @@ export function createApp(deps: AppDeps): Hono {
       displayNextDays: screen.displayNextDays,
       displayHorizonWeeks: screen.displayHorizonWeeks,
       displayBlocks: screen.displayBlocks,
+      clock24: screen.clock24,
       layoutMode: screen.layoutMode,
       layoutAspect: screen.layoutAspect,
       layoutLandscapeAspect: screen.layoutLandscapeAspect,

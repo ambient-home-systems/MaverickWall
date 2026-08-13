@@ -34,6 +34,7 @@ const HOUSEHOLD = (over: Partial<HouseholdRow> = {}): HouseholdRow => ({
   displayNextDays: 6,
   displayHorizonWeeks: 5,
   displayBlocks: 'now,next,horizon',
+  clock24: 1,
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,

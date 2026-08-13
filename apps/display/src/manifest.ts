@@ -115,6 +115,8 @@ export interface Manifest {
     readonly nextDays: number;
     readonly horizonWeeks: number;
     readonly blocks?: readonly string[];
+    /** 24-hour clock (the default) or 12-hour when the household turns it off. */
+    readonly clock24?: boolean;
   };
   /**
    * The free-form layout, when the household arranged one.

@@ -97,6 +97,12 @@ export const householdSettings = sqliteTable('household_settings', {
    * different statement from asking for zero days of it.
    */
   displayBlocks: text('display_blocks').notNull().default('now,next,horizon'),
+  /**
+   * 24-hour clock on the wall. Default 1 (24-hour), which is what the wall has
+   * always drawn — so an existing install is unchanged; a household can turn it
+   * off for a 12-hour reading (RFC 005).
+   */
+  clock24: integer('clock_24').notNull().default(1),
 
   /**
    * Which layout the wall draws.
@@ -343,6 +349,8 @@ export const screens = sqliteTable(
     displayNextDays: integer('display_next_days', { mode: 'number' }),
     displayHorizonWeeks: integer('display_horizon_weeks', { mode: 'number' }),
     displayBlocks: text('display_blocks'),
+    /** 24-hour clock override; null follows the household (RFC 005). */
+    clock24: integer('clock_24'),
     layoutMode: text('layout_mode'),
     layoutAspect: real('layout_aspect'),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */

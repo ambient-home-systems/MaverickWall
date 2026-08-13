@@ -183,6 +183,13 @@
       "when": 1786628333143,
       "tag": "0025_lazy_luckman",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1786629099038,
+      "tag": "0026_lazy_agent_zero",
+      "breakpoints": true
     }
   ]
 }

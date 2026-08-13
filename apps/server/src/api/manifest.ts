@@ -279,6 +279,8 @@ export interface Manifest {
     readonly horizonWeeks: number;
     /** In drawing order. A block missing from this list is not drawn at all. */
     readonly blocks: readonly DisplayBlock[];
+    /** 24-hour wall clock (the default) or 12-hour (RFC 005). */
+    readonly clock24: boolean;
   };
   /**
    * The free-form layout, when the household has chosen one.
@@ -383,6 +385,8 @@ export interface HouseholdRow {
   readonly displayNextDays: number;
   readonly displayHorizonWeeks: number;
   readonly displayBlocks: string;
+  /** 1 for a 24-hour wall clock (the default), 0 for 12-hour (RFC 005). */
+  readonly clock24: number;
   readonly layoutMode: string;
   readonly layoutAspect: number;
   /** The landscape canvas's aspect (RFC 005); the portrait one is layoutAspect. */
@@ -812,6 +816,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       nextDays: clamp(input.household.displayNextDays, 0, 14, 6),
       horizonWeeks: clamp(input.household.displayHorizonWeeks, 1, 8, 5),
       blocks: parseBlocks(input.household.displayBlocks),
+      // 24-hour unless the household explicitly turned it off (RFC 005).
+      clock24: input.household.clock24 !== 0,
     },
     layout: buildLayout(
       input.household,

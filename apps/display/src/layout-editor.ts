@@ -100,6 +100,15 @@ function randomId(): string {
 }
 
 function boot(): void {
+  // Confirm any destructive form on the page (the Reset button), whether or not
+  // the editor mount is present.
+  for (const form of Array.from(document.querySelectorAll<HTMLFormElement>('form[data-confirm]'))) {
+    form.addEventListener('submit', (event) => {
+      const message = form.dataset['confirm'];
+      if (message !== undefined && message !== '' && !window.confirm(message)) event.preventDefault();
+    });
+  }
+
   const mount = document.getElementById('layout-editor');
   if (mount === null) return;
 
