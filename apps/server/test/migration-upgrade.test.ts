@@ -133,4 +133,42 @@ describe('upgrading a database that is already in use', () => {
 
     db.close();
   });
+
+  it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
+    // A wall arranged before the two-canvas split has widgets with no
+    // orientation column. The 0024 migration adds it with a `portrait` default,
+    // because that is the aspect those rows were authored at — the same shape of
+    // near-miss as the `kind = 'kind'` one above, just the other direction: an
+    // additive column whose default has to be right, walked against real rows.
+    const entries = journal();
+    const root = mkdtempSync(join(tmpdir(), 'mw-upgrade-canvas-'));
+    roots.push(root);
+    const db = new Database(join(root, 'wall.db'));
+    db.pragma('journal_mode = WAL');
+
+    const stamp = 1_700_000_000_000;
+    let inserted = false;
+    for (const entry of entries) {
+      // Just before the orientation column arrives, store a widget the way a
+      // pre-RFC-005 wall did: no orientation column in the INSERT at all.
+      if (entry.tag.startsWith('0024')) {
+        db.prepare(
+          `INSERT INTO layout_widgets (id, type, x, y, w, h, z, config, created_at, updated_at)
+           VALUES ('w-1', 'clock', 0.1, 0.1, 0.3, 0.2, 0, NULL, ?, ?)`,
+        ).run(stamp, stamp);
+        inserted = true;
+      }
+      apply(db, entry.tag);
+    }
+    // If the tag ever changes, this guard keeps the test from silently proving
+    // nothing by inserting after the column already exists.
+    expect(inserted).toBe(true);
+
+    const row = db
+      .prepare(`SELECT id, type, orientation AS o FROM layout_widgets WHERE id = 'w-1'`)
+      .get() as { id: string; type: string; o: string };
+    expect(row).toEqual({ id: 'w-1', type: 'clock', o: 'portrait' });
+
+    db.close();
+  });
 });

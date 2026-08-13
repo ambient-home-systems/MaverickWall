@@ -119,15 +119,23 @@ export interface Manifest {
   /**
    * The free-form layout, when the household arranged one.
    *
-   * Optional and defaulted throughout: an older bundle that does not read this
-   * simply draws the responsive blocks, and a manifest without it (or with
-   * `mode` anything but `freeform`) does the same. The server has already
-   * clamped every coordinate and dropped any type this bundle has no widget
-   * for, so the renderer trusts what it is handed.
+   * A display authors two canvases — `portrait` and `landscape` — and the wall
+   * draws the one matching how it is hung; a canvas that is empty letterboxes the
+   * other (RFC 005). Optional and defaulted throughout: an older bundle that does
+   * not read this simply draws the responsive blocks, and a manifest without it
+   * (or with `mode` anything but `freeform`) does the same. The server has already
+   * clamped every coordinate and dropped any type this bundle has no widget for,
+   * so the renderer trusts what it is handed.
+   *
+   * `aspect`/`widgets` at the top level are the *legacy* single-canvas shape,
+   * still read from a manifest a pre-split bundle cached, so a free-form wall does
+   * not flash to the responsive layout for one poll after an upgrade.
    */
   readonly layout?: {
     readonly mode?: string;
-    /** Width ÷ height of the authored canvas. */
+    readonly portrait?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[] };
+    readonly landscape?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[] };
+    /** Legacy single-canvas shape (pre-RFC-005). Width ÷ height, and its widgets. */
     readonly aspect?: number;
     readonly widgets?: readonly ManifestWidget[];
   };

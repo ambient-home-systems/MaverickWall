@@ -1,5 +1,5 @@
 import { createClock } from './clock.js';
-import { createManifestClient, type Manifest } from './manifest.js';
+import { createManifestClient, type Manifest, type ManifestWidget } from './manifest.js';
 import { render, renderFreeform, renderMessage, renderPairing } from './render.js';
 import { applyTheme, daytimeActive } from './theme.js';
 import {
@@ -11,6 +11,37 @@ import {
 import { buildModel, localTime } from './viewmodel.js';
 import { createManifestStore } from './store.js';
 import { assess, DEFAULT_LIMITS } from './watchdog.js';
+
+/**
+ * Which canvas to draw, for how the screen is actually hung.
+ *
+ * A display carries two canvases (RFC 005) and only the wall knows its live
+ * orientation, so the choice is made here rather than on the server. The
+ * matching orientation wins; if its canvas is empty, the other's is drawn
+ * letterboxed, so a household that arranged only one side still sees it. The
+ * legacy single-canvas shape (from a manifest cached by a pre-split bundle) is
+ * read last, so a free-form wall does not flash to the responsive layout for one
+ * poll after an upgrade. `undefined` means "draw the responsive layout".
+ */
+function pickCanvas(
+  layout: Manifest['layout'],
+  orientation: 'portrait' | 'landscape',
+): { readonly aspect: number; readonly widgets: readonly ManifestWidget[] } | undefined {
+  if (layout === undefined || layout.mode !== 'freeform') return undefined;
+  const landscape = orientation === 'landscape';
+  const primary = landscape ? layout.landscape : layout.portrait;
+  const secondary = landscape ? layout.portrait : layout.landscape;
+  if (primary?.widgets !== undefined && primary.widgets.length > 0) {
+    return { aspect: primary.aspect ?? (landscape ? 1.7778 : 0.5625), widgets: primary.widgets };
+  }
+  if (secondary?.widgets !== undefined && secondary.widgets.length > 0) {
+    return { aspect: secondary.aspect ?? (landscape ? 0.5625 : 1.7778), widgets: secondary.widgets };
+  }
+  if (layout.widgets !== undefined && layout.widgets.length > 0) {
+    return { aspect: layout.aspect ?? 0.5625, widgets: layout.widgets };
+  }
+  return undefined;
+}
 
 /**
  * The wall.
@@ -84,7 +115,8 @@ function start(): void {
   const draw = (): void => {
     if (manifest === undefined) return;
     const now = clock.now();
-    applyGeometry(geometry());
+    const geo = geometry();
+    applyGeometry(geo);
     const model = buildModel({ manifest, now, lastConfirmedAt, offline });
 
     // Which blocks are on screen, for the few layout rules that need to know
@@ -109,14 +141,15 @@ function start(): void {
       day ? manifest.theme.daytimeShape : manifest.theme.activeShape,
     );
     /*
-     * Free-form when the household arranged a canvas, the responsive layout
-     * otherwise. The server only sets `freeform` when there is something to
-     * draw, but the length check is kept here too: a bundle must draw something
-     * sane against any manifest, including one older or newer than itself.
+     * Free-form when the household arranged a canvas for this orientation (or
+     * the other one, letterboxed), the responsive layout otherwise. The server
+     * only sets `freeform` when a canvas has something to draw, but `pickCanvas`
+     * checks again here: a bundle must draw something sane against any manifest,
+     * including one older or newer than itself.
      */
-    const layout = manifest.layout;
-    if (layout?.mode === 'freeform' && layout.widgets !== undefined && layout.widgets.length > 0) {
-      renderFreeform(root, model, { aspect: layout.aspect ?? 0.5625, widgets: layout.widgets });
+    const canvas = pickCanvas(manifest.layout, geo.layout);
+    if (canvas !== undefined) {
+      renderFreeform(root, model, canvas);
     } else {
       render(root, model);
     }

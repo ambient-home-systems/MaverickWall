@@ -31,6 +31,7 @@ const HOUSEHOLD_DEFAULTS: HouseholdRow = {
   displayBlocks: 'now,next,horizon',
   layoutMode: 'auto',
   layoutAspect: 0.5625,
+  layoutLandscapeAspect: 1.7778,
 };
 
 export function readHousehold(db: SqliteDatabase): HouseholdRow {
@@ -44,7 +45,8 @@ export function readHousehold(db: SqliteDatabase): HouseholdRow {
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
               layout_mode AS layoutMode,
-              layout_aspect AS layoutAspect
+              layout_aspect AS layoutAspect,
+              layout_landscape_aspect AS layoutLandscapeAspect
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as HouseholdRow | undefined;
@@ -54,27 +56,30 @@ export function readHousehold(db: SqliteDatabase): HouseholdRow {
 }
 
 /**
- * The placed widgets for one canvas — a wall's own, or the shared default.
+ * The placed widgets for one canvas — a wall's own, or the shared default, on
+ * one orientation.
  *
  * `screenId` null reads the default layout (rows with no owner); a screen id
- * reads that wall's own. The `config` column is JSON this process wrote, parsed
- * leniently because a row that will not parse is one missing widget, never a
- * manifest that fails to build — rule nine. `buildLayout` clamps the
- * coordinates and checks the type; this only turns rows into the shape it
+ * reads that wall's own. `orientation` picks the portrait or landscape canvas —
+ * a display authors both (RFC 005). The `config` column is JSON this process
+ * wrote, parsed leniently because a row that will not parse is one missing
+ * widget, never a manifest that fails to build — rule nine. `buildLayout` clamps
+ * the coordinates and checks the type; this only turns rows into the shape it
  * expects.
  */
 export function readLayoutWidgets(
   db: SqliteDatabase,
   screenId: string | null = null,
+  orientation: 'portrait' | 'landscape' = 'portrait',
 ): PlacedWidgetRow[] {
   const rows = db
     .prepare(
       `SELECT id, type, x, y, w, h, z, config
          FROM layout_widgets
-        WHERE screen_id IS ?
+        WHERE screen_id IS ? AND orientation = ?
         ORDER BY z, created_at`,
     )
-    .all(screenId) as {
+    .all(screenId, orientation) as {
     id: string;
     type: string;
     x: number;
@@ -110,47 +115,56 @@ export interface LayoutWidgetInput {
 }
 
 /**
- * Save a whole layout at once — for one wall, or the shared default.
+ * Save one canvas at once — for one wall, or the shared default, one orientation.
  *
- * `screenId` null writes the default: the mode and aspect on the household, the
- * widgets with no owner. A screen id writes that wall: the mode and aspect on
- * the screen row (a non-null `layout_mode` there is what marks the wall as
- * having its own canvas), the widgets owned by it.
+ * `screenId` null writes the default: the mode on the household, the widgets with
+ * no owner. A screen id writes that wall: the mode on the screen row (a non-null
+ * `layout_mode` there is what marks the wall as having its own canvas), the
+ * widgets owned by it. `mode` is per display (shared across the two canvases);
+ * `orientation` says which canvas's widgets and which aspect column to write, so
+ * saving the portrait canvas never disturbs the landscape one (RFC 005).
  *
  * Replace rather than diff, because the editor sends the canvas it has and the
  * simplest correct thing is to make the database match it. One transaction per
- * owner, so a wall polling mid-save reads the old canvas or the new one, never
- * half of either — and only that owner's rows are touched, so saving one wall
- * never disturbs another. The rows are trusted here because the boundary
- * validated them; the display clamps again in `buildLayout` regardless.
+ * owner-and-orientation, so a wall polling mid-save reads the old canvas or the
+ * new one, never half of either — and only that owner's rows on that orientation
+ * are touched. The rows are trusted here because the boundary validated them; the
+ * display clamps again in `buildLayout` regardless.
  */
 export function replaceLayout(
   db: SqliteDatabase,
   screenId: string | null,
+  orientation: 'portrait' | 'landscape',
   layout: { readonly mode: string; readonly aspect: number; readonly widgets: readonly LayoutWidgetInput[] },
 ): void {
   const at = Date.now();
+  // The aspect column depends on which canvas is being written.
+  const aspectCol = orientation === 'landscape' ? 'layout_landscape_aspect' : 'layout_aspect';
   const tx = db.transaction(() => {
     if (screenId === null) {
       db.prepare(
-        `UPDATE household_settings SET layout_mode = ?, layout_aspect = ?, updated_at = ?
+        `UPDATE household_settings SET layout_mode = ?, ${aspectCol} = ?, updated_at = ?
           WHERE id = 'singleton'`,
       ).run(layout.mode, layout.aspect, at);
     } else {
       db.prepare(
-        `UPDATE screens SET layout_mode = ?, layout_aspect = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE screens SET layout_mode = ?, ${aspectCol} = ?, updated_at = ? WHERE id = ?`,
       ).run(layout.mode, layout.aspect, at, screenId);
     }
 
-    db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ?').run(screenId);
+    db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ? AND orientation = ?').run(
+      screenId,
+      orientation,
+    );
     const insert = db.prepare(
-      `INSERT INTO layout_widgets (id, screen_id, type, x, y, w, h, z, config, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     layout.widgets.forEach((widget, index) => {
       insert.run(
         widget.id,
         screenId,
+        orientation,
         widget.type,
         widget.x,
         widget.y,
@@ -191,6 +205,7 @@ export function effectiveDisplay(
     readonly displayBlocks?: string | null;
     readonly layoutMode?: string | null;
     readonly layoutAspect?: number | null;
+    readonly layoutLandscapeAspect?: number | null;
   },
 ): {
   /** The household row with each field resolved to this wall's effective value. */
@@ -208,6 +223,7 @@ export function effectiveDisplay(
       displayBlocks: screen.displayBlocks ?? household.displayBlocks,
       layoutMode: screen.layoutMode ?? household.layoutMode,
       layoutAspect: screen.layoutAspect ?? household.layoutAspect,
+      layoutLandscapeAspect: screen.layoutLandscapeAspect ?? household.layoutLandscapeAspect,
     },
     layoutOwner: ownsLayout ? (screen.id ?? null) : null,
   };
@@ -1216,6 +1232,7 @@ export interface ScreenRow {
   readonly displayBlocks: string | null;
   readonly layoutMode: string | null;
   readonly layoutAspect: number | null;
+  readonly layoutLandscapeAspect: number | null;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
@@ -1229,7 +1246,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               display_next_days AS displayNextDays,
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
-              layout_mode AS layoutMode, layout_aspect AS layoutAspect
+              layout_mode AS layoutMode, layout_aspect AS layoutAspect,
+              layout_landscape_aspect AS layoutLandscapeAspect
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

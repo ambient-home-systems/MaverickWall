@@ -116,6 +116,16 @@ export const householdSettings = sqliteTable('household_settings', {
    * something nobody arranged. 9/16 portrait by default.
    */
   layoutAspect: real('layout_aspect').notNull().default(0.5625),
+  /**
+   * The aspect ratio the *landscape* free-form canvas was authored at.
+   *
+   * A display authors two canvases and the wall draws the one matching how it
+   * is hung (RFC 005). `layout_aspect` above is the portrait canvas's; this is
+   * the landscape one's. 16/9 by default. Additive so an existing wall keeps
+   * its one canvas as the portrait side and letterboxes it onto landscape until
+   * a landscape canvas is arranged.
+   */
+  layoutLandscapeAspect: real('layout_landscape_aspect').notNull().default(1.7778),
 
   /**
    * The one thing in this product that talks to anybody else.
@@ -155,6 +165,15 @@ export const layoutWidgets = sqliteTable('layout_widgets', {
    * the thing that keeps a widget's owner honest anyway.
    */
   screenId: text('screen_id'),
+  /**
+   * Which of the display's two canvases this widget is on.
+   *
+   * A display authors a portrait and a landscape canvas (RFC 005); the wall
+   * draws the one matching how it is hung. Defaults to `portrait` so every
+   * widget from before this column existed is read as part of the portrait
+   * canvas — the aspect those rows were authored at.
+   */
+  orientation: text('orientation').notNull().default('portrait'),
   /** The module that draws here: clock, calendar, weather, homeassistant, … */
   type: text('type').notNull(),
   /** Top-left and size, each a fraction 0..1 of the canvas. */
@@ -326,6 +345,8 @@ export const screens = sqliteTable(
     displayBlocks: text('display_blocks'),
     layoutMode: text('layout_mode'),
     layoutAspect: real('layout_aspect'),
+    /** The landscape canvas's aspect; null follows the household (RFC 005). */
+    layoutLandscapeAspect: real('layout_landscape_aspect'),
 
     /**
      * Which layout to draw, regardless of what the browser reports.

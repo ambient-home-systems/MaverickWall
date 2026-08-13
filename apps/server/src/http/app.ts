@@ -625,6 +625,7 @@ export function createApp(deps: AppDeps): Hono {
     readonly displayBlocks?: string | null;
     readonly layoutMode?: string | null;
     readonly layoutAspect?: number | null;
+    readonly layoutLandscapeAspect?: number | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -657,7 +658,11 @@ export function createApp(deps: AppDeps): Hono {
       // Resolve a theme reference to its tokens (custom) or just its shape
       // (built-in). The closure over the db keeps the read out of assembly.
       resolveTheme: (ref: string) => resolveTheme(deps.db, ref),
-      layoutWidgets: readLayoutWidgets(deps.db, layoutOwner),
+      // Both canvases travel in the manifest; the display draws the one that
+      // matches how the screen is hung, and letterboxes the other's when its own
+      // orientation is empty (RFC 005).
+      layoutWidgetsPortrait: readLayoutWidgets(deps.db, layoutOwner, 'portrait'),
+      layoutWidgetsLandscape: readLayoutWidgets(deps.db, layoutOwner, 'landscape'),
       events: readEvents(deps.db, from, to),
       sources: readSources(deps.db),
       people: readPeople(deps.db),
@@ -728,6 +733,7 @@ export function createApp(deps: AppDeps): Hono {
       displayBlocks: screen.displayBlocks,
       layoutMode: screen.layoutMode,
       layoutAspect: screen.layoutAspect,
+      layoutLandscapeAspect: screen.layoutLandscapeAspect,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.

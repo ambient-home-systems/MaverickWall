@@ -85,26 +85,11 @@ export function parseBlocks(stored: string | undefined): DisplayBlock[] {
 const unit = (value: number, fallback: number): number =>
   Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
 
-/**
- * The free-form layout the display switches on.
- *
- * `freeform` only when the household chose it *and* there is something to draw
- * — an empty canvas would be a blank wall, which rule nine forbids, so it falls
- * back to `auto` and the responsive layout keeps the wall alive. Every widget
- * is clamped and its type checked here, the one place between a stored row and
- * the wall, so the renderer is handed nothing off-screen and no type it has no
- * module for. `config` is carried through untouched: it is the widget's own,
- * validated where the editor writes it.
- */
-export function buildLayout(
-  household: HouseholdRow,
+/** Clamp and type-check one canvas's stored rows into the shape the wall draws. */
+function placeCanvas(
   widgets: readonly PlacedWidgetRow[],
-): Manifest['layout'] {
-  const aspect = Number.isFinite(household.layoutAspect) && household.layoutAspect > 0
-    ? household.layoutAspect
-    : 0.5625;
-
-  const placed = widgets
+): Manifest['layout']['portrait']['widgets'] {
+  return widgets
     .filter((widget) => (WIDGET_TYPES as readonly string[]).includes(widget.type))
     .map((widget) => ({
       id: widget.id,
@@ -118,11 +103,43 @@ export function buildLayout(
       config: widget.config,
     }))
     .sort((a, b) => a.z - b.z);
+}
+
+const aspectOf = (value: number, fallback: number): number =>
+  Number.isFinite(value) && value > 0 ? value : fallback;
+
+/**
+ * The free-form layout the display switches on.
+ *
+ * A display authors two canvases — portrait and landscape — and the wall draws
+ * the one matching how it is hung (RFC 005); both travel in the manifest because
+ * only the wall knows its live orientation. `mode` is `freeform` only when the
+ * household chose it *and* at least one canvas has something to draw — both
+ * empty would be a blank wall, which rule nine forbids, so it falls back to
+ * `auto`. A canvas with nothing on it letterboxes the other on that orientation;
+ * that choice lives in the display, which is the only place the live orientation
+ * is known. Every widget is clamped and its type checked here, the one place
+ * between a stored row and the wall. `config` is carried through untouched: it
+ * is the widget's own, validated where the editor writes it.
+ */
+export function buildLayout(
+  household: HouseholdRow,
+  portraitWidgets: readonly PlacedWidgetRow[],
+  landscapeWidgets: readonly PlacedWidgetRow[],
+): Manifest['layout'] {
+  const portrait = placeCanvas(portraitWidgets);
+  const landscape = placeCanvas(landscapeWidgets);
 
   const mode: 'auto' | 'freeform' =
-    household.layoutMode === 'freeform' && placed.length > 0 ? 'freeform' : 'auto';
+    household.layoutMode === 'freeform' && (portrait.length > 0 || landscape.length > 0)
+      ? 'freeform'
+      : 'auto';
 
-  return { mode, aspect, widgets: placed };
+  return {
+    mode,
+    portrait: { aspect: aspectOf(household.layoutAspect, 0.5625), widgets: portrait },
+    landscape: { aspect: aspectOf(household.layoutLandscapeAspect, 1.7778), widgets: landscape },
+  };
 }
 
 export interface ManifestEvent {
@@ -267,15 +284,17 @@ export interface Manifest {
    * The free-form layout, when the household has chosen one.
    *
    * `mode` is what the display switches on: `auto` draws the responsive
-   * zoom-pyramid from `display.blocks` above, and `freeform` draws these
-   * widgets on a canvas of `aspect` (width ÷ height), scaled to fit and
-   * letterboxed on a screen of a different shape. Always present so an older
-   * display that does not know the field still finds `mode: 'auto'`.
+   * zoom-pyramid from `display.blocks` above, and `freeform` draws a canvas. A
+   * display authors two — `portrait` and `landscape` — and the wall draws the
+   * one matching how it is hung, scaled to fit and letterboxed on a screen of a
+   * different shape; the *display* selects, because only it knows its live
+   * orientation. A canvas with no widgets letterboxes the other on that
+   * orientation. Always present so an older display still finds `mode: 'auto'`.
    */
   readonly layout: {
     readonly mode: 'auto' | 'freeform';
-    readonly aspect: number;
-    readonly widgets: readonly PlacedWidgetRow[];
+    readonly portrait: { readonly aspect: number; readonly widgets: readonly PlacedWidgetRow[] };
+    readonly landscape: { readonly aspect: number; readonly widgets: readonly PlacedWidgetRow[] };
   };
   /**
    * How this particular screen is hung.
@@ -366,6 +385,8 @@ export interface HouseholdRow {
   readonly displayBlocks: string;
   readonly layoutMode: string;
   readonly layoutAspect: number;
+  /** The landscape canvas's aspect (RFC 005); the portrait one is layoutAspect. */
+  readonly layoutLandscapeAspect: number;
 }
 
 /**
@@ -399,11 +420,13 @@ export interface PersonRow {
 export interface BuildManifestInput {
   readonly household: HouseholdRow;
   /**
-   * The placed widgets, read from the database and passed in — assembly is
-   * pure and does no I/O, the same reason panels and interrupts arrive
-   * already-collected. Empty when the household has never arranged a canvas.
+   * The placed widgets for each canvas, read from the database and passed in —
+   * assembly is pure and does no I/O, the same reason panels and interrupts
+   * arrive already-collected. Empty when the household has never arranged that
+   * orientation's canvas.
    */
-  readonly layoutWidgets?: readonly PlacedWidgetRow[];
+  readonly layoutWidgetsPortrait?: readonly PlacedWidgetRow[];
+  readonly layoutWidgetsLandscape?: readonly PlacedWidgetRow[];
   readonly events: readonly EventCacheRow[];
   readonly sources: readonly SourceRow[];
   readonly people: readonly PersonRow[];
@@ -790,7 +813,11 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       horizonWeeks: clamp(input.household.displayHorizonWeeks, 1, 8, 5),
       blocks: parseBlocks(input.household.displayBlocks),
     },
-    layout: buildLayout(input.household, input.layoutWidgets ?? []),
+    layout: buildLayout(
+      input.household,
+      input.layoutWidgetsPortrait ?? [],
+      input.layoutWidgetsLandscape ?? [],
+    ),
     days,
     people: people.map((person) => ({
       id: person.id,
