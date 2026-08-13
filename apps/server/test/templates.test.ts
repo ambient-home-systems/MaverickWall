@@ -59,7 +59,7 @@ describe('the shipped templates', () => {
 
   it('every template names a built-in theme and gives both canvases a background (Phase 3c)', () => {
     for (const t of TEMPLATES) {
-      expect(['board', 'slate', 'almanac', 'glance'], t.id).toContain(t.theme);
+      expect(['household', 'blueprint', 'panels', 'almanac'], t.id).toContain(t.theme);
       expect(t.portrait.background, `${t.id} portrait bg`).toBeDefined();
       expect(t.landscape.background, `${t.id} landscape bg`).toBeDefined();
     }

@@ -14,6 +14,17 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The wall has a new set of looks. The default dark theme now reads as a
+dashboard — the clock, the week ahead, the weather and the month each sit on
+their own card. There are two new light themes for daytime: Household, a warm
+paper look, and Blueprint, a cooler technical one; and the Paper Almanac theme
+was redrawn with a proper serif so the month reads as a ledger from across the
+room. Pick one on the Display screen, or set a light theme to come on
+automatically during the day. If you never changed your theme, there is nothing
+to do — your wall keeps its dark look.
+
 ## 0.24.5
 
 A restart shows a "server is booting" page instead of a dead link. While the

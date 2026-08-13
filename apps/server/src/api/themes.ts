@@ -6,9 +6,10 @@ import { colour, z } from '../validation.js';
  * Custom display themes: storage, validation, and resolution to a token set the
  * manifest can carry to the wall.
  *
- * The four built-in directions (Board / Slate / Almanac / Glance) live in the
- * display bundle's `theme.ts` as code — this owns only the *custom* themes a
- * household builds. A built-in reaches the display as a key it already knows; a
+ * The four built-in directions (Panels / Household / Blueprint / Almanac) live
+ * in the display bundle's `theme.ts` as code, along with the retired keys they
+ * replaced — this owns only the *custom* themes a household builds. A built-in
+ * reaches the display as a key it already knows (a retired key is aliased there); a
  * custom theme reaches it as fully-resolved token values, because the bundle has
  * never heard of it. The tint math below mirrors the display's `mix` /
  * `CELL_TINT` / `BADGE_TINT`; the two are kept in step by a `mix` unit test on
@@ -184,7 +185,7 @@ export interface ResolvedTheme {
 /**
  * Resolve a stored theme reference to what the manifest carries.
  *
- * A built-in (`board`, `slate`, …) yields just its shape; the display bundle
+ * A built-in (`panels`, `household`, …) yields just its shape; the display bundle
  * fills in the tokens. A `custom:<id>` yields the resolved token set with tints.
  * A custom id that is missing or malformed falls back to Board rather than
  * blanking a wall (rule nine).

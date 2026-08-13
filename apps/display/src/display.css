@@ -73,10 +73,16 @@ body {
   --f-sans: system-ui, 'Roboto', 'Segoe UI', -apple-system, sans-serif;
   --f-serif: Georgia, 'Times New Roman', serif;
   --f-mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Two bundled display faces the new directions reach for. Both ship in the
+     image and are @font-face'd above — never fetched (rule three). */
+  --f-grotesk: 'Space Grotesk', system-ui, 'Segoe UI', sans-serif;
+  --f-fraunces: 'Fraunces', Georgia, 'Times New Roman', serif;
+  /* Panels is the default, and its display face is the base grotesque. */
   --disp: var(--f-cond);
 }
-:root[data-theme="slate"] { --disp: var(--f-sans); }
-:root[data-theme="almanac"] { --disp: var(--f-serif); }
+:root[data-theme="household"] { --disp: var(--f-grotesk); }
+:root[data-theme="blueprint"] { --disp: var(--f-cond); }
+:root[data-theme="almanac"] { --disp: var(--f-fraunces); }
 
 /*
  * The rotation frame.
@@ -314,8 +320,6 @@ body {
   letter-spacing: -0.03em;
 }
 :root[data-theme="almanac"] .clock { font-weight: 400; letter-spacing: -0.02em; }
-:root[data-theme="slate"] .clock { font-weight: 300; letter-spacing: -0.04em; }
-:root[data-theme="glance"] .clock { font-size: 13rem; }
 
 .today-date {
   margin-top: 1.1rem;
@@ -357,7 +361,6 @@ body {
   text-transform: uppercase; letter-spacing: 0.005em;
 }
 :root[data-theme="almanac"] .shift-badge .what { text-transform: none; }
-:root[data-theme="slate"] .shift-badge .what { text-transform: none; font-weight: 600; }
 .shift-badge .until { font-size: 1.35rem; color: var(--muted); margin-top: 0.45rem; }
 .shift-badge .shift-when {
   font-family: var(--f-mono); font-size: 1.5rem; color: var(--muted);
@@ -415,7 +418,6 @@ body {
 .te.is-next .te-title { color: var(--accent); font-weight: 700; }
 .te.is-next .te-time { color: var(--accent); }
 .te.is-past { opacity: 0.32; }
-:root[data-theme="glance"] .te.is-past { display: none; }
 
 /* --- WEATHER ---------------------------------------------------------- */
 
@@ -449,7 +451,6 @@ body {
   color: var(--faint);
   text-align: center;
 }
-:root[data-theme="glance"] .wx { display: none; }
 
 /* --- THE HOUSE -------------------------------------------------------- */
 
@@ -489,13 +490,9 @@ body {
   font-size: 1.2rem;
   color: var(--faint);
 }
-/* Glance is one status at a distance; a row of readings is the opposite of it. */
-:root[data-theme="glance"] .house { display: none; }
-
 /* --- BLOCK 2 — NEXT --------------------------------------------------- */
 
 .next { display: grid; gap: 0; align-content: start; min-height: 0; overflow: hidden; }
-:root[data-theme="glance"] .next { display: none; }
 
 .section-label {
   font-size: 1.25rem; letter-spacing: 0.24em; text-transform: uppercase;
@@ -655,9 +652,35 @@ body {
   font-size: 1.2rem; letter-spacing: 0.13em; text-transform: uppercase;
   color: var(--muted); align-items: center;
 }
-:root[data-theme="glance"] .legend { display: none; }
 .legend span { display: flex; align-items: center; gap: 0.6rem; }
 .legend i { width: 1.5rem; height: 0.5rem; border-radius: 0.25rem; background: var(--sc); display: block; }
+
+/* --- Panels: the dark dashboard, block by block ----------------------- */
+
+/*
+ * Panels is the board's descendant, but every block reads as its own card.
+ *
+ * A shape change, not a colour one — the card fill is the theme's own `--panel`
+ * (which every other theme paints only behind badges and pills), plus a radius
+ * and interior padding. Kept to `data-theme="panels"` so nothing else grows a
+ * card. The blocks still clip under `overflow: hidden` and still sit in the same
+ * `minmax(0, …)` tracks, so a card never spills its row in either orientation;
+ * the extra padding is absorbed by the block that yields (the week ahead in
+ * portrait, the 1fr row in landscape) exactly as any other height would be.
+ */
+:root[data-theme="panels"] .now,
+:root[data-theme="panels"] .next,
+:root[data-theme="panels"] .horizon,
+:root[data-theme="panels"] .wx,
+:root[data-theme="panels"] .house {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 1.9rem 2.1rem;
+}
+/* The forecast and the house strip separate themselves with a full-width rule.
+   Inside a card that reads as a stray line, so the card edge does the job. */
+:root[data-theme="panels"] .wx { border-top: 0; border-bottom: 0; }
+:root[data-theme="panels"] .house { border-bottom: 0; }
 
 /* --- the pre-first-paint and unpaired screens ------------------------- */
 
@@ -865,7 +888,6 @@ body {
 
 /* The clock no longer has a tall column to itself, so it stops dominating. */
 :root[data-layout="landscape"] .clock { font-size: 8.5rem; }
-:root[data-layout="landscape"][data-theme="glance"] .clock { font-size: 10rem; }
 :root[data-layout="landscape"] .shift-badge { min-width: 20rem; }
 
 /* Cells get the height the column gives them rather than a portrait floor. */
@@ -874,14 +896,6 @@ body {
   height: 100%; grid-auto-rows: minmax(0, 1fr); align-content: stretch;
 }
 :root[data-layout="landscape"] .hz-head { align-self: end; }
-
-/*
- * Glance drops the week ahead, so the day takes the whole left column rather
- * than leaving a gap where it was.
- */
-:root[data-layout="landscape"][data-theme="glance"] .screen {
-  grid-template-areas: "now horizon" "now horizon";
-}
 
 /*
  * A short landscape screen — a 10" tablet on its side, say.

@@ -2,14 +2,14 @@ import type { DisplayTemplate } from '../api/templates.js';
 
 /**
  * To-dos and notes side by side with a short agenda — the fridge door, made
- * legible from across the room. Designed for the Board theme.
+ * legible from across the room. Designed for the Panels theme.
  */
 export const template: DisplayTemplate = {
   id: 'chore-board',
   name: 'Chore Board',
   category: 'home',
   blurb: 'A to-do list and notes beside a short agenda — the fridge door, legible from the doorway.',
-  theme: 'board',
+  theme: 'panels',
   portrait: {
     aspect: 0.5625,
     widgets: [

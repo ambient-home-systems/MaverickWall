@@ -20,7 +20,10 @@ import type {
 
 const HOUSEHOLD_DEFAULTS: HouseholdRow = {
   timezone: 'America/New_York',
-  theme: 'board',
+  // Panels is the new dark default. The stored column default is still `board`
+  // (changing it would need a table-recreate migration for no gain), which the
+  // display resolves to Panels — so a fresh install and this fallback agree.
+  theme: 'panels',
   daytimeTheme: null,
   daytimeStartsAt: null,
   daytimeEndsAt: null,

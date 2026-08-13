@@ -3,14 +3,14 @@ import type { DisplayTemplate } from '../api/templates.js';
 /**
  * Home Assistant readings and a module panel over the calendar — for a workshop
  * or maker-space status wall. Pick the module in its widget's options after
- * applying. Designed for the Kitchen Slate theme.
+ * applying. Designed for the Panels theme.
  */
 export const template: DisplayTemplate = {
   id: 'ops-dashboard',
   name: 'Ops Dashboard',
   category: 'office',
   blurb: 'Home Assistant readings and a module panel over a month grid.',
-  theme: 'slate',
+  theme: 'panels',
   portrait: {
     aspect: 0.5625,
     widgets: [

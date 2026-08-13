@@ -3,14 +3,14 @@ import type { DisplayTemplate } from '../api/templates.js';
 /**
  * A single number nobody can miss, over the month it is counting down within.
  * Set the date in the countdown widget's options after applying. Designed for
- * the Glance (near-black, white) theme.
+ * the Panels (dark) theme.
  */
 export const template: DisplayTemplate = {
   id: 'countdown',
   name: 'Countdown',
   category: 'home',
   blurb: 'A big countdown over a month grid — for the one date the household is waiting on.',
-  theme: 'glance',
+  theme: 'panels',
   portrait: {
     aspect: 0.5625,
     widgets: [

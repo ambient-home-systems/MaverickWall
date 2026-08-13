@@ -2,14 +2,14 @@ import type { DisplayTemplate } from '../api/templates.js';
 
 /**
  * Calendar up top, the house and the rota underneath — the wall for a home that
- * runs on shifts and sensors. Designed for the Kitchen Slate theme.
+ * runs on shifts and sensors. Designed for the Panels theme.
  */
 export const template: DisplayTemplate = {
   id: 'command-center',
   name: 'Command Center',
   category: 'home',
   blurb: 'A month grid over Home Assistant readings and the shift rota.',
-  theme: 'slate',
+  theme: 'panels',
   portrait: {
     aspect: 0.5625,
     widgets: [

@@ -1,59 +1,90 @@
 /**
- * Theme token sets, taken from `maverick-wall-design-directions.html`.
+ * Theme token sets, derived from the design exploration in
+ * `Wall Display Directions.dc.html`.
  *
  * Four directions, and they are pure token sets: nothing outside this file
- * names a colour, so switching theme changes no logic. Board is the default —
- * its shift hues separate best at ten feet — and Almanac is scheduled for
- * daylight, because Board at noon is a hole in the wall.
+ * names a colour, so switching theme changes no logic. Panels is the default —
+ * a dark modular dashboard whose shift hues separate best at ten feet — and
+ * Almanac is scheduled for daylight, because a dark theme at noon is a hole in
+ * the wall.
+ *
+ * The `.dc.html` comps are reference only; they use `color-mix()` and faces the
+ * wall cannot fetch. The look is reproduced through the real token system: the
+ * hues below, the tints derived from them, and a small `--disp`/shape block per
+ * theme in `display.css`.
  *
  * The shift token names come from `DEFAULT_SHIFT_TYPES` in core, which sends
  * `--s-day`, `--s-night` and `--s-straight` in the manifest. `--s-break` is the
  * design's name for a rest day, and its presence is the answer to a question
  * this display previously got wrong: a break day *is* coloured, distinctly, so
  * "not working" reads differently from "no rota".
+ *
+ * The earlier directions (Board / Slate / Glance) were retired in this swap.
+ * They survive only as `LEGACY_ALIASES` below, so a household's saved setting —
+ * or a template that still names one — resolves to the nearest survivor rather
+ * than blanking a wall (rule nine).
  */
 
-export type ThemeName = 'board' | 'slate' | 'almanac' | 'glance';
+export type ThemeName = 'household' | 'blueprint' | 'panels' | 'almanac';
 
 export type ThemeTokens = Readonly<Record<string, string>>;
 
-const BOARD: ThemeTokens = {
-  '--bg': '#0B0E11',
-  '--panel': '#151A21',
-  '--rule': '#242D38',
-  '--ink': '#E9EEF4',
-  '--muted': '#7E8C9C',
-  '--faint': '#4A5563',
-  '--accent': '#E8A33D',
+/** Warm daylight paper; per-person colour does the heavy lifting. */
+const HOUSEHOLD: ThemeTokens = {
+  '--bg': '#F4F0E8',
+  '--panel': '#FFFFFF',
+  '--rule': '#E6DFCF',
+  '--ink': '#26221C',
+  '--muted': '#8A8474',
+  '--faint': '#A49C88',
+  '--accent': '#B5651F',
   '--s-day': '#E8A33D',
   '--s-night': '#4C7FD1',
   '--s-break': '#35916A',
   '--s-straight': '#6B7684',
-  '--radius': '0.2rem',
+  '--radius': '1.1rem',
 };
 
-const SLATE: ThemeTokens = {
-  '--bg': '#191713',
-  '--panel': '#23201A',
-  '--rule': '#3A342A',
-  '--ink': '#F4EFE4',
-  '--muted': '#9C9384',
-  '--faint': '#635C50',
-  '--accent': '#D2A93F',
-  '--s-day': '#D2A93F',
-  '--s-night': '#6C8FAB',
-  '--s-break': '#83A173',
-  '--s-straight': '#8A8074',
+/** Steel-blue on a light technical ground: the bound design system as a wall. */
+const BLUEPRINT: ThemeTokens = {
+  '--bg': '#F2F2F3',
+  '--panel': '#FFFFFF',
+  '--rule': '#C6C9CD',
+  '--ink': '#1D1F20',
+  '--muted': '#7C8288',
+  '--faint': '#9AA0A6',
+  '--accent': '#5980A6',
+  '--s-day': '#C98A16',
+  '--s-night': '#2F5D8C',
+  '--s-break': '#4A8556',
+  '--s-straight': '#8C8578',
+  '--radius': '0',
+};
+
+/** The board's descendant: dark, but the blocks read as discrete panels. */
+const PANELS: ThemeTokens = {
+  '--bg': '#14181E',
+  '--panel': '#1B212A',
+  '--rule': '#2A323E',
+  '--ink': '#EDEBE6',
+  '--muted': '#9AA5B2',
+  '--faint': '#7E8A99',
+  '--accent': '#5C93E0',
+  '--s-day': '#E8A33D',
+  '--s-night': '#5C93E0',
+  '--s-break': '#35916A',
+  '--s-straight': '#6B7684',
   '--radius': '1.2rem',
 };
 
+/** Month-as-hero paper ledger: cream ground, red accent, serif display face. */
 const ALMANAC: ThemeTokens = {
-  '--bg': '#F6F3EC',
+  '--bg': '#FBF8F1',
   '--panel': '#FFFFFF',
-  '--rule': '#D6D0C2',
-  '--ink': '#1A1815',
-  '--muted': '#6B6558',
-  '--faint': '#A9A294',
+  '--rule': '#E4DCC9',
+  '--ink': '#241F19',
+  '--muted': '#8A8474',
+  '--faint': '#A89F8B',
   '--accent': '#B3372B',
   '--s-day': '#C98A16',
   '--s-night': '#2F5D8C',
@@ -62,39 +93,56 @@ const ALMANAC: ThemeTokens = {
   '--radius': '0',
 };
 
-const GLANCE: ThemeTokens = {
-  '--bg': '#07080A',
-  '--panel': '#0E1014',
-  '--rule': '#1C2028',
-  '--ink': '#FFFFFF',
-  '--muted': '#7C848F',
-  '--faint': '#464D57',
-  '--accent': '#FFFFFF',
-  '--s-day': '#F0A93A',
-  '--s-night': '#4F86DE',
-  '--s-break': '#35A87A',
-  '--s-straight': '#78838F',
-  '--radius': '0.3rem',
+const THEMES: Readonly<Record<ThemeName, ThemeTokens>> = {
+  household: HOUSEHOLD,
+  blueprint: BLUEPRINT,
+  panels: PANELS,
+  almanac: ALMANAC,
 };
 
-const THEMES: Readonly<Record<ThemeName, ThemeTokens>> = {
-  board: BOARD,
-  slate: SLATE,
-  almanac: ALMANAC,
-  glance: GLANCE,
+/** The fallback for an unknown key — a version skew, or a retired theme. */
+const DEFAULT_THEME: ThemeName = 'panels';
+
+/**
+ * Retired theme keys mapped to the nearest survivor.
+ *
+ * Board, Slate and Glance were the old dark directions; all three resolve to
+ * Panels, the new dark default, so a household who never touched the theme
+ * setting — the column default is still `board` (changing it would need a
+ * table-recreate migration for no benefit, since it resolves here) — and any
+ * template still naming one keep a dark wall rather than being flipped to a
+ * light theme or blanked. The mapping is dark→dark deliberately: aliasing the
+ * warm-dark Slate to the warm-*light* Household would turn an office dashboard
+ * inside out on upgrade.
+ */
+const LEGACY_ALIASES: Readonly<Record<string, ThemeName>> = {
+  board: 'panels',
+  slate: 'panels',
+  glance: 'panels',
 };
 
 /**
- * Almanac tints its cells more lightly than the dark themes do.
+ * Resolve any stored key to a theme this bundle draws: itself if known, its
+ * alias if retired, else the default.
+ */
+function resolveName(name: string): ThemeName {
+  if (name in THEMES) return name as ThemeName;
+  const alias = LEGACY_ALIASES[name];
+  return alias ?? DEFAULT_THEME;
+}
+
+/**
+ * How lightly each theme washes a shift cell.
  *
  * A 20% wash of a hue over white is far louder than the same wash over near
- * black, so the design uses a different figure on paper.
+ * black, so the light themes use 0.13 and the dark default uses 0.20 — the
+ * design's own split, kept for any new light/dark theme.
  */
 const CELL_TINT: Readonly<Record<ThemeName, number>> = {
-  board: 0.2,
-  slate: 0.2,
+  household: 0.13,
+  blueprint: 0.13,
+  panels: 0.2,
   almanac: 0.13,
-  glance: 0.2,
 };
 const BADGE_TINT = 0.16;
 
@@ -141,10 +189,10 @@ export function mix(foreground: string, background: string, amount: number): str
  * the design actually specifies.
  */
 export function themeTokens(name: string): ThemeTokens {
-  // An unknown name falls back rather than throwing. A theme key the server
-  // knows about and this bundle does not is a version skew, not a reason for a
-  // wall to go blank.
-  const key: ThemeName = name in THEMES ? (name as ThemeName) : 'board';
+  // An unknown name falls back rather than throwing, and a retired key resolves
+  // to its alias. A theme key the server knows about and this bundle does not is
+  // a version skew, not a reason for a wall to go blank.
+  const key: ThemeName = resolveName(name);
   const base = THEMES[key];
   const background = base['--bg'] ?? '#000000';
 
@@ -233,9 +281,9 @@ export interface Themeable {
  * Write a token set onto an element.
  *
  * The name also goes on as `data-theme`, because a few of the design's rules
- * are shape rather than colour — Almanac italicises the date and drops the
- * cell fills to ledger rules, Glance hides the week ahead entirely — and those
- * cannot be expressed as a custom property.
+ * are shape rather than colour — Almanac italicises the date and drops the cell
+ * fills to a ledger look, Panels gives each block a card, Blueprint squares
+ * every corner — and those cannot be expressed as a custom property.
  */
 export function applyTheme(
   element: Themeable,
@@ -245,7 +293,10 @@ export function applyTheme(
 ): void {
   // A custom theme: the server resolved its tokens (base colours plus the tints)
   // because this bundle has never heard of it. Apply them verbatim and take the
-  // shape the server chose — `board`, so it inherits the default shape CSS.
+  // shape the server chose — `board`, which has no shape override, so a custom
+  // theme inherits the neutral default CSS rather than any theme's card/ledger
+  // look. `board` survives here purely as that neutral sentinel; it is never a
+  // key a built-in resolves to.
   if (tokens !== undefined) {
     for (const key of Object.keys(tokens)) {
       const value = tokens[key];
@@ -255,11 +306,13 @@ export function applyTheme(
     return;
   }
 
-  // A built-in (or a version-skew fallback): resolve the key from this bundle.
+  // A built-in (or a retired/version-skew key): resolve it from this bundle so
+  // the tokens and the `data-theme` shape agree — a saved `board` renders as
+  // Panels, colours and card shape together.
   const resolved = themeTokens(name);
   for (const key of Object.keys(resolved)) {
     const value = resolved[key];
     if (value !== undefined) element.style.setProperty(key, value);
   }
-  element.setAttribute('data-theme', name in THEMES ? name : 'board');
+  element.setAttribute('data-theme', resolveName(name));
 }

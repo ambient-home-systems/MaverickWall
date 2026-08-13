@@ -2,14 +2,14 @@ import type { DisplayTemplate } from '../api/templates.js';
 
 /**
  * The time, big, with the day's weather beneath it — a hallway or bedside wall
- * that answers two questions and stops. Designed for the Glance theme.
+ * that answers two questions and stops. Designed for the Panels theme.
  */
 export const template: DisplayTemplate = {
   id: 'minimal-clock',
   name: 'Minimal Clock',
   category: 'home',
   blurb: 'A big clock with the day’s weather — answers two questions and stops.',
-  theme: 'glance',
+  theme: 'panels',
   portrait: {
     aspect: 0.5625,
     widgets: [

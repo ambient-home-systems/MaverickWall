@@ -345,7 +345,7 @@ function blockOrder(
  * `if` statements down the handler, and the message stays the one a household
  * would want — a window of no length is the mistake people actually make.
  */
-const themeKeys = ['board', 'slate', 'almanac', 'glance'] as const;
+const themeKeys = ['household', 'blueprint', 'panels', 'almanac'] as const;
 
 const displayBody = z
   .object({
@@ -389,10 +389,10 @@ const displayBody = z
 const HHMM_SHAPE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 const THEMES = [
-  { key: 'board', label: 'Board — dark, amber' },
-  { key: 'slate', label: 'Kitchen Slate — warm, calm at night' },
-  { key: 'almanac', label: 'Paper Almanac — light paper, red' },
-  { key: 'glance', label: 'Glance — the whole screen is the status' },
+  { key: 'panels', label: 'Panels — dark, each block a card' },
+  { key: 'household', label: 'Household — warm daylight paper' },
+  { key: 'blueprint', label: 'Blueprint — light technical wireframe' },
+  { key: 'almanac', label: 'Paper Almanac — the month, as a ledger' },
 ] as const;
 
 /**
@@ -402,11 +402,29 @@ const THEMES = [
  * so a theme added to one is a visible hole in the other.
  */
 const THEME_SWATCHES: Readonly<Record<string, readonly [string, string, string]>> = {
-  board: ['#0B0E11', '#E0A33E', '#4C7FD1'],
-  slate: ['#23201A', '#D2A93F', '#6C8FAB'],
-  almanac: ['#F1EDE3', '#B3372B', '#2F5D8C'],
-  glance: ['#07080A', '#FFFFFF', '#4F86DE'],
+  panels: ['#14181E', '#5C93E0', '#E8A33D'],
+  household: ['#F4F0E8', '#B5651F', '#4C7FD1'],
+  blueprint: ['#F2F2F3', '#5980A6', '#2F5D8C'],
+  almanac: ['#FBF8F1', '#B3372B', '#2F5D8C'],
 };
+
+/**
+ * Retired theme keys mapped to their surviving equivalent, mirroring the
+ * display bundle's `LEGACY_ALIASES`. A household who never changed the setting
+ * still carries `board` in the database; normalising it here highlights the
+ * right card and pre-selects the right option, so the picker matches the wall.
+ */
+const LEGACY_THEME_ALIASES: Readonly<Record<string, string>> = {
+  board: 'panels',
+  slate: 'panels',
+  glance: 'panels',
+};
+
+/** A stored theme reference as the picker should show it — retired keys folded
+ *  onto their survivor, everything else (a built-in or a `custom:<id>`) as-is. */
+function displayThemeRef(ref: string): string {
+  return LEGACY_THEME_ALIASES[ref] ?? ref;
+}
 
 /**
  * The theme picker as selectable cards, scriptless.
@@ -2352,14 +2370,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<span><label for="theme-${screen.id}">Theme</label>` +
       `<select id="theme-${screen.id}" name="theme">` +
       option('', 'Follow the default', screen.theme === null) +
-      THEMES.map((theme) => option(theme.key, theme.label, screen.theme === theme.key)).join('') +
+      THEMES.map((theme) =>
+        option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
+      ).join('') +
       customThemeOptions(screen.theme) +
       `</select></span>` +
       `<span><label for="night-${screen.id}">During the day</label>` +
       `<select id="night-${screen.id}" name="daytime_theme">` +
       option('', 'Follow the default', screen.daytimeTheme === null) +
       THEMES.map((theme) =>
-        option(theme.key, theme.label, screen.daytimeTheme === theme.key),
+        option(theme.key, theme.label, displayThemeRef(screen.daytimeTheme ?? '') === theme.key),
       ).join('') +
       customThemeOptions(screen.daytimeTheme) +
       `</select></span>` +
@@ -2835,13 +2855,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<form method="post" action="admin/display">` +
       `<label>Theme</label>` +
-      themeCards(household.theme, custom) +
-      `<p class="hint">Board separates the shift colours best from across a room. ` +
+      themeCards(displayThemeRef(household.theme), custom) +
+      `<p class="hint">Panels separates the shift colours best from across a room. ` +
       `Build your own on the <a class="link" href="admin/themes">Themes</a> screen.</p>` +
 
       `<label for="daytime_theme">During the day</label>` +
       `<select id="daytime_theme" name="daytime_theme">` +
-      `${themeOptions(scheduled ? (household.daytimeTheme ?? '') : '', true)}</select>` +
+      `${themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true)}</select>` +
       `<p class="hint">A dark theme at noon is a hole in the wall; a light one at 2am is a lamp.</p>` +
 
       `<div class="row-fields">` +

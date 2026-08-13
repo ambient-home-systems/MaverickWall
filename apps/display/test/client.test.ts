@@ -201,7 +201,7 @@ describe('the clock', () => {
 
 describe('theme tokens', () => {
   it('carries all four directions from the design file', () => {
-    for (const name of ['board', 'slate', 'almanac', 'glance']) {
+    for (const name of ['household', 'blueprint', 'panels', 'almanac']) {
       const tokens = themeTokens(name);
       expect(tokens['--bg']).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(tokens['--s-break']).toMatch(/^#[0-9A-Fa-f]{6}$/);
@@ -210,17 +210,25 @@ describe('theme tokens', () => {
 
   it('falls back rather than throwing on a theme it does not know', () => {
     // A theme key the server knows about and this bundle does not is version
-    // skew, not a reason for a wall to go blank.
-    expect(themeTokens('kitchen-disco')).toEqual(themeTokens('board'));
+    // skew, not a reason for a wall to go blank — it resolves to the default.
+    expect(themeTokens('kitchen-disco')).toEqual(themeTokens('panels'));
+  });
+
+  it('resolves a retired key to its surviving alias', () => {
+    // Board/Slate/Glance were retired; all three resolve to Panels so a saved
+    // setting or an old template keeps a dark wall.
+    expect(themeTokens('board')).toEqual(themeTokens('panels'));
+    expect(themeTokens('slate')).toEqual(themeTokens('panels'));
+    expect(themeTokens('glance')).toEqual(themeTokens('panels'));
   });
 
   it('pre-mixes the cell tints, because color-mix() is too new', () => {
     // The design wrote `color-mix(in srgb, var(--sc) 20%, transparent)`, which
     // lands in the same browsers as :has(). Rule two rules both out.
-    const board = themeTokens('board');
-    expect(board['--s-day-tint']).toMatch(/^#[0-9A-Fa-f]{6}$/);
-    // 20% of #E8A33D over #0B0E11.
-    expect(board['--s-day-tint']).toBe(mix('#E8A33D', '#0B0E11', 0.2));
+    const panels = themeTokens('panels');
+    expect(panels['--s-day-tint']).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    // 20% of #E8A33D over the Panels background #14181E.
+    expect(panels['--s-day-tint']).toBe(mix('#E8A33D', '#14181E', 0.2));
   });
 
   it('mixes towards the background, not towards white', () => {

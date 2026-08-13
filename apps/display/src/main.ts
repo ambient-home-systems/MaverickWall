@@ -74,12 +74,12 @@ function start(): void {
   const root = document.getElementById('wall');
   if (root === null) return;
 
-  // The default theme, before any manifest. Board is the documented default,
+  // The default theme, before any manifest. Panels is the documented default,
   // and its tokens are what the pre-paint and pairing screens are styled from —
   // without this they draw with `--panel`, `--muted` and `--accent` all unset,
   // so a field has no box and the muted text is not muted. A real manifest
   // re-themes on the first draw.
-  applyTheme(document.documentElement, 'board');
+  applyTheme(document.documentElement, 'panels');
 
   const clock = createClock();
   const client = createManifestClient(

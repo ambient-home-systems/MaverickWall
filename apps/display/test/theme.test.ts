@@ -21,10 +21,10 @@ function fake(): Themeable & { readonly props: Record<string, string>; readonly 
 describe('applyTheme', () => {
   it('resolves a built-in from the bundle by key', () => {
     const el = fake();
-    applyTheme(el, 'board');
+    applyTheme(el, 'panels');
     expect(el.props['--bg']).toBeDefined();
     expect(el.props['--s-day-tint']).toBeDefined(); // derived here for built-ins
-    expect(el.attrs['data-theme']).toBe('board');
+    expect(el.attrs['data-theme']).toBe('panels');
   });
 
   it('applies supplied custom tokens verbatim with the given shape', () => {
@@ -32,19 +32,33 @@ describe('applyTheme', () => {
     applyTheme(el, 'custom:x', { '--bg': '#123456', '--accent': '#abcdef' }, 'board');
     expect(el.props['--bg']).toBe('#123456');
     expect(el.props['--accent']).toBe('#abcdef');
+    // `board` is the neutral shape sentinel: it has no data-theme override, so a
+    // custom theme inherits the default CSS rather than any theme's card look.
     expect(el.attrs['data-theme']).toBe('board');
   });
 
-  it('defaults a custom theme to the board shape when none is named', () => {
+  it('defaults a custom theme to the neutral board shape when none is named', () => {
     const el = fake();
     applyTheme(el, 'custom:x', { '--bg': '#000000' });
     expect(el.attrs['data-theme']).toBe('board');
   });
 
-  it('an unknown built-in key falls back to board', () => {
+  it('resolves a retired key to its surviving alias, shape and all', () => {
+    // Board/Slate/Glance were retired in the theme swap; a household who never
+    // changed the setting still carries `board`, and it must render as Panels
+    // (colours and card shape together), not blank.
+    const el = fake();
+    applyTheme(el, 'board');
+    expect(el.attrs['data-theme']).toBe('panels');
+    const panels = fake();
+    applyTheme(panels, 'panels');
+    expect(el.props['--bg']).toBe(panels.props['--bg']);
+  });
+
+  it('an unknown built-in key falls back to the default theme', () => {
     const el = fake();
     applyTheme(el, 'nonsense');
-    expect(el.attrs['data-theme']).toBe('board');
+    expect(el.attrs['data-theme']).toBe('panels');
   });
 });
 
@@ -54,16 +68,16 @@ describe('daytimeActive / themeAt', () => {
     expect(daytimeActive('23:00', 'almanac', '07:00', '21:00')).toBe(false);
   });
   it('honours a window that wraps midnight', () => {
-    expect(daytimeActive('02:00', 'glance', '23:00', '06:00')).toBe(true);
-    expect(daytimeActive('12:00', 'glance', '23:00', '06:00')).toBe(false);
+    expect(daytimeActive('02:00', 'household', '23:00', '06:00')).toBe(true);
+    expect(daytimeActive('12:00', 'household', '23:00', '06:00')).toBe(false);
   });
   it('is inactive without a full window', () => {
     expect(daytimeActive('12:00', undefined, '07:00', '21:00')).toBe(false);
     expect(daytimeActive('12:00', 'almanac', '08:00', '08:00')).toBe(false);
   });
   it('themeAt picks daytime inside the window, active outside', () => {
-    expect(themeAt('12:00', 'board', 'almanac', '07:00', '21:00')).toBe('almanac');
-    expect(themeAt('23:00', 'board', 'almanac', '07:00', '21:00')).toBe('board');
+    expect(themeAt('12:00', 'panels', 'almanac', '07:00', '21:00')).toBe('almanac');
+    expect(themeAt('23:00', 'panels', 'almanac', '07:00', '21:00')).toBe('panels');
   });
 });
 

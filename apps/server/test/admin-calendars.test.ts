@@ -376,7 +376,7 @@ describe('display settings', () => {
     // The default appearance form lives on the Default display now, not the
     // retired global Display page.
     const body = await (await h.call('/admin/displays/default')).text();
-    for (const theme of ['board', 'slate', 'almanac', 'glance']) {
+    for (const theme of ['household', 'blueprint', 'panels', 'almanac']) {
       expect(body).toContain(`value="${theme}"`);
     }
   });
@@ -384,7 +384,7 @@ describe('display settings', () => {
   it('saves a theme and a daylight schedule, and the manifest carries them', async () => {
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'glance',
+      theme: 'panels',
       daytime_theme: 'almanac',
       daytime_starts_at: '06:30',
       daytime_ends_at: '20:15',
@@ -396,7 +396,7 @@ describe('display settings', () => {
     expect(response.status).toBe(302);
 
     const manifest = await h.manifestFor(h);
-    expect(manifest.theme.active).toBe('glance');
+    expect(manifest.theme.active).toBe('panels');
     expect(manifest.theme.daytime).toBe('almanac');
     expect(manifest.theme.daytimeStartsAt).toBe('06:30');
     expect(manifest.display).toEqual({
@@ -409,13 +409,13 @@ describe('display settings', () => {
     // that does nothing.
     const h = await harness();
     await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'none',
+      theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '6', horizon_weeks: '5',
     });
 
     const manifest = await h.manifestFor(h);
-    expect(manifest.theme.active).toBe('board');
+    expect(manifest.theme.active).toBe('panels');
     expect(manifest.theme.daytime).toBeUndefined();
   });
 
@@ -433,7 +433,7 @@ describe('display settings', () => {
   it('refuses a daylight window of no length, and says why', async () => {
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'almanac',
+      theme: 'panels', daytime_theme: 'almanac',
       daytime_starts_at: '07:00', daytime_ends_at: '07:00',
       today_events: '8', next_days: '6', horizon_weeks: '5',
     });
@@ -451,7 +451,7 @@ describe('display settings', () => {
       { next_days: 'lots' },
     ]) {
       const response = await h.form('/admin/display', {
-        theme: 'board', daytime_theme: 'none',
+        theme: 'panels', daytime_theme: 'none',
         daytime_starts_at: '07:00', daytime_ends_at: '21:00',
         today_events: '8', next_days: '6', horizon_weeks: '5',
         ...bad,
@@ -469,7 +469,7 @@ describe('display settings', () => {
     // ahead is making a choice, not a mistake.
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'none',
+      theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '0', horizon_weeks: '5',
     });
@@ -588,7 +588,7 @@ describe('the order the wall draws in', () => {
   it('saves an order and carries it to the manifest', async () => {
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'none',
+      theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '6', horizon_weeks: '5',
       block_1: 'horizon', block_2: 'now', block_3: 'next',
@@ -600,7 +600,7 @@ describe('the order the wall draws in', () => {
   it('leaves a block out when a row is set to nothing', async () => {
     const h = await harness();
     await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'none',
+      theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '6', horizon_weeks: '5',
       block_1: 'now', block_2: 'horizon', block_3: 'none',
@@ -612,7 +612,7 @@ describe('the order the wall draws in', () => {
     // Somebody who did this meant to move a block, not to drop one.
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'none',
+      theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '6', horizon_weeks: '5',
       block_1: 'now', block_2: 'now', block_3: 'horizon',
@@ -624,7 +624,7 @@ describe('the order the wall draws in', () => {
   it('refuses an order with nothing in it', async () => {
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'none',
+      theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '6', horizon_weeks: '5',
       block_1: 'none', block_2: 'none', block_3: 'none',
@@ -636,7 +636,7 @@ describe('the order the wall draws in', () => {
   it('reads a stored order back into the form', async () => {
     const h = await harness();
     await h.form('/admin/display', {
-      theme: 'board', daytime_theme: 'none',
+      theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '6', horizon_weeks: '5',
       block_1: 'horizon', block_2: 'next', block_3: 'none',
@@ -927,12 +927,12 @@ describe('per-screen overrides', () => {
     const kitchen = pairOne(h.db, 'Kitchen');
 
     await h.form(`/admin/screens/${bedroom.id}`, settings({
-      name: 'Bedroom', theme: 'glance', daytime_theme: 'almanac',
+      name: 'Bedroom', theme: 'panels', daytime_theme: 'almanac',
       daytime_starts_at: '09:00', daytime_ends_at: '18:00', timezone: 'America/New_York',
     }));
 
     const dark = await manifestFor(h, bedroom.token);
-    expect(dark.theme.active).toBe('glance');
+    expect(dark.theme.active).toBe('panels');
     expect(dark.theme.daytime).toBe('almanac');
     expect(dark.theme.daytimeStartsAt).toBe('09:00');
     expect(dark.timezone).toBe('America/New_York');

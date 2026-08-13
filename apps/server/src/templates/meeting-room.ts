@@ -2,14 +2,14 @@ import type { DisplayTemplate } from '../api/templates.js';
 
 /**
  * Today's bookings, large, with an oversized clock — the panel outside a room
- * that says what is on now and next. Designed for the Board theme.
+ * that says what is on now and next. Designed for the Panels theme.
  */
 export const template: DisplayTemplate = {
   id: 'meeting-room',
   name: 'Meeting Room',
   category: 'office',
   blurb: 'Today’s schedule, large, with an oversized clock — what’s on now and next.',
-  theme: 'board',
+  theme: 'panels',
   portrait: {
     aspect: 0.5625,
     widgets: [

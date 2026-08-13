@@ -2,14 +2,14 @@ import type { DisplayTemplate } from '../api/templates.js';
 
 /**
  * The classic kitchen wall: the month at a glance, the time, the weather, and
- * the chores. Designed for the Board (dark, amber) default theme.
+ * the chores. Designed for the Panels (dark) default theme.
  */
 export const template: DisplayTemplate = {
   id: 'family-hub',
   name: 'Family Hub',
   category: 'home',
   blurb: 'Month grid, clock, weather and a to-do list — the classic kitchen calendar.',
-  theme: 'board',
+  theme: 'panels',
   portrait: {
     aspect: 0.5625,
     widgets: [
