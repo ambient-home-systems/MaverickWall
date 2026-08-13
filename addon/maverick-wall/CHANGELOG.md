@@ -14,6 +14,15 @@
   saying nothing.
 -->
 
+## Unreleased
+
+A display is one page now, not two tabs. Appearance and Layout were separate
+tabs with overlapping controls; a display's settings and its layout editor now
+sit together on one page. The two orientation controls that caused the most
+confusion stay, but each now says what it does: the one in the settings chooses
+which layout the wall shows, and the Portrait/Landscape buttons in the editor
+choose which canvas you are arranging.
+
 ## 0.24.2
 
 The layout editor reopens on the orientation you last edited. Portrait and

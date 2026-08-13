@@ -658,7 +658,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} screen${screens.length === 1 ? '' : 's'}</div>` +
           `<div class="row" style="margin-top:auto;padding-top:16px">` +
           `<a class="btn btn-ghost btn-sm" href="admin/displays/default">Edit what shows</a>` +
-          `<a class="btn btn-ghost btn-sm" href="admin/displays/default?view=layout">Arrange layout</a></div>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/displays/default#layout">Arrange layout</a></div>` +
           `</div></div></div>` +
 
           // Sign-out lives in the sidebar footer now, shown on every page for a
@@ -1268,10 +1268,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/displays', (c: Context) => c.html(displaysPage()));
   app.get('/admin/displays/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
-    const view = c.req.query('view') === 'layout' ? 'layout' : 'appearance';
-    if (id === 'default') return c.html(displayDetailPage(null, undefined, view));
+    if (id === 'default') return c.html(displayDetailPage(null));
     if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/displays', 302);
-    return c.html(displayDetailPage(id, undefined, view));
+    return c.html(displayDetailPage(id));
   });
 
   // Old routes kept as redirects so bookmarks and any hand-typed links land in
@@ -1608,7 +1607,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   /** The layout view of a display's page, where apply/copy return to. */
   const layoutUrl = (owner: string | null): string =>
-    `/admin/displays/${owner === null ? 'default' : encodeURIComponent(owner)}?view=layout`;
+    `/admin/displays/${owner === null ? 'default' : encodeURIComponent(owner)}#layout`;
 
   /**
    * The template gallery — pick a starting layout for this display (RFC 005).
@@ -2338,9 +2337,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       option('270', '270° clockwise', screen.rotation === 270) +
       `</select></span>` +
       `</div>` +
-      `<p class="hint">Rotate when the screen is physically mounted on its side. ` +
-      `The layout follows the turned picture, so a rotated widescreen gets the ` +
-      `portrait wall.</p>` +
+      `<p class="hint"><b>Orientation</b> chooses which layout this wall shows. ` +
+      `<i>Follow the screen</i> picks portrait or landscape from how the screen ` +
+      `reports itself — right for almost every wall. Pick <i>Always portrait</i> ` +
+      `or <i>Always landscape</i> only for a kiosk frame that reports the wrong ` +
+      `size. This is not the Portrait/Landscape buttons in the layout editor ` +
+      `below: those choose which canvas you are arranging (you arrange both), ` +
+      `while this decides which of the two the wall actually draws.</p>` +
+      `<p class="hint"><b>Rotation</b> is for a screen physically mounted on its ` +
+      `side. The layout follows the turned picture, so a rotated widescreen gets ` +
+      `the portrait wall.</p>` +
 
       `<div class="row-fields">` +
       `<span><label for="theme-${screen.id}">Theme</label>` +
@@ -2590,11 +2596,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * screen also shows its status and pairing above the switcher, on both views,
    * because that is its identity rather than a setting.
    */
-  function displayDetailPage(
-    ownerId: string | null,
-    error?: string,
-    view: 'appearance' | 'layout' = 'appearance',
-  ): string {
+  function displayDetailPage(ownerId: string | null, error?: string): string {
     const at = now();
     const household = readHousehold(deps.db);
     const owner = ownerId === null ? null : activeScreens().find((s) => s.id === ownerId) ?? null;
@@ -2671,16 +2673,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="hint">Showing a new pairing link stops the old one working.</p>` +
           `</article>`;
 
-    const tab = (key: 'appearance' | 'layout', label: string): string =>
-      `<a class="subtab${view === key ? ' active' : ''}" ` +
-      `href="admin/displays/${encodeURIComponent(detailId)}?view=${key}">${label}</a>`;
-    const subnav = `<div class="subnav">${tab('appearance', 'Appearance')}${tab('layout', 'Layout')}</div>`;
-
     // wallSettingsForm carries its own heading; the Default's form does not need
     // one because the page title already says "Default display".
     const appearance = owner === null ? defaultsForm() : wallSettingsForm(owner);
 
+    // One page, no tabs: settings then the layout editor. The `#layout` anchor
+    // is where the "Arrange layout" links and the apply-a-template redirect land.
     const layout =
+      `<h2 class="add" id="layout">Layout</h2>` +
       `<div class="row" style="gap:10px;align-items:center">` +
       `<a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
       `Start from a template</a>` +
@@ -2689,10 +2689,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<button class="btn-ghost btn-sm" type="submit">Reset to default</button></form>` +
       `</div>` +
       `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
-      `Arrange <b>Portrait</b> and <b>Landscape</b> separately — the wall draws the ` +
-      `one matching how it is hung. Turn it on to use this instead of the stacked ` +
-      `layout; the wall picks up a change within a minute. Or start from a ready-made ` +
-      `layout above.</p>` +
+      `The <b>Portrait</b> and <b>Landscape</b> buttons below switch which canvas ` +
+      `you are arranging — you arrange both, and the wall draws the one matching ` +
+      `how it is hung (or the Orientation set above). Turn it on to use this ` +
+      `instead of the stacked layout; the wall picks up a change within a minute. ` +
+      `Or start from a ready-made layout above.</p>` +
       layoutEditorMount(initial);
 
     return page({
@@ -2707,8 +2708,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p><a class="link" href="admin/displays">← All displays</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         statusAndPairing +
-        subnav +
-        (view === 'layout' ? layout : appearance),
+        appearance +
+        layout,
     });
   }
 
@@ -2787,7 +2788,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       heading: 'Start from a template',
       intro: `Pick a starting layout for ${ownerName}. You can move, remove and add to it afterwards.`,
       body:
-        `<p><a class="link" href="admin/displays/${ownerParam}?view=layout">← Back to ${escapeHtml(ownerName)}</a></p>` +
+        `<p><a class="link" href="admin/displays/${ownerParam}#layout">← Back to ${escapeHtml(ownerName)}</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         `<div id="template-gallery" data-json="${escapeHtml(galleryData)}"></div>` +
         group('Home', 'home') +
