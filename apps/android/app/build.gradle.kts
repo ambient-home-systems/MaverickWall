@@ -57,6 +57,9 @@ dependencies {
     // The push socket client (Phase 2). Also carries the cert pinner and the
     // TLS plumbing trust-on-pairing needs — one dependency, not a stack.
     implementation(libs.okhttp)
+    // The pairing QR encoder (Phase 3). Offline, drawn on the TV for a phone to
+    // scan; no camera/scanner half of ZXing, just the encoder.
+    implementation(libs.zxing.core)
 
     // Compose, for the setup and status chrome only.
     implementation(platform(libs.androidx.compose.bom))

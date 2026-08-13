@@ -43,10 +43,30 @@ full design and the reasoning behind "the one thing we do not build."
   the socket (OkHttp) and the WebView (`onReceivedSslError`). http is untouched
   and never mandated; **no HSTS**.
 
+**Phase 3 — frictionless pairing (mDNS + device-flow + QR):**
+
+- **mDNS discovery** (`net/ServerFinder.kt`) — the app browses the LAN for
+  servers advertising `_maverickwall._tcp` (the Phase 0 advertiser) with
+  `NsdManager` and lists them to tap, so nobody types an address. Manual entry
+  stays underneath as the always-available fallback for a segmented or guest
+  network where discovery is blocked.
+- **Device-authorization pairing** (`pairing/DeviceFlow.kt`,
+  `pairing/PairingActivity.kt`) — the screen starts a flow at
+  `/d/pair/device-start`, shows a short code and a QR of the approve link, and
+  polls. The household approves from a phone (scan) or the admin Screens page
+  (type the code) — **behind their login, which is the whole reason a short code
+  is safe**. On approval the token is handed to the WebView via `/pair?token=…`,
+  the same cookie exchange every other pairing ends with.
+- **The QR only ever encodes a LAN-reachable address** — the server builds
+  `verifyUrl` from a reachable origin (`base_url` under ingress), so it cannot
+  carry an internal address that scans as a dead link. Drawn offline with ZXing
+  (`pairing/QrCode.kt`); nothing is fetched.
+- **Every exit honours rule nine.** A server too old for the flow (`404` →
+  `Unsupported`), or a household that would rather type the code into the wall
+  itself, both fall straight through to the display's own on-screen pairing.
+
 ### Not yet (later phases)
 
-- mDNS discovery + device-flow pairing + QR (**Phase 3**). Manual entry above is
-  the always-available fallback that never goes away.
 - Signed release APK on GitHub, TV store polish (**Phase 4**).
 
 > **Phase 2 needs a push-capable server to exercise.** The socket, wake, and the
@@ -117,9 +137,13 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell monkey -p systems.ambienthome.maverickwall 1   # launch it
 ```
 
-On first launch it asks for the server address (e.g. `192.168.1.10:8080`). Then
-it loads the wall; when the wall shows its pairing screen, create a screen at the
-server's `/admin/screens` and type the code shown there.
+On first launch it lists the servers it found on the network (mDNS) and offers a
+field to type one (e.g. `192.168.1.10:8080`) if none appear. Pick or enter a
+server and the app shows a **pairing code and a QR**: scan it with a phone on the
+same network, or open your Maverick Wall settings and enter the code — approve it
+there and the wall starts drawing. (An older server with no device-flow, or the
+"pair on the screen instead" button, falls back to the previous flow: the wall
+shows its own pairing screen and you type a code created at `/admin/screens`.)
 
 ### Kiosk lock-down (optional)
 
@@ -159,9 +183,15 @@ app/src/main/
     WallWebViewClient.kt              URL allowlist + load-error → native status
     HealthProbe.kt                    polls /healthz with backoff
     BootReceiver.kt                   relaunch on boot
-    SetupActivity.kt                  server-address entry (Compose)
+    SetupActivity.kt                  server chooser: mDNS list + typed address (Compose)
     ServerConfig.kt                   the one stored fact: which box to talk to
     Theme.kt                          dark Board-ish chrome for setup/status
+    net/ServerFinder.kt               mDNS discovery of _maverickwall._tcp (NsdManager)
+    net/TlsPinning.kt                 trust-on-pairing cert pinning (WebView + OkHttp)
+    pairing/DeviceFlow.kt             the device-authorization client (start/poll)
+    pairing/PairingActivity.kt        code + QR + poll → hand /pair?token= to the WebView
+    pairing/QrCode.kt                 offline QR of the approve link (ZXing)
+    push/                             the Phase 2 wake socket (PushService/Bus/Message)
   res/                                layout, strings, colors, themes, vector icon + TV banner
 ```
 

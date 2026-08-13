@@ -28,6 +28,38 @@ jobs:
         env:
           CALENDAR_BENCH_BUDGET_MS: 5000
 
+  # The Android kiosk APK. Nothing else in CI touches apps/android — it is
+  # excluded from the pnpm workspace and built with Gradle, not pnpm, so `test`
+  # above never compiles a line of it. Without this the Kotlin could break and
+  # every Node check stay green (the RFC 003 warning: a shipped app with a stale
+  # message shape is a tablet that never wakes for a tornado warning). This
+  # guards the app the way `test` guards the server and the display.
+  #
+  # assembleDebug compiles all the Kotlin, processes the resources and manifest,
+  # and dexes — the whole "does it build into an APK" question. R8/release is a
+  # Phase 4 concern (the signed release APK) and brings lint-vital flakiness, so
+  # it is deliberately not run here yet.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      # Accepts the SDK licences and puts the command-line tools on PATH; the
+      # runner's preinstalled platform-34 and build-tools satisfy compileSdk 34.
+      - uses: android-actions/setup-android@v3
+      # Caches ~/.gradle across runs, keyed on the wrapper and build files.
+      - uses: gradle/actions/setup-gradle@v4
+      # `--no-configuration-cache`: gradle.properties turns it on for local
+      # iteration, but one Android resource task cannot serialise into it, which
+      # fails the build — off here so a clean CI run is deterministic. No daemon
+      # on a one-shot runner.
+      - name: Build the debug APK
+        working-directory: apps/android
+        run: ./gradlew assembleDebug --no-daemon --no-configuration-cache
+
   # The one-liner from the README, run exactly as written against a clean
   # volume. It is the first thing a stranger does and the only claim on the
   # front page, so it is the one thing that must never be broken by a change

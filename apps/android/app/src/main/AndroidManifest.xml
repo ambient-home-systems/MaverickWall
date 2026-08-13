@@ -61,11 +61,20 @@
             </intent-filter>
         </activity>
 
-        <!-- First-run and reconfigure: enter the server address. Not exported —
-             only the app starts it. -->
+        <!-- First-run and reconfigure: choose the server (mDNS list or typed).
+             Not exported — only the app starts it. -->
         <activity
             android:name=".SetupActivity"
             android:exported="false"
+            android:theme="@style/Theme.MaverickWall" />
+
+        <!-- Frictionless pairing (Phase 3): shows the device-flow code and QR
+             and waits for the household to approve. Not exported. configChanges
+             so a rotation does not restart the flow mid-pair. -->
+        <activity
+            android:name=".pairing.PairingActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|navigation|uiMode|density"
             android:theme="@style/Theme.MaverickWall" />
 
         <!-- Relaunch the wall when the device powers on. QUICKBOOT_POWERON and
