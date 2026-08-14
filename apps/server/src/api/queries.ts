@@ -33,6 +33,7 @@ const HOUSEHOLD_DEFAULTS: HouseholdRow = {
   displayHorizonWeeks: 5,
   displayBlocks: 'now,next,horizon',
   clock24: 1,
+  weekStart: 'sunday',
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,
@@ -51,6 +52,7 @@ export function readHousehold(db: SqliteDatabase): HouseholdRow {
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
               clock_24 AS clock24,
+              week_start AS weekStart,
               layout_mode AS layoutMode,
               layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect,
@@ -1149,6 +1151,7 @@ export interface DisplaySettings {
   readonly horizonWeeks: number;
   readonly blocks: string;
   readonly clock24: number;
+  readonly weekStart: string;
 }
 
 /**
@@ -1163,7 +1166,7 @@ export function writeDisplaySettings(db: SqliteDatabase, settings: DisplaySettin
     `UPDATE household_settings
         SET theme = ?, daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
             display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
-            display_blocks = ?, clock_24 = ?, updated_at = ?
+            display_blocks = ?, clock_24 = ?, week_start = ?, updated_at = ?
       WHERE id = 'singleton'`,
   ).run(
     settings.theme,
@@ -1175,6 +1178,7 @@ export function writeDisplaySettings(db: SqliteDatabase, settings: DisplaySettin
     settings.horizonWeeks,
     settings.blocks,
     settings.clock24,
+    settings.weekStart,
     Date.now(),
   );
 }

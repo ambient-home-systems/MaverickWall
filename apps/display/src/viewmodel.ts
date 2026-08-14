@@ -691,10 +691,11 @@ function intoWeeks(cells: readonly HorizonCell[]): HorizonCell[][] {
   return weeks;
 }
 
-function weekdayIndex(date: CivilDate): number {
-  // Monday first. `getUTCDay` is Sunday-first, and a household's week is not.
+function weekdayIndex(date: CivilDate, weekStart: 'sunday' | 'monday'): number {
+  // How many days `date` sits past the start of its week. `getUTCDay` is
+  // Sunday-first (0 = Sunday); a Monday-first week rotates it by one.
   const day = new Date(`${date}T12:00:00Z`).getUTCDay();
-  return (day + 6) % 7;
+  return weekStart === 'monday' ? (day + 6) % 7 : day;
 }
 
 function addDays(date: CivilDate, days: number): CivilDate {
@@ -727,6 +728,9 @@ export function buildModel(options: BuildOptions): DisplayModel {
   // 24-hour by default (the wall's original behaviour); 12-hour only when the
   // household has explicitly turned the setting off (RFC 005).
   const hour12 = chosen?.clock24 === false;
+  // Sunday-start by default (and for a server too old to send the field); the
+  // household can pick Monday on the Display screen.
+  const weekStart: 'sunday' | 'monday' = chosen?.weekStart === 'monday' ? 'monday' : 'sunday';
 
   // The household, once, for the legend strip and the per-event owner cue. The
   // map is keyed by id so an event resolves its owner in one lookup; the list
@@ -754,10 +758,10 @@ export function buildModel(options: BuildOptions): DisplayModel {
     next.push(toDay(day, today, timezone, hour12, NEXT_EVENT_LIMIT, peopleById));
   }
 
-  // The horizon starts on the Monday of the week containing today, so the grid
-  // lines up with how a month is read rather than with when this happened to
-  // be fetched.
-  const start = addDays(today, -weekdayIndex(today));
+  // The horizon starts on the first day of the week containing today (Sunday or
+  // Monday, per the household), so the grid lines up with how a month is read
+  // rather than with when this happened to be fetched.
+  const start = addDays(today, -weekdayIndex(today, weekStart));
   const cells: HorizonCell[] = [];
   const todayMonth = today.slice(0, 7);
   for (let offset = 0; offset < horizonWeeks * 7; offset++) {

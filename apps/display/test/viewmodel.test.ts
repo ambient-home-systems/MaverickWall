@@ -229,13 +229,23 @@ describe('the clock format (RFC 005)', () => {
 });
 
 describe('the horizon', () => {
-  it('is five rectangular weeks starting on a Monday', () => {
-    // A ragged first row reads as a rendering fault from across a room.
+  it('is five rectangular weeks starting on a Sunday by default', () => {
+    // A ragged first row reads as a rendering fault from across a room. Sunday
+    // is the shipped default (a household can pick Monday on the Display screen).
     const built = model([day('2026-07-15')]);
     expect(built.horizon).toHaveLength(5);
     for (const week of built.horizon) expect(week).toHaveLength(7);
-    // 2026-07-15 is a Wednesday, so the grid starts on Monday the 13th.
+    // 2026-07-15 is a Wednesday, so a Sunday-start grid opens on the 12th.
+    expect(built.horizon[0]?.[0]?.date).toBe('2026-07-12');
+  });
+
+  it('starts on Monday when the household picks it', () => {
+    const built = model([day('2026-07-15')], {
+      display: { todayEvents: 8, nextDays: 6, horizonWeeks: 5, weekStart: 'monday' },
+    } as never);
+    // The same Wednesday, but a Monday-start grid opens on the 13th.
     expect(built.horizon[0]?.[0]?.date).toBe('2026-07-13');
+    expect(built.horizon[0]?.[0]?.weekday).toBe('Mon');
   });
 
   it('carries the working shift colour and code', () => {
@@ -335,8 +345,8 @@ describe('the horizon', () => {
 
   it('gives each cell its weekday, for the week-columns header', () => {
     const built = model([day('2026-07-15')]);
-    // 2026-07-13 is the Monday the grid starts on.
-    expect(built.horizon[0]?.[0]?.weekday).toBe('Mon');
+    // 2026-07-12 is the Sunday the default grid starts on.
+    expect(built.horizon[0]?.[0]?.weekday).toBe('Sun');
     expect(built.horizon.flat().find((c) => c.date === '2026-07-15')?.weekday).toBe('Wed');
   });
 });

@@ -105,6 +105,17 @@ export const householdSettings = sqliteTable('household_settings', {
   clock24: integer('clock_24').notNull().default(1),
 
   /**
+   * Which day the month grid and week columns start on: `sunday` or `monday`.
+   *
+   * Default `sunday` — the common convention for a wall calendar in most of the
+   * world it ships to, and the value an upgrading database is filled with on the
+   * ADD COLUMN (so every existing wall moves to Sunday-start, then a household
+   * can pick Monday on the Display screen). The grid start and the weekday
+   * headers both key off this; nothing else about the month changes.
+   */
+  weekStart: text('week_start').notNull().default('sunday'),
+
+  /**
    * Vestigial. The wall draws one layout now — a free-form canvas of widgets —
    * so `layout_mode` is no longer read (`buildLayout` always emits `freeform`).
    * The responsive "auto" zoom-pyramid it used to select was retired when every

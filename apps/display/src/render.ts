@@ -288,9 +288,12 @@ function renderHorizon(model: DisplayModel, opts: { readonly pills?: boolean } =
   const pills = opts.pills === true;
   const horizon = el('section', pills ? 'horizon horizon-pills' : 'horizon');
   const grid = el('div', 'hz-grid');
-  for (const name of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
-    grid.appendChild(el('div', 'hz-head', name));
-  }
+  // The weekday headers come from the first week's own cells rather than a fixed
+  // Mon–Sun array: that follows the household's week-start (Sunday or Monday)
+  // with no second source of truth, and localises for free since each cell
+  // already carries its short weekday name.
+  const headerWeek = model.horizon[0] ?? [];
+  for (const cell of headerWeek) grid.appendChild(el('div', 'hz-head', cell.weekday));
   for (const week of model.horizon) {
     for (const cell of week) grid.appendChild(renderCell(cell, pills));
   }
@@ -904,8 +907,14 @@ export function renderFreeform(
   if (bg !== undefined) canvas.style.background = bg;
 
   // Widgets whose body is a section from the responsive layout are scaled to
-  // their box after they are on screen — see below.
-  const toFit: { readonly box: HTMLElement; readonly scale: HTMLElement }[] = [];
+  // their box after they are on screen — see below. Each carries a readable
+  // floor: below it the section clips at the box edge rather than shrinking to
+  // an illegible size.
+  const toFit: {
+    readonly box: HTMLElement;
+    readonly scale: HTMLElement;
+    readonly min: number;
+  }[] = [];
 
   for (const widget of layout.widgets) {
     const box = el('div', `fw fw-${widget.type}`);
@@ -934,32 +943,36 @@ export function renderFreeform(
       // The clock sizes itself to its box, and the image covers it — both fill
       // the box on their own and would only be fought by the scale-to-fit.
       box.appendChild(body);
-    } else if (widget.type === 'calendar') {
-      // The calendar fills its box: its rows stretch to the box height rather
-      // than keeping the rem-based natural height the stacked layout gives it.
-      // Scale-to-fit sized the whole month grid to ~30% of the wall (the height
-      // the design chose for it as one block among several), then dropped it
-      // into an 88%-tall freeform box — leaving two thirds of the box empty and
-      // the cells so small only a dot fit. Filling the box means a large
-      // calendar is a large calendar, with room for labelled event pills.
+    } else if (widget.type === 'calendar' && calendarGridFills(widget.config)) {
+      // The month and week grids fill their box: their rows/cells stretch to the
+      // box height rather than keeping the rem-based natural height the stacked
+      // layout gives the grid. Scale-to-fit sized the whole month grid to ~30%
+      // of the wall (the height the design chose for it as one block among
+      // several), then dropped it into an 88%-tall freeform box — leaving two
+      // thirds of the box empty and the cells so small only a dot fit. Filling
+      // the box means a large calendar is a large calendar, with room for
+      // labelled event pills.
       box.classList.add('fw-fill');
       box.appendChild(contentWithTitle(body, widget.config));
     } else {
       /*
-       * The calendar, weather, house and shift widgets reuse sections built
-       * for a full-width strip or grid, sized against the whole wall. Rather
-       * than re-derive every font size for a box — which fights the design and
-       * still guesses — the section is rendered at its natural size and scaled
-       * as one to fit the box. The proportions the design chose are kept; only
-       * the whole thing gets smaller. The scale is measured once it is on
-       * screen, at the foot of this function.
+       * Everything else reuses a section built for a full-width strip or grid,
+       * sized against the whole wall — the weather, house and shift widgets, and
+       * a calendar in list (agenda) mode, whose rows are rem-sized to the wall
+       * and would otherwise draw at full size and clip in a small box (the very
+       * bug that made a small "Upcoming" widget show one giant, half-cut row).
+       * Rather than re-derive every font size for a box — which fights the
+       * design and still guesses — the section is laid out at its box width and
+       * scaled as one to fill the box, up or down, keeping the design's own
+       * proportions. The scale is measured once it is on screen, at the foot of
+       * this function.
        */
       const scale = el('div', 'fw-scale');
       // The title rides inside the scaled content, so it shrinks with the
       // section and the fit measurement already accounts for it.
       scale.appendChild(contentWithTitle(body, widget.config));
       box.appendChild(scale);
-      toFit.push({ box, scale });
+      toFit.push({ box, scale, min: minScaleFor(widget.type) });
     }
     canvas.appendChild(box);
   }
@@ -984,38 +997,103 @@ export function renderFreeform(
   root.appendChild(screen);
 
   // Now that everything has a size, fit each reused section to its box.
-  for (const { box, scale } of toFit) fitToBox(box, scale);
+  for (const { box, scale, min } of toFit) fitToBox(box, scale, { min });
 }
 
 /**
- * Fit a reused section (weather, house, shift, notes…) to its widget box.
- *
- * The section is laid out at the *box* width, so its rem-based type stays the
- * size the design intends. It used to lay out at the whole canvas width and
- * scale the result down to the box — which, in a narrow column, shrank a
- * short weather strip to a fraction of its type and left it an unreadable
- * sliver next to a full-height calendar. Laying out at the box width instead
- * keeps the type at its natural size; the section is then scaled *down* only if
- * it is still too tall or too wide to fit, and never up — a strip in a tall box
- * keeps its natural size at the top rather than being blown up to fill it.
+ * Whether a calendar widget's mode is a grid that should fill its box (month or
+ * week columns) rather than an agenda list that scales to fit. The month grid's
+ * cells and the week columns are built to reflow into whatever space they get;
+ * the list's rows are fixed rem and want scaling like the other strips.
  */
-export function fitToBox(box: HTMLElement, scale: HTMLElement): void {
+function calendarGridFills(config: unknown): boolean {
+  return widgetConfig(config)['mode'] !== 'list';
+}
+
+/**
+ * The smallest scale a widget is allowed to shrink to before it clips at the
+ * box edge instead (recommendation #3). A weather reading at a tenth of its size
+ * is a smudge, not information; a note or a list can go a little smaller before
+ * it stops being legible. Below the floor the box's `overflow: hidden` clips,
+ * which degrades to "showing less" rather than "showing nothing readable".
+ */
+function minScaleFor(type: string): number {
+  switch (type) {
+    case 'weather':
+    case 'homeassistant':
+    case 'countdown':
+    case 'shift':
+      return 0.4;
+    case 'notes':
+    case 'todo':
+      return 0.3;
+    default:
+      return 0.2;
+  }
+}
+
+/**
+ * Fit a reused section (weather, house, shift, notes, an agenda…) to fill its
+ * widget box — up or down.
+ *
+ * The old version scaled *down only*, capped at 1: a compact strip in a large
+ * box kept its wall-relative size, pinned to the top-left corner, and left the
+ * rest of the box empty — "cramped, just in a bigger box". This fills instead.
+ *
+ * The trick to growing a width-filling section is that it must be laid out
+ * *narrower* than the box first, or the width ratio pins the scale at 1. So:
+ * measure at the box width; if there is room to grow, re-flow at a width chosen
+ * so the section's aspect matches the box, then scale up to fill. Wrapping
+ * content (a note, a list) gets taller as it narrows, so it grows only as far as
+ * it can without spilling — which is the behaviour you want. Scaling is uniform,
+ * so the design's proportions are never distorted; the section is then centred,
+ * so slack on the unfilled axis sits evenly rather than pooling after it.
+ *
+ * `min` is a readable floor: below it the section clips at the box edge rather
+ * than shrinking to an illegible size (rule nine — degrade, never smear).
+ */
+export function fitToBox(
+  box: HTMLElement,
+  scale: HTMLElement,
+  opts: { readonly min?: number; readonly max?: number } = {},
+): void {
+  const min = opts.min ?? 0.25;
+  // A ceiling so a one-word note in a huge box grows to fill without becoming a
+  // caricature of itself; well above any sane fill factor, so it rarely bites.
+  const max = opts.max ?? 6;
+
   const style = getComputedStyle(box);
-  const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-  const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-  const availW = box.clientWidth - padX;
-  const availH = box.clientHeight - padY;
+  const padL = parseFloat(style.paddingLeft);
+  const padT = parseFloat(style.paddingTop);
+  const availW = box.clientWidth - padL - parseFloat(style.paddingRight);
+  const availH = box.clientHeight - padT - parseFloat(style.paddingBottom);
   if (availW <= 0 || availH <= 0) return;
 
-  // Lay the section out at the box width, then measure it.
+  // Baseline: lay the section out at the full box width and measure it.
   scale.style.width = `${availW}px`;
-  const contentH = scale.scrollHeight;
-  const contentW = scale.scrollWidth;
+  let contentW = scale.scrollWidth;
+  let contentH = scale.scrollHeight;
   if (contentH <= 0) return;
 
-  // Down only (capped at 1): the type is already at its intended size, so we
-  // shrink to avoid a clip but never magnify past the design's proportions.
-  const factor = Math.min(1, availW / contentW, availH / contentH);
+  if (contentW <= availW && contentH <= availH) {
+    // Room to grow: re-flow at an aspect-matched width and re-measure.
+    const targetW = Math.max(1, Math.min(availW, (contentH * availW) / availH));
+    scale.style.width = `${targetW}px`;
+    contentW = scale.scrollWidth;
+    contentH = scale.scrollHeight;
+  }
+
+  let factor = Math.min(availW / contentW, availH / contentH);
+  factor = Math.max(min, Math.min(max, factor));
+
+  // Centre the scaled section in the box's content area (`.fw-scale` is
+  // absolutely positioned, so left/top override its 0/0 default). Clamped at 0
+  // so content larger than the box (the floor clipping) stays in the corner and
+  // clips its far edges rather than being pushed off the near ones.
+  const scaledW = contentW * factor;
+  const scaledH = contentH * factor;
+  scale.style.left = `${padL + Math.max(0, (availW - scaledW) / 2)}px`;
+  scale.style.top = `${padT + Math.max(0, (availH - scaledH) / 2)}px`;
   scale.style.transform = `scale(${factor})`;
 }
 
