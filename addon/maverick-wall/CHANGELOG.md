@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.30.1
 
 Maintenance release: internal build and continuous-integration updates only
 (the tools that build and check each release now run on a current, supported
