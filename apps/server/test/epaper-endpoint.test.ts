@@ -153,4 +153,38 @@ describe('the e-paper frame', () => {
     const res = await h.call(`http://localhost:8080/d/epaper/${h.token}.gif`);
     expect(res.status).toBe(404);
   });
+
+  it('draws the free-form canvas, and an edit to it reaches the panel', async () => {
+    const h = await harness();
+    const at = Date.now();
+    const addWidget = (id: string, type: string, y: number, config: string | null): void => {
+      h.db
+        .prepare(
+          `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+           VALUES (?, ?, 'landscape', ?, 0.1, ?, 0.8, 0.3, 0, ?, ?, ?)`,
+        )
+        .run(id, h.screenId, type, y, config, at, at);
+    };
+
+    // The fixed layout, before any canvas exists.
+    const auto = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
+
+    // Switch this screen to a free-form canvas with one widget (default geometry
+    // is 800×480, so the panel shows the landscape canvas).
+    h.db.prepare(`UPDATE screens SET layout_mode = 'freeform' WHERE id = ?`).run(h.screenId);
+    addWidget('w1', 'clock', 0.05, null);
+    const oneWidget = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
+    expect(oneWidget).not.toBe(auto); // the canvas replaced the fixed layout
+
+    // Add a second widget — the ETag moves again, so a household's edit is not
+    // stranded until the calendar happens to change.
+    addWidget('w2', 'calendar', 0.4, JSON.stringify({ mode: 'month' }));
+    const twoWidgets = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
+    expect(twoWidgets).not.toBe(oneWidget);
+
+    // And it is still a real PNG.
+    const res = await h.call(`http://localhost:8080/d/epaper/${h.token}.png`);
+    expect(res.status).toBe(200);
+    expect([...(await bytesOf(res)).slice(0, 8)]).toEqual(PNG_SIGNATURE);
+  });
 });

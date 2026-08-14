@@ -17,7 +17,7 @@
  */
 import { addDays, dayOfWeek, type CivilDate } from '@maverick-wall/core';
 
-import type { Manifest, ManifestDay, ManifestEvent } from '../api/manifest.js';
+import type { Manifest, ManifestDay, ManifestEvent, ManifestPersonShift } from '../api/manifest.js';
 
 /**
  * The most agenda rows a 7.5" panel can hold and still be read at the far side
@@ -47,8 +47,19 @@ export interface EpaperGridCell {
   readonly eventCount: number;
 }
 
+export interface EpaperShiftLine {
+  readonly person: string;
+  readonly code: string;
+  readonly label: string;
+  /** `HH:MM–HH:MM`, or empty for an untimed shift. */
+  readonly time: string;
+  readonly working: boolean;
+}
+
 export interface EpaperModel {
   readonly today: CivilDate;
+  /** `HH:MM` of the frame's own time, for a clock widget. */
+  readonly time: string;
   /** Header pieces, already localised. Casing is the renderer's business. */
   readonly header: {
     readonly weekday: string;
@@ -56,6 +67,8 @@ export interface EpaperModel {
     readonly month: string;
     readonly year: string;
   };
+  /** Today's shift(s), one per person who has one. Empty when nobody does. */
+  readonly todayShifts: readonly EpaperShiftLine[];
   readonly agenda: readonly EpaperAgendaItem[];
   /** How many of today's events did not fit, so the renderer can say "+3 more". */
   readonly agendaOverflow: number;
@@ -133,6 +146,18 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
   }));
   const agendaOverflow = Math.max(0, todaysEvents.length - agenda.length);
 
+  // Today's shifts, one line per person who has one. `shifts` is already
+  // resolved per person in the manifest, so this only formats it for 1-bit.
+  const shiftTime = (shift: ManifestPersonShift): string =>
+    shift.startTime && shift.endTime ? `${shift.startTime}–${shift.endTime}` : '';
+  const todayShifts: EpaperShiftLine[] = (byDate.get(today)?.shifts ?? []).map((shift) => ({
+    person: shift.personName,
+    code: shift.shortCode,
+    label: shift.label,
+    time: shiftTime(shift),
+    working: shift.isWorking,
+  }));
+
   // Grid: whole weeks (Monday first) starting from the Monday of today's week.
   const weekCount = clampGridWeeks(manifest.display.horizonWeeks);
   const gridStart = addDays(today, -mondayIndex(today));
@@ -155,7 +180,9 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
 
   return {
     today,
+    time: clockLabel(options.now ?? manifest.generatedAt, timezone, clock24),
     header: headerParts(today),
+    todayShifts,
     agenda,
     agendaOverflow,
     weekdayLabels: [...WEEKDAY_LABELS],

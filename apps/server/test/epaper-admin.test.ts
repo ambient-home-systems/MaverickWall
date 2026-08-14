@@ -87,6 +87,8 @@ async function harness() {
 
 const B = 'http://localhost:8080';
 const frameUrl = (html: string): string | undefined => /(https?:\/\/[^"<\s]*\/d\/epaper\/[^"<\s]+)/.exec(html)?.[1];
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const bytesOf = async (response: Response): Promise<Uint8Array> => new Uint8Array(await response.arrayBuffer());
 
 describe('the eInk Displays page', () => {
   it('shows the add form', async () => {
@@ -148,6 +150,47 @@ describe('the eInk Displays page', () => {
     });
     expect(bad.status).toBe(400);
     expect(await bad.text()).toContain('between 64 and 2000');
+  });
+
+  it('offers a layout editor and a real 1-bit preview', async () => {
+    const h = await harness();
+    await h.post(`${B}/admin/epaper`, { name: 'Studio', preset: 'seeed-7in5', rotation: '0' });
+    const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
+
+    // The list card links to the designer.
+    expect(await (await h.call(`${B}/admin/epaper`)).text()).toContain(`admin/epaper/${id}/design`);
+
+    // The design page hosts the same drag-and-drop editor and the preview.
+    const design = await (await h.call(`${B}/admin/epaper/${id}/design`)).text();
+    expect(design).toContain('layout-editor'); // the editor mount
+    expect(design).toContain(`admin/epaper/${id}/preview.png`); // the preview img
+
+    // The preview renders a real PNG — the fixed layout before a canvas exists.
+    const auto = await h.call(`${B}/admin/epaper/${id}/preview.png`);
+    expect(auto.status).toBe(200);
+    expect(auto.headers.get('content-type')).toBe('image/png');
+    expect([...(await bytesOf(auto)).slice(0, 8)]).toEqual(PNG_SIGNATURE);
+
+    // With a saved free-form canvas, the preview still renders (now the canvas).
+    h.db.prepare(`UPDATE screens SET layout_mode = 'freeform' WHERE id = ?`).run(id);
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+         VALUES ('cw', ?, 'landscape', 'calendar', 0.05, 0.05, 0.9, 0.9, 0, ?, ?, ?)`,
+      )
+      .run(id, JSON.stringify({ mode: 'month' }), at, at);
+    const freeform = await h.call(`${B}/admin/epaper/${id}/preview.png`);
+    expect(freeform.status).toBe(200);
+    expect([...(await bytesOf(freeform)).slice(0, 8)]).toEqual(PNG_SIGNATURE);
+  });
+
+  it('keeps e-paper panels out of the browser Displays list', async () => {
+    const h = await harness();
+    await h.post(`${B}/admin/epaper`, { name: 'OnlyInk', preset: 'seeed-7in5', rotation: '0' });
+    expect(await (await h.call(`${B}/admin/displays`)).text()).not.toContain('OnlyInk');
+    // …but it is on the eInk Displays list.
+    expect(await (await h.call(`${B}/admin/epaper`)).text()).toContain('OnlyInk');
   });
 
   it('removing a screen drops it from the list and kills its URL', async () => {

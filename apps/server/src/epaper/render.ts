@@ -22,11 +22,19 @@ export interface PanelGeometry {
   readonly height: number;
 }
 
+/** A pixel rectangle on the framebuffer. */
+export interface Box {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
 const MARGIN = 16;
 const HEADER_H = 54;
 
 /** Truncate a string so it fits `maxWidth` at the given options. */
-function fit(text: string, maxWidth: number, options: TextOptions): string {
+export function fit(text: string, maxWidth: number, options: TextOptions): string {
   if (measureText(text, options) <= maxWidth) return text;
   let out = text;
   while (out.length > 1 && measureText(out, options) > maxWidth) out = out.slice(0, -1);
@@ -39,7 +47,7 @@ function fit(text: string, maxWidth: number, options: TextOptions): string {
  * manifest is already sanitised for safety; this is only about the bitmap font
  * having 0x20–0x7E and nothing more.
  */
-function asciiTitle(text: string): string {
+export function asciiTitle(text: string): string {
   return text
     .replace(/[–—]/g, '-')
     .replace(/[‘’]/g, "'")
@@ -72,11 +80,22 @@ function drawHeader(fb: Framebuffer, model: EpaperModel, width: number): void {
   });
 }
 
-function drawAgenda(fb: Framebuffer, model: EpaperModel, x0: number, top: number, colW: number, bottom: number): void {
-  drawText(fb, x0, top, 'TODAY', { scale: 2, tracking: 2 });
-  fb.hLine(x0, x0 + colW, top + 22, true);
-
-  let y = top + 36;
+/**
+ * Today's agenda within a box.
+ *
+ * `header` draws a labelled rule at the top (the fixed layout's "TODAY"); a
+ * widget passes none because its own title bar is drawn by the freeform frame.
+ */
+export function drawAgendaBox(fb: Framebuffer, model: EpaperModel, box: Box, header?: string): void {
+  const x0 = box.x;
+  const right = box.x + box.w;
+  const bottom = box.y + box.h;
+  let y = box.y;
+  if (header !== undefined) {
+    drawText(fb, x0, y, header, { scale: 2, tracking: 2 });
+    fb.hLine(x0, right, y + 22, true);
+    y += 36;
+  }
   const rowH = 34;
   const timeColW = measureText('00:00', { scale: 2 }) + 12;
   if (model.agenda.length === 0) {
@@ -95,7 +114,7 @@ function drawAgenda(fb: Framebuffer, model: EpaperModel, x0: number, top: number
       drawText(fb, x0 + 20, y, item.time, { scale: 2 });
       titleX = x0 + 20 + timeColW;
     }
-    drawText(fb, titleX, y, fit(asciiTitle(item.title), x0 + colW - titleX, { scale: 2 }), { scale: 2 });
+    drawText(fb, titleX, y, fit(asciiTitle(item.title), right - titleX, { scale: 2 }), { scale: 2 });
     y += rowH;
   }
   if (model.agendaOverflow > 0 && y + 12 <= bottom) {
@@ -103,27 +122,21 @@ function drawAgenda(fb: Framebuffer, model: EpaperModel, x0: number, top: number
   }
 }
 
-function drawGrid(
-  fb: Framebuffer,
-  model: EpaperModel,
-  areaX: number,
-  areaW: number,
-  top: number,
-  bottom: number,
-): void {
+/** The rolling month grid within a box. */
+export function drawMonthBox(fb: Framebuffer, model: EpaperModel, box: Box): void {
   const weeks = model.weeks.length;
   const labelH = 22;
-  const gridTop = top + labelH;
-  const cell = Math.max(12, Math.floor(Math.min(areaW / 7, (bottom - gridTop) / weeks)));
+  const gridTop = box.y + labelH;
+  const cell = Math.max(12, Math.floor(Math.min(box.w / 7, (box.y + box.h - gridTop) / weeks)));
   const gridW = cell * 7;
-  const gx = areaX + Math.floor((areaW - gridW) / 2);
+  const gx = box.x + Math.floor((box.w - gridW) / 2);
   const numScale = cell >= 34 ? 2 : 1;
 
   // Weekday labels, centred over their columns.
   for (let c = 0; c < 7; c++) {
     const label = model.weekdayLabels[c] ?? '';
     const w = measureText(label, { scale: 2 });
-    drawText(fb, gx + c * cell + Math.floor((cell - w) / 2), top, label, { scale: 2 });
+    drawText(fb, gx + c * cell + Math.floor((cell - w) / 2), box.y, label, { scale: 2 });
   }
 
   for (let r = 0; r < weeks; r++) {
@@ -162,19 +175,25 @@ export function renderEpaper(model: EpaperModel, geometry: PanelGeometry): Frame
   const bodyTop = HEADER_H + 14;
   const bodyBottom = height - MARGIN;
 
+  const bodyH = bodyBottom - bodyTop;
   if (width >= height) {
     // Landscape: agenda left, month grid right. The agenda gets the larger
     // share — event titles need the width more than the grid does, and the
     // grid stays legible down to ~44px cells.
     const split = Math.round(width * 0.54);
-    drawAgenda(fb, model, MARGIN, bodyTop, split - MARGIN * 2, bodyBottom);
-    drawGrid(fb, model, split, width - split - MARGIN, bodyTop, bodyBottom);
+    drawAgendaBox(fb, model, { x: MARGIN, y: bodyTop, w: split - MARGIN * 2, h: bodyH }, 'TODAY');
+    drawMonthBox(fb, model, { x: split, y: bodyTop, w: width - split - MARGIN, h: bodyH });
   } else {
     // Portrait: agenda over the grid. The grid takes the lower two-thirds,
     // which is enough for whole weeks and keeps today's list at eye height.
-    const agendaBottom = bodyTop + Math.round((bodyBottom - bodyTop) * 0.42);
-    drawAgenda(fb, model, MARGIN, bodyTop, width - MARGIN * 2, agendaBottom);
-    drawGrid(fb, model, MARGIN, width - MARGIN * 2, agendaBottom + 12, bodyBottom);
+    const agendaH = Math.round(bodyH * 0.42);
+    drawAgendaBox(fb, model, { x: MARGIN, y: bodyTop, w: width - MARGIN * 2, h: agendaH }, 'TODAY');
+    drawMonthBox(fb, model, {
+      x: MARGIN,
+      y: bodyTop + agendaH + 12,
+      w: width - MARGIN * 2,
+      h: bodyBottom - (bodyTop + agendaH + 12),
+    });
   }
   return fb;
 }
