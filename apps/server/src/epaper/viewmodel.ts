@@ -72,9 +72,9 @@ export interface EpaperModel {
   readonly agenda: readonly EpaperAgendaItem[];
   /** How many of today's events did not fit, so the renderer can say "+3 more". */
   readonly agendaOverflow: number;
-  /** Monday-first weekday labels for the grid header. */
+  /** Weekday labels for the grid header, in the household's week order. */
   readonly weekdayLabels: readonly string[];
-  /** Rows of exactly seven cells, Monday first. */
+  /** Rows of exactly seven cells, in the household's week order. */
   readonly weeks: readonly (readonly EpaperGridCell[])[];
   readonly timezone: string;
   readonly generatedAt: number;
@@ -85,8 +85,9 @@ export interface EpaperViewOptions {
   readonly now?: number;
 }
 
-/** en-GB, matching the rest of the server's formatting. */
-const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
+/** en-GB, matching the rest of the server's formatting. Sunday- or Monday-first. */
+const WEEKDAY_LABELS_SUNDAY = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
+const WEEKDAY_LABELS_MONDAY = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
 
 /** A civil date at UTC noon, so day-label formatting never drifts a day. */
 function civilToUtcDate(date: CivilDate): Date {
@@ -94,9 +95,12 @@ function civilToUtcDate(date: CivilDate): Date {
   return new Date(Date.UTC(y!, (m ?? 1) - 1, d ?? 1, 12));
 }
 
-/** Monday index of a civil date (0 = Monday), from core's Sunday-based one. */
-function mondayIndex(date: CivilDate): number {
-  return (dayOfWeek(date) + 6) % 7;
+/**
+ * How many days a civil date sits past the start of its week (0 = the first
+ * day), from core's Sunday-based `dayOfWeek`. Monday-first rotates by one.
+ */
+function weekOffset(date: CivilDate, weekStart: 'sunday' | 'monday'): number {
+  return weekStart === 'monday' ? (dayOfWeek(date) + 6) % 7 : dayOfWeek(date);
 }
 
 function headerParts(today: CivilDate): EpaperModel['header'] {
@@ -158,9 +162,11 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
     working: shift.isWorking,
   }));
 
-  // Grid: whole weeks (Monday first) starting from the Monday of today's week.
+  // Grid: whole weeks starting from the first day (Sunday or Monday, per the
+  // household) of today's week.
+  const weekStart: 'sunday' | 'monday' = manifest.display.weekStart === 'monday' ? 'monday' : 'sunday';
   const weekCount = clampGridWeeks(manifest.display.horizonWeeks);
-  const gridStart = addDays(today, -mondayIndex(today));
+  const gridStart = addDays(today, -weekOffset(today, weekStart));
   const weeks: EpaperGridCell[][] = [];
   for (let w = 0; w < weekCount; w++) {
     const row: EpaperGridCell[] = [];
@@ -185,7 +191,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
     todayShifts,
     agenda,
     agendaOverflow,
-    weekdayLabels: [...WEEKDAY_LABELS],
+    weekdayLabels: [...(weekStart === 'monday' ? WEEKDAY_LABELS_MONDAY : WEEKDAY_LABELS_SUNDAY)],
     weeks,
     timezone,
     generatedAt: manifest.generatedAt,

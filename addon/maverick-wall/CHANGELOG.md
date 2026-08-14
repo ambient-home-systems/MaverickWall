@@ -14,6 +14,20 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Widgets now use the space you give them. Every widget on a display scales to
+fill its box — grow the box and the weather, the agenda, the shift and the rest
+grow with it instead of staying small in the corner; shrink it and they stay
+readable down to a sensible minimum rather than becoming a smudge. A small
+"Upcoming" calendar that used to show one oversized, half-cut line now fits its
+whole list into the box.
+
+**The month grid now starts on Sunday.** This is a change to every existing
+wall: the calendar's left-hand column and the week view now begin on Sunday by
+default. If your household reads the week starting on Monday, you can switch it
+back under Walls → Displays → Content → "Week starts on".
+
 ## 0.30.2
 
 Maintenance release: more build and continuous-integration tooling updates, so

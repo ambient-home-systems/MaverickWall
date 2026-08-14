@@ -9,7 +9,7 @@ import { buildEpaperModel, EPAPER_TODAY_LIMIT } from '../src/epaper/viewmodel.js
  * Synthetic manifest here, on purpose kept to the fields the viewmodel reads;
  * the whole-app path (a real manifest through the endpoint) is proven in the
  * endpoint test. 2026-08-13 is a Thursday, so the grid geometry is exact: the
- * Monday of that week is the 10th.
+ * Sunday of that week is the 9th (the default), the Monday the 10th.
  */
 
 function event(over: Partial<ManifestEvent>): ManifestEvent {
@@ -83,15 +83,24 @@ describe('the month grid', () => {
     fakeManifest([day('2026-08-13', [event({ title: 'x', startsAt: at(9, 0) })]), day('2026-08-14', [])]),
   );
 
-  it('is whole Monday-first weeks of the requested count', () => {
+  it('is whole Sunday-first weeks of the requested count by default', () => {
     expect(model.weeks).toHaveLength(5);
     for (const week of model.weeks) expect(week).toHaveLength(7);
-    expect(model.weekdayLabels).toEqual(['M', 'T', 'W', 'T', 'F', 'S', 'S']);
+    expect(model.weekdayLabels).toEqual(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
   });
 
-  it('starts on the Monday of the current week', () => {
-    expect(model.weeks[0]![0]!.date).toBe('2026-08-10');
-    expect(model.weeks[0]![0]!.day).toBe(10);
+  it('starts on the Sunday of the current week by default', () => {
+    // 2026-08-13 is a Thursday; the Sunday of that week is the 9th.
+    expect(model.weeks[0]![0]!.date).toBe('2026-08-09');
+    expect(model.weeks[0]![0]!.day).toBe(9);
+  });
+
+  it('starts on Monday and rotates the labels when the household picks it', () => {
+    const monday = buildEpaperModel(
+      fakeManifest([day('2026-08-13', [])], { weekStart: 'monday' }),
+    );
+    expect(monday.weeks[0]![0]!.date).toBe('2026-08-10');
+    expect(monday.weekdayLabels).toEqual(['M', 'T', 'W', 'T', 'F', 'S', 'S']);
   });
 
   it('marks exactly today and shades days by event count', () => {

@@ -1,0 +1,1 @@
+ALTER TABLE `household_settings` ADD `week_start` text DEFAULT 'sunday' NOT NULL;

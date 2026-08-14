@@ -344,6 +344,8 @@ export interface Manifest {
     readonly blocks: readonly DisplayBlock[];
     /** 24-hour wall clock (the default) or 12-hour (RFC 005). */
     readonly clock24: boolean;
+    /** Which day the month grid and week columns start on. */
+    readonly weekStart: 'sunday' | 'monday';
   };
   /**
    * The free-form layout, when the household has chosen one.
@@ -458,6 +460,8 @@ export interface HouseholdRow {
   readonly displayBlocks: string;
   /** 1 for a 24-hour wall clock (the default), 0 for 12-hour (RFC 005). */
   readonly clock24: number;
+  /** Which day the month grid starts on: `sunday` (default) or `monday`. */
+  readonly weekStart: string;
   readonly layoutMode: string;
   readonly layoutAspect: number;
   /** The landscape canvas's aspect (RFC 005); the portrait one is layoutAspect. */
@@ -892,6 +896,9 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       blocks: parseBlocks(input.household.displayBlocks),
       // 24-hour unless the household explicitly turned it off (RFC 005).
       clock24: input.household.clock24 !== 0,
+      // Monday only when the household picked it; Sunday for every other value,
+      // including a database from before the column existed.
+      weekStart: input.household.weekStart === 'monday' ? 'monday' : 'sunday',
     },
     layout: buildLayout(
       input.household,

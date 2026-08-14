@@ -390,6 +390,9 @@ const displayBody = z
     // The household-wide clock format. Checked is 24-hour (the wall's original
     // behaviour); unchecked is 12-hour (RFC 005).
     clock_24: checkbox(),
+    // Which day the month grid starts on. Sunday is the default the column ships
+    // with; a select always submits one of the two, so it is required.
+    week_start: oneOf('a week start', ['sunday', 'monday']),
   })
   .superRefine((value, ctx) => {
     const chosen = value.daytime_theme;
@@ -1961,6 +1964,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       horizonWeeks: shaped.value.horizon_weeks,
       blocks: order.blocks,
       clock24: shaped.value.clock_24 ? 1 : 0,
+      weekStart: shaped.value.week_start,
     });
 
     // Back to the Default display; the wall picks it up on its next poll.
@@ -3315,6 +3319,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'How many upcoming days a Calendar agenda can list.') +
       number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
         'How many weeks a month Calendar draws. Five covers a month at a glance.') +
+      `<label for="week_start">Week starts on</label>` +
+      `<select id="week_start" name="week_start">` +
+      `<option value="sunday"${household.weekStart !== 'monday' ? ' selected' : ''}>Sunday</option>` +
+      `<option value="monday"${household.weekStart === 'monday' ? ' selected' : ''}>Monday</option>` +
+      `</select>` +
+      `<p class="hint">The left-hand column of the month grid and the week columns. ` +
+      `Applies to every wall.</p>` +
       `</div>` +
 
       // --- Device: the household clock default ---

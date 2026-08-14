@@ -28,6 +28,7 @@ const HOUSEHOLD: HouseholdRow = {
   displayHorizonWeeks: 5,
   displayBlocks: 'now,next,horizon',
   clock24: 1,
+  weekStart: 'sunday',
   layoutMode: 'auto',
   layoutAspect: 0.5625,
   layoutLandscapeAspect: 1.7778,

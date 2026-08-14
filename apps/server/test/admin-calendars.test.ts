@@ -390,7 +390,7 @@ describe('display settings', () => {
       daytime_ends_at: '20:15',
       today_events: '5',
       next_days: '4',
-      horizon_weeks: '6',
+      horizon_weeks: '6', week_start: 'sunday',
       clock_24: '1',
     });
     expect(response.status).toBe(302);
@@ -400,8 +400,20 @@ describe('display settings', () => {
     expect(manifest.theme.daytime).toBe('almanac');
     expect(manifest.theme.daytimeStartsAt).toBe('06:30');
     expect(manifest.display).toEqual({
-      todayEvents: 5, nextDays: 4, horizonWeeks: 6, blocks: ['now', 'next', 'horizon'], clock24: true,
+      todayEvents: 5, nextDays: 4, horizonWeeks: 6, blocks: ['now', 'next', 'horizon'],
+      clock24: true, weekStart: 'sunday',
     });
+  });
+
+  it('saves a Monday week start, and the manifest carries it', async () => {
+    const h = await harness();
+    const response = await h.form('/admin/display', {
+      theme: 'panels', daytime_theme: 'none',
+      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
+      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'monday',
+    });
+    expect(response.status).toBe(302);
+    expect((await h.manifestFor(h)).display?.weekStart).toBe('monday');
   });
 
   it('stores "the same theme all day" as no schedule at all', async () => {
@@ -411,7 +423,7 @@ describe('display settings', () => {
     await h.form('/admin/display', {
       theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
+      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
     });
 
     const manifest = await h.manifestFor(h);
@@ -424,7 +436,7 @@ describe('display settings', () => {
     const response = await h.form('/admin/display', {
       theme: 'kitchen-disco',
       daytime_theme: 'none', daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
+      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
     });
     expect(response.status).toBe(400);
     expect((await h.manifestFor(h)).theme.active).toBe('board');
@@ -435,7 +447,7 @@ describe('display settings', () => {
     const response = await h.form('/admin/display', {
       theme: 'panels', daytime_theme: 'almanac',
       daytime_starts_at: '07:00', daytime_ends_at: '07:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
+      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
     });
     expect(response.status).toBe(400);
     expect(await response.text()).toContain('never switch');
@@ -453,14 +465,15 @@ describe('display settings', () => {
       const response = await h.form('/admin/display', {
         theme: 'panels', daytime_theme: 'none',
         daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-        today_events: '8', next_days: '6', horizon_weeks: '5',
+        today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
         ...bad,
       });
       expect(response.status).toBe(400);
     }
     // Nothing was written by any of them; the default 24-hour clock stands.
     expect((await h.manifestFor(h)).display).toEqual({
-      todayEvents: 8, nextDays: 6, horizonWeeks: 5, blocks: ['now', 'next', 'horizon'], clock24: true,
+      todayEvents: 8, nextDays: 6, horizonWeeks: 5, blocks: ['now', 'next', 'horizon'],
+      clock24: true, weekStart: 'sunday',
     });
   });
 
@@ -471,7 +484,7 @@ describe('display settings', () => {
     const response = await h.form('/admin/display', {
       theme: 'panels', daytime_theme: 'none',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '0', horizon_weeks: '5',
+      today_events: '8', next_days: '0', horizon_weeks: '5', week_start: 'sunday',
     });
     expect(response.status).toBe(302);
     expect((await h.manifestFor(h)).display?.nextDays).toBe(0);

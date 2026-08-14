@@ -126,6 +126,8 @@ export interface Manifest {
     readonly blocks?: readonly string[];
     /** 24-hour clock (the default) or 12-hour when the household turns it off. */
     readonly clock24?: boolean;
+    /** Which day the month grid starts on. Absent (an older server) is Sunday. */
+    readonly weekStart?: 'sunday' | 'monday';
   };
   /**
    * The free-form layout, when the household arranged one.
