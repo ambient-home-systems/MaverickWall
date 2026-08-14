@@ -140,7 +140,7 @@ async function harness() {
     instance: { db: typeof db },
   ): Promise<{
     theme: { active: string; daytime?: string; daytimeStartsAt?: string };
-    display?: { todayEvents: number; nextDays: number; horizonWeeks: number; blocks: string[]; clock24: boolean };
+    display?: { todayEvents: number; nextDays: number; horizonWeeks: number; blocks: string[]; clock24: boolean; weekStart: string };
   }> => {
     const issued = issueDisplayToken();
     const stamp2 = Date.now();
