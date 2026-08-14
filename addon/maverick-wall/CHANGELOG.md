@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.30.2
 
 Maintenance release: more build and continuous-integration tooling updates, so
 each release keeps building and verifying cleanly on supported infrastructure.
