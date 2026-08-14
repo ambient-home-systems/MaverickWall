@@ -16,10 +16,9 @@
  * so what is dragged here is what the wall draws.
  */
 
-import { render, renderFreeform } from './render.js';
+import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
-import { geometryFor } from './orientation.js';
 import type { Manifest } from './manifest.js';
 
 interface Widget {
@@ -208,21 +207,11 @@ function boot(): void {
   let manifest: Manifest | undefined;
   let previewShadow: ShadowRoot | undefined;
   let previewWall: HTMLElement | undefined;
-  // The display's stylesheet, kept for the stacked preview's iframe (below).
-  let previewCss: string | undefined;
 
   // ---- structure, built once -------------------------------------------
 
   const toolbar = document.createElement('div');
   toolbar.className = 'le-toolbar';
-
-  const onToggle = document.createElement('label');
-  onToggle.className = 'le-toggle';
-  const onInput = document.createElement('input');
-  onInput.type = 'checkbox';
-  onInput.checked = state.mode === 'freeform';
-  onToggle.appendChild(onInput);
-  onToggle.appendChild(document.createTextNode(' Use this layout on the wall'));
 
   // Portrait | Landscape — which of the display's two canvases is being edited.
   const orientToggle = document.createElement('div');
@@ -279,16 +268,63 @@ function boot(): void {
   snapToggle.appendChild(snapInput);
   snapToggle.appendChild(document.createTextNode(' Snap to grid'));
 
+  // One "+ Add widget" button in the toolbar opens a modal grid of the widget
+  // types, rather than a row of chips — closer to the reference, and it keeps the
+  // toolbar uncluttered as the palette grows. The grid is first-party only
+  // (rule three): no website, video or embed widget can be placed.
   const palette = document.createElement('div');
   palette.className = 'le-palette';
+  const addWidgetButton = document.createElement('button');
+  addWidgetButton.type = 'button';
+  addWidgetButton.className = 'le-add le-add-primary';
+  addWidgetButton.textContent = '+ Add widget';
+  palette.appendChild(addWidgetButton);
+
+  const modal = document.createElement('div');
+  modal.className = 'le-modal';
+  modal.hidden = true;
+  const openAddModal = (): void => {
+    modal.hidden = false;
+  };
+  const closeAddModal = (): void => {
+    modal.hidden = true;
+  };
+  const modalCard = document.createElement('div');
+  modalCard.className = 'le-modal-card';
+  const modalHead = document.createElement('div');
+  modalHead.className = 'le-modal-head';
+  const modalTitle = document.createElement('span');
+  modalTitle.textContent = 'Add a widget';
+  const modalClose = document.createElement('button');
+  modalClose.type = 'button';
+  modalClose.className = 'le-modal-close';
+  modalClose.setAttribute('aria-label', 'Close');
+  modalClose.textContent = '×';
+  modalClose.addEventListener('click', closeAddModal);
+  modalHead.append(modalTitle, modalClose);
+  const modalGrid = document.createElement('div');
+  modalGrid.className = 'le-modal-grid';
   for (const item of PALETTE) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'le-add';
-    button.textContent = '+ ' + item.label;
-    button.addEventListener('click', () => addWidget(item.type));
-    palette.appendChild(button);
+    button.className = 'le-modal-item';
+    button.textContent = item.label;
+    button.addEventListener('click', () => {
+      addWidget(item.type);
+      closeAddModal();
+    });
+    modalGrid.appendChild(button);
   }
+  modalCard.append(modalHead, modalGrid);
+  modal.appendChild(modalCard);
+  addWidgetButton.addEventListener('click', openAddModal);
+  // A click on the backdrop (not the card) closes; Escape closes.
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeAddModal();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) closeAddModal();
+  });
 
   const deleteButton = document.createElement('button');
   deleteButton.type = 'button';
@@ -305,7 +341,7 @@ function boot(): void {
   const status = document.createElement('span');
   status.className = 'le-status';
 
-  toolbar.append(onToggle, orientToggle, aspectSelect, matchButton, snapToggle, palette, deleteButton, saveButton, status);
+  toolbar.append(orientToggle, aspectSelect, matchButton, snapToggle, palette, deleteButton, saveButton, status);
 
   /**
    * Make the aspect dropdown reflect `state.aspect`: select a matching preset,
@@ -369,7 +405,7 @@ function boot(): void {
   configPanel.className = 'le-config';
   configPanel.style.display = 'none';
 
-  mount.append(toolbar, backgroundPanel, stage, layersPanel, configPanel, hint);
+  mount.append(toolbar, backgroundPanel, stage, layersPanel, configPanel, hint, modal);
 
   // ---- the live preview ------------------------------------------------
 
@@ -384,7 +420,6 @@ function boot(): void {
       if (!manifestRes.ok || !cssRes.ok) return;
       manifest = (await manifestRes.json()) as Manifest;
       const css = await cssRes.text();
-      previewCss = css;
 
       const shadow = preview.attachShadow({ mode: 'open' });
       const styleEl = document.createElement('style');
@@ -418,69 +453,15 @@ function boot(): void {
     previewWall.style.setProperty('--root-size', `${rect.height / 100}px`);
     applyTheme(previewWall, manifest.theme.active);
 
-    // The wall as it will actually draw. With the layout switched on, that is
-    // the free-form draft; with it off, the wall draws the stacked blocks — so
-    // the preview shows the stacked layout too, rather than a canvas the wall
-    // would never use.
-    //
-    // Free-form draws straight into the shadow wall: its reused sections measure
-    // themselves and scale to their box, so they are indifferent to the shadow
-    // root having no root font-size of its own. The *stacked* layout is not — it
-    // relies on the display's `:root`/viewport CSS (`html { font-size:
-    // var(--root-size, calc(100vh/100)) }`, `:root[data-layout]`), none of which
-    // matches inside a shadow tree, so it renders blown up. So the stacked branch
-    // draws in an iframe — a real document — exactly as the theme builder does.
-    if (state.mode === 'freeform') {
-      renderFreeform(previewWall, model, {
-        aspect: state.aspect,
-        widgets: state.widgets.map((w) => ({ ...w })),
-        ...(state.background !== undefined ? { background: state.background } : {}),
-      }, EDITOR_MEDIA_BASE);
-    } else {
-      renderStacked(rect);
-    }
-  }
-
-  /**
-   * The stacked preview, drawn in an iframe so the display's document-root CSS
-   * (rem basis and `:root[...]` layout rules) applies exactly as on a screen.
-   * Stacked rendering is pure CSS — it takes no measurements — so the wall can be
-   * built here and its static HTML handed to the iframe.
-   */
-  function renderStacked(rect: DOMRect): void {
-    if (model === undefined || manifest === undefined || previewWall === undefined || previewCss === undefined) {
-      return;
-    }
-    const built = document.createElement('div');
-    render(built, model);
-    const html = built.innerHTML;
-    const theme = manifest.theme;
-    const blocks = model.blocks.join(' ');
-
-    const frame = document.createElement('iframe');
-    frame.title = 'Wall preview';
-    frame.setAttribute('scrolling', 'no');
-    frame.style.cssText = `display:block;border:0;width:${rect.width}px;height:${rect.height}px`;
-    frame.addEventListener('load', () => {
-      const doc = frame.contentDocument;
-      const wall = doc?.getElementById('wall');
-      if (doc === null || doc === undefined || wall === null || wall === undefined) return;
-      wall.innerHTML = html;
-      // Set the frame up exactly as a real screen (orientation.ts), from this
-      // box's own shape, so the preview reflects how the wall would lay out here.
-      const g = geometryFor({ width: frame.clientWidth, height: frame.clientHeight }, 0, 'auto');
-      const root = doc.documentElement;
-      root.setAttribute('data-layout', g.layout);
-      root.setAttribute('data-blocks', blocks);
-      root.style.setProperty('--frame-w', g.frame.width);
-      root.style.setProperty('--frame-h', g.frame.height);
-      root.style.setProperty('--root-size', g.rootFontSize);
-      applyTheme(root, theme.active, theme.activeTokens, theme.activeShape);
-    });
-    frame.srcdoc =
-      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
-      `<style>${previewCss}</style></head><body><div id="wall"></div></body></html>`;
-    previewWall.replaceChildren(frame);
+    // The wall as it will actually draw — always free-form now. It draws straight
+    // into the shadow wall: the reused sections measure themselves and scale to
+    // their box, so they are indifferent to the shadow root having no root
+    // font-size of its own.
+    renderFreeform(previewWall, model, {
+      aspect: state.aspect,
+      widgets: state.widgets.map((w) => ({ ...w })),
+      ...(state.background !== undefined ? { background: state.background } : {}),
+    }, EDITOR_MEDIA_BASE);
   }
 
   // ---- the draggable overlay -------------------------------------------
@@ -492,8 +473,10 @@ function boot(): void {
   }
 
   function sizeCanvas(): void {
-    const maxW = Math.min(stage.clientWidth || 360, 520);
-    const maxH = 560;
+    // A bigger canvas: the editor is the main surface now, so give it more room
+    // to drag in than the old inline-below-the-settings size.
+    const maxW = Math.min(stage.clientWidth || 360, 720);
+    const maxH = 760;
     let w = maxW;
     let h = w / state.aspect;
     if (h > maxH) {
@@ -1285,12 +1268,6 @@ function boot(): void {
     markDirty();
   }
 
-  onInput.addEventListener('change', () => {
-    state.mode = onInput.checked ? 'freeform' : 'auto';
-    // The preview follows the switch: free-form draft on, stacked blocks off.
-    renderPreview();
-    markDirty();
-  });
   aspectSelect.addEventListener('change', () => {
     state.aspect = Number(aspectSelect.value) || 0.5625;
     draw();
@@ -1421,7 +1398,9 @@ function boot(): void {
         body: JSON.stringify({
           screen: state.screen,
           orientation,
-          mode: state.mode,
+          // Always free-form: the "auto" stacked layout was retired. Saving a
+          // canvas is what makes a display free-form, and there is no other mode.
+          mode: 'freeform',
           aspect: round3(aspect),
           widgets: widgetsForSave(widgets),
           // The canvas background object, or null for none — the shape the

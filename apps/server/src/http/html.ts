@@ -464,6 +464,32 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;text-align:left}
 .le-add:hover{border-color:var(--ok);color:var(--ink);filter:none}
 .le-add svg{width:16px;height:16px;stroke-width:1.6;color:var(--ok);flex:0 0 auto}
+/* The single "+ Add widget" button reads as the primary action, not a dashed
+   chip — it opens the add-widget modal below. */
+.le-add-primary{border-style:solid;border-color:var(--accent);color:var(--ink);
+  background:color-mix(in srgb,var(--accent) 12%,transparent);font-weight:700}
+.le-add-primary:hover{border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 20%,transparent)}
+/* The add-widget modal: a centred card of first-party widget types. */
+.le-modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;
+  justify-content:center;padding:24px;background:rgba(0,0,0,.55)}
+.le-modal[hidden]{display:none}
+.le-modal-card{width:min(560px,100%);max-height:85vh;overflow:auto;background:var(--panel);
+  border:1px solid var(--rule);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.le-modal-head{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--rule);font-family:var(--cond);
+  font-weight:700;font-size:17px;color:var(--ink)}
+.le-modal-close{margin:0;padding:0 8px;background:none;border:0;color:var(--muted);
+  font-size:22px;line-height:1;cursor:pointer}
+.le-modal-close:hover{color:var(--ink)}
+.le-modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px}
+@media(max-width:520px){.le-modal-grid{grid-template-columns:repeat(2,1fr)}}
+.le-modal-item{display:flex;align-items:center;justify-content:center;text-align:center;
+  min-height:64px;padding:12px;background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:10px;font-family:var(--cond);font-weight:600;
+  font-size:14px;cursor:pointer}
+.le-modal-item:hover{border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 10%,transparent)}
 .le-delete{margin-top:0;padding:.42rem .75rem;background:var(--panel);color:var(--danger);
   border:1px solid color-mix(in srgb,var(--danger) 40%,var(--rule));border-radius:7px;
   cursor:pointer;font-size:12.5px}
@@ -476,7 +502,7 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-status.is-ok{color:var(--ok)}
 .le-status.is-error{color:var(--danger)}
 .le-stage{display:flex;justify-content:center;align-items:center;padding:24px;
-  background:var(--panel2);border:1px solid var(--rule);border-radius:10px;min-height:420px}
+  background:var(--panel2);border:1px solid var(--rule);border-radius:10px;min-height:560px}
 .le-canvas{position:relative;background:var(--bg);border-radius:6px;overflow:hidden;
   box-shadow:inset 0 0 0 1px var(--rule);touch-action:none}
 /* The snap grid, on the overlay so it sits over the live preview but under the

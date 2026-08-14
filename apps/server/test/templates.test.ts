@@ -38,8 +38,8 @@ function db() {
 }
 
 describe('the shipped templates', () => {
-  it('all twelve validate against the same schema a hand-built canvas does', () => {
-    expect(TEMPLATES).toHaveLength(12);
+  it('all thirteen validate against the same schema a hand-built canvas does', () => {
+    expect(TEMPLATES).toHaveLength(13);
     for (const template of TEMPLATES) {
       const parsed = templateSchema.safeParse(template);
       expect(parsed.success, `${template.id}: ${parsed.error?.message ?? ''}`).toBe(true);
@@ -59,19 +59,29 @@ describe('the shipped templates', () => {
 
   it('every template names a built-in theme and gives both canvases a background (Phase 3c)', () => {
     for (const t of TEMPLATES) {
+      // Classic is the exception, deliberately: it is the universal default every
+      // wall is migrated onto, so it sets no theme and no background and keeps
+      // whatever the wall already has (see templates/classic.ts).
+      if (t.id === 'classic') {
+        expect(t.theme, 'classic theme').toBeUndefined();
+        expect(t.portrait.background, 'classic portrait bg').toBeUndefined();
+        expect(t.landscape.background, 'classic landscape bg').toBeUndefined();
+        continue;
+      }
       expect(['household', 'blueprint', 'panels', 'almanac'], t.id).toContain(t.theme);
       expect(t.portrait.background, `${t.id} portrait bg`).toBeDefined();
       expect(t.landscape.background, `${t.id} landscape bg`).toBeDefined();
     }
   });
 
-  it('leads the gallery with the two Skylight-style clones, which use the new modes', () => {
-    expect(TEMPLATES[0]?.id).toBe('sky-calendar');
-    expect(TEMPLATES[1]?.id).toBe('sky-week');
+  it('leads the gallery with Classic, then the two Skylight-style clones', () => {
+    expect(TEMPLATES[0]?.id).toBe('classic');
+    expect(TEMPLATES[1]?.id).toBe('sky-calendar');
+    expect(TEMPLATES[2]?.id).toBe('sky-week');
     // The whole reason 1a existed: Sky Calendar draws month pills, Sky Week draws columns.
-    const skyCalendarCal = TEMPLATES[0]?.portrait.widgets.find((w) => w.type === 'calendar');
+    const skyCalendarCal = TEMPLATES[1]?.portrait.widgets.find((w) => w.type === 'calendar');
     expect(skyCalendarCal?.config).toMatchObject({ cellEvents: 'pills' });
-    const skyWeekCols = TEMPLATES[1]?.portrait.widgets.find(
+    const skyWeekCols = TEMPLATES[2]?.portrait.widgets.find(
       (w) => w.type === 'calendar' && (w.config as { mode?: string })?.mode === 'week',
     );
     expect(skyWeekCols).toBeDefined();

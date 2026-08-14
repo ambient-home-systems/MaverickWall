@@ -584,68 +584,6 @@ describe('screens', () => {
   });
 });
 
-describe('the order the wall draws in', () => {
-  it('saves an order and carries it to the manifest', async () => {
-    const h = await harness();
-    const response = await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
-      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
-      block_1: 'horizon', block_2: 'now', block_3: 'next',
-    });
-    expect(response.status).toBe(302);
-    expect((await h.manifestFor(h)).display?.blocks).toEqual(['horizon', 'now', 'next']);
-  });
-
-  it('leaves a block out when a row is set to nothing', async () => {
-    const h = await harness();
-    await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
-      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
-      block_1: 'now', block_2: 'horizon', block_3: 'none',
-    });
-    expect((await h.manifestFor(h)).display?.blocks).toEqual(['now', 'horizon']);
-  });
-
-  it('names a block chosen twice rather than silently losing one', async () => {
-    // Somebody who did this meant to move a block, not to drop one.
-    const h = await harness();
-    const response = await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
-      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
-      block_1: 'now', block_2: 'now', block_3: 'horizon',
-    });
-    expect(response.status).toBe(400);
-    expect(await response.text()).toContain('twice');
-  });
-
-  it('refuses an order with nothing in it', async () => {
-    const h = await harness();
-    const response = await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
-      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
-      block_1: 'none', block_2: 'none', block_3: 'none',
-    });
-    expect(response.status).toBe(400);
-    expect(await response.text()).toContain('at least one');
-  });
-
-  it('reads a stored order back into the form', async () => {
-    const h = await harness();
-    await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
-      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5',
-      block_1: 'horizon', block_2: 'next', block_3: 'none',
-    });
-    const body = await (await h.call('/admin/displays/default')).text();
-    expect(body).toMatch(/id="block_1"[\s\S]*?<option value="horizon" selected/);
-    expect(body).toMatch(/id="block_3"[\s\S]*?<option value="none" selected/);
-  });
-});
 
 /**
  * TEST FEED.

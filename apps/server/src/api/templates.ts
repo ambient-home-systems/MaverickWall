@@ -10,7 +10,7 @@ import {
   type LayoutWidgetInput,
 } from './queries.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { TEMPLATES } from '../templates/index.js';
+import { TEMPLATES, CLASSIC_TEMPLATE } from '../templates/index.js';
 
 /**
  * A starting layout a household picks from (RFC 005).
@@ -111,6 +111,48 @@ export function applyTemplate(
       background: canvas.background !== undefined ? JSON.stringify(canvas.background) : null,
     });
   }
+}
+
+/**
+ * One-shot migration of every "auto" wall onto the Classic template.
+ *
+ * The responsive stacked layout was retired; every wall draws a free-form canvas
+ * now. A wall that never arranged one (the old default, and every screen that
+ * inherited it) has no `layout_widgets`, so on the first boot after the upgrade
+ * this seeds it with Classic — the same kitchen calendar it drew before, now as
+ * widgets it can rearrange. A wall that already arranged its own canvas has
+ * widgets and is left completely untouched. Guarded by
+ * `household_settings.layout_backfilled` so it runs exactly once and never
+ * re-seeds a wall the household later cleared.
+ *
+ * Runs at boot, after migrations and the default seed, inside the same file lock
+ * (see `main.ts`). It reuses `applyTemplate` — the same transactional writer the
+ * gallery uses — rather than hand-written SQL, so the riskiest kind of change in
+ * this codebase (rewriting every household's layout) goes through code that is
+ * already tested and clamps every value.
+ */
+export function backfillClassic(db: SqliteDatabase): void {
+  const row = db
+    .prepare(`SELECT layout_backfilled AS done FROM household_settings WHERE id = 'singleton'`)
+    .get() as { done: number } | undefined;
+  // No settings row yet (setup has not run) or already backfilled: nothing to do.
+  if (row === undefined || row.done === 1) return;
+
+  const seedIfEmpty = (owner: string | null): void => {
+    const hasWidgets =
+      readLayoutWidgets(db, owner, 'portrait').length > 0 ||
+      readLayoutWidgets(db, owner, 'landscape').length > 0;
+    if (!hasWidgets) applyTemplate(db, owner, CLASSIC_TEMPLATE);
+  };
+
+  seedIfEmpty(null);
+  for (const screen of readScreens(db)) {
+    if (screen.revokedAt === null) seedIfEmpty(screen.id);
+  }
+
+  db.prepare(`UPDATE household_settings SET layout_backfilled = 1, updated_at = ? WHERE id = 'singleton'`).run(
+    Date.now(),
+  );
 }
 
 /** The mode, per-orientation aspect and background a display owns, for copy. */

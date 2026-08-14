@@ -179,10 +179,13 @@ export function buildLayout(
   const portrait = placeCanvas(portraitWidgets);
   const landscape = placeCanvas(landscapeWidgets);
 
-  const mode: 'auto' | 'freeform' =
-    household.layoutMode === 'freeform' && (portrait.length > 0 || landscape.length > 0)
-      ? 'freeform'
-      : 'auto';
+  // Always free-form: the responsive "auto" layout was retired in favour of a
+  // single rendering path. Every wall carries the Classic template's widgets (a
+  // new display is seeded with them, and every existing wall was migrated onto
+  // them by `backfillClassic`), so "auto" no longer exists as a mode. An empty
+  // canvas — a display started blank, or a stale pre-migration cache — draws the
+  // free-form "nothing yet" note rather than falling back to a second renderer.
+  const mode = 'freeform' as const;
 
   const portraitBg = parseBackground(household.layoutBackground);
   const landscapeBg = parseBackground(household.layoutLandscapeBackground);

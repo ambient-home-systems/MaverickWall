@@ -55,9 +55,10 @@ import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import type { LogBuffer } from '../logbuffer.js';
-import { parseBlocks, parseBackground } from '../api/manifest.js';
+import { parseBackground } from '../api/manifest.js';
 import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
 import { applyTemplate, copyLayout, findTemplate } from '../api/templates.js';
+import { CLASSIC_TEMPLATE } from '../templates/index.js';
 import { TEMPLATES } from '../templates/index.js';
 import {
   candidatesFor,
@@ -1482,7 +1483,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const issued = issueDisplayToken();
     const id = randomBytes(6).toString('hex');
     createScreen(deps.db, id, shaped.value.name, pairingSecret(issued));
-    return c.html(pairingPage(shaped.value.name, issued.token, issued.shortCode, c));
+    // Seed the new screen with Classic, so it opens on the standard kitchen
+    // calendar the household can rearrange — never a blank editor.
+    applyTemplate(deps.db, id, CLASSIC_TEMPLATE);
+    return c.html(pairingPage(id, shaped.value.name, issued.token, issued.shortCode, c));
   });
 
   /**
@@ -1499,7 +1503,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
-    return c.html(pairingPage(screen.name, issued.token, issued.shortCode, c));
+    return c.html(pairingPage(id, screen.name, issued.token, issued.shortCode, c));
   });
 
   app.post('/admin/screens/:id/revoke', (c: Context) => {
@@ -1687,16 +1691,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
-   * Reset a display's layout to the responsive default — the "Reset" beside the
-   * "Remove" (unpair) a paired screen already has. Clears both canvases and turns
-   * free-form off, so the wall goes back to the stacked layout it draws by
-   * default; a template or a hand-built canvas can be applied again afterwards.
+   * Reset a display's layout to the Classic default — the standard kitchen
+   * calendar, the same layout a new display starts from. Re-applies the Classic
+   * template to both canvases (there is no "stacked" mode to fall back to any
+   * more); a template or a hand-built canvas can be applied again afterwards.
    */
   app.post('/admin/displays/:id/reset-layout', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const owner = resolveOwner(id === 'default' ? null : id);
-    replaceLayout(deps.db, owner, 'portrait', { mode: 'auto', aspect: 0.5625, widgets: [], background: null });
-    replaceLayout(deps.db, owner, 'landscape', { mode: 'auto', aspect: 1.7778, widgets: [], background: null });
+    applyTemplate(deps.db, owner, CLASSIC_TEMPLATE);
     return c.redirect(layoutUrl(owner), 302);
   });
 
@@ -2181,7 +2184,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * worst input method in the house. The short code is there for the same
    * reason, for anyone whose screen has no camera.
    */
-  function pairingPage(name: string, token: string, shortCode: string, c: Context): string {
+  function pairingPage(id: string, name: string, token: string, shortCode: string, c: Context): string {
+    // Pairing the tablet and designing the layout are separate jobs: this button
+    // opens the display's page so the household can arrange it now, whether or
+    // not a screen has connected yet. It is what stops the flow dead-ending on a
+    // pairing code with nowhere to go.
+    const setUp =
+      `<p><a class="btn" href="admin/displays/${encodeURIComponent(id)}">` +
+      `Set up its layout →</a></p>`;
     /*
      * The origin a wall screen can actually reach — which is not always the one
      * this request arrived on.
@@ -2234,6 +2244,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ) +
           `<p class="hint">Then come back to Screens and pair this screen again — ` +
           `the add-on will fill in the address for you once the port is on.</p>` +
+          setUp +
           `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
       });
     }
@@ -2270,6 +2281,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">It works for the next day, and once — pairing a screen ` +
         `spends it. Or type this whole address on the screen instead:</p>` +
         `<p><span class="code">${escapeHtml(url)}</span></p>` +
+        setUp +
+        `<p class="hint">You can arrange its layout now — the screen does not have ` +
+        `to be paired first.</p>` +
         `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
     });
   }
@@ -2549,25 +2563,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
-  /** One dropdown per row, so an order can be set without a drag handle. */
-  function blockRows(current: readonly string[]): string {
-    return BLOCKS.map((_, index) => {
-      const position = index + 1;
-      const selected = current[index] ?? 'none';
-      const options =
-        BLOCKS.map(
-          (block) =>
-            `<option value="${block.key}"${block.key === selected ? ' selected' : ''}>` +
-            `${escapeHtml(block.label)}</option>`,
-        ).join('') +
-        `<option value="none"${selected === 'none' ? ' selected' : ''}>Nothing</option>`;
-      return (
-        `<label for="block_${position}">Row ${position}</label>` +
-        `<select id="block_${position}" name="block_${position}">${options}</select>`
-      );
-    }).join('');
-  }
-
   /**
    * The free-form layout editor.
    *
@@ -2721,15 +2716,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
       `Start from a template</a>` +
       `<form method="post" action="admin/displays/${encodeURIComponent(detailId)}/reset-layout" ` +
-      `data-confirm="Reset this display to the default layout? Its canvas is cleared." style="margin:0">` +
-      `<button class="btn-ghost btn-sm" type="submit">Reset to default</button></form>` +
+      `data-confirm="Reset this display to the Classic layout? Your current arrangement is replaced." style="margin:0">` +
+      `<button class="btn-ghost btn-sm" type="submit">Reset to Classic</button></form>` +
       `</div>` +
-      `<p class="hint">Add a widget, drag it to move, pull the corner to resize. ` +
-      `The <b>Portrait</b> and <b>Landscape</b> buttons below switch which canvas ` +
-      `you are arranging — you arrange both, and the wall draws the one matching ` +
-      `how it is hung (or the Orientation set below). Turn it on to use this ` +
-      `instead of the stacked layout; the wall picks up a change within a minute. ` +
-      `Or start from a ready-made layout above.</p>` +
+      `<p class="hint">Add a widget with <b>+ Add widget</b>, drag it to move, pull ` +
+      `a corner to resize. The <b>Portrait</b> and <b>Landscape</b> buttons switch ` +
+      `which canvas you are arranging — you arrange both, and the wall draws the ` +
+      `one matching how it is hung (or the Orientation set below). The wall picks ` +
+      `up a change within a minute. Every display starts from the Classic layout; ` +
+      `rearrange it, or start over from a ready-made one above.</p>` +
       layoutEditorMount(initial);
 
     return page({
@@ -2897,19 +2892,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `value="${escapeHtml(household.daytimeEndsAt ?? '21:00')}"></span>` +
       `</div>` +
 
-      `<h2 class="add">What the stacked layout shows</h2>` +
-      `<p class="hint">For the stacked (Auto) layout: which blocks appear, top to ` +
-      `bottom in portrait. In landscape the month takes its own column and the rest ` +
-      `stack beside it, in this order. A free-form layout uses its own widgets instead.</p>` +
-      blockRows(parseBlocks(household.displayBlocks)) +
-
-      `<h2 class="add">How much to show</h2>` +
+      `<h2 class="add">How much the calendar shows</h2>` +
+      `<p class="hint">How far a Calendar widget looks — the most a day, an agenda ` +
+      `and the month grid will draw before they stop. A widget can show less than ` +
+      `this, never more.</p>` +
       number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
         'Anything past this is counted rather than listed.') +
-      number('next_days', 'Days in the week ahead', household.displayNextDays, 0, 14,
-        'Set to 0 to hide the week ahead entirely.') +
+      number('next_days', 'Days an agenda looks ahead', household.displayNextDays, 0, 14,
+        'How many upcoming days a Calendar agenda can list.') +
       number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
-        'The rotation shape. Five covers a month at a glance.') +
+        'How many weeks a month Calendar draws. Five covers a month at a glance.') +
 
       `<div class="checks"><label>` +
       `<input type="checkbox" name="clock_24" value="1"${household.clock24 !== 0 ? ' checked' : ''}> ` +

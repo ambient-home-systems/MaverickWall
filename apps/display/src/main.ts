@@ -1,6 +1,6 @@
 import { createClock } from './clock.js';
 import { createManifestClient, type Manifest, type ManifestWidget, type CanvasBackground } from './manifest.js';
-import { render, renderFreeform, renderMessage, renderPairing } from './render.js';
+import { renderFreeform, renderMessage, renderPairing } from './render.js';
 import { applyTheme, daytimeActive } from './theme.js';
 import {
   geometryFor,
@@ -20,17 +20,18 @@ import { assess, DEFAULT_LIMITS } from './watchdog.js';
  * matching orientation wins; if its canvas is empty, the other's is drawn
  * letterboxed, so a household that arranged only one side still sees it. The
  * legacy single-canvas shape (from a manifest cached by a pre-split bundle) is
- * read last, so a free-form wall does not flash to the responsive layout for one
- * poll after an upgrade. `undefined` means "draw the responsive layout".
+ * read last. Every wall is free-form now — the responsive "auto" layout was
+ * retired — so this always returns a canvas: an empty one (no widgets) when
+ * there is nothing to draw, which `renderFreeform` paints as a "nothing yet"
+ * note rather than a blank wall.
  */
 function pickCanvas(
   layout: Manifest['layout'],
   orientation: 'portrait' | 'landscape',
-): { readonly aspect: number; readonly widgets: readonly ManifestWidget[]; readonly background?: CanvasBackground } | undefined {
-  if (layout === undefined || layout.mode !== 'freeform') return undefined;
+): { readonly aspect: number; readonly widgets: readonly ManifestWidget[]; readonly background?: CanvasBackground } {
   const landscape = orientation === 'landscape';
-  const primary = landscape ? layout.landscape : layout.portrait;
-  const secondary = landscape ? layout.portrait : layout.landscape;
+  const primary = landscape ? layout?.landscape : layout?.portrait;
+  const secondary = landscape ? layout?.portrait : layout?.landscape;
   if (primary?.widgets !== undefined && primary.widgets.length > 0) {
     return {
       aspect: primary.aspect ?? (landscape ? 1.7778 : 0.5625),
@@ -45,10 +46,12 @@ function pickCanvas(
       ...(secondary.background !== undefined ? { background: secondary.background } : {}),
     };
   }
-  if (layout.widgets !== undefined && layout.widgets.length > 0) {
+  if (layout?.widgets !== undefined && layout.widgets.length > 0) {
     return { aspect: layout.aspect ?? 0.5625, widgets: layout.widgets };
   }
-  return undefined;
+  // Nothing arranged for either orientation: an empty canvas at this
+  // orientation's default aspect. `renderFreeform` draws the "nothing yet" note.
+  return { aspect: landscape ? 1.7778 : 0.5625, widgets: [] };
 }
 
 /**
@@ -153,18 +156,13 @@ function start(): void {
       day ? manifest.theme.daytimeShape : manifest.theme.activeShape,
     );
     /*
-     * Free-form when the household arranged a canvas for this orientation (or
-     * the other one, letterboxed), the responsive layout otherwise. The server
-     * only sets `freeform` when a canvas has something to draw, but `pickCanvas`
-     * checks again here: a bundle must draw something sane against any manifest,
-     * including one older or newer than itself.
+     * One rendering path: every wall is free-form. `pickCanvas` returns the
+     * arranged canvas for this orientation (or the other one, letterboxed), or
+     * an empty canvas when nothing is arranged — `renderFreeform` draws a
+     * "nothing yet" note for that rather than a blank wall.
      */
     const canvas = pickCanvas(manifest.layout, geo.layout);
-    if (canvas !== undefined) {
-      renderFreeform(root, model, canvas);
-    } else {
-      render(root, model);
-    }
+    renderFreeform(root, model, canvas);
     lastDrawAt = Date.now();
   };
 

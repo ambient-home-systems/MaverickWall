@@ -1,4 +1,5 @@
 import type { DisplayTemplate } from '../api/templates.js';
+import { template as classic } from './classic.js';
 import { template as skyCalendar } from './sky-calendar.js';
 import { template as skyWeek } from './sky-week.js';
 import { template as familyHub } from './family-hub.js';
@@ -21,11 +22,18 @@ import { template as reception } from './reception.js';
  * same posture as the Store. `test/templates.test.ts` validates the whole list
  * against `templateSchema`, so a malformed template fails the build.
  *
- * Order is gallery order. The two Skylight-style clones lead — they are the
- * front door for a household replacing a commercial calendar — then the rest of
- * the home layouts, then the office ones.
+ * Order is gallery order. Classic leads — it is the universal default every
+ * wall starts from and was migrated onto — then the two Skylight-style clones,
+ * then the rest of the home layouts, then the office ones.
  */
+/**
+ * The universal default layout, exported by name so the boot backfill and the
+ * new-screen flow can seed it without reaching into the gallery list.
+ */
+export const CLASSIC_TEMPLATE: DisplayTemplate = classic;
+
 export const TEMPLATES: readonly DisplayTemplate[] = [
+  classic,
   skyCalendar,
   skyWeek,
   familyHub,

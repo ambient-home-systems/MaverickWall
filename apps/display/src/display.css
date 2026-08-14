@@ -977,6 +977,21 @@ body {
   text-align: center;
 }
 
+/* A whole canvas with no widgets on it (a blank display, or a stale cache). Sized
+   against the canvas unit, centred over the empty ground. */
+.canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--u) * 6);
+  color: var(--muted, #8a8a8a);
+  font-family: var(--f-sans);
+  font-size: calc(var(--u) * 4);
+  text-align: center;
+}
+
 /* The clock widget scales to its own box, not the canvas. */
 .fw-clock { justify-content: center; }
 .fw-clock .clock {

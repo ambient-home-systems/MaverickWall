@@ -18,7 +18,7 @@
  * its stylesheet is isolated from the admin page for free.
  */
 
-import { render } from './render.js';
+import { renderFreeform } from './render.js';
 import { buildModel } from './viewmodel.js';
 import { applyTheme, customTokens } from './theme.js';
 import { geometryFor } from './orientation.js';
@@ -92,7 +92,15 @@ function init(root: HTMLElement): void {
       const at = Date.now();
       const model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });
       const built = document.createElement('div');
-      render(built, model);
+      // The wall is always free-form now; preview the portrait canvas the
+      // household has (Classic, or whatever they arranged). An empty canvas
+      // draws the "nothing yet" note, which is fine for a theme swatch.
+      const canvas = manifest.layout?.portrait;
+      renderFreeform(built, model, {
+        aspect: canvas?.aspect ?? 0.5625,
+        widgets: canvas?.widgets ?? [],
+        ...(canvas?.background !== undefined ? { background: canvas.background } : {}),
+      });
 
       const boxW = previewBox.getBoundingClientRect().width || 300;
       const frame = document.createElement('iframe');

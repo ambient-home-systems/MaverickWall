@@ -105,15 +105,21 @@ export const householdSettings = sqliteTable('household_settings', {
   clock24: integer('clock_24').notNull().default(1),
 
   /**
-   * Which layout the wall draws.
-   *
-   * `auto` is the responsive zoom-pyramid that computes portrait and landscape
-   * from the block list above. `freeform` is a canvas the household arranged by
-   * hand — `layout_widgets`, placed anywhere. Defaults to `auto` so an existing
-   * wall is unchanged, and so a wall is never blank while a free-form layout is
-   * still being built.
+   * Vestigial. The wall draws one layout now — a free-form canvas of widgets —
+   * so `layout_mode` is no longer read (`buildLayout` always emits `freeform`).
+   * The responsive "auto" zoom-pyramid it used to select was retired when every
+   * wall was migrated onto the Classic template (`backfillClassic`). Kept as a
+   * column so no migration has to rewrite it; ignored everywhere.
    */
   layoutMode: text('layout_mode').notNull().default('auto'),
+  /**
+   * One-shot marker: has this database been migrated off the old "auto" stacked
+   * layout onto the Classic free-form template? `backfillClassic` sets it to 1
+   * the first time it runs and never touches the layout again, so a household
+   * that later empties a canvas is not re-seeded. Additive, defaults to 0 so an
+   * upgrading database is backfilled exactly once on its next boot.
+   */
+  layoutBackfilled: integer('layout_backfilled').notNull().default(0),
   /**
    * The aspect ratio (width ÷ height) the free-form canvas was authored at.
    *

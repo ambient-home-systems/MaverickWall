@@ -10,6 +10,7 @@ import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
+import { backfillClassic } from './api/templates.js';
 import { createApp, MODULES } from './http/app.js';
 import { defaultDisplayDir } from './http/static.js';
 import { existsSync } from 'node:fs';
@@ -214,6 +215,13 @@ async function main(): Promise<void> {
    * settings on upgrade and they would have no way to know why.
    */
   seedDefaultRules(db);
+  /*
+   * Migrate every wall off the retired "auto" stacked layout onto the Classic
+   * free-form template, exactly once. Guarded by `layout_backfilled`, so a
+   * household that has already been migrated (or has arranged its own canvas) is
+   * left alone. Reuses `applyTemplate`, the tested transactional writer.
+   */
+  backfillClassic(db);
 
   const fetcher = createFetcher();
   const household = readHousehold(db);

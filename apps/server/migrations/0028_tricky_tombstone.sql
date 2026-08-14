@@ -1,0 +1,1 @@
+ALTER TABLE `household_settings` ADD `layout_backfilled` integer DEFAULT 0 NOT NULL;

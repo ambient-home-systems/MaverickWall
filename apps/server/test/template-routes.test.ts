@@ -159,17 +159,25 @@ describe('the template gallery routes', () => {
     expect(mode).toBe('freeform');
   });
 
-  it('resets a display to the default layout, clearing both canvases (RFC 005)', async () => {
+  it('resets a display to the Classic layout (auto was retired)', async () => {
     const h = await ready();
     await h.postForm('/admin/displays/default/apply-template', { templateId: 'sky-week' });
-    // Sanity: the template gave it a free-form canvas.
-    expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBeGreaterThan(0);
+    const before = h.db
+      .prepare(`SELECT count(*) c FROM layout_widgets WHERE orientation = 'portrait'`)
+      .get() as { c: number };
+    expect(before.c).toBeGreaterThan(0);
 
     const res = await h.postForm('/admin/displays/default/reset-layout', {});
     expect(res.status).toBe(302);
-    expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBe(0);
+    // Reset re-applies Classic, so both canvases carry its widgets — there is no
+    // empty "auto" state to fall back to any more.
+    const types = h.db
+      .prepare(`SELECT type FROM layout_widgets WHERE orientation = 'portrait' ORDER BY z`)
+      .all() as { type: string }[];
+    expect(types.map((t) => t.type)).toContain('calendar');
+    expect(types.length).toBeGreaterThan(0);
     const mode = (h.db.prepare(`SELECT layout_mode AS m FROM household_settings`).get() as { m: string }).m;
-    expect(mode).toBe('auto');
+    expect(mode).toBe('freeform');
   });
 
   it('is behind the session gate — an unauthenticated apply writes nothing', async () => {

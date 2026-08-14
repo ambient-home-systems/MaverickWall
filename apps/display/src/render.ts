@@ -65,46 +65,6 @@ function shiftWindow(shift: { readonly startTime?: string; readonly endTime?: st
   return undefined;
 }
 
-/* ---------------------------------------------------------------- NOW ---- */
-
-function renderNow(model: DisplayModel): HTMLElement {
-  const now = el('section', 'now');
-  const top = el('div', 'now-top');
-
-  const left = el('div');
-  left.appendChild(el('div', 'clock', model.clock));
-  left.appendChild(el('div', 'today-date', model.todayLabel));
-  top.appendChild(left);
-
-  /*
-   * The badge, which the design calls the single most important element.
-   *
-   * Absent rather than empty when nobody is on a rota: a household with no
-   * shift worker should see a calendar, not a hole where a feature would be.
-   */
-  const badge = shiftBadge(model);
-  if (badge !== undefined) top.appendChild(badge);
-
-  now.appendChild(top);
-
-  // The family, across the top of the calendar the way Skylight puts them —
-  // it teaches which colour is whose before the eye reaches the agenda below.
-  const strip = renderPeopleStrip(model);
-  if (strip !== undefined) now.appendChild(strip);
-
-  const events = el('div', 'today-events');
-  if (model.today === undefined || model.today.events.length === 0) {
-    events.appendChild(el('div', 'dr-empty', 'Nothing scheduled today.'));
-  } else {
-    for (const event of model.today.events) events.appendChild(renderTodayEvent(event));
-    if (model.today.hiddenEventCount > 0) {
-      events.appendChild(el('div', 'dr-empty', `+${model.today.hiddenEventCount} more`));
-    }
-  }
-  now.appendChild(events);
-  return now;
-}
-
 /**
  * The shift badge, shared by the today block and the free-form shift widget.
  *
@@ -172,50 +132,6 @@ function ownerMark(event: EventModel, className: string): HTMLElement {
   const dot = el('span', `${className} ev-dot`);
   dot.style.setProperty('--ev', event.color);
   return dot;
-}
-
-function renderTodayEvent(event: EventModel): HTMLElement {
-  const classes = ['te'];
-  if (event.isPast) classes.push('is-past');
-  if (event.isNext) classes.push('is-next');
-  const row = el('div', classes.join(' '));
-  row.appendChild(el('div', 'te-time', event.allDay ? 'all day' : event.time));
-
-  const title = el('div', 'te-title');
-  title.appendChild(ownerMark(event, 'te-mark'));
-  title.appendChild(document.createTextNode(event.title));
-  if (event.location !== undefined && event.location !== '') {
-    title.appendChild(el('span', 'te-where', event.location));
-  }
-  row.appendChild(title);
-  return row;
-}
-
-/**
- * The legend that teaches the wall's colours: the household, each as a face or
- * a colour dot and their name. Absent when nobody is defined, so a wall with no
- * people reads exactly as it did before.
- */
-function renderPeopleStrip(model: DisplayModel): HTMLElement | undefined {
-  if (model.people.length === 0) return undefined;
-  const strip = el('div', 'people-strip');
-  for (const person of model.people) {
-    const chip = el('div', 'person-chip');
-    if (person.avatarUrl !== undefined && person.avatarUrl !== '') {
-      const image = document.createElement('img');
-      image.className = 'pc-face';
-      image.src = person.avatarUrl;
-      image.alt = '';
-      chip.appendChild(image);
-    } else {
-      const dot = el('span', 'pc-dot');
-      dot.style.setProperty('--pc', person.color);
-      chip.appendChild(dot);
-    }
-    chip.appendChild(el('span', 'pc-name', person.name));
-    strip.appendChild(chip);
-  }
-  return strip;
 }
 
 /* ------------------------------------------------------------ WEATHER ---- */
@@ -291,13 +207,6 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
 }
 
 /* --------------------------------------------------------------- NEXT ---- */
-
-function renderNext(model: DisplayModel): HTMLElement {
-  const next = el('section', 'next');
-  next.appendChild(el('div', 'section-label', `Next ${model.next.length} days`));
-  for (const day of model.next) next.appendChild(renderDayRow(day));
-  return next;
-}
 
 function renderDayRow(day: DayModel): HTMLElement {
   const row = el('div', 'day-row');
@@ -1055,6 +964,14 @@ export function renderFreeform(
     canvas.appendChild(box);
   }
 
+  // A canvas with nothing on it — a display started blank and not yet arranged,
+  // or a stale pre-migration cache read by a newer bundle — says so rather than
+  // being a blank rectangle nobody can explain from the kitchen (rule nine). It
+  // is the whole-canvas twin of the per-widget "nothing to show yet" note.
+  if (layout.widgets.length === 0) {
+    canvas.appendChild(el('div', 'canvas-empty', 'Nothing on this display yet.'));
+  }
+
   screen.appendChild(canvas);
 
   const banners = renderBanners(model);
@@ -1100,93 +1017,6 @@ export function fitToBox(box: HTMLElement, scale: HTMLElement): void {
   // shrink to avoid a clip but never magnify past the design's proportions.
   const factor = Math.min(1, availW / contentW, availH / contentH);
   scale.style.transform = `scale(${factor})`;
-}
-
-export function render(root: HTMLElement, model: DisplayModel): void {
-  /*
-   * A takeover replaces the wall, and is drawn before anything else is built.
-   *
-   * The calendar is the product, so losing it is a real cost and the rule for
-   * paying it has to be narrow: water on the floor, a garage open overnight.
-   * A household chooses which of their rules is worth this, on the Home
-   * Assistant screen, and everything else is a banner over a calendar that
-   * still works.
-   */
-  const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
-  if (takeover !== undefined) {
-    root.textContent = '';
-    root.appendChild(renderAlert(takeover, model));
-    return;
-  }
-
-  const screen = el('div', 'screen');
-  const banners = renderBanners(model);
-  if (banners !== undefined) {
-    /*
-     * Stated as a class rather than left for CSS to infer.
-     *
-     * The landscape layout pins the month to the full height of the second
-     * column, so an auto-placed banner has nowhere to go but underneath it —
-     * the wall came out with the month above the notice and today's list
-     * squeezed to nothing. Which row things start on depends on whether a
-     * banner exists, and only the renderer knows that.
-     */
-    screen.classList.add('has-banners');
-    screen.appendChild(banners);
-  }
-  /*
-   * Drawn in the order the household asked for, and only the blocks they asked
-   * for. DOM order is visual order in both layouts — portrait stacks these
-   * directly, and landscape pins the month to its own column and lets the rest
-   * fall in beside it — so there is one list to reason about rather than an
-   * ordering rule per layout.
-   */
-  /*
-   * Each block named, and nothing drawn for a name this bundle does not know.
-   *
-   * The trailing `else` this replaced drew the month for anything that was not
-   * `now` or `next` — so the moment a fourth block existed, asking for weather
-   * would have produced a second month grid.
-   */
-  for (const block of model.blocks) {
-    if (block === 'now') {
-      screen.appendChild(renderNow(model));
-    } else if (block === 'weather') {
-      // Absent rather than empty when no module contributed one: a strip of
-      // dashes is worse than no strip.
-      const strip = renderWeather(model);
-      if (strip !== undefined) screen.appendChild(strip);
-    } else if (block === 'home') {
-      // Absent rather than empty, same as the forecast: a row of dashes where
-      // a reading should be is worse than no row.
-      const readings = renderHouse(model);
-      if (readings !== undefined) screen.appendChild(readings);
-    } else if (block === 'next') {
-      screen.appendChild(renderNext(model));
-    } else if (block === 'horizon') {
-      screen.appendChild(renderHorizon(model));
-    } else if (block.startsWith('ext:')) {
-      // A third-party module's block. Absent rather than empty when the module
-      // has not answered yet — a blank row is worse than no row.
-      const panel = model.externalPanels[block];
-      if (panel !== undefined) screen.appendChild(renderGenericPanel(panel));
-    }
-  }
-
-  /*
-   * How many rows the left column needs, stated for the stylesheet.
-   *
-   * Landscape pins the month to `grid-row: 1 / -1`, and `-1` only means the
-   * end of the grid when the rows are explicit — so the template has to match
-   * the number of blocks actually drawn. Hard-coding two rows was fine until a
-   * third block existed, at which point the week ahead and the forecast were
-   * drawn on top of each other.
-   */
-  const stacked = screen.querySelectorAll(':scope > *:not(.horizon)').length;
-  screen.setAttribute('data-rows', String(Math.max(2, Math.min(5, stacked))));
-
-  root.textContent = '';
-  root.appendChild(screen);
 }
 
 /**

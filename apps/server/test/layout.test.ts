@@ -48,19 +48,18 @@ const widget = (over: Partial<PlacedWidgetRow>): PlacedWidgetRow => ({
 });
 
 describe('buildLayout', () => {
-  it('stays on auto unless the household chose free-form', () => {
-    const layout = buildLayout(HOUSEHOLD({ layoutMode: 'auto' }), [widget({})], []);
-    expect(layout.mode).toBe('auto');
+  it('is always free-form: the responsive "auto" layout was retired', () => {
+    // Every wall draws one rendering path now — a free-form canvas — regardless
+    // of the vestigial layout_mode column. A wall with widgets, and a wall with
+    // none (a blank display, drawn as the "nothing yet" note), are both free-form.
+    expect(buildLayout(HOUSEHOLD({ layoutMode: 'auto' }), [widget({})], []).mode).toBe('freeform');
+    expect(buildLayout(HOUSEHOLD({ layoutMode: 'auto' }), [], []).mode).toBe('freeform');
+    expect(buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), [], []).mode).toBe('freeform');
   });
 
-  it('stays on auto when free-form is chosen but both canvases are empty', () => {
-    // A blank wall is the one outcome rule nine forbids.
-    expect(buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), [], []).mode).toBe('auto');
-  });
-
-  it('draws free-form once either canvas has a widget to draw', () => {
-    // A household that arranged only landscape still gets free-form; the display
-    // letterboxes it onto portrait.
+  it('carries a canvas that has a widget to draw', () => {
+    // A household that arranged only landscape still has its landscape widgets;
+    // the display letterboxes them onto portrait.
     const onlyLandscape = buildLayout(HOUSEHOLD({ layoutMode: 'freeform' }), [], [widget({})]);
     expect(onlyLandscape.mode).toBe('freeform');
     expect(onlyLandscape.portrait.widgets).toHaveLength(0);

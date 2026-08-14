@@ -14,6 +14,19 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Setting up a display is simpler, and building a layout is one clear thing. When
+you add a screen you can now go straight to arranging its layout — before, the
+pairing code was a dead end. Every display starts from the **Classic** layout
+(the kitchen calendar it always drew), which you can rearrange freely or swap
+for a ready-made template; there is no longer a confusing "automatic vs custom"
+switch. Add anything to the wall from a tidy **Add widget** picker, and drag,
+resize and layer it on a larger canvas.
+
+Your walls are unchanged unless you rearrange them: each one keeps its current
+look, now as movable widgets you can adjust.
+
 ## 0.26.0
 
 Setting up a display is clearer. A display's settings now lead with its
