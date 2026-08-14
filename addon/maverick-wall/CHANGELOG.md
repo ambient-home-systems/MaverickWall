@@ -14,6 +14,16 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Build your own eInk layout. If you have a low-power e-paper panel (Walls → eInk
+Displays), you can now arrange it with the same drag-and-drop editor the wall
+displays use — drop a clock, a calendar, the weather, a shift, notes, a
+countdown and more onto the panel, and it is drawn in crisp black and white. A
+live preview shows exactly what the panel will look like as you build. Like the
+panels themselves this is still early and tested in software rather than on
+every screen, so expect some rough edges. Your existing displays are unchanged.
+
 ## 0.28.0
 
 eInk (e-paper) displays — a new kind of screen. You can now pair a low-power
