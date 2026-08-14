@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.31.0
 
 Widgets now use the space you give them. Every widget on a display scales to
 fill its box — grow the box and the weather, the agenda, the shift and the rest
