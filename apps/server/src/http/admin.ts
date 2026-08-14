@@ -24,6 +24,7 @@ import {
   readHousehold,
   requestSyncNow,
   createScreen,
+  createEpaperScreen,
   readLayoutWidgets,
   replaceLayout,
   revokeScreen,
@@ -158,6 +159,30 @@ const screenBody = z.object({
 
 /** Creating a screen asks for one thing; everything else follows the household. */
 const newScreenBody = z.object({ name: text('A name for the screen', 80) });
+
+/**
+ * E-paper panel presets, all 1-bit for now (RFC 006 phase 1). Dimensions are
+ * the panel's native landscape resolution; rotation is a separate field.
+ */
+const EPAPER_PRESETS: Record<string, { label: string; width: number; height: number }> = {
+  'seeed-7in5': { label: 'Seeed 7.5" · 800×480', width: 800, height: 480 },
+  'waveshare-5in83': { label: '5.83" · 648×480', width: 648, height: 480 },
+  'waveshare-4in2': { label: '4.2" · 400×300', width: 400, height: 300 },
+  'waveshare-2in9': { label: '2.9" · 296×128', width: 296, height: 128 },
+};
+
+const newEpaperBody = z.object({
+  name: text('A name for the screen', 80),
+  preset: text('A panel', 40),
+  width: optionalText(6),
+  height: optionalText(6),
+  rotation: z
+    .unknown()
+    .refine((value) => ['0', '90', '180', '270'].includes(String(value)), {
+      error: () => 'Rotation has to be a quarter turn.',
+    })
+    .transform((value) => Number(value)),
+});
 
 /**
  * Approving (or declining) a screen that started a device-authorization flow.
@@ -1509,6 +1534,270 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/screens/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
     return c.redirect('/admin/displays', 302);
+  });
+
+  // -------------------------------------------------------------------------
+  // eInk (e-paper) displays (RFC 006)
+  //
+  // A separate door from the browser walls: an e-paper panel is server-rendered
+  // and reached either by a device that pulls its image or by Home Assistant
+  // pushing it to a BLE tag. So the page's job is not a QR to scan — it is the
+  // frame URL and the two recipes that consume it.
+
+  /**
+   * The origin an e-paper device (or Home Assistant) can actually reach.
+   *
+   * Exactly the pairing link's problem: under ingress the request origin is the
+   * supervisor's internal Docker address, which an ESPHome panel on the wall
+   * cannot reach, so the URL comes from `base_url`; on the port the request
+   * origin is what the household typed and is right.
+   */
+  const epaperOrigin = (c: Context): string => {
+    const underIngress = ingressPath(c) !== '';
+    return (underIngress ? deps.baseUrl : new URL(c.req.url).origin).replace(/\/+$/, '');
+  };
+  const frameUrlFor = (token: string, c: Context): string => `${epaperOrigin(c)}/d/epaper/${token}.png`;
+
+  const esphomeRecipe = (url: string): string =>
+    `esphome:\n` +
+    `  name: kitchen-eink\n` +
+    `esp32:\n` +
+    `  board: esp32dev\n` +
+    `wifi:\n` +
+    `  ssid: !secret wifi_ssid\n` +
+    `  password: !secret wifi_password\n\n` +
+    `display:\n` +
+    `  - platform: waveshare_epaper   # match your panel's driver\n` +
+    `    model: 7.50inv2\n` +
+    `    cs_pin: 5\n` +
+    `    dc_pin: 17\n` +
+    `    busy_pin: 4\n` +
+    `    reset_pin: 16\n` +
+    `    update_interval: never\n` +
+    `    lambda: |-\n` +
+    `      it.image(0, 0, id(wall_image));\n\n` +
+    `online_image:\n` +
+    `  - id: wall_image\n` +
+    `    url: "${url}"\n` +
+    `    format: PNG\n` +
+    `    type: BINARY\n\n` +
+    `deep_sleep:            # drop this block for a mains panel that carries alerts\n` +
+    `  run_duration: 30s\n` +
+    `  sleep_duration: 30min\n\n` +
+    `interval:\n` +
+    `  - interval: 25s\n` +
+    `    then:\n` +
+    `      - component.update: wall_image\n` +
+    `      - component.update: display`;
+
+  const haRecipe = (url: string): string =>
+    `# configuration.yaml — Home Assistant fetches this URL; the wall is never called back\n` +
+    `camera:\n` +
+    `  - platform: generic\n` +
+    `    name: eInk source\n` +
+    `    still_image_url: "${url}"\n\n` +
+    `# automation — runs entirely inside Home Assistant\n` +
+    `triggers:\n` +
+    `  - trigger: time_pattern\n` +
+    `    minutes: "/15"\n` +
+    `actions:\n` +
+    `  - action: camera.snapshot\n` +
+    `    target:\n` +
+    `      entity_id: camera.eink_source\n` +
+    `    data:\n` +
+    `      filename: /media/eink/wall.png\n` +
+    `  - action: opendisplay.upload_image\n` +
+    `    data:\n` +
+    `      device_id: <your OpenDisplay tag>\n` +
+    `      image:\n` +
+    `        media_content_id: media-source://media_source/local/eink/wall.png\n` +
+    `        media_content_type: image/png\n` +
+    `      fit_mode: contain\n` +
+    `      dither: floyd_steinberg\n` +
+    `      refresh_mode: full`;
+
+  const codeBlock = (title: string, code: string): string =>
+    `<h3 style="margin:18px 0 6px">${escapeHtml(title)}</h3>` +
+    `<pre style="overflow-x:auto;padding:12px;border-radius:8px;background:rgba(127,127,127,0.12);` +
+    `font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre">${escapeHtml(code)}</pre>`;
+
+  /**
+   * The page shown once a screen exists, carrying the token in the URL.
+   *
+   * The token is shown here and never stored in the clear, exactly like a
+   * pairing link — so this is also where "Regenerate URL" lands. A URL that says
+   * `localhost` cannot be reached from a wall panel, so we say so rather than
+   * hand over a dead link.
+   */
+  const epaperConfigPage = (
+    id: string,
+    name: string,
+    token: string,
+    geometry: { width: number; height: number; rotation: number },
+    c: Context,
+  ): string => {
+    const url = frameUrlFor(token, c);
+    const unreachable = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url);
+    return page({
+      modules: navModules(deps.db),
+      title: 'eInk display — Maverick Wall',
+      nav: 'epaper',
+      heading: name,
+      intro: `${geometry.width}×${geometry.height}, black & white${geometry.rotation === 0 ? '' : `, rotated ${geometry.rotation}°`}.`,
+      body:
+        (unreachable
+          ? errorBlock(
+              'This URL points at localhost, which a wall panel cannot reach.',
+              'Set this add-on’s base URL (or open the admin by the address a device on your network uses), then regenerate the URL.',
+            )
+          : '') +
+        `<p>This is the screen's image URL. It contains the screen's token, so it is ` +
+        `shown <strong>once</strong> — copy it now. Regenerating makes a new one and ` +
+        `retires this.</p>` +
+        `<input readonly onclick="this.select()" value="${escapeHtml(url)}" ` +
+        `style="width:100%;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace" aria-label="Frame URL">` +
+        `<p class="hint">A device pulls this image; Home Assistant can push it to a BLE tag. ` +
+        `On battery, an e-paper panel is a glance — it sleeps, so it cannot show a weather ` +
+        `takeover the moment it fires. A mains panel that polls can.</p>` +
+        codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe(url)) +
+        codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(url)) +
+        `<div style="display:flex;gap:10px;margin-top:18px">` +
+        `<a class="btn" href="admin/epaper">Done</a>` +
+        `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
+        `<button class="btn ghost" type="submit">Regenerate URL</button></form>` +
+        `</div>`,
+    });
+  };
+
+  /** The eInk Displays list and the add form. */
+  const epaperPage = (error?: string): string => {
+    const screens = readAdminScreens(deps.db).filter(
+      (screen) => screen.kind === 'epaper' && screen.revokedAt === null,
+    );
+    const seen = (at: number | null): string =>
+      at === null ? 'never connected' : `last seen ${ago(at, now())}`;
+    const card = (screen: (typeof screens)[number]): string =>
+      `<div class="card"><div style="display:flex;align-items:center;gap:12px">` +
+      `<div class="ic">${icon('screens')}</div>` +
+      `<div style="flex:1;min-width:0">` +
+      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)}</div>` +
+      `<div class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
+      `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen(screen.lastSeenAt)}</div>` +
+      `</div></div>` +
+      `<div style="display:flex;gap:10px;margin-top:10px">` +
+      `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/regenerate">` +
+      `<button class="btn ghost" type="submit">Show URL &amp; recipes</button></form>` +
+      `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/revoke" ` +
+      `onsubmit="return confirm('Remove ${escapeHtml(screen.name)}? Its URL stops working.')">` +
+      `<button class="btn ghost" type="submit">Remove</button></form>` +
+      `</div></div>`;
+
+    const options = Object.entries(EPAPER_PRESETS)
+      .map(([key, p]) => `<option value="${key}">${escapeHtml(p.label)}</option>`)
+      .join('');
+
+    return page({
+      modules: navModules(deps.db),
+      title: 'eInk Displays — Maverick Wall',
+      nav: 'epaper',
+      heading: 'eInk Displays',
+      action: { label: 'Add an eInk screen', href: 'admin/epaper#add' },
+      ...(screens.length === 0
+        ? {
+            intro:
+              'Low-power e-paper panels. Maverick Wall renders the picture; a device pulls it, ' +
+              'or Home Assistant pushes it to a BLE tag. Add one to get its image URL and the recipes.',
+          }
+        : {}),
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        (screens.length === 0 ? '' : `<div class="grid g2">${screens.map(card).join('')}</div>`) +
+        `<h2 class="add" id="add">Add an eInk screen</h2>` +
+        `<form method="post" action="admin/epaper">` +
+        `<label for="ep-name">Name</label>` +
+        `<input id="ep-name" name="name" type="text" required maxlength="80" placeholder="Hallway tag">` +
+        `<label for="ep-preset">Panel</label>` +
+        `<select id="ep-preset" name="preset">${options}` +
+        `<option value="custom">Custom size…</option></select>` +
+        `<div class="grid g2">` +
+        `<div><label for="ep-w">Width (px)</label>` +
+        `<input id="ep-w" name="width" inputmode="numeric" placeholder="800"></div>` +
+        `<div><label for="ep-h">Height (px)</label>` +
+        `<input id="ep-h" name="height" inputmode="numeric" placeholder="480"></div>` +
+        `</div>` +
+        `<p class="hint">Width and height are only used for a Custom panel. In the panel's ` +
+        `native (landscape) resolution — rotation is separate.</p>` +
+        `<label for="ep-rot">Rotation</label>` +
+        `<select id="ep-rot" name="rotation">` +
+        `<option value="0">None</option><option value="90">90°</option>` +
+        `<option value="180">180°</option><option value="270">270°</option></select>` +
+        `<p class="hint">Colour panels are coming; today every e-paper screen is rendered ` +
+        `black &amp; white.</p>` +
+        `<button class="btn" type="submit">Create</button>` +
+        `</form>`,
+    });
+  };
+
+  app.get('/admin/epaper', (c: Context) => c.html(epaperPage()));
+
+  app.post('/admin/epaper', async (c: Context) => {
+    const shaped = parse(newEpaperBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(epaperPage(shaped.message), 400);
+
+    let width: number;
+    let height: number;
+    if (shaped.value.preset === 'custom') {
+      width = Number(shaped.value.width);
+      height = Number(shaped.value.height);
+      const sane = (n: number): boolean => Number.isInteger(n) && n >= 64 && n <= 2000;
+      if (!sane(width) || !sane(height)) {
+        return c.html(
+          epaperPage('Give the panel a width and height in pixels, each between 64 and 2000.'),
+          400,
+        );
+      }
+    } else {
+      const preset = EPAPER_PRESETS[shaped.value.preset];
+      if (preset === undefined) return c.html(epaperPage('Choose a panel.'), 400);
+      width = preset.width;
+      height = preset.height;
+    }
+
+    const issued = issueDisplayToken();
+    const id = randomBytes(6).toString('hex');
+    createEpaperScreen(deps.db, id, shaped.value.name, pairingSecret(issued), {
+      width,
+      height,
+      colour: 'bw',
+      rotation: shaped.value.rotation,
+    });
+    return c.html(
+      epaperConfigPage(id, shaped.value.name, issued.token, { width, height, rotation: shaped.value.rotation }, c),
+    );
+  });
+
+  app.post('/admin/epaper/:id/regenerate', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = readAdminScreens(deps.db).find(
+      (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
+    );
+    if (screen === undefined) return c.html(epaperPage('That screen is no longer there.'), 404);
+    const issued = issueDisplayToken();
+    rotateScreenToken(deps.db, id, pairingSecret(issued));
+    return c.html(
+      epaperConfigPage(
+        id,
+        screen.name,
+        issued.token,
+        { width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation },
+        c,
+      ),
+    );
+  });
+
+  app.post('/admin/epaper/:id/revoke', (c: Context) => {
+    revokeScreen(deps.db, c.req.param('id') ?? '');
+    return c.redirect('/admin/epaper', 302);
   });
 
   // -------------------------------------------------------------------------

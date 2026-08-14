@@ -43,6 +43,8 @@ import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import { buildManifest, manifestEtag, type Manifest, type ManifestNotice } from '../api/manifest.js';
+import { renderScreenFrame } from '../epaper/frame.js';
+import { encodePng1bit } from '../epaper/png.js';
 import { resolveTheme } from '../api/themes.js';
 import {
   claimScreenPairing,
@@ -528,6 +530,12 @@ export function createApp(deps: AppDeps): Hono {
     // gate matches on, and un-prefixed under ingress for the same reason.
     if (c.req.path.startsWith('/d/pair/')) return next();
 
+    // The e-paper frame carries its token in the path, not a cookie — an
+    // ESPHome panel or a Home Assistant camera does a plain GET and holds no
+    // session. So it authenticates itself in its own handler, the same shape as
+    // `/pair`, rather than through the cookie gate here.
+    if (c.req.path.startsWith('/d/epaper/')) return next();
+
     const screens = readScreens(deps.db);
     const screen = authenticateScreen(c, screens);
     if (!screen) {
@@ -780,6 +788,65 @@ export function createApp(deps: AppDeps): Hono {
 
     c.header('etag', etag);
     return c.json(manifest);
+  });
+
+  /**
+   * The e-paper frame for a paired screen (RFC 006).
+   *
+   * A dumb device — an ESPHome panel, or a Home Assistant Generic Camera — does
+   * a plain GET of `/d/epaper/<token>.png`, so the token rides in the path and
+   * the screen authenticates right here rather than through the cookie gate.
+   * `.png` is the finished image every consumer wants; `.bin` is the raw 1-bit
+   * packing for custom firmware.
+   *
+   * The ETag earns its keep here more than anywhere: on a match the device gets
+   * a `304` and skips the panel refresh entirely — no flash, no spent refresh
+   * cycle. A render that fails degrades to `503`, never a stack trace and never
+   * a blank frame the panel would happily draw as a white rectangle (rule nine).
+   */
+  app.get('/d/epaper/:file', (c: Context) => {
+    const file = c.req.param('file');
+    if (file === undefined || file === '') return c.body(null, 404);
+    const dot = file.lastIndexOf('.');
+    const token = dot > 0 ? file.slice(0, dot) : file;
+    const ext = dot > 0 ? file.slice(dot + 1).toLowerCase() : 'png';
+    if (ext !== 'png' && ext !== 'bin') return c.body(null, 404);
+
+    const screen = readScreens(deps.db).find((candidate) =>
+      verifyDisplayToken(token, candidate.tokenHash),
+    );
+    // 404, not 401: a guesser with no valid token learns nothing about which
+    // screens exist, the same reason the media route stays behind the gate.
+    if (!screen) return c.body(null, 404);
+
+    let frame: ReturnType<typeof renderScreenFrame>;
+    try {
+      frame = renderScreenFrame(manifestForScreen(screen), screen);
+    } catch (error) {
+      deps.log?.record('error', `epaper render failed for screen ${screen.id}: ${String(error)}`);
+      return c.body(null, 503);
+    }
+
+    // Diagnostics only — a panel that renders must still show as last seen, and
+    // a failure to record it must never fail the frame.
+    try {
+      touchScreen(deps.db, screen.id, null, c.req.header('user-agent') ?? null);
+    } catch {
+      /* not worth failing a frame over */
+    }
+
+    c.header('cache-control', 'no-cache');
+    c.header('x-server-time', String(now()));
+    if (c.req.header('if-none-match') === frame.etag) {
+      return c.body(null, 304, { etag: frame.etag });
+    }
+    c.header('etag', frame.etag);
+    if (ext === 'bin') {
+      return c.body(bytesOf(Buffer.from(frame.fb.toPacked())), 200, {
+        'content-type': 'application/octet-stream',
+      });
+    }
+    return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
   });
 
   /**
