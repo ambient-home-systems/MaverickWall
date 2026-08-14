@@ -14,6 +14,12 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Maintenance release: more build and continuous-integration tooling updates, so
+each release keeps building and verifying cleanly on supported infrastructure.
+Nothing changes on your wall — the same 0.30.0 experience.
+
 ## 0.30.1
 
 Maintenance release: internal build and continuous-integration updates only
