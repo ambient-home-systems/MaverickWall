@@ -326,6 +326,34 @@ export const screens = sqliteTable(
     tokenHash: text('token_hash').notNull(),
 
     /**
+     * What kind of device draws this screen (RFC 006).
+     *
+     * `browser` is a wall running the display bundle — it fetches `/d/manifest`
+     * and renders. `epaper` is a low-power e-paper panel that cannot run a
+     * browser at all: the server renders a finished image for it and serves it
+     * from `/d/epaper/<token>`, and the device (or Home Assistant, for a BLE
+     * tag) only blits it. Default `browser` so every existing wall is untouched
+     * and nothing has to be migrated.
+     */
+    kind: text('kind', { enum: ['browser', 'epaper'] })
+      .notNull()
+      .default('browser'),
+
+    /**
+     * The e-paper panel's facts, in device pixels, in its native (landscape)
+     * scan orientation. Null on a `browser` screen, which has no fixed panel.
+     *
+     * `rotation` (below) is applied to the rendered frame *before* it is packed
+     * for the controller, so these are always the panel's own width and height,
+     * not the mounted orientation. `colour` decides the encoding: `bw` is one
+     * 1-bit plane (the first target, a Seeed 7.5"), `bwr` adds a red plane,
+     * `spectra6` is the six-colour panel — see the RFC for which are built.
+     */
+    panelWidth: integer('panel_width', { mode: 'number' }),
+    panelHeight: integer('panel_height', { mode: 'number' }),
+    panelColour: text('panel_colour', { enum: ['bw', 'bwr', 'spectra6'] }),
+
+    /**
      * Per-screen overrides. Null means follow the household setting.
      *
      * A household mostly wants one look everywhere, so null is the common case

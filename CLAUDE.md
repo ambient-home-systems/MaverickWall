@@ -260,6 +260,29 @@ feed test, sync now, remove) · **the wall itself, drawing real data**.
 **Not started:** ws push · a published docs site · the Android app · a second
 weather provider.
 
+**eInk (e-paper) screens are built in code and unproven on hardware (RFC 006,
+phase 1).** Server-rendered frames served from `/d/epaper/<token>.{png,bin}`,
+consumed by an ESPHome wifi panel (device pulls) or an OpenDisplay BLE tag (Home
+Assistant pushes, core `opendisplay.upload_image`). The whole rendering path is
+a new backend behind the existing `viewmodel`, in `apps/server/src/epaper/`: a
+pure 1-bit framebuffer, a `node:zlib` PNG encoder, an embedded font, Bayer
+dither, and a landscape/portrait renderer — no headless browser, no image
+library, the same "draw what nobody else supplies" as `http/qr.ts`. Migration
+`0029` adds `kind` + panel geometry to `screens` (additive, no rebuild). The
+endpoint mirrors `/d/manifest` but takes its token in the *path* (a dumb device
+holds no cookie) and derives its ETag from the inputs — including the civil-date
+bucket, because `manifestEtag` drops `generatedAt` and a frame must still roll
+at midnight. The **Walls › eInk Displays** admin page pairs a panel and hands
+over the frame URL with both recipes pre-filled. `apps/server/test/epaper-*`
+drive it end to end (a real paired screen, a real PNG, a real `304`). Writing
+the endpoint test is what caught a live bug: `readScreens` never selected the
+new columns, so `panelWidth` was `undefined` at runtime while the types swore
+otherwise. **What remains is the verification bar the RFC sets and this project
+lives by:** a frame pushed to a real Seeed 7.5" and photographed, and one
+reaching a real OpenDisplay tag through a real supervisor. Battery panels are
+documented as a glance class, not an alert class — a sleeping ESP32 cannot honour
+a takeover, and the page says so.
+
 **The add-on now installs and starts on a real Home Assistant supervisor.**
 That was the highest-value unproven thing in the project for a long time, and
 getting there took four separate fixes, each found only by a real supervisor

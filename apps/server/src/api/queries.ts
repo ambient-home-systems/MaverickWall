@@ -765,6 +765,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
               orientation, rotation, allow_dismiss AS allowDismiss, timezone,
+              kind, panel_width AS panelWidth, panel_height AS panelHeight,
+              panel_colour AS panelColour,
               daytime_theme AS daytimeTheme,
               daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt,
               display_today_events AS displayTodayEvents,
@@ -858,6 +860,43 @@ export function createScreen(
         token_issued_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(id, name, pairing.tokenHash, pairing.pairingCodeHash, pairing.pairingCodeExpiresAt, at, at, at);
+}
+
+/**
+ * Create an e-paper screen: a screen with a panel and no browser (RFC 006).
+ *
+ * Separate from `createScreen` because it sets `kind` and the panel geometry,
+ * and — unlike a browser wall — it is *not* seeded with a layout template, as an
+ * e-paper frame is server-rendered and never uses the free-form canvas.
+ */
+export function createEpaperScreen(
+  db: SqliteDatabase,
+  id: string,
+  name: string,
+  pairing: PairingSecret,
+  panel: { width: number; height: number; colour: string; rotation: number },
+): void {
+  const at = Date.now();
+  db.prepare(
+    `INSERT INTO screens
+       (id, name, token_hash, pairing_code_hash, pairing_code_expires_at,
+        kind, panel_width, panel_height, panel_colour, rotation,
+        token_issued_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'epaper', ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    name,
+    pairing.tokenHash,
+    pairing.pairingCodeHash,
+    pairing.pairingCodeExpiresAt,
+    panel.width,
+    panel.height,
+    panel.colour,
+    panel.rotation,
+    at,
+    at,
+    at,
+  );
 }
 
 export function rotateScreenToken(db: SqliteDatabase, id: string, pairing: PairingSecret): boolean {
@@ -1257,6 +1296,12 @@ export interface ScreenRow {
   readonly revokedAt: number | null;
   readonly orientation: string;
   readonly rotation: number;
+  /** 'browser' or 'epaper' (RFC 006). */
+  readonly kind: string;
+  /** Panel geometry, device pixels, native landscape; null on a browser screen. */
+  readonly panelWidth: number | null;
+  readonly panelHeight: number | null;
+  readonly panelColour: string | null;
   readonly timezone: string | null;
   readonly daytimeTheme: string | null;
   readonly daytimeStartsAt: string | null;
@@ -1280,6 +1325,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
               orientation, rotation, allow_dismiss AS allowDismiss, timezone,
+              kind, panel_width AS panelWidth, panel_height AS panelHeight,
+              panel_colour AS panelColour,
               daytime_theme AS daytimeTheme,
               daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt,
               display_today_events AS displayTodayEvents,

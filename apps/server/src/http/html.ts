@@ -832,6 +832,10 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
       // Screens (pairing) and Layout were two sections for one thing; a display
       // is now a single place — its status, pairing, settings and layout.
       { key: 'displays', label: 'Displays', href: 'admin/displays', icon: 'screens' },
+      // The e-paper panels are their own kind — server-rendered, pulled by a
+      // device or pushed by Home Assistant — so they get one door of their own
+      // rather than sitting in the browser-wall list (RFC 006).
+      { key: 'epaper', label: 'eInk Displays', href: 'admin/epaper', icon: 'screens' },
     ],
   },
   {
