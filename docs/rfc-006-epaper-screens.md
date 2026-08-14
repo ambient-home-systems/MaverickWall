@@ -349,20 +349,64 @@ Seeed 7.5" and photographed**, and the bit-invert/rotation asserted by
 frame has reached a **real OpenDisplay tag through a real supervisor** — the same
 bar the ingress and pairing flows were held to.
 
+## Open items — what's left
+
+Phases 1 and 2 shipped (v0.28.0, v0.29.0): the panel kind, the endpoint, the
+1-bit renderer, the Walls › eInk Displays page, the free-form editor and the
+live preview are all built and software-tested. What remains, in priority order:
+
+**1. Real hardware — the only thing that actually matters yet.** Everything is
+proven in software and nowhere else. Nothing is "done" by this project's bar
+until:
+- a frame is pushed to a **real Seeed 7.5"** over the ESPHome pull path and
+  **photographed**;
+- a frame reaches a **real OpenDisplay tag** through a real Home Assistant
+  supervisor (the push recipe, Appendix B, and its staging bridge);
+- the **bit-invert and rotation** conventions are confirmed on a physical panel,
+  not only by decoding.
+Do no more software work until this happens — polishing widgets on an unproven
+renderer risks polishing the wrong thing.
+
+**2. Editor and widget polish** (all deferred deliberately in phase 2):
+- The editor's **palette is not restricted** to the 1-bit-legible subset — that
+  needs a change to the display-bundle editor (`layout-editor.ts`). Today the
+  extra widgets are offered and degrade gracefully rather than being hidden, and
+  the colour / gradient / shadow / opacity controls are shown but ignored.
+- The **`image` widget is a placeholder** — a real dithered photo needs a
+  server-side PNG/JPEG decoder (grayscale → Bayer). Worth doing; not free.
+- **`week`-mode calendar falls back to the agenda list** — there is no 1-bit
+  week-columns draw.
+- **weather / Home Assistant / external** draw through a tolerant generic panel
+  reader (`panelLines`), not dedicated draws — no weather glyphs, no forecast
+  row. Functional but plain.
+- The **live preview polls every 4s** rather than refreshing the instant the
+  editor saves; hooking the editor's save event would make it immediate.
+
+**3. Scope the RFC deferred:**
+- **Colour panels (phase 3):** tri-colour B/W/R (the two-plane `.bin` path plus a
+  theme that uses red as the accent) and Spectra 6. `panel_colour` already
+  carries the enum; only `bw` renders.
+- **Alerts on eInk:** the frame draws **no interrupts at all** today — so even a
+  mains-powered panel polling often would not show a tornado takeover. Battery
+  panels cannot by design (the glance-class limit above); a mains panel could,
+  degraded, and that path is unbuilt.
+
 ## Open questions
 
-- **Bitmap font.** Bundle a hinted bitmap font for the eInk theme, or generate
-  glyph bitmaps at build time from Oswald (already bundled) at the fixed sizes
-  the theme uses? The second keeps one type source; the first is simpler to get
-  crisp.
+- ~~**Bitmap font.**~~ **Resolved:** an embedded bitmap font ships in
+  `epaper/font.ts`, integer-scaled per widget. Generating glyphs from the bundled
+  Oswald at build time was the alternative and remains open if the type ever
+  needs to read finer than a scaled bitmap can.
 - **Which staging bridge for the core HA integration** (Appendix B) survives
   contact with a real supervisor — Generic Camera + snapshot is the candidate
   because it doubles as the last-good-frame buffer, but the `/media` /
   `allowlist_external_dirs` plumbing is exactly the fiddly HA config this
   project proves rather than asserts.
-- **Where the eInk viewmodel bounds live.** `viewmodel.ts` already clamps
-  density for the browser wall; an 800×480 1-bit panel wants its own, tighter
-  opinion about events-per-day before a NEXT row stops being readable.
+- **Where the eInk viewmodel bounds live.** Partly settled: the eInk
+  `viewmodel.ts` has its own tighter ceilings (`EPAPER_TODAY_LIMIT`,
+  `EPAPER_GRID_WEEKS`). Still open is what those should be *per panel size* — a
+  296×128 tag and an 800×480 panel want different agenda depths, and today they
+  share one.
 
 ---
 
