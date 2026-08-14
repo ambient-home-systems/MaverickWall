@@ -82,6 +82,39 @@ const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
 /** The editor is on the admin page, so its preview reads media behind the session. */
 const EDITOR_MEDIA_BASE = 'admin/media/';
 
+/**
+ * A layers-list swatch colour per widget type, from the admin token set (so it
+ * follows the admin theme). Only to tell the rows apart at a glance — no meaning
+ * on the wall. Unknown types fall back to the muted token.
+ */
+const SWATCH: Readonly<Record<string, string>> = {
+  clock: 'var(--accent)',
+  calendar: 'var(--night)',
+  weather: 'var(--ok)',
+  homeassistant: 'var(--warn)',
+  shift: 'var(--danger)',
+  countdown: 'var(--accent)',
+  notes: 'var(--muted)',
+  todo: 'var(--night)',
+  image: 'var(--ok)',
+  external: 'var(--warn)',
+};
+
+/**
+ * The editor lives on the admin page beside a settings form and one sticky save
+ * bar. It publishes this on `window` so that page chrome (`display-editor.js`)
+ * can drive a single save — the bar saves the layout through here, then submits
+ * the settings form — and can reflect the editor's dirty state in the bar.
+ */
+interface EditorBridge {
+  saveCurrent(): Promise<{ ok: boolean; message?: string }>;
+  isDirty(): boolean;
+}
+type EditorWindow = typeof window & {
+  mwEditor?: EditorBridge;
+  mwEditorState?: (state: { dirty: boolean }) => void;
+};
+
 const ASPECTS: readonly { readonly value: number; readonly label: string }[] = [
   { value: 0.5625, label: 'Portrait 9:16' },
   { value: 0.75, label: 'Portrait 3:4' },
@@ -195,6 +228,25 @@ function boot(): void {
 
   let selected: string | undefined;
   let dirty = false;
+  // Whether the anchored Layers popover is open. UI-only; not saved.
+  let layersOpen = false;
+  // The wall this canvas belongs to, as a URL segment for the per-display admin
+  // routes the toolbar links to (the gallery and the reset action).
+  const detailSeg = state.screen === null ? 'default' : encodeURIComponent(state.screen);
+
+  /**
+   * The one place `dirty` changes, so the host save bar always hears about it.
+   * The editor has no save button of its own now — the page's single sticky bar
+   * saves the layout (through `mwEditor.saveCurrent`) and the settings together.
+   */
+  function setDirty(value: boolean): void {
+    dirty = value;
+    try {
+      (window as EditorWindow).mwEditorState?.({ dirty });
+    } catch {
+      // The bar is a convenience; a missing host must never break the editor.
+    }
+  }
   // Snap to the grid while dragging. An editor affordance only — the stored
   // coordinates stay fractional, so snapping changes where a widget lands, never
   // how it is saved.
@@ -332,16 +384,90 @@ function boot(): void {
   deleteButton.textContent = 'Remove selected';
   deleteButton.addEventListener('click', removeSelected);
 
-  const saveButton = document.createElement('button');
-  saveButton.type = 'button';
-  saveButton.className = 'le-save';
-  saveButton.textContent = 'Save';
-  saveButton.addEventListener('click', () => void save());
+  // The toolbar's right cluster: a spacer pushes Template / Reset / Layers to the
+  // end (the reference layout). Template and Reset are ordinary admin actions —
+  // a link to the gallery and a POST to reset — built here so the whole toolbar
+  // is one row. The editor is admin-only, so pointing at admin routes is in
+  // keeping with the endpoints it already calls.
+  const toolSpacer = document.createElement('span');
+  toolSpacer.className = 'le-tool-spacer';
 
-  const status = document.createElement('span');
-  status.className = 'le-status';
+  const templateLink = document.createElement('a');
+  templateLink.className = 'le-tool-link';
+  templateLink.href = `admin/displays/${detailSeg}/gallery`;
+  templateLink.textContent = 'Template';
 
-  toolbar.append(orientToggle, aspectSelect, matchButton, snapToggle, palette, deleteButton, saveButton, status);
+  const resetForm = document.createElement('form');
+  resetForm.className = 'le-reset-form';
+  resetForm.method = 'post';
+  resetForm.action = `admin/displays/${detailSeg}/reset-layout`;
+  resetForm.addEventListener('submit', (event) => {
+    if (!window.confirm('Reset this display to the Classic layout? Your current arrangement is replaced.')) {
+      event.preventDefault();
+    }
+  });
+  const resetButton = document.createElement('button');
+  resetButton.type = 'submit';
+  resetButton.className = 'le-tool-btn';
+  resetButton.textContent = 'Reset';
+  resetForm.appendChild(resetButton);
+
+  // Layers: a toggle that opens an anchored popover (built below). Anchored to
+  // the toolbar, never <body>, so it cannot float over the settings pane.
+  const layersButton = document.createElement('button');
+  layersButton.type = 'button';
+  layersButton.className = 'le-layers-btn';
+  layersButton.textContent = 'Layers';
+
+  const layersPopover = document.createElement('div');
+  layersPopover.className = 'le-layers-pop';
+  layersPopover.hidden = true;
+  const layersHead = document.createElement('div');
+  layersHead.className = 'le-layers-head';
+  const layersTitle = document.createElement('div');
+  layersTitle.className = 'le-layers-title';
+  layersTitle.textContent = 'Widget Layers';
+  const layersSub = document.createElement('div');
+  layersSub.className = 'le-layers-sub';
+  layersSub.textContent = 'Drag to reorder — top shows in front';
+  layersHead.append(layersTitle, layersSub);
+  // The body drawLayers fills. It keeps the old class so the row styling applies.
+  const layersPanel = document.createElement('div');
+  layersPanel.className = 'le-layers';
+  layersPopover.append(layersHead, layersPanel);
+
+  const setLayersOpen = (open: boolean): void => {
+    layersOpen = open;
+    layersPopover.hidden = !open;
+    layersButton.classList.toggle('is-on', open);
+  };
+  layersButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setLayersOpen(!layersOpen);
+  });
+  // Click outside the popover (and off its button) closes it; so does Escape.
+  document.addEventListener('click', (event) => {
+    if (!layersOpen) return;
+    const target = event.target as Node;
+    if (!layersPopover.contains(target) && target !== layersButton) setLayersOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && layersOpen) setLayersOpen(false);
+  });
+
+  toolbar.append(
+    orientToggle,
+    palette,
+    aspectSelect,
+    matchButton,
+    snapToggle,
+    deleteButton,
+    toolSpacer,
+    templateLink,
+    resetForm,
+    layersButton,
+    layersPopover,
+  );
 
   /**
    * Make the aspect dropdown reflect `state.aspect`: select a matching preset,
@@ -395,17 +521,15 @@ function boot(): void {
   backgroundPanel.className = 'le-bg';
 
   // The layers list — every widget, front on top, drag a row to restack, click
-  // to select. It replaces the per-widget send-to-back/bring-to-front buttons.
-  const layersPanel = document.createElement('div');
-  layersPanel.className = 'le-layers';
-  layersPanel.style.display = 'none';
+  // to select — lives in the anchored popover built in the toolbar above, not
+  // as an inline panel here.
 
   // The per-widget options, shown under the stage when a widget is selected.
   const configPanel = document.createElement('div');
   configPanel.className = 'le-config';
   configPanel.style.display = 'none';
 
-  mount.append(toolbar, backgroundPanel, stage, layersPanel, configPanel, hint, modal);
+  mount.append(toolbar, backgroundPanel, stage, configPanel, hint, modal);
 
   // ---- the live preview ------------------------------------------------
 
@@ -467,16 +591,16 @@ function boot(): void {
   // ---- the draggable overlay -------------------------------------------
 
   function markDirty(): void {
-    dirty = true;
-    status.textContent = 'Unsaved changes';
-    status.className = 'le-status is-dirty';
+    setDirty(true);
   }
 
   function sizeCanvas(): void {
     // A bigger canvas: the editor is the main surface now, so give it more room
-    // to drag in than the old inline-below-the-settings size.
+    // to drag in than the old inline-below-the-settings size. The left pane is
+    // sticky, so cap the height to the viewport too — a tall portrait canvas
+    // must not run off the bottom and take the preview out of view.
     const maxW = Math.min(stage.clientWidth || 360, 720);
-    const maxH = 760;
+    const maxH = Math.min(720, Math.max(360, window.innerHeight - 220));
     let w = maxW;
     let h = w / state.aspect;
     if (h > maxH) {
@@ -533,14 +657,12 @@ function boot(): void {
   function drawLayers(): void {
     layersPanel.textContent = '';
     if (state.widgets.length === 0) {
-      layersPanel.style.display = 'none';
+      const empty = document.createElement('div');
+      empty.className = 'le-layers-empty';
+      empty.textContent = 'Nothing placed yet. Add a widget to see it here.';
+      layersPanel.appendChild(empty);
       return;
     }
-    layersPanel.style.display = '';
-    const heading = document.createElement('div');
-    heading.className = 'kick';
-    heading.textContent = 'Layers';
-    layersPanel.appendChild(heading);
 
     for (const widget of [...state.widgets].sort((a, b) => b.z - a.z)) {
       const row = document.createElement('div');
@@ -552,11 +674,15 @@ function boot(): void {
       grip.textContent = '⋮⋮';
       grip.addEventListener('pointerdown', (event) => startReorder(event, widget));
 
+      const swatch = document.createElement('span');
+      swatch.className = 'le-layer-swatch';
+      swatch.style.background = SWATCH[widget.type] ?? 'var(--muted)';
+
       const name = document.createElement('span');
       name.className = 'le-layer-name';
       name.textContent = labelFor(widget.type);
 
-      row.append(grip, name);
+      row.append(grip, swatch, name);
       row.addEventListener('click', () => {
         selected = widget.id;
         drawOverlay();
@@ -1329,7 +1455,7 @@ function boot(): void {
    */
   async function switchOrientation(which: 'portrait' | 'landscape'): Promise<void> {
     if (which === state.orientation) return;
-    if (dirty) await postCanvas(state.orientation, state.aspect, state.widgets, state.background, false);
+    if (dirty) await postCanvas(state.orientation, state.aspect, state.widgets, state.background);
 
     const leaving: Canvas = {
       aspect: state.aspect,
@@ -1343,15 +1469,15 @@ function boot(): void {
     state.orientation = which;
     rememberOrientation(state.screen, which);
     selected = undefined;
-    dirty = false;
+    // The leaving canvas was saved above if it was dirty; the arriving one is
+    // clean until touched. Tell the save bar.
+    setDirty(false);
 
     // Reflect the switch in the toolbar: the active button, and the aspect select.
     for (const key of ['portrait', 'landscape'] as const) {
       orientButtons[key].classList.toggle('is-on', key === which);
     }
     syncAspectSelect();
-    status.textContent = `Editing ${which}`;
-    status.className = 'le-status';
     draw();
   }
 
@@ -1376,21 +1502,15 @@ function boot(): void {
   }
 
   /**
-   * Save one orientation's canvas. `announce` shows the status line — the Save
-   * button announces; the auto-save on an orientation switch is quiet.
+   * Save one orientation's canvas. Returns the outcome so the host save bar can
+   * surface a failure; success clears the dirty flag (and tells the bar).
    */
   async function postCanvas(
     orientation: 'portrait' | 'landscape',
     aspect: number,
     widgets: readonly Widget[],
     background: Background | undefined,
-    announce = true,
-  ): Promise<boolean> {
-    if (announce) {
-      saveButton.disabled = true;
-      status.textContent = 'Saving…';
-      status.className = 'le-status';
-    }
+  ): Promise<{ ok: boolean; message?: string }> {
     try {
       const response = await fetch('admin/layout', {
         method: 'POST',
@@ -1414,39 +1534,24 @@ function boot(): void {
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (response.ok) {
-        dirty = false;
-        if (announce) {
-          status.textContent = 'Saved. The wall updates within a minute.';
-          status.className = 'le-status is-ok';
-        }
-        return true;
+        setDirty(false);
+        return { ok: true };
       }
-      if (announce) {
-        status.textContent = body.message ?? 'That did not save.';
-        status.className = 'le-status is-error';
-      }
-      return false;
+      return { ok: false, message: body.message ?? 'That did not save.' };
     } catch {
-      if (announce) {
-        status.textContent = 'Could not reach the server.';
-        status.className = 'le-status is-error';
-      }
-      return false;
-    } finally {
-      if (announce) saveButton.disabled = false;
+      return { ok: false, message: 'Could not reach the server.' };
     }
   }
 
-  /** The Save button: save the canvas being edited now. */
-  async function save(): Promise<void> {
-    await postCanvas(state.orientation, state.aspect, state.widgets, state.background);
+  /** Save the canvas being edited now — the host save bar calls this. */
+  async function saveCurrent(): Promise<{ ok: boolean; message?: string }> {
+    return postCanvas(state.orientation, state.aspect, state.widgets, state.background);
   }
 
-  window.addEventListener('beforeunload', (event) => {
-    if (!dirty) return;
-    event.preventDefault();
-    event.returnValue = '';
-  });
+  // Publish the bridge the page chrome drives: one sticky save bar saves the
+  // layout through here and then submits the settings form. The beforeunload
+  // guard lives in the chrome too, keyed on the combined dirty state.
+  (window as EditorWindow).mwEditor = { saveCurrent, isDirty: () => dirty };
 
   // Keep the preview from being referenced-as-unused when a build tightens up.
   void previewShadow;
