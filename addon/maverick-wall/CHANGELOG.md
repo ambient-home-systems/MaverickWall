@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.29.0
 
 Build your own eInk layout. If you have a low-power e-paper panel (Walls → eInk
 Displays), you can now arrange it with the same drag-and-drop editor the wall
