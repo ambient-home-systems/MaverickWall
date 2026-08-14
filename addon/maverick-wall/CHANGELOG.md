@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.30.0
 
 A calmer way to set up a wall. Editing a display (Walls → Displays) is now one
 tidy screen instead of a long scroll: a live preview on the left that stays in
