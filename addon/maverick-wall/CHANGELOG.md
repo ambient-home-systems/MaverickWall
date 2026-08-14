@@ -14,6 +14,13 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Maintenance release: internal build and continuous-integration updates only
+(the tools that build and check each release now run on a current, supported
+runtime). Nothing changes on your wall — this is the same 0.30.0 experience,
+kept building cleanly.
+
 ## 0.30.0
 
 A calmer way to set up a wall. Editing a display (Walls → Displays) is now one
