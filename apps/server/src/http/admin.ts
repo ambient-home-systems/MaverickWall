@@ -51,6 +51,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { backupTo, databasePath, integrityCheck } from '../db/open.js';
 import { bytesOf, type WallAddress } from './app.js';
+import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
+import { encodePng1bit } from '../epaper/png.js';
+import type { Manifest, PlacedWidgetRow } from '../api/manifest.js';
 import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
@@ -1685,6 +1688,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen(screen.lastSeenAt)}</div>` +
       `</div></div>` +
       `<div style="display:flex;gap:10px;margin-top:10px">` +
+      `<a class="btn ghost" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
       `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/regenerate">` +
       `<button class="btn ghost" type="submit">Show URL &amp; recipes</button></form>` +
       `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/revoke" ` +
@@ -1798,6 +1802,112 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/epaper/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
     return c.redirect('/admin/epaper', 302);
+  });
+
+  const findEpaper = (id: string): AdminScreenRow | undefined =>
+    readAdminScreens(deps.db).find((s) => s.id === id && s.kind === 'epaper' && s.revokedAt === null);
+
+  const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] =>
+    screen.layoutMode === 'freeform' ? readLayoutWidgets(deps.db, id, epaperOrientation(screen)) : [];
+
+  /**
+   * The saved layout, drawn exactly as the panel will — the one honest preview.
+   *
+   * The editor's own live preview is DOM, which has colour and anti-aliasing a
+   * 1-bit panel does not; this renders the real frame through the same path the
+   * device fetches, so what the household arranges is what they will see. Behind
+   * the session, and never cached — it changes every time the layout is saved.
+   */
+  app.get('/admin/epaper/:id/preview.png', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = findEpaper(id);
+    if (screen === undefined || deps.previewManifest === undefined) return c.body(null, 404);
+    try {
+      const widgets = epaperWidgetsFor(id, screen).map((row) => ({
+        type: row.type,
+        x: row.x,
+        y: row.y,
+        w: row.w,
+        h: row.h,
+        z: row.z,
+        config: row.config !== null && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : {},
+      }));
+      const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
+      c.header('cache-control', 'no-store');
+      return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
+    } catch {
+      return c.body(null, 503);
+    }
+  });
+
+  /**
+   * Design an e-paper panel's layout — the same drag-and-drop editor a browser
+   * wall uses, on this panel's own canvas, with the real 1-bit preview beside it.
+   *
+   * The editor writes the same `layout_widgets` and flips the screen to
+   * `freeform` on save (`replaceLayout`), so nothing here has to. The canvas
+   * aspect is seeded from the panel geometry so a box drawn square is square on
+   * the panel; the household still sees the truth in the preview regardless.
+   */
+  app.get('/admin/epaper/:id/design', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = findEpaper(id);
+    if (screen === undefined) return c.redirect('/admin/epaper', 302);
+
+    const pw = screen.panelWidth ?? 800;
+    const ph = screen.panelHeight ?? 480;
+    const landscapeAspect = Math.max(pw, ph) / Math.min(pw, ph);
+    const portraitAspect = Math.min(pw, ph) / Math.max(pw, ph);
+    const canvas = (orientation: 'portrait' | 'landscape') => ({
+      aspect:
+        orientation === 'landscape'
+          ? (screen.layoutLandscapeAspect ?? landscapeAspect)
+          : (screen.layoutAspect ?? portraitAspect),
+      widgets: readLayoutWidgets(deps.db, id, orientation).map((w) => ({
+        id: w.id,
+        type: w.type,
+        x: w.x,
+        y: w.y,
+        w: w.w,
+        h: w.h,
+        z: w.z,
+        config: w.config,
+      })),
+      background: undefined,
+    });
+    const initial = {
+      screen: id,
+      mode: 'freeform',
+      portrait: canvas('portrait'),
+      landscape: canvas('landscape'),
+      // eInk ignores calendar-source and reading selection today (it draws them
+      // whole), so those pickers start empty; the module picker is real.
+      calendars: [],
+      readings: [],
+      modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+    };
+
+    const preview =
+      `<h2 class="add">Preview</h2>` +
+      `<p class="hint">What the panel actually draws, in black &amp; white. Save your ` +
+      `changes and it updates within a few seconds.</p>` +
+      `<img id="ep-preview" alt="eInk preview of ${escapeHtml(screen.name)}" ` +
+      `src="admin/epaper/${encodeURIComponent(id)}/preview.png" ` +
+      `style="max-width:100%;border:1px solid var(--rule);image-rendering:pixelated;background:#fff">` +
+      `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
+      `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>` +
+      `<h2 class="add">Arrange</h2>`;
+
+    return c.html(
+      page({
+        modules: navModules(deps.db),
+        title: `${screen.name} layout — Maverick Wall`,
+        nav: 'epaper',
+        heading: `${screen.name} — layout`,
+        intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
+        body: preview + layoutEditorMount(initial),
+      }),
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -2807,7 +2917,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   function displaysPage(error?: string): string {
     const at = now();
-    const all = readAdminScreens(deps.db);
+    // e-paper panels live under their own "eInk Displays" door, not here.
+    const all = readAdminScreens(deps.db).filter((screen) => screen.kind !== 'epaper');
     const active = all.filter((screen) => screen.revokedAt === null);
     const revoked = all.length - active.length;
 

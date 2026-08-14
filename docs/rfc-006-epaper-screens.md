@@ -16,6 +16,20 @@ RFC 001 (modules)
 > real OpenDisplay tag yet, which by this project's history is where the faults
 > that matter surface.
 
+> **Update — phase 2, the free-form editor, is built.** eInk screens now use the
+> *same* `layout_widgets` model and the *same* drag-and-drop editor a browser
+> wall uses (`/admin/epaper/<id>/design`), with the palette drawn server-side in
+> 1-bit: `apps/server/src/epaper/widgets.ts` implements clock, calendar
+> (month/list), shift, countdown, notes, todo, and a tolerant panel reader for
+> weather / Home Assistant / external; `image` is a placeholder pending a
+> decoder. `renderScreenFrame` draws the canvas when a screen is `freeform`, and
+> the widgets join the ETag preimage so an edit reaches the panel. The design
+> page carries a **live 1-bit preview** (`/admin/epaper/<id>/preview.png`),
+> because the editor's own DOM preview has colour a panel does not. Not yet done:
+> the editor's palette is not *restricted* to the 1-bit-legible subset (that
+> needs a display-bundle change), a `week`-mode calendar falls back to the list,
+> and the same real-hardware bar still stands.
+
 ## Summary
 
 Support low-power **e-paper** panels as a wall screen kind — a Seeed 7.5"

@@ -1,0 +1,278 @@
+/**
+ * The eInk widgets, each drawn into a box in 1-bit (RFC 006 phase 2).
+ *
+ * This is the 1-bit counterpart to the display bundle's `renderWidget`: the
+ * household arranges the *same* `layout_widgets` a browser wall uses (fractional
+ * boxes, per orientation, per screen), and here each widget type is drawn
+ * server-side in one colour. The palette is deliberately the subset that reads
+ * at 1-bit — colour, gradient, opacity and shadow are simply not honoured,
+ * because there is no colour to honour them with.
+ *
+ * `weather`, `homeassistant` and `external` read their module's panel out of the
+ * manifest with a tolerant reader rather than a bespoke parser: a module can
+ * change a field and this degrades to fewer lines, never a crash on the one
+ * screen the household is looking at (rule nine). Their richer, dedicated draws
+ * are a later slice. `image` is a placeholder until there is a decoder — a
+ * dithered photo is worth doing, but it is not free at 1-bit.
+ */
+import { daysBetween } from '@maverick-wall/core';
+
+import type { Manifest } from '../api/manifest.js';
+
+import { drawText, GLYPH_SIZE, measureText } from './font.js';
+import { Framebuffer } from './framebuffer.js';
+import { asciiTitle, drawAgendaBox, drawMonthBox, fit, type Box, type PanelGeometry } from './render.js';
+import type { EpaperModel } from './viewmodel.js';
+
+/** A widget placed on the canvas: fractional box, plus its stored options. */
+export interface PlacedEpaperWidget {
+  readonly type: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly z: number;
+  readonly config: Readonly<Record<string, unknown>>;
+}
+
+type Config = Readonly<Record<string, unknown>>;
+
+const PAD = 8;
+
+const str = (c: Config, k: string): string | undefined => (typeof c[k] === 'string' ? (c[k] as string) : undefined);
+const list = (c: Config, k: string): unknown[] => (Array.isArray(c[k]) ? (c[k] as unknown[]) : []);
+const alignOf = (c: Config): 'left' | 'center' | 'right' => {
+  const a = str(c, 'align');
+  return a === 'center' || a === 'right' ? a : 'left';
+};
+
+/** Greedy word wrap to a pixel width, in the bitmap font. */
+function wrap(text: string, maxWidth: number, scale: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of asciiTitle(text).split('\n')) {
+    let line = '';
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const candidate = line === '' ? word : `${line} ${word}`;
+      if (measureText(candidate, { scale }) <= maxWidth) line = candidate;
+      else {
+        if (line !== '') lines.push(line);
+        line = word;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** Draw stacked lines within a box, clipped to its height and width, honouring align. */
+function drawLines(fb: Framebuffer, lines: readonly string[], box: Box, scale: number, align: 'left' | 'center' | 'right'): void {
+  const lineH = GLYPH_SIZE * scale + 4;
+  let y = box.y;
+  for (const raw of lines) {
+    if (y + GLYPH_SIZE * scale > box.y + box.h) break;
+    // Truncate to the box so a long line stops at its own edge rather than
+    // bleeding into the widget beside it.
+    const line = fit(raw, box.w, { scale });
+    const w = measureText(line, { scale });
+    const x =
+      align === 'center' ? box.x + Math.floor((box.w - w) / 2) : align === 'right' ? box.x + box.w - w : box.x;
+    drawText(fb, x, y, line, { scale });
+    y += lineH;
+  }
+}
+
+/** A widget's border and optional title bar; returns the inner content box. */
+function drawFrame(fb: Framebuffer, box: Box, config: Config): Box {
+  fb.strokeRect(box.x, box.y, box.w, box.h, true);
+  let inner: Box = { x: box.x + PAD, y: box.y + PAD, w: box.w - PAD * 2, h: box.h - PAD * 2 };
+  const title = str(config, 'title');
+  if (config.showTitle === true && title !== undefined && title !== '') {
+    drawText(fb, inner.x, inner.y, asciiTitle(title).toUpperCase(), { scale: 1, tracking: 1 });
+    fb.hLine(inner.x, inner.x + inner.w, inner.y + 12, true);
+    inner = { x: inner.x, y: inner.y + 20, w: inner.w, h: inner.h - 20 };
+  }
+  return inner;
+}
+
+function drawClock(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+  const timeScale = Math.max(2, Math.min(8, Math.floor(box.h / 18)));
+  const align = alignOf(config);
+  drawLines(fb, [model.time], { ...box, h: GLYPH_SIZE * timeScale }, timeScale, align);
+  const dateScale = Math.max(1, Math.min(3, Math.floor(timeScale / 2)));
+  const date = `${model.header.weekday} ${model.header.day} ${model.header.month}`;
+  drawLines(
+    fb,
+    wrap(date, box.w, dateScale),
+    { x: box.x, y: box.y + GLYPH_SIZE * timeScale + 8, w: box.w, h: box.h },
+    dateScale,
+    align,
+  );
+}
+
+function drawCountdown(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+  const target = str(config, 'target');
+  const title = str(config, 'title') ?? '';
+  let big = '--';
+  let unit = '';
+  if (target !== undefined) {
+    const days = daysBetween(model.today, target);
+    if (days === 0) big = 'Today';
+    else {
+      big = String(Math.abs(days));
+      unit = days > 0 ? (days === 1 ? 'day' : 'days') : days === -1 ? 'day ago' : 'days ago';
+    }
+  }
+  const scale = Math.max(2, Math.min(9, Math.floor(box.h / 16)));
+  drawLines(fb, [big], { ...box, h: GLYPH_SIZE * scale }, scale, 'center');
+  drawLines(
+    fb,
+    [unit, asciiTitle(title)].filter((l) => l !== ''),
+    { x: box.x, y: box.y + GLYPH_SIZE * scale + 6, w: box.w, h: box.h },
+    2,
+    'center',
+  );
+}
+
+function drawShift(fb: Framebuffer, box: Box, model: EpaperModel): void {
+  if (model.todayShifts.length === 0) {
+    drawLines(fb, ['No shift today'], box, 2, 'left');
+    return;
+  }
+  const lines = model.todayShifts.map((s) => {
+    const rest = [s.code !== '' ? s.code : s.label, s.time].filter((p) => p !== '').join('  ');
+    return asciiTitle(`${s.person}: ${rest}`);
+  });
+  drawLines(fb, lines, box, 2, 'left');
+}
+
+function drawTodo(fb: Framebuffer, box: Box, config: Config): void {
+  const items = list(config, 'items').filter((x): x is string => typeof x === 'string');
+  if (items.length === 0) {
+    drawLines(fb, ['(nothing on the list)'], box, 2, 'left');
+    return;
+  }
+  const rowH = 24;
+  let y = box.y;
+  for (const item of items) {
+    if (y + 14 > box.y + box.h) break;
+    fb.strokeRect(box.x, y + 2, 12, 12, true);
+    drawText(fb, box.x + 20, y, fit(asciiTitle(item), box.w - 20, { scale: 2 }), { scale: 2 });
+    y += rowH;
+  }
+}
+
+function drawImage(fb: Framebuffer, box: Box, config: Config): void {
+  const name = str(config, 'image');
+  drawLines(
+    fb,
+    ['[ photo ]', name !== undefined ? fit(name, box.w, { scale: 1 }) : 'not shown on eInk yet'],
+    { x: box.x, y: box.y + Math.max(0, Math.floor(box.h / 2) - 10), w: box.w, h: box.h },
+    1,
+    'center',
+  );
+}
+
+/**
+ * A tolerant list of "label: value" lines out of a module's panel JSON.
+ *
+ * A module contributes data whose exact shape is its own; this reaches for the
+ * common shapes (an `items`/`readings` array of labelled values, then scalar
+ * top-level fields) and stops rather than throwing on anything it does not
+ * recognise. The wall drawing one fewer line beats the wall drawing an error.
+ */
+function panelLines(panel: unknown, max: number): string[] {
+  if (panel === null || typeof panel !== 'object') return [];
+  const obj = panel as Record<string, unknown>;
+  const out: string[] = [];
+  const items = Array.isArray(obj.items) ? obj.items : Array.isArray(obj.readings) ? obj.readings : undefined;
+  if (items !== undefined) {
+    for (const entry of items) {
+      if (out.length >= max) break;
+      if (typeof entry === 'string') out.push(entry);
+      else if (entry !== null && typeof entry === 'object') {
+        const o = entry as Record<string, unknown>;
+        const label = typeof o.label === 'string' ? o.label : typeof o.title === 'string' ? o.title : '';
+        const value =
+          typeof o.value === 'string'
+            ? o.value
+            : typeof o.state === 'string'
+              ? o.state
+              : typeof o.text === 'string'
+                ? o.text
+                : '';
+        const line = [label, value].filter((p) => p !== '').join(': ');
+        if (line !== '') out.push(line);
+      }
+    }
+    return out;
+  }
+  for (const [k, v] of Object.entries(obj)) {
+    if (out.length >= max) break;
+    if (typeof v === 'string' || typeof v === 'number') out.push(`${k}: ${v}`);
+  }
+  return out;
+}
+
+function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string): void {
+  const lines = panelLines(panel, Math.max(1, Math.floor(box.h / 24))).map(asciiTitle);
+  drawLines(fb, lines.length > 0 ? lines : [empty], box, 2, 'left');
+}
+
+function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel, manifest: Manifest, config: Config): void {
+  switch (type) {
+    case 'clock':
+      return drawClock(fb, box, model, config);
+    case 'calendar':
+      // month grid, or an agenda list (week falls back to the list for now).
+      return str(config, 'mode') === 'month' ? drawMonthBox(fb, model, box) : drawAgendaBox(fb, model, box);
+    case 'shift':
+      return drawShift(fb, box, model);
+    case 'countdown':
+      return drawCountdown(fb, box, model, config);
+    case 'notes':
+      return drawLines(fb, wrap(str(config, 'text') ?? '', box.w, 2), box, 2, alignOf(config));
+    case 'todo':
+      return drawTodo(fb, box, config);
+    case 'weather':
+      return drawPanel(fb, box, manifest.panels['weather'], 'No weather yet');
+    case 'homeassistant':
+      return drawPanel(fb, box, manifest.panels['home'] ?? manifest.panels['homeassistant'], 'No readings yet');
+    case 'external': {
+      const mod = str(config, 'module');
+      return drawPanel(fb, box, mod !== undefined ? manifest.panels[mod] : undefined, 'No data yet');
+    }
+    case 'image':
+      return drawImage(fb, box, config);
+    default:
+      return drawLines(fb, [asciiTitle(type)], box, 2, 'left');
+  }
+}
+
+/**
+ * Draw a free-form canvas of widgets to a framebuffer sized to the panel.
+ *
+ * Each widget's fractional box becomes a pixel box; widgets are drawn back to
+ * front by `z`. A box too small to hold anything is skipped rather than drawn
+ * as a lone border.
+ */
+export function renderFreeformEpaper(
+  model: EpaperModel,
+  manifest: Manifest,
+  widgets: readonly PlacedEpaperWidget[],
+  geometry: PanelGeometry,
+): Framebuffer {
+  const fb = new Framebuffer(geometry.width, geometry.height);
+  const ordered = [...widgets].sort((a, b) => a.z - b.z);
+  for (const widget of ordered) {
+    const box: Box = {
+      x: Math.round(widget.x * geometry.width),
+      y: Math.round(widget.y * geometry.height),
+      w: Math.round(widget.w * geometry.width),
+      h: Math.round(widget.h * geometry.height),
+    };
+    if (box.w < 16 || box.h < 16) continue;
+    const inner = drawFrame(fb, box, widget.config);
+    drawWidget(fb, widget.type, inner, model, manifest, widget.config);
+  }
+  return fb;
+}

@@ -43,7 +43,7 @@ import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import { buildManifest, manifestEtag, type Manifest, type ManifestNotice } from '../api/manifest.js';
-import { renderScreenFrame } from '../epaper/frame.js';
+import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { resolveTheme } from '../api/themes.js';
 import {
@@ -819,9 +819,24 @@ export function createApp(deps: AppDeps): Hono {
     // screens exist, the same reason the media route stays behind the gate.
     if (!screen) return c.body(null, 404);
 
+    // A free-form panel draws the household's own canvas for the orientation it
+    // shows; anything else draws the fixed layout, so the read is skipped.
+    const widgets =
+      screen.layoutMode === 'freeform'
+        ? readLayoutWidgets(deps.db, screen.id, epaperOrientation(screen)).map((row) => ({
+            type: row.type,
+            x: row.x,
+            y: row.y,
+            w: row.w,
+            h: row.h,
+            z: row.z,
+            config: row.config !== null && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : {},
+          }))
+        : [];
+
     let frame: ReturnType<typeof renderScreenFrame>;
     try {
-      frame = renderScreenFrame(manifestForScreen(screen), screen);
+      frame = renderScreenFrame(manifestForScreen(screen), screen, widgets);
     } catch (error) {
       deps.log?.record('error', `epaper render failed for screen ${screen.id}: ${String(error)}`);
       return c.body(null, 503);
