@@ -10,9 +10,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -42,16 +42,16 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
       # Accepts the SDK licences and puts the command-line tools on PATH; the
       # runner's preinstalled platform-34 and build-tools satisfy compileSdk 34.
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       # Caches ~/.gradle across runs, keyed on the wrapper and build files.
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       # `--no-configuration-cache`: gradle.properties turns it on for local
       # iteration, but one Android resource task cannot serialise into it, which
       # fails the build — off here so a clean CI run is deterministic. No daemon
@@ -75,11 +75,11 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build the image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
