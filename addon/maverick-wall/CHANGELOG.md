@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.27.0
 
 Setting up a display is simpler, and building a layout is one clear thing. When
 you add a screen you can now go straight to arranging its layout — before, the
