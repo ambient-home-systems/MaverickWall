@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.28.0
 
 eInk (e-paper) displays — a new kind of screen. You can now pair a low-power
 e-paper panel, the always-on black-and-white kind that runs for months on a
