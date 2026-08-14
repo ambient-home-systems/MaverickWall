@@ -2752,117 +2752,111 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<input id="${name}-${screen.id}" name="${name}" type="number" inputmode="numeric" ` +
       `placeholder="${fallback} (default)" value="${value === null ? '' : String(value)}">`;
 
+    const helpId = `orient-help-${screen.id}`;
     return (
-      `<form method="post" action="${action}" class="wall-settings">` +
-      `<h2 class="add">${escapeHtml(screen.name)}</h2>` +
-      `<label for="name-${screen.id}">Name</label>` +
-      `<input id="name-${screen.id}" name="name" type="text" required ` +
-      `value="${escapeHtml(screen.name)}">` +
+      `<form method="post" action="${action}" class="wall-settings" data-settings>` +
 
-      `<div class="row-fields">` +
-      `<span><label for="orientation-${screen.id}">Orientation</label>` +
-      `<select id="orientation-${screen.id}" name="orientation">` +
-      option('auto', 'Follow the screen', screen.orientation === 'auto') +
-      option('portrait', 'Always portrait', screen.orientation === 'portrait') +
-      option('landscape', 'Always landscape', screen.orientation === 'landscape') +
-      `</select></span>` +
-
-      `<span><label for="rotation-${screen.id}">Rotation</label>` +
-      `<select id="rotation-${screen.id}" name="rotation">` +
-      option('0', 'None', screen.rotation === 0) +
-      option('90', '90° clockwise', screen.rotation === 90) +
-      option('180', 'Upside down', screen.rotation === 180) +
-      option('270', '270° clockwise', screen.rotation === 270) +
-      `</select></span>` +
-      `</div>` +
-      `<p class="hint"><b>Orientation</b> chooses which layout this wall shows. ` +
-      `<i>Follow the screen</i> picks portrait or landscape from how the screen ` +
-      `reports itself — right for almost every wall. Pick <i>Always portrait</i> ` +
-      `or <i>Always landscape</i> only for a kiosk frame that reports the wrong ` +
-      `size. This is not the Portrait/Landscape buttons in the layout editor ` +
-      `above: those choose which canvas you are arranging (you arrange both), ` +
-      `while this decides which of the two the wall actually draws.</p>` +
-      `<p class="hint"><b>Rotation</b> is for a screen physically mounted on its ` +
-      `side. The layout follows the turned picture, so a rotated widescreen gets ` +
-      `the portrait wall.</p>` +
-
-      `<h2 class="add">Theme</h2>` +
-      `<p class="hint">How this wall looks. “Follow the default” inherits the ` +
-      `household's theme; set one here only to make this wall different. ` +
-      `<b>The preview above updates when you save.</b></p>` +
-      `<div class="row-fields">` +
-      `<span><label for="theme-${screen.id}">Theme</label>` +
+      // --- Look: theme, daylight ---
+      `<div class="tabpanel" data-tabpanel="look">` +
+      `<div class="two-up">` +
+      `<div><label for="theme-${screen.id}">Theme</label>` +
       `<select id="theme-${screen.id}" name="theme">` +
       option('', 'Follow the default', screen.theme === null) +
       THEMES.map((theme) =>
         option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
       ).join('') +
       customThemeOptions(screen.theme) +
-      `</select></span>` +
-      `<span><label for="night-${screen.id}">During the day</label>` +
+      `</select></div>` +
+      `<div><label for="night-${screen.id}">During the day</label>` +
       `<select id="night-${screen.id}" name="daytime_theme">` +
       option('', 'Follow the default', screen.daytimeTheme === null) +
       THEMES.map((theme) =>
         option(theme.key, theme.label, displayThemeRef(screen.daytimeTheme ?? '') === theme.key),
       ).join('') +
       customThemeOptions(screen.daytimeTheme) +
-      `</select></span>` +
+      `</select></div>` +
       `</div>` +
-
-      `<div class="row-fields">` +
-      `<span><label for="from-${screen.id}">From</label>` +
+      `<div class="two-up">` +
+      `<div><label for="from-${screen.id}">From</label>` +
       `<input id="from-${screen.id}" name="daytime_starts_at" type="time" ` +
-      `value="${escapeHtml(screen.daytimeStartsAt ?? '07:00')}"></span>` +
-      `<span><label for="until-${screen.id}">Until</label>` +
+      `value="${escapeHtml(screen.daytimeStartsAt ?? '07:00')}"></div>` +
+      `<div><label for="until-${screen.id}">Until</label>` +
       `<input id="until-${screen.id}" name="daytime_ends_at" type="time" ` +
-      `value="${escapeHtml(screen.daytimeEndsAt ?? '21:00')}"></span>` +
+      `value="${escapeHtml(screen.daytimeEndsAt ?? '21:00')}"></div>` +
       `</div>` +
-      `<p class="hint">Only used when this wall sets its own daylight theme.</p>` +
+      `<p class="hint-1">“Follow the default” inherits the household theme. From/Until ` +
+      `are only used when this wall sets its own daylight theme.</p>` +
+      `</div>` +
 
-      // How much this wall shows, on the stacked layout. Blank follows the
-      // default set on the Display screen.
-      `<div class="row-fields">` +
-      `<span><label for="today_events-${screen.id}">Events today</label>` +
+      // --- Content: how much the calendar shows on the stacked layout ---
+      `<div class="tabpanel" data-tabpanel="content" hidden>` +
+      `<label for="today_events-${screen.id}">Events today</label>` +
       density('today_events', screen.displayTodayEvents, household.displayTodayEvents) +
-      `</span>` +
-      `<span><label for="next_days-${screen.id}">Days ahead</label>` +
+      `<label for="next_days-${screen.id}">Days ahead</label>` +
       density('next_days', screen.displayNextDays, household.displayNextDays) +
-      `</span>` +
-      `<span><label for="horizon_weeks-${screen.id}">Weeks of month</label>` +
+      `<label for="horizon_weeks-${screen.id}">Weeks of month</label>` +
       density('horizon_weeks', screen.displayHorizonWeeks, household.displayHorizonWeeks) +
-      `</span>` +
+      `<p class="hint-1">How much a Calendar shows on this wall. Blank follows the ` +
+      `Display default.</p>` +
       `</div>` +
-      `<p class="hint">How much the stacked layout shows on this wall. Blank ` +
-      `follows the default from the Display screen.</p>` +
 
-      `<div class="checks"><label>` +
-      `<input type="checkbox" name="allow_dismiss" value="1"` +
-      `${screen.allowDismiss === 1 ? ' checked' : ''}> ` +
-      `This wall can acknowledge alerts</label></div>` +
-      `<p class="hint">Turn on for a television with a remote, or a tablet somebody ` +
-      `can reach — the OK button clears whatever the wall is showing. Leave off ` +
-      `for a screen with no input, and for one that gets brushed against. ` +
-      `Acknowledging is household-wide: one wall clears it and every wall goes ` +
-      `quiet. Some alerts cannot be cleared at all, and no wall overrides that.</p>` +
-
-      `<div class="row-fields">` +
-      `<span><label for="tz-${screen.id}">Timezone</label>` +
+      // --- Device: identity, how it is hung, and its input ---
+      `<div class="tabpanel" data-tabpanel="device" hidden>` +
+      `<label for="name-${screen.id}">Name</label>` +
+      `<input id="name-${screen.id}" name="name" type="text" required ` +
+      `value="${escapeHtml(screen.name)}">` +
+      `<div class="two-up">` +
+      `<div>` +
+      `<span class="lbl-help"><label for="orientation-${screen.id}">Orientation</label>` +
+      `<button type="button" class="fieldhelp" data-help="${helpId}" ` +
+      `aria-label="About orientation">${icon('help')}</button>` +
+      // The prose that used to sit under the field, now behind the "?". It keeps
+      // the two sentences telling this pin apart from the editor's canvas toggle.
+      `<div id="${helpId}" class="helppop" hidden>` +
+      `<p><b>Orientation</b> chooses which layout this wall shows. <i>Follow the ` +
+      `screen</i> picks portrait or landscape from how the screen reports itself — ` +
+      `right for almost every wall. Pick <i>Always portrait</i> or <i>Always ` +
+      `landscape</i> only for a kiosk frame that reports the wrong size.</p>` +
+      `<p>This is not the Portrait/Landscape buttons in the layout editor: those ` +
+      `choose which canvas you are arranging (you arrange both), while this decides ` +
+      `which of the two the wall actually draws.</p></div></span>` +
+      `<select id="orientation-${screen.id}" name="orientation">` +
+      option('auto', 'Follow the screen', screen.orientation === 'auto') +
+      option('portrait', 'Always portrait', screen.orientation === 'portrait') +
+      option('landscape', 'Always landscape', screen.orientation === 'landscape') +
+      `</select></div>` +
+      `<div><label for="rotation-${screen.id}">Rotation</label>` +
+      `<select id="rotation-${screen.id}" name="rotation">` +
+      option('0', 'None', screen.rotation === 0) +
+      option('90', '90° clockwise', screen.rotation === 90) +
+      option('180', 'Upside down', screen.rotation === 180) +
+      option('270', '270° clockwise', screen.rotation === 270) +
+      `</select></div>` +
+      `</div>` +
+      `<div class="two-up">` +
+      `<div><label for="tz-${screen.id}">Timezone</label>` +
       `<select id="tz-${screen.id}" name="timezone">` +
       option('', 'Follow the default', screen.timezone === null) +
       supportedTimezones()
         .map((zone) => option(zone, zone, screen.timezone === zone))
         .join('') +
-      `</select></span>` +
-      `<span><label for="clock-${screen.id}">Clock</label>` +
+      `</select></div>` +
+      `<div><label for="clock-${screen.id}">Clock</label>` +
       `<select id="clock-${screen.id}" name="clock_24">` +
       option('', 'Follow the default', screen.clock24 === null) +
       option('1', '24-hour', screen.clock24 === 1) +
       option('0', '12-hour', screen.clock24 === 0) +
-      `</select></span>` +
+      `</select></div>` +
       `</div>` +
-      `<p class="hint">The timezone is only for a wall somewhere else — a holiday ` +
-      `home, say.</p>` +
-      `<button type="submit">Save this wall</button></form>`
+      `<div class="checks"><label>` +
+      `<input type="checkbox" name="allow_dismiss" value="1"` +
+      `${screen.allowDismiss === 1 ? ' checked' : ''}> ` +
+      `This wall can acknowledge alerts</label></div>` +
+      `<p class="hint-1">The OK button clears alerts household-wide. Leave off for a ` +
+      `screen with no input, or one that gets brushed against.</p>` +
+      `</div>` +
+
+      `</form>`
     );
   }
 
@@ -2902,11 +2896,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * `admin/layout` regardless of which page hosts it.
    */
   function layoutEditorMount(initial: unknown): string {
+    // The mount and its data only — the detail page emits the editor and chrome
+    // module scripts once, in order, at the foot of the body.
     return (
       `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
-      `<noscript><p class="hint">The layout editor needs JavaScript. The stacked ` +
-      `layout on the Display defaults screen does not.</p></noscript>` +
-      `<script type="module" src="assets/layout-editor.js"></script>`
+      `<noscript><p class="hint">The layout editor needs JavaScript to arrange ` +
+      `widgets and save. The wall itself does not.</p></noscript>`
     );
   }
 
@@ -3027,7 +3022,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const household = readHousehold(deps.db);
     const owner = ownerId === null ? null : activeScreens().find((s) => s.id === ownerId) ?? null;
     const ownerKey = owner?.id ?? null;
-    const detailId = ownerKey ?? 'default';
 
     const mode = owner?.layoutMode ?? household.layoutMode;
     const canvasFor = (orientation: 'portrait' | 'landscape'): {
@@ -3079,53 +3073,42 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         : {}),
     };
 
-    const statusAndPairing =
+    // The header's right-hand cluster: status, plus a real screen's pairing and
+    // unpair actions. Compact — the identity, not a settings card.
+    const online = owner !== null && owner.lastSeenAt !== null && at - owner.lastSeenAt < 5 * 60_000;
+    const statusCluster =
       owner === null
         ? ''
-        : `<article class="card">` +
-          `<div style="display:flex;align-items:center;gap:12px">` +
+        : `<div class="disp-status">` +
+          `<div class="seen">` +
           seenDot(owner.lastSeenAt, at) +
-          `<div style="flex:1;min-width:0"><div class="rname" style="font-size:15px">` +
-          `${owner.lastSeenAt !== null && at - owner.lastSeenAt < 5 * 60_000 ? 'Online' : 'Not seen recently'}</div>` +
-          `<div class="host">Last seen ${escapeHtml(ago(owner.lastSeenAt, at))}` +
+          `<div class="who"><b>${online ? 'Online' : 'Not seen recently'}</b>` +
+          `<small>Last seen ${escapeHtml(ago(owner.lastSeenAt, at))}` +
           (owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`) +
-          `</div></div></div>` +
-          `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
+          `</small></div></div>` +
           `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate">` +
-          `<button class="secondary" type="submit">Show pairing link</button></form>` +
-          `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/revoke">` +
-          `<button class="btn-danger" type="submit" style="margin-left:auto">Unpair</button></form>` +
-          `</div>` +
-          `<p class="hint">Showing a new pairing link stops the old one working.</p>` +
-          `</article>`;
+          `<button class="btn-ghost btn-sm" type="submit">Pairing link</button></form>` +
+          `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/revoke" ` +
+          `data-confirm="Unpair this screen? Its token stops working and it drops off the wall.">` +
+          `<button class="btn-danger btn-sm" type="submit">Unpair</button></form>` +
+          `</div>`;
 
-    // wallSettingsForm carries its own heading; the Default's form does not need
-    // one because the page title already says "Default display".
+    // The tabbed settings form itself; wallSettingsForm / defaultsForm carry the
+    // three `.tabpanel` groups the tab bar switches between. No submit button of
+    // their own — the one sticky save bar below saves the layout and the
+    // settings together.
     const appearance = owner === null ? defaultsForm() : wallSettingsForm(owner);
 
-    // One page, no tabs, and the layout leads: it is the wall you are building,
-    // and the theme below only changes how that layout looks. The `#layout`
-    // anchor is where the "Arrange layout" links and the apply-a-template
-    // redirect land.
-    const layout =
-      `<h2 class="add" id="layout">Layout</h2>` +
-      `<p class="hint sect-lede">Start here — <b>what's on the wall, and where</b>. ` +
-      `Pick a ready-made layout or arrange your own; the theme below only changes ` +
-      `how it looks.</p>` +
-      `<div class="row" style="gap:10px;align-items:center">` +
-      `<a class="btn btn-sm" href="admin/displays/${encodeURIComponent(detailId)}/gallery">` +
-      `Start from a template</a>` +
-      `<form method="post" action="admin/displays/${encodeURIComponent(detailId)}/reset-layout" ` +
-      `data-confirm="Reset this display to the Classic layout? Your current arrangement is replaced." style="margin:0">` +
-      `<button class="btn-ghost btn-sm" type="submit">Reset to Classic</button></form>` +
-      `</div>` +
-      `<p class="hint">Add a widget with <b>+ Add widget</b>, drag it to move, pull ` +
-      `a corner to resize. The <b>Portrait</b> and <b>Landscape</b> buttons switch ` +
-      `which canvas you are arranging — you arrange both, and the wall draws the ` +
-      `one matching how it is hung (or the Orientation set below). The wall picks ` +
-      `up a change within a minute. Every display starts from the Classic layout; ` +
-      `rearrange it, or start over from a ready-made one above.</p>` +
-      layoutEditorMount(initial);
+    const tab = (name: string, label: string, on: boolean): string =>
+      `<button type="button" class="tab${on ? ' is-on' : ''}" data-tab="${name}" ` +
+      `role="tab" aria-selected="${on ? 'true' : 'false'}">${label}</button>`;
+
+    // The under-canvas caption: the size to match (a paired screen reports one),
+    // and the cadence — the wall picks a change up on its own within a minute.
+    const caption =
+      owner?.reportW != null && owner?.reportH != null
+        ? `Match screen ${owner.reportW}×${owner.reportH} · updates within a minute`
+        : 'The wall picks up changes within a minute';
 
     return page({
       modules: navModules(deps.db),
@@ -3133,14 +3116,45 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'displays',
       heading: owner ? owner.name : 'Default display',
       intro: owner
-        ? 'This wall — its layout first, then the theme that dresses it, how much it shows, and how it is hung.'
-        : 'The layout every wall starts from, and the theme that dresses it.',
+        ? 'Watch the preview react as you edit — the layout on the left, everything that dresses it on the right.'
+        : 'The layout every wall starts from, and the theme that dresses it — the preview left, its settings right.',
       body:
-        `<p><a class="link" href="admin/displays">← All displays</a></p>` +
+        `<div class="disp-editor">` +
+        `<div class="disp-head">` +
+        `<a class="link" href="admin/displays">${icon('arrow')} All displays</a>` +
+        statusCluster +
+        `</div>` +
         (error === undefined ? '' : errorBlock(error)) +
-        statusAndPairing +
-        layout +
-        appearance,
+        `<div class="disp-panes">` +
+        // Left: the sticky live preview / layout editor. `id="layout"` is where
+        // the "Arrange layout" links and the apply-a-template redirect land.
+        `<div class="disp-left" id="layout">` +
+        layoutEditorMount(initial) +
+        `<p class="disp-cap">${escapeHtml(caption)}</p>` +
+        `</div>` +
+        // Right: the tabbed settings.
+        `<div class="disp-right">` +
+        `<div class="settings-head">Settings</div>` +
+        `<div class="tabbar" role="tablist">` +
+        tab('look', 'Look', true) +
+        tab('content', 'Content', false) +
+        tab('device', 'Device', false) +
+        `</div>` +
+        appearance +
+        `</div>` +
+        `</div>` +
+        // The one save bar, pinned to the foot of the viewport.
+        `<div class="savebar" id="savebar">` +
+        `<span class="msg" role="alert"></span>` +
+        `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
+        `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
+        `<button type="button" class="btn" data-action="save">Save this wall</button>` +
+        `</div>` +
+        // Chrome first, so its `mwEditorState` hook is registered before the
+        // editor publishes its bridge.
+        `<script type="module" src="assets/display-editor.js"></script>` +
+        `<script type="module" src="assets/layout-editor.js"></script>` +
+        `</div>`,
     });
   }
 
@@ -3160,15 +3174,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const card = (t: (typeof TEMPLATES)[number]): string =>
       `<article class="tpl-card">` +
+      `<i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>` +
       `<div class="tpl-thumb" data-tpl="${escapeHtml(t.id)}">` +
       `<div class="tpl-fallback">${escapeHtml(t.name)}</div></div>` +
       `<div class="tpl-body">` +
       `<div class="tpl-name">${escapeHtml(t.name)}</div>` +
       `<div class="tpl-blurb">${escapeHtml(t.blurb)}</div>` +
       (t.theme !== undefined
-        ? `<div class="hint" style="margin:0 0 .6rem">Looks best in ` +
+        ? `<div class="hint-1" style="margin:0 0 .2rem">Looks best in ` +
           `<b style="color:var(--accent)">${escapeHtml(themeName(t.theme))}</b> ` +
-          `— you can change it after.</div>`
+          `— change it after.</div>`
         : '') +
       `<form method="post" action="admin/displays/${ownerParam}/apply-template" ` +
       `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with ${escapeHtml(t.name)}?">` +
@@ -3269,47 +3284,49 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">${escapeHtml(hint)}</p>`;
 
     return (
-      `<form method="post" action="admin/display">` +
-      `<h2 class="add">Theme</h2>` +
-      `<p class="hint">How the layout above looks — its colours and type. Panels ` +
-      `separates the shift colours best from across a room. Build your own on the ` +
-      `<a class="link" href="admin/themes">Themes</a> screen. ` +
-      `<b>The preview above updates when you save.</b></p>` +
-      themeCards(displayThemeRef(household.theme), custom) +
+      `<form method="post" action="admin/display" data-settings>` +
 
+      // --- Look: the household theme and daylight schedule ---
+      `<div class="tabpanel" data-tabpanel="look">` +
+      `<p class="hint-1">How the layout looks — its colours and type. Panels separates ` +
+      `the shift colours best from across a room. Build your own on the ` +
+      `<a class="link" href="admin/themes">Themes</a> screen.</p>` +
+      themeCards(displayThemeRef(household.theme), custom) +
       `<label for="daytime_theme">Switch to a lighter theme during the day</label>` +
       `<select id="daytime_theme" name="daytime_theme">` +
       `${themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true)}</select>` +
-      `<p class="hint">Optional. A dark theme at noon is a hole in the wall; a light ` +
-      `one at 2am is a lamp. The times below are used only when a daytime theme is set.</p>` +
-
-      `<div class="row-fields">` +
-      `<span><label for="daytime_starts_at">From</label>` +
+      `<div class="two-up">` +
+      `<div><label for="daytime_starts_at">From</label>` +
       `<input id="daytime_starts_at" name="daytime_starts_at" type="time" ` +
-      `value="${escapeHtml(household.daytimeStartsAt ?? '07:00')}"></span>` +
-      `<span><label for="daytime_ends_at">Until</label>` +
+      `value="${escapeHtml(household.daytimeStartsAt ?? '07:00')}"></div>` +
+      `<div><label for="daytime_ends_at">Until</label>` +
       `<input id="daytime_ends_at" name="daytime_ends_at" type="time" ` +
-      `value="${escapeHtml(household.daytimeEndsAt ?? '21:00')}"></span>` +
+      `value="${escapeHtml(household.daytimeEndsAt ?? '21:00')}"></div>` +
+      `</div>` +
+      `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at ` +
+      `2am is a lamp. From/Until apply only when a daytime theme is set.</p>` +
       `</div>` +
 
-      `<h2 class="add">How much the calendar shows</h2>` +
-      `<p class="hint">How far a Calendar widget looks — the most a day, an agenda ` +
-      `and the month grid will draw before they stop. A widget can show less than ` +
-      `this, never more.</p>` +
+      // --- Content: how far the calendar looks ---
+      `<div class="tabpanel" data-tabpanel="content" hidden>` +
       number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
         'Anything past this is counted rather than listed.') +
       number('next_days', 'Days an agenda looks ahead', household.displayNextDays, 0, 14,
         'How many upcoming days a Calendar agenda can list.') +
       number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
         'How many weeks a month Calendar draws. Five covers a month at a glance.') +
+      `</div>` +
 
+      // --- Device: the household clock default ---
+      `<div class="tabpanel" data-tabpanel="device" hidden>` +
       `<div class="checks"><label>` +
       `<input type="checkbox" name="clock_24" value="1"${household.clock24 !== 0 ? ' checked' : ''}> ` +
       `24-hour clock</label></div>` +
-      `<p class="hint">Off shows a 12-hour clock (9:30 pm) on the wall and in event ` +
-      `times. On shows 24-hour (21:30).</p>` +
+      `<p class="hint-1">Off shows a 12-hour clock (9:30 pm) on the wall; on shows ` +
+      `24-hour (21:30). This is the household default every wall inherits.</p>` +
+      `</div>` +
 
-      `<button type="submit">Save</button></form>`
+      `</form>`
     );
   }
 

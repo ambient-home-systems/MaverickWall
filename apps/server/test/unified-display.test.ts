@@ -92,28 +92,41 @@ async function ready() {
 }
 
 describe('the unified display page', () => {
-  it('draws the settings form and the layout editor on one page, no tabs', async () => {
+  it('is a two-pane editor: sticky preview left, tabbed settings right, one save', async () => {
     const h = await ready();
     h.pairScreen('s1', 'Kitchen');
     const res = await h.call('/admin/displays/s1');
     expect(res.status).toBe(200);
     const html = await res.text();
 
-    // Appearance settings are present.
+    // Every settings field survived the re-layout, grouped under the three tabs.
     expect(html).toContain('name="orientation"');
     expect(html).toContain('Always landscape');
     expect(html).toContain('name="daytime_theme"');
-    // The layout editor is present on the same page.
+    expect(html).toContain('data-tabpanel="look"');
+    expect(html).toContain('data-tabpanel="content"');
+    expect(html).toContain('data-tabpanel="device"');
+    expect(html).toContain('data-tab="look"');
+
+    // The layout editor and its chrome are both present on the same page.
     expect(html).toContain('id="layout-editor"');
     expect(html).toContain('assets/layout-editor.js');
+    expect(html).toContain('assets/display-editor.js');
     expect(html).toContain('id="layout"');
 
-    // The tabs are gone: no ?view= links, no subtab chrome.
+    // Exactly one save action: the sticky bar's button, and the settings form
+    // carries no submit button of its own (the two saves were unified).
+    expect(html).toContain('data-action="save"');
+    expect(html).toContain('id="savebar"');
+    const settingsForm = html.slice(html.indexOf('data-settings'));
+    const formOnly = settingsForm.slice(0, settingsForm.indexOf('</form>'));
+    expect(formOnly).not.toContain('type="submit"');
+
+    // The old server-side view tabs are gone.
     expect(html).not.toContain('?view=');
     expect(html).not.toContain('class="subtab');
 
-    // The Layout section leads: the editor comes before the theme and the
-    // screen's other settings, which customise the layout beneath it.
+    // The preview leads: the editor mount comes before the settings fields.
     expect(html.indexOf('id="layout-editor"')).toBeLessThan(html.indexOf('name="orientation"'));
   });
 

@@ -444,7 +444,28 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .walls a.active{color:var(--accentInk);background:var(--accent);border-color:var(--accent)}
 
 /* ---- Layout editor (behaviour lives in the display bundle; this styles it) */
-.le-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:1rem 0}
+/* position:relative so the Layers popover anchors here, never on <body>. */
+.le-toolbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 1rem}
+.le-tool-spacer{flex:1 1 auto}
+.le-tool-link,.le-tool-btn,.le-layers-btn{margin:0;padding:.42rem .7rem;background:var(--panel);
+  color:var(--muted);border:1px solid var(--rule);border-radius:7px;font-family:inherit;
+  font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;
+  align-items:center;gap:6px;line-height:1}
+.le-tool-link:hover,.le-tool-btn:hover,.le-layers-btn:hover{filter:none;color:var(--ink);border-color:var(--faint)}
+.le-layers-btn.is-on{background:var(--accent);color:var(--accentInk);border-color:var(--accent)}
+.le-reset-form{margin:0}
+/* The Layers popover — anchored under its toolbar button (offsetParent is the
+   toolbar), so it never floats over the settings pane. */
+.le-layers-pop{position:absolute;top:calc(100% + 6px);right:0;width:320px;z-index:30;
+  background:var(--panel);border:1px solid var(--rule);border-radius:10px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden}
+.le-layers-pop[hidden]{display:none}
+.le-layers-head{padding:12px 16px;border-bottom:1px solid var(--ruleSoft)}
+.le-layers-title{font-family:var(--cond);font-weight:700;font-size:16px;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--ink)}
+.le-layers-sub{font-size:12px;color:var(--faint);margin-top:2px}
+.le-layers-empty{padding:14px 16px;font-size:13px;color:var(--faint)}
+.le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
 .le-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:14px;
   color:var(--muted);margin:0}
 .le-toggle input{width:17px;height:17px;accent-color:var(--accent)}
@@ -501,8 +522,10 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-status.is-dirty{color:var(--accent)}
 .le-status.is-ok{color:var(--ok)}
 .le-status.is-error{color:var(--danger)}
-.le-stage{display:flex;justify-content:center;align-items:center;padding:24px;
-  background:var(--panel2);border:1px solid var(--rule);border-radius:10px;min-height:560px}
+/* No min-height: the canvas is width-driven and must not push into the settings
+   pane. The stage sizes to whatever the canvas needs. */
+.le-stage{display:flex;justify-content:center;align-items:flex-start;padding:16px;
+  background:var(--panel2);border:1px solid var(--rule);border-radius:10px}
 .le-canvas{position:relative;background:var(--bg);border-radius:6px;overflow:hidden;
   box-shadow:inset 0 0 0 1px var(--rule);touch-action:none}
 /* The snap grid, on the overlay so it sits over the live preview but under the
@@ -550,17 +573,17 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-media-upload input{font-size:12px}
 .le-media-status{font-family:var(--mono);font-size:12px;color:var(--faint)}
 
-/* The layers list — every widget, front on top; drag a row to restack. */
-.le-layers{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
-  padding:14px 16px;background:var(--panel)}
-.le-layers>.kick{margin-bottom:10px}
-.le-layer{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:7px;
+/* The layers list — every widget, front on top; drag a row to restack. It is
+   the body of the anchored popover above. */
+.le-layers{max-height:340px;overflow:auto;padding:6px}
+.le-layer{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;
   border:1px solid transparent;cursor:pointer;user-select:none}
 .le-layer:hover{background:var(--panel2)}
 .le-layer.is-selected{border-color:var(--accent);background:var(--panel2)}
 .le-layer-grip{flex:0 0 auto;color:var(--faint);cursor:grab;letter-spacing:-2px;
   font-size:14px;touch-action:none;padding:0 2px}
-.le-layer-name{font-size:14px;font-weight:500}
+.le-layer-name{flex:1;min-width:0;font-size:14px;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Per-widget options, shown under the stage when a widget is selected. */
 .le-config{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
@@ -622,23 +645,92 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .hep-status{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
 .hep-status.is-error{color:var(--danger)}
 
-/* ---- Template gallery (RFC 005) ----------------------------------------- */
+/* ---- Template gallery (RFC 005) — blueprint cards ----------------------- */
 .tpl-cat{font-family:var(--cond);font-weight:600;font-size:13px;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--muted);margin:26px 0 12px}
-.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
-.tpl-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--rule);
-  border-radius:12px;overflow:hidden}
-.tpl-thumb{position:relative;width:100%;aspect-ratio:9/16;max-height:340px;background:var(--panel2);
-  overflow:hidden;border-bottom:1px solid var(--rule)}
+  text-transform:uppercase;color:var(--muted);margin:26px 0 14px}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px}
+/* A blueprint card: a transparent line drawing with registration marks at the
+   corners, not a filled panel. The one solid object is the primary button. */
+.tpl-card{position:relative;display:flex;flex-direction:column;gap:14px;
+  background:transparent;border:1px solid var(--rule);border-radius:2px;padding:16px}
+.tpl-card>.cm{opacity:.6}
+.tpl-thumb{position:relative;width:100%;aspect-ratio:3/4;background:var(--panel2);
+  overflow:hidden;border:1px solid var(--rule);border-radius:2px;
+  display:flex;align-items:center;justify-content:center}
 .tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   padding:12px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--faint)}
-.tpl-body{padding:13px 14px 15px;display:flex;flex-direction:column;gap:7px;flex:1}
-.tpl-name{font-family:var(--cond);font-weight:700;font-size:16px}
-.tpl-blurb{font-size:13px;color:var(--muted);line-height:1.4;flex:1}
+.tpl-body{padding:0;display:flex;flex-direction:column;gap:8px;flex:1}
+.tpl-name{font-family:var(--cond);font-weight:700;font-size:20px;text-transform:uppercase;
+  letter-spacing:.02em;line-height:1}
+.tpl-blurb{font-size:13.5px;color:var(--muted);line-height:1.45;flex:1;margin:0}
 .tpl-card form{margin:0}
-.tpl-card .btn-sm{margin-top:2px}
-.tpl-copy{margin-top:30px;padding-top:20px;border-top:1px solid var(--rule)}
+.tpl-card .btn-sm{align-self:flex-start;margin-top:2px}
+.tpl-copy{margin-top:34px;padding-top:22px;border-top:1px solid var(--rule)}
 .tpl-copy .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+
+/* ---- Display editor: two-pane shell, tabs, sticky save bar -------------- */
+.disp-editor{padding-bottom:72px}
+.disp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;
+  flex-wrap:wrap;margin:0 0 20px}
+.disp-head .link{margin-top:2px}
+.disp-status{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.disp-status .seen{display:flex;align-items:center;gap:9px}
+.disp-status .seen .who{line-height:1.15}
+.disp-status .seen b{font-family:var(--cond);font-weight:700;font-size:14px;
+  text-transform:uppercase;letter-spacing:.04em;display:block}
+.disp-status .seen small{font-size:12px;color:var(--faint)}
+.disp-status form{margin:0}
+.disp-panes{display:grid;grid-template-columns:minmax(480px,1.7fr) minmax(320px,0.9fr);
+  gap:26px;align-items:start}
+/* The preview stays in view while the settings pane scrolls — the whole point. */
+.disp-left{position:sticky;top:96px;min-width:0}
+.disp-right{min-width:0}
+.disp-cap{font-size:12px;color:var(--faint);margin:10px 0 0;text-align:right}
+.settings-head{font-family:var(--cond);font-weight:700;font-size:22px;margin:0 0 12px;
+  text-transform:uppercase;letter-spacing:.02em}
+.tabbar{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:0 0 18px}
+.tab{margin:0;padding:9px 14px;background:none;border:0;border-bottom:2px solid transparent;
+  margin-bottom:-1px;font-family:var(--cond);font-weight:600;font-size:14px;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer}
+.tab:hover{filter:none;color:var(--ink)}
+.tab.is-on{color:var(--ink);border-bottom-color:var(--accent)}
+.tabpanel[hidden]{display:none}
+.tabpanel>form,.disp-right form{margin:0}
+.tabpanel .two-up{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* A single-line hint replaces the old multi-line grey prose. */
+.hint-1{font-size:12.5px;color:var(--faint);margin:.5rem 0 0;line-height:1.5}
+/* The "?" help affordance and its popover, in place of a prose paragraph. */
+.lbl-help{position:relative;display:inline-flex;align-items:center;gap:6px}
+.fieldhelp{margin:0;padding:0;width:18px;height:18px;display:inline-grid;place-items:center;
+  background:var(--panel2);border:1px solid var(--rule);border-radius:50%;color:var(--muted);
+  cursor:pointer}
+.fieldhelp:hover{filter:none;color:var(--ink);border-color:var(--faint)}
+.fieldhelp svg{width:12px;height:12px;stroke-width:1.8}
+.helppop{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:min(320px,80vw);
+  padding:12px 14px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;
+  box-shadow:0 16px 40px rgba(0,0,0,.45);font-size:12.5px;line-height:1.5;color:var(--muted);
+  text-transform:none;font-weight:400;letter-spacing:0}
+.helppop[hidden]{display:none}
+.helppop p{margin:.35rem 0}
+.helppop p:first-child{margin-top:0}
+/* One sticky save bar for the whole page — layout and settings save together. */
+.savebar{position:fixed;left:216px;right:0;bottom:0;z-index:20;display:flex;align-items:center;
+  justify-content:flex-end;gap:16px;padding:12px 28px;
+  background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);
+  border-top:1px solid var(--rule)}
+.savebar-flag{font-family:var(--cond);font-weight:700;font-size:13px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--warn)}
+.savebar-flag[hidden]{display:none}
+.savebar .msg{font-family:var(--mono);font-size:12.5px;color:var(--danger)}
+.savebar button{margin:0}
+@media(max-width:900px){
+  .disp-panes{grid-template-columns:1fr}
+  .disp-left{position:static}
+  .tabpanel .two-up{grid-template-columns:1fr}
+}
+@media(max-width:820px){
+  .savebar{left:0;padding:12px 20px}
+}
 `;
 
 /**
@@ -749,6 +841,11 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   // A generic installed-module glyph: a tile within a tile. Distinct from the
   // storefront cube so a module entry does not read as another Store link.
   module: `<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/>`,
+  // The layout-editor / settings chrome glyphs. Same 24×24 stroke family.
+  plus: `<path d="M12 5v14M5 12h14"/>`,
+  layers: `<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/>`,
+  grip: `<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>`,
+  help: `<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.5.8c0 1.9-2.7 2.4-2.7 4"/><path d="M12 17h.01"/>`,
 };
 
 /**

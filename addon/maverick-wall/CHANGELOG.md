@@ -14,6 +14,17 @@
   saying nothing.
 -->
 
+## Unreleased
+
+A calmer way to set up a wall. Editing a display (Walls → Displays) is now one
+tidy screen instead of a long scroll: a live preview on the left that stays in
+view while you change how the wall looks on the right, sorted into Look, Content
+and Device tabs. There is a single Save button for the whole page now — the
+layout and its settings save together — a Layers list you can open to reorder
+what sits in front, and picking a starting layout is a gallery of clear preview
+cards. Nothing about your existing walls changes; this is only a friendlier way
+to arrange them.
+
 ## 0.29.0
 
 Build your own eInk layout. If you have a low-power e-paper panel (Walls → eInk
