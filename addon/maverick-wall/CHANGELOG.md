@@ -14,6 +14,18 @@
   saying nothing.
 -->
 
+## Unreleased
+
+eInk (e-paper) displays — a new kind of screen. You can now pair a low-power
+e-paper panel, the always-on black-and-white kind that runs for months on a
+battery, under Walls → eInk Displays. Maverick Wall draws your calendar to a
+picture and serves it; an ESPHome wifi panel fetches it, or Home Assistant
+pushes it to an OpenDisplay tag over Bluetooth. The page hands you the image
+address and ready-to-paste ESPHome and Home Assistant recipes. This is the
+first release of the feature and still early — thoroughly tested in software,
+but not yet on every panel out there, so expect some rough edges. Your existing
+wall displays are unchanged.
+
 ## 0.27.0
 
 Setting up a display is simpler, and building a layout is one clear thing. When
