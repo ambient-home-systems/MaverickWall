@@ -14,6 +14,14 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The layout editor's live preview now matches the wall. After the widget-scaling
+change in 0.31.0, the editor preview still drew the weather, agenda and shift
+widgets small and cramped even though the real wall filled them — a
+preview-only quirk. The preview now renders exactly as the wall does, so what
+you arrange is what you get.
+
 ## 0.31.0
 
 Widgets now use the space you give them. Every widget on a display scales to
