@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
 change in 0.31.0, the editor preview still drew the weather, agenda and shift
