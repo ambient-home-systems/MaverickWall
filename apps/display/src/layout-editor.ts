@@ -567,14 +567,40 @@ function boot(): void {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    // Give the display's own layout the frame it expects: no rotation, the
-    // canvas exactly this box, and a rem that is one percent of its height —
-    // the same relationship `orientation.ts` sets on a real wall.
-    previewWall.style.width = `${rect.width}px`;
-    previewWall.style.height = `${rect.height}px`;
-    previewWall.style.setProperty('--frame-w', `${rect.width}px`);
-    previewWall.style.setProperty('--frame-h', `${rect.height}px`);
-    previewWall.style.setProperty('--root-size', `${rect.height / 100}px`);
+    // Render at a reference resolution, then scale the whole wall down to this
+    // box with a transform — rather than rendering it at the box's own small
+    // pixel size.
+    //
+    // Why: the reused sections (weather, the agenda, the shift badge…) size
+    // their type in `rem`. On a real wall `orientation.ts` sets the document
+    // root's font-size to --root-size (one percent of the canvas height), so a
+    // rem tracks the canvas and `fitToBox` grows or shrinks each section to fill
+    // its box in proportion. Inside this preview the wall lives in a shadow root,
+    // and `rem` always resolves against the *document* root — the admin page's
+    // 16px — which the display's own `html { font-size: … }` rule cannot touch
+    // (a shadow root has no <html>). Rendered at the box's small pixel size, then,
+    // every rem-based section came out huge next to its box, so fit-to-fill hit
+    // its readable floor and clipped: the preview disagreed with the wall it is
+    // meant to mirror. Rendering at the resolution where the document's own rem
+    // *is* one percent of the canvas height (height = rem × 100) restores the
+    // wall's proportion, and the transform is visual only — `fitToBox` measures
+    // untransformed layout sizes, so the fit is computed exactly as on a wall.
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const refH = rootPx * 100;
+    const refW = refH * state.aspect;
+    previewWall.style.width = `${refW}px`;
+    previewWall.style.height = `${refH}px`;
+    previewWall.style.setProperty('--frame-w', `${refW}px`);
+    previewWall.style.setProperty('--frame-h', `${refH}px`);
+    previewWall.style.setProperty('--root-size', `${rootPx}px`);
+    // Taken out of flow so its full-resolution layout box cannot push the shadow
+    // host around; the transform then fits it exactly to this box (both share the
+    // canvas aspect, so width and height scale by the same factor).
+    previewWall.style.position = 'absolute';
+    previewWall.style.top = '0';
+    previewWall.style.left = '0';
+    previewWall.style.transformOrigin = 'top left';
+    previewWall.style.transform = `scale(${rect.height / refH})`;
     applyTheme(previewWall, manifest.theme.active);
 
     // The wall as it will actually draw — always free-form now. It draws straight
