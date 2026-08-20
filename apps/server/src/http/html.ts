@@ -7,9 +7,12 @@
  * route into the application down with it.
  *
  * Rule three still applies: nothing here loads a font, a stylesheet or an image
- * from anywhere. The styles are inline and the palette is Board's, so the setup
- * flow looks like the wall it is configuring.
+ * from anywhere. The styles are inline and the palette is Material Design 3's,
+ * derived from the Board amber (see m3-tokens.ts), so the setup flow looks of a
+ * piece with the wall it is configuring.
  */
+
+import { M3_SCHEMES, type M3Scheme } from './m3-tokens.js';
 
 /** Escape for HTML text and quoted attributes. Everything echoed back goes through this. */
 export function escapeHtml(value: string): string {
@@ -19,6 +22,65 @@ export function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * One scheme's colour roles as custom-property declarations.
+ *
+ * Serialized at module load from the committed schemes — string work, not a
+ * build step, and the image still gains no dependency. System roles are
+ * `--md-sys-color-*` exactly as the M3 documentation names them; the
+ * harmonized Board status colours are `--md-custom-color-*`, the spec's
+ * custom-colour convention, so nobody mistakes them for roles the spec
+ * defines.
+ */
+function m3ColorVars(scheme: M3Scheme): string {
+  const sys = Object.entries(scheme.sys).map(([role, hex]) => `--md-sys-color-${role}:${hex}`);
+  const custom = Object.entries(scheme.custom).map(
+    ([role, hex]) => `--md-custom-color-${role}:${hex}`,
+  );
+  return [...sys, ...custom].join(';');
+}
+
+/**
+ * The M3 type scale — all fifteen roles, as the spec defines them:
+ * size, line-height, weight, tracking. Px rather than rem deliberately: the
+ * scale is specified in dp/px and this stylesheet already sizes in px.
+ * Display/headline/title take the brand face, body/label the plain face —
+ * both resolve to the bundled Roboto, but the seam is where a future face
+ * swap happens without touching fifteen roles.
+ */
+const M3_TYPE_SCALE: Readonly<Record<string, readonly [string, string, string, string]>> = {
+  'display-large': ['57px', '64px', '400', '-0.25px'],
+  'display-medium': ['45px', '52px', '400', '0px'],
+  'display-small': ['36px', '44px', '400', '0px'],
+  'headline-large': ['32px', '40px', '400', '0px'],
+  'headline-medium': ['28px', '36px', '400', '0px'],
+  'headline-small': ['24px', '32px', '400', '0px'],
+  'title-large': ['22px', '28px', '400', '0px'],
+  'title-medium': ['16px', '24px', '500', '0.15px'],
+  'title-small': ['14px', '20px', '500', '0.1px'],
+  'body-large': ['16px', '24px', '400', '0.5px'],
+  'body-medium': ['14px', '20px', '400', '0.25px'],
+  'body-small': ['12px', '16px', '400', '0.4px'],
+  'label-large': ['14px', '20px', '500', '0.1px'],
+  'label-medium': ['12px', '16px', '500', '0.5px'],
+  'label-small': ['11px', '16px', '500', '0.5px'],
+};
+
+function m3TypeVars(): string {
+  return Object.entries(M3_TYPE_SCALE)
+    .map(([role, [size, lineHeight, weight, tracking]]) => {
+      const face = role.startsWith('body') || role.startsWith('label') ? 'plain' : 'brand';
+      return (
+        `--md-sys-typescale-${role}-font:var(--md-ref-typeface-${face});` +
+        `--md-sys-typescale-${role}-size:${size};` +
+        `--md-sys-typescale-${role}-line-height:${lineHeight};` +
+        `--md-sys-typescale-${role}-weight:${weight};` +
+        `--md-sys-typescale-${role}-tracking:${tracking}`
+      );
+    })
+    .join(';\n  ');
 }
 
 const STYLE = `
@@ -34,6 +96,15 @@ const STYLE = `
   font-display:swap;src:url('assets/fonts/roboto-condensed.woff2') format('woff2')}
 
 /*
+ * Roboto — the Material Design 3 type scale's face, bundled the same way:
+ * the variable font's latin subset, weight axis 100-900, so the scale's
+ * 400/500/700 come from one same-origin file. system-ui first in the fallback
+ * stack below because on Android system-ui IS Roboto.
+ */
+@font-face{font-family:'Roboto';font-style:normal;font-weight:100 900;
+  font-display:swap;src:url('assets/fonts/roboto.woff2') format('woff2')}
+
+/*
  * Oswald, for the brand lockup and nothing else.
  *
  * The wordmark in docs/brand is set in this face, and the name beside the mark
@@ -46,49 +117,114 @@ const STYLE = `
 @font-face{font-family:'Oswald';font-style:normal;font-weight:700;
   font-display:swap;src:url('assets/fonts/oswald-700.woff2') format('woff2')}
 
-/*
- * Dark by default — the Board palette, the wall's own — with a light option and
- * an "auto" that follows the device. The choice is per-browser (localStorage,
- * applied by a tiny inline script before first paint, so there is no flash) and
- * only ever styles the admin, never the wall. color-mix() and either scheme are
- * fine here: this is a phone or a desktop, not the locked-down tablet rule two
- * is about. Every colour is a token, so a theme is just a different set of them.
- */
 :root{
   --cond:'Roboto Condensed','Arial Narrow','Helvetica Neue',system-ui,sans-serif;
   --wordmark:'Oswald','Roboto Condensed','Arial Narrow',system-ui,sans-serif;
   --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --md-ref-typeface-brand:'Roboto',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --md-ref-typeface-plain:'Roboto',system-ui,-apple-system,'Segoe UI',sans-serif;
 }
-/* Dark (the default). Lifted a notch off near-black so cards read as panels and
- * the rules are visible without hunting — this is a phone/desktop admin, not the
- * glare-free wall, so it can afford more contrast than display.css does. */
+
+/*
+ * Material Design 3 foundations — the spec implemented by hand, no component
+ * library, nothing fetched. The colour schemes are generated at design time
+ * from the Board amber and committed (m3-tokens.ts; the generator's comment
+ * holds the choices), then interpolated here when this constant is built.
+ *
+ * Type: the fifteen roles, verbatim from the spec. Shape: the corner scale.
+ * Elevation: the five shadow levels — note for the component phase that in the
+ * dark scheme M3 conveys elevation primarily by surface tint, not shadow:
+ *   background:color-mix(in srgb,var(--md-sys-color-surface-tint) 5%,var(--md-sys-color-surface));
+ * at 5/8/11/12/14% for levels 1-5, with the shadow token kept beside it.
+ * State layers: the wash a component draws over itself when hovered, focused
+ * or pressed — the role colour over the resting surface at the layer opacity:
+ *   background:color-mix(in srgb,var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),var(--md-sys-color-surface-container));
+ * Nothing applies them yet; this phase is the foundations, not the components.
+ */
+:root{
+  ${m3TypeVars()};
+  --md-sys-shape-corner-none:0;
+  --md-sys-shape-corner-extra-small:4px;
+  --md-sys-shape-corner-small:8px;
+  --md-sys-shape-corner-medium:12px;
+  --md-sys-shape-corner-large:16px;
+  --md-sys-shape-corner-extra-large:28px;
+  --md-sys-shape-corner-full:999px;
+  --md-sys-elevation-level0:none;
+  --md-sys-elevation-level1:0 1px 2px 0 rgba(0,0,0,.3),0 1px 3px 1px rgba(0,0,0,.15);
+  --md-sys-elevation-level2:0 1px 2px 0 rgba(0,0,0,.3),0 2px 6px 2px rgba(0,0,0,.15);
+  --md-sys-elevation-level3:0 1px 3px 0 rgba(0,0,0,.3),0 4px 8px 3px rgba(0,0,0,.15);
+  --md-sys-elevation-level4:0 2px 3px 0 rgba(0,0,0,.3),0 6px 10px 4px rgba(0,0,0,.15);
+  --md-sys-elevation-level5:0 4px 4px 0 rgba(0,0,0,.3),0 8px 12px 6px rgba(0,0,0,.15);
+  --md-sys-state-hover-state-layer-opacity:8%;
+  --md-sys-state-focus-state-layer-opacity:12%;
+  --md-sys-state-pressed-state-layer-opacity:12%;
+  --md-sys-state-dragged-state-layer-opacity:16%;
+}
+
+/*
+ * The old token names, each an alias of an M3 role, which is what lets several
+ * thousand lines of server-rendered pages restyle with no markup edit. Defined
+ * once: the --md-* colour vars flip per scheme below, and an alias re-resolves
+ * against whichever set is live. New styles should reach for --md-* directly;
+ * these stay for what is already written.
+ *
+ * --panel2 is surface-container-high — one step above the card surface — so
+ * inputs, insets and the sidebar keep reading as distinct from the cards they
+ * sit against. --ruleSoft is the outline-variant faded rather than a role of
+ * its own: M3 has one divider colour, and the soft rule only ever separates
+ * rows inside a container, where a full outline-variant is too loud.
+ */
+:root{
+  --bg:var(--md-sys-color-surface);
+  --panel:var(--md-sys-color-surface-container);
+  --panel2:var(--md-sys-color-surface-container-high);
+  --rule:var(--md-sys-color-outline-variant);
+  --ruleSoft:color-mix(in srgb,var(--md-sys-color-outline-variant) 55%,transparent);
+  --ink:var(--md-sys-color-on-surface);
+  --muted:var(--md-sys-color-on-surface-variant);
+  --faint:var(--md-sys-color-outline);
+  --accent:var(--md-sys-color-primary);
+  --accentInk:var(--md-sys-color-on-primary);
+  --danger:var(--md-sys-color-error);
+  --ok:var(--md-custom-color-success);
+  --warn:var(--md-custom-color-warning);
+  --night:var(--md-custom-color-night);
+}
+
+/*
+ * Dark by default — derived from the Board amber, the wall's own — with a light
+ * option and an "auto" that follows the device. The choice is per-browser
+ * (localStorage, applied by a tiny inline script before first paint, so there
+ * is no flash) and only ever styles the admin, never the wall. color-mix() and
+ * either scheme are fine here: this is a phone or a desktop, not the
+ * locked-down tablet rule two is about.
+ */
 :root{
   color-scheme:dark;
-  --bg:#14181E;--panel:#1B212A;--panel2:#171C24;--rule:#2A333F;--ruleSoft:#20272F;
-  --ink:#E9EEF4;--muted:#9BA7B4;--faint:#68727E;--accent:#E0A33E;--accentInk:#1A1206;
-  --ok:#35916A;--warn:#D9A13E;--danger:#D9544F;--night:#4C7FD1;
+  ${m3ColorVars(M3_SCHEMES.dark)};
 }
 /* Light, when the household picks it. */
 :root[data-theme="light"]{
   color-scheme:light;
-  --bg:#F4F2EC;--panel:#FFFFFF;--panel2:#F8F6F0;--rule:#E3DFD5;--ruleSoft:#EDEAE2;
-  --ink:#1A1C20;--muted:#54585E;--faint:#8A9098;--accent:#B07912;--accentInk:#FFFFFF;
-  --ok:#2E7D53;--warn:#B5820F;--danger:#C0392B;--night:#2F5D8C;
+  ${m3ColorVars(M3_SCHEMES.light)};
 }
 /* Auto: no explicit choice, and the device prefers light. */
 @media (prefers-color-scheme: light){
   :root:not([data-theme]){
     color-scheme:light;
-    --bg:#F4F2EC;--panel:#FFFFFF;--panel2:#F8F6F0;--rule:#E3DFD5;--ruleSoft:#EDEAE2;
-    --ink:#1A1C20;--muted:#54585E;--faint:#8A9098;--accent:#B07912;--accentInk:#FFFFFF;
-    --ok:#2E7D53;--warn:#B5820F;--danger:#C0392B;--night:#2F5D8C;
+    ${m3ColorVars(M3_SCHEMES.light)};
   }
 }
 *{box-sizing:border-box}
 *::selection{background:color-mix(in srgb,var(--accent) 32%,transparent)}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
-  font-size:14px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--md-sys-typescale-body-medium-font);
+  font-size:var(--md-sys-typescale-body-medium-size);
+  line-height:var(--md-sys-typescale-body-medium-line-height);
+  letter-spacing:var(--md-sys-typescale-body-medium-tracking);
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 
 /* ---- App shell: fixed sidebar, scrolling main ---------------------------- */
 body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
@@ -104,12 +240,14 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
   letter-spacing:.16em;text-transform:uppercase;margin-top:3px}
 .nav{flex:1;overflow-y:auto;padding:6px 12px 12px}
 .nav-group{margin-top:16px}
-.nav-group>span{display:block;padding:0 12px 6px;font-family:var(--cond);
-  font-weight:600;font-size:11px;letter-spacing:.22em;text-transform:uppercase;
-  color:var(--faint)}
+.nav-group>span{display:block;padding:0 12px 6px;
+  font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
+  letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
 .nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;margin:1px 0;
   border-radius:7px;border:1px solid transparent;color:var(--muted);
-  text-decoration:none;font-size:14px;font-weight:500;line-height:1.2}
+  text-decoration:none;font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);line-height:1.2}
 .nav-item svg{width:18px;height:18px;flex:0 0 auto;stroke-width:1.6}
 .nav-item:hover{color:var(--ink);background:var(--panel)}
 .nav-item.active{background:var(--accent);color:var(--accentInk);
@@ -148,10 +286,10 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
   justify-content:space-between;gap:16px;padding:22px 28px 16px;
   background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(6px);
   border-bottom:1px solid var(--rule)}
-.topbar .crumb{font-family:var(--cond);font-weight:600;font-size:11px;
+.topbar .crumb{font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
   letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin:0 0 5px}
-.topbar h1{font-family:var(--cond);font-weight:700;font-size:25px;line-height:.98;
-  letter-spacing:.01em;margin:0}
+.topbar h1{font:var(--md-sys-typescale-headline-small-weight) var(--md-sys-typescale-headline-small-size)/var(--md-sys-typescale-headline-small-line-height) var(--md-sys-typescale-headline-small-font);
+  letter-spacing:var(--md-sys-typescale-headline-small-tracking);margin:0}
 .content{padding:24px 28px 52px;max-width:1180px;width:100%}
 .content>form:first-child,.content>.card:first-child,.content>.note:first-child{margin-top:0}
 /* The page's lead line. Used to sit in the topbar as .sub; moved into the
@@ -191,28 +329,38 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
 .wizbox .card{margin:0}
 .wizbox>form,.wizbox>.error{margin-top:18px}
 
-/* ---- Typography ---------------------------------------------------------- */
-h1{font-family:var(--cond);font-weight:700;font-size:30px;line-height:1.02;
-  margin:0 0 4px}
+/* ---- Typography ----------------------------------------------------------
+ * Mapped onto the M3 scale: page titles are headline roles, section heads are
+ * title-large, card heads title-medium, controls label-large, kickers
+ * label-small. The uppercase kickers keep their wide tracking — the role
+ * tracking values assume mixed case, and wide-tracked uppercase is a brand
+ * device this admin shares with the wall. Component styles further down stay
+ * on --cond until the component phase moves them one by one. */
+h1{font:var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size)/var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-headline-medium-font);
+  letter-spacing:var(--md-sys-typescale-headline-medium-tracking);margin:0 0 4px}
 p{color:var(--muted);margin:.5rem 0;line-height:1.55}
 a.link{color:var(--accent);text-decoration:none;font-weight:600}
 a.link:hover{text-decoration:underline}
 /* Any inline arrow inside a link (list "Open →", "Manage →") stays small. */
 .link{display:inline-flex;align-items:center;gap:4px}
 .link svg{width:14px;height:14px;stroke-width:2;flex:0 0 auto}
-.kick{font-family:var(--cond);font-weight:600;font-size:11.5px;letter-spacing:.2em;
-  text-transform:uppercase;color:var(--faint)}
+.kick{font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
+  letter-spacing:.2em;text-transform:uppercase;color:var(--faint)}
 .code{font-family:var(--mono);font-size:1rem;letter-spacing:.08em;
   background:var(--panel2);padding:.15rem .4rem;border-radius:.25rem;color:var(--accent)}
 
 /* ---- Forms --------------------------------------------------------------- */
 form{margin:1.4rem 0 0}
-label{display:block;margin:1rem 0 .35rem;font-family:var(--cond);font-weight:600;
-  font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+label{display:block;margin:1rem 0 .35rem;
+  font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
+  text-transform:uppercase;color:var(--muted)}
+/* Fields are body-large: the one place the M3 spec names a role outright. */
 input[type=text],input[type=email],input[type=password],input[type=number],
 input[type=time],select,textarea{
   width:100%;padding:.62rem .7rem;border-radius:7px;border:1px solid var(--rule);
-  background:var(--panel2);color:var(--ink);font-family:inherit;font-size:14.5px}
+  background:var(--panel2);color:var(--ink);font-family:inherit;
+  font-size:var(--md-sys-typescale-body-large-size)}
 textarea{resize:vertical;line-height:1.45}
 input::placeholder,textarea::placeholder{color:var(--faint)}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;
@@ -232,8 +380,12 @@ input[type=file]{width:100%;padding:.55rem;border-radius:7px;border:1px solid va
 /* ---- Buttons ------------------------------------------------------------- */
 button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
   margin-top:1.4rem;padding:.62rem 1.1rem;border-radius:7px;border:1px solid var(--accent);
-  background:var(--accent);color:var(--accentInk);font-family:inherit;font-size:14px;
-  font-weight:700;cursor:pointer;line-height:1;text-decoration:none}
+  background:var(--accent);color:var(--accentInk);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  cursor:pointer;line-height:1;text-decoration:none}
 button:hover,.btn:hover{filter:brightness(1.06)}
 button svg,.btn svg{width:16px;height:16px;stroke-width:1.8}
 button.secondary,.btn-ghost{background:var(--panel);color:var(--ink);
@@ -259,14 +411,17 @@ button.secondary:hover,.btn-ghost:hover{filter:none;border-color:var(--faint)}
 .error{border-left:3px solid var(--danger);
   background:color-mix(in srgb,var(--danger) 9%,transparent);
   padding:.8rem 1rem;border-radius:0 6px 6px 0;margin:1rem 0}
-.error strong{color:#F0918D;display:block;font-size:14px;margin-bottom:2px}
+/* The error role itself, not a hand-picked red: the old #F0918D was tuned for
+ * the dark scheme only and sat illegibly on the light one. */
+.error strong{color:var(--danger);display:block;font-size:14px;margin-bottom:2px}
 .error span{color:var(--muted);font-size:13px;line-height:1.5}
 
 /* ---- Cards --------------------------------------------------------------- */
 .card{position:relative;background:var(--panel);border:1px solid var(--rule);
   border-radius:8px;padding:16px;margin:1rem 0}
-.card h2{font-family:var(--cond);font-weight:700;font-size:18px;margin:0;
-  display:flex;align-items:center;gap:.5rem;letter-spacing:.01em}
+.card h2{font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
+  letter-spacing:var(--md-sys-typescale-title-medium-tracking);margin:0;
+  display:flex;align-items:center;gap:.5rem}
 .card p{margin:.4rem 0}
 .card .host,.host{color:var(--faint);font-size:12.5px;font-family:var(--mono);
   margin:.35rem 0}
@@ -281,7 +436,8 @@ button.secondary:hover,.btn-ghost:hover{filter:none;border-color:var(--faint)}
 .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
 .row form{margin:.75rem 0 0}
 .row button{margin-top:0}
-h2.add{font-family:var(--cond);font-weight:700;font-size:20px;letter-spacing:.01em;
+h2.add{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
+  letter-spacing:var(--md-sys-typescale-title-large-tracking);
   margin:2rem 0 0;padding-top:1.5rem;border-top:1px solid var(--rule)}
 p.hint,.hint{font-size:12.5px;color:var(--faint);margin:.35rem 0 0;line-height:1.5}
 
@@ -295,8 +451,8 @@ p.hint,.hint{font-size:12.5px;color:var(--faint);margin:.35rem 0 0;line-height:1
 .sect:first-child{margin-top:0}
 .sect-head{display:flex;align-items:baseline;justify-content:space-between;
   gap:1rem;margin-bottom:14px}
-.sect-head h2{font-family:var(--cond);font-weight:700;font-size:20px;
-  letter-spacing:.01em;margin:0}
+.sect-head h2{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
+  letter-spacing:var(--md-sys-typescale-title-large-tracking);margin:0}
 
 /* ---- Stat cards ---------------------------------------------------------- */
 a.card{display:block;text-decoration:none;color:inherit;transition:border-color .12s}
@@ -319,7 +475,10 @@ a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 .status-card .frow .link{display:inline-flex;align-items:center;gap:4px}
 .status-card .frow .link svg{width:13px;height:13px;stroke-width:2}
 .today-card{display:flex;flex-direction:column}
-.today-big{font-family:var(--cond);font-weight:700;font-size:26px;margin:6px 0 2px}
+/* line-height guards: body's role line-height is a px length, which inherits
+ * as-is into any larger text that does not set its own. */
+.today-big{font-family:var(--cond);font-weight:700;font-size:26px;line-height:1.1;
+  margin:6px 0 2px}
 .stat .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent)}
 .stat .ic svg{width:19px;height:19px;stroke-width:1.6}
@@ -338,8 +497,9 @@ a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 .pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;
   border:1px solid var(--ok);opacity:.6;animation:pl 2.4s ease-out infinite}
 @keyframes pl{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.7);opacity:0}}
-.tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--cond);
-  font-weight:600;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
+.tag{display:inline-flex;align-items:center;gap:6px;
+  font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
+  letter-spacing:.08em;text-transform:uppercase;
   padding:3px 9px;border-radius:5px;border:1px solid var(--rule);color:var(--muted)}
 .tag-ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
 .tag-bad{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
@@ -395,7 +555,8 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 /* ---- Preview panel (calendar test, update-available, shift preview) ------ */
 .preview{position:relative;border:1px solid var(--rule);border-radius:8px;
   padding:16px 18px;margin:1rem 0;background:var(--panel2)}
-.preview h3{font-family:var(--cond);font-weight:700;font-size:16px;margin:0 0 .3rem}
+.preview h3{font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
+  letter-spacing:var(--md-sys-typescale-title-medium-tracking);margin:0 0 .3rem}
 .preview ul{list-style:none;margin:.6rem 0 0;padding:0}
 .preview li{display:flex;gap:.9rem;padding:.5rem 0;font-size:14px;
   border-top:1px solid var(--ruleSoft)}
