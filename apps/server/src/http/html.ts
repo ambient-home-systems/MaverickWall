@@ -240,9 +240,12 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
   letter-spacing:.16em;text-transform:uppercase;margin-top:3px}
 .nav{flex:1;overflow-y:auto;padding:6px 12px 12px}
 .nav-group{margin-top:16px}
+/* Drawer section headers: title-small mixed case, the M3 navigation-drawer
+ * treatment. */
 .nav-group>span{display:block;padding:0 12px 6px;
-  font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
-  letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+  font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
+  letter-spacing:var(--md-sys-typescale-title-small-tracking);
+  color:var(--md-sys-color-on-surface-variant)}
 .nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;margin:1px 0;
   border-radius:7px;border:1px solid transparent;color:var(--muted);
   text-decoration:none;font-size:var(--md-sys-typescale-label-large-size);
@@ -255,9 +258,12 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
 /* An installed module's nav entry: a generic module glyph (the row stores no
  * icon) and a small "off" badge when the household has disabled it. */
 .nav-item .nav-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nav-badge{flex:0 0 auto;font-family:var(--cond);font-weight:600;font-size:9.5px;
-  letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
-  border:1px solid var(--rule);border-radius:4px;padding:1px 5px}
+.nav-badge{flex:0 0 auto;
+  font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
+  letter-spacing:var(--md-sys-typescale-label-small-tracking);
+  color:var(--md-sys-color-on-surface-variant);
+  border:1px solid var(--rule);border-radius:var(--md-sys-shape-corner-extra-small);
+  padding:1px 6px}
 .nav-item.active .nav-badge{color:var(--accentInk);border-color:var(--accentInk)}
 .side-foot{border-top:1px solid var(--rule);padding:14px 16px;display:flex;
   flex-direction:column;gap:12px}
@@ -268,26 +274,27 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
 .side-foot .who b{font-size:13px;font-weight:600;display:block;line-height:1.2}
 .side-foot .who small{font-size:11px;color:var(--faint)}
 .side-foot form{margin:0;flex:0 0 auto}
-.signout{margin:0;padding:0;width:32px;height:32px;display:grid;place-items:center;
-  background:var(--panel);color:var(--muted);border:1px solid var(--rule);border-radius:7px;cursor:pointer}
-.signout:hover{filter:none;color:var(--ink);border-color:var(--faint)}
-.signout svg{width:17px;height:17px;stroke-width:1.7}
-/* Admin theme toggle. Per-browser; applied before paint by an inline script. */
-.themebar{display:flex;border:1px solid var(--rule);border-radius:7px;overflow:hidden}
-.themebtn{flex:1;margin:0;padding:.4rem;border:0;border-left:1px solid var(--rule);
-  background:var(--panel);color:var(--muted);font-family:inherit;font-size:12px;
-  font-weight:600;cursor:pointer}
-.themebtn:first-child{border-left:0}
-.themebtn:hover{filter:none;color:var(--ink)}
-.themebtn[data-active="true"]{background:var(--accent);color:var(--accentInk)}
+/* An M3 standard icon button: 40px visual, full corner, state layer, and a
+ * 48px pointer target from the shared ::after extension. */
+.signout{margin:0;padding:0;width:40px;height:40px;display:grid;place-items:center;
+  background:transparent;color:var(--md-sys-color-on-surface-variant);border:0;
+  border-radius:var(--md-sys-shape-corner-full);cursor:pointer}
+.signout:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.signout::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
+  transform:translate(-50%,-50%)}
+.signout svg{width:20px;height:20px;stroke-width:1.7}
+/* Admin theme toggle: styled with the segmented buttons further down. */
 
 .main{min-width:0;display:flex;flex-direction:column}
 .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:flex-end;
   justify-content:space-between;gap:16px;padding:22px 28px 16px;
   background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(6px);
   border-bottom:1px solid var(--rule)}
-.topbar .crumb{font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
-  letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin:0 0 5px}
+.topbar .crumb{font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
+  color:var(--md-sys-color-on-surface-variant);margin:0 0 5px}
 .topbar h1{font:var(--md-sys-typescale-headline-small-weight) var(--md-sys-typescale-headline-small-size)/var(--md-sys-typescale-headline-small-line-height) var(--md-sys-typescale-headline-small-font);
   letter-spacing:var(--md-sys-typescale-headline-small-tracking);margin:0}
 .content{padding:24px 28px 52px;max-width:1180px;width:100%}
@@ -321,9 +328,10 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
 .steps .step{flex:1;text-align:center}
 .steps .step .bar{height:4px;border-radius:2px;background:var(--rule)}
 .steps .step.done .bar,.steps .step.on .bar{background:var(--accent)}
-.steps .step span{display:block;margin-top:8px;font-family:var(--cond);
-  font-weight:600;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--faint)}
+.steps .step span{display:block;margin-top:8px;
+  font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
+  letter-spacing:var(--md-sys-typescale-label-small-tracking);
+  color:var(--md-sys-color-on-surface-variant)}
 .steps .step.on span{color:var(--accent)}
 .steps .step.done span{color:var(--muted)}
 .wizbox .card{margin:0}
@@ -331,11 +339,13 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
 
 /* ---- Typography ----------------------------------------------------------
  * Mapped onto the M3 scale: page titles are headline roles, section heads are
- * title-large, card heads title-medium, controls label-large, kickers
- * label-small. The uppercase kickers keep their wide tracking — the role
- * tracking values assume mixed case, and wide-tracked uppercase is a brand
- * device this admin shares with the wall. Component styles further down stay
- * on --cond until the component phase moves them one by one. */
+ * title-large, card heads title-medium, controls label-large, kickers the
+ * label roles. The uppercase kicker treatment is retired — the foundations
+ * pass kept it as a brand device, and the component pass's fidelity decision
+ * (docs/m3-adoption-prompts.md, kept outside the repo like the design file)
+ * reversed that: kickers, labels and tags are mixed case on the roles' own
+ * tracking, the way an M3 application writes them. Component styles further
+ * down stay on --cond until a later pass moves them one by one. */
 h1{font:var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size)/var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-headline-medium-font);
   letter-spacing:var(--md-sys-typescale-headline-medium-tracking);margin:0 0 4px}
 p{color:var(--muted);margin:.5rem 0;line-height:1.55}
@@ -344,68 +354,304 @@ a.link:hover{text-decoration:underline}
 /* Any inline arrow inside a link (list "Open →", "Manage →") stays small. */
 .link{display:inline-flex;align-items:center;gap:4px}
 .link svg{width:14px;height:14px;stroke-width:2;flex:0 0 auto}
-.kick{font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
-  letter-spacing:.2em;text-transform:uppercase;color:var(--faint)}
+.kick{font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
+  color:var(--md-sys-color-on-surface-variant)}
 .code{font-family:var(--mono);font-size:1rem;letter-spacing:.08em;
   background:var(--panel2);padding:.15rem .4rem;border-radius:.25rem;color:var(--accent)}
 
 /* ---- Forms --------------------------------------------------------------- */
 form{margin:1.4rem 0 0}
+/* Bare labels outside the .field system (bundle-built rows, specialist
+ * controls). Mixed case: the uppercase kicker treatment is retired. */
 label{display:block;margin:1rem 0 .35rem;
   font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
-  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
-  text-transform:uppercase;color:var(--muted)}
-/* Fields are body-large: the one place the M3 spec names a role outright. */
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);color:var(--muted)}
+/* The generic input skin stays for inputs the display bundle builds at
+ * runtime (.hep-search, the layout editor's controls); everything
+ * server-rendered sits inside a .field below, which overrides this. Fields
+ * are body-large: the one place the M3 spec names a role outright. */
 input[type=text],input[type=email],input[type=password],input[type=number],
 input[type=time],select,textarea{
-  width:100%;padding:.62rem .7rem;border-radius:7px;border:1px solid var(--rule);
-  background:var(--panel2);color:var(--ink);font-family:inherit;
+  width:100%;padding:.62rem .7rem;border-radius:var(--md-sys-shape-corner-extra-small);
+  border:1px solid var(--md-sys-color-outline);
+  background:transparent;color:var(--md-sys-color-on-surface);font-family:inherit;
   font-size:var(--md-sys-typescale-body-large-size)}
 textarea{resize:vertical;line-height:1.45}
-input::placeholder,textarea::placeholder{color:var(--faint)}
-input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;
-  border-color:transparent}
-input[type=color]{width:100%;height:2.6rem;padding:.2rem;border-radius:7px;
-  border:1px solid var(--rule);background:var(--panel2)}
-input[type=file]{width:100%;padding:.55rem;border-radius:7px;border:1px solid var(--rule);
-  background:var(--panel2);color:var(--muted);font-size:.95rem}
-.checks{margin-top:1rem}
-.checks label{display:flex;gap:.55rem;align-items:center;margin:.55rem 0;
-  font-family:var(--sans);font-weight:400;font-size:14px;letter-spacing:0;
-  text-transform:none;color:var(--muted);cursor:pointer}
-.checks input{width:17px;height:17px;accent-color:var(--accent)}
-.row-fields{display:flex;gap:1rem;flex-wrap:wrap}
-.row-fields span{flex:1 1 12rem}
+input::placeholder,textarea::placeholder{color:var(--md-sys-color-on-surface-variant)}
+input[type=color]{width:100%;height:2.6rem;padding:.2rem;
+  border-radius:var(--md-sys-shape-corner-extra-small);
+  border:1px solid var(--md-sys-color-outline);background:transparent}
+input[type=file]{width:100%;padding:.55rem;border-radius:var(--md-sys-shape-corner-extra-small);
+  border:1px solid var(--md-sys-color-outline);background:transparent;
+  color:var(--md-sys-color-on-surface-variant);font-size:.95rem}
 
-/* ---- Buttons ------------------------------------------------------------- */
-button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  margin-top:1.4rem;padding:.62rem 1.1rem;border-radius:7px;border:1px solid var(--accent);
-  background:var(--accent);color:var(--accentInk);
+/* ---- Text fields: the M3 outlined text field, CSS only --------------------
+ * Anatomy: a 56px transparent container, extra-small corner, and an outline
+ * drawn as three segments (start cap / notch / end run) so the floating label
+ * can open a real gap in the border. No background masking — masking needs
+ * the label to know what ground it sits on, and these fields sit on cards,
+ * insets and the wizard alike. The label rests centred over the input and
+ * floats to the notch on focus or whenever the input holds a value — inputs
+ * get placeholder=" " so :placeholder-shown distinguishes empty from filled,
+ * which means a server-prefilled edit form renders floated with no script.
+ * Controls that always render content (select, time, number, color, file,
+ * textarea) carry .field-static and keep the label floated permanently.
+ * Focus is the spec's treatment for fields — the outline thickening to 2px
+ * primary — so the shared focus ring below stands down inside a .field. */
+.field{position:relative;display:block;margin:1.1rem 0 0;color:var(--md-sys-color-on-surface)}
+.field .field-input{width:100%;height:56px;padding:0 16px;border:0;background:transparent;
+  border-radius:var(--md-sys-shape-corner-extra-small);
+  color:var(--md-sys-color-on-surface);caret-color:var(--md-sys-color-primary);
+  font-family:var(--md-sys-typescale-body-large-font);
+  font-size:var(--md-sys-typescale-body-large-size);
+  letter-spacing:var(--md-sys-typescale-body-large-tracking)}
+.field .field-input:focus,.field .field-input:focus-visible{outline:none}
+/* A real placeholder only shows once the label has floated away (on focus);
+ * at rest the label occupies that spot. Static fields float permanently, so
+ * theirs may show. */
+.field:not(.field-static) .field-input:not(:focus)::placeholder{color:transparent}
+/* font-style:normal because the segments are <i> elements (the .cm corner
+ * marks' precedent) and the label must not inherit their italic. */
+.field-outline{position:absolute;inset:0;display:flex;pointer-events:none;
+  font-style:normal;color:var(--md-sys-color-outline);--fo-w:1px}
+.fo-start{width:12px;flex:0 0 auto;
+  border:var(--fo-w) solid currentColor;border-right:0;
+  border-radius:var(--md-sys-shape-corner-extra-small) 0 0 var(--md-sys-shape-corner-extra-small)}
+/* flex-start, not center: the outline is as tall as the control, and a
+ * textarea is far taller than 56px — centring put the floated label in the
+ * middle of the text. The label positions itself from the top instead. */
+.fo-notch{display:flex;align-items:flex-start;padding:0 4px;
+  border-top:var(--fo-w) solid currentColor;border-bottom:var(--fo-w) solid currentColor}
+.fo-end{flex:1;border:var(--fo-w) solid currentColor;border-left:0;
+  border-radius:0 var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small) 0}
+/* font-style set explicitly: the notch is an <i>, whose UA italic is applied
+ * on the element itself, so a reset on the wrapper never reaches this span. */
+.field-label{color:var(--md-sys-color-on-surface-variant);white-space:nowrap;line-height:1;
+  font-style:normal;
+  font-family:var(--md-sys-typescale-body-large-font);
+  font-size:var(--md-sys-typescale-body-large-size);
+  letter-spacing:var(--md-sys-typescale-body-large-tracking);
+  /* Rest: centred on the first line (28px down — half the 56px box, which is
+   * also the first text line of a taller control). Float moves the centre to
+   * the border itself. The % is the label's own height, so both hold at
+   * either label size. */
+  transform:translateY(calc(28px - 50%));
+  transition:font-size .12s ease,transform .12s ease}
+/* Hover darkens the outline; any focus turns it primary and 2px. */
+.field:hover .field-outline{color:var(--md-sys-color-on-surface)}
+.field .field-input:focus ~ .field-outline{color:var(--md-sys-color-primary);--fo-w:2px}
+.field .field-input:focus ~ .field-outline .field-label{color:var(--md-sys-color-primary)}
+/* Floated: the notch's top border opens and the label moves onto the line. */
+.field .field-input:focus ~ .field-outline .fo-notch,
+.field .field-input:not(:placeholder-shown) ~ .field-outline .fo-notch,
+.field.field-static .field-outline .fo-notch{border-top-color:transparent}
+.field .field-input:focus ~ .field-outline .field-label,
+.field .field-input:not(:placeholder-shown) ~ .field-outline .field-label,
+.field.field-static .field-outline .field-label{
+  font-size:var(--md-sys-typescale-body-small-size);transform:translateY(-50%)}
+/* The error variant, for pages that re-render with a field at fault. */
+.field.field-error .field-outline,
+.field.field-error .field-input:focus ~ .field-outline{color:var(--md-sys-color-error)}
+.field.field-error .field-label,
+.field.field-error .field-input:focus ~ .field-outline .field-label{color:var(--md-sys-color-error)}
+/* Selects hide the native chrome and get a drawn caret in the wrapper. */
+.field select.field-input{appearance:none;-webkit-appearance:none;padding-right:44px}
+.field-select::after{content:"";position:absolute;right:18px;top:50%;width:8px;height:8px;
+  border-right:2px solid var(--md-sys-color-on-surface-variant);
+  border-bottom:2px solid var(--md-sys-color-on-surface-variant);
+  transform:translateY(-70%) rotate(45deg);pointer-events:none}
+.field textarea.field-input{height:auto;min-height:56px;padding:16px;resize:vertical;
+  line-height:var(--md-sys-typescale-body-large-line-height)}
+.field input[type=color].field-input{padding:12px 16px}
+.field input[type=file].field-input{padding:16px;height:auto;min-height:56px;
+  color:var(--md-sys-color-on-surface-variant)}
+/* Supporting text, 16px in from the field edge like the spec's. */
+.field-hint{margin:4px 0 0;padding:0 16px;color:var(--md-sys-color-on-surface-variant);
+  font-size:var(--md-sys-typescale-body-small-size);
+  line-height:var(--md-sys-typescale-body-small-line-height)}
+.field-hint.is-error{color:var(--md-sys-color-error)}
+/* A field with a "?" riding it as a trailing icon (left of a select's caret);
+ * its popover opens under the field. */
+.field-with-help{position:relative}
+/* 1.1rem is the .field's own top margin; 28px is half the 56px box. */
+.field-with-help .fieldhelp{position:absolute;right:40px;top:calc(1.1rem + 28px);
+  transform:translateY(-50%)}
+.field-with-help .helppop{top:calc(1.1rem + 58px);left:auto;right:0}
+
+/* ---- Checkboxes and switches, on the native input, no script --------------
+ * appearance:none leaves the real checkbox in the form; only the paint is
+ * ours. The 18px box grows its pointer target to 48px with a pseudo-element
+ * that also carries the hover state layer, drawn as a radial so the visible
+ * circle stays 40px inside the 48px square target. */
+.checks{margin-top:1rem}
+.checks label{display:flex;gap:.75rem;align-items:center;margin:0;min-height:48px;
+  font-family:var(--sans);font-weight:400;font-size:14px;letter-spacing:0;
+  color:var(--md-sys-color-on-surface);cursor:pointer}
+.checks input[type=checkbox],.hep-row input[type=checkbox],
+.le-toggle input[type=checkbox],.le-cfg-check input[type=checkbox]{
+  appearance:none;-webkit-appearance:none;position:relative;flex:0 0 auto;margin:0;
+  width:18px;height:18px;border-radius:2px;cursor:pointer;background:transparent;
+  border:2px solid var(--md-sys-color-on-surface-variant)}
+.checks input[type=checkbox]::before,.hep-row input[type=checkbox]::before,
+.le-toggle input[type=checkbox]::before,.le-cfg-check input[type=checkbox]::before{
+  content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
+  transform:translate(-50%,-50%)}
+.checks input[type=checkbox]:hover::before,.hep-row input[type=checkbox]:hover::before,
+.le-toggle input[type=checkbox]:hover::before,.le-cfg-check input[type=checkbox]:hover::before{
+  background:radial-gradient(circle 20px at 50% 50%,color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent) 0 20px,
+  transparent 20px)}
+.checks input[type=checkbox]:checked,.hep-row input[type=checkbox]:checked,
+.le-toggle input[type=checkbox]:checked,.le-cfg-check input[type=checkbox]:checked{
+  background:var(--md-sys-color-primary);border-color:var(--md-sys-color-primary)}
+.checks input[type=checkbox]:checked:hover::before,.hep-row input[type=checkbox]:checked:hover::before,
+.le-toggle input[type=checkbox]:checked:hover::before,.le-cfg-check input[type=checkbox]:checked:hover::before{
+  background:radial-gradient(circle 20px at 50% 50%,color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent) 0 20px,
+  transparent 20px)}
+/* The check glyph: a drawn tick, on-primary, centred in the 14px inner box. */
+.checks input[type=checkbox]:checked::after,.hep-row input[type=checkbox]:checked::after,
+.le-toggle input[type=checkbox]:checked::after,.le-cfg-check input[type=checkbox]:checked::after{
+  content:"";position:absolute;left:3px;top:6px;width:8px;height:4px;
+  border-left:2px solid var(--md-sys-color-on-primary);
+  border-bottom:2px solid var(--md-sys-color-on-primary);
+  transform:rotate(-45deg);transform-origin:center}
+
+/* An M3 switch where one checkbox means one on/off setting. Still an
+ * input[type=checkbox] with its original name, so form handling never knows;
+ * the input itself is the 52x32 track and its ::before is the thumb, growing
+ * from 16px (outline colour) to 24px (on-primary) when checked. The row is
+ * 48px tall, which is the pointer target. */
+.switch{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  min-height:48px;margin:.35rem 0;cursor:pointer;
+  font:400 14px/20px var(--md-sys-typescale-body-medium-font);
+  letter-spacing:var(--md-sys-typescale-body-medium-tracking);text-transform:none}
+.switch .switch-text{min-width:0}
+.switch .switch-text b{display:block;font-weight:500;font-size:14px;
+  color:var(--md-sys-color-on-surface)}
+.switch .switch-text small{display:block;font-size:12px;line-height:1.4;
+  color:var(--md-sys-color-on-surface-variant)}
+.switch input[type=checkbox]{appearance:none;-webkit-appearance:none;position:relative;
+  flex:0 0 auto;margin:0;width:52px;height:32px;cursor:pointer;
+  border-radius:var(--md-sys-shape-corner-full);
+  background:var(--md-sys-color-surface-container-highest);
+  border:2px solid var(--md-sys-color-outline);
+  transition:background .15s ease,border-color .15s ease}
+.switch input[type=checkbox]::before{content:"";position:absolute;top:50%;left:6px;
+  width:16px;height:16px;border-radius:50%;background:var(--md-sys-color-outline);
+  transform:translateY(-50%);
+  transition:left .15s ease,width .15s ease,height .15s ease,background .15s ease}
+.switch input[type=checkbox]:checked{background:var(--md-sys-color-primary);
+  border-color:var(--md-sys-color-primary)}
+.switch input[type=checkbox]:checked::before{left:22px;width:24px;height:24px;
+  background:var(--md-sys-color-on-primary)}
+.switch input[type=checkbox]:active::before{width:22px;height:22px}
+.switch input[type=checkbox]:checked:active::before{width:28px;height:28px;left:20px}
+
+.row-fields{display:flex;gap:1rem;flex-wrap:wrap}
+.row-fields span,.row-fields .field{flex:1 1 12rem}
+.row-fields .field{margin-top:1.1rem}
+
+/* ---- Buttons: M3 common buttons -------------------------------------------
+ * The default is a filled button (40px container, full corner, label-large,
+ * 24px side padding, 16px beside a leading icon); .secondary/.btn-ghost are
+ * outlined, .tonal/.btn-tonal is filled tonal for a secondary action that
+ * deserves more weight, .btn-danger is outlined on the error role. Hover and
+ * pressed are M3 state layers — the label colour laid over the container at
+ * the state opacities — never filter:brightness. Every compact variant is the
+ * same anatomy at 32px density, and every control smaller than 48px extends
+ * its pointer target with an ::after pseudo, never its visual. */
+button,.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  gap:8px;margin-top:1.4rem;height:40px;padding:0 24px;
+  border-radius:var(--md-sys-shape-corner-full);border:1px solid transparent;
+  background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);
   font-family:var(--md-sys-typescale-label-large-font);
   font-size:var(--md-sys-typescale-label-large-size);
   font-weight:var(--md-sys-typescale-label-large-weight);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);
-  cursor:pointer;line-height:1;text-decoration:none}
-button:hover,.btn:hover{filter:brightness(1.06)}
-button svg,.btn svg{width:16px;height:16px;stroke-width:1.8}
-button.secondary,.btn-ghost{background:var(--panel);color:var(--ink);
-  border-color:var(--rule);font-weight:600}
-button.secondary:hover,.btn-ghost:hover{filter:none;border-color:var(--faint)}
-.btn-danger{background:var(--panel);color:var(--danger);
-  border-color:color-mix(in srgb,var(--danger) 40%,var(--rule))}
-.btn-danger:hover{filter:none;background:color-mix(in srgb,var(--danger) 12%,transparent);
-  border-color:var(--danger)}
-.btn-sm{margin-top:0;padding:.42rem .75rem;font-size:12.5px}
+  cursor:pointer;line-height:1;text-decoration:none;white-space:nowrap;user-select:none}
+/* The pointer target, stretched to at least 48px in both axes for every
+ * button — a 40px container is the spec's visual, not its target. The pseudo
+ * is absolute, so flex layouts inside the button never see it; variants with
+ * their own ::after (segments, icon buttons) override this one. */
+button::after,.btn::after{content:"";position:absolute;left:50%;top:50%;
+  width:max(100%,48px);height:max(100%,48px);transform:translate(-50%,-50%)}
+button:hover,.btn:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-primary) var(--md-sys-state-hover-state-layer-opacity),
+  var(--md-sys-color-primary))}
+button:active,.btn:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-primary) var(--md-sys-state-pressed-state-layer-opacity),
+  var(--md-sys-color-primary))}
+button:has(svg),.btn:has(svg){padding-left:16px}
+button svg,.btn svg{width:18px;height:18px;stroke-width:1.8}
+button.secondary,.btn-ghost{background:transparent;color:var(--md-sys-color-primary);
+  border-color:var(--md-sys-color-outline)}
+button.secondary:hover,.btn-ghost:hover{background:color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+button.secondary:active,.btn-ghost:active{background:color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
+button.tonal,.btn-tonal{background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container);border-color:transparent}
+button.tonal:hover,.btn-tonal:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-secondary-container) var(--md-sys-state-hover-state-layer-opacity),
+  var(--md-sys-color-secondary-container))}
+button.tonal:active,.btn-tonal:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-secondary-container) var(--md-sys-state-pressed-state-layer-opacity),
+  var(--md-sys-color-secondary-container))}
+.btn-danger{background:transparent;color:var(--md-sys-color-error);
+  border-color:var(--md-sys-color-outline)}
+.btn-danger:hover{background:color-mix(in srgb,
+  var(--md-sys-color-error) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.btn-danger:active{background:color-mix(in srgb,
+  var(--md-sys-color-error) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
+/* Compact density: the same button at a 32px container, with the pointer
+ * target stretched back to 48px by a pseudo-element. */
+.btn-sm{margin-top:0;height:32px;padding:0 16px}
 .link-btn{margin-top:0}
-/* A scriptless segmented control (Store alerts): buttons in one form, the
- * current one filled. Each posts its own value, so there is no separate Save. */
-.seg{display:inline-flex;margin:0;border:1px solid var(--rule);border-radius:7px;overflow:hidden}
-.seg button{margin:0;border:0;border-left:1px solid var(--rule);border-radius:0;
-  background:var(--panel2);color:var(--muted);font-family:var(--cond);font-weight:600;
-  font-size:12.5px;letter-spacing:.02em;padding:.42rem .8rem}
-.seg button:first-child{border-left:0}
-.seg button:hover{filter:none;color:var(--ink)}
-.seg button.on{background:var(--accent);color:var(--accentInk)}
+/* ---- Segmented buttons: .seg (Store alerts), .le-orient, .themebar --------
+ * One outlined container, full corner on the outer ends, 40px height; the
+ * selected segment is secondary-container with a leading check drawn in CSS.
+ * No overflow:hidden — it would clip the focus ring — so the end radii live on
+ * the end segments themselves. */
+.seg,.le-orient,.themebar{display:inline-flex;margin:0;border:1px solid var(--md-sys-color-outline);
+  border-radius:var(--md-sys-shape-corner-full);background:transparent;overflow:visible}
+.seg button,.le-orient-btn,.themebtn{position:relative;flex:1;margin:0;height:38px;
+  padding:0 16px;border:0;border-left:1px solid var(--md-sys-color-outline);border-radius:0;
+  background:transparent;color:var(--md-sys-color-on-surface);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.seg button:first-child,.le-orient-btn:first-child,.themebtn:first-child{border-left:0;
+  border-radius:var(--md-sys-shape-corner-full) 0 0 var(--md-sys-shape-corner-full)}
+.seg button:last-child,.le-orient-btn:last-child,.themebtn:last-child{
+  border-radius:0 var(--md-sys-shape-corner-full) var(--md-sys-shape-corner-full) 0}
+.seg button:hover,.le-orient-btn:hover,.themebtn:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.seg button:active,.le-orient-btn:active,.themebtn:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
+.seg button.on,.le-orient-btn.is-on,.themebtn[data-active="true"]{
+  background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container)}
+.seg button.on:hover,.le-orient-btn.is-on:hover,.themebtn[data-active="true"]:hover{
+  background:color-mix(in srgb,
+  var(--md-sys-color-on-secondary-container) var(--md-sys-state-hover-state-layer-opacity),
+  var(--md-sys-color-secondary-container))}
+/* The selected segment's leading check, drawn rather than fetched: a small box
+ * with two borders, rotated into a tick. */
+.seg button.on::before,.le-orient-btn.is-on::before,.themebtn[data-active="true"]::before{
+  content:"";width:9px;height:5px;margin-top:-3px;flex:0 0 auto;
+  border-left:2px solid currentColor;border-bottom:2px solid currentColor;
+  transform:rotate(-45deg)}
+/* The sidebar's theme toggle fills its row, and its segments carry short
+ * labels in a tight column, so they trade the 16px padding for 10px. */
+.themebar{display:flex}
+.themebtn{padding:0 10px}
+.seg button::after,.le-orient-btn::after,.themebtn::after{content:"";position:absolute;
+  left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
 
 /* ---- Errors and disclaimers (the .error box) ----------------------------- */
 .error{border-left:3px solid var(--danger);
@@ -499,8 +745,9 @@ a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 @keyframes pl{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.7);opacity:0}}
 .tag{display:inline-flex;align-items:center;gap:6px;
   font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
-  letter-spacing:.08em;text-transform:uppercase;
-  padding:3px 9px;border-radius:5px;border:1px solid var(--rule);color:var(--muted)}
+  letter-spacing:var(--md-sys-typescale-label-small-tracking);
+  padding:3px 10px;border-radius:var(--md-sys-shape-corner-small);
+  border:1px solid var(--rule);color:var(--muted)}
 .tag-ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
 .tag-bad{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
 .tag-accent{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
@@ -526,8 +773,10 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .theme-builder{display:grid;grid-template-columns:1fr 320px;gap:28px;align-items:start;margin-top:.5rem}
 @media(max-width:820px){.theme-builder{grid-template-columns:1fr}}
 .tb-controls{min-width:0}
-.tb-controls>.tb-group{display:block;margin:1.6rem 0 .2rem;font-family:var(--cond);
-  font-weight:600;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.tb-controls>.tb-group{display:block;margin:1.6rem 0 .2rem;
+  font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
+  letter-spacing:var(--md-sys-typescale-title-small-tracking);
+  color:var(--md-sys-color-on-surface-variant)}
 .tf-row{display:flex;align-items:center;gap:12px;margin:9px 0}
 .tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:2px;margin:0}
 .tf-row b{display:block;font-size:14px;font-weight:600}
@@ -598,22 +847,48 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .pv-unknown .pv-code{color:var(--faint)}
 
 /* ---- Wall switcher above the layout editor ------------------------------- */
+/* The wall switcher is a row of M3 filter chips: the current wall is the
+ * selected chip. Same anatomy as .hep-chip above. */
 .walls{display:flex;flex-wrap:wrap;gap:8px;margin:.4rem 0 1rem}
-.walls a{padding:7px 14px;border-radius:2rem;font-size:13px;font-weight:600;
-  text-decoration:none;color:var(--muted);background:var(--panel);border:1px solid var(--rule)}
-.walls a:hover{color:var(--ink);border-color:var(--faint)}
-.walls a.active{color:var(--accentInk);background:var(--accent);border-color:var(--accent)}
+.walls a{position:relative;height:32px;display:inline-flex;align-items:center;gap:8px;
+  padding:0 16px;border-radius:var(--md-sys-shape-corner-small);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  text-decoration:none;color:var(--md-sys-color-on-surface-variant);
+  background:transparent;border:1px solid var(--md-sys-color-outline)}
+.walls a::after{content:"";position:absolute;left:0;right:0;top:50%;height:48px;
+  transform:translateY(-50%)}
+.walls a:hover{color:var(--md-sys-color-on-surface);background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.walls a.active{color:var(--md-sys-color-on-secondary-container);
+  background:var(--md-sys-color-secondary-container);border-color:transparent}
+.walls a.active::before{content:"";width:9px;height:5px;margin-top:-3px;flex:0 0 auto;
+  border-left:2px solid currentColor;border-bottom:2px solid currentColor;
+  transform:rotate(-45deg)}
 
 /* ---- Layout editor (behaviour lives in the display bundle; this styles it) */
 /* position:relative so the Layers popover anchors here, never on <body>. */
 .le-toolbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 1rem}
 .le-tool-spacer{flex:1 1 auto}
-.le-tool-link,.le-tool-btn,.le-layers-btn{margin:0;padding:.42rem .7rem;background:var(--panel);
-  color:var(--muted);border:1px solid var(--rule);border-radius:7px;font-family:inherit;
-  font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;
+/* Toolbar tools are compact outlined buttons — the shared anatomy at 32px
+ * density, targets stretched back to 48px. */
+.le-tool-link,.le-tool-btn,.le-layers-btn{position:relative;margin:0;height:32px;
+  padding:0 16px;background:transparent;color:var(--md-sys-color-primary);
+  border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-full);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  cursor:pointer;text-decoration:none;display:inline-flex;
   align-items:center;gap:6px;line-height:1}
-.le-tool-link:hover,.le-tool-btn:hover,.le-layers-btn:hover{filter:none;color:var(--ink);border-color:var(--faint)}
-.le-layers-btn.is-on{background:var(--accent);color:var(--accentInk);border-color:var(--accent)}
+.le-tool-link::after,.le-tool-btn::after,.le-layers-btn::after{content:"";position:absolute;
+  left:50%;top:50%;width:max(100%,48px);height:48px;transform:translate(-50%,-50%)}
+.le-tool-link:hover,.le-tool-btn:hover,.le-layers-btn:hover{background:color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.le-layers-btn.is-on{background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container);border-color:transparent}
 .le-reset-form{margin:0}
 /* The Layers popover — anchored under its toolbar button (offsetParent is the
    toolbar), so it never floats over the settings pane. */
@@ -627,31 +902,34 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-layers-sub{font-size:12px;color:var(--faint);margin-top:2px}
 .le-layers-empty{padding:14px 16px;font-size:13px;color:var(--faint)}
 .le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
-.le-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:14px;
-  color:var(--muted);margin:0}
-.le-toggle input{width:17px;height:17px;accent-color:var(--accent)}
+.le-toggle{display:inline-flex;align-items:center;gap:.65rem;font-size:14px;
+  color:var(--md-sys-color-on-surface);margin:0}
 .le-aspect{width:auto;padding:.42rem .6rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
-/* Portrait | Landscape segmented control — which of the two canvases is edited. */
-.le-orient{display:inline-flex;border:1px solid var(--rule);border-radius:7px;overflow:hidden}
-.le-orient-btn{margin:0;padding:.42rem .8rem;background:var(--panel2);color:var(--muted);
-  border:0;border-radius:0;font-family:var(--cond);font-weight:600;font-size:13px;cursor:pointer}
-.le-orient-btn+.le-orient-btn{border-left:1px solid var(--rule)}
-.le-orient-btn.is-on{background:var(--accent);color:#0b0e11}
+/* Portrait | Landscape: styled with the segmented buttons above. */
 /* The palette sits inline in the toolbar (the display bundle builds it there),
    so it is a row of dashed add-chips rather than the mockup's side column. */
 .le-palette{display:flex;flex-wrap:wrap;gap:6px}
-.le-add{display:inline-flex;align-items:center;gap:6px;margin:0;padding:.42rem .7rem;
-  border:1px dashed var(--rule);border-radius:7px;background:none;color:var(--muted);
-  font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;text-align:left}
-.le-add:hover{border-color:var(--ok);color:var(--ink);filter:none}
-.le-add svg{width:16px;height:16px;stroke-width:1.6;color:var(--ok);flex:0 0 auto}
-/* The single "+ Add widget" button reads as the primary action, not a dashed
-   chip — it opens the add-widget modal below. */
-.le-add-primary{border-style:solid;border-color:var(--accent);color:var(--ink);
-  background:color-mix(in srgb,var(--accent) 12%,transparent);font-weight:700}
-.le-add-primary:hover{border-color:var(--accent);
-  background:color-mix(in srgb,var(--accent) 20%,transparent)}
+.le-add{position:relative;display:inline-flex;align-items:center;gap:6px;margin:0;
+  height:32px;padding:0 16px;border:1px solid var(--md-sys-color-outline);
+  border-radius:var(--md-sys-shape-corner-full);background:none;
+  color:var(--md-sys-color-primary);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);cursor:pointer;text-align:left}
+.le-add::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,48px);
+  height:48px;transform:translate(-50%,-50%)}
+.le-add:hover{background:color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.le-add svg{width:16px;height:16px;stroke-width:1.6;flex:0 0 auto}
+/* The single "+ Add widget" button reads as the primary action, not another
+   outlined chip — it opens the add-widget modal below, so it is filled. */
+.le-add-primary{border-color:transparent;color:var(--md-sys-color-on-primary);
+  background:var(--md-sys-color-primary)}
+.le-add-primary:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-primary) var(--md-sys-state-hover-state-layer-opacity),
+  var(--md-sys-color-primary))}
 /* The add-widget modal: a centred card of first-party widget types. */
 .le-modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;
   justify-content:center;padding:24px;background:rgba(0,0,0,.55)}
@@ -661,9 +939,14 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-modal-head{display:flex;align-items:center;justify-content:space-between;
   padding:16px 20px;border-bottom:1px solid var(--rule);font-family:var(--cond);
   font-weight:700;font-size:17px;color:var(--ink)}
-.le-modal-close{margin:0;padding:0 8px;background:none;border:0;color:var(--muted);
-  font-size:22px;line-height:1;cursor:pointer}
-.le-modal-close:hover{color:var(--ink)}
+.le-modal-close{position:relative;margin:0;padding:0;width:40px;height:40px;
+  display:grid;place-items:center;background:none;border:0;
+  border-radius:var(--md-sys-shape-corner-full);
+  color:var(--md-sys-color-on-surface-variant);font-size:22px;line-height:1;cursor:pointer}
+.le-modal-close::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
+  transform:translate(-50%,-50%)}
+.le-modal-close:hover{color:var(--md-sys-color-on-surface);background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent)}
 .le-modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px}
 @media(max-width:520px){.le-modal-grid{grid-template-columns:repeat(2,1fr)}}
 .le-modal-item{display:flex;align-items:center;justify-content:center;text-align:center;
@@ -672,13 +955,15 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   font-size:14px;cursor:pointer}
 .le-modal-item:hover{border-color:var(--accent);
   background:color-mix(in srgb,var(--accent) 10%,transparent)}
-.le-delete{margin-top:0;padding:.42rem .75rem;background:var(--panel);color:var(--danger);
-  border:1px solid color-mix(in srgb,var(--danger) 40%,var(--rule));border-radius:7px;
-  cursor:pointer;font-size:12.5px}
-.le-delete:hover{filter:none;background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.le-delete{margin-top:0;height:32px;padding:0 16px;background:transparent;
+  color:var(--md-sys-color-error);border:1px solid var(--md-sys-color-outline);
+  border-radius:var(--md-sys-shape-corner-full);cursor:pointer}
+.le-delete:hover{background:color-mix(in srgb,
+  var(--md-sys-color-error) var(--md-sys-state-hover-state-layer-opacity),transparent)}
 .le-delete:disabled{opacity:.4;cursor:default}
-.le-save{margin-top:0;padding:.45rem .9rem;background:var(--accent);color:var(--accentInk);
-  border:1px solid var(--accent);border-radius:7px;cursor:pointer;font-weight:700;font-size:12.5px}
+.le-save{margin-top:0;height:32px;padding:0 16px;background:var(--md-sys-color-primary);
+  color:var(--md-sys-color-on-primary);border:1px solid transparent;
+  border-radius:var(--md-sys-shape-corner-full);cursor:pointer}
 .le-status{font-size:12.5px;font-family:var(--mono);color:var(--faint)}
 .le-status.is-dirty{color:var(--accent)}
 .le-status.is-ok{color:var(--ok)}
@@ -713,8 +998,10 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
 /* The canvas background control — none / solid / gradient, per canvas. */
 .le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 0}
-.le-bg-label{font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--muted)}
+.le-bg-label{
+  font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
+  color:var(--md-sys-color-on-surface-variant)}
 .le-bg select{width:auto;padding:.42rem .6rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
 .le-bg input[type=color]{width:36px;height:32px;padding:2px;border:1px solid var(--rule);
@@ -751,46 +1038,81 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   padding:16px 18px;background:var(--panel)}
 .le-config>.kick{margin-bottom:12px}
 .le-cfg-field{display:block;margin:12px 0 0}
-.le-cfg-field>span{display:block;font-family:var(--cond);font-weight:600;font-size:12px;
-  letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.le-cfg-field>span{display:block;
+  font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
+  color:var(--md-sys-color-on-surface-variant);margin-bottom:6px}
 .le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
 .le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;
   border:1px solid var(--rule);border-radius:8px;background:var(--panel2);color:var(--ink);
   resize:vertical;line-height:1.4}
 .le-cfg-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:2px}
-.le-cfg-check{display:inline-flex;align-items:center;gap:.45rem;font-size:14px;
-  color:var(--muted);cursor:pointer;margin:0}
-.le-cfg-check input{width:16px;height:16px;accent-color:var(--accent);margin:0}
+.le-cfg-check{display:inline-flex;align-items:center;gap:.55rem;font-size:14px;
+  color:var(--md-sys-color-on-surface);cursor:pointer;margin:0}
 .le-cfg-btns{display:flex;gap:8px}
-.le-cfg-btn{margin:0;padding:.42rem .75rem;border:1px solid var(--rule);border-radius:7px;
-  background:var(--panel2);color:var(--ink);font-family:inherit;font-size:12.5px;
-  font-weight:600;cursor:pointer}
-.le-cfg-btn:hover{filter:none;border-color:var(--faint)}
+.le-cfg-btn{position:relative;margin:0;height:32px;padding:0 16px;
+  border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-full);
+  background:transparent;color:var(--md-sys-color-primary);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);cursor:pointer}
+.le-cfg-btn::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,48px);
+  height:48px;transform:translate(-50%,-50%)}
+.le-cfg-btn:hover{background:color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
 
 /* ---- Home Assistant entity picker (first-party JS) ----------------------- */
 #ha-entity-picker{margin-top:.6rem}
 .hep-search{width:100%;margin-bottom:12px}
 .hep-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-.hep-chip{margin:0;padding:.34rem .7rem;border-radius:2rem;border:1px solid var(--rule);
-  background:var(--panel);color:var(--muted);font-family:inherit;font-size:12.5px;
-  font-weight:600;cursor:pointer}
-.hep-chip:hover{filter:none;color:var(--ink);border-color:var(--faint)}
-.hep-chip.active{background:var(--accent);color:var(--accentInk);border-color:var(--accent)}
+/* M3 filter chips: 32px, small corner, outlined at rest; selected fills with
+ * secondary-container and gains a drawn leading check. The pointer target is
+ * stretched to 48px tall by a pseudo-element. */
+.hep-chip{position:relative;margin:0;height:32px;display:inline-flex;align-items:center;
+  gap:8px;padding:0 16px;border-radius:var(--md-sys-shape-corner-small);
+  border:1px solid var(--md-sys-color-outline);
+  background:transparent;color:var(--md-sys-color-on-surface-variant);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);cursor:pointer}
+.hep-chip::after{content:"";position:absolute;left:0;right:0;top:50%;height:48px;
+  transform:translateY(-50%)}
+.hep-chip:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.hep-chip.active{background:var(--md-sys-color-secondary-container);border-color:transparent;
+  color:var(--md-sys-color-on-secondary-container)}
+.hep-chip.active::before{content:"";width:9px;height:5px;margin-top:-3px;flex:0 0 auto;
+  border-left:2px solid currentColor;border-bottom:2px solid currentColor;
+  transform:rotate(-45deg)}
+.hep-chip.active:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-secondary-container) var(--md-sys-state-hover-state-layer-opacity),
+  var(--md-sys-color-secondary-container))}
 .hep-selected{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:1.4rem}
-.hep-pill{display:inline-flex;align-items:center;gap:.4rem;padding:.25rem .3rem .25rem .6rem;
-  border-radius:2rem;background:color-mix(in srgb,var(--accent) 16%,transparent);
-  border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);color:var(--ink);font-size:13px}
-.hep-pill-x{margin:0;padding:0;width:18px;height:18px;display:grid;place-items:center;
-  border:0;border-radius:50%;background:color-mix(in srgb,var(--accent) 30%,transparent);
-  color:var(--ink);cursor:pointer;font-size:14px;line-height:1}
-.hep-pill-x:hover{filter:none;background:var(--accent);color:var(--accentInk)}
+/* M3 input chips: outlined, 32px, a trailing remove icon button whose pointer
+ * target is 48px even though the visual glyph is 18px. */
+.hep-pill{display:inline-flex;align-items:center;gap:.4rem;height:32px;
+  padding:0 6px 0 12px;border-radius:var(--md-sys-shape-corner-small);
+  background:transparent;border:1px solid var(--md-sys-color-outline);
+  color:var(--md-sys-color-on-surface);font-size:var(--md-sys-typescale-label-large-size)}
+.hep-pill-x{position:relative;margin:0;padding:0;width:18px;height:18px;
+  display:grid;place-items:center;border:0;border-radius:var(--md-sys-shape-corner-full);
+  background:transparent;color:var(--md-sys-color-on-surface-variant);
+  cursor:pointer;font-size:14px;line-height:1}
+.hep-pill-x::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
+  transform:translate(-50%,-50%)}
+.hep-pill-x:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
 .hep-list{border:1px solid var(--rule);border-radius:8px;background:var(--panel2);
   max-height:22rem;overflow-y:auto}
 .hep-row{display:flex;align-items:center;gap:12px;padding:.6rem .8rem;cursor:pointer;
   border-top:1px solid var(--ruleSoft);margin:0}
 .hep-row:first-child{border-top:0}
 .hep-row:hover{background:var(--panel)}
-.hep-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);margin:0;flex:0 0 auto}
+/* The row's checkbox takes the shared M3 checkbox styling above. */
 .hep-main{flex:1;min-width:0}
 .hep-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hep-id{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap;
@@ -799,16 +1121,20 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   max-width:10rem;overflow:hidden;text-overflow:ellipsis;text-align:right}
 .hep-footer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin-top:14px}
 .hep-field{display:flex;flex-direction:column;gap:6px;margin:0}
-.hep-field>span{font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.05em;
-  text-transform:uppercase;color:var(--muted)}
+.hep-field>span{
+  font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
+  color:var(--md-sys-color-on-surface-variant)}
 .hep-field select,.hep-field input{width:auto;min-width:14rem}
 .hep-footer .btn-primary{margin-top:0}
 .hep-status{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
 .hep-status.is-error{color:var(--danger)}
 
 /* ---- Template gallery (RFC 005) — blueprint cards ----------------------- */
-.tpl-cat{font-family:var(--cond);font-weight:600;font-size:13px;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--muted);margin:26px 0 14px}
+.tpl-cat{
+  font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
+  letter-spacing:var(--md-sys-typescale-title-small-tracking);
+  color:var(--md-sys-color-on-surface-variant);margin:26px 0 14px}
 .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px}
 /* A blueprint card: a transparent line drawing with registration marks at the
    corners, not a filled panel. The one solid object is the primary button. */
@@ -849,24 +1175,42 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .disp-cap{font-size:12px;color:var(--faint);margin:10px 0 0;text-align:right}
 .settings-head{font-family:var(--cond);font-weight:700;font-size:22px;margin:0 0 12px;
   text-transform:uppercase;letter-spacing:.02em}
-.tabbar{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:0 0 18px}
-.tab{margin:0;padding:9px 14px;background:none;border:0;border-bottom:2px solid transparent;
-  margin-bottom:-1px;font-family:var(--cond);font-weight:600;font-size:14px;
-  text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer}
-.tab:hover{filter:none;color:var(--ink)}
-.tab.is-on{color:var(--ink);border-bottom-color:var(--accent)}
+/* M3 primary tabs: 48px, label-large mixed case, a 3px primary indicator with
+ * rounded top corners on the active one. */
+.tabbar{display:flex;gap:0;border-bottom:1px solid var(--md-sys-color-outline-variant);
+  margin:0 0 18px}
+.tab{position:relative;margin:0;height:48px;padding:0 16px;background:none;border:0;
+  border-radius:0;
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  color:var(--md-sys-color-on-surface-variant);cursor:pointer}
+.tab:hover{color:var(--md-sys-color-on-surface);background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.tab:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
+.tab.is-on{color:var(--md-sys-color-primary)}
+.tab.is-on::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;
+  border-radius:3px 3px 0 0;background:var(--md-sys-color-primary)}
 .tabpanel[hidden]{display:none}
 .tabpanel>form,.disp-right form{margin:0}
 .tabpanel .two-up{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 /* A single-line hint replaces the old multi-line grey prose. */
 .hint-1{font-size:12.5px;color:var(--faint);margin:.5rem 0 0;line-height:1.5}
-/* The "?" help affordance and its popover, in place of a prose paragraph. */
-.lbl-help{position:relative;display:inline-flex;align-items:center;gap:6px}
-.fieldhelp{margin:0;padding:0;width:18px;height:18px;display:inline-grid;place-items:center;
-  background:var(--panel2);border:1px solid var(--rule);border-radius:50%;color:var(--muted);
+/* The "?" help affordance and its popover, in place of a prose paragraph.
+ * (It rides a .field-with-help wrapper now — see the field rules.) */
+/* A small icon button; the visual stays 20px, the target is 48px. */
+.fieldhelp{position:relative;margin:0;padding:0;width:20px;height:20px;
+  display:inline-grid;place-items:center;background:transparent;border:0;
+  border-radius:var(--md-sys-shape-corner-full);color:var(--md-sys-color-on-surface-variant);
   cursor:pointer}
-.fieldhelp:hover{filter:none;color:var(--ink);border-color:var(--faint)}
-.fieldhelp svg{width:12px;height:12px;stroke-width:1.8}
+.fieldhelp:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.fieldhelp::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
+  transform:translate(-50%,-50%)}
+.fieldhelp svg{width:16px;height:16px;stroke-width:1.8}
 .helppop{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:min(320px,80vw);
   padding:12px 14px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;
   box-shadow:0 16px 40px rgba(0,0,0,.45);font-size:12.5px;line-height:1.5;color:var(--muted);
@@ -892,6 +1236,17 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 @media(max-width:820px){
   .savebar{left:0;padding:12px 20px}
 }
+
+/* ---- Focus: the M3 ring, keyboard-driven ---------------------------------
+ * One treatment for every control: a 3px primary ring offset outward, drawn
+ * only for keyboard focus (:focus-visible). Text fields are the exception the
+ * spec makes — their focus is the outline thickening to 2px primary, and the
+ * .field rules above suppress this ring inside one. The theme-picker cards
+ * hide their real radio, so the ring goes on the card via :has(). */
+:is(button,.btn,.walls a,.le-tool-link,input,select,textarea):focus-visible{
+  outline:3px solid var(--md-sys-color-primary);outline-offset:2px}
+.themecard:has(input:focus-visible){outline:3px solid var(--md-sys-color-primary);
+  outline-offset:2px}
 `;
 
 /**
@@ -1136,7 +1491,7 @@ function navBar(active: string, modules: readonly NavModule[]): string {
   const moduleItem = (m: NavModule): string =>
     `<a class="nav-item" href="admin/modules#mod-${encodeURIComponent(m.id)}" title="${escapeHtml(m.name)}">` +
     `${icon('module')}<span class="nav-name">${escapeHtml(m.name)}</span>` +
-    (m.enabled ? '' : `<span class="nav-badge">off</span>`) +
+    (m.enabled ? '' : `<span class="nav-badge">Off</span>`) +
     `</a>`;
 
   const groups = GROUPS.map((g) => {
@@ -1307,5 +1662,146 @@ export function errorBlock(message: string, suggestion?: string): string {
     `<div class="error"><strong>${escapeHtml(message)}</strong>` +
     (suggestion === undefined ? '' : `<span>${escapeHtml(suggestion)}</span>`) +
     `</div>`
+  );
+}
+
+/*
+ * The M3 outlined text field, shared by every server-rendered form.
+ *
+ * One construction — a wrapping <label class="field"> holding the input and a
+ * three-segment outline whose notch carries the floating label — so the CSS in
+ * STYLE can do the whole floating-label dance with no script: inputs get
+ * placeholder=" " when the caller supplies none, which is what lets
+ * :placeholder-shown tell an empty field from a server-prefilled one. Controls
+ * that always render content (select, time, number, color, file, textarea)
+ * are stamped .field-static and keep the label floated permanently.
+ */
+
+export interface TextFieldOptions {
+  readonly label: string;
+  readonly name: string;
+  /** The input type. Text-like by default; some types force the floated label. */
+  readonly type?: string;
+  readonly value?: string;
+  /** A real placeholder — hidden until the label floats away on focus. */
+  readonly placeholder?: string;
+  readonly required?: boolean;
+  /**
+   * Extra attributes, already escaped by the caller (`autocomplete="email"`,
+   * `min="1"`, `autofocus`). Raw by design: the callers build markup as
+   * strings throughout, and modelling every attribute would re-invent HTML.
+   */
+  readonly attrs?: string;
+  /** Supporting text under the field. */
+  readonly hint?: string;
+  /** Renders the error variant with this supporting text in place of the hint. */
+  readonly error?: string;
+}
+
+/** Input types whose box always renders content, so the label never rests. */
+const STATIC_TYPES = new Set(['number', 'time', 'date', 'color', 'file']);
+
+function fieldWrap(
+  control: string,
+  options: Pick<TextFieldOptions, 'label' | 'hint' | 'error'>,
+  classes: string,
+): string {
+  const support =
+    options.error !== undefined
+      ? `<p class="field-hint is-error">${escapeHtml(options.error)}</p>`
+      : options.hint !== undefined
+        ? `<p class="field-hint">${escapeHtml(options.hint)}</p>`
+        : '';
+  return (
+    `<label class="field${classes}${options.error !== undefined ? ' field-error' : ''}">` +
+    control +
+    `<span class="field-outline"><i class="fo-start"></i>` +
+    `<i class="fo-notch"><span class="field-label">${escapeHtml(options.label)}</span></i>` +
+    `<i class="fo-end"></i></span>` +
+    `</label>` +
+    support
+  );
+}
+
+export function textField(options: TextFieldOptions): string {
+  const type = options.type ?? 'text';
+  const isStatic = STATIC_TYPES.has(type);
+  const control =
+    `<input class="field-input" type="${escapeHtml(type)}" name="${escapeHtml(options.name)}"` +
+    (options.value === undefined ? '' : ` value="${escapeHtml(options.value)}"`) +
+    ` placeholder="${options.placeholder === undefined ? ' ' : escapeHtml(options.placeholder)}"` +
+    (options.required === true ? ' required' : '') +
+    (options.attrs === undefined ? '' : ` ${options.attrs}`) +
+    `>`;
+  return fieldWrap(control, options, isStatic ? ' field-static' : '');
+}
+
+export interface SelectFieldOptions {
+  readonly label: string;
+  readonly name: string;
+  /** The <option> elements, built and escaped by the caller. */
+  readonly optionsHtml: string;
+  readonly attrs?: string;
+  readonly hint?: string;
+  readonly error?: string;
+}
+
+export function selectField(options: SelectFieldOptions): string {
+  const control =
+    `<select class="field-input" name="${escapeHtml(options.name)}"` +
+    (options.attrs === undefined ? '' : ` ${options.attrs}`) +
+    `>${options.optionsHtml}</select>`;
+  return fieldWrap(control, options, ' field-static field-select');
+}
+
+export interface TextareaFieldOptions {
+  readonly label: string;
+  readonly name: string;
+  readonly value?: string;
+  readonly rows?: number;
+  readonly placeholder?: string;
+  readonly required?: boolean;
+  readonly attrs?: string;
+  readonly hint?: string;
+  readonly error?: string;
+}
+
+export function textareaField(options: TextareaFieldOptions): string {
+  const control =
+    `<textarea class="field-input" name="${escapeHtml(options.name)}" rows="${options.rows ?? 3}"` +
+    (options.placeholder === undefined ? '' : ` placeholder="${escapeHtml(options.placeholder)}"`) +
+    (options.required === true ? ' required' : '') +
+    (options.attrs === undefined ? '' : ` ${options.attrs}`) +
+    `>${options.value === undefined ? '' : escapeHtml(options.value)}</textarea>`;
+  return fieldWrap(control, options, ' field-static');
+}
+
+/**
+ * An M3 switch for a checkbox that means one on/off setting.
+ *
+ * Still an input[type=checkbox] with its original name and value, so the form
+ * handler never knows the control changed clothes. Pick-many groups stay
+ * checkboxes (.checks) — a switch is for a setting, not a selection.
+ */
+export interface SwitchRowOptions {
+  readonly label: string;
+  readonly name: string;
+  readonly checked: boolean;
+  readonly hint?: string;
+  readonly value?: string;
+  readonly attrs?: string;
+}
+
+export function switchRow(options: SwitchRowOptions): string {
+  return (
+    `<label class="switch"><span class="switch-text">` +
+    `<b>${escapeHtml(options.label)}</b>` +
+    (options.hint === undefined ? '' : `<small>${escapeHtml(options.hint)}</small>`) +
+    `</span>` +
+    `<input type="checkbox" name="${escapeHtml(options.name)}"` +
+    ` value="${escapeHtml(options.value ?? '1')}"` +
+    (options.checked ? ' checked' : '') +
+    (options.attrs === undefined ? '' : ` ${options.attrs}`) +
+    `></label>`
   );
 }

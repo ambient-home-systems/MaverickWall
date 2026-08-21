@@ -21,6 +21,12 @@ own amber, in dark and light. Same screens, same controls — everything is just
 drawn from one consistent palette and type scale now, and it still works
 entirely offline.
 
+The controls themselves followed: text boxes with labels that float out of the
+way as you type, real toggle switches for on/off settings, rounded buttons,
+and clearer tabs and choices. Everything is bigger where fingers land — every
+control now has a proper touch target — and easier to follow from the
+keyboard. Nothing moved and nothing works differently; it just reads better.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling

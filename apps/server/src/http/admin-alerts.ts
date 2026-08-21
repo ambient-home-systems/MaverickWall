@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page } from './html.js';
+import { escapeHtml, errorBlock, page, selectField, switchRow, textField } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
@@ -202,32 +202,46 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       forecastBlock +
       status +
       `<form method="post" action="admin/weather">` +
-      `<div class="checks"><label>` +
-      `<input type="checkbox" name="weather_enabled" value="1"` +
-      `${weather.enabled ? ' checked' : ''}> Show the forecast</label></div>` +
+      switchRow({
+        label: 'Show the forecast',
+        name: 'weather_enabled',
+        checked: weather.enabled,
+      }) +
       `<div class="row-fields">` +
-      `<span><label for="latitude">Latitude</label>` +
-      `<input id="latitude" name="latitude" type="text" inputmode="decimal" ` +
-      `placeholder="38.8894" value="${escapeHtml(value(weather.latitude))}"></span>` +
-      `<span><label for="longitude">Longitude</label>` +
-      `<input id="longitude" name="longitude" type="text" inputmode="decimal" ` +
-      `placeholder="-97.7431" value="${escapeHtml(value(weather.longitude))}"></span>` +
+      textField({
+        label: 'Latitude',
+        name: 'latitude',
+        placeholder: '38.8894',
+        value: value(weather.latitude),
+        attrs: 'inputmode="decimal"',
+      }) +
+      textField({
+        label: 'Longitude',
+        name: 'longitude',
+        placeholder: '-97.7431',
+        value: value(weather.longitude),
+        attrs: 'inputmode="decimal"',
+      }) +
       `</div>` +
       `<p class="hint">Press and hold your house in a phone map app to get both numbers. ` +
       `The alert zones below are worked out from the same location.</p>` +
       `<div class="row-fields">` +
-      `<span><label for="weather_provider">Forecast from</label>` +
-      `<select id="weather_provider" name="weather_provider">` +
-      `<option value="nws"${weather.provider === 'nws' ? ' selected' : ''}>` +
-      `National Weather Service (US only)</option>` +
-      `<option value="openmeteo"${weather.provider === 'openmeteo' ? ' selected' : ''}>` +
-      `Open-Meteo (worldwide)</option>` +
-      `</select></span>` +
-      `<span><label for="weather_units">Units</label>` +
-      `<select id="weather_units" name="weather_units">` +
-      `<option value="imperial"${weather.units === 'imperial' ? ' selected' : ''}>Fahrenheit (°F)</option>` +
-      `<option value="metric"${weather.units === 'metric' ? ' selected' : ''}>Celsius (°C)</option>` +
-      `</select></span>` +
+      selectField({
+        label: 'Forecast from',
+        name: 'weather_provider',
+        optionsHtml:
+          `<option value="nws"${weather.provider === 'nws' ? ' selected' : ''}>` +
+          `National Weather Service (US only)</option>` +
+          `<option value="openmeteo"${weather.provider === 'openmeteo' ? ' selected' : ''}>` +
+          `Open-Meteo (worldwide)</option>`,
+      }) +
+      selectField({
+        label: 'Units',
+        name: 'weather_units',
+        optionsHtml:
+          `<option value="imperial"${weather.units === 'imperial' ? ' selected' : ''}>Fahrenheit (°F)</option>` +
+          `<option value="metric"${weather.units === 'metric' ? ' selected' : ''}>Celsius (°C)</option>`,
+      }) +
       `</div>` +
       `<p class="hint">The National Weather Service always reports in Fahrenheit; ` +
       `the units choice applies to Open-Meteo.</p>` +
@@ -300,12 +314,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
 
         `<form method="post" action="admin/alerts">` +
-        `<div class="checks"><label>` +
-        `<input type="checkbox" name="alerts_enabled" value="1"${enabled ? ' checked' : ''}> ` +
-        `Show National Weather Service alerts on the wall</label></div>` +
-        `<p class="hint">The United States only. There is no account and no key — ` +
-        `alerts are a public service. Nothing about your household is sent; the ` +
-        `request asks about a public zone code.</p>` +
+        switchRow({
+          label: 'Show National Weather Service alerts on the wall',
+          name: 'alerts_enabled',
+          checked: enabled,
+          hint:
+            'The United States only. There is no account and no key — alerts are ' +
+            'a public service. Nothing about your household is sent; the request ' +
+            'asks about a public zone code.',
+        }) +
         `<button type="submit">Save</button></form>` +
 
         (located

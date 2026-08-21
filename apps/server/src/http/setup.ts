@@ -7,7 +7,7 @@ import { testFeed } from '../api/test-feed.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, page } from './html.js';
+import { errorBlock, escapeHtml, page, selectField, textField } from './html.js';
 import { ingressPath } from './ingress.js';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
 
@@ -466,8 +466,12 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="setup/token">` +
-        `<label for="code">Setup code</label>` +
-        `<input id="code" name="code" type="text" autocomplete="off" autocapitalize="characters" required>` +
+        textField({
+          label: 'Setup code',
+          name: 'code',
+          required: true,
+          attrs: 'autocomplete="off" autocapitalize="characters"',
+        }) +
         `<button type="submit">Continue</button></form>`,
     });
   }
@@ -491,14 +495,30 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
             `setup code to find — just create your account.</p>`
           : '') +
         `<form method="post" action="setup/account">` +
-        `<label for="name">Your name</label>` +
-        `<input id="name" name="name" type="text" required value="${escapeHtml(values.name ?? '')}">` +
-        `<label for="email">Email address</label>` +
-        `<input id="email" name="email" type="email" required autocomplete="username" value="${escapeHtml(values.email ?? '')}">` +
-        `<label for="password">Password</label>` +
-        `<input id="password" name="password" type="password" required autocomplete="new-password" minlength="10">` +
-        `<label for="confirm">Password again</label>` +
-        `<input id="confirm" name="confirm" type="password" required autocomplete="new-password" minlength="10">` +
+        textField({ label: 'Your name', name: 'name', required: true, value: values.name ?? '' }) +
+        textField({
+          label: 'Email address',
+          name: 'email',
+          type: 'email',
+          required: true,
+          value: values.email ?? '',
+          attrs: 'autocomplete="username"',
+        }) +
+        textField({
+          label: 'Password',
+          name: 'password',
+          type: 'password',
+          required: true,
+          hint: 'At least 10 characters.',
+          attrs: 'autocomplete="new-password" minlength="10"',
+        }) +
+        textField({
+          label: 'Password again',
+          name: 'confirm',
+          type: 'password',
+          required: true,
+          attrs: 'autocomplete="new-password" minlength="10"',
+        }) +
         `<button type="submit">Create account</button></form>`,
     });
   }
@@ -520,8 +540,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="setup/household">` +
-        `<label for="timezone">Timezone</label>` +
-        `<select id="timezone" name="timezone" required>${options}</select>` +
+        selectField({ label: 'Timezone', name: 'timezone', optionsHtml: options, attrs: 'required' }) +
         `<button type="submit">Save and continue</button></form>` +
 
         /*
@@ -565,10 +584,20 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         `<form method="post" action="setup/calendar">` +
-        `<label for="name">Name</label>` +
-        `<input id="name" name="name" type="text" required placeholder="Family" value="${escapeHtml(values.name ?? '')}">` +
-        `<label for="url">Address</label>` +
-        `<input id="url" name="url" type="text" required placeholder="https://…/basic.ics" value="${escapeHtml(values.url ?? '')}">` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          placeholder: 'Family',
+          value: values.name ?? '',
+        }) +
+        textField({
+          label: 'Address',
+          name: 'url',
+          required: true,
+          placeholder: 'https://…/basic.ics',
+          value: values.url ?? '',
+        }) +
         `<div class="checks">` +
         box('allow_lan', 'This feed is on my local network', values.allowPrivateNetwork === true) +
         box('allow_loopback', 'This feed is on this machine', values.allowLoopback === true) +

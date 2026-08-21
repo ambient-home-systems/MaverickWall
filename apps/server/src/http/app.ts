@@ -38,7 +38,7 @@ import { calendarModule } from '../modules/calendar/index.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
-import { errorBlock, escapeHtml, page } from './html.js';
+import { errorBlock, escapeHtml, page, textField } from './html.js';
 import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
@@ -1261,10 +1261,21 @@ function signInPage(error?: string, email = ''): string {
     body:
       (error === undefined ? '' : errorBlock(error)) +
       `<form method="post" action="admin/sign-in">` +
-      `<label for="email">Email address</label>` +
-      `<input id="email" name="email" type="email" required autocomplete="username" value="${escapeHtml(email)}">` +
-      `<label for="password">Password</label>` +
-      `<input id="password" name="password" type="password" required autocomplete="current-password">` +
+      textField({
+        label: 'Email address',
+        name: 'email',
+        type: 'email',
+        required: true,
+        value: email,
+        attrs: 'autocomplete="username"',
+      }) +
+      textField({
+        label: 'Password',
+        name: 'password',
+        type: 'password',
+        required: true,
+        attrs: 'autocomplete="current-password"',
+      }) +
       `<button type="submit">Sign in</button></form>`,
   });
 }
