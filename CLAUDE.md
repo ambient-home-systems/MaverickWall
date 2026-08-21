@@ -285,6 +285,30 @@ reaching a real OpenDisplay tag through a real supervisor. Battery panels are
 documented as a glance class, not an alert class — a sleeping ESP32 cannot honour
 a takeover, and the page says so.
 
+**The panel's designer draws the panel, and getting there took two fixes that
+look like one.** The Arrange area is the same drag-and-drop editor a browser
+wall uses, and it was drawing a browser wall: the household's colour cards on
+the wall's portrait 9:16 canvas, for a landscape 800x480 device. So the shape
+was wrong *and* the picture was wrong, and a box dragged in it landed somewhere
+else on the frame. The picture is fixed by rendering rather than by teaching the
+browser a second 1-bit renderer — two renderers disagreeing is the whole problem
+— so `POST /admin/epaper/:id/preview.png` takes the boxes the editor holds and
+answers with the exact frame the panel would draw, debounced, nothing stored.
+The shape is fixed by making the canvas a fact about the hardware: the design
+page sends the panel's own ratio and its one orientation, **ignoring any stored
+aspect** (on a wall the household may set one, because nobody measured that
+television; a panel is 800x480 and that is the end of it), and the editor hides
+the orientation tabs and the aspect list behind a chip that states the geometry.
+Two traps, both live: the POST must render the posted canvas as `freeform`
+whatever the row says, because a panel that has never been saved has
+`layout_mode` NULL and `renderScreenFrame` gates the canvas on it — read
+literally, the backdrop never moved while you dragged, which is the exact fault
+being fixed; and "the frame changed when I moved the box" is not the assertion
+to write, since it passes just as happily if every widget draws in the corner.
+The test decodes the PNG and holds the ink to the posted box — verify by
+decoding, the QR rule again. Live: the Arrange backdrop and the saved preview
+come back byte-identical.
+
 **The add-on now installs and starts on a real Home Assistant supervisor.**
 That was the highest-value unproven thing in the project for a long time, and
 getting there took four separate fixes, each found only by a real supervisor

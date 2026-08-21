@@ -14,6 +14,18 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Arranging an eInk panel shows the panel. The Arrange area used to draw your
+widgets as the colour cards a browser wall shows, on a tall portrait canvas —
+so a wide 800x480 panel was designed on a shape it cannot display, and boxes
+dragged there landed somewhere else on the frame. Behind the boxes now is the
+panel's own black-and-white picture, redrawn as you drag, the same one the
+Preview above shows and the same one the panel fetches. The canvas is the
+panel's real proportions, and the orientation and aspect controls are gone in
+favour of a line stating what the panel is, because 800x480 landscape is a
+fact about the hardware rather than a choice.
+
 ## 0.33.0
 
 The settings are usable on a phone. Every page used to open with a block of

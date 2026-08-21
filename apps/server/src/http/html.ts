@@ -1157,12 +1157,35 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   background-image:linear-gradient(to right,var(--ruleSoft) 1px,transparent 1px),
     linear-gradient(to bottom,var(--ruleSoft) 1px,transparent 1px)}
 .le-preview{position:absolute;inset:0;z-index:0;pointer-events:none}
+/* What a panel shows instead of the wall's orientation tabs and aspect list:
+ * its geometry, stated. Read-only on purpose — 800x480 landscape is a fact
+ * about the hardware, not a choice. */
+.le-panel-chip{display:inline-flex;align-items:center;height:38px;padding:0 16px;
+  border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-full);
+  color:var(--md-sys-color-on-surface-variant);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  white-space:nowrap}
+/* The e-paper designer's backdrop: the panel's own 1-bit frame. Stretched to
+ * fill rather than letterboxed, on purpose — the widgets are fractions of the
+ * canvas and of the panel alike, so filling makes the drag boxes sit exactly
+ * over the shapes they will become. Pixelated: this is 1-bit art, not a photo.
+ * (No backticks in this file's CSS — the stylesheet is a template literal.) */
+.le-epaper-preview{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:fill;image-rendering:pixelated;background:#fff}
 .le-preview .preview-wall{overflow:hidden}
 .le-overlay{position:absolute;inset:0;z-index:1}
 .le-widget{position:absolute;background:color-mix(in srgb,var(--ok) 12%,transparent);
   border:1px solid color-mix(in srgb,var(--ok) 60%,transparent);border-radius:4px;
   cursor:move;touch-action:none;overflow:hidden;user-select:none}
 .le-widget:hover{background:color-mix(in srgb,var(--ok) 20%,transparent)}
+/* Over an e-paper frame the fill would tint the 1-bit art it is meant to show,
+ * and the panel already draws each widget's own border underneath — so the box
+ * is an outline until you point at it. Selection keeps its accent regardless. */
+.le-overlay.is-epaper .le-widget{background:transparent;
+  border-color:color-mix(in srgb,var(--ok) 70%,transparent)}
+.le-overlay.is-epaper .le-widget:hover{background:color-mix(in srgb,var(--ok) 14%,transparent)}
 .le-widget.is-selected{border-color:var(--accent);
   box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);
   background:color-mix(in srgb,var(--accent) 12%,transparent)}
@@ -1172,6 +1195,14 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   color:var(--md-custom-color-on-success);
   background:var(--ok);padding:2px 6px;border-radius:0 0 4px 0;pointer-events:none;user-select:none}
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
+/* On a panel the frame underneath already says what each box is — it draws the
+ * widget. So the name steps back out of the artwork until you point at it or
+ * select it, which is the same argument as the transparent fill above. It is
+ * dimmed rather than removed: a widget with nothing to draw yet (an empty note)
+ * would otherwise be an unlabelled outline. */
+.le-overlay.is-epaper .le-widget-label{opacity:.45}
+.le-overlay.is-epaper .le-widget:hover .le-widget-label,
+.le-overlay.is-epaper .le-widget.is-selected .le-widget-label{opacity:1}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
 /* The canvas background control — none / solid / gradient, per canvas. */
