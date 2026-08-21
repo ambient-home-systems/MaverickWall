@@ -166,15 +166,30 @@ describe('the e-paper frame', () => {
         .run(id, h.screenId, type, y, config, at, at);
     };
 
-    // The fixed layout, before any canvas exists.
+    // A paired screen is *seeded* with the Classic canvas (RFC 005 — pairing no
+    // longer dead-ends), so it is already free-form with widgets here. This
+    // comment used to say "the fixed layout, before any canvas exists", which
+    // was never true and made the assertions below read as proving more than
+    // they did. Empty it deliberately to reach the fixed layout.
+    h.db.prepare(`DELETE FROM layout_widgets WHERE screen_id = ?`).run(h.screenId);
+    h.db.prepare(`UPDATE screens SET layout_mode = NULL WHERE id = ?`).run(h.screenId);
     const auto = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
 
-    // Switch this screen to a free-form canvas with one widget (default geometry
-    // is 800×480, so the panel shows the landscape canvas).
+    // The state Reset leaves a panel in, and what saving an empty canvas writes:
+    // the mode says free-form while nothing is placed. The panel must still draw
+    // the *built-in* layout — identical to the frame above — because a panel
+    // that went blank here would break rule nine on somebody's wall, and the
+    // editor's empty-canvas note promises exactly this ("this panel draws its
+    // built-in layout"). Drop `widgets.length > 0` from frame.ts and this fails.
     h.db.prepare(`UPDATE screens SET layout_mode = 'freeform' WHERE id = ?`).run(h.screenId);
+    const emptyCanvas = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
+    expect(emptyCanvas).toBe(auto);
+
+    // Now place one: the canvas replaces the fixed layout (default geometry is
+    // 800×480, so the panel shows the landscape canvas).
     addWidget('w1', 'clock', 0.05, null);
     const oneWidget = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
-    expect(oneWidget).not.toBe(auto); // the canvas replaced the fixed layout
+    expect(oneWidget).not.toBe(auto);
 
     // Add a second widget — the ETag moves again, so a household's edit is not
     // stranded until the calendar happens to change.
