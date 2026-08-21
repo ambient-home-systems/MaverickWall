@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.32.0
 
 The settings screens have a new coat of paint: Material Design, in the wall's
 own amber, in dark and light. Same screens, same controls — everything is just
