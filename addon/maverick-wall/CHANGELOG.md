@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.38.0
 
 Two new Calendar styles, **Sky week** and **Sky month**, for when you want the
 screen filled. They show the same week and the same month the existing styles
