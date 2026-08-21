@@ -14,6 +14,21 @@
   saying nothing.
 -->
 
+## Unreleased
+
+A Calendar set to Week columns now notices when it has been given too little
+room. Seven days need width, and in a narrow box they used to become seven
+slivers with a single letter in each — tidy enough to look deliberate, and
+impossible to read. It draws the same days as an upcoming list instead, which
+answers the question the columns were asked. Nothing is saved and nothing is
+changed in your layout: widen the box and the columns come straight back.
+
+The upcoming list itself is fixed in the same place. In a narrow box its event
+titles ran off the right-hand edge and were cut off — "Football" arriving as
+"Foot" — because the row refused to wrap. Titles now wrap, and when there is no
+room for a time column beside them the time sits above the event instead. Wide
+displays are unchanged.
+
 ## 0.34.0
 
 The upcoming list on your wall reads better from across the room.
