@@ -12,6 +12,11 @@ licence. The `latin` subset is used, taken from Google Fonts.
 | `jetbrains-mono-400.woff2`, `jetbrains-mono-700.woff2` | JetBrains Mono | SIL Open Font License 1.1 | © The JetBrains Mono Project Authors — https://github.com/JetBrains/JetBrainsMono |
 | `space-grotesk-400.woff2`, `space-grotesk-700.woff2` | Space Grotesk | SIL Open Font License 1.1 | © The Space Grotesk Project Authors — https://github.com/floriankarsten/space-grotesk |
 | `roboto-condensed.woff2` | Roboto Condensed | Apache License 2.0 | © Google — https://github.com/googlefonts/roboto |
+| `roboto.woff2` | Roboto | Apache License 2.0 | © Google — https://github.com/googlefonts/roboto |
+
+`roboto.woff2` is the variable font (weight axis 100–900, so it carries the
+400/500/700 the admin's Material Design 3 type scale uses in one file, the same
+way `roboto-condensed.woff2` does).
 
 ## SIL Open Font License, Version 1.1
 
@@ -20,5 +25,5 @@ https://openfontlicense.org/open-font-license-official-text/
 
 Summary of the terms honoured here: the fonts may be bundled and redistributed
 with this software, are not sold on their own, retain their reserved names, and
-carry this notice. The Apache-2.0 font (Roboto Condensed) is used under
-https://www.apache.org/licenses/LICENSE-2.0.
+carry this notice. The Apache-2.0 fonts (Roboto, Roboto Condensed) are used
+under https://www.apache.org/licenses/LICENSE-2.0.

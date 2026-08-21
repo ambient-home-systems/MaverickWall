@@ -14,6 +14,13 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The settings screens have a new coat of paint: Material Design, in the wall's
+own amber, in dark and light. Same screens, same controls — everything is just
+drawn from one consistent palette and type scale now, and it still works
+entirely offline.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
