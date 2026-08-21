@@ -1187,9 +1187,11 @@ in a real headless Chromium at 390px: opened by tap and by the keyboard's
 space, closed by the scrim and by navigating, the ring drawn on the label, the
 bar still at `y:12` after scrolling 543px, and at 1280px the drawer back in flow
 with the button gone and the toggle not focusable — a phantom first tab stop
-being the obvious way to get that wrong. **What has not happened is a phone in
-somebody's hand, or the sidebar of a real supervisor, where two hamburgers now
-stack — Home Assistant's and this one.**
+being the obvious way to get that wrong. **And it has been used on a real phone
+since, in v0.33.0** — which is the check the headless measurements were standing
+in for, and the one this project counts. What has not happened is the sidebar of
+a real supervisor, where two hamburgers now stack: Home Assistant's and this
+one. That is a different screen from a phone browser and still unproven.
 
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody
