@@ -14,6 +14,21 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Calendar options on an eInk panel now do what they say. Every one of them
+was ignored: whichever of Month grid, Week columns or Upcoming list you picked,
+the panel drew the same short list of today's events — and Month grid, the one
+most people leave alone, was the worst affected, because the layout stores it
+by leaving it out and the panel read a missing setting as "not the month".
+
+Month grid draws the month. Week columns draws the coming week as seven
+columns with today's inverted. Upcoming list shows the days ahead under their
+own date headings, rather than only today, and honours which calendars to
+include and how many events to show. "Labelled pills" names the events inside
+each day's square instead of shading it, including today's, which are knocked
+out of the filled cell so they can still be read.
+
 ## 0.33.1
 
 Arranging an eInk panel shows the panel. The Arrange area used to draw your

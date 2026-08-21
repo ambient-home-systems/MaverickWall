@@ -309,6 +309,33 @@ The test decodes the PNG and holds the ink to the posted box — verify by
 decoding, the QR rule again. Live: the Arrange backdrop and the saved preview
 come back byte-identical.
 
+**Every Calendar option on a panel was inert, and the default was the worst of
+them.** The editor stores the default mode by *leaving the key out* — `month`
+is an absence — and the e-paper widget tested `str(config,'mode') === 'month'`,
+so the commonest setting fell through to the agenda. All three "Show as" values
+therefore drew the same thing, which is exactly how it was reported: "the
+calendar settings have no impact". The wall reads the identical stored value as
+`mode !== 'list'`, so **two renderers read one stored value opposite ways** —
+the same shape as two renderers drawing one canvas, and the same cure: the
+panel now reads it exactly as `renderCalendarWidget` does, and the wall is the
+spec for all of it. `cellEvents`, `calendars` and `count` were ignored outright
+because `drawMonthBox`/`drawAgendaBox` took no config at all; the model could
+not have honoured them anyway — cells carried only an `eventCount`, and the
+agenda was pre-cut to six, so filtering it would have yielded fewer than six and
+a household asking for twelve could never get them. So `EpaperGridCell` carries
+`titles` and the model carries its own `upcoming` list with `sourceId`, and the
+*renderer* does the cutting. Three lessons worth keeping: an option that does
+nothing is worse than an option not offered (the `options.json` bug again); a
+setting must change exactly one thing, which is why the day number's scale is
+deliberately **not** conditioned on pills — with no events, dots and pills draw
+an identical frame, and that equivalence is an assertion; and "the frame
+changed" never proves a setting was *read*, so the pill test renames the same
+events on the same days, where density shading cannot tell the difference and
+naming them must. Looking at the live frame is what caught the one this
+introduced: today's cell is solid ink, so its names were drawn black on black
+and today was the only day with nothing on it — they are knocked out now, like
+its number.
+
 **The add-on now installs and starts on a real Home Assistant supervisor.**
 That was the highest-value unproven thing in the project for a long time, and
 getting there took four separate fixes, each found only by a real supervisor
