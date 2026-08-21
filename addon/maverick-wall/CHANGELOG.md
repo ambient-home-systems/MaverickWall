@@ -32,6 +32,11 @@ the current screen is a clear rounded highlight, a cleaner header, softer
 rounded cards, and warnings in solid colour blocks that are easier to spot.
 Same screens, same places — the settings just look like one finished app now.
 
+The first-run wizard and the sign-in page match the new look too: a clearer
+step indicator, the same floating-label fields, and error messages in the
+same easy-to-spot colour blocks. They still work with no JavaScript at all,
+so setting up works even when nothing else does.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
