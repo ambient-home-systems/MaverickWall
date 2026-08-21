@@ -14,6 +14,20 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The upcoming list can carry the forecast. Turn on **Show the forecast** in a
+Calendar widget's settings and each date gets that day's high and low beneath
+it, so you can see what the weather is doing on the day something is happening
+without spending a second panel on it. It is off unless you ask for it, so a
+wall that already has a weather panel does not say the same thing twice. A day
+the forecast does not reach simply shows nothing — never a neighbouring day's
+numbers.
+
+Temperatures from Open-Meteo were showing a doubled degree sign — "20°°C"
+instead of "20°C" — wherever they appeared. They now read the same as the
+National Weather Service's.
+
 ## 0.35.0
 
 A Calendar set to Week columns now notices when it has been given too little
