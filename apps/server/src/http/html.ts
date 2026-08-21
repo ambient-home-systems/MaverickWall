@@ -111,7 +111,7 @@ const STYLE = `
  * in the sidebar and the wizard IS that wordmark — rendered as live text
  * rather than as an image so it stays selectable and crisp at any zoom. Set in
  * a different face it reads as a near-miss of the logo, which is worse than an
- * obvious difference. Every other heading stays on Roboto Condensed: this is
+ * obvious difference. Every other heading is on the Roboto type scale: this is
  * the identity, not a new heading style.
  */
 @font-face{font-family:'Oswald';font-style:normal;font-weight:700;
@@ -409,8 +409,11 @@ a.link:hover{text-decoration:underline}
 .kick{font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
   letter-spacing:var(--md-sys-typescale-label-medium-tracking);
   color:var(--md-sys-color-on-surface-variant)}
+/* overflow-wrap so a pasted URL or long code wraps instead of widening the
+ * page — a phone must never scroll sideways for a release address. */
 .code{font-family:var(--mono);font-size:1rem;letter-spacing:.08em;
-  background:var(--panel2);padding:.15rem .4rem;border-radius:.25rem;color:var(--accent)}
+  background:var(--panel2);padding:.15rem .4rem;border-radius:.25rem;color:var(--accent);
+  overflow-wrap:anywhere}
 
 /* ---- Forms --------------------------------------------------------------- */
 form{margin:1.4rem 0 0}
@@ -463,8 +466,8 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--md-sys-shape-corn
  * at rest the label occupies that spot. Static fields float permanently, so
  * theirs may show. */
 .field:not(.field-static) .field-input:not(:focus)::placeholder{color:transparent}
-/* font-style:normal because the segments are <i> elements (the .cm corner
- * marks' precedent) and the label must not inherit their italic. */
+/* font-style:normal because the segments are <i> elements and the label must
+ * not inherit the UA's italic for them. */
 .field-outline{position:absolute;inset:0;display:flex;pointer-events:none;
   font-style:normal;color:var(--md-sys-color-outline);--fo-w:1px}
 .fo-start{width:12px;flex:0 0 auto;
@@ -665,7 +668,6 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 /* Compact density: the same button at a 32px container, with the pointer
  * target stretched back to 48px by a pseudo-element. */
 .btn-sm{margin-top:0;height:32px;padding:0 16px}
-.link-btn{margin-top:0}
 /* ---- Segmented buttons: .seg (Store alerts), .le-orient, .themebar --------
  * One outlined container, full corner on the outer ends, 40px height; the
  * selected segment is secondary-container with a leading check drawn in CSS.
@@ -714,7 +716,10 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * The M3 error-container pattern: a filled tonal container, medium corner,
  * everything in it on-error-container. The old left accent border retired
  * with the rest of the blueprint identity. */
+/* color on the container itself, so bare text (the wizard's errors) gets the
+ * on-error-container role too — not just the strong/span children below. */
 .error{background:var(--md-sys-color-error-container);
+  color:var(--md-sys-color-on-error-container);
   padding:.9rem 1.1rem;border-radius:var(--md-sys-shape-corner-medium);margin:1rem 0}
 .error strong{color:var(--md-sys-color-on-error-container);display:block;
   font-size:14px;font-weight:600;margin-bottom:2px}
@@ -766,7 +771,7 @@ a.card:hover{background:color-mix(in srgb,
 .stat .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .stat .subrow .link{display:inline-flex;align-items:center;gap:4px}
 .stat .subrow .link svg{width:13px;height:13px}
-.ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
+.ic{width:34px;height:34px;border-radius:var(--md-sys-shape-corner-small);display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent);flex:0 0 auto}
 .ic svg{width:18px;height:18px}
 
@@ -785,7 +790,7 @@ a.card:hover{background:color-mix(in srgb,
  * as-is into any larger text that does not set its own. */
 .today-big{font:var(--md-sys-typescale-headline-small-weight) var(--md-sys-typescale-headline-small-size)/var(--md-sys-typescale-headline-small-line-height) var(--md-sys-typescale-headline-small-font);
   letter-spacing:var(--md-sys-typescale-headline-small-tracking);margin:6px 0 2px}
-.stat .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
+.stat .ic{width:34px;height:34px;border-radius:var(--md-sys-shape-corner-small);display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent)}
 .stat .ic svg{width:18px;height:18px}
 .stat .big{font:var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size)/var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-headline-medium-font);
@@ -829,7 +834,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 /* A little inset tile beside the icon, styled like a wall stat panel: a big
  * headline line then a caption or two. First-party glyphs only, no image. */
 .cpreview{flex:0 0 auto;width:118px;min-height:64px;display:flex;flex-direction:column;
-  justify-content:center;gap:2px;padding:9px 11px;border-radius:8px;
+  justify-content:center;gap:2px;padding:9px 11px;border-radius:var(--md-sys-shape-corner-small);
   background:var(--panel2);border:1px solid var(--rule);overflow:hidden}
 .cpreview b{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
   letter-spacing:var(--md-sys-typescale-title-large-tracking);
@@ -854,7 +859,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .tf-row small{display:block;color:var(--faint);font-size:12px;line-height:1.35}
 .tb-preview{position:sticky;top:88px}
 #theme-preview{width:300px;max-width:100%;min-height:220px;border:1px solid var(--rule);
-  border-radius:8px;overflow:hidden;background:var(--panel2)}
+  border-radius:var(--md-sys-shape-corner-small);overflow:hidden;background:var(--panel2)}
 #theme-contrast{margin-top:12px}
 
 /* ---- Theme picker cards (Display) ---------------------------------------- */
@@ -879,7 +884,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .themecard:has(input:checked){box-shadow:0 0 0 2px var(--md-sys-color-primary)}
 
 /* ---- Preview panel (calendar test, update-available, shift preview) ------ */
-.preview{position:relative;border:1px solid var(--rule);border-radius:8px;
+.preview{position:relative;border:1px solid var(--rule);border-radius:var(--md-sys-shape-corner-small);
   padding:16px 18px;margin:1rem 0;background:var(--panel2)}
 .preview h3{font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
   letter-spacing:var(--md-sys-typescale-title-medium-tracking);margin:0 0 .3rem}
@@ -905,6 +910,19 @@ pre.log{background:var(--md-sys-color-inverse-surface);
 .qr{background:#fff;padding:.8rem;border-radius:var(--md-sys-shape-corner-medium);
   display:inline-block;margin:.6rem 0}
 .qr svg{display:block}
+/* The e-paper preview stands on the same argument as the QR plate: the
+ * physical panel is white paper in either scheme, so its frame is shown on
+ * white — the one other place a literal white is the honest colour. */
+.ep-paper{max-width:100%;border:1px solid var(--rule);
+  image-rendering:pixelated;background:#fff}
+
+/* Copy-paste config blocks (the e-paper recipes): the shared mono on a quiet
+ * container — not the log's inverse plate, because this is text to copy into
+ * an editor, not terminal output. */
+pre.code{background:var(--md-sys-color-surface-container-high);
+  border-radius:var(--md-sys-shape-corner-small);padding:12px;
+  font:12px/1.5 var(--mono);color:var(--md-sys-color-on-surface);
+  overflow-x:auto;white-space:pre}
 
 /* ---- Shift slot pickers -------------------------------------------------- */
 .slots{display:flex;flex-wrap:wrap;gap:.5rem}
@@ -991,6 +1009,11 @@ pre.log{background:var(--md-sys-color-inverse-surface);
 .le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
 .le-toggle{display:inline-flex;align-items:center;gap:.65rem;font-size:14px;
   color:var(--md-sys-color-on-surface);margin:0}
+/* Deliberately under the 48px target rule: the editor toolbar is compact
+ * density (32px buttons whose pointer targets stretch via ::after), and a
+ * select is a replaced element that cannot carry a pseudo target — stretching
+ * the control itself to 48px would break the toolbar's rhythm. The written
+ * exception the target audit allows. */
 .le-aspect{width:auto;padding:.42rem .6rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
 /* Portrait | Landscape: styled with the segmented buttons above. */
@@ -1059,13 +1082,6 @@ pre.log{background:var(--md-sys-color-inverse-surface);
 .le-delete:hover{background:color-mix(in srgb,
   var(--md-sys-color-error) var(--md-sys-state-hover-state-layer-opacity),transparent)}
 .le-delete:disabled{opacity:.4;cursor:default}
-.le-save{margin-top:0;height:32px;padding:0 16px;background:var(--md-sys-color-primary);
-  color:var(--md-sys-color-on-primary);border:1px solid transparent;
-  border-radius:var(--md-sys-shape-corner-full);cursor:pointer}
-.le-status{font-size:12.5px;font-family:var(--mono);color:var(--faint)}
-.le-status.is-dirty{color:var(--accent)}
-.le-status.is-ok{color:var(--ok)}
-.le-status.is-error{color:var(--danger)}
 /* No min-height: the canvas is width-driven and must not push into the settings
    pane. The stage sizes to whatever the canvas needs. */
 .le-stage{display:flex;justify-content:center;align-items:flex-start;padding:16px;
@@ -1090,7 +1106,8 @@ pre.log{background:var(--md-sys-color-inverse-surface);
   background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .le-widget-label{position:absolute;top:0;left:0;
   font:var(--md-sys-typescale-label-small-weight) 10px/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
-  letter-spacing:var(--md-sys-typescale-label-small-tracking);color:#05140d;
+  letter-spacing:var(--md-sys-typescale-label-small-tracking);
+  color:var(--md-custom-color-on-success);
   background:var(--ok);padding:2px 6px;border-radius:0 0 4px 0;pointer-events:none;user-select:none}
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
@@ -1112,7 +1129,7 @@ pre.log{background:var(--md-sys-color-inverse-surface);
 /* The image picker — a grid of uploaded pictures plus an upload input. */
 .le-media{display:flex;flex-direction:column;gap:10px;margin-top:4px}
 .le-media-grid{display:flex;flex-wrap:wrap;gap:8px}
-.le-media-item{width:64px;height:64px;padding:0;margin:0;border-radius:8px;cursor:pointer;
+.le-media-item{width:64px;height:64px;padding:0;margin:0;border-radius:var(--md-sys-shape-corner-small);cursor:pointer;
   border:2px solid var(--rule);background-size:cover;background-position:center}
 .le-media-item:hover{border-color:var(--faint)}
 .le-media-item.is-on{border-color:var(--accent)}
@@ -1149,27 +1166,19 @@ pre.log{background:var(--md-sys-color-inverse-surface);
   color:var(--md-sys-color-on-surface-variant);margin-bottom:6px}
 .le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
 .le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;
-  border:1px solid var(--rule);border-radius:8px;background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:var(--md-sys-shape-corner-extra-small);background:var(--panel2);color:var(--ink);
   resize:vertical;line-height:1.4}
 .le-cfg-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:2px}
 .le-cfg-check{display:inline-flex;align-items:center;gap:.55rem;font-size:14px;
   color:var(--md-sys-color-on-surface);cursor:pointer;margin:0}
-.le-cfg-btns{display:flex;gap:8px}
-.le-cfg-btn{position:relative;margin:0;height:32px;padding:0 16px;
-  border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-full);
-  background:transparent;color:var(--md-sys-color-primary);
-  font-family:var(--md-sys-typescale-label-large-font);
-  font-size:var(--md-sys-typescale-label-large-size);
-  font-weight:var(--md-sys-typescale-label-large-weight);
-  letter-spacing:var(--md-sys-typescale-label-large-tracking);cursor:pointer}
-.le-cfg-btn::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,48px);
-  height:48px;transform:translate(-50%,-50%)}
-.le-cfg-btn:hover{background:color-mix(in srgb,
-  var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
 
 /* ---- Home Assistant entity picker (first-party JS) ----------------------- */
 #ha-entity-picker{margin-top:.6rem}
-.hep-search{width:100%;margin-bottom:12px}
+/* 48px pointer targets: the picker's search box and its "show as" row are
+ * script-built bare controls (no .field construction), so the height that the
+ * 56px fields get from their anatomy is set here directly. */
+.hep-search{width:100%;margin-bottom:12px;min-height:48px}
+#ha-entity-picker select{min-height:48px}
 .hep-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 /* M3 filter chips: 32px, small corner, outlined at rest; selected fills with
  * secondary-container and gains a drawn leading check. The pointer target is

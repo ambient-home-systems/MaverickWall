@@ -619,7 +619,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
           ? 'No calendars yet — you can add one from the Calendars screen whenever you like.'
           : 'Your calendar will sync within a few seconds.',
       body:
-        `<p>Pair a wall display from the <a class="link" href="admin/screens">Screens</a> ` +
+        `<p>Pair a wall display from the <a class="link" href="admin/displays">Displays</a> ` +
         `screen — it gives you a QR code and a link to open on the screen itself.</p>` +
         `<p><a class="link" href="admin">Go to the admin →</a></p>`,
     });

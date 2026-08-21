@@ -1121,6 +1121,26 @@ step and no bundle that can fail to load, which is the same reason the wizard
 is. `apps/admin` has not been started and may never need to be — that is worth
 deciding deliberately before the Shifts screen rather than by drift.
 
+**The admin and the wizard are faithful Material Design 3 now**, adopted over
+several passes and then audited as a whole: colour schemes generated from the
+wall's own amber seed, the M3 type scale on bundled Roboto, shape/elevation/
+state tokens, real M3 controls (floating-label outlined fields built in pure
+CSS, switches, segmented buttons, chips, tabs), a 280px navigation drawer
+that collapses at 900px, Material Symbols icons inlined, and the motion
+system — all behind `prefers-reduced-motion`, with a shell-only ripple
+script. Everything lives in `http/html.ts` (the `STYLE` constant plus the
+field/icon helpers); the schemes are committed in `http/m3-tokens.ts` and
+regenerated with `node scripts/generate-m3-tokens.mjs` (same engine and
+choices as the request-time theme generator — the two files say so). Three
+deliberate exceptions to fidelity, and only three: the brand lockup (Oswald
+wordmark, small-caps ADMIN line, the mark's own pre-mixed fills), the
+script-free wizard and sign-in (no ripple; CSS pressed states instead — a
+census test pins the exact script set), and the QR's white plate (with the
+e-paper preview on the same argument — a physically white medium drawn
+honestly in both schemes). `test/m3-tokens.test.ts` proves the scheme
+contrast, `test/admin-origins.test.ts` proves rule three across every page
+and asset the admin serves.
+
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody
 already signed in to Home Assistant, so asking for a second login in the

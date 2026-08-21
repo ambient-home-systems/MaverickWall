@@ -60,6 +60,13 @@ a whole matching theme is worked out from it: background, panels, text, and
 the shift colours, every pairing kept readable from across a room. It lands
 in the theme builder, so you can still adjust anything afterwards.
 
+And a final polish pass walked every settings screen at phone, tablet and
+desktop sizes in both dark and light, and fixed the handful of rough edges it
+found: two screens that could scroll sideways on a phone (a long web address
+and the eInk screen's buttons), error messages now in the design's own error
+colours everywhere, and a few places that still said "Screens" where the page
+is called Displays now.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
