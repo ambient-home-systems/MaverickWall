@@ -656,7 +656,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       sub: string,
     ): string =>
       `<a class="card stat" href="${href}">` +
-      `<i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>` +
       `<div class="top"><div class="ic">${icon(iconKey)}</div>${tag}</div>` +
       `<div class="big">${escapeHtml(String(big))}</div><div class="lab">${escapeHtml(lab)}</div>` +
       `<div class="subrow"><span>${sub}</span>${manage()}</div></a>`;
@@ -3241,7 +3240,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const card = (t: (typeof TEMPLATES)[number]): string =>
       `<article class="tpl-card">` +
-      `<i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>` +
       `<div class="tpl-thumb" data-tpl="${escapeHtml(t.id)}">` +
       `<div class="tpl-fallback">${escapeHtml(t.name)}</div></div>` +
       `<div class="tpl-body">` +

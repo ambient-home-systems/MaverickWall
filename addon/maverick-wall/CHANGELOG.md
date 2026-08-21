@@ -27,6 +27,11 @@ and clearer tabs and choices. Everything is bigger where fingers land — every
 control now has a proper touch target — and easier to follow from the
 keyboard. Nothing moved and nothing works differently; it just reads better.
 
+The rooms around the controls got the same treatment: a wider sidebar where
+the current screen is a clear rounded highlight, a cleaner header, softer
+rounded cards, and warnings in solid colour blocks that are easier to spot.
+Same screens, same places — the settings just look like one finished app now.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
