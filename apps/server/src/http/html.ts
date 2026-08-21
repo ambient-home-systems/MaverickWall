@@ -86,11 +86,11 @@ function m3TypeVars(): string {
 const STYLE = `
 /*
  * Self-hosted, first-party, no network. Rule three forbids fetching a web font,
- * so Roboto Condensed ships in the image and is served same-origin. The src is
- * relative, so the single <base> carries it through Home Assistant ingress; the
- * file is a variable font covering the 400-700 weight axis, so one file gives
- * the whole range. font-display:swap means a missing file just falls back to
- * Arial Narrow rather than blocking the page.
+ * so Roboto Condensed ships in the image and is served same-origin; the src is
+ * relative, so the single <base> carries it through Home Assistant ingress.
+ * Since the surfaces pass swept the admin onto the M3 scale, this face backs
+ * only the wordmark's fallback stack here — the file itself stays bundled
+ * because the display's custom themes are served from the same directory.
  */
 @font-face{font-family:'Roboto Condensed';font-style:normal;font-weight:400 700;
   font-display:swap;src:url('assets/fonts/roboto-condensed.woff2') format('woff2')}
@@ -118,7 +118,6 @@ const STYLE = `
   font-display:swap;src:url('assets/fonts/oswald-700.woff2') format('woff2')}
 
 :root{
-  --cond:'Roboto Condensed','Arial Narrow','Helvetica Neue',system-ui,sans-serif;
   --wordmark:'Oswald','Roboto Condensed','Arial Narrow',system-ui,sans-serif;
   --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -204,17 +203,27 @@ const STYLE = `
 :root{
   color-scheme:dark;
   ${m3ColorVars(M3_SCHEMES.dark)};
+  /* Elevated surfaces: the dark scheme conveys elevation primarily by the
+   * surface tint (the recipe in the foundations comment above), so these two
+   * pre-mix it at the level-1 and level-2 amounts. */
+  --surface-elevation-1:color-mix(in srgb,var(--md-sys-color-surface-tint) 5%,var(--md-sys-color-surface-container-low));
+  --surface-elevation-2:color-mix(in srgb,var(--md-sys-color-surface-tint) 8%,var(--md-sys-color-surface-container-low));
 }
 /* Light, when the household picks it. */
 :root[data-theme="light"]{
   color-scheme:light;
   ${m3ColorVars(M3_SCHEMES.light)};
+  /* Light elevation is the shadow's job; the container colour stands still. */
+  --surface-elevation-1:var(--md-sys-color-surface-container-low);
+  --surface-elevation-2:var(--md-sys-color-surface-container-low);
 }
 /* Auto: no explicit choice, and the device prefers light. */
 @media (prefers-color-scheme: light){
   :root:not([data-theme]){
     color-scheme:light;
     ${m3ColorVars(M3_SCHEMES.light)};
+    --surface-elevation-1:var(--md-sys-color-surface-container-low);
+    --surface-elevation-2:var(--md-sys-color-surface-container-low);
   }
 }
 *{box-sizing:border-box}
@@ -226,9 +235,12 @@ body{margin:0;background:var(--bg);color:var(--ink);
   letter-spacing:var(--md-sys-typescale-body-medium-tracking);
   -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 
-/* ---- App shell: fixed sidebar, scrolling main ---------------------------- */
-body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
-.side{border-right:1px solid var(--rule);background:var(--panel2);
+/* ---- App shell: navigation drawer, scrolling main ------------------------ */
+/* The drawer is 280px: wide enough to hold the 56px pill anatomy with this
+ * admin's labels — the spec's 360dp is a maximum, not a target. Its container
+ * colour is the separation, so there is no border down its edge. */
+body.shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.side{background:var(--md-sys-color-surface-container-low);
   display:flex;flex-direction:column;min-height:100vh;position:sticky;top:0;
   max-height:100vh;overflow:hidden}
 .side .brand{display:flex;align-items:center;gap:11px;padding:20px 20px 16px;
@@ -246,25 +258,34 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
   font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
   letter-spacing:var(--md-sys-typescale-title-small-tracking);
   color:var(--md-sys-color-on-surface-variant)}
-.nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;margin:1px 0;
-  border-radius:7px;border:1px solid transparent;color:var(--muted);
+/* Drawer items: the 56px full-corner pill, label-large, 24px icons. The
+ * active item is the secondary-container indicator, not a primary fill —
+ * that is the M3 drawer's own anatomy. */
+.nav-item{display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;margin:0;
+  border-radius:var(--md-sys-shape-corner-full);
+  color:var(--md-sys-color-on-surface-variant);
   text-decoration:none;font-size:var(--md-sys-typescale-label-large-size);
   font-weight:var(--md-sys-typescale-label-large-weight);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);line-height:1.2}
-.nav-item svg{width:18px;height:18px;flex:0 0 auto;stroke-width:1.6}
-.nav-item:hover{color:var(--ink);background:var(--panel)}
-.nav-item.active{background:var(--accent);color:var(--accentInk);
-  border-color:var(--accent);font-weight:600}
+.nav-item svg{width:24px;height:24px;flex:0 0 auto;stroke-width:1.6}
+.nav-item:hover{color:var(--md-sys-color-on-surface);background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.nav-item:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
+.nav-item.active{background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container)}
+.nav-item.active:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-secondary-container) var(--md-sys-state-hover-state-layer-opacity),
+  var(--md-sys-color-secondary-container))}
 /* An installed module's nav entry: a generic module glyph (the row stores no
- * icon) and a small "off" badge when the household has disabled it. */
+ * icon) and a small "Off" badge when the household has disabled it. */
 .nav-item .nav-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav-badge{flex:0 0 auto;
   font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
   letter-spacing:var(--md-sys-typescale-label-small-tracking);
   color:var(--md-sys-color-on-surface-variant);
-  border:1px solid var(--rule);border-radius:var(--md-sys-shape-corner-extra-small);
-  padding:1px 6px}
-.nav-item.active .nav-badge{color:var(--accentInk);border-color:var(--accentInk)}
+  background:var(--md-sys-color-surface-container-highest);
+  border-radius:var(--md-sys-shape-corner-full);padding:2px 8px}
 .side-foot{border-top:1px solid var(--rule);padding:14px 16px;display:flex;
   flex-direction:column;gap:12px}
 .side-foot-id{display:flex;align-items:center;gap:10px}
@@ -288,31 +309,41 @@ body.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
 /* Admin theme toggle: styled with the segmented buttons further down. */
 
 .main{min-width:0;display:flex;flex-direction:column}
-.topbar{position:sticky;top:0;z-index:5;display:flex;align-items:flex-end;
-  justify-content:space-between;gap:16px;padding:22px 28px 16px;
-  background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(6px);
-  border-bottom:1px solid var(--rule)}
+/* A small top app bar: 64px container, title-large, on the surface-container
+ * colour the spec gives it while stuck. These pages carry no script, so the
+ * bar cannot restyle itself on scroll — it wears the stuck colour always,
+ * which is also what separates it: no blur, no translucency, no border. */
+.topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;
+  justify-content:space-between;gap:16px;min-height:64px;padding:8px 28px;
+  background:var(--md-sys-color-surface-container)}
 .topbar .crumb{font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
   letter-spacing:var(--md-sys-typescale-label-medium-tracking);
-  color:var(--md-sys-color-on-surface-variant);margin:0 0 5px}
-.topbar h1{font:var(--md-sys-typescale-headline-small-weight) var(--md-sys-typescale-headline-small-size)/var(--md-sys-typescale-headline-small-line-height) var(--md-sys-typescale-headline-small-font);
-  letter-spacing:var(--md-sys-typescale-headline-small-tracking);margin:0}
+  color:var(--md-sys-color-on-surface-variant);margin:0 0 2px}
+.topbar h1{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
+  letter-spacing:var(--md-sys-typescale-title-large-tracking);
+  color:var(--md-sys-color-on-surface);margin:0}
 .content{padding:24px 28px 52px;max-width:1180px;width:100%}
 .content>form:first-child,.content>.card:first-child,.content>.note:first-child{margin-top:0}
 /* The page's lead line. Used to sit in the topbar as .sub; moved into the
  * content so the sticky bar stays a compact kicker+title and gives ~40px back. */
 .note{color:var(--muted);font-size:14px;line-height:1.55;margin:0 0 20px;max-width:64ch}
 
-@media(max-width:820px){
+/* 900px, up from 820: the drawer grew from 216px to 280px, and the main
+ * column must keep at least what it had before the drawer widened. The
+ * collapsed drawer's pills drop to a compact 40px so the wrapped rows do not
+ * tower. */
+@media(max-width:900px){
   body.shell{grid-template-columns:1fr}
   .side{position:static;min-height:0;max-height:none;flex-direction:row;
-    flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--rule)}
+    flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--rule)}
   .side .brand{padding:14px 18px}
   .nav{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px;padding:0 12px 12px;overflow:visible}
   .nav-group{margin-top:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
   .nav-group>span{display:none}
+  .nav-item{height:40px;padding:0 14px}
+  .nav-item svg{width:20px;height:20px}
   .side-foot{display:none}
-  .topbar{padding:20px 20px 14px}
+  .topbar{padding:8px 20px}
   .content{padding:22px 20px 48px}
 }
 
@@ -344,8 +375,9 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
  * pass kept it as a brand device, and the component pass's fidelity decision
  * (docs/m3-adoption-prompts.md, kept outside the repo like the design file)
  * reversed that: kickers, labels and tags are mixed case on the roles' own
- * tracking, the way an M3 application writes them. Component styles further
- * down stay on --cond until a later pass moves them one by one. */
+ * tracking, the way an M3 application writes them. The surfaces pass finished
+ * the job: every component style is on the scale, the --cond token is gone,
+ * and Roboto Condensed survives only in the wordmark's fallback stack. */
 h1{font:var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size)/var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-headline-medium-font);
   letter-spacing:var(--md-sys-typescale-headline-medium-tracking);margin:0 0 4px}
 p{color:var(--muted);margin:.5rem 0;line-height:1.55}
@@ -653,32 +685,30 @@ button.tonal:active,.btn-tonal:active{background:color-mix(in srgb,
 .seg button::after,.le-orient-btn::after,.themebtn::after{content:"";position:absolute;
   left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
 
-/* ---- Errors and disclaimers (the .error box) ----------------------------- */
-.error{border-left:3px solid var(--danger);
-  background:color-mix(in srgb,var(--danger) 9%,transparent);
-  padding:.8rem 1rem;border-radius:0 6px 6px 0;margin:1rem 0}
-/* The error role itself, not a hand-picked red: the old #F0918D was tuned for
- * the dark scheme only and sat illegibly on the light one. */
-.error strong{color:var(--danger);display:block;font-size:14px;margin-bottom:2px}
-.error span{color:var(--muted);font-size:13px;line-height:1.5}
+/* ---- Errors and disclaimers (the .error box) -----------------------------
+ * The M3 error-container pattern: a filled tonal container, medium corner,
+ * everything in it on-error-container. The old left accent border retired
+ * with the rest of the blueprint identity. */
+.error{background:var(--md-sys-color-error-container);
+  padding:.9rem 1.1rem;border-radius:var(--md-sys-shape-corner-medium);margin:1rem 0}
+.error strong{color:var(--md-sys-color-on-error-container);display:block;
+  font-size:14px;font-weight:600;margin-bottom:2px}
+.error span{color:var(--md-sys-color-on-error-container);font-size:13px;line-height:1.5}
 
-/* ---- Cards --------------------------------------------------------------- */
-.card{position:relative;background:var(--panel);border:1px solid var(--rule);
-  border-radius:8px;padding:16px;margin:1rem 0}
+/* ---- Cards ----------------------------------------------------------------
+ * Two M3 kinds, chosen by use. A static section card is a filled card:
+ * surface-container-highest, medium corner, no border. A card that navigates
+ * (a.card, the stat tiles) is an elevated card further down: container-low
+ * with a level-1 shadow, and in the dark scheme the pre-mixed surface tint
+ * (--surface-elevation-*) carries the lift, with the shadow kept beside it. */
+.card{position:relative;background:var(--md-sys-color-surface-container-highest);
+  border-radius:var(--md-sys-shape-corner-medium);padding:16px;margin:1rem 0}
 .card h2{font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
   letter-spacing:var(--md-sys-typescale-title-medium-tracking);margin:0;
   display:flex;align-items:center;gap:.5rem}
 .card p{margin:.4rem 0}
 .card .host,.host{color:var(--faint);font-size:12.5px;font-family:var(--mono);
   margin:.35rem 0}
-/* Corner registration marks on feature cards. */
-.cm{position:absolute;width:9px;height:9px;color:var(--accent);opacity:.5;pointer-events:none}
-.cm::before,.cm::after{content:"";position:absolute;background:currentColor}
-.cm::before{left:4px;top:0;width:1px;height:9px}
-.cm::after{top:4px;left:0;height:1px;width:9px}
-.cm.tl{top:-5px;left:-5px}.cm.tr{top:-5px;right:-5px}
-.cm.bl{bottom:-5px;left:-5px}.cm.br{bottom:-5px;right:-5px}
-
 .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
 .row form{margin:.75rem 0 0}
 .row button{margin-top:0}
@@ -700,9 +730,15 @@ p.hint,.hint{font-size:12.5px;color:var(--faint);margin:.35rem 0 0;line-height:1
 .sect-head h2{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
   letter-spacing:var(--md-sys-typescale-title-large-tracking);margin:0}
 
-/* ---- Stat cards ---------------------------------------------------------- */
-a.card{display:block;text-decoration:none;color:inherit;transition:border-color .12s}
-a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
+/* ---- Stat cards: the elevated kind — they navigate ----------------------- */
+a.card{display:block;text-decoration:none;color:inherit;
+  background:var(--surface-elevation-1);
+  box-shadow:var(--md-sys-elevation-level1);
+  transition:box-shadow .12s,background .12s}
+a.card:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),
+  var(--surface-elevation-2));
+  box-shadow:var(--md-sys-elevation-level2)}
 .stat .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .stat .subrow .link{display:inline-flex;align-items:center;gap:4px}
 .stat .subrow .link svg{width:13px;height:13px;stroke-width:2}
@@ -723,13 +759,13 @@ a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 .today-card{display:flex;flex-direction:column}
 /* line-height guards: body's role line-height is a px length, which inherits
  * as-is into any larger text that does not set its own. */
-.today-big{font-family:var(--cond);font-weight:700;font-size:26px;line-height:1.1;
-  margin:6px 0 2px}
+.today-big{font:var(--md-sys-typescale-headline-small-weight) var(--md-sys-typescale-headline-small-size)/var(--md-sys-typescale-headline-small-line-height) var(--md-sys-typescale-headline-small-font);
+  letter-spacing:var(--md-sys-typescale-headline-small-tracking);margin:6px 0 2px}
 .stat .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent)}
 .stat .ic svg{width:19px;height:19px;stroke-width:1.6}
-.stat .big{font-family:var(--cond);font-weight:700;font-size:30px;line-height:1;
-  margin:12px 0 2px}
+.stat .big{font:var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size)/var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-headline-medium-font);
+  letter-spacing:var(--md-sys-typescale-headline-medium-tracking);margin:12px 0 2px}
 .stat .lab{color:var(--muted);font-size:13.5px}
 .stat .subrow{margin-top:12px;padding-top:12px;border-top:1px solid var(--ruleSoft);
   font-size:12.5px;color:var(--faint);display:flex;align-items:center;
@@ -743,14 +779,20 @@ a.card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 .pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;
   border:1px solid var(--ok);opacity:.6;animation:pl 2.4s ease-out infinite}
 @keyframes pl{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.7);opacity:0}}
+/* Status tags in tonal containers — the harmonized custom-role containers do
+ * the colour work, label-small mixed case does the type. */
 .tag{display:inline-flex;align-items:center;gap:6px;
   font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
   letter-spacing:var(--md-sys-typescale-label-small-tracking);
-  padding:3px 10px;border-radius:var(--md-sys-shape-corner-small);
-  border:1px solid var(--rule);color:var(--muted)}
-.tag-ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
-.tag-bad{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
-.tag-accent{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+  padding:4px 10px;border-radius:var(--md-sys-shape-corner-small);
+  background:var(--md-sys-color-surface-container-highest);
+  color:var(--md-sys-color-on-surface-variant)}
+.tag-ok{background:var(--md-custom-color-success-container);
+  color:var(--md-custom-color-on-success-container)}
+.tag-bad{background:var(--md-sys-color-error-container);
+  color:var(--md-sys-color-on-error-container)}
+.tag-accent{background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container)}
 .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;
   background:var(--swatch);flex:0 0 auto;vertical-align:baseline}
 img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
@@ -763,7 +805,8 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .cpreview{flex:0 0 auto;width:118px;min-height:64px;display:flex;flex-direction:column;
   justify-content:center;gap:2px;padding:9px 11px;border-radius:8px;
   background:var(--panel2);border:1px solid var(--rule);overflow:hidden}
-.cpreview b{font-family:var(--cond);font-weight:700;font-size:22px;line-height:1.05;
+.cpreview b{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
+  letter-spacing:var(--md-sys-typescale-title-large-tracking);
   color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cpreview i{font-style:normal;font-size:11px;line-height:1.25;color:var(--muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -771,7 +814,9 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 
 /* ---- Theme builder (custom themes) --------------------------------------- */
 .theme-builder{display:grid;grid-template-columns:1fr 320px;gap:28px;align-items:start;margin-top:.5rem}
-@media(max-width:820px){.theme-builder{grid-template-columns:1fr}}
+/* 1000px, not the shell's 900: below this the 320px preview column starves
+ * the controls beside the 280px drawer. */
+@media(max-width:1000px){.theme-builder{grid-template-columns:1fr}}
 .tb-controls{min-width:0}
 .tb-controls>.tb-group{display:block;margin:1.6rem 0 .2rem;
   font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
@@ -789,17 +834,23 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 /* ---- Theme picker cards (Display) ---------------------------------------- */
 .themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:.6rem}
 @media(max-width:560px){.themegrid{grid-template-columns:1fr}}
-.themecard{position:relative;display:block;border:1px solid var(--rule);
-  border-radius:9px;overflow:hidden;cursor:pointer}
+/* A selectable filled card: the swatch strip bleeds to the corner, the chosen
+ * one carries a 2px primary ring (a shadow, so nothing shifts). */
+.themecard{position:relative;display:block;
+  background:var(--md-sys-color-surface-container-highest);
+  border-radius:var(--md-sys-shape-corner-medium);overflow:hidden;cursor:pointer}
 .themecard input{position:absolute;opacity:0;pointer-events:none}
 .themecard .sw{height:60px;display:flex}
 .themecard .sw i{flex:1}
-.themecard .cap{padding:10px 12px;border-top:1px solid var(--rule)}
-.themecard .cap b{font-family:var(--cond);font-weight:700;font-size:15px;display:block}
-.themecard .cap small{color:var(--faint);font-size:11.5px}
-.themecard:hover{border-color:var(--faint)}
-.themecard:has(input:checked){border-color:var(--accent);
-  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent)}
+.themecard .cap{padding:10px 14px}
+.themecard .cap b{
+  font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
+  letter-spacing:var(--md-sys-typescale-title-small-tracking);display:block;
+  color:var(--md-sys-color-on-surface)}
+.themecard .cap small{color:var(--md-sys-color-on-surface-variant);font-size:11.5px}
+.themecard:hover .cap{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.themecard:has(input:checked){box-shadow:0 0 0 2px var(--md-sys-color-primary)}
 
 /* ---- Preview panel (calendar test, update-available, shift preview) ------ */
 .preview{position:relative;border:1px solid var(--rule);border-radius:8px;
@@ -815,12 +866,18 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 ul.plain{margin:.6rem 0 .6rem 1.1rem;color:var(--muted)}
 ul.plain li{margin:.45rem 0}
 ul.plain strong{color:var(--ink)}
-pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;padding:.8rem;
-  font:12px/1.55 var(--mono);color:var(--muted);max-height:22rem;overflow:auto;
-  white-space:pre-wrap;word-break:break-word}
+/* The log block on the inverse roles: the one deliberately inverted surface,
+ * which is what makes it read as a terminal in either scheme. */
+pre.log{background:var(--md-sys-color-inverse-surface);
+  border-radius:var(--md-sys-shape-corner-small);padding:.8rem 1rem;
+  font:12px/1.55 var(--mono);color:var(--md-sys-color-inverse-on-surface);
+  max-height:22rem;overflow:auto;white-space:pre-wrap;word-break:break-word}
 
 /* ---- QR + short code (pairing) ------------------------------------------ */
-.qr{background:#fff;padding:.8rem;border-radius:8px;display:inline-block;margin:.6rem 0}
+/* Deliberately white in both schemes: a QR needs its quiet zone on a light
+ * plate, or half the phones in the house refuse to read it. */
+.qr{background:#fff;padding:.8rem;border-radius:var(--md-sys-shape-corner-medium);
+  display:inline-block;margin:.6rem 0}
 .qr svg{display:block}
 
 /* ---- Shift slot pickers -------------------------------------------------- */
@@ -839,10 +896,12 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .pv-cell.pv-off{border-top-color:var(--ok);
   background:color-mix(in srgb,var(--ok) 8%,var(--panel2))}
 .pv-cell.pv-unknown{border-top-color:var(--rule);background:var(--panel2);opacity:.6}
-.pv-dow{display:block;font-family:var(--cond);font-size:10px;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--faint)}
-.pv-num{display:block;font-family:var(--cond);font-weight:700;font-size:17px;margin:2px 0}
-.pv-code{display:block;font-family:var(--cond);font-weight:700;font-size:12px;color:var(--accent)}
+.pv-dow{display:block;font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
+  letter-spacing:var(--md-sys-typescale-label-small-tracking);color:var(--faint)}
+.pv-num{display:block;font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
+  letter-spacing:var(--md-sys-typescale-title-medium-tracking);margin:2px 0}
+.pv-code{display:block;font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);color:var(--accent)}
 .pv-off .pv-code{color:var(--ok)}
 .pv-unknown .pv-code{color:var(--faint)}
 
@@ -892,13 +951,15 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-reset-form{margin:0}
 /* The Layers popover — anchored under its toolbar button (offsetParent is the
    toolbar), so it never floats over the settings pane. */
+/* An M3 menu surface: extra-small corner, surface-container, level-2 shadow. */
 .le-layers-pop{position:absolute;top:calc(100% + 6px);right:0;width:320px;z-index:30;
-  background:var(--panel);border:1px solid var(--rule);border-radius:10px;
-  box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden}
+  background:var(--md-sys-color-surface-container);
+  border-radius:var(--md-sys-shape-corner-extra-small);
+  box-shadow:var(--md-sys-elevation-level2);overflow:hidden}
 .le-layers-pop[hidden]{display:none}
 .le-layers-head{padding:12px 16px;border-bottom:1px solid var(--ruleSoft)}
-.le-layers-title{font-family:var(--cond);font-weight:700;font-size:16px;
-  text-transform:uppercase;letter-spacing:.04em;color:var(--ink)}
+.le-layers-title{font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
+  letter-spacing:var(--md-sys-typescale-title-medium-tracking);color:var(--ink)}
 .le-layers-sub{font-size:12px;color:var(--faint);margin-top:2px}
 .le-layers-empty{padding:14px 16px;font-size:13px;color:var(--faint)}
 .le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
@@ -931,14 +992,20 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   var(--md-sys-color-on-primary) var(--md-sys-state-hover-state-layer-opacity),
   var(--md-sys-color-primary))}
 /* The add-widget modal: a centred card of first-party widget types. */
+/* An M3 basic dialog: extra-large corner, surface-container-high, a 32% black
+ * scrim, headline-small title. */
 .le-modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;
-  justify-content:center;padding:24px;background:rgba(0,0,0,.55)}
+  justify-content:center;padding:24px;background:rgba(0,0,0,.32)}
 .le-modal[hidden]{display:none}
-.le-modal-card{width:min(560px,100%);max-height:85vh;overflow:auto;background:var(--panel);
-  border:1px solid var(--rule);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.le-modal-card{width:min(560px,100%);max-height:85vh;overflow:auto;
+  background:var(--md-sys-color-surface-container-high);
+  border-radius:var(--md-sys-shape-corner-extra-large);
+  box-shadow:var(--md-sys-elevation-level3)}
 .le-modal-head{display:flex;align-items:center;justify-content:space-between;
-  padding:16px 20px;border-bottom:1px solid var(--rule);font-family:var(--cond);
-  font-weight:700;font-size:17px;color:var(--ink)}
+  padding:20px 24px 12px;
+  font:var(--md-sys-typescale-headline-small-weight) var(--md-sys-typescale-headline-small-size)/var(--md-sys-typescale-headline-small-line-height) var(--md-sys-typescale-headline-small-font);
+  letter-spacing:var(--md-sys-typescale-headline-small-tracking);
+  color:var(--md-sys-color-on-surface)}
 .le-modal-close{position:relative;margin:0;padding:0;width:40px;height:40px;
   display:grid;place-items:center;background:none;border:0;
   border-radius:var(--md-sys-shape-corner-full);
@@ -950,11 +1017,16 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px}
 @media(max-width:520px){.le-modal-grid{grid-template-columns:repeat(2,1fr)}}
 .le-modal-item{display:flex;align-items:center;justify-content:center;text-align:center;
-  min-height:64px;padding:12px;background:var(--panel2);color:var(--ink);
-  border:1px solid var(--rule);border-radius:10px;font-family:var(--cond);font-weight:600;
-  font-size:14px;cursor:pointer}
-.le-modal-item:hover{border-color:var(--accent);
-  background:color-mix(in srgb,var(--accent) 10%,transparent)}
+  min-height:64px;padding:12px;background:var(--md-sys-color-surface-container-highest);
+  color:var(--md-sys-color-on-surface);border:0;
+  border-radius:var(--md-sys-shape-corner-medium);
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);cursor:pointer}
+.le-modal-item:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),
+  var(--md-sys-color-surface-container-highest))}
 .le-delete{margin-top:0;height:32px;padding:0 16px;background:transparent;
   color:var(--md-sys-color-error);border:1px solid var(--md-sys-color-outline);
   border-radius:var(--md-sys-shape-corner-full);cursor:pointer}
@@ -990,8 +1062,9 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .le-widget.is-selected{border-color:var(--accent);
   box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);
   background:color-mix(in srgb,var(--accent) 12%,transparent)}
-.le-widget-label{position:absolute;top:0;left:0;font-family:var(--cond);font-weight:700;
-  font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#05140d;
+.le-widget-label{position:absolute;top:0;left:0;
+  font:var(--md-sys-typescale-label-small-weight) 10px/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
+  letter-spacing:var(--md-sys-typescale-label-small-tracking);color:#05140d;
   background:var(--ok);padding:2px 6px;border-radius:0 0 4px 0;pointer-events:none;user-select:none}
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
@@ -1024,13 +1097,19 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 /* The layers list — every widget, front on top; drag a row to restack. It is
    the body of the anchored popover above. */
 .le-layers{max-height:340px;overflow:auto;padding:6px}
-.le-layer{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;
-  border:1px solid transparent;cursor:pointer;user-select:none}
-.le-layer:hover{background:var(--panel2)}
-.le-layer.is-selected{border-color:var(--accent);background:var(--panel2)}
+.le-layer{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  border-radius:var(--md-sys-shape-corner-extra-small);
+  cursor:pointer;user-select:none}
+.le-layer:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.le-layer.is-selected{background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container)}
 .le-layer-grip{flex:0 0 auto;color:var(--faint);cursor:grab;letter-spacing:-2px;
   font-size:14px;touch-action:none;padding:0 2px}
-.le-layer-name{flex:1;min-width:0;font-size:14px;font-weight:500;
+.le-layer-name{flex:1;min-width:0;
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Per-widget options, shown under the stage when a widget is selected. */
@@ -1136,19 +1215,19 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
   letter-spacing:var(--md-sys-typescale-title-small-tracking);
   color:var(--md-sys-color-on-surface-variant);margin:26px 0 14px}
 .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px}
-/* A blueprint card: a transparent line drawing with registration marks at the
-   corners, not a filled panel. The one solid object is the primary button. */
+/* Template cards are standard elevated cards now — the blueprint line-drawing
+ * treatment retired with the rest of that identity. */
 .tpl-card{position:relative;display:flex;flex-direction:column;gap:14px;
-  background:transparent;border:1px solid var(--rule);border-radius:2px;padding:16px}
-.tpl-card>.cm{opacity:.6}
+  background:var(--surface-elevation-1);box-shadow:var(--md-sys-elevation-level1);
+  border-radius:var(--md-sys-shape-corner-medium);padding:16px}
 .tpl-thumb{position:relative;width:100%;aspect-ratio:3/4;background:var(--panel2);
-  overflow:hidden;border:1px solid var(--rule);border-radius:2px;
+  overflow:hidden;border-radius:var(--md-sys-shape-corner-small);
   display:flex;align-items:center;justify-content:center}
 .tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   padding:12px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--faint)}
 .tpl-body{padding:0;display:flex;flex-direction:column;gap:8px;flex:1}
-.tpl-name{font-family:var(--cond);font-weight:700;font-size:20px;text-transform:uppercase;
-  letter-spacing:.02em;line-height:1}
+.tpl-name{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
+  letter-spacing:var(--md-sys-typescale-title-large-tracking)}
 .tpl-blurb{font-size:13.5px;color:var(--muted);line-height:1.45;flex:1;margin:0}
 .tpl-card form{margin:0}
 .tpl-card .btn-sm{align-self:flex-start;margin-top:2px}
@@ -1163,8 +1242,8 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .disp-status{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .disp-status .seen{display:flex;align-items:center;gap:9px}
 .disp-status .seen .who{line-height:1.15}
-.disp-status .seen b{font-family:var(--cond);font-weight:700;font-size:14px;
-  text-transform:uppercase;letter-spacing:.04em;display:block}
+.disp-status .seen b{font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
+  letter-spacing:var(--md-sys-typescale-title-small-tracking);display:block}
 .disp-status .seen small{font-size:12px;color:var(--faint)}
 .disp-status form{margin:0}
 .disp-panes{display:grid;grid-template-columns:minmax(480px,1.7fr) minmax(320px,0.9fr);
@@ -1173,8 +1252,8 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .disp-left{position:sticky;top:96px;min-width:0}
 .disp-right{min-width:0}
 .disp-cap{font-size:12px;color:var(--faint);margin:10px 0 0;text-align:right}
-.settings-head{font-family:var(--cond);font-weight:700;font-size:22px;margin:0 0 12px;
-  text-transform:uppercase;letter-spacing:.02em}
+.settings-head{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
+  letter-spacing:var(--md-sys-typescale-title-large-tracking);margin:0 0 12px}
 /* M3 primary tabs: 48px, label-large mixed case, a 3px primary indicator with
  * rounded top corners on the active one. */
 .tabbar{display:flex;gap:0;border-bottom:1px solid var(--md-sys-color-outline-variant);
@@ -1211,29 +1290,42 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
 .fieldhelp::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
   transform:translate(-50%,-50%)}
 .fieldhelp svg{width:16px;height:16px;stroke-width:1.8}
+/* A menu surface, like the layers popover. */
 .helppop{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:min(320px,80vw);
-  padding:12px 14px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;
-  box-shadow:0 16px 40px rgba(0,0,0,.45);font-size:12.5px;line-height:1.5;color:var(--muted);
+  padding:12px 14px;background:var(--md-sys-color-surface-container);
+  border-radius:var(--md-sys-shape-corner-extra-small);
+  box-shadow:var(--md-sys-elevation-level2);
+  font-size:var(--md-sys-typescale-body-small-size);line-height:1.5;
+  color:var(--md-sys-color-on-surface-variant);
   text-transform:none;font-weight:400;letter-spacing:0}
 .helppop[hidden]{display:none}
 .helppop p{margin:.35rem 0}
 .helppop p:first-child{margin-top:0}
-/* One sticky save bar for the whole page — layout and settings save together. */
-.savebar{position:fixed;left:216px;right:0;bottom:0;z-index:20;display:flex;align-items:center;
+/* One sticky save bar for the whole page — layout and settings save together.
+ * The M3 bottom-bar shape it already had, on a solid container colour now:
+ * left clears the 280px drawer and follows it through the collapse. */
+.savebar{position:fixed;left:280px;right:0;bottom:0;z-index:20;display:flex;align-items:center;
   justify-content:flex-end;gap:16px;padding:12px 28px;
-  background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);
-  border-top:1px solid var(--rule)}
-.savebar-flag{font-family:var(--cond);font-weight:700;font-size:13px;text-transform:uppercase;
-  letter-spacing:.08em;color:var(--warn)}
+  background:var(--md-sys-color-surface-container)}
+.savebar-flag{
+  font:var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size)/var(--md-sys-typescale-label-large-line-height) var(--md-sys-typescale-label-large-font);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  color:var(--md-custom-color-warning)}
 .savebar-flag[hidden]{display:none}
-.savebar .msg{font-family:var(--mono);font-size:12.5px;color:var(--danger)}
+.savebar .msg{
+  font-size:var(--md-sys-typescale-body-medium-size);
+  line-height:var(--md-sys-typescale-body-medium-line-height);
+  color:var(--md-sys-color-error)}
 .savebar button{margin:0}
-@media(max-width:900px){
+/* The editor's two panes need ~830px of content; with the 280px drawer that
+ * is a ~1160px viewport, so they stack below it — earlier than the shell's
+ * own 900px collapse, which is where the savebar stops clearing the drawer. */
+@media(max-width:1160px){
   .disp-panes{grid-template-columns:1fr}
   .disp-left{position:static}
   .tabpanel .two-up{grid-template-columns:1fr}
 }
-@media(max-width:820px){
+@media(max-width:900px){
   .savebar{left:0;padding:12px 20px}
 }
 
@@ -1243,7 +1335,7 @@ pre.log{background:#0B1015;border:1px solid var(--rule);border-radius:7px;paddin
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(button,.btn,.walls a,.le-tool-link,input,select,textarea):focus-visible{
+:is(button,.btn,.walls a,.le-tool-link,.nav-item,input,select,textarea):focus-visible{
   outline:3px solid var(--md-sys-color-primary);outline-offset:2px}
 .themecard:has(input:focus-visible){outline:3px solid var(--md-sys-color-primary);
   outline-offset:2px}
@@ -1595,8 +1687,7 @@ export function page(options: PageOptions): string {
       `<body class="wiz"><div class="wizbox">` +
       `<a class="brand" href="admin">${MARK}<b>Maverick Wall</b></a>` +
       (options.step === undefined ? '' : stepProgress(options.step)) +
-      `<div class="card"><i class="cm tl"></i><i class="cm tr"></i>` +
-      `<i class="cm bl"></i><i class="cm br"></i>` +
+      `<div class="card">` +
       `<h1>${escapeHtml(options.heading)}</h1>` +
       (options.intro === undefined ? '' : `<p>${escapeHtml(options.intro)}</p>`) +
       options.body +
