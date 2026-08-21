@@ -44,6 +44,10 @@ export const widgetConfigBody = z
     // labelled pills. Absent means dots, so an existing wall is unchanged.
     cellEvents: z.enum(['dots', 'pills']).optional(),
     count: z.number().int().min(1).max(50).optional(),
+    // The day's high and low beside its date in the agenda (RFC 007 phase 3).
+    // Absent means off, so a wall that already carries a weather strip does not
+    // suddenly say it twice — this is the household choosing to spend the strip.
+    showWeather: z.boolean().optional(),
     showTimes: z.boolean().optional(),
     showLocations: z.boolean().optional(),
     // Home Assistant

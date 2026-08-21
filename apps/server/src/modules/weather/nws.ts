@@ -27,6 +27,13 @@ export interface Coordinates {
 export interface ForecastDay {
   /** "Monday", "Tonight" — the provider's own wording, which reads well. */
   readonly name: string;
+  /**
+   * The civil date this covers, `YYYY-MM-DD`, or `''` when the provider did
+   * not say. What lets the agenda put a day's numbers beside that day's events
+   * — a name cannot, because "Tonight" and "This Afternoon" name no weekday and
+   * a weekday names no year.
+   */
+  readonly date: string;
   readonly high: number | null;
   readonly low: number | null;
   readonly unit: string;
@@ -104,6 +111,14 @@ export function iconFor(summary: string): string {
  */
 const nwsPeriod = z.looseObject({
   name: z.string().min(1),
+  /*
+   * Local to the forecast point, offset included — "2026-08-21T06:00:00-05:00".
+   * Its date part is therefore already the household's own calendar date (the
+   * forecast is for where they live), so the date needs no zone conversion and
+   * this stays a pure function with no `Intl` in it. Optional: a period without
+   * one still draws, it just cannot be joined to a day.
+   */
+  startTime: z.string().catch(''),
   isDaytime: z.boolean().catch(false),
   temperature: z.number().nullish().catch(null),
   temperatureUnit: z.string().catch('F'),
@@ -129,6 +144,12 @@ const pointsDocument = z.looseObject({
  * numbers, and the first period may be a night, because the forecast starts
  * whenever it is now.
  */
+/** The date part of an ISO local time, or `''` when it is not one. */
+function civilDateOf(startTime: string): string {
+  const date = startTime.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+}
+
 export function foldPeriods(periods: readonly unknown[], limit: number): ForecastDay[] {
   // Parsed one at a time: one odd period must not cost the other six.
   const shaped: NwsPeriod[] = [];
@@ -151,7 +172,17 @@ export function foldPeriods(periods: readonly unknown[], limit: number): Forecas
       // The night that follows carries the low.
       const next = shaped[index + 1];
       const low = next !== undefined && !next.isDaytime ? (next.temperature ?? null) : null;
-      days.push({ name: period.name, high: temperature, low, unit, summary, icon: iconFor(summary) });
+      days.push({
+        name: period.name,
+        // The daytime period's own date: "Monday" plus "Monday Night" is one
+        // row, and it belongs to Monday rather than to the night after it.
+        date: civilDateOf(period.startTime),
+        high: temperature,
+        low,
+        unit,
+        summary,
+        icon: iconFor(summary),
+      });
       index++;
       continue;
     }
@@ -163,7 +194,17 @@ export function foldPeriods(periods: readonly unknown[], limit: number): Forecas
      * ("Tonight") is better than inventing one or dropping it, because it is
      * the period the household is actually in.
      */
-    days.push({ name: period.name, high: null, low: temperature, unit, summary, icon: iconFor(summary) });
+    days.push({
+      name: period.name,
+      // "Tonight" starts this evening, so its date is today's — which is the
+      // day the household is standing in and the row they want it beside.
+      date: civilDateOf(period.startTime),
+      high: null,
+      low: temperature,
+      unit,
+      summary,
+      icon: iconFor(summary),
+    });
   }
 
   return days;

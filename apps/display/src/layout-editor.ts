@@ -1453,6 +1453,14 @@ function boot(): void {
       });
       countField.appendChild(count);
       configPanel.appendChild(countField);
+
+      // Off unless asked for: a wall that already carries a weather widget
+      // would otherwise say the same numbers twice.
+      configPanel.appendChild(
+        toggle('Show the forecast', cfg['showWeather'] === true, (checked) =>
+          setConfig(widget, 'showWeather', checked ? true : undefined),
+        ),
+      );
     }
   }
 

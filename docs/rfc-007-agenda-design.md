@@ -44,6 +44,19 @@ Builds on the display's widget model (`renderWidget`, `viewmodel.ts`,
 > `min-width: 0` down the chain, and the time stacks above the title when there
 > is no room beside it.
 
+> **Update — phase 3 is built, and it was not "one manifest field".** The
+> forecast carried no date, only a provider name ("Monday", "Tonight"), so
+> there was nothing to join an agenda day against. The date is threaded from
+> both providers instead: NWS periods carry `startTime` local to the forecast
+> point, so its date part is already the household's own calendar date and
+> `foldPeriods` stays pure; Open-Meteo already had it. A missing date joins
+> nothing rather than guessing.
+>
+> Writing the fixture in Open-Meteo's own shape found a live bug: it emitted
+> `unit: '°C'` where NWS emits `'F'`, and the display adds the degree itself,
+> so **every Open-Meteo wall read "20°°C"**. Two tests asserted `'°C'` and were
+> confidently testing it — the same shape as the link-local case in `CLAUDE.md`.
+
 ## Summary
 
 [Calendar Card Pro](https://github.com/alexpfau/calendar-card-pro) is a Home

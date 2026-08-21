@@ -156,6 +156,12 @@ export interface DayModel {
   readonly events: readonly EventModel[];
   /** Events beyond the limit, so the wall can say how many it is not showing. */
   readonly hiddenEventCount: number;
+  /**
+   * The forecast for this day, when there is one and the widget asked for it.
+   * Joined by date in `buildModel`, so a day the forecast does not reach simply
+   * has none rather than borrowing its neighbour's.
+   */
+  readonly weather: WeatherDayModel | undefined;
 }
 
 /**
@@ -209,6 +215,13 @@ export interface WeatherDayModel {
   readonly icon: string;
   readonly high: string;
   readonly low: string;
+  /**
+   * The civil date this covers, or absent when the provider did not say — and
+   * absent for a forecast cached by a server older than this field, which is
+   * why nothing may assume it. Only the join uses it; the strip still labels
+   * itself with `name`, which is the provider's own wording.
+   */
+  readonly date: string | undefined;
 }
 
 export type Staleness =
@@ -511,6 +524,7 @@ export function weatherFrom(panel: unknown): {
     if (typeof entry !== 'object' || entry === null) continue;
     const day = entry as {
       name?: unknown; icon?: unknown; high?: unknown; low?: unknown; unit?: unknown;
+      date?: unknown;
     };
     if (typeof day.name !== 'string') continue;
     const unit = typeof day.unit === 'string' ? day.unit : '';
@@ -523,6 +537,12 @@ export function weatherFrom(panel: unknown): {
       // The unit rides on the low so the row reads "84° 69°F" rather than
       // repeating itself five times across the strip.
       low: `${degrees(day.low)}${unit === '' ? '' : unit}`,
+      // A cached forecast written before this field existed has no date, and a
+      // provider can decline to give one. Both mean "cannot be joined", never
+      // "join it to whatever is nearest".
+      date: typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day.date)
+        ? day.date
+        : undefined,
     });
   }
 
@@ -737,6 +757,7 @@ function toDay(
   hour12: boolean,
   limit: number,
   people: ReadonlyMap<string, PersonModel>,
+  weatherByDate: ReadonlyMap<string, WeatherDayModel> = new Map(),
 ): DayModel {
   const { weekday, day: dayNumber, month } = parts(day.date, timezone);
   const shown = day.events.slice(0, limit);
@@ -757,6 +778,7 @@ function toDay(
       }),
     ),
     hiddenEventCount: day.events.length - shown.length,
+    weather: weatherByDate.get(day.date),
   };
 }
 
@@ -827,6 +849,20 @@ export function buildModel(options: BuildOptions): DisplayModel {
   const todayDay = byDate.get(today);
 
   /*
+   * The forecast, read once and indexed by date so a day can carry its own.
+   *
+   * Above the day building rather than beside the other panels below, because
+   * `toDay` joins against it. A day with no forecast (beyond the window, or a
+   * provider that gave no date) gets none — never its neighbour's, which is the
+   * failure that would put tomorrow's rain on today's row and be believed.
+   */
+  const weather = weatherFrom(manifest.panels?.['weather']);
+  const weatherByDate = new Map<string, WeatherDayModel>();
+  for (const day of weather.days) {
+    if (day.date !== undefined && !weatherByDate.has(day.date)) weatherByDate.set(day.date, day);
+  }
+
+  /*
    * The next few days that have anything on them.
    *
    * Skipping empty days rather than showing them: three blank panels tell
@@ -838,7 +874,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     const date = addDays(today, offset);
     if (date > manifest.window.to) break;
     const day = byDate.get(date) ?? { date, shifts: [], events: [] };
-    next.push(toDay(day, today, now, timezone, hour12, NEXT_EVENT_LIMIT, peopleById));
+    next.push(toDay(day, today, now, timezone, hour12, NEXT_EVENT_LIMIT, peopleById, weatherByDate));
   }
 
   // The horizon starts on the first day of the week containing today (Sunday or
@@ -888,7 +924,6 @@ export function buildModel(options: BuildOptions): DisplayModel {
     staleness = { level: 'stale', message: `Last updated ${describeAge(age)}.` };
   }
 
-  const weather = weatherFrom(manifest.panels?.['weather']);
   const house = houseFrom(manifest.panels?.['home']);
 
   // Third-party module panels: every `ext:*` slice, read through the same
@@ -913,7 +948,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
       todayDay === undefined
         ? undefined
         : {
-            ...toDay(todayDay, today, now, timezone, hour12, todayLimit, peopleById),
+            ...toDay(todayDay, today, now, timezone, hour12, todayLimit, peopleById, weatherByDate),
             events: markToday(todayDay.events.slice(0, todayLimit), now, timezone, hour12, peopleById),
           },
     people,

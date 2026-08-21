@@ -75,6 +75,48 @@ describe('reading a real forecast', () => {
     expect(days[1]).toMatchObject({ name: 'Tuesday', high: 70, low: 50 });
   });
 
+  /*
+   * The date is what lets the agenda put a day's numbers beside that day's
+   * events (RFC 007 phase 3). `startTime` is local to the forecast point,
+   * offset included, so its date part is already the household's own calendar
+   * date — no zone conversion, and `foldPeriods` stays pure.
+   */
+  it('takes the daytime period\'s date, not the night after it', () => {
+    const days = foldPeriods(
+      [
+        { name: 'Monday', startTime: '2026-08-17T06:00:00-05:00', isDaytime: true, temperature: 80, temperatureUnit: 'F', shortForecast: 'Sunny' },
+        { name: 'Monday Night', startTime: '2026-08-17T18:00:00-05:00', isDaytime: false, temperature: 60, temperatureUnit: 'F', shortForecast: 'Clear' },
+        { name: 'Tuesday', startTime: '2026-08-18T06:00:00-05:00', isDaytime: true, temperature: 70, temperatureUnit: 'F', shortForecast: 'Rain' },
+      ],
+      5,
+    );
+    expect(days[0]).toMatchObject({ name: 'Monday', date: '2026-08-17' });
+    expect(days[1]).toMatchObject({ name: 'Tuesday', date: '2026-08-18' });
+  });
+
+  it('dates a leading night to the evening it starts, which is today', () => {
+    // The wall is being looked at after dark: NWS opens with "Tonight".
+    const days = foldPeriods(
+      [
+        { name: 'Tonight', startTime: '2026-08-17T20:00:00-05:00', isDaytime: false, temperature: 61, temperatureUnit: 'F', shortForecast: 'Clear' },
+        { name: 'Tuesday', startTime: '2026-08-18T06:00:00-05:00', isDaytime: true, temperature: 70, temperatureUnit: 'F', shortForecast: 'Rain' },
+      ],
+      5,
+    );
+    expect(days[0]).toMatchObject({ name: 'Tonight', date: '2026-08-17', low: 61 });
+    expect(days[1]).toMatchObject({ name: 'Tuesday', date: '2026-08-18' });
+  });
+
+  it('leaves the date empty rather than inventing one', () => {
+    // A period with no usable startTime cannot be joined to a day. Empty says
+    // so; a guessed date would put the wrong numbers beside somebody's evening.
+    const days = foldPeriods(
+      [{ name: 'Friday', isDaytime: true, temperature: 75, temperatureUnit: 'F', shortForecast: 'Sunny' }],
+      5,
+    );
+    expect(days[0]?.date).toBe('');
+  });
+
   it('leaves the low empty when the forecast ends on a day', () => {
     const days = foldPeriods(
       [{ name: 'Friday', isDaytime: true, temperature: 75, temperatureUnit: 'F', shortForecast: 'Sunny' }],
@@ -171,7 +213,7 @@ describe('which provider draws the strip', () => {
       key.replace(/[^a-z0-9]/gi, ''),
       key.split(':')[0],
       key,
-      JSON.stringify({ days: [{ name, high: 20, low: 10, unit: '°C', summary: '', icon: '☁' }], fetchedAt: NOW }),
+      JSON.stringify({ days: [{ name, high: 20, low: 10, unit: 'C', summary: '', icon: '☁' }], fetchedAt: NOW }),
       NOW,
     );
   };

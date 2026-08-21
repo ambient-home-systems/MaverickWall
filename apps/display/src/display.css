@@ -530,6 +530,18 @@ body {
    belongs to the rota and two rules on one edge read as one thick rule. */
 .day-row.is-today .dr-num { color: var(--accent); }
 .day-row.is-today .dr-dow { color: var(--accent); }
+/* The forecast under the date. Mono for the numbers so a column of them lines
+   up, and the icon is a character the bundle already has — rule three, the same
+   reason the weather strip draws no images. */
+.dr-wx {
+  display: flex; align-items: baseline; gap: 0.35rem;
+  font-family: var(--f-mono); font-size: 1.4rem; margin-top: 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+.dr-wx-icon { font-family: var(--f-body, inherit); font-size: 1.5rem; }
+.dr-wx-high { color: var(--ink); }
+.dr-wx-low { color: var(--muted); }
+
 .dr-shift {
   font-size: 1.1rem; letter-spacing: 0.13em; text-transform: uppercase;
   color: var(--sc); margin-top: 0.3rem; font-weight: 600;
