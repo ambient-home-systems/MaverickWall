@@ -355,16 +355,22 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
   color:inherit;margin:0 0 4px}
 .wizbox .brand svg{width:34px;height:34px;border-radius:8px}
 .wizbox .brand b{font-family:var(--wordmark);font-weight:700;font-size:19px}
+/* The step indicator as an M3 linear-progress treatment: a 4px full-corner
+ * track per step on surface-container-highest, filled primary once a step is
+ * reached. Captions are label-medium mixed case, coloured by state — the
+ * current step primary, done steps on-surface-variant, upcoming ones
+ * outline. */
 .steps{display:flex;gap:8px;margin:22px 0 26px;padding:0;list-style:none}
 .steps .step{flex:1;text-align:center}
-.steps .step .bar{height:4px;border-radius:2px;background:var(--rule)}
-.steps .step.done .bar,.steps .step.on .bar{background:var(--accent)}
+.steps .step .bar{height:4px;border-radius:var(--md-sys-shape-corner-full);
+  background:var(--md-sys-color-surface-container-highest)}
+.steps .step.done .bar,.steps .step.on .bar{background:var(--md-sys-color-primary)}
 .steps .step span{display:block;margin-top:8px;
-  font:var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size)/var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-label-small-font);
-  letter-spacing:var(--md-sys-typescale-label-small-tracking);
-  color:var(--md-sys-color-on-surface-variant)}
-.steps .step.on span{color:var(--accent)}
-.steps .step.done span{color:var(--muted)}
+  font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
+  letter-spacing:var(--md-sys-typescale-label-medium-tracking);
+  color:var(--md-sys-color-outline)}
+.steps .step.on span{color:var(--md-sys-color-primary)}
+.steps .step.done span{color:var(--md-sys-color-on-surface-variant)}
 .wizbox .card{margin:0}
 .wizbox>form,.wizbox>.error{margin-top:18px}
 
@@ -631,6 +637,14 @@ button.tonal:hover,.btn-tonal:hover{background:color-mix(in srgb,
 button.tonal:active,.btn-tonal:active{background:color-mix(in srgb,
   var(--md-sys-color-on-secondary-container) var(--md-sys-state-pressed-state-layer-opacity),
   var(--md-sys-color-secondary-container))}
+/* An M3 text button: no container at rest, primary label, state layers only —
+ * the lowest-emphasis action, e.g. the wizard's "Skip for now". */
+button.text,.btn-text{background:transparent;color:var(--md-sys-color-primary);
+  border-color:transparent;padding:0 12px}
+button.text:hover,.btn-text:hover{background:color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+button.text:active,.btn-text:active{background:color-mix(in srgb,
+  var(--md-sys-color-primary) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
 .btn-danger{background:transparent;color:var(--md-sys-color-error);
   border-color:var(--md-sys-color-outline)}
 .btn-danger:hover{background:color-mix(in srgb,

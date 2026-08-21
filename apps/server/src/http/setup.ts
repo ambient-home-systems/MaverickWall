@@ -605,7 +605,8 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         `</div>` +
         `<button type="submit">Test and add</button></form>` +
         `<form method="get" action="setup/done">` +
-        `<button class="secondary" type="submit">Skip for now</button></form>`,
+        // A text button: skipping is the lowest-emphasis choice on the page.
+        `<button class="btn-text" type="submit">Skip for now</button></form>`,
     });
   }
 
