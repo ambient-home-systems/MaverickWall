@@ -14,6 +14,24 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Shift panel now says where you really are in a run. On a fortnight of
+straights, day thirteen said **"Day 2 of 3"** — and it said something like that
+on every wall, for every rota longer than a single day, because the position
+could never get past two.
+
+The wall was counting the days it had been sent, and it is only ever sent
+yesterday, today and the weeks ahead. Reaching the end of what it had, it could
+not tell "the run started here" from "that is all I know", so it called
+yesterday the beginning. The count forwards was right all along, which is why
+"1 more" was correct while the rest was not.
+
+Maverick now works this out where the rota actually lives, on the server, which
+can follow a run to both its ends however far back it started. Day thirteen of
+fourteen reads "Day 13 of 14 · 1 more". Runs of rest days are counted the same
+way, and a run longer than three months is left unsaid rather than guessed at.
+
 ## 0.39.0
 
 Work schedules on a calendar are now a setting. Every Calendar style that draws

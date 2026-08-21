@@ -256,6 +256,22 @@ export interface ManifestPersonShift extends ManifestShift {
   readonly personName: string;
   readonly personColor: string;
   readonly personAvatarUrl: string | null;
+  /**
+   * How far through an unbroken run of this same shift today is — `{ position:
+   * 13, total: 14 }`.
+   *
+   * **Present only on today's entries**, because "how far through" is a
+   * question about now; a run position on next Tuesday answers nothing anyone
+   * asked. Absent when the run cannot be established (see `RUN_WINDOW_DAYS`).
+   *
+   * Computed here rather than on the wall, and that is the whole point of the
+   * field. The display used to count backwards through the days *in the
+   * manifest*, and the manifest carries one single day of history — so the
+   * walk hit the window edge, could not tell "the run started here" from "I
+   * ran out of data", and every run longer than a day read "Day 2 of N". The
+   * server has the rota itself and can resolve any date mathematically.
+   */
+  readonly run?: { readonly position: number; readonly total: number };
 }
 
 export interface ManifestPerson {
@@ -683,6 +699,45 @@ function healthNotices(sources: readonly SourceRow[], now: number): ManifestNoti
   return notices;
 }
 
+/**
+ * How far either side of today a run is followed before it is given up on.
+ *
+ * A rota cycle longer than this cannot be reported in full, so the number is
+ * generous: at 90 days it covers every rotation anyone actually works, and the
+ * cost is pure arithmetic over a pattern — no database, no events, no I/O.
+ * A run that reaches the edge is dropped rather than reported short, because a
+ * confident wrong number is what this field exists to stop.
+ */
+const RUN_WINDOW_DAYS = 90;
+
+/**
+ * How far through an unbroken run of today's shift today is.
+ *
+ * Walks out from today in both directions while the resolved shift key is the
+ * same one. `undefined` when today has no shift, and — deliberately — when the
+ * run reaches either edge of the resolved range: at that point we do not know
+ * where it starts or ends, and "Day 2 of 3" for a fortnight of nights is worse
+ * than saying nothing, because a household believes it.
+ */
+function runFor(
+  keyByDate: ReadonlyMap<CivilDate, string>,
+  today: CivilDate,
+): { position: number; total: number } | undefined {
+  const key = keyByDate.get(today);
+  if (key === undefined) return undefined;
+
+  let before = 0;
+  while (before < RUN_WINDOW_DAYS && keyByDate.get(addDays(today, -(before + 1))) === key) {
+    before++;
+  }
+  let after = 0;
+  while (after < RUN_WINDOW_DAYS && keyByDate.get(addDays(today, after + 1)) === key) after++;
+
+  // Ran to the edge: the run is longer than we looked, so its ends are unknown.
+  if (before >= RUN_WINDOW_DAYS || after >= RUN_WINDOW_DAYS) return undefined;
+  return { position: before + 1, total: before + after + 1 };
+}
+
 export function buildManifest(input: BuildManifestInput): Manifest {
   const from = addDays(input.today, -input.daysBefore);
   const to = addDays(input.today, input.daysAfter);
@@ -759,14 +814,35 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         return owner === person.id || (owner == null && person.id === people[0]?.id);
       });
 
-      for (const resolved of resolveShifts({
-        from,
-        to,
+      /*
+       * Resolved wider than the manifest window, so today's run can be
+       * followed to its real ends.
+       *
+       * The window portion is identical either way — same plans, same
+       * overrides, same titles — so this is one pass, not two, and the extra
+       * days cost arithmetic over a pattern and nothing else. Days outside the
+       * window are used *only* for the run: they carry no events, so a
+       * calendar-derived plan resolves to nothing out there, which is honest
+       * (we genuinely do not know) and handled by `runFor` giving up.
+       */
+      const wide = resolveShifts({
+        from: addDays(input.today, -RUN_WINDOW_DAYS),
+        to: addDays(input.today, RUN_WINDOW_DAYS),
         plans,
         overrides,
         shiftTypes: input.shiftTypes,
         titlesByDate,
-      })) {
+      });
+
+      const keyByDate = new Map<CivilDate, string>();
+      for (const resolved of wide) {
+        const shift = shiftFor(resolved, input.shiftTypes);
+        if (shift) keyByDate.set(resolved.date, shift.key);
+      }
+      const run = runFor(keyByDate, input.today);
+
+      for (const resolved of wide) {
+        if (resolved.date < from || resolved.date > to) continue;
         const shift = shiftFor(resolved, input.shiftTypes);
         if (!shift) continue;
         const bucket = shiftsByDate.get(resolved.date) ?? [];
@@ -776,6 +852,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
           personName: person.name,
           personColor: person.color,
           personAvatarUrl: avatarUrl(person.avatarPath),
+          // Only today's, because only today has a "how far through".
+          ...(resolved.date === input.today && run !== undefined ? { run } : {}),
         });
         shiftsByDate.set(resolved.date, bucket);
       }

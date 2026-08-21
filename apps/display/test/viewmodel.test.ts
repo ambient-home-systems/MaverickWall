@@ -782,3 +782,44 @@ describe('a day with more than one person on a rota', () => {
     expect(built.today?.shifts.map((s) => s.personName)).toEqual(['Amy', 'Ben']);
   });
 });
+
+/*
+ * The run the shift badge draws.
+ *
+ * The server resolves the rota and sends the answer; this only formats it. The
+ * old local count is kept for a manifest from a server older than the field —
+ * including one read out of IndexedDB, which a wall can draw for months — and
+ * it is deliberately not trusted, because it counts the days *in the manifest*
+ * and the manifest holds one day of history.
+ */
+describe('how far through a run today is', () => {
+  const shiftOn = (date: string, run?: { position: number; total: number }) =>
+    ({
+      date, events: [],
+      shifts: [{
+        key: 'straights', label: 'Straights', shortCode: 'S', colorToken: '--s-straight',
+        isWorking: true, source: 'pattern',
+        personId: 'daddy', personName: 'Daddy', personColor: '#888', personAvatarUrl: null,
+        ...(run !== undefined ? { run } : {}),
+      }],
+    }) as unknown as ManifestDay;
+
+  it('draws the server\'s position, however little history the manifest holds', () => {
+    // The reported bug: a 14-day run on day 13 read "Day 2 of 3 · 1 more",
+    // because one day of history was all the wall could see.
+    const built = model([shiftOn('2026-07-15', { position: 13, total: 14 })]);
+    expect(built.shiftRun).toBe('Day 13 of 14 · 1 more');
+  });
+
+  it('says so on the last day rather than counting down to nothing', () => {
+    const built = model([shiftOn('2026-07-15', { position: 14, total: 14 })]);
+    expect(built.shiftRun).toBe('Last of 14');
+  });
+
+  it('falls back to counting the manifest when the server did not say', () => {
+    // What every wall did before this: one day of history, so at most "Day 2".
+    // Pinned as the floor it is, not as a correct answer.
+    const built = model([shiftOn('2026-07-14'), shiftOn('2026-07-15'), shiftOn('2026-07-16')]);
+    expect(built.shiftRun).toBe('Day 2 of 3 · 1 more');
+  });
+});

@@ -569,3 +569,64 @@ describe('week numbers', () => {
     }
   });
 });
+
+/*
+ * How far through a run of shifts today is.
+ *
+ * This is computed here, on the server, because the display cannot do it: it
+ * counted the days *in the manifest*, and the manifest carries one single day
+ * of history, so it could not tell "the run started here" from "I ran out of
+ * data". Every run longer than a day read "Day 2 of N" — a 14-day run of
+ * straights on day 13 reported "Day 2 of 3 · 1 more". The "1 more" was right;
+ * the position could never exceed 2.
+ *
+ * A 14-on / 14-off cycle is the case that was reported, so it is the case
+ * asserted, and the position is checked on several days of the run rather than
+ * one — a single day passes just as happily against an off-by-one.
+ */
+describe('the run a shift is part of', () => {
+  const FOURTEEN = [
+    {
+      kind: 'pattern', id: 'straights', name: 'straights',
+      effectiveFrom: '2020-01-01', effectiveTo: null, priority: 0,
+      // 2026-08-31 is day 1 of the run, so 2026-09-12 is day 13.
+      anchorDate: '2026-08-31',
+      cycle: [...Array.from({ length: 14 }, () => 'day'), ...Array.from({ length: 14 }, () => null)],
+    },
+  ] as unknown as ShiftPlan[];
+
+  const runOn = (today: string) =>
+    buildManifest({ ...BASE, shiftPlans: FOURTEEN, today })
+      .days.find((day) => day.date === today)?.shifts[0]?.run;
+
+  it('reports the real position, not the manifest window', () => {
+    expect(runOn('2026-09-12')).toEqual({ position: 13, total: 14 });
+  });
+
+  it('walks the whole run, not just its middle', () => {
+    expect(runOn('2026-08-31')).toEqual({ position: 1, total: 14 });
+    expect(runOn('2026-09-06')).toEqual({ position: 7, total: 14 });
+    expect(runOn('2026-09-13')).toEqual({ position: 14, total: 14 });
+  });
+
+  it('counts a run of rest days too, because a rest day is a fact', () => {
+    // The day after the working run ends. `shiftFor` emits a synthetic `break`
+    // for a resolved not-working day precisely so the wall can draw it, so
+    // "day 1 of 14 off" is a real answer and the right one — the first draft
+    // of this test expected `undefined` and was asserting the wrong model.
+    expect(runOn('2026-09-14')).toEqual({ position: 1, total: 14 });
+    expect(runOn('2026-09-20')).toEqual({ position: 7, total: 14 });
+  });
+
+  it('is absent when there is no rota at all', () => {
+    const manifest = buildManifest({ ...BASE, shiftPlans: [], today: '2026-09-12' });
+    const day = manifest.days.find((entry) => entry.date === '2026-09-12');
+    expect(day?.shifts).toHaveLength(0);
+  });
+
+  it('rides only on today, because that is the only day it answers for', () => {
+    const manifest = buildManifest({ ...BASE, shiftPlans: FOURTEEN, today: '2026-09-12' });
+    const others = manifest.days.filter((day) => day.date !== '2026-09-12');
+    expect(others.every((day) => day.shifts.every((shift) => shift.run === undefined))).toBe(true);
+  });
+});
