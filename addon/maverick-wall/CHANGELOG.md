@@ -43,6 +43,12 @@ listening at that address and port", with what to check next — instead of a
 raw code like ECONNREFUSED. The same plain wording appears anywhere a feed
 fails to fetch, including a calendar's "last sync failed" note.
 
+The settings' icons are now Material Symbols — the same icon family the new
+look comes from — so the sidebar, the overview tiles and the little arrows
+all match the rest of the design. Still built in, still nothing fetched from
+the internet. A small glitch where the selected tab's underline could strike
+through its own label is fixed along the way.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling

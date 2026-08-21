@@ -27,3 +27,11 @@ Summary of the terms honoured here: the fonts may be bundled and redistributed
 with this software, are not sold on their own, retain their reserved names, and
 carry this notice. The Apache-2.0 fonts (Roboto, Roboto Condensed) are used
 under https://www.apache.org/licenses/LICENSE-2.0.
+
+## Material Symbols
+
+The admin's inline icons are Material Symbols Outlined (24dp, default weight),
+© Google, Apache License 2.0 — https://github.com/google/material-design-icons.
+No font file ships: the glyph outline paths are copied into `ICON_PATHS` in
+`apps/server/src/http/html.ts` (rule three — nothing is fetched at runtime),
+each entry named after its Symbols source glyph.
