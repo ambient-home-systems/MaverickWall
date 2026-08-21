@@ -21,7 +21,15 @@ import type { Manifest } from '../api/manifest.js';
 
 import { drawText, GLYPH_SIZE, measureText } from './font.js';
 import { Framebuffer } from './framebuffer.js';
-import { asciiTitle, drawAgendaBox, drawMonthBox, fit, type Box, type PanelGeometry } from './render.js';
+import {
+  asciiTitle,
+  drawMonthBox,
+  drawUpcomingBox,
+  drawWeekBox,
+  fit,
+  type Box,
+  type PanelGeometry,
+} from './render.js';
 import type { EpaperModel } from './viewmodel.js';
 
 /** A widget placed on the canvas: fractional box, plus its stored options. */
@@ -41,6 +49,13 @@ const PAD = 8;
 
 const str = (c: Config, k: string): string | undefined => (typeof c[k] === 'string' ? (c[k] as string) : undefined);
 const list = (c: Config, k: string): unknown[] => (Array.isArray(c[k]) ? (c[k] as unknown[]) : []);
+const num = (c: Config, k: string): number | undefined =>
+  typeof c[k] === 'number' && Number.isFinite(c[k]) ? (c[k] as number) : undefined;
+/** A config array narrowed to its strings — a stranger's JSON reaches here. */
+const strings = (c: Config, k: string): string[] | undefined => {
+  const raw = list(c, k).filter((v): v is string => typeof v === 'string');
+  return raw.length > 0 ? raw : undefined;
+};
 const alignOf = (c: Config): 'left' | 'center' | 'right' => {
   const a = str(c, 'align');
   return a === 'center' || a === 'right' ? a : 'left';
@@ -290,13 +305,37 @@ function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string): vo
   drawLines(fb, lines.length > 0 ? lines : [empty], box, 2, 'left');
 }
 
+/**
+ * A calendar widget, drawn the way the household asked.
+ *
+ * The mode is read *exactly* as `renderCalendarWidget` reads it on the wall,
+ * and that is the whole of one bug: the editor stores the default (`month`) as
+ * an absence, and this tested `=== 'month'` — so the commonest setting, the one
+ * nobody changes, drew the agenda on every panel. Two renderers reading one
+ * stored value opposite ways is the same fault as two renderers drawing one
+ * canvas, and the cure is the same: one reading, written down.
+ *
+ * Every option the designer offers is answered here, because an option that
+ * does nothing is a worse answer than an option that is not offered.
+ */
+function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+  const mode = str(config, 'mode');
+  if (mode === 'week') return drawWeekBox(fb, model, box);
+  if (mode !== 'list') return drawMonthBox(fb, model, box, { pills: str(config, 'cellEvents') === 'pills' });
+  const calendars = strings(config, 'calendars');
+  const count = num(config, 'count');
+  return drawUpcomingBox(fb, model, box, {
+    ...(calendars !== undefined ? { calendars } : {}),
+    ...(count !== undefined ? { count } : {}),
+  });
+}
+
 function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel, manifest: Manifest, config: Config): void {
   switch (type) {
     case 'clock':
       return drawClock(fb, box, model, config);
     case 'calendar':
-      // month grid, or an agenda list (week falls back to the list for now).
-      return str(config, 'mode') === 'month' ? drawMonthBox(fb, model, box) : drawAgendaBox(fb, model, box);
+      return drawCalendarWidget(fb, box, model, config);
     case 'shift':
       return drawShift(fb, box, model);
     case 'countdown':

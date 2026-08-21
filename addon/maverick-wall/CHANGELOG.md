@@ -14,7 +14,47 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.33.2
+
+The Calendar options on an eInk panel now do what they say. Every one of them
+was ignored: whichever of Month grid, Week columns or Upcoming list you picked,
+the panel drew the same short list of today's events — and Month grid, the one
+most people leave alone, was the worst affected, because the layout stores it
+by leaving it out and the panel read a missing setting as "not the month".
+
+Month grid draws the month. Week columns draws the coming week as seven
+columns with today's inverted. Upcoming list shows the days ahead under their
+own date headings, rather than only today, and honours which calendars to
+include and how many events to show. "Labelled pills" names the events inside
+each day's square instead of shading it, including today's, which are knocked
+out of the filled cell so they can still be read.
+
+## 0.33.1
+
+Arranging an eInk panel shows the panel. The Arrange area used to draw your
+widgets as the colour cards a browser wall shows, on a tall portrait canvas —
+so a wide 800x480 panel was designed on a shape it cannot display, and boxes
+dragged there landed somewhere else on the frame. Behind the boxes now is the
+panel's own black-and-white picture, redrawn as you drag, the same one the
+Preview above shows and the same one the panel fetches. The canvas is the
+panel's real proportions, and the orientation and aspect controls are gone in
+favour of a line stating what the panel is, because 800x480 landscape is a
+fact about the hardware rather than a choice.
+
+## 0.33.0
+
+The settings are usable on a phone. Every page used to open with a block of
+eleven navigation buttons filling half the screen before anything you came to
+read — ungrouped, and back again on every tap — while sign-out and the
+light/dark switch were not reachable at all.
+
+There is a menu button in the top bar instead. It stays put as you scroll, so
+the navigation is one tap away wherever you are on a page, and it opens the
+same drawer you get on a computer: the sections named, the buttons big enough
+to hit, sign-out and the theme switch where they belong. Choosing somewhere
+closes it.
+
+## 0.32.4
 
 eInk panels draw their widgets properly now. The clock could lose its last
 digit — half past eight drawn as "08:3" — because the type was sized to the

@@ -230,6 +230,15 @@ const layoutBody = z.object({
   // null for none. Absent is treated as null so an older editor still saves.
   background: backgroundSchema.nullable().optional(),
 });
+
+/**
+ * The canvas the e-paper designer wants previewed — the boxes it has on screen
+ * right now, which may not be saved yet. Same widget schema the save path
+ * validates, so a preview can express nothing a save could not.
+ */
+const epaperPreviewBody = z.object({
+  widgets: z.array(layoutWidgetBody).max(50),
+});
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
@@ -1862,6 +1871,61 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
+   * The same 1-bit frame, for a canvas that has not been saved yet.
+   *
+   * The designer's arrange area used to be drawn by the *wall* renderer, so an
+   * arrangement for a black-and-white panel was shown in colour cards and
+   * looked nothing like the thing it was for. The fix is not to teach the
+   * browser a second 1-bit renderer — two renderers disagreeing is the whole
+   * problem — but to let the editor post the boxes it has and get back the
+   * exact frame the panel would draw, from the one renderer that draws it.
+   *
+   * Nothing is stored. `POST` because a canvas does not belong in a URL, and
+   * `no-store` because this frame is a keystroke old.
+   *
+   * The posted boxes are the canvas *by definition* here, so the screen goes in
+   * as `freeform` whatever the row says. A panel that has never been saved has
+   * `layout_mode` NULL, and reading it would have drawn the built-in layout for
+   * every arrangement — a backdrop that never moves while you drag, which is
+   * the very fault this endpoint exists to fix. `renderScreenFrame` still ANDs
+   * with `widgets.length > 0`, so posting an empty canvas falls back to the
+   * built-in layout exactly as a saved empty one does.
+   */
+  app.post('/admin/epaper/:id/preview.png', async (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = findEpaper(id);
+    if (screen === undefined || deps.previewManifest === undefined) return c.body(null, 404);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ ok: false, message: 'That was not readable as JSON.' }, 400);
+    }
+    const shaped = parse(epaperPreviewBody, raw);
+    if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
+    try {
+      const widgets = shaped.value.widgets.map((widget) => ({
+        type: widget.type,
+        x: widget.x,
+        y: widget.y,
+        w: widget.w,
+        h: widget.h,
+        z: widget.z,
+        config: widget.config !== undefined ? (widget.config as Record<string, unknown>) : {},
+      }));
+      const frame = renderScreenFrame(
+        deps.previewManifest(id) as Manifest,
+        { ...screen, layoutMode: 'freeform' },
+        widgets,
+      );
+      c.header('cache-control', 'no-store');
+      return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
+    } catch {
+      return c.body(null, 503);
+    }
+  });
+
+  /**
    * Design an e-paper panel's layout — the same drag-and-drop editor a browser
    * wall uses, on this panel's own canvas, with the real 1-bit preview beside it.
    *
@@ -1879,11 +1943,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const ph = screen.panelHeight ?? 480;
     const landscapeAspect = Math.max(pw, ph) / Math.min(pw, ph);
     const portraitAspect = Math.min(pw, ph) / Math.max(pw, ph);
+    // The panel's own ratio, never a stored one. On a browser wall the aspect is
+    // a guess about a screen nobody measured, so the household may set it; a
+    // panel is 800x480 and that is the end of it. Honouring a stored 16:9 here
+    // drew the boxes on a canvas the device cannot show, which is how a widget
+    // ended up somewhere other than where it was dragged. Saving writes this
+    // value back, so a canvas arranged before this is corrected on first save.
     const canvas = (orientation: 'portrait' | 'landscape') => ({
-      aspect:
-        orientation === 'landscape'
-          ? (screen.layoutLandscapeAspect ?? landscapeAspect)
-          : (screen.layoutAspect ?? portraitAspect),
+      aspect: orientation === 'landscape' ? landscapeAspect : portraitAspect,
       widgets: readLayoutWidgets(deps.db, id, orientation).map((w) => ({
         id: w.id,
         type: w.type,
@@ -1901,6 +1968,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // Tells the editor its host is a panel, so its Reset confirm says what
       // reset actually does here (back to the built-in layout, not Classic).
       kind: 'epaper',
+      // The one orientation this panel will ever draw, so the editor opens on
+      // the canvas the device reads rather than on the wall's portrait default.
+      // The other canvas is still loaded and saved; it is simply not the one a
+      // household is shown for a panel bolted to a wall in one orientation.
+      orientation: epaperOrientation(screen),
+      panel: { width: pw, height: ph },
       mode: 'freeform',
       portrait: canvas('portrait'),
       landscape: canvas('landscape'),

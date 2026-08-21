@@ -337,27 +337,89 @@ body.shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
 .topbar h1{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
   letter-spacing:var(--md-sys-typescale-title-large-tracking);
   color:var(--md-sys-color-on-surface);margin:0}
+/* The kicker and title take the slack, so the bar reads the same whether or
+ * not a page supplies an action: the pair sits left, the action right. It has
+ * to be said rather than left to justify-content once a third child — the
+ * compact width's leading icon — joins them. */
+.topbar-title{flex:1;min-width:0}
+/* The modal drawer's three parts, all of them placement below 900px and none
+ * of them drawn at this width, where the drawer is in flow and always there. */
+.nav-toggle,.nav-scrim,.navbtn{display:none}
 .content{padding:24px 28px 52px;max-width:1180px;width:100%}
 .content>form:first-child,.content>.card:first-child,.content>.note:first-child{margin-top:0}
 /* The page's lead line. Used to sit in the topbar as .sub; moved into the
  * content so the sticky bar stays a compact kicker+title and gives ~40px back. */
 .note{color:var(--muted);font-size:14px;line-height:1.55;margin:0 0 20px;max-width:64ch}
 
-/* 900px, up from 820: the drawer grew from 216px to 280px, and the main
- * column must keep at least what it had before the drawer widened. The
- * collapsed drawer's pills drop to a compact 40px so the wrapped rows do not
- * tower. */
+/* ---- Compact width: the same drawer, modal ------------------------------
+ * 900px, up from 820: the drawer grew from 216px to 280px, and the main column
+ * must keep at least what it had before the drawer widened.
+ *
+ * Below it the drawer used to be recast in place — a wrapping field of pills
+ * with its group headings hidden, its pills cut to 40px, and its foot removed
+ * outright. That put eleven-plus destinations, ungrouped, above the content of
+ * every page: on a phone the page began below the fold, and because each admin
+ * screen is a fresh document the whole field came back on every tap. Sign-out
+ * and the theme toggle simply were not reachable.
+ *
+ * M3's answer at this width is the *modal* drawer, and it is the same panel
+ * rather than a redrawn one: fixed, off-canvas, over a scrim, opened from the
+ * app bar's leading icon. Everything here is placement, so the headings, the
+ * 56px pills and the foot all come back by not being overridden, and navBar()
+ * keeps rendering one markup for both widths.
+ *
+ * None of it runs any script. The open state is a checkbox the CSS reads, so
+ * the drawer works on a page whose JavaScript never arrived — and since every
+ * link is a full page load, the next document arrives with the box unchecked,
+ * which closes the drawer on navigation with nothing to remember and nothing
+ * to restore. */
 @media(max-width:900px){
   body.shell{grid-template-columns:1fr}
-  .side{position:static;min-height:0;max-height:none;flex-direction:row;
-    flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--rule)}
-  .side .brand{padding:14px 18px}
-  .nav{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px;padding:0 12px 12px;overflow:visible}
-  .nav-group{margin-top:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-  .nav-group>span{display:none}
-  .nav-item{height:40px;padding:0 14px}
-  .side-foot{display:none}
-  .topbar{padding:8px 20px}
+  /* Above the savebar and the layers popover (20, 30), below the layout
+   * editor's modal dialog (50): a dialog outranks a navigation drawer, and
+   * while one is open it covers the button that would open this. 86vw leaves a
+   * strip of the page showing on a narrow phone, which is what says the drawer
+   * is a layer over the page rather than a new one. */
+  .side{position:fixed;top:0;left:0;bottom:0;z-index:41;
+    width:min(280px,86vw);min-height:0;max-height:none;
+    box-shadow:var(--md-sys-elevation-level1);
+    transform:translateX(-100%);visibility:hidden}
+  .nav{overscroll-behavior:contain}
+  /* visibility, not the transform alone: a panel that is merely translated off
+   * the canvas is still in the tab order, so a keyboard would walk into a
+   * drawer nobody can see. */
+  .nav-toggle:checked~.side{transform:none;visibility:visible}
+  /* margin:0 because both of these are <label>, and the generic form-label
+   * rule further up carries a margin of 1rem/.35rem. On a fixed inset:0 scrim
+   * that margin is not cosmetic: it held the sheet 16px clear of the top of
+   * the viewport, leaving a strip across the app bar where a tap fell through
+   * to the page behind an open drawer. Measured, not read. */
+  .nav-scrim{display:block;position:fixed;inset:0;z-index:40;margin:0;
+    background:var(--md-sys-color-scrim);opacity:0;visibility:hidden}
+  /* touch-action so a drag on the scrim does not scroll the page underneath,
+   * which is the one part of "modal" that CSS alone can still honour. */
+  .nav-toggle:checked~.nav-scrim{opacity:.32;visibility:visible;touch-action:none}
+  /* Focusable and invisible. The control a person sees is the label in the app
+   * bar, so the focus ring is drawn there — the same move the theme cards make
+   * for their hidden radio — and opacity:0 takes this one's own ring with it. */
+  .nav-toggle{display:block;position:fixed;top:0;left:0;width:48px;height:48px;
+    margin:0;opacity:0;pointer-events:none}
+  .nav-toggle:focus-visible~.main .navbtn{
+    outline:3px solid var(--md-sys-color-primary);outline-offset:2px}
+  /* The app bar's leading icon: 40px visual with the 48px pointer target every
+   * control under 48px extends to, and 12px of bar padding, which lands the
+   * 24px glyph's left edge on the content's own 20px margin below it. */
+  .navbtn{display:grid;place-items:center;position:relative;flex:0 0 auto;margin:0;
+    width:40px;height:40px;border-radius:var(--md-sys-shape-corner-full);
+    color:var(--md-sys-color-on-surface-variant);cursor:pointer}
+  .navbtn::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
+    transform:translate(-50%,-50%)}
+  .navbtn svg{width:24px;height:24px}
+  .navbtn:hover{color:var(--md-sys-color-on-surface);background:color-mix(in srgb,
+    var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+  .navbtn:active{background:color-mix(in srgb,
+    var(--md-sys-color-on-surface-variant) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
+  .topbar{padding:8px 20px 8px 12px;gap:8px}
   .content{padding:22px 20px 48px}
 }
 
@@ -1095,12 +1157,35 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   background-image:linear-gradient(to right,var(--ruleSoft) 1px,transparent 1px),
     linear-gradient(to bottom,var(--ruleSoft) 1px,transparent 1px)}
 .le-preview{position:absolute;inset:0;z-index:0;pointer-events:none}
+/* What a panel shows instead of the wall's orientation tabs and aspect list:
+ * its geometry, stated. Read-only on purpose — 800x480 landscape is a fact
+ * about the hardware, not a choice. */
+.le-panel-chip{display:inline-flex;align-items:center;height:38px;padding:0 16px;
+  border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-full);
+  color:var(--md-sys-color-on-surface-variant);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);
+  white-space:nowrap}
+/* The e-paper designer's backdrop: the panel's own 1-bit frame. Stretched to
+ * fill rather than letterboxed, on purpose — the widgets are fractions of the
+ * canvas and of the panel alike, so filling makes the drag boxes sit exactly
+ * over the shapes they will become. Pixelated: this is 1-bit art, not a photo.
+ * (No backticks in this file's CSS — the stylesheet is a template literal.) */
+.le-epaper-preview{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:fill;image-rendering:pixelated;background:#fff}
 .le-preview .preview-wall{overflow:hidden}
 .le-overlay{position:absolute;inset:0;z-index:1}
 .le-widget{position:absolute;background:color-mix(in srgb,var(--ok) 12%,transparent);
   border:1px solid color-mix(in srgb,var(--ok) 60%,transparent);border-radius:4px;
   cursor:move;touch-action:none;overflow:hidden;user-select:none}
 .le-widget:hover{background:color-mix(in srgb,var(--ok) 20%,transparent)}
+/* Over an e-paper frame the fill would tint the 1-bit art it is meant to show,
+ * and the panel already draws each widget's own border underneath — so the box
+ * is an outline until you point at it. Selection keeps its accent regardless. */
+.le-overlay.is-epaper .le-widget{background:transparent;
+  border-color:color-mix(in srgb,var(--ok) 70%,transparent)}
+.le-overlay.is-epaper .le-widget:hover{background:color-mix(in srgb,var(--ok) 14%,transparent)}
 .le-widget.is-selected{border-color:var(--accent);
   box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);
   background:color-mix(in srgb,var(--accent) 12%,transparent)}
@@ -1110,6 +1195,14 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   color:var(--md-custom-color-on-success);
   background:var(--ok);padding:2px 6px;border-radius:0 0 4px 0;pointer-events:none;user-select:none}
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
+/* On a panel the frame underneath already says what each box is — it draws the
+ * widget. So the name steps back out of the artwork until you point at it or
+ * select it, which is the same argument as the transparent fill above. It is
+ * dimmed rather than removed: a widget with nothing to draw yet (an empty note)
+ * would otherwise be an unlabelled outline. */
+.le-overlay.is-epaper .le-widget-label{opacity:.45}
+.le-overlay.is-epaper .le-widget:hover .le-widget-label,
+.le-overlay.is-epaper .le-widget.is-selected .le-widget-label{opacity:1}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
 /* The canvas background control — none / solid / gradient, per canvas. */
@@ -1467,6 +1560,34 @@ pre.code{background:var(--md-sys-color-surface-container-high);
     60%{opacity:var(--md-sys-state-pressed-state-layer-opacity)}
     100%{transform:scale(1);opacity:0}
   }
+  /* The compact drawer slides, and its scrim fades with it — entering
+   * decelerates and leaving accelerates, the same pair the dialog above uses.
+   *
+   * Nested in here rather than written beside the drawer's own media block
+   * because the body/.side/.topbar rule further up declares a transition on
+   * .side, and a later one would replace it wholesale; that is also why the
+   * background and colour pair is repeated here. The theme buttons live in the
+   * drawer's foot, so it is on screen exactly when the scheme changes.
+   *
+   * visibility carries no delay opening and the full duration closing, so the
+   * panel is reachable the moment it is asked for and stays drawn while it
+   * slides away. */
+  @media(max-width:900px){
+    .side{transition:transform var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-accelerate),
+      visibility 0s linear var(--md-sys-motion-duration-medium-2),
+      background-color var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-standard),
+      color var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-standard)}
+    .nav-toggle:checked~.side{
+      transition:transform var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate),
+      visibility 0s,
+      background-color var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-standard),
+      color var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-standard)}
+    .nav-scrim{transition:opacity var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-emphasized-accelerate),
+      visibility 0s linear var(--md-sys-motion-duration-short-4)}
+    .nav-toggle:checked~.nav-scrim{
+      transition:opacity var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate),
+      visibility 0s}
+  }
 }
 `;
 
@@ -1621,6 +1742,8 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   addons: '<path d="M841-518v318q0 33-23.5 56.5T761-120H201q-33 0-56.5-23.5T121-200v-318q-23-21-35.5-54t-.5-72l42-136q8-26 28.5-43t47.5-17h556q27 0 47 16.5t29 43.5l42 136q12 39-.5 71T841-518Zm-272-42q27 0 41-18.5t11-41.5l-22-140h-78v148q0 21 14 36.5t34 15.5Zm-180 0q23 0 37.5-15.5T441-612v-148h-78l-22 140q-4 24 10.5 42t37.5 18Zm-178 0q18 0 31.5-13t16.5-33l22-154h-78l-40 134q-6 20 6.5 43t41.5 23Zm540 0q29 0 42-23t6-43l-42-134h-76l22 154q3 20 16.5 33t31.5 13ZM201-200h560v-282q-5 2-6.5 2H751q-27 0-47.5-9T663-518q-18 18-41 28t-49 10q-27 0-50.5-10T481-518q-17 18-39.5 28T393-480q-29 0-52.5-10T299-518q-21 21-41.5 29.5T211-480h-4.5q-2.5 0-5.5-2v282Zm560 0H201h560Z"/>',
   /* widgets */
   module: '<path d="M666-440 440-666l226-226 226 226-226 226Zm-546-80v-320h320v320H120Zm400 400v-320h320v320H520Zm-400 0v-320h320v320H120Zm80-480h160v-160H200v160Zm467 48 113-113-113-113-113 113 113 113Zm-67 352h160v-160H600v160Zm-400 0h160v-160H200v160Zm160-400Zm194-65ZM360-360Zm240 0Z"/>',
+  /* menu */
+  menu: '<path d="M120-240v-80h720v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z"/>',
   /* help */
   help: '<path d="M478-240q21 0 35.5-14.5T528-290q0-21-14.5-35.5T478-340q-21 0-35.5 14.5T428-290q0 21 14.5 35.5T478-240Zm-36-154h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/>',
 };
@@ -1874,6 +1997,23 @@ export function page(options: PageOptions): string {
   return (
     head(options.title, true) +
     `<body class="shell">` +
+    /*
+     * The compact-width drawer's whole mechanism, and it is a checkbox.
+     *
+     * It holds the open state where CSS can read it, so the modal drawer needs
+     * no script — which matters here for the same reason the wizard has none:
+     * a household that cannot reach the navigation cannot reach anything else
+     * either. It is first in the body because the drawer and its scrim are
+     * selected as its siblings, and `page()` is the only place that order is
+     * decided. Its accessible name is on the input, since the labels that
+     * operate it carry only an icon and a scrim between them.
+     *
+     * Below 900px it is a focusable, invisible 48px at the top-left corner,
+     * under the app-bar button that labels it; at this width the stylesheet
+     * takes it out entirely, so it is not a phantom first tab stop on a
+     * desktop where the drawer is always open.
+     */
+    `<input type="checkbox" id="mw-nav" class="nav-toggle" aria-label="Navigation menu">` +
     `<aside class="side">` +
     `<a class="brand" href="admin">${MARK}<span><b>Maverick Wall</b><small>Admin</small></span></a>` +
     navBar(options.nav, options.modules ?? []) +
@@ -1896,8 +2036,17 @@ export function page(options: PageOptions): string {
     `</div>` +
     `</div>` +
     `</aside>` +
+    // Tapping the page beside an open drawer closes it: a second label for the
+    // same checkbox, drawn as the scrim. Hidden from assistive technology —
+    // it is a surface to dismiss with, and the control is already named.
+    `<label class="nav-scrim" for="mw-nav" aria-hidden="true"></label>` +
     `<main class="main">` +
-    `<header class="topbar"><div>` +
+    `<header class="topbar">` +
+    // The app bar's leading icon, and the only way to the navigation below
+    // 900px. It sits in the sticky bar rather than at the top of the document
+    // so it is one tap away at any scroll depth; at this width it is not drawn.
+    `<label class="navbtn" for="mw-nav" title="Navigation menu">${icon('menu')}</label>` +
+    `<div class="topbar-title">` +
     `<div class="crumb">${escapeHtml(groupLabelFor(options.nav))}</div>` +
     `<h1>${escapeHtml(options.heading)}</h1>` +
     `</div>${action}</header>` +

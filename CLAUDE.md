@@ -140,6 +140,8 @@ useful thing in this document:
 | Three hand-drawn alphabets, each "cut off" in a new way | Somebody looking at the wordmark and saying so, three times |
 | **Home Assistant offered an update that could not install** | Pressing Update on a real supervisor, minutes after the merge |
 | **A release that went red only because the tag was cut in the UI** | Reading the failed step, which ran after the image had shipped |
+| **Half a phone screen spent on navigation before any content** | Measuring where `.content` starts at 390px: 407px down |
+| A modal scrim leaving a live 16px strip across the app bar | Measuring a fixed `inset:0` element and reading back `y:16` |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -282,6 +284,57 @@ lives by:** a frame pushed to a real Seeed 7.5" and photographed, and one
 reaching a real OpenDisplay tag through a real supervisor. Battery panels are
 documented as a glance class, not an alert class — a sleeping ESP32 cannot honour
 a takeover, and the page says so.
+
+**The panel's designer draws the panel, and getting there took two fixes that
+look like one.** The Arrange area is the same drag-and-drop editor a browser
+wall uses, and it was drawing a browser wall: the household's colour cards on
+the wall's portrait 9:16 canvas, for a landscape 800x480 device. So the shape
+was wrong *and* the picture was wrong, and a box dragged in it landed somewhere
+else on the frame. The picture is fixed by rendering rather than by teaching the
+browser a second 1-bit renderer — two renderers disagreeing is the whole problem
+— so `POST /admin/epaper/:id/preview.png` takes the boxes the editor holds and
+answers with the exact frame the panel would draw, debounced, nothing stored.
+The shape is fixed by making the canvas a fact about the hardware: the design
+page sends the panel's own ratio and its one orientation, **ignoring any stored
+aspect** (on a wall the household may set one, because nobody measured that
+television; a panel is 800x480 and that is the end of it), and the editor hides
+the orientation tabs and the aspect list behind a chip that states the geometry.
+Two traps, both live: the POST must render the posted canvas as `freeform`
+whatever the row says, because a panel that has never been saved has
+`layout_mode` NULL and `renderScreenFrame` gates the canvas on it — read
+literally, the backdrop never moved while you dragged, which is the exact fault
+being fixed; and "the frame changed when I moved the box" is not the assertion
+to write, since it passes just as happily if every widget draws in the corner.
+The test decodes the PNG and holds the ink to the posted box — verify by
+decoding, the QR rule again. Live: the Arrange backdrop and the saved preview
+come back byte-identical.
+
+**Every Calendar option on a panel was inert, and the default was the worst of
+them.** The editor stores the default mode by *leaving the key out* — `month`
+is an absence — and the e-paper widget tested `str(config,'mode') === 'month'`,
+so the commonest setting fell through to the agenda. All three "Show as" values
+therefore drew the same thing, which is exactly how it was reported: "the
+calendar settings have no impact". The wall reads the identical stored value as
+`mode !== 'list'`, so **two renderers read one stored value opposite ways** —
+the same shape as two renderers drawing one canvas, and the same cure: the
+panel now reads it exactly as `renderCalendarWidget` does, and the wall is the
+spec for all of it. `cellEvents`, `calendars` and `count` were ignored outright
+because `drawMonthBox`/`drawAgendaBox` took no config at all; the model could
+not have honoured them anyway — cells carried only an `eventCount`, and the
+agenda was pre-cut to six, so filtering it would have yielded fewer than six and
+a household asking for twelve could never get them. So `EpaperGridCell` carries
+`titles` and the model carries its own `upcoming` list with `sourceId`, and the
+*renderer* does the cutting. Three lessons worth keeping: an option that does
+nothing is worse than an option not offered (the `options.json` bug again); a
+setting must change exactly one thing, which is why the day number's scale is
+deliberately **not** conditioned on pills — with no events, dots and pills draw
+an identical frame, and that equivalence is an assertion; and "the frame
+changed" never proves a setting was *read*, so the pill test renames the same
+events on the same days, where density shading cannot tell the difference and
+naming them must. Looking at the live frame is what caught the one this
+introduced: today's cell is solid ink, so its names were drawn black on black
+and today was the only day with nothing on it — they are knocked out now, like
+its number.
 
 **The add-on now installs and starts on a real Home Assistant supervisor.**
 That was the highest-value unproven thing in the project for a long time, and
@@ -1140,6 +1193,56 @@ e-paper preview on the same argument — a physically white medium drawn
 honestly in both schemes). `test/m3-tokens.test.ts` proves the scheme
 contrast, `test/admin-origins.test.ts` proves rule three across every page
 and asset the admin serves.
+
+**Below 900px that drawer is a modal one, and the change is mostly a
+deletion.** It used to be recast in place: the 280px panel became a static
+header whose eleven-plus pills wrapped into a field, with the group headings
+hidden, the pills cut to 40px, and the foot — sign-out and the theme toggle —
+removed outright. Measured on a 390px phone, that put the first content
+**407px down an 844px viewport**: half the screen, on every page, because each
+admin screen is a fresh document and the whole field came back on every tap.
+
+M3's answer at this width is the *modal* drawer, and the point is that it is
+the same panel rather than a redrawn one — fixed, off-canvas, over a 32% scrim,
+opened from the top app bar's leading icon. Everything in the compact block is
+placement, so the headings, the 56px pills and the foot all return by not being
+overridden and `navBar()` still renders one markup for both widths. Content now
+starts 64px down, the pills are back over the 48px touch minimum (they were 40),
+and the button rides the sticky app bar, so navigation is one tap away at any
+scroll depth instead of only at the top of the document.
+
+**None of it runs a line of script.** The open state is a checkbox the CSS
+reads through `~`, which is why `page()` is the only place the body's child
+order is decided — move the input below the aside and the button silently stops
+working, with nothing else in the stylesheet to complain. It is the wizard's
+argument one screen along: somebody who cannot reach the navigation cannot
+reach anything else either. And because every link is a full page load, the
+next document arrives with the box unchecked, so the drawer closes on
+navigation with nothing to remember and nothing to restore.
+
+Two details are load-bearing and neither is visible in the markup. The closed
+panel is `visibility:hidden`, not merely translated away — measured, a
+translated-only drawer still handed all sixteen of its links to the keyboard;
+it hands over none now, and all sixteen when open. And both new controls are
+`<label>`, so they inherit `label{margin:1rem 0 .35rem}` from the form styles:
+on a fixed `inset:0` scrim that margin held the sheet 16px clear of the top of
+the viewport, and that strip lay across the app bar, where a tap fell through
+to the page behind an open drawer instead of closing it. `inset:0` reading back
+as `y:16` is not something you notice by looking at it.
+
+`test/admin-mobile-nav.test.ts` pins the DOM order, the script-free property,
+the off-canvas anatomy and both margins — and, deliberately, the *absence* of
+each rule the old block carried, because there the absence is the fix and
+reinstating any one of them would read as tidying. The drawer itself was driven
+in a real headless Chromium at 390px: opened by tap and by the keyboard's
+space, closed by the scrim and by navigating, the ring drawn on the label, the
+bar still at `y:12` after scrolling 543px, and at 1280px the drawer back in flow
+with the button gone and the toggle not focusable — a phantom first tab stop
+being the obvious way to get that wrong. **And it has been used on a real phone
+since, in v0.33.0** — which is the check the headless measurements were standing
+in for, and the one this project counts. What has not happened is the sidebar of
+a real supervisor, where two hamburgers now stack: Home Assistant's and this
+one. That is a different screen from a phone browser and still unproven.
 
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody
