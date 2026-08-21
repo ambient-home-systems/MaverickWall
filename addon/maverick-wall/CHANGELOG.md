@@ -54,6 +54,12 @@ press, switches glide, dialogs ease in and out. If your device is set to
 reduce motion, all of it stays still — every animation respects that setting.
 The first-run wizard stays completely script-free, exactly as before.
 
+Making your own wall theme no longer means picking eleven colours by hand.
+On Settings → Themes, pick one colour — the seed — choose dark or light, and
+a whole matching theme is worked out from it: background, panels, text, and
+the shift colours, every pairing kept readable from across a room. It lands
+in the theme builder, so you can still adjust anything afterwards.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
