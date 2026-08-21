@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
 import { renderEpaper } from '../src/epaper/render.js';
+import { renderFreeformEpaper } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
 /**
@@ -81,5 +82,48 @@ describe('an empty day', () => {
       height: 480,
     });
     expect(inkIn(fb, 0, 60, 380, 200)).toBeGreaterThan(0); // "Nothing on today"
+  });
+});
+
+/**
+ * Text is sized to the box it has, not just the height of it.
+ *
+ * `drawLines` truncates a line at its box edge, so a size chosen from height
+ * alone loses characters off the right — reported from a real panel as a clock
+ * that drew "08:3" for half past eight. The box must shrink the type instead.
+ *
+ * Decoded rather than eyeballed, in the spirit of the QR encoder: two times of
+ * the same length that differ only in the final digit must produce different
+ * frames. Identical frames mean that digit never reached the panel — which is
+ * exactly what the bug did, and what a "looks about right" assertion misses.
+ */
+describe('a clock in a box taller than it is wide', () => {
+  const manifest = fakeManifest([busyDay]);
+  // 0.34 × 0.31 of an 800×480 panel: the arrangement the fault was seen in.
+  const clockFrame = (now: number) =>
+    renderFreeformEpaper(
+      buildEpaperModel(manifest, { now }),
+      manifest,
+      [{ type: 'clock', x: 0.02, y: 0.02, w: 0.34, h: 0.31, z: 0, config: {} }],
+      { width: 800, height: 480 },
+    );
+  const differs = (a: ReturnType<typeof clockFrame>, b: ReturnType<typeof clockFrame>): boolean => {
+    for (let y = 0; y < a.height; y++) for (let x = 0; x < a.width; x++) if (a.get(x, y) !== b.get(x, y)) return true;
+    return false;
+  };
+
+  it('draws the final digit of the time rather than cutting it off', () => {
+    const at0832 = clockFrame(Date.UTC(2026, 7, 21, 8, 32));
+    const at0830 = clockFrame(Date.UTC(2026, 7, 21, 8, 30));
+    expect(differs(at0832, at0830)).toBe(true);
+  });
+
+  it('keeps every pixel it draws inside the widget box', () => {
+    const fb = clockFrame(Date.UTC(2026, 7, 21, 8, 32));
+    // The box is x 16..288, y 9..158 on this panel; nothing may spill past it.
+    const right = Math.round(0.02 * 800) + Math.round(0.34 * 800);
+    const bottom = Math.round(0.02 * 480) + Math.round(0.31 * 480);
+    expect(inkIn(fb, right + 2, 0, 800, 480)).toBe(0);
+    expect(inkIn(fb, 0, bottom + 2, 800, 480)).toBe(0);
   });
 });

@@ -64,6 +64,42 @@ function wrap(text: string, maxWidth: number, scale: number): string[] {
   return lines;
 }
 
+/**
+ * The largest scale, down to 1, at which `text` fits `width`.
+ *
+ * `drawLines` truncates a line to its box, so a scale picked from the box's
+ * *height* alone silently loses characters off the right — a clock drawing
+ * "08:3" for half past eight, which is not a smaller clock but a wrong one.
+ * Every headline string picks its size through here, so the box shrinks the
+ * type rather than the type losing its tail.
+ */
+function scaleToFit(text: string, width: number, max: number): number {
+  for (let scale = Math.max(1, Math.floor(max)); scale > 1; scale -= 1) {
+    if (measureText(text, { scale }) <= width) return scale;
+  }
+  return 1;
+}
+
+/**
+ * Rows of differing sizes down a box, stopping at its foot — the 1-bit twin of
+ * a card with a kicker, a headline and a detail line.
+ */
+function drawStack(
+  fb: Framebuffer,
+  box: Box,
+  rows: readonly { readonly text: string; readonly scale: number }[],
+  align: 'left' | 'center' | 'right',
+): void {
+  let y = box.y;
+  for (const row of rows) {
+    if (row.text === '') continue;
+    const h = GLYPH_SIZE * row.scale;
+    if (y + h > box.y + box.h) break;
+    drawLines(fb, [row.text], { ...box, y, h }, row.scale, align);
+    y += h + 4;
+  }
+}
+
 /** Draw stacked lines within a box, clipped to its height and width, honouring align. */
 function drawLines(fb: Framebuffer, lines: readonly string[], box: Box, scale: number, align: 'left' | 'center' | 'right'): void {
   const lineH = GLYPH_SIZE * scale + 4;
@@ -95,15 +131,22 @@ function drawFrame(fb: Framebuffer, box: Box, config: Config): Box {
 }
 
 function drawClock(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
-  const timeScale = Math.max(2, Math.min(8, Math.floor(box.h / 18)));
+  // Bounded by the height it has *and* the width it has: a box taller than it
+  // is wide used to pick a size the time could not fit, and lost its last
+  // digit to the truncation in `drawLines`.
+  const byHeight = Math.max(2, Math.min(8, Math.floor(box.h / 18)));
+  const timeScale = scaleToFit(model.time, box.w, byHeight);
   const align = alignOf(config);
   drawLines(fb, [model.time], { ...box, h: GLYPH_SIZE * timeScale }, timeScale, align);
   const dateScale = Math.max(1, Math.min(3, Math.floor(timeScale / 2)));
   const date = `${model.header.weekday} ${model.header.day} ${model.header.month}`;
+  const dateTop = box.y + GLYPH_SIZE * timeScale + 8;
   drawLines(
     fb,
     wrap(date, box.w, dateScale),
-    { x: box.x, y: box.y + GLYPH_SIZE * timeScale + 8, w: box.w, h: box.h },
+    // The remaining height, not the whole box: measuring from the box's top
+    // let the wrapped date run past its foot and into the widget below.
+    { x: box.x, y: dateTop, w: box.w, h: Math.max(0, box.y + box.h - dateTop) },
     dateScale,
     align,
   );
@@ -122,12 +165,15 @@ function drawCountdown(fb: Framebuffer, box: Box, model: EpaperModel, config: Co
       unit = days > 0 ? (days === 1 ? 'day' : 'days') : days === -1 ? 'day ago' : 'days ago';
     }
   }
-  const scale = Math.max(2, Math.min(9, Math.floor(box.h / 16)));
+  // Same fitting as the clock: "365" in a narrow box must shrink, not lose its
+  // last digit — a countdown that reads 36 is worse than a small one.
+  const scale = scaleToFit(big, box.w, Math.max(2, Math.min(9, Math.floor(box.h / 16))));
   drawLines(fb, [big], { ...box, h: GLYPH_SIZE * scale }, scale, 'center');
+  const restTop = box.y + GLYPH_SIZE * scale + 6;
   drawLines(
     fb,
     [unit, asciiTitle(title)].filter((l) => l !== ''),
-    { x: box.x, y: box.y + GLYPH_SIZE * scale + 6, w: box.w, h: box.h },
+    { x: box.x, y: restTop, w: box.w, h: Math.max(0, box.y + box.h - restTop) },
     2,
     'center',
   );
@@ -138,11 +184,37 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel): void {
     drawLines(fb, ['No shift today'], box, 2, 'left');
     return;
   }
+  const [only] = model.todayShifts;
+  // One person, and a box with room: the wall's card — who it is, then the
+  // shift's *name* at whatever size the box affords, then its hours. The name
+  // is the label ("Straights"), not the short code: a code is an abbreviation
+  // for a month cell, and a widget given a whole box should spend it on the
+  // word rather than leaving "Daddy: S" alone in the white.
+  if (model.todayShifts.length === 1 && only !== undefined && box.h >= 44) {
+    const name = asciiTitle(only.label !== '' ? only.label : only.code).toUpperCase();
+    // Reserve the two small rows so the headline never squeezes them out.
+    const headroom = Math.max(GLYPH_SIZE, box.h - (GLYPH_SIZE + 4) * 2);
+    const nameScale = scaleToFit(name, box.w, Math.max(2, Math.min(7, Math.floor(headroom / GLYPH_SIZE))));
+    drawStack(
+      fb,
+      box,
+      [
+        { text: asciiTitle(only.person).toUpperCase(), scale: 1 },
+        { text: name, scale: nameScale },
+        { text: only.time, scale: 1 },
+      ],
+      'left',
+    );
+    return;
+  }
+  // More than one person: a compact line each, sized so the longest still fits
+  // rather than being cut at the box edge.
   const lines = model.todayShifts.map((s) => {
-    const rest = [s.code !== '' ? s.code : s.label, s.time].filter((p) => p !== '').join('  ');
+    const rest = [s.label !== '' ? s.label : s.code, s.time].filter((p) => p !== '').join('  ');
     return asciiTitle(`${s.person}: ${rest}`);
   });
-  drawLines(fb, lines, box, 2, 'left');
+  const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
+  drawLines(fb, lines, box, scale, 'left');
 }
 
 function drawTodo(fb: Framebuffer, box: Box, config: Config): void {

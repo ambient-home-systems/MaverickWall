@@ -14,6 +14,18 @@
   saying nothing.
 -->
 
+## Unreleased
+
+eInk panels draw their widgets properly now. The clock could lose its last
+digit — half past eight drawn as "08:3" — because the type was sized to the
+height of its box without checking it still fitted the width, and anything
+past the edge was quietly cut off. Text now shrinks to fit the box it is in,
+so the clock, the countdown's big number and the rest stay whole. The shift
+widget was the worst of it: a whole panel given over to "Daddy: S". It draws
+the card the wall does now — who it is, the shift's actual name at whatever
+size the box affords, and its hours, which read as a span ("07:00-19:00")
+rather than two times with a gap between them.
+
 ## 0.32.3
 
 An eInk panel's editor no longer contradicts its own preview. With nothing
