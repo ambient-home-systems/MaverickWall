@@ -14,6 +14,17 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Reset on an eInk panel now does what it says. Pressing Reset in the panel's
+layout editor used to replace the arrangement with the wall calendar's layout
+and then drop you on the wall Displays page — where nothing about the panel
+is visible, so it looked like nothing happened. It now clears the arrangement
+back to the panel's built-in layout (the one a fresh panel draws), asks
+before doing so in words that say exactly that, and returns you to the
+panel's own page with the preview showing the result. Picking a template for
+a panel returns to the panel's page too.
+
 ## 0.32.1
 
 The eInk layout editor is back. Since the display editor was reworked in

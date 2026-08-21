@@ -26,6 +26,7 @@ import {
   createScreen,
   createEpaperScreen,
   readLayoutWidgets,
+  clearLayout,
   replaceLayout,
   revokeScreen,
   writeDisplaySettings,
@@ -1327,6 +1328,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const id = c.req.param('id') ?? '';
     if (id === 'default') return c.html(displayDetailPage(null));
     if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/displays', 302);
+    // An e-paper panel's page is its design page — a panel landing here (an
+    // old link, or the shared layout routes before they were kind-aware) gets
+    // wall settings that do not apply to it.
+    if (activeScreens().some((s) => s.id === id && s.kind === 'epaper')) {
+      return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+    }
     return c.html(displayDetailPage(id));
   });
 
@@ -1891,6 +1898,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
     const initial = {
       screen: id,
+      // Tells the editor its host is a panel, so its Reset confirm says what
+      // reset actually does here (back to the built-in layout, not Classic).
+      kind: 'epaper',
       mode: 'freeform',
       portrait: canvas('portrait'),
       landscape: canvas('landscape'),
@@ -2061,9 +2071,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.json({ ok: true });
   });
 
-  /** The layout view of a display's page, where apply/copy return to. */
+  /** Whether an owner id is an e-paper panel — their layout lives on its own
+   *  design page, not in the wall Displays section. */
+  const isEpaperOwner = (owner: string | null): boolean =>
+    owner !== null && activeScreens().some((s) => s.id === owner && s.kind === 'epaper');
+
+  /** The layout view of a display's page, where apply/copy/reset return to.
+   *  Kind-aware: an e-paper panel goes back to its design page — sending it to
+   *  the wall Displays section is how Reset looked like it did nothing. */
   const layoutUrl = (owner: string | null): string =>
-    `/admin/displays/${owner === null ? 'default' : encodeURIComponent(owner)}#layout`;
+    isEpaperOwner(owner)
+      ? `/admin/epaper/${encodeURIComponent(owner as string)}/design`
+      : `/admin/displays/${owner === null ? 'default' : encodeURIComponent(owner)}#layout`;
 
   /**
    * The template gallery — pick a starting layout for this display (RFC 005).
@@ -2118,15 +2137,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
-   * Reset a display's layout to the Classic default — the standard kitchen
-   * calendar, the same layout a new display starts from. Re-applies the Classic
-   * template to both canvases (there is no "stacked" mode to fall back to any
-   * more); a template or a hand-built canvas can be applied again afterwards.
+   * Reset a display's layout to its default. For a wall that is the Classic
+   * template — the standard kitchen calendar, the same layout a new display
+   * starts from (there is no "stacked" mode to fall back to any more). For an
+   * e-paper panel the default is different: the built-in fixed layout the
+   * frame renderer draws when no canvas exists, so reset clears the canvas
+   * rather than applying a wall template to a 1-bit panel.
    */
   app.post('/admin/displays/:id/reset-layout', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const owner = resolveOwner(id === 'default' ? null : id);
-    applyTemplate(deps.db, owner, CLASSIC_TEMPLATE);
+    if (isEpaperOwner(owner)) clearLayout(deps.db, owner as string);
+    else applyTemplate(deps.db, owner, CLASSIC_TEMPLATE);
     return c.redirect(layoutUrl(owner), 302);
   });
 

@@ -183,10 +183,16 @@ function boot(): void {
   // Editor-only, so it lives beside the state rather than in it.
   let report: { readonly w: number; readonly h: number } | undefined;
 
+  // Whether the host page is an e-paper panel's designer. Only the words
+  // change on it — reset means "back to the built-in layout" there, and the
+  // server's reset route does the kind-aware thing either way.
+  let epaperHost = false;
+
   let state: LayoutState;
   try {
     const parsed = JSON.parse(mount.dataset['json'] ?? '{}') as {
       readonly screen?: unknown;
+      readonly kind?: unknown;
       readonly mode?: unknown;
       readonly portrait?: RawCanvas;
       readonly landscape?: RawCanvas;
@@ -199,6 +205,7 @@ function boot(): void {
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
       report = { w: r.w, h: r.h };
     }
+    epaperHost = parsed.kind === 'epaper';
     // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
     // are the per-orientation defaults when a canvas has no aspect yet.
     const portrait = canvasFrom(parsed.portrait, 0.5625);
@@ -402,7 +409,10 @@ function boot(): void {
   resetForm.method = 'post';
   resetForm.action = `admin/displays/${detailSeg}/reset-layout`;
   resetForm.addEventListener('submit', (event) => {
-    if (!window.confirm('Reset this display to the Classic layout? Your current arrangement is replaced.')) {
+    const question = epaperHost
+      ? 'Reset this panel to its built-in layout? Your current arrangement is removed.'
+      : 'Reset this display to the Classic layout? Your current arrangement is replaced.';
+    if (!window.confirm(question)) {
       event.preventDefault();
     }
   });

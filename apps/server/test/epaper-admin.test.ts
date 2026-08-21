@@ -211,6 +211,48 @@ describe('the eInk Displays page', () => {
     expect([...(await bytesOf(freeform)).slice(0, 8)]).toEqual(PNG_SIGNATURE);
   });
 
+  it('reset on a panel clears its canvas and returns to the design page', async () => {
+    const h = await harness();
+    await h.post(`${B}/admin/epaper`, { name: 'Porch', preset: 'seeed-7in5', rotation: '0' });
+    const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
+
+    // Arrange something first, through the editor's own save request.
+    await h.call(`${B}/admin/layout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        screen: id, orientation: 'landscape', mode: 'freeform', aspect: 1.667,
+        widgets: [{ id: 'k1', type: 'clock', x: 0.1, y: 0.1, w: 0.4, h: 0.3, z: 0 }],
+        background: null,
+      }),
+    });
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM layout_widgets WHERE screen_id = ?`).get(id)).toEqual({ n: 1 });
+
+    // Reset used to apply the wall's Classic template to the panel and dump
+    // the household on the wall Displays page — where nothing about the panel
+    // is visible, so it read as "did nothing". It now clears the canvas back
+    // to the built-in fixed layout and returns to the panel's own designer.
+    const reset = await h.call(`${B}/admin/displays/${id}/reset-layout`, { method: 'POST' });
+    expect(reset.status).toBe(302);
+    expect(reset.headers.get('location')).toBe(`/admin/epaper/${id}/design`);
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM layout_widgets WHERE screen_id = ?`).get(id)).toEqual({ n: 0 });
+    const row = h.db.prepare(`SELECT layout_mode FROM screens WHERE id = ?`).get(id) as {
+      layout_mode: string | null;
+    };
+    expect(row.layout_mode).toBeNull();
+
+    // The fixed layout draws again.
+    const fixed = await h.call(`${B}/admin/epaper/${id}/preview.png`);
+    expect(fixed.status).toBe(200);
+    expect([...(await bytesOf(fixed)).slice(0, 8)]).toEqual(PNG_SIGNATURE);
+
+    // And the wall-detail URL for a panel — where the old redirect landed —
+    // now forwards to the design page instead of rendering wall settings.
+    const detail = await h.call(`${B}/admin/displays/${id}`, { redirect: 'manual' });
+    expect(detail.status).toBe(302);
+    expect(detail.headers.get('location')).toBe(`/admin/epaper/${encodeURIComponent(id)}/design`);
+  });
+
   it('keeps e-paper panels out of the browser Displays list', async () => {
     const h = await harness();
     await h.post(`${B}/admin/epaper`, { name: 'OnlyInk', preset: 'seeed-7in5', rotation: '0' });
