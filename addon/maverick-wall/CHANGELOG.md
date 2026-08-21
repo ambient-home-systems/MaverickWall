@@ -14,6 +14,21 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Shift panel's run counter, properly this time. 0.40.0 was meant to fix it
+and did not: if your rota comes from a work calendar rather than a repeating
+pattern, it still said "Day 2 of 3" on a fortnight of straights.
+
+Maverick reads a rota like that by matching the titles of the events in your
+work feed — so it can only recognise a shift on a day it has the events for,
+and it was only loading yesterday onwards. It now loads three months either
+side of today for that purpose, so a run is followed back to the day it really
+started. Day thirteen of fourteen reads "Day 13 of 14 · 1 more".
+
+The extra days are read from the calendar Maverick has already downloaded. They
+never appear on the wall and nothing is fetched from your calendar provider.
+
 ## 0.40.0
 
 The Shift panel now says where you really are in a run. On a fortnight of
