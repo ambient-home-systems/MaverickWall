@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.33.1
 
 Arranging an eInk panel shows the panel. The Arrange area used to draw your
 widgets as the colour cards a browser wall shows, on a tall portrait canvas —
