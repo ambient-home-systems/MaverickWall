@@ -334,13 +334,17 @@ describe('the horizon', () => {
     expect(cell?.events[0]).toMatchObject({ color: '#E8A33D', sourceId: 'src-1', allDay: false });
   });
 
-  it('caps the cell events at four while eventCount stays the true total', () => {
+  it('carries a dozen cell events while eventCount stays the true total', () => {
+    // Four until the dense styles arrived: an edge-to-edge week column is tall
+    // enough for eight, so a cap of four here would have been a household
+    // asking for a dense week and quietly getting the old one. The renderer
+    // does the cutting; this only has to carry enough for the densest of them.
     const many = Array.from({ length: 6 }, (_, i) =>
       event({ title: `E${i}`, startsAt: Date.parse('2026-07-15T09:00:00Z') + i }),
     );
     const cell = model([day('2026-07-15', many)]).horizon.flat().find((c) => c.isToday);
     expect(cell?.eventCount).toBe(6); // the "+N" and the dots read from this
-    expect(cell?.events).toHaveLength(4); // a column has room for a handful
+    expect(cell?.events).toHaveLength(6);
   });
 
   it('gives each cell its weekday, for the week-columns header', () => {
@@ -702,5 +706,45 @@ describe('the forecast beside a day', () => {
     // draws from `name`; only the join goes quiet.
     const built = model([day('2026-07-15')], panel([wx(undefined, 80, 60)]));
     expect(built.today?.weather).toBeUndefined();
+  });
+});
+
+/*
+ * The dense styles need more per cell than the quiet ones ever did.
+ *
+ * The cap used to be four, chosen for a month cell that draws three. An
+ * edge-to-edge week column is tall enough for eight, and a cap here would mean
+ * a household asking for a dense week and silently getting four — the same
+ * shape as the agenda that was pre-cut to six and could never honour twelve.
+ */
+describe('what a horizon cell carries', () => {
+  it('keeps enough events for the densest style, and lets the renderer cut', () => {
+    const many = Array.from({ length: 15 }, (_, index) =>
+      event({ title: `Event ${index}`, startsAt: NOON + index * 60_000 }),
+    );
+    const built = model([day('2026-07-15', many)]);
+    const cell = built.horizon.flat().find((c) => c.date === '2026-07-15');
+    expect(cell?.events).toHaveLength(12);
+    // The count is the truth about the day, not the length of the list above it.
+    expect(cell?.eventCount).toBe(15);
+  });
+
+  it('formats each event time the way the rest of the wall does', () => {
+    // A week column shows the time, so the household's 12/24-hour choice has to
+    // reach it — reformatting in the renderer is how two clocks disagree.
+    const built = model([day('2026-07-15', [event({ title: 'Swim', startsAt: NOON })])]);
+    const cell = built.horizon.flat().find((c) => c.date === '2026-07-15');
+    expect(cell?.events[0]?.time).toBe(built.today?.events[0]?.time);
+  });
+
+  it('says "All day" for an all-day event rather than a time it does not have', () => {
+    const allDay = event({
+      title: 'Half term',
+      startsAt: Date.parse('2026-07-14T23:00:00Z'),
+      allDay: true,
+    });
+    const built = model([day('2026-07-15', [allDay])]);
+    const cell = built.horizon.flat().find((c) => c.date === '2026-07-15');
+    expect(cell?.events[0]?.time).toBe('All day');
   });
 });

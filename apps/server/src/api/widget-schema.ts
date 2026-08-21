@@ -39,7 +39,10 @@ export const widgetConfigBody = z
     // Calendar
     calendars: z.array(z.string().max(64)).max(50).optional(),
     // month (grid), week (day columns), or list (agenda). RFC 005 added week.
-    mode: z.enum(['month', 'week', 'list']).optional(),
+    // `skyweek` and `skymonth` are the same two shapes drawn edge to edge, with
+    // hairline dividers instead of gaps and cards — every pixel spent on the
+    // calendar rather than on the space around it.
+    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth']).optional(),
     // How a month cell draws its events: quiet dots (default) or Skylight-style
     // labelled pills. Absent means dots, so an existing wall is unchanged.
     cellEvents: z.enum(['dots', 'pills']).optional(),

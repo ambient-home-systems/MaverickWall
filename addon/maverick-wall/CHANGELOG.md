@@ -14,6 +14,24 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Two new Calendar styles, **Sky week** and **Sky month**, for when you want the
+screen filled. They show the same week and the same month the existing styles
+do — same colours, same week start, same settings — drawn edge to edge with
+hairline lines between the days instead of gaps and rounded cards around them.
+
+On a month that is a large difference: the old grid spends more than half its
+area on the space around the days, and Sky month spends about a fifth, so each
+day has room for four or five named events instead of three dots. Sky week
+gives each day a column with its events stacked as coloured blocks, the time
+above the title. Today's column is filled in, and on the month today's date
+sits in a filled square.
+
+The quiet styles are unchanged and still the default — this is a choice, not a
+replacement. On an eInk panel both draw the panel's existing week and month,
+which are already edge to edge and have no padding to reclaim.
+
 ## 0.37.0
 
 Week numbers. Turn on **Show week numbers** in a Calendar widget set to Month

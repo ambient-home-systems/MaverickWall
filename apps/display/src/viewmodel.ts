@@ -178,6 +178,12 @@ export interface HorizonEvent {
   readonly color: string;
   readonly allDay: boolean;
   readonly sourceId: string;
+  /**
+   * "09:00", or "All day". Formatted here like every other time on the wall so
+   * the household's 12/24-hour choice reaches a week column too — the dense
+   * styles show it, the quiet ones ignore it.
+   */
+  readonly time: string;
 }
 
 export interface HorizonCell {
@@ -905,13 +911,22 @@ export function buildModel(options: BuildOptions): DisplayModel {
       shiftCode: shift?.shortCode,
       shiftLabel: shift?.label,
       eventCount: events.length,
-      // A handful, for the pills and week modes; four fits a column and slices
-      // to three for a month cell.
-      events: events.slice(0, 4).map((e) => ({
+      /*
+       * Enough for the densest cell any style draws, and the *renderer* does
+       * the cutting.
+       *
+       * Four was the old cap, chosen for a month cell that shows three. An
+       * edge-to-edge week column is much taller than that and could show eight,
+       * so capping here would have meant a household asking for a dense week
+       * and getting four — the same shape as the agenda that was pre-cut to six
+       * and could never honour a request for twelve.
+       */
+      events: events.slice(0, 12).map((e) => ({
         title: e.title,
         color: e.color,
         allDay: e.allDay,
         sourceId: e.sourceId,
+        time: eventTime(e, timezone, hour12),
       })),
     });
   }
