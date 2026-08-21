@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.41.0
 
 The Shift panel's run counter, properly this time. 0.40.0 was meant to fix it
 and did not: if your rota comes from a work calendar rather than a repeating
