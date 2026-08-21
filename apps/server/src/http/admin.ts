@@ -691,7 +691,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           statCard(
             'admin/displays', 'screens', scrTag, screens.length,
             `Wall display${screens.length === 1 ? '' : 's'} paired`,
-            screens.length === 0 ? 'Pair one on the Screens page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
+            screens.length === 0 ? 'Pair one on the Displays page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
           ) +
           statCard(
             'admin/shifts', 'shifts',
@@ -1392,7 +1392,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(approveResultPage(
       `${escapeHtml(name)} is paired`,
       'The screen will pick up its token on its next check, within a few seconds, ' +
-        'and start drawing. You can rename or remove it from the Screens page.',
+        'and start drawing. You can rename or remove it from the Displays page.',
     ));
   });
 
@@ -1624,8 +1624,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   const codeBlock = (title: string, code: string): string =>
     `<h3 style="margin:18px 0 6px">${escapeHtml(title)}</h3>` +
-    `<pre style="overflow-x:auto;padding:12px;border-radius:8px;background:rgba(127,127,127,0.12);` +
-    `font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre">${escapeHtml(code)}</pre>`;
+    `<pre class="code">${escapeHtml(code)}</pre>`;
 
   /**
    * The page shown once a screen exists, carrying the token in the URL.
@@ -1690,7 +1689,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
       `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen(screen.lastSeenAt)}</div>` +
       `</div></div>` +
-      `<div style="display:flex;gap:10px;margin-top:10px">` +
+      `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">` +
       // One filled action per card; the rest are outlined ("btn ghost" here
       // never matched the .btn-ghost rule, so all three used to render filled).
       `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
@@ -1906,9 +1905,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<h2 class="add">Preview</h2>` +
       `<p class="hint">What the panel actually draws, in black &amp; white. Save your ` +
       `changes and it updates within a few seconds.</p>` +
-      `<img id="ep-preview" alt="eInk preview of ${escapeHtml(screen.name)}" ` +
-      `src="admin/epaper/${encodeURIComponent(id)}/preview.png" ` +
-      `style="max-width:100%;border:1px solid var(--rule);image-rendering:pixelated;background:#fff">` +
+      `<img id="ep-preview" class="ep-paper" alt="eInk preview of ${escapeHtml(screen.name)}" ` +
+      `src="admin/epaper/${encodeURIComponent(id)}/preview.png">` +
       `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
       `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>` +
       `<h2 class="add">Arrange</h2>`;
@@ -2739,7 +2737,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           required: true,
           value: 'New screen',
           placeholder: 'Kitchen',
-          hint: 'This is how the screen shows up on the Screens page.',
+          hint: 'This is how the screen shows up on the Displays page.',
           attrs: 'maxlength="80"',
         }) +
         `<button type="submit" name="action" value="approve">Approve</button> ` +

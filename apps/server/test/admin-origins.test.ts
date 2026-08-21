@@ -119,12 +119,19 @@ const PAGES = [
   '/admin',
   '/admin/calendars',
   '/admin/shifts',
+  '/admin/shifts/types',
   '/admin/alerts',
   '/admin/home-assistant',
   '/admin/modules',
+  '/admin/modules/advanced',
+  '/admin/modules/recipe',
   '/admin/displays',
+  // The editor page (where /admin/display redirects): its display-editor.js
+  // module script is a fetchable first-party asset this test must see answer.
+  '/admin/displays/default',
   '/admin/epaper',
   '/admin/themes',
+  '/admin/themes/new',
   '/admin/people',
   '/admin/system',
 ];
