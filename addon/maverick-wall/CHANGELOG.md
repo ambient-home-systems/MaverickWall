@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.39.0
 
 Work schedules on a calendar are now a setting. Every Calendar style that draws
 the rota — the month grid, Sky month and the upcoming list — has a **Show work
