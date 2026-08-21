@@ -142,6 +142,28 @@ export interface LayoutWidgetInput {
  * are touched. The rows are trusted here because the boundary validated them; the
  * display clamps again in `buildLayout` regardless.
  */
+/**
+ * Clear a screen's free-form canvas back to nothing — both orientations, the
+ * stored aspects and backgrounds, and the freeform flag. This is the reset an
+ * e-paper panel wants: with no canvas the frame renderer falls back to the
+ * built-in fixed layout, which is what the panel drew before anyone arranged
+ * it. Wall displays never come here — their reset re-applies the Classic
+ * template instead, because a wall with no canvas would draw the "nothing
+ * yet" note rather than a calendar (rule nine).
+ */
+export function clearLayout(db: SqliteDatabase, screenId: string): void {
+  const at = Date.now();
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE screens SET layout_mode = NULL, layout_aspect = NULL,
+        layout_landscape_aspect = NULL, layout_background = NULL,
+        layout_landscape_background = NULL, updated_at = ? WHERE id = ?`,
+    ).run(at, screenId);
+    db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ?').run(screenId);
+  });
+  tx();
+}
+
 export function replaceLayout(
   db: SqliteDatabase,
   screenId: string | null,
