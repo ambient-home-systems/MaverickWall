@@ -160,6 +160,21 @@ const STYLE = `
   --md-sys-state-focus-state-layer-opacity:12%;
   --md-sys-state-pressed-state-layer-opacity:12%;
   --md-sys-state-dragged-state-layer-opacity:16%;
+  --md-sys-motion-easing-standard:cubic-bezier(0.2,0,0,1);
+  --md-sys-motion-easing-emphasized-decelerate:cubic-bezier(0.05,0.7,0.1,1);
+  --md-sys-motion-easing-emphasized-accelerate:cubic-bezier(0.3,0,0.8,0.15);
+  --md-sys-motion-duration-short-1:50ms;
+  --md-sys-motion-duration-short-2:100ms;
+  --md-sys-motion-duration-short-3:150ms;
+  --md-sys-motion-duration-short-4:200ms;
+  --md-sys-motion-duration-medium-1:250ms;
+  --md-sys-motion-duration-medium-2:300ms;
+  --md-sys-motion-duration-medium-3:350ms;
+  --md-sys-motion-duration-medium-4:400ms;
+  --md-sys-motion-duration-long-1:450ms;
+  --md-sys-motion-duration-long-2:500ms;
+  --md-sys-motion-duration-long-3:550ms;
+  --md-sys-motion-duration-long-4:600ms;
 }
 
 /*
@@ -473,8 +488,7 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--md-sys-shape-corn
    * also the first text line of a taller control). Float moves the centre to
    * the border itself. The % is the label's own height, so both hold at
    * either label size. */
-  transform:translateY(calc(28px - 50%));
-  transition:font-size .12s ease,transform .12s ease}
+  transform:translateY(calc(28px - 50%))}
 /* Hover darkens the outline; any focus turns it primary and 2px. */
 .field:hover .field-outline{color:var(--md-sys-color-on-surface)}
 .field .field-input:focus ~ .field-outline{color:var(--md-sys-color-primary);--fo-w:2px}
@@ -573,12 +587,10 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--md-sys-shape-corn
   flex:0 0 auto;margin:0;width:52px;height:32px;cursor:pointer;
   border-radius:var(--md-sys-shape-corner-full);
   background:var(--md-sys-color-surface-container-highest);
-  border:2px solid var(--md-sys-color-outline);
-  transition:background .15s ease,border-color .15s ease}
+  border:2px solid var(--md-sys-color-outline)}
 .switch input[type=checkbox]::before{content:"";position:absolute;top:50%;left:6px;
   width:16px;height:16px;border-radius:50%;background:var(--md-sys-color-outline);
-  transform:translateY(-50%);
-  transition:left .15s ease,width .15s ease,height .15s ease,background .15s ease}
+  transform:translateY(-50%)}
 .switch input[type=checkbox]:checked{background:var(--md-sys-color-primary);
   border-color:var(--md-sys-color-primary)}
 .switch input[type=checkbox]:checked::before{left:22px;width:24px;height:24px;
@@ -746,8 +758,7 @@ p.hint,.hint{font-size:12.5px;color:var(--faint);margin:.35rem 0 0;line-height:1
 /* ---- Stat cards: the elevated kind — they navigate ----------------------- */
 a.card{display:block;text-decoration:none;color:inherit;
   background:var(--surface-elevation-1);
-  box-shadow:var(--md-sys-elevation-level1);
-  transition:box-shadow .12s,background .12s}
+  box-shadow:var(--md-sys-elevation-level1)}
 a.card:hover{background:color-mix(in srgb,
   var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),
   var(--surface-elevation-2));
@@ -789,8 +800,10 @@ a.card:hover{background:color-mix(in srgb,
 .dot-ok{background:var(--ok)}.dot-bad{background:var(--danger)}
 .dot-idle{background:var(--faint)}
 .pulse{position:relative}
+/* The ring itself; its animation binds in the Motion section, so a reduced-
+ * motion setting stills it to a plain ring. */
 .pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;
-  border:1px solid var(--ok);opacity:.6;animation:pl 2.4s ease-out infinite}
+  border:1px solid var(--ok);opacity:.6}
 @keyframes pl{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.7);opacity:0}}
 /* Status tags in tonal containers — the harmonized custom-role containers do
  * the colour work, label-small mixed case does the type. */
@@ -1355,6 +1368,97 @@ pre.log{background:var(--md-sys-color-inverse-surface);
   outline:3px solid var(--md-sys-color-primary);outline-offset:2px}
 .themecard:has(input:focus-visible){outline:3px solid var(--md-sys-color-primary);
   outline-offset:2px}
+
+/* ---- Motion: the M3 system, gated on the reader's preference --------------
+ * Every transition and animation in the stylesheet lives inside this one
+ * media block, on the md.sys.motion tokens — so prefers-reduced-motion:
+ * reduce stills the whole admin at once: no state-layer fades, no switch
+ * morph, no pulse ring, no dialog slide, no ripple (the shell's ripple
+ * script checks the same preference before drawing anything). The hover and
+ * pressed state layers themselves are plain CSS and remain either way.
+ *
+ * Dialog and menu enter/exit cross display:none with allow-discrete and
+ * @starting-style — evergreen-browser CSS; anything older switches
+ * instantly, which is exactly what these panels did before motion existed. */
+@media (prefers-reduced-motion: no-preference){
+  /* State layers ease in and out. */
+  button,.btn,.nav-item,.walls a,.le-tool-link,.le-layer,.hep-row{
+    transition:background-color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      border-color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard)}
+  /* Elevated cards lift. */
+  a.card{transition:background-color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      box-shadow var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard)}
+  /* The theme toggle's scheme change repaints the big surfaces smoothly;
+   * interactive controls already transition background/colour above. */
+  body,.side,.topbar,.savebar,.card,pre.log{
+    transition:background-color var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-standard),
+      color var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-standard)}
+  /* Text fields: the label floats, the outline recolours and thickens.
+   * The segments' currentColor borders follow the outline's colour
+   * transition on their own. */
+  .field-label{transition:font-size var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      transform var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard)}
+  .field-outline{transition:color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard)}
+  .fo-start,.fo-notch,.fo-end{transition:border-width var(--md-sys-motion-duration-short-2) var(--md-sys-motion-easing-standard)}
+  /* The switch: track recolours, the thumb slides and grows. */
+  .switch input[type=checkbox]{
+    transition:background-color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      border-color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard)}
+  .switch input[type=checkbox]::before{
+    transition:left var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      width var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      height var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+      background-color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard)}
+  /* Checkboxes fill. */
+  .checks input[type=checkbox],.hep-row input[type=checkbox],
+  .le-toggle input[type=checkbox],.le-cfg-check input[type=checkbox]{
+    transition:background-color var(--md-sys-motion-duration-short-2) var(--md-sys-motion-easing-standard),
+      border-color var(--md-sys-motion-duration-short-2) var(--md-sys-motion-easing-standard)}
+  /* The active tab's indicator grows in. */
+  .tab.is-on::before{animation:mw-tab-in var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-emphasized-decelerate)}
+  @keyframes mw-tab-in{from{transform:scaleX(0)}}
+  /* The dialog: enter decelerates, exit accelerates. */
+  .le-modal{transition:opacity var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate),
+      display var(--md-sys-motion-duration-medium-2) allow-discrete}
+  .le-modal[hidden]{opacity:0;
+    transition:opacity var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-emphasized-accelerate),
+      display var(--md-sys-motion-duration-short-4) allow-discrete}
+  .le-modal-card{transition:transform var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate)}
+  .le-modal[hidden] .le-modal-card{transform:translateY(12px) scale(.97)}
+  @starting-style{
+    .le-modal:not([hidden]){opacity:0}
+    .le-modal:not([hidden]) .le-modal-card{transform:translateY(12px) scale(.97)}
+  }
+  /* Menus: the same shape, smaller and quicker. */
+  .le-layers-pop,.helppop{
+    transition:opacity var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-emphasized-decelerate),
+      transform var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-emphasized-decelerate),
+      display var(--md-sys-motion-duration-short-4) allow-discrete}
+  .le-layers-pop[hidden],.helppop[hidden]{opacity:0;transform:translateY(-4px);
+    transition:opacity var(--md-sys-motion-duration-short-2) var(--md-sys-motion-easing-emphasized-accelerate),
+      transform var(--md-sys-motion-duration-short-2) var(--md-sys-motion-easing-emphasized-accelerate),
+      display var(--md-sys-motion-duration-short-2) allow-discrete}
+  @starting-style{
+    .le-layers-pop:not([hidden]),.helppop:not([hidden]){opacity:0;transform:translateY(-4px)}
+  }
+  /* The online pulse ring. */
+  .pulse::after{animation:pl 2.4s ease-out infinite}
+  /* The ripple the shell script draws from the press point. The circle is
+   * clipped by a host layer that inherits the control's corner, so the 48px
+   * pointer-target pseudo outside it is untouched. */
+  .ripple-host{position:absolute;inset:0;border-radius:inherit;overflow:hidden;
+    pointer-events:none}
+  .ripple{position:absolute;border-radius:50%;background:currentColor;
+    opacity:0;transform:scale(0);
+    animation:mw-ripple var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-standard) forwards}
+  @keyframes mw-ripple{
+    0%{transform:scale(0);opacity:var(--md-sys-state-pressed-state-layer-opacity)}
+    60%{opacity:var(--md-sys-state-pressed-state-layer-opacity)}
+    100%{transform:scale(1);opacity:0}
+  }
+}
 `;
 
 /**
@@ -1382,6 +1486,41 @@ const THEME_SCRIPT =
   `if(v==='auto'){localStorage.removeItem(K);r.removeAttribute('data-theme');}` +
   `else{localStorage.setItem(K,v);r.setAttribute('data-theme',v);}mark();});` +
   `d.addEventListener('DOMContentLoaded',mark);` +
+  `}catch(e){}})();</script>`;
+
+/**
+ * The M3 ripple, for the shell pages only.
+ *
+ * A faithful pressed state expands from the press point, and that needs
+ * script. This follows THEME_SCRIPT's precedent — inline, first-party, no
+ * fetch — and is progressive enhancement only: the CSS pressed state layer
+ * stands on its own, so with the script absent (the wizard and sign-in never
+ * include it; test/wizard-noscript.test.ts pins that) every control still
+ * shows its press. It checks prefers-reduced-motion at press time, because
+ * the CSS that animates .ripple is gated on the same preference and a span
+ * that never animates would sit invisible but appended. The clip layer
+ * inherits the control's corner so the 48px pointer-target pseudo outside it
+ * keeps working; the timeout removal is the belt to animationend's braces.
+ */
+const RIPPLE_SCRIPT =
+  `<script>(function(){try{` +
+  `document.addEventListener('pointerdown',function(e){` +
+  `var t=e.target&&e.target.closest?e.target.closest('button,.btn,.nav-item,.walls a,.le-tool-link'):null;` +
+  `if(!t||t.disabled)return;` +
+  `if(!window.matchMedia||matchMedia('(prefers-reduced-motion: reduce)').matches)return;` +
+  `if(getComputedStyle(t).position==='static')t.style.position='relative';` +
+  `var h=t.querySelector(':scope>.ripple-host');` +
+  `if(!h){h=document.createElement('span');h.className='ripple-host';t.appendChild(h);}` +
+  `var r=t.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;` +
+  `var dx=Math.max(x,r.width-x),dy=Math.max(y,r.height-y);` +
+  `var d=2*Math.sqrt(dx*dx+dy*dy);` +
+  `var p=document.createElement('span');p.className='ripple';` +
+  `p.style.width=p.style.height=d+'px';` +
+  `p.style.left=(x-d/2)+'px';p.style.top=(y-d/2)+'px';` +
+  `h.appendChild(p);` +
+  `p.addEventListener('animationend',function(){p.remove();});` +
+  `setTimeout(function(){p.remove();},800);` +
+  `},{passive:true});` +
   `}catch(e){}})();</script>`;
 
 /**
@@ -1674,7 +1813,7 @@ function stepProgress(step: string): string {
   return out + '</ol>';
 }
 
-function head(title: string): string {
+function head(title: string, shell = false): string {
   return (
     `<!doctype html><html lang="en"><head>` +
     /*
@@ -1693,7 +1832,11 @@ function head(title: string): string {
     `<meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<link rel="icon" href="${FAVICON}">` +
-    `<title>${escapeHtml(title)}</title><style>${STYLE}</style>${THEME_SCRIPT}</head>`
+    // The ripple only ever ships to the shell: the wizard and sign-in are
+    // deliberately script-free beyond the theme script, and a census test
+    // holds them to it.
+    `<title>${escapeHtml(title)}</title><style>${STYLE}</style>` +
+    `${THEME_SCRIPT}${shell ? RIPPLE_SCRIPT : ''}</head>`
   );
 }
 
@@ -1720,7 +1863,7 @@ export function page(options: PageOptions): string {
       : `<a class="btn btn-sm" href="${options.action.href}">${escapeHtml(options.action.label)}</a>`;
 
   return (
-    head(options.title) +
+    head(options.title, true) +
     `<body class="shell">` +
     `<aside class="side">` +
     `<a class="brand" href="admin">${MARK}<span><b>Maverick Wall</b><small>Admin</small></span></a>` +
