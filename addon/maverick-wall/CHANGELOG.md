@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.37.0
 
 Week numbers. Turn on **Show week numbers** in a Calendar widget set to Month
 grid or Week columns, and the month gets a quiet column of them down its left
