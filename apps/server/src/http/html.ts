@@ -267,7 +267,7 @@ body.shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
   text-decoration:none;font-size:var(--md-sys-typescale-label-large-size);
   font-weight:var(--md-sys-typescale-label-large-weight);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);line-height:1.2}
-.nav-item svg{width:24px;height:24px;flex:0 0 auto;stroke-width:1.6}
+.nav-item svg{width:24px;height:24px;flex:0 0 auto}
 .nav-item:hover{color:var(--md-sys-color-on-surface);background:color-mix(in srgb,
   var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
 .nav-item:active{background:color-mix(in srgb,
@@ -305,7 +305,7 @@ body.shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
   color:var(--md-sys-color-on-surface)}
 .signout::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
   transform:translate(-50%,-50%)}
-.signout svg{width:20px;height:20px;stroke-width:1.7}
+.signout svg{width:24px;height:24px}
 /* Admin theme toggle: styled with the segmented buttons further down. */
 
 .main{min-width:0;display:flex;flex-direction:column}
@@ -341,7 +341,6 @@ body.shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
   .nav-group{margin-top:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
   .nav-group>span{display:none}
   .nav-item{height:40px;padding:0 14px}
-  .nav-item svg{width:20px;height:20px}
   .side-foot{display:none}
   .topbar{padding:8px 20px}
   .content{padding:22px 20px 48px}
@@ -391,7 +390,7 @@ a.link{color:var(--accent);text-decoration:none;font-weight:600}
 a.link:hover{text-decoration:underline}
 /* Any inline arrow inside a link (list "Open →", "Manage →") stays small. */
 .link{display:inline-flex;align-items:center;gap:4px}
-.link svg{width:14px;height:14px;stroke-width:2;flex:0 0 auto}
+.link svg{width:14px;height:14px;flex:0 0 auto}
 .kick{font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
   letter-spacing:var(--md-sys-typescale-label-medium-tracking);
   color:var(--md-sys-color-on-surface-variant)}
@@ -622,7 +621,7 @@ button:active,.btn:active{background:color-mix(in srgb,
   var(--md-sys-color-on-primary) var(--md-sys-state-pressed-state-layer-opacity),
   var(--md-sys-color-primary))}
 button:has(svg),.btn:has(svg){padding-left:16px}
-button svg,.btn svg{width:18px;height:18px;stroke-width:1.8}
+button svg,.btn svg{width:18px;height:18px}
 button.secondary,.btn-ghost{background:transparent;color:var(--md-sys-color-primary);
   border-color:var(--md-sys-color-outline)}
 button.secondary:hover,.btn-ghost:hover{background:color-mix(in srgb,
@@ -755,10 +754,10 @@ a.card:hover{background:color-mix(in srgb,
   box-shadow:var(--md-sys-elevation-level2)}
 .stat .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .stat .subrow .link{display:inline-flex;align-items:center;gap:4px}
-.stat .subrow .link svg{width:13px;height:13px;stroke-width:2}
+.stat .subrow .link svg{width:13px;height:13px}
 .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent);flex:0 0 auto}
-.ic svg{width:19px;height:19px;stroke-width:1.6}
+.ic svg{width:18px;height:18px}
 
 /* ---- Overview status + today cards --------------------------------------- */
 .status-card .frow{display:flex;align-items:center;gap:12px;padding:12px 0;
@@ -769,7 +768,7 @@ a.card:hover{background:color-mix(in srgb,
 .status-card .frow .ic svg{width:16px;height:16px}
 .rname{font-weight:600;font-size:14px}
 .status-card .frow .link{display:inline-flex;align-items:center;gap:4px}
-.status-card .frow .link svg{width:13px;height:13px;stroke-width:2}
+.status-card .frow .link svg{width:13px;height:13px}
 .today-card{display:flex;flex-direction:column}
 /* line-height guards: body's role line-height is a px length, which inherits
  * as-is into any larger text that does not set its own. */
@@ -777,7 +776,7 @@ a.card:hover{background:color-mix(in srgb,
   letter-spacing:var(--md-sys-typescale-headline-small-tracking);margin:6px 0 2px}
 .stat .ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent)}
-.stat .ic svg{width:19px;height:19px;stroke-width:1.6}
+.stat .ic svg{width:18px;height:18px}
 .stat .big{font:var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size)/var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-headline-medium-font);
   letter-spacing:var(--md-sys-typescale-headline-medium-tracking);margin:12px 0 2px}
 .stat .lab{color:var(--muted);font-size:13.5px}
@@ -997,7 +996,7 @@ pre.log{background:var(--md-sys-color-inverse-surface);
   height:48px;transform:translate(-50%,-50%)}
 .le-add:hover{background:color-mix(in srgb,
   var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
-.le-add svg{width:16px;height:16px;stroke-width:1.6;flex:0 0 auto}
+.le-add svg{width:18px;height:18px;flex:0 0 auto}
 /* The single "+ Add widget" button reads as the primary action, not another
    outlined chip — it opens the add-widget modal below, so it is filled. */
 .le-add-primary{border-color:transparent;color:var(--md-sys-color-on-primary);
@@ -1284,7 +1283,10 @@ pre.log{background:var(--md-sys-color-inverse-surface);
 .tab:active{background:color-mix(in srgb,
   var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
 .tab.is-on{color:var(--md-sys-color-primary)}
-.tab.is-on::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;
+/* The indicator lives on ::before — ::after is every button's 48px pointer
+ * target, and sharing the pseudo let the target's top/transform drag the
+ * indicator to mid-height, striking through the label. */
+.tab.is-on::before{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;
   border-radius:3px 3px 0 0;background:var(--md-sys-color-primary)}
 .tabpanel[hidden]{display:none}
 .tabpanel>form,.disp-right form{margin:0}
@@ -1303,7 +1305,7 @@ pre.log{background:var(--md-sys-color-inverse-surface);
   color:var(--md-sys-color-on-surface)}
 .fieldhelp::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
   transform:translate(-50%,-50%)}
-.fieldhelp svg{width:16px;height:16px;stroke-width:1.8}
+.fieldhelp svg{width:16px;height:16px}
 /* A menu surface, like the layers popover. */
 .helppop{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:min(320px,80vw);
   padding:12px 14px;background:var(--md-sys-color-surface-container);
@@ -1430,44 +1432,49 @@ const MARK =
 const FAVICON = `data:image/svg+xml,${encodeURIComponent(MARK)}`;
 
 /**
- * The handful of line icons the admin uses, inlined and first-party.
+ * The handful of icons the admin uses: Material Symbols, inlined and
+ * first-party.
  *
- * Rule three keeps the served HTML free of a third-party origin, so nothing is
- * fetched from lucide.dev — the paths are copied in, drawn at 1.6 stroke to
- * match the sidebar. Each entry is the inner markup; `icon()` wraps it.
+ * Rule three keeps the served HTML free of a third-party origin, so there is
+ * no icon font and nothing is fetched from fonts.google.com — the paths are
+ * copied in from the google/material-design-icons repository (Material
+ * Symbols Outlined, 24dp grid, default weight; Apache-2.0, recorded beside
+ * the font attributions and in NOTICE). Each entry is the glyph's outline
+ * path on the family's 960-unit grid, named after its Symbols source so it
+ * can be re-sourced; `icon()` wraps it. These are filled outline paths, not
+ * strokes — the sizing rules in STYLE set only width and height.
  */
 const ICON_PATHS: Readonly<Record<string, string>> = {
-  overview:
-    `<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/>` +
-    `<rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>`,
-  calendars: `<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>`,
-  shifts:
-    `<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M21 3v5h-5M3 21v-5h5"/>`,
-  alerts: `<path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19z"/>`,
-  homeassistant: `<path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>`,
-  screens: `<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>`,
-  layout: `<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>`,
-  display:
-    `<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--panel2)"/>` +
-    `<circle cx="15" cy="12" r="2" fill="var(--panel2)"/><circle cx="8" cy="18" r="2" fill="var(--panel2)"/>`,
-  people:
-    `<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.5a3 3 0 0 1 0 5.5M21 20a6 6 0 0 0-4-5.6"/>`,
-  system: `<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/>`,
-  palette:
-    `<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/>` +
-    `<circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/>` +
-    `<path d="M12 2a10 10 0 0 0 0 20 2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4h1a5 5 0 0 0 5-5 10 10 0 0 0-10-7z"/>`,
-  arrow: `<path d="M5 12h14M13 6l6 6-6 6"/>`,
-  logout: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>`,
-  addons: `<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>`,
-  // A generic installed-module glyph: a tile within a tile. Distinct from the
-  // storefront cube so a module entry does not read as another Store link.
-  module: `<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/>`,
-  // The layout-editor / settings chrome glyphs. Same 24×24 stroke family.
-  plus: `<path d="M12 5v14M5 12h14"/>`,
-  layers: `<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/>`,
-  grip: `<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>`,
-  help: `<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.5.8c0 1.9-2.7 2.4-2.7 4"/><path d="M12 17h.01"/>`,
+  /* dashboard */
+  overview: '<path d="M520-600v-240h320v240H520ZM120-440v-400h320v400H120Zm400 320v-400h320v400H520Zm-400 0v-240h320v240H120Zm80-400h160v-240H200v240Zm400 320h160v-240H600v240Zm0-480h160v-80H600v80ZM200-200h160v-80H200v80Zm160-320Zm240-160Zm0 240ZM360-280Z"/>',
+  /* calendar_month */
+  calendars: '<path d="M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Zm0-480h560v-80H200v80Zm0 0v-80 80Zm280 240q-17 0-28.5-11.5T440-440q0-17 11.5-28.5T480-480q17 0 28.5 11.5T520-440q0 17-11.5 28.5T480-400Zm-160 0q-17 0-28.5-11.5T280-440q0-17 11.5-28.5T320-480q17 0 28.5 11.5T360-440q0 17-11.5 28.5T320-400Zm320 0q-17 0-28.5-11.5T600-440q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440q0 17-11.5 28.5T640-400ZM480-240q-17 0-28.5-11.5T440-280q0-17 11.5-28.5T480-320q17 0 28.5 11.5T520-280q0 17-11.5 28.5T480-240Zm-160 0q-17 0-28.5-11.5T280-280q0-17 11.5-28.5T320-320q17 0 28.5 11.5T360-280q0 17-11.5 28.5T320-240Zm320 0q-17 0-28.5-11.5T600-280q0-17 11.5-28.5T640-320q17 0 28.5 11.5T680-280q0 17-11.5 28.5T640-240Z"/>',
+  /* autorenew */
+  shifts: '<path d="M204-318q-22-38-33-78t-11-82q0-134 93-228t227-94h7l-64-64 56-56 160 160-160 160-56-56 64-64h-7q-100 0-170 70.5T240-478q0 26 6 51t18 49l-60 60ZM481-40 321-200l160-160 56 56-64 64h7q100 0 170-70.5T720-482q0-26-6-51t-18-49l60-60q22 38 33 78t11 82q0 134-93 228t-227 94h-7l64 64-56 56Z"/>',
+  /* cloud */
+  alerts: '<path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H260Zm0-80h480q42 0 71-29t29-71q0-42-29-71t-71-29h-60v-80q0-83-58.5-141.5T480-720q-83 0-141.5 58.5T280-520h-20q-58 0-99 41t-41 99q0 58 41 99t99 41Zm220-240Z"/>',
+  /* home */
+  homeassistant: '<path d="M240-200h120v-240h240v240h120v-360L480-740 240-560v360Zm-80 80v-480l320-240 320 240v480H520v-240h-80v240H160Zm320-350Z"/>',
+  /* tv */
+  screens: '<path d="M320-120v-80H160q-33 0-56.5-23.5T80-280v-480q0-33 23.5-56.5T160-840h640q33 0 56.5 23.5T880-760v480q0 33-23.5 56.5T800-200H640v80H320ZM160-280h640v-480H160v480Zm0 0v-480 480Z"/>',
+  /* space_dashboard */
+  layout: '<path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h240v-560H200v560Zm320 0h240v-280H520v280Zm0-360h240v-200H520v200Z"/>',
+  /* group */
+  people: '<path d="M40-160v-112q0-34 17.5-62.5T104-378q62-31 126-46.5T360-440q66 0 130 15.5T616-378q29 15 46.5 43.5T680-272v112H40Zm720 0v-120q0-44-24.5-84.5T666-434q51 6 96 20.5t84 35.5q36 20 55 44.5t19 53.5v120H760ZM360-480q-66 0-113-47t-47-113q0-66 47-113t113-47q66 0 113 47t47 113q0 66-47 113t-113 47Zm400-160q0 66-47 113t-113 47q-11 0-28-2.5t-28-5.5q27-32 41.5-71t14.5-81q0-42-14.5-81T544-792q14-5 28-6.5t28-1.5q66 0 113 47t47 113ZM120-240h480v-32q0-11-5.5-20T580-306q-54-27-109-40.5T360-360q-56 0-111 13.5T140-306q-9 5-14.5 14t-5.5 20v32Zm240-320q33 0 56.5-23.5T440-640q0-33-23.5-56.5T360-720q-33 0-56.5 23.5T280-640q0 33 23.5 56.5T360-560Zm0 320Zm0-400Z"/>',
+  /* dns */
+  system: '<path d="M300-720q-25 0-42.5 17.5T240-660q0 25 17.5 42.5T300-600q25 0 42.5-17.5T360-660q0-25-17.5-42.5T300-720Zm0 400q-25 0-42.5 17.5T240-260q0 25 17.5 42.5T300-200q25 0 42.5-17.5T360-260q0-25-17.5-42.5T300-320ZM160-840h640q17 0 28.5 11.5T840-800v280q0 17-11.5 28.5T800-480H160q-17 0-28.5-11.5T120-520v-280q0-17 11.5-28.5T160-840Zm40 80v200h560v-200H200Zm-40 320h640q17 0 28.5 11.5T840-400v280q0 17-11.5 28.5T800-80H160q-17 0-28.5-11.5T120-120v-280q0-17 11.5-28.5T160-440Zm40 80v200h560v-200H200Zm0-400v200-200Zm0 400v200-200Z"/>',
+  /* palette */
+  palette: '<path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 32.5-156t88-127Q256-817 330-848.5T488-880q80 0 151 27.5t124.5 76q53.5 48.5 85 115T880-518q0 115-70 176.5T640-280h-74q-9 0-12.5 5t-3.5 11q0 12 15 34.5t15 51.5q0 50-27.5 74T480-80Zm0-400Zm-220 40q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm120-160q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm200 0q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm120 160q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17ZM480-160q9 0 14.5-5t5.5-13q0-14-15-33t-15-57q0-42 29-67t71-25h70q66 0 113-38.5T800-518q0-121-92.5-201.5T488-800q-136 0-232 93t-96 227q0 133 93.5 226.5T480-160Z"/>',
+  /* arrow_forward */
+  arrow: '<path d="M647-440H160v-80h487L423-744l57-56 320 320-320 320-57-56 224-224Z"/>',
+  /* logout */
+  logout: '<path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h280v80H200Zm440-160-55-58 102-102H360v-80h327L585-622l55-58 200 200-200 200Z"/>',
+  /* storefront */
+  addons: '<path d="M841-518v318q0 33-23.5 56.5T761-120H201q-33 0-56.5-23.5T121-200v-318q-23-21-35.5-54t-.5-72l42-136q8-26 28.5-43t47.5-17h556q27 0 47 16.5t29 43.5l42 136q12 39-.5 71T841-518Zm-272-42q27 0 41-18.5t11-41.5l-22-140h-78v148q0 21 14 36.5t34 15.5Zm-180 0q23 0 37.5-15.5T441-612v-148h-78l-22 140q-4 24 10.5 42t37.5 18Zm-178 0q18 0 31.5-13t16.5-33l22-154h-78l-40 134q-6 20 6.5 43t41.5 23Zm540 0q29 0 42-23t6-43l-42-134h-76l22 154q3 20 16.5 33t31.5 13ZM201-200h560v-282q-5 2-6.5 2H751q-27 0-47.5-9T663-518q-18 18-41 28t-49 10q-27 0-50.5-10T481-518q-17 18-39.5 28T393-480q-29 0-52.5-10T299-518q-21 21-41.5 29.5T211-480h-4.5q-2.5 0-5.5-2v282Zm560 0H201h560Z"/>',
+  /* widgets */
+  module: '<path d="M666-440 440-666l226-226 226 226-226 226Zm-546-80v-320h320v320H120Zm400 400v-320h320v320H520Zm-400 0v-320h320v320H120Zm80-480h160v-160H200v160Zm467 48 113-113-113-113-113 113 113 113Zm-67 352h160v-160H600v160Zm-400 0h160v-160H200v160Zm160-400Zm194-65ZM360-360Zm240 0Z"/>',
+  /* help */
+  help: '<path d="M478-240q21 0 35.5-14.5T528-290q0-21-14.5-35.5T478-340q-21 0-35.5 14.5T428-290q0 21 14.5 35.5T478-240Zm-36-154h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/>',
 };
 
 /**
@@ -1483,14 +1490,11 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
 export const SIGNOUT_OPEN = '<!--mw:signout-->';
 export const SIGNOUT_CLOSE = '<!--/mw:signout-->';
 
-/** An inline line icon by key, at a size the caller controls with CSS. */
+/** An inline icon by key, at a size the caller controls with CSS. */
 export function icon(key: string): string {
   const inner = ICON_PATHS[key];
   if (inner === undefined) return '';
-  return (
-    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ` +
-    `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`
-  );
+  return `<svg viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">${inner}</svg>`;
 }
 
 /**

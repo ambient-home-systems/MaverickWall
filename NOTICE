@@ -33,3 +33,9 @@ If you take one thing from this repository, take that.
 
 Dependencies keep their own licences. `pnpm licenses list` will print them, and
 the container image ships a software bill of materials alongside it.
+
+A few assets are copied into the repository rather than depended on, so that
+list will not name them: the bundled typefaces (SIL OFL 1.1 and Apache-2.0)
+and the admin's inline Material Symbols icons (© Google, Apache-2.0, from
+https://github.com/google/material-design-icons). Both are recorded with their
+terms in apps/server/assets/fonts/LICENSES.md.
