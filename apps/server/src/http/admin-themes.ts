@@ -14,7 +14,8 @@ import {
   type ThemeRow,
   type ThemeTokens,
 } from '../api/themes.js';
-import { parse, text } from '../validation.js';
+import { colour, oneOf, parse, text } from '../validation.js';
+import { generateThemeTokens } from '../api/theme-generator.js';
 
 /**
  * The custom-theme builder (system settings).
@@ -92,6 +93,29 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     return c.redirect('/admin/themes', 302);
   });
 
+  /**
+   * Generate a full theme from one seed colour, then store it through the
+   * exact create path a hand-built theme takes: the generator's output is
+   * validated by the same schema (rule five — the generator is ours, but the
+   * invariant is cheaper to prove than to trust), so the result is an
+   * ordinary custom theme — previewable in the builder, editable afterwards,
+   * resolved with tints and carried in the manifest like any other.
+   */
+  app.post('/admin/themes/generate', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const name = parse(nameBody, body['name']);
+    if (!name.ok) return c.html(themesPage(name.message), 400);
+    const seed = parse(colour(), body['seed']);
+    if (!seed.ok) return c.html(themesPage('Pick a seed colour.'), 400);
+    const mode = parse(oneOf('Dark or light', ['dark', 'light'] as const), body['mode']);
+    if (!mode.ok) return c.html(themesPage('Choose dark or light.'), 400);
+
+    const tokens = themeTokensSchema.parse(generateThemeTokens(seed.value, mode.value));
+    const created = createTheme(deps.db, { name: name.value, tokens });
+    // Land in the builder so the result is immediately previewable and editable.
+    return c.redirect(`/admin/themes/${encodeURIComponent(created.id)}`, 302);
+  });
+
   app.post('/admin/themes/:id', async (c: Context) => {
     const id = c.req.param('id') ?? '';
     const existing = readTheme(deps.db, id);
@@ -136,7 +160,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   // ---- pages ---------------------------------------------------------------
 
-  function themesPage(): string {
+  function themesPage(error?: string): string {
     const custom = readThemes(deps.db);
     const card = (theme: ThemeRow): string =>
       `<article class="card">` +
@@ -161,11 +185,31 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
         'Build your own colours for the wall. A theme you make here is selectable on ' +
         'the Displays screen, as the default or for one screen, beside the four built in.',
       body:
+        (error === undefined ? '' : errorBlock(error)) +
         (custom.length === 0
           ? `<p class="hint">No custom themes yet. The four built-in directions (Board, ` +
             `Kitchen Slate, Paper Almanac, Glance) are always available on the Displays ` +
             `screen. Make your own with “New theme”.</p>`
-          : `<div class="grid g2">${custom.map(card).join('')}</div>`),
+          : `<div class="grid g2">${custom.map(card).join('')}</div>`) +
+
+        `<h2 class="add">Generate from a colour</h2>` +
+        `<p class="hint">Pick one colour — the seed — and a whole matching theme is ` +
+        `worked out from it: background, panels, text and the shift colours, every ` +
+        `pairing kept readable from across a room. It lands in the builder, so you ` +
+        `can adjust anything afterwards.</p>` +
+        `<form method="post" action="admin/themes/generate">` +
+        `<div class="row-fields">` +
+        textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sea glass' }) +
+        textField({ label: 'Seed colour', name: 'seed', type: 'color', value: '#4C7FD1' }) +
+        selectField({
+          label: 'Dark or light',
+          name: 'mode',
+          optionsHtml:
+            `<option value="dark" selected>Dark — for a wall on all evening</option>` +
+            `<option value="light">Light — paper-bright</option>`,
+        }) +
+        `</div>` +
+        `<button type="submit">Generate theme</button></form>`,
     });
   }
 
