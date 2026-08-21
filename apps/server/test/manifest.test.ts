@@ -630,3 +630,55 @@ describe('the run a shift is part of', () => {
     expect(others.every((day) => day.shifts.every((shift) => shift.run === undefined))).toBe(true);
   });
 });
+
+/*
+ * The same run, from a calendar-derived rota.
+ *
+ * 0.40.0 moved this calculation to the server and *still* reported "Day 2 of
+ * 3" on the wall that reported it. The resolution range was widened; the data
+ * feeding it was not. A pattern plan resolves mathematically and needs no
+ * events, so the pattern tests above passed — and a calendar plan matches on
+ * event titles, so it went blind one day behind today and the walk stopped
+ * there. The fixture that would have caught it is this one: the same fortnight,
+ * read from titles instead of a cycle.
+ */
+describe('a run read from a calendar feed', () => {
+  const FEED = [
+    {
+      kind: 'calendar', id: 'c', name: 'work feed',
+      effectiveFrom: '2020-01-01', effectiveTo: null, priority: 0,
+      calendarSourceId: SOURCES[0]!.id, consumesEvents: true,
+      matchers: [{ shiftTypeKey: 'day', pattern: 'STRAIGHTS', mode: 'contains' }],
+    },
+  ] as unknown as ShiftPlan[];
+
+  /** A "STRAIGHTS" event on each of `days`, as the feed would carry them. */
+  const feedEvents = (days: readonly string[]) =>
+    days.map((date, index) => ({
+      ...EVENTS[0]!,
+      id: `s${index}`, uid: `s${index}`, title: 'STRAIGHTS',
+      startsAt: Date.parse(`${date}T06:00:00Z`), endsAt: Date.parse(`${date}T18:00:00Z`),
+      startLocalDate: date, endLocalDate: date,
+    }));
+
+  // A fortnight of straights, 2026-08-31 to 2026-09-13.
+  const RUN = Array.from({ length: 14 }, (_, index) =>
+    new Date(Date.parse('2026-08-31T12:00:00Z') + index * 86_400_000).toISOString().slice(0, 10),
+  );
+
+  const runOn = (today: string) =>
+    buildManifest({ ...BASE, today, shiftPlans: FEED, events: feedEvents(RUN) })
+      .days.find((day) => day.date === today)?.shifts[0]?.run;
+
+  it('follows the run back past the manifest window', () => {
+    // The reported case. Before the fix this was { position: 2, total: 3 },
+    // because the only history the resolver could see was yesterday.
+    expect(runOn('2026-09-12')).toEqual({ position: 13, total: 14 });
+  });
+
+  it('agrees with the pattern rota on every day of the same fortnight', () => {
+    expect(runOn('2026-08-31')).toEqual({ position: 1, total: 14 });
+    expect(runOn('2026-09-06')).toEqual({ position: 7, total: 14 });
+    expect(runOn('2026-09-13')).toEqual({ position: 14, total: 14 });
+  });
+});

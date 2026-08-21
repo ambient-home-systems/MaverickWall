@@ -703,12 +703,19 @@ function healthNotices(sources: readonly SourceRow[], now: number): ManifestNoti
  * How far either side of today a run is followed before it is given up on.
  *
  * A rota cycle longer than this cannot be reported in full, so the number is
- * generous: at 90 days it covers every rotation anyone actually works, and the
- * cost is pure arithmetic over a pattern — no database, no events, no I/O.
- * A run that reaches the edge is dropped rather than reported short, because a
- * confident wrong number is what this field exists to stop.
+ * generous: at 90 days it covers every rotation anyone actually works.
+ *
+ * **The caller must supply events and overrides over this same range**, not
+ * just the manifest window. A pattern plan resolves mathematically and needs
+ * nothing, but a *calendar-derived* plan matches on event titles — so with only
+ * the window's events it goes blind one day behind today and the walk stops
+ * there. That is not a hypothetical: 0.40.0 moved this calculation to the
+ * server and still reported "Day 2 of 3" for a fortnight of straights, because
+ * the range was widened and the data feeding it was not. The guard below only
+ * catches a run longer than we looked; it cannot catch data that was never
+ * read.
  */
-const RUN_WINDOW_DAYS = 90;
+export const RUN_WINDOW_DAYS = 90;
 
 /**
  * How far through an unbroken run of today's shift today is.

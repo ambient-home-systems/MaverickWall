@@ -42,7 +42,13 @@ import { errorBlock, escapeHtml, page, textField } from './html.js';
 import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
-import { buildManifest, manifestEtag, type Manifest, type ManifestNotice } from '../api/manifest.js';
+import {
+  buildManifest,
+  manifestEtag,
+  RUN_WINDOW_DAYS,
+  type Manifest,
+  type ManifestNotice,
+} from '../api/manifest.js';
 import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { resolveTheme } from '../api/themes.js';
@@ -642,8 +648,25 @@ export function createApp(deps: AppDeps): Hono {
     const at = now();
     const household = readHousehold(deps.db);
     const today = localDateOf(at, household.timezone);
-    const from = shiftDate(today, -DEFAULT_DAYS_BEFORE);
-    const to = shiftDate(today, DEFAULT_DAYS_AFTER);
+    /*
+     * Wider than the window, for the rota only.
+     *
+     * There is no narrow read left here: `buildManifest` derives the manifest
+     * window itself from `daysBefore`/`daysAfter` and keys its days off that,
+     * so the extra rows are invisible to the agenda and only the rota sees
+     * them.
+     *
+     * A calendar-derived shift plan reads event *titles*, so it can only see a
+     * day it has the events for — and the window holds a single day of history.
+     * They exist so a run of shifts can be followed back to where it actually
+     * started. Overrides go the same distance, or one sitting outside the
+     * window would break a run the household had explicitly bridged.
+     *
+     * The read is local SQLite over an indexed date column. It costs a few
+     * hundred more rows and no network.
+     */
+    const runFrom = shiftDate(today, -RUN_WINDOW_DAYS);
+    const runTo = shiftDate(today, RUN_WINDOW_DAYS);
 
     /*
      * The zone this particular screen is in — the same resolution the manifest
@@ -675,12 +698,12 @@ export function createApp(deps: AppDeps): Hono {
       // orientation is empty (RFC 005).
       layoutWidgetsPortrait: readLayoutWidgets(deps.db, layoutOwner, 'portrait'),
       layoutWidgetsLandscape: readLayoutWidgets(deps.db, layoutOwner, 'landscape'),
-      events: readEvents(deps.db, from, to),
+      events: readEvents(deps.db, runFrom, runTo),
       sources: readSources(deps.db),
       people: readPeople(deps.db),
       shiftTypes: readShiftTypes(deps.db),
       shiftPlans: readShiftPlans(deps.db),
-      shiftOverrides: readShiftOverrides(deps.db, from, to),
+      shiftOverrides: readShiftOverrides(deps.db, runFrom, runTo),
       today,
       daysBefore: DEFAULT_DAYS_BEFORE,
       daysAfter: DEFAULT_DAYS_AFTER,
