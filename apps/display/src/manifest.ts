@@ -47,6 +47,13 @@ export interface ManifestShift {
   readonly endTime?: string;
   readonly isWorking: boolean;
   readonly source: string;
+  /**
+   * How far through a run of this shift today is, from the server. Present
+   * only on today's entries, and absent from a server older than the field —
+   * where the display falls back to counting the manifest's own days, which is
+   * the thing that could only ever reach "Day 2".
+   */
+  readonly run?: { readonly position: number; readonly total: number };
   readonly personId: string;
   readonly personName: string;
   readonly personColor: string;

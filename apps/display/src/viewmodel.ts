@@ -1000,9 +1000,31 @@ function describeRun(
   today: CivilDate,
   _timezone: string,
 ): string | undefined {
-  const key = byDate.get(today)?.shifts[0]?.key;
-  if (key === undefined) return undefined;
+  const shift = byDate.get(today)?.shifts[0];
+  if (shift === undefined) return undefined;
 
+  /*
+   * The server's answer, when it has one.
+   *
+   * It resolves the rota itself and can follow a run to both its ends. What
+   * follows is the old local count, kept only for a manifest from a server
+   * older than that field — including one sitting in IndexedDB from before the
+   * upgrade, which a wall can draw for months.
+   *
+   * The local count is wrong and cannot be made right here: it walks the days
+   * *in the manifest*, and the manifest carries a single day of history, so it
+   * cannot tell "the run started here" from "I ran out of data" and every run
+   * longer than a day reads "Day 2 of N". It is a floor, not a fallback worth
+   * trusting.
+   */
+  const run = shift.run;
+  if (run !== undefined) {
+    const after = run.total - run.position;
+    if (after === 0) return `Last of ${run.total}`;
+    return `Day ${run.position} of ${run.total} · ${after} more`;
+  }
+
+  const key = shift.key;
   const sameAs = (date: CivilDate): boolean => byDate.get(date)?.shifts[0]?.key === key;
 
   let before = 0;
