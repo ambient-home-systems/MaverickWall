@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.32.1
 
 The eInk layout editor is back. Since the display editor was reworked in
 0.30.0, the Arrange section on an eInk panel's page was an empty space — the
