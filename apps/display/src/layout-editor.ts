@@ -1391,6 +1391,19 @@ function boot(): void {
     modeField.appendChild(modeSelect);
     configPanel.appendChild(modeField);
 
+    /*
+     * The rota's colours, on every style that draws them.
+     *
+     * The only toggle in this panel whose *unticked* state is what gets
+     * stored: it has been on since the wall was first drawn, so a household
+     * who arranged a canvas around those colours keeps them by default.
+     */
+    configPanel.appendChild(
+      toggle('Show work schedules', cfg['showShifts'] !== false, (checked) =>
+        setConfig(widget, 'showShifts', checked ? undefined : false),
+      ),
+    );
+
     // The week of the year, on either grid style — not on the agenda, where a
     // number per day group would repeat itself down the wall.
     if (currentMode !== 'list') {

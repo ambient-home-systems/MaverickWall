@@ -54,6 +54,16 @@ export const widgetConfigBody = z
     // The week of the year: a column beside the month grid, a line above the
     // week columns. Absent means off (RFC 007 phase 4).
     showWeekNumbers: z.boolean().optional(),
+    /*
+     * The rota's colours on the calendar — the cell tint on a month, the rule
+     * down an agenda row, the shift's own name and hours.
+     *
+     * The one config key here whose *absence means on*, because it has been on
+     * since the wall was first drawn and a household who arranged a canvas
+     * around those colours must not lose them to a schema change. So the only
+     * value ever stored is `false`.
+     */
+    showShifts: z.boolean().optional(),
     showTimes: z.boolean().optional(),
     showLocations: z.boolean().optional(),
     // Home Assistant

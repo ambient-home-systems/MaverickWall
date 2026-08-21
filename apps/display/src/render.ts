@@ -209,9 +209,9 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
 
 /* --------------------------------------------------------------- NEXT ---- */
 
-function renderDayRow(day: DayModel, showWeather = false): HTMLElement {
+function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HTMLElement {
   const row = el('div', day.isToday ? 'day-row is-today' : 'day-row');
-  const shift = day.shifts[0];
+  const shift = showShifts ? day.shifts[0] : undefined;
   paintShift(row, shift?.colorToken, shift?.color);
 
   const when = el('div', 'dr-when');
@@ -280,14 +280,14 @@ function renderDayRow(day: DayModel, showWeather = false): HTMLElement {
 
 /* ------------------------------------------------------------ HORIZON ---- */
 
-function renderCell(cell: HorizonCell, pills = false): HTMLElement {
+function renderCell(cell: HorizonCell, pills = false, showShifts = true): HTMLElement {
   const classes = ['hz-cell'];
   if (cell.isToday) classes.push('is-today');
   if (cell.isPast) classes.push('dim');
   if (!cell.inMonth) classes.push('outside');
 
   const node = el('div', classes.join(' '));
-  paintShift(node, cell.shiftToken, cell.shiftColor);
+  if (showShifts) paintShift(node, cell.shiftToken, cell.shiftColor);
   node.appendChild(el('div', 'hz-num', cell.dayNumber));
 
   if (pills) {
@@ -318,9 +318,14 @@ function renderCell(cell: HorizonCell, pills = false): HTMLElement {
 
 function renderHorizon(
   model: DisplayModel,
-  opts: { readonly pills?: boolean; readonly weekNumbers?: boolean } = {},
+  opts: {
+    readonly pills?: boolean;
+    readonly weekNumbers?: boolean;
+    readonly shifts?: boolean;
+  } = {},
 ): HTMLElement {
   const pills = opts.pills === true;
+  const showShifts = opts.shifts !== false;
   const horizon = el('section', pills ? 'horizon horizon-pills' : 'horizon');
   /*
    * Week numbers get a column of their own rather than a corner of the first
@@ -345,11 +350,13 @@ function renderHorizon(
   for (const cell of headerWeek) grid.appendChild(el('div', 'hz-head', cell.weekday));
   for (const week of model.horizon) {
     if (weekNumbers) grid.appendChild(el('div', 'hz-wk', String(week[0]?.weekNumber ?? '')));
-    for (const cell of week) grid.appendChild(renderCell(cell, pills));
+    for (const cell of week) grid.appendChild(renderCell(cell, pills, showShifts));
   }
   horizon.appendChild(grid);
 
-  const legend = legendFor(model);
+  // The key goes with the colours it explains. A legend under a grid with no
+  // rota tints is a key to nothing.
+  const legend = showShifts ? legendFor(model) : undefined;
   if (legend !== undefined) horizon.appendChild(legend);
   return horizon;
 }
@@ -785,6 +792,9 @@ function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
 function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
   const c = widgetConfig(config);
   const mode = c['mode'];
+  // Absence means on: the rota's colours predate this option (see the schema).
+  // Read before the dispatch, because every style below consults it.
+  const showShifts = c['showShifts'] !== false;
   // Named before the `!== 'list'` fallthrough below, which would otherwise draw
   // a month grid for either of them — the 0.33.2 bug, one mode along.
   if (mode === 'skyweek') return renderSkyWeek(model, config);
@@ -794,6 +804,7 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
     return renderHorizon(model, {
       pills: c['cellEvents'] === 'pills',
       weekNumbers: c['showWeekNumbers'] === true,
+      shifts: showShifts,
     });
   }
 
@@ -820,7 +831,9 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
     if (events.length === 0 && !day.isToday) continue;
     budget -= events.length;
     any = any || events.length > 0;
-    section.appendChild(renderDayRow({ ...day, events, hiddenEventCount: 0 }, showWeather));
+    section.appendChild(
+      renderDayRow({ ...day, events, hiddenEventCount: 0 }, showWeather, showShifts),
+    );
   }
   if (!any) section.appendChild(el('div', 'dr-empty', 'Nothing coming up.'));
   return section;
@@ -1179,6 +1192,7 @@ function renderSkyWeek(model: DisplayModel, config: unknown): HTMLElement {
 
 function renderSkyMonth(model: DisplayModel, config: unknown): HTMLElement {
   const keep = skyCalendars(config);
+  const showShifts = widgetConfig(config)['showShifts'] !== false;
   const section = el('section', 'sky skymonth');
   const grid = el('div', 'sk-mgrid');
 
@@ -1200,7 +1214,7 @@ function renderSkyMonth(model: DisplayModel, config: unknown): HTMLElement {
       if (cell.isPast) classes.push('dim');
       if (!cell.inMonth) classes.push('outside');
       const node = el('div', classes.join(' '));
-      paintShift(node, cell.shiftToken, cell.shiftColor);
+      if (showShifts) paintShift(node, cell.shiftToken, cell.shiftColor);
       node.appendChild(el('div', 'sk-mnum', cell.dayNumber));
 
       const events = cell.events.filter((e) => keep(e.sourceId));
