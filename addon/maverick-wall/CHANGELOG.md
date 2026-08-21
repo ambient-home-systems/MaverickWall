@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.32.4
 
 eInk panels draw their widgets properly now. The clock could lose its last
 digit — half past eight drawn as "08:3" — because the type was sized to the
