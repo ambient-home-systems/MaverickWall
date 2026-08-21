@@ -152,8 +152,11 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
 
   // Today's shifts, one line per person who has one. `shifts` is already
   // resolved per person in the manifest, so this only formats it for 1-bit.
+  // A hyphen, not the wall's en dash: the bitmap font is ASCII, and anything
+  // outside it draws as a blank cell — "07:00 19:00", which reads as two
+  // separate times rather than a span.
   const shiftTime = (shift: ManifestPersonShift): string =>
-    shift.startTime && shift.endTime ? `${shift.startTime}–${shift.endTime}` : '';
+    shift.startTime && shift.endTime ? `${shift.startTime}-${shift.endTime}` : '';
   const todayShifts: EpaperShiftLine[] = (byDate.get(today)?.shifts ?? []).map((shift) => ({
     person: shift.personName,
     code: shift.shortCode,
