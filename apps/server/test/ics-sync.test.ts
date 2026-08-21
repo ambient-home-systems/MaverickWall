@@ -294,7 +294,7 @@ describe('history the cache actually keeps', () => {
       'END:VEVENT', 'END:VCALENDAR', '',
     ].join('\r\n');
 
-    const h = harness([{ kind: 'ok', status: 200, headers: {}, body: old, bodyBytes: old.length }]);
+    const h = harness([ok(old)]);
     return h.handler(h.job).then(() => {
       expect(h.events().map((row) => row['title'])).toContain('STRAIGHTS');
     });
