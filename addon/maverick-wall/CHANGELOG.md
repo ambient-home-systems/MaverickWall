@@ -49,6 +49,11 @@ all match the rest of the design. Still built in, still nothing fetched from
 the internet. A small glitch where the selected tab's underline could strike
 through its own label is fixed along the way.
 
+And the settings move the way they look now: buttons ripple from where you
+press, switches glide, dialogs ease in and out. If your device is set to
+reduce motion, all of it stays still — every animation respects that setting.
+The first-run wizard stays completely script-free, exactly as before.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
