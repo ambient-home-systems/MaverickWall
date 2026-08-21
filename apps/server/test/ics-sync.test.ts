@@ -7,7 +7,13 @@ import type { FetchOutcome, FetchRequest, Fetcher, JobRecord } from '@maverick-w
 import { openDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { createKeyring, loadOrCreateMasterKey } from '../src/secrets/keyring.js';
-import { createIcsSyncHandler, toEventRow } from '../src/jobs/ics-sync.js';
+import {
+  createIcsSyncHandler,
+  toEventRow,
+  WINDOW_AFTER_DAYS,
+  WINDOW_BEFORE_DAYS,
+} from '../src/jobs/ics-sync.js';
+import { RUN_WINDOW_DAYS } from '../src/api/manifest.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const TZ = 'America/New_York';
@@ -259,5 +265,48 @@ describe('sources that should not sync', () => {
     const { db, handler, job } = harness([ok(ICS)]);
     db.prepare("DELETE FROM calendar_sources WHERE id = 'src1'").run();
     expect((await handler(job)).status).toBe('skipped');
+  });
+});
+
+/*
+ * Three windows that have to agree, and did not.
+ *
+ * How far back a run of shifts can be followed is capped by the *narrowest* of:
+ * the range the run is resolved over, the range the manifest reads events for,
+ * and the range the cache keeps events in. Each was widened in a separate
+ * release while the next one along quietly held the answer down — 0.40.0 fixed
+ * the first and the wall still read "Day 2 of 3"; 0.41.0 fixed the second and
+ * it read "Day 8 of 9", which is seven days of cache counted exactly.
+ *
+ * Nothing tied them together, so nothing complained. This is that tie.
+ */
+describe('history the cache actually keeps', () => {
+  it('stores an event from a month ago, which a shift run has to see', () => {
+    // Straight at the mechanism, not at the constant: a calendar-derived rota
+    // recognises a shift by its event's title, so a run can only be followed
+    // back as far as the *cache* goes. At WINDOW_BEFORE_DAYS = 7 this event was
+    // expanded away and a fortnight of straights reported "Day 8 of 9".
+    const old = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Test//EN',
+      'BEGIN:VEVENT', 'UID:old@test', 'SUMMARY:STRAIGHTS',
+      `DTSTART;TZID=America/New_York:${stamp(-30)}T090000`,
+      `DTEND;TZID=America/New_York:${stamp(-30)}T170000`,
+      'END:VEVENT', 'END:VCALENDAR', '',
+    ].join('\r\n');
+
+    const h = harness([{ kind: 'ok', status: 200, headers: {}, body: old, bodyBytes: old.length }]);
+    return h.handler(h.job).then(() => {
+      expect(h.events().map((row) => row['title'])).toContain('STRAIGHTS');
+    });
+  });
+});
+
+describe('the windows a shift run depends on', () => {
+  it('keeps at least as much history as a run is resolved across', () => {
+    expect(WINDOW_BEFORE_DAYS).toBeGreaterThanOrEqual(RUN_WINDOW_DAYS);
+  });
+
+  it('keeps at least as much future, so the end of a run is visible too', () => {
+    expect(WINDOW_AFTER_DAYS).toBeGreaterThanOrEqual(RUN_WINDOW_DAYS);
   });
 });

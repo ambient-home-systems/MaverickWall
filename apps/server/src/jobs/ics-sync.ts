@@ -17,8 +17,23 @@ export type { EventRow };
  * with an explanation — never an empty grid.
  */
 
-/** How far either side of today the cache is kept. */
-export const WINDOW_BEFORE_DAYS = 7;
+/**
+ * How far either side of today the cache is kept.
+ *
+ * **`WINDOW_BEFORE_DAYS` is a floor set by the rota, not by the wall.** The
+ * display only ever shows a day of history, and 7 was generous for that — but a
+ * calendar-derived shift plan reads event *titles* to recognise a shift, so a
+ * run of shifts can only be followed back as far as the cache goes. At 7 a
+ * fortnight of straights on day 13 reported "Day 8 of 9": seven days of history
+ * and one of future, counted exactly.
+ *
+ * That was the third window in a chain that all had to agree, and the first two
+ * were widened one release at a time while this one quietly capped the answer:
+ * the run resolution (0.40.0), then the manifest's own event read (0.41.0),
+ * then this. `ics-sync.test.ts` now asserts it stays at or above
+ * `RUN_WINDOW_DAYS`, so the chain cannot come apart again silently.
+ */
+export const WINDOW_BEFORE_DAYS = 90;
 export const WINDOW_AFTER_DAYS = 90;
 
 const ICS_CONTENT_TYPES = ['text/calendar', 'application/octet-stream', 'text/plain'];
