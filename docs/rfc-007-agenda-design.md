@@ -27,6 +27,23 @@ Builds on the display's widget model (`renderWidget`, `viewmodel.ts`,
 > current, and the code was read to confirm details rather than to check the
 > premise. The premise was the thing that had moved.
 
+> **Update — phases 1 and 2 are built.** Phase 1 shipped in 0.34.0 (the date
+> column's month, a per-calendar accent rule, a progress bar on a running event,
+> "Day 2 of 4", "Nothing on"). Phase 2 is the revised one described in the
+> correction above: the week style falls back to the agenda when a column would
+> drop below 5rem — a floor calibrated by rendering the week at shrinking widths
+> in a real browser and looking at it, not chosen. `density.ts` holds both
+> floors as pure functions.
+>
+> Phase 2 also turned up a bug older than this RFC: **the agenda list overflowed
+> its box by 212px in a narrow widget and its titles were simply cut off**, the
+> classic grid blow-out (a grid item's default minimum is its content, so a long
+> title refuses to shrink). The box's `overflow: hidden` made it look like a
+> deliberate crop. Phase 1's accent rule added 34px to it and did not cause it —
+> but the week fallback routes more walls down that path, so it is fixed here:
+> `min-width: 0` down the chain, and the time stacks above the title when there
+> is no room beside it.
+
 ## Summary
 
 [Calendar Card Pro](https://github.com/alexpfau/calendar-card-pro) is a Home

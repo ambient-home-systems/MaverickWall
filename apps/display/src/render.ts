@@ -6,6 +6,7 @@ import type {
   InterruptModel,
 } from './viewmodel.js';
 import { localDate } from './viewmodel.js';
+import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
@@ -938,6 +939,17 @@ export function renderFreeform(
     readonly min: number;
   }[] = [];
 
+  // Week-column calendars, to be re-checked once they have a real width. Seven
+  // columns cannot reflow: unlike every other section they do not get narrower
+  // type, they get narrower columns, so a small box produces seven slivers with
+  // a letter in each. Measured after layout, because a box's width is a
+  // percentage of a canvas that is itself letterboxed into the frame.
+  const weekBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
+
+  // Agenda sections, to be re-checked for whether they kept room for a time
+  // column. Includes the ones the week fallback below produces.
+  const agendas: HTMLElement[] = [];
+
   for (const widget of layout.widgets) {
     const box = el('div', `fw fw-${widget.type}`);
     // Percentages of the canvas, so the same layout fills any resolution of
@@ -976,6 +988,7 @@ export function renderFreeform(
       // labelled event pills.
       box.classList.add('fw-fill');
       box.appendChild(contentWithTitle(body, widget.config));
+      if (widgetConfig(widget.config)['mode'] === 'week') weekBoxes.push({ box, widget });
     } else {
       /*
        * Everything else reuses a section built for a full-width strip or grid,
@@ -995,6 +1008,7 @@ export function renderFreeform(
       scale.appendChild(contentWithTitle(body, widget.config));
       box.appendChild(scale);
       toFit.push({ box, scale, min: minScaleFor(widget.type) });
+      if (widget.type === 'calendar' && body.classList.contains('next')) agendas.push(body);
     }
     canvas.appendChild(box);
   }
@@ -1020,6 +1034,38 @@ export function renderFreeform(
 
   // Now that everything has a size, fit each reused section to its box.
   for (const { box, scale, min } of toFit) fitToBox(box, scale, { min });
+
+  /*
+   * A week too narrow to read becomes the agenda instead.
+   *
+   * The household asked for "this week"; seven unreadable columns answer that
+   * question with nothing, and the same events down a list answer it. This is
+   * the one place the wall overrides a stored choice, so it is deliberately a
+   * *drawing* decision and not a saved one — the setting still says Week
+   * columns, the editor still shows Week columns, and widening the box brings
+   * them straight back. Same shape as `orientation.ts`: a computed answer from
+   * what is really on screen, not a media query and not a guess at authoring
+   * time, because the same canvas is drawn on a tablet and a television.
+   */
+  const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+  for (const { box, widget } of weekBoxes) {
+    if (weekColumnsFit(box.clientWidth, rem)) continue;
+    box.classList.remove('fw-fill');
+    box.textContent = '';
+    const agenda = renderCalendarWidget(model, { ...widgetConfig(widget.config), mode: 'list' });
+    const scale = el('div', 'fw-scale');
+    scale.appendChild(contentWithTitle(agenda, widget.config));
+    box.appendChild(scale);
+    fitToBox(box, scale, { min: minScaleFor('calendar') });
+    agendas.push(agenda);
+  }
+
+  // Finally: any agenda with no room for a time column stacks it above the
+  // title. Last, so the sections the fallback just produced are included and
+  // are measured at the width they actually ended up.
+  for (const agenda of agendas) {
+    if (!agendaTimeFitsBeside(agenda.clientWidth, rem)) agenda.classList.add('narrow');
+  }
 }
 
 /**

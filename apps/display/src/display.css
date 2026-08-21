@@ -539,12 +539,22 @@ body {
   margin-top: 0.15rem; font-variant-numeric: tabular-nums;
 }
 
-.dr-events { display: grid; gap: 0.5rem; align-content: center; }
+/* `min-width: 0` down the whole chain, because a grid item's default minimum
+   is its *content* — so a long event title refuses to shrink and the row pushes
+   out of its box instead of wrapping. In a narrow widget the agenda overflowed
+   its box by 212px and the titles were simply cut off at the edge, which the
+   box's `overflow: hidden` made look like a deliberate crop. It predates the
+   accent rule (that added 34px to an existing 212), and the week fallback
+   routes more walls through this path, so it is fixed here. */
+.dr-events { display: grid; gap: 0.5rem; align-content: center; min-width: 0; }
 .dr-ev {
   display: grid;
-  grid-template-columns: 8rem 1fr;
+  /* minmax(0, …) rather than `8rem 1fr`: the same minimum-is-content trap, one
+     level down — the time column must be allowed to give way too. */
+  grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
   gap: 0.35rem 1.2rem;
   align-items: baseline;
+  min-width: 0;
   /* The calendar's colour, on every event. `--ec` is set per event in the
      renderer; the fallback keeps a row drawn from a manifest older than this
      bundle looking deliberate rather than uncoloured. */
@@ -555,7 +565,15 @@ body {
   font-family: var(--f-mono);
   font-size: 1.5rem; color: var(--muted); text-align: right; letter-spacing: -0.02em;
 }
-.dr-ev-title { font-size: 1.95rem; line-height: 1.2; }
+.dr-ev-title { font-size: 1.95rem; line-height: 1.2; min-width: 0; }
+
+/* Too narrow to hold a time column: the time goes above its title instead of
+   beside it. `.narrow` is set by the renderer from a measurement, not by a
+   media query — the section is inside a scaled box, so the viewport says
+   nothing useful about how wide this particular agenda ended up. */
+.next.narrow .dr-ev { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
+.next.narrow .dr-ev-time { text-align: left; }
+.next.narrow .dr-ev-span, .next.narrow .dr-ev-bar { grid-column: 1; }
 .dr-ev.allday .dr-ev-title { font-weight: 600; grid-column: 1 / -1; }
 
 /* "Day 2 of 4". Under the title, in the title's column, so it reads as part
