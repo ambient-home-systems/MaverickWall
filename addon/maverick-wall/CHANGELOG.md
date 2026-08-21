@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.35.0
 
 A Calendar set to Week columns now notices when it has been given too little
 room. Seven days need width, and in a narrow box they used to become seven
