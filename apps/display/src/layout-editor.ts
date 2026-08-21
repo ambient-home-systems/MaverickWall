@@ -521,9 +521,14 @@ function boot(): void {
 
   const hint = document.createElement('p');
   hint.className = 'hint';
-  hint.textContent =
-    'Nothing is placed yet — add a widget above. Turning the layout on with an ' +
-    'empty canvas keeps the stacked layout, so the wall is never blank.';
+  // What an empty canvas actually means, which differs by screen kind — and on
+  // neither kind is it "blank". The old wording promised the stacked layout,
+  // which was retired with the auto mode in 0.27.0.
+  hint.textContent = epaperHost
+    ? 'Nothing is placed yet — add a widget above. Until you do, this panel ' +
+      'draws its built-in layout, which is what the preview shows.'
+    : 'Nothing is placed yet — add a widget above. Until you do, the wall ' +
+      'shows a short note in place of a layout rather than going blank.';
 
   // The canvas background control (RFC 005 Phase 3): none, a solid colour, or a
   // gradient. Per canvas, so it swaps with the orientation like the widgets do.
@@ -622,6 +627,17 @@ function boot(): void {
       widgets: state.widgets.map((w) => ({ ...w })),
       ...(state.background !== undefined ? { background: state.background } : {}),
     }, EDITOR_MEDIA_BASE);
+
+    // An empty canvas means different things on the two kinds, and this preview
+    // is the *wall* renderer — so on a panel its "Nothing on this display yet"
+    // note contradicts the real 1-bit preview above, which is drawing the
+    // built-in layout (`frame.ts` renders fixed unless a canvas has widgets).
+    // Two previews of one panel disagreeing is how a household concludes that
+    // saving did nothing. Say what the panel actually does instead.
+    if (epaperHost && state.widgets.length === 0) {
+      const note = previewWall.querySelector('.canvas-empty');
+      if (note !== null) note.textContent = 'Nothing placed — this panel draws its built-in layout.';
+    }
   }
 
   // ---- the draggable overlay -------------------------------------------

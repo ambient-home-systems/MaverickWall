@@ -14,6 +14,16 @@
   saying nothing.
 -->
 
+## Unreleased
+
+An eInk panel's editor no longer contradicts its own preview. With nothing
+placed on the canvas, the editor said "Nothing on this display yet" while the
+preview above it showed a full calendar — so after a reset it looked like the
+panel was empty and that saving had done nothing. Both now say the same true
+thing: with nothing placed, the panel draws its built-in layout, which is
+what the preview shows. The note under the canvas also stopped promising a
+"stacked layout", which has not existed since 0.27.0.
+
 ## 0.32.2
 
 Reset on an eInk panel now does what it says. Pressing Reset in the panel's
