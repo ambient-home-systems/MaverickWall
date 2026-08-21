@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
+import { createServer as createTcpServer } from 'node:net';
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib';
 import { validateOutboundUrl, type UrlPolicy } from '@maverick-wall/core';
 import { createFetcher } from '../src/net/fetcher.js';
+import { testFeed } from '../src/api/test-feed.js';
 
 /**
  * The fetcher against a real HTTP server.
@@ -264,6 +266,83 @@ describe('misbehaving servers', () => {
   it('honours Retry-After so backoff respects the upstream', async () => {
     const result = await get('/429');
     expect(result.status === 'failed' && result.retryAfterSeconds).toBe(120);
+  });
+
+  it('turns a refused connection into a sentence, not an errno', async () => {
+    // A port with nothing listening: bind one, note it, close it. Node would
+    // report `connect ECONNREFUSED 127.0.0.1:<port>` — a diagnosis for us and
+    // noise on a settings page, and exactly what the wizard's calendar step
+    // used to show.
+    const probe = createTcpServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const address = probe.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+
+    const result = await fetcher.fetch({
+      url: `http://127.0.0.1:${port}/cal.ics`,
+      policy: LOOPBACK,
+      maxBytes: 1024,
+      timeoutMs: 4000,
+    });
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' && result.code).toBe('network-error');
+    const message = result.status === 'failed' ? result.message : '';
+    expect(message).toContain('refused');
+    expect(message).not.toContain('ECONNREFUSED');
+    // Never the socket address either — the message is prose, not a dump.
+    expect(message).not.toContain('127.0.0.1');
+  });
+
+  it('turns a cut-off connection into a sentence, not an errno', async () => {
+    // A server that accepts and immediately destroys the socket.
+    const rude = createTcpServer((socket) => socket.destroy());
+    await new Promise<void>((resolve) => rude.listen(0, '127.0.0.1', resolve));
+    const address = rude.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    try {
+      const result = await fetcher.fetch({
+        url: `http://127.0.0.1:${port}/cal.ics`,
+        policy: LOOPBACK,
+        maxBytes: 1024,
+        timeoutMs: 4000,
+      });
+      expect(result.status === 'failed' && result.code).toBe('network-error');
+      const message = result.status === 'failed' ? result.message : '';
+      expect(message).toContain('cut off');
+      expect(message).not.toContain('ECONNRESET');
+    } finally {
+      await new Promise<void>((resolve) => rude.close(() => resolve()));
+    }
+  });
+});
+
+describe('testFeed against a dead address', () => {
+  it('answers with advice a household can act on', async () => {
+    // The end-to-end path the wizard's calendar step takes: the fetcher's
+    // sentence as the message, and a suggestion beside it.
+    const probe = createTcpServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const address = probe.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+
+    const result = await testFeed(
+      {
+        url: `http://127.0.0.1:${port}/cal.ics`,
+        allowLoopback: true,
+        allowHttp: true,
+        timezone: 'Europe/London',
+      },
+      fetcher,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.stage).toBe('fetch');
+      expect(result.message).toContain('refused');
+      expect(result.message).not.toContain('ECONNREFUSED');
+      expect(result.suggestion).toContain('running');
+    }
   });
 });
 

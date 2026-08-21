@@ -87,6 +87,8 @@ function suggestionFor(code: string): string | undefined {
       return 'The name resolves somewhere we will not fetch from.';
     case 'timeout':
       return 'The server did not answer in time. It may be temporarily down.';
+    case 'network-error':
+      return 'Check the address — the port especially — and that the calendar server is running and reachable from this machine.';
     case 'too-large':
       return 'That calendar is larger than we will download. Try a feed with a narrower date range.';
     case 'PARSE_FAILED':

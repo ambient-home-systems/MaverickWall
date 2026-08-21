@@ -69,6 +69,32 @@ interface FailureExtras {
   readonly retryAfterSeconds?: number;
 }
 
+/**
+ * A socket error, written for someone standing in a kitchen.
+ *
+ * Node reports these as `connect ECONNREFUSED 127.0.0.1:8443` — an errno and a
+ * socket address, which is a diagnosis for us and noise on a settings page.
+ * That text was reaching the wizard's calendar step and the Calendars card's
+ * "Last sync failed" verbatim. Keyed on the error code, never the message text
+ * (the same rule the gzip branch below follows); a code this map does not know
+ * keeps Node's own message, which is then the most diagnosable thing we hold.
+ */
+function networkErrorMessage(error: Error): string {
+  switch ((error as NodeJS.ErrnoException).code) {
+    case 'ECONNREFUSED':
+      return 'The connection was refused — nothing is listening at that address and port.';
+    case 'ECONNRESET':
+    case 'EPIPE':
+      return 'The connection was cut off before the response arrived.';
+    case 'EHOSTUNREACH':
+    case 'ENETUNREACH':
+    case 'EHOSTDOWN':
+      return 'That address cannot be reached from this machine.';
+    default:
+      return error.message;
+  }
+}
+
 function failed(code: FetchFailureCode, message: string, extras: FailureExtras = {}): FetchOutcome {
   return {
     status: 'failed',
@@ -422,7 +448,7 @@ async function performRequest(
         });
 
         response.on('error', (error) => {
-          finish({ kind: 'done', outcome: failed('network-error', error.message) });
+          finish({ kind: 'done', outcome: failed('network-error', networkErrorMessage(error)) });
         });
       },
     );
@@ -436,7 +462,7 @@ async function performRequest(
     });
 
     clientRequest.on('error', (error) => {
-      finish({ kind: 'done', outcome: failed('network-error', error.message) });
+      finish({ kind: 'done', outcome: failed('network-error', networkErrorMessage(error)) });
     });
 
     clientRequest.end();
@@ -517,7 +543,7 @@ export function createFetcher(): Fetcher {
         // The contract is that this never throws.
         return failed(
           'network-error',
-          error instanceof Error ? error.message : 'unknown error',
+          error instanceof Error ? networkErrorMessage(error) : 'unknown error',
         );
       }
     },
