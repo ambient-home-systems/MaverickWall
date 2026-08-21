@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.34.0
 
 The upcoming list on your wall reads better from across the room.
 
