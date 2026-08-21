@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.32.3
 
 An eInk panel's editor no longer contradicts its own preview. With nothing
 placed on the canvas, the editor said "Nothing on this display yet" while the
