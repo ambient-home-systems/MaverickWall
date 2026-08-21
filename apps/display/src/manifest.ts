@@ -57,6 +57,13 @@ export interface ManifestDay {
   readonly date: CivilDate;
   readonly shifts: readonly ManifestShift[];
   readonly events: readonly ManifestEvent[];
+  /**
+   * Which week of the year this day is in. Absent from a server older than the
+   * field, and from a manifest cached in IndexedDB before it existed — a wall
+   * runs for months without reloading, so both are ordinary rather than
+   * theoretical, and the label is simply not drawn.
+   */
+  readonly weekNumber?: number;
 }
 
 export interface ManifestPerson {

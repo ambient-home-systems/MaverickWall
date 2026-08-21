@@ -628,6 +628,18 @@ body {
 .next { align-content: start; }
 
 .hz-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.35rem; }
+/* A narrow column ahead of the seven, only when every row carries a number. */
+.hz-grid.has-weeks { grid-template-columns: 2.6rem repeat(7, 1fr); }
+.hz-wk {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--f-mono); font-size: 1.2rem; color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.wc-week {
+  font-family: var(--disp); font-size: 1.2rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+  margin-bottom: 0.5rem;
+}
 .hz-head {
   font-size: 1.1rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--faint); text-align: center; padding-bottom: 0.45rem;

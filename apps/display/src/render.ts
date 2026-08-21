@@ -316,17 +316,35 @@ function renderCell(cell: HorizonCell, pills = false): HTMLElement {
   return node;
 }
 
-function renderHorizon(model: DisplayModel, opts: { readonly pills?: boolean } = {}): HTMLElement {
+function renderHorizon(
+  model: DisplayModel,
+  opts: { readonly pills?: boolean; readonly weekNumbers?: boolean } = {},
+): HTMLElement {
   const pills = opts.pills === true;
   const horizon = el('section', pills ? 'horizon horizon-pills' : 'horizon');
-  const grid = el('div', 'hz-grid');
+  /*
+   * Week numbers get a column of their own rather than a corner of the first
+   * cell: a number tucked into Monday reads as something about Monday. Only
+   * when every row can actually be labelled — a manifest from an older server
+   * carries none, and a grid with gaps down its first column is worse than one
+   * with no column at all.
+   */
+  const weekNumbers =
+    opts.weekNumbers === true &&
+    model.horizon.length > 0 &&
+    model.horizon.every((week) => week[0]?.weekNumber !== undefined);
+  const grid = el('div', weekNumbers ? 'hz-grid has-weeks' : 'hz-grid');
   // The weekday headers come from the first week's own cells rather than a fixed
   // Mon–Sun array: that follows the household's week-start (Sunday or Monday)
   // with no second source of truth, and localises for free since each cell
   // already carries its short weekday name.
   const headerWeek = model.horizon[0] ?? [];
+  // The corner above the numbers stays empty: "WK" over a column of numbers is
+  // a heading nobody needs and a word competing with the weekdays beside it.
+  if (weekNumbers) grid.appendChild(el('div', 'hz-head'));
   for (const cell of headerWeek) grid.appendChild(el('div', 'hz-head', cell.weekday));
   for (const week of model.horizon) {
+    if (weekNumbers) grid.appendChild(el('div', 'hz-wk', String(week[0]?.weekNumber ?? '')));
     for (const cell of week) grid.appendChild(renderCell(cell, pills));
   }
   horizon.appendChild(grid);
@@ -768,7 +786,12 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
   const c = widgetConfig(config);
   const mode = c['mode'];
   if (mode === 'week') return renderWeekColumns(model, config);
-  if (mode !== 'list') return renderHorizon(model, { pills: c['cellEvents'] === 'pills' });
+  if (mode !== 'list') {
+    return renderHorizon(model, {
+      pills: c['cellEvents'] === 'pills',
+      weekNumbers: c['showWeekNumbers'] === true,
+    });
+  }
 
   const calendars = configStrings(c['calendars']);
   const keep = (event: EventModel): boolean =>
@@ -816,6 +839,11 @@ function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
 
   const week = model.horizon[0] ?? [];
   const section = el('section', 'weekcols');
+  // One number for the whole strip, because a week column view *is* one week.
+  const number = week[0]?.weekNumber;
+  if (widgetConfig(config)['showWeekNumbers'] === true && number !== undefined) {
+    section.appendChild(el('div', 'wc-week', `Week ${number}`));
+  }
   const grid = el('div', 'wc-grid');
   for (const cell of week) {
     const col = el('div', `wc-col${cell.isToday ? ' is-today' : ''}${cell.isPast ? ' dim' : ''}`);
