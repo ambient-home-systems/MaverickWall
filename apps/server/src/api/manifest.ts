@@ -5,12 +5,14 @@ import {
   eachDate,
   matchShiftTitle,
   resolveShifts,
+  weekNumber,
   type CivilDate,
   type ResolvedShift,
   type ShiftOverride,
   type ShiftPlan,
   type ShiftType,
   type Interrupt,
+  type WeekScheme,
 } from '@maverick-wall/core';
 
 /**
@@ -279,6 +281,22 @@ export interface ManifestDay {
    */
   readonly shifts: readonly ManifestPersonShift[];
   readonly events: readonly ManifestEvent[];
+  /**
+   * Which week of the year this day is in (RFC 007 phase 4).
+   *
+   * Computed here rather than on the wall for two reasons: `packages/core` owns
+   * the definition and the display deliberately depends on nothing, and the
+   * *scheme* follows `weekStart`, which is a household setting the server
+   * already holds. ISO for a Monday household, the 1-January scheme for a
+   * Sunday one — so the number always labels a row it actually spans, which an
+   * ISO number on a Sunday-start grid does not.
+   *
+   * Optional on the type so a fixture need not invent a number it does not
+   * exercise. `buildManifest` always sets it, and the manifest tests assert
+   * real values under both schemes — a test being the guarantee here rather
+   * than the type, which is the right way round for this project.
+   */
+  readonly weekNumber?: number;
 }
 
 export interface ManifestSourceHealth {
@@ -820,6 +838,12 @@ export function buildManifest(input: BuildManifestInput): Manifest {
     }
   }
 
+  // The scheme follows the grid: an ISO week starts Monday, so numbering a
+  // Sunday-start row with one would label a row spanning two of them.
+  const mondayStart = input.household.weekStart === 'monday';
+  const weekScheme: WeekScheme = mondayStart ? 'iso' : 'simple';
+  const weekStartIndex = mondayStart ? 1 : 0;
+
   const days: ManifestDay[] = dates.map((date) => {
     const events = (byDate.get(date) ?? []).sort((a, b) => {
       // All-day first, then by start. A day's banner belongs above its agenda.
@@ -827,7 +851,12 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       if (a.startsAt !== b.startsAt) return a.startsAt - b.startsAt;
       return a.title.localeCompare(b.title);
     });
-    return { date, shifts: shiftsByDate.get(date) ?? [], events };
+    return {
+      date,
+      shifts: shiftsByDate.get(date) ?? [],
+      events,
+      weekNumber: weekNumber(date, weekScheme, weekStartIndex).week,
+    };
   });
 
   /*

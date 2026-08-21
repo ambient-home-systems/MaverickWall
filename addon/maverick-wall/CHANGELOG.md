@@ -14,6 +14,19 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Week numbers. Turn on **Show week numbers** in a Calendar widget set to Month
+grid or Week columns, and the month gets a quiet column of them down its left
+edge, or the week gets its number above the columns.
+
+Which numbering is used follows the week start you already chose, because the
+two do not agree and a number has to describe the row it sits beside. A week
+starting Monday is numbered the ISO 8601 way, where week 1 is the one holding
+the first Thursday of January — the numbering used across most of Europe. A
+week starting Sunday is numbered from the week holding 1 January, so the number
+always changes on the same day your calendar rows do.
+
 ## 0.36.0
 
 The upcoming list can carry the forecast. Turn on **Show the forecast** in a

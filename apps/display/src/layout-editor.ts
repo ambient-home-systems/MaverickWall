@@ -1389,6 +1389,16 @@ function boot(): void {
     modeField.appendChild(modeSelect);
     configPanel.appendChild(modeField);
 
+    // The week of the year, on either grid style — not on the agenda, where a
+    // number per day group would repeat itself down the wall.
+    if (currentMode !== 'list') {
+      configPanel.appendChild(
+        toggle('Show week numbers', cfg['showWeekNumbers'] === true, (checked) =>
+          setConfig(widget, 'showWeekNumbers', checked ? true : undefined),
+        ),
+      );
+    }
+
     // Month cells: quiet dots, or Skylight-style labelled event pills.
     if (currentMode === 'month') {
       const eventsField = cfgField('Events in a day');

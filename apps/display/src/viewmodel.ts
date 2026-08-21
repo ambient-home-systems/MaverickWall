@@ -184,6 +184,8 @@ export interface HorizonCell {
   readonly date: CivilDate;
   readonly weekday: string;
   readonly dayNumber: string;
+  /** The week this cell is in, when the server said. Drawn once per row. */
+  readonly weekNumber: number | undefined;
   readonly isToday: boolean;
   readonly isPast: boolean;
   readonly inMonth: boolean;
@@ -894,6 +896,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
       // Short weekday for the week-columns header (Mon, Tue, …).
       weekday: parts(date, timezone).weekday,
       dayNumber: String(Number(date.slice(8, 10))),
+      weekNumber: day?.weekNumber,
       isToday: date === today,
       isPast: date < today,
       inMonth: date.slice(0, 7) === todayMonth,

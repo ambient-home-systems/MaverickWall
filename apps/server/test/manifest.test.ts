@@ -527,3 +527,45 @@ describe('per-type shift colour and times', () => {
     expect(shift?.colorToken).toBe('--s-day');
   });
 });
+
+/*
+ * Week numbers (RFC 007 phase 4).
+ *
+ * The expected values come from GNU coreutils (`date +%V` for ISO, `date +%U`
+ * for the Sunday-start count, which numbers from the first Sunday and so runs
+ * one behind a scheme that puts 1 January in week 1). Not from running the
+ * implementation — that would only prove it is consistent with itself.
+ *
+ * The window here is 2026-09-09 to 2026-09-15, and 2026-09-13 is a Sunday,
+ * where the two schemes genuinely disagree. That is the whole reason the scheme
+ * follows the household's week start: an ISO number on a Sunday-start row
+ * labels a row that spans two ISO weeks.
+ */
+describe('week numbers', () => {
+  it('numbers a Sunday-start household from the week holding 1 January', () => {
+    const manifest = buildManifest(BASE); // HOUSEHOLD.weekStart is 'sunday'
+    expect(dayOf(manifest, '2026-09-09')?.weekNumber).toBe(37);
+    // The Sunday starts a new row, so it starts a new number.
+    expect(dayOf(manifest, '2026-09-13')?.weekNumber).toBe(38);
+    expect(dayOf(manifest, '2026-09-15')?.weekNumber).toBe(38);
+  });
+
+  it('numbers a Monday-start household by ISO 8601', () => {
+    const manifest = buildManifest({
+      ...BASE,
+      household: { ...HOUSEHOLD, weekStart: 'monday' },
+    });
+    expect(dayOf(manifest, '2026-09-09')?.weekNumber).toBe(37);
+    // Under ISO the Sunday is the *end* of its week, not the start.
+    expect(dayOf(manifest, '2026-09-13')?.weekNumber).toBe(37);
+    expect(dayOf(manifest, '2026-09-15')?.weekNumber).toBe(38);
+  });
+
+  it('gives every day in the window one', () => {
+    // The display only draws the column when every row has a number, so a
+    // single gap would silently switch the feature off.
+    for (const day of buildManifest(BASE).days) {
+      expect(typeof day.weekNumber).toBe('number');
+    }
+  });
+});

@@ -48,6 +48,9 @@ export const widgetConfigBody = z
     // Absent means off, so a wall that already carries a weather strip does not
     // suddenly say it twice — this is the household choosing to spend the strip.
     showWeather: z.boolean().optional(),
+    // The week of the year: a column beside the month grid, a line above the
+    // week columns. Absent means off (RFC 007 phase 4).
+    showWeekNumbers: z.boolean().optional(),
     showTimes: z.boolean().optional(),
     showLocations: z.boolean().optional(),
     // Home Assistant

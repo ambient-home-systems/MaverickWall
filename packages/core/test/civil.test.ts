@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   dayOfWeek,
+  weekNumber,
   daysBetween,
   eachDate,
   floorMod,
@@ -74,5 +75,90 @@ describe('civil date arithmetic', () => {
     expect(floorMod(-70, 70)).toBe(0);
     expect(floorMod(-71, 70)).toBe(69);
     expect(floorMod(3, 70)).toBe(3);
+  });
+});
+
+/*
+ * Week numbers.
+ *
+ * The values below come from the ISO 8601 definition, not from running the
+ * implementation and writing down what it said — which is the only way this
+ * kind of test is worth anything. The awkward ones are the year edges, where
+ * a week belongs to a year that is not the date's own.
+ */
+describe('week numbers', () => {
+  describe('ISO 8601', () => {
+    it.each([
+      ['2026-01-01', 1, 2026],   // a Thursday, so its week is week 1
+      ['2025-12-29', 1, 2026],   // the Monday of that same week — previous year
+      ['2026-08-21', 34, 2026],
+      ['2026-12-31', 53, 2026],  // 2026 starts on a Thursday: a 53-week year
+      ['2027-01-03', 53, 2026],  // still the Sunday of 2026-W53
+      ['2027-01-04', 1, 2027],
+      ['2021-01-01', 53, 2020],  // a Friday, so it belongs to the year before
+      ['2019-12-30', 1, 2020],
+      ['2015-12-28', 53, 2015],
+      ['2016-01-04', 1, 2016],
+    ])('%s is week %i of %i', (date, week, weekYear) => {
+      expect(weekNumber(date, 'iso')).toEqual({ week, weekYear });
+    });
+
+    it('ignores the household week start, being Monday by definition', () => {
+      expect(weekNumber('2026-08-21', 'iso', 0)).toEqual(weekNumber('2026-08-21', 'iso', 1));
+    });
+
+    it('gives every day of a week the same number', () => {
+      // 2026-08-17 is a Monday; its whole week must read 34.
+      for (let day = 17; day <= 23; day++) {
+        expect(weekNumber(`2026-08-${day}`, 'iso').week).toBe(34);
+      }
+      expect(weekNumber('2026-08-24', 'iso').week).toBe(35);
+    });
+  });
+
+  describe('the simple scheme', () => {
+    it('puts 1 January in week 1 whatever day it falls on', () => {
+      // 2026-01-01 is a Thursday. Under ISO its Sunday-start row would carry
+      // two different week numbers; here the row is simply week 1.
+      expect(weekNumber('2026-01-01', 'simple', 0)).toEqual({ week: 1, weekYear: 2026 });
+      expect(weekNumber('2026-01-03', 'simple', 0)).toEqual({ week: 1, weekYear: 2026 });
+      // The Sunday after is the start of week 2.
+      expect(weekNumber('2026-01-04', 'simple', 0)).toEqual({ week: 2, weekYear: 2026 });
+    });
+
+    it('keeps every date in its own calendar year', () => {
+      // The opposite of ISO: no date is ever attributed to the year before.
+      expect(weekNumber('2021-01-01', 'simple', 0).weekYear).toBe(2021);
+      expect(weekNumber('2021-01-01', 'simple', 0).week).toBe(1);
+    });
+
+    it('follows the household week start', () => {
+      // 2026-08-23 is a Sunday: the last day of a Monday week, the first of a
+      // Sunday one, so the two schemes must disagree by one here and nowhere
+      // else in that week.
+      const sundayStart = weekNumber('2026-08-23', 'simple', 0).week;
+      const mondayStart = weekNumber('2026-08-23', 'simple', 1).week;
+      expect(sundayStart).toBe(mondayStart + 1);
+    });
+
+    it('gives every day of a week the same number', () => {
+      const first = weekNumber('2026-08-23', 'simple', 0).week;
+      for (let day = 23; day <= 29; day++) {
+        expect(weekNumber(`2026-08-${day}`, 'simple', 0).week).toBe(first);
+      }
+    });
+  });
+
+  it('refuses a string that is not a date', () => {
+    expect(() => weekNumber('not-a-date')).toThrow(RangeError);
+    expect(() => weekNumber('2026-08')).toThrow(RangeError);
+  });
+
+  it('rolls an out-of-range month rather than refusing it, like its neighbours', () => {
+    // `toEpochDay` validates shape, not calendar sense — "2026-13-01" rolls
+    // into 2027-01-01, exactly as `dayOfWeek` and `addDays` treat it.
+    // `isCivilDate` is the round-trip check, and callers that need one use it.
+    // Pinned so this reads as the module's contract rather than an oversight.
+    expect(weekNumber('2026-13-01', 'iso')).toEqual(weekNumber('2027-01-01', 'iso'));
   });
 });
