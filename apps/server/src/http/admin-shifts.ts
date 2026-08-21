@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page } from './html.js';
+import { escapeHtml, errorBlock, page, textField } from './html.js';
 import {
   createShiftType,
   deleteShiftType,
@@ -139,18 +139,13 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
       `${escapeHtml(type.label)}${type.isWorking ? '' : ' · off'}</h2>` +
       `<form method="post" action="admin/shifts/types/${id}">` +
       `<div class="row-fields">` +
-      `<span><label for="l-${type.id}">Name</label>` +
-      `<input id="l-${type.id}" name="label" type="text" required maxlength="40" value="${escapeHtml(type.label)}"></span>` +
-      `<span><label for="sc-${type.id}">Short code</label>` +
-      `<input id="sc-${type.id}" name="short_code" type="text" required maxlength="3" value="${escapeHtml(type.shortCode)}"></span>` +
-      `<span><label for="c-${type.id}">Colour</label>` +
-      `<input id="c-${type.id}" name="color" type="color" value="${escapeHtml(swatch)}"></span>` +
+      textField({ label: 'Name', name: 'label', required: true, value: type.label, attrs: 'maxlength="40"' }) +
+      textField({ label: 'Short code', name: 'short_code', required: true, value: type.shortCode, attrs: 'maxlength="3"' }) +
+      textField({ label: 'Colour', name: 'color', type: 'color', value: swatch }) +
       `</div>` +
       `<div class="row-fields">` +
-      `<span><label for="st-${type.id}">Starts (optional)</label>` +
-      `<input id="st-${type.id}" name="start_time" type="time" value="${escapeHtml(type.startTime ?? '')}"></span>` +
-      `<span><label for="et-${type.id}">Ends (optional)</label>` +
-      `<input id="et-${type.id}" name="end_time" type="time" value="${escapeHtml(type.endTime ?? '')}"></span>` +
+      textField({ label: 'Starts (optional)', name: 'start_time', type: 'time', value: type.startTime ?? '' }) +
+      textField({ label: 'Ends (optional)', name: 'end_time', type: 'time', value: type.endTime ?? '' }) +
       `</div>` +
       `<div class="checks">` +
       `<label><input type="checkbox" name="is_working" value="1"${type.isWorking ? ' checked' : ''}> This is a working shift</label>` +
@@ -194,18 +189,13 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add" id="add">Add a shift type</h2>` +
         `<form method="post" action="admin/shifts/types">` +
         `<div class="row-fields">` +
-        `<span><label for="new-label">Name</label>` +
-        `<input id="new-label" name="label" type="text" required maxlength="40" placeholder="Swing"></span>` +
-        `<span><label for="new-code">Short code</label>` +
-        `<input id="new-code" name="short_code" type="text" required maxlength="3" placeholder="Sw"></span>` +
-        `<span><label for="new-color">Colour</label>` +
-        `<input id="new-color" name="color" type="color" value="#6b7684"></span>` +
+        textField({ label: 'Name', name: 'label', required: true, placeholder: 'Swing', attrs: 'maxlength="40"' }) +
+        textField({ label: 'Short code', name: 'short_code', required: true, placeholder: 'Sw', attrs: 'maxlength="3"' }) +
+        textField({ label: 'Colour', name: 'color', type: 'color', value: '#6b7684' }) +
         `</div>` +
         `<div class="row-fields">` +
-        `<span><label for="new-start">Starts (optional)</label>` +
-        `<input id="new-start" name="start_time" type="time"></span>` +
-        `<span><label for="new-end">Ends (optional)</label>` +
-        `<input id="new-end" name="end_time" type="time"></span>` +
+        textField({ label: 'Starts (optional)', name: 'start_time', type: 'time' }) +
+        textField({ label: 'Ends (optional)', name: 'end_time', type: 'time' }) +
         `</div>` +
         `<p class="hint">A window like 07:00–19:00 shows on the wall. Leave blank for ` +
         `a shift with no set time.</p>` +

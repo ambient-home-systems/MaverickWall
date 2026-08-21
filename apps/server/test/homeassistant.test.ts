@@ -855,8 +855,8 @@ describe('the shipped templates, through the form', () => {
     const html = await (await h.call('/admin/home-assistant?template=garage')).text();
     expect(html).toContain('value="Garage door open late"');
     // The window the brief names, prefilled rather than described.
-    expect(html).toContain('name="from_time" type="time" value="23:00"');
-    expect(html).toContain('name="to_time" type="time" value="06:00"');
+    expect(html).toContain('type="time" name="from_time" value="23:00"');
+    expect(html).toContain('type="time" name="to_time" value="06:00"');
     expect(html).toContain('value="10"');
     expect(html).toContain('<option value="takeover" selected>');
   });

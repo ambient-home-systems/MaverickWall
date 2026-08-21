@@ -1,7 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { FETCH_LIMITS } from '@maverick-wall/core';
-import { errorBlock, escapeHtml, page } from './html.js';
+import { errorBlock, escapeHtml, page, textField, textareaField } from './html.js';
 import { ago, navModules } from './admin.js';
 import type { AdminDeps } from './admin.js';
 import {
@@ -421,15 +421,25 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add" id="add">Add a module by URL</h2>` +
         prefillHint +
         `<form method="post" action="admin/modules">` +
-        `<label for="url">Module address</label>` +
-        `<input id="url" name="url" type="text" required value="${escapeHtml(urlValue)}" ` +
-        `placeholder="http://192.168.1.10:9000"${prefill === undefined ? '' : ' autofocus'}>` +
-        `<p class="hint">The address of a module you run yourself as its own service. ` +
-        `Maverick Wall reads its <span class="code">/panel</span> on a few-minute cycle ` +
-        `and draws what it returns — a small set of shapes, never a web page.</p>` +
-        `<label for="name">Call it (optional)</label>` +
-        `<input id="name" name="name" type="text" maxlength="60" value="${escapeHtml(nameValue)}" ` +
-        `placeholder="Leave empty to use the module’s own name">` +
+        textField({
+          label: 'Module address',
+          name: 'url',
+          required: true,
+          value: urlValue,
+          placeholder: 'http://192.168.1.10:9000',
+          hint:
+            'The address of a module you run yourself as its own service. ' +
+            'Maverick Wall reads its /panel on a few-minute cycle and draws what ' +
+            'it returns — a small set of shapes, never a web page.',
+          ...(prefill === undefined ? {} : { attrs: 'autofocus' }),
+        }) +
+        textField({
+          label: 'Call it (optional)',
+          name: 'name',
+          value: nameValue,
+          placeholder: 'Leave empty to use the module’s own name',
+          attrs: 'maxlength="60"',
+        }) +
         `<button type="submit">Add module</button></form>` +
         `<p class="hint">Only add a module you trust and run yourself. It never ` +
         `receives your calendars or your Home Assistant token; it only supplies ` +
@@ -470,13 +480,20 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="admin/modules/recipe">` +
-        `<label for="name">Call it (optional)</label>` +
-        `<input id="name" name="name" type="text" maxlength="60" ` +
-        `placeholder="Leave empty to use the recipe’s own name">` +
-        `<label for="manifest">Recipe</label>` +
-        `<textarea id="manifest" name="manifest" rows="16" spellcheck="false" ` +
-        `style="width:100%;font-family:var(--mono);font-size:13px" required>` +
-        `${escapeHtml(manifest ?? RECIPE_EXAMPLE)}</textarea>` +
+        textField({
+          label: 'Call it (optional)',
+          name: 'name',
+          placeholder: 'Leave empty to use the recipe’s own name',
+          attrs: 'maxlength="60"',
+        }) +
+        textareaField({
+          label: 'Recipe',
+          name: 'manifest',
+          rows: 16,
+          required: true,
+          value: manifest ?? RECIPE_EXAMPLE,
+          attrs: 'spellcheck="false" style="font-family:var(--mono);font-size:13px"',
+        }) +
         `<p class="hint">A recipe reaches the public internet over https only. To ` +
         `point one at a service on your own network, add <span class="code">` +
         `"allowLan": true</span> to its <span class="code">fetch</span>. It selects ` +
@@ -484,16 +501,24 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         `fixed set of formatters (<span class="code">upper</span>, ` +
         `<span class="code">round:1</span>, <span class="code">currency:GBP</span>, ` +
         `<span class="code">date:relative</span>, <span class="code">truncate:40</span>).</p>` +
-        `<label for="config">Config values (optional JSON)</label>` +
-        `<textarea id="config" name="config" rows="3" spellcheck="false" ` +
-        `style="width:100%;font-family:var(--mono);font-size:13px" ` +
-        `placeholder='{ "station": "12345" }'>${escapeHtml(config ?? '')}</textarea>` +
+        textareaField({
+          label: 'Config values (optional JSON)',
+          name: 'config',
+          rows: 3,
+          value: config ?? '',
+          placeholder: '{ "station": "12345" }',
+          attrs: 'spellcheck="false" style="font-family:var(--mono);font-size:13px"',
+        }) +
         `<p class="hint">If the recipe’s address has <span class="code">{placeholders}</span>, ` +
         `fill them here. A tidier form is coming; for now this is the raw way in.</p>` +
-        `<label for="secrets">Secret values (optional JSON)</label>` +
-        `<textarea id="secrets" name="secrets" rows="3" spellcheck="false" autocomplete="off" ` +
-        `style="width:100%;font-family:var(--mono);font-size:13px" ` +
-        `placeholder='{ "api_key": "…" }'>${escapeHtml(secrets ?? '')}</textarea>` +
+        textareaField({
+          label: 'Secret values (optional JSON)',
+          name: 'secrets',
+          rows: 3,
+          value: secrets ?? '',
+          placeholder: '{ "api_key": "…" }',
+          attrs: 'spellcheck="false" autocomplete="off" style="font-family:var(--mono);font-size:13px"',
+        }) +
         `<p class="hint">If the recipe declares <span class="code">secrets</span> and uses ` +
         `them in a <span class="code">header</span>, put the values here. They are ` +
         `stored encrypted and never shown again — a secret may not go in the address.</p>` +
@@ -554,9 +579,12 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     const fields = entry.recipe.config
       .map(
         (field) =>
-          `<label for="cfg_${field.key}">${escapeHtml(field.label)}</label>` +
-          `<input id="cfg_${field.key}" name="cfg_${field.key}" type="text" maxlength="280" ` +
-          `value="${escapeHtml(field.default ?? '')}">`,
+          textField({
+            label: field.label,
+            name: `cfg_${field.key}`,
+            value: field.default ?? '',
+            attrs: 'maxlength="280"',
+          }),
       )
       .join('');
     // Secrets are password inputs, never pre-filled, and the household is told
@@ -564,9 +592,12 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     const secretFields = entry.recipe.secrets
       .map(
         (field) =>
-          `<label for="sec_${field.key}">${escapeHtml(field.label)}</label>` +
-          `<input id="sec_${field.key}" name="sec_${field.key}" type="password" ` +
-          `autocomplete="off" maxlength="280">`,
+          textField({
+            label: field.label,
+            name: `sec_${field.key}`,
+            type: 'password',
+            attrs: 'autocomplete="off" maxlength="280"',
+          }),
       )
       .join('');
     const secretsBlock =
@@ -585,9 +616,12 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       intro: entry.description,
       body:
         `<form method="post" action="admin/modules/install/${encodeURIComponent(entry.id)}">` +
-        `<label for="name">Call it (optional)</label>` +
-        `<input id="name" name="name" type="text" maxlength="60" ` +
-        `value="${escapeHtml(entry.name)}">` +
+        textField({
+          label: 'Call it (optional)',
+          name: 'name',
+          value: entry.name,
+          attrs: 'maxlength="60"',
+        }) +
         (fields === ''
           ? secretFields === ''
             ? `<p class="hint">This recipe needs no settings.</p>`

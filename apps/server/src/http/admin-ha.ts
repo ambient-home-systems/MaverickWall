@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { errorBlock, escapeHtml, page } from './html.js';
+import { errorBlock, escapeHtml, page, selectField, textField } from './html.js';
 import { call, resolveConnection, testConnection, type ConnectionMode } from '../modules/homeassistant/client.js';
 import {
   DISPLAY_MODES,
@@ -621,19 +621,27 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<h2 class="add">Connect</h2>` +
       `<form method="post" action="admin/home-assistant/connect">` +
-      `<label for="base_url">Address of Home Assistant</label>` +
-      `<input id="base_url" name="base_url" type="text" required ` +
-      `placeholder="http://192.168.1.10:8123" ` +
-      `value="${escapeHtml(settings.baseUrl ?? '')}">` +
-      `<p class="hint">Use the IP address. Names ending in .local are resolved by the ` +
-      `device you are browsing from rather than by this server, so they usually will ` +
-      `not work here.</p>` +
-
-      `<label for="token">Long-lived access token</label>` +
-      `<input id="token" name="token" type="password" autocomplete="off" ` +
-      `${settings.hasToken ? 'placeholder="Stored — leave empty to keep it"' : 'required'}>` +
-      `<p class="hint">In Home Assistant: your profile, then Security, then “Create ` +
-      `token” at the bottom of the page.</p>` +
+      textField({
+        label: 'Address of Home Assistant',
+        name: 'base_url',
+        required: true,
+        placeholder: 'http://192.168.1.10:8123',
+        value: settings.baseUrl ?? '',
+        hint:
+          'Use the IP address. Names ending in .local are resolved by the device ' +
+          'you are browsing from rather than by this server, so they usually will ' +
+          'not work here.',
+      }) +
+      textField({
+        label: 'Long-lived access token',
+        name: 'token',
+        type: 'password',
+        hint: 'In Home Assistant: your profile, then Security, then “Create token” at the bottom of the page.',
+        ...(settings.hasToken
+          ? { placeholder: 'Stored — leave empty to keep it' }
+          : { required: true }),
+        attrs: 'autocomplete="off"',
+      }) +
 
       `<div class="checks">` +
       `<label><input type="checkbox" name="allow_lan" value="1"` +
@@ -705,19 +713,27 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<script type="module" src="assets/ha-entity-picker.js"></script>` +
       `<noscript>` +
       `<form method="post" action="admin/home-assistant/entities">` +
-      `<label for="entity_id">Entity</label>` +
-      `<input id="entity_id" name="entity_id" type="text" required list="ha-entities" ` +
-      `autocomplete="off" placeholder="Start typing a name">` +
+      textField({
+        label: 'Entity',
+        name: 'entity_id',
+        required: true,
+        placeholder: 'Start typing a name',
+        attrs: 'list="ha-entities" autocomplete="off"',
+      }) +
       `<datalist id="ha-entities">${fallbackOptions}</datalist>` +
-      `<label for="label">Call it</label>` +
-      `<input id="label" name="label" type="text" placeholder="Leave empty to use its own name">` +
-      `<label for="display_mode">Show it as</label>` +
-      `<select id="display_mode" name="display_mode">` +
-      DISPLAY_MODES.map(
-        (option) =>
-          `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
-      ).join('') +
-      `</select>` +
+      textField({
+        label: 'Call it',
+        name: 'label',
+        placeholder: 'Leave empty to use its own name',
+      }) +
+      selectField({
+        label: 'Show it as',
+        name: 'display_mode',
+        optionsHtml: DISPLAY_MODES.map(
+          (option) =>
+            `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
+        ).join(''),
+      }) +
       `<button type="submit">Add to the wall</button></form></noscript>`
     );
   }
@@ -741,11 +757,12 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       (available.length === 0
         ? `<p>${already.size === 0 ? 'Home Assistant has no calendar entities.' : 'All of them have been added.'}</p>`
         : `<form method="post" action="admin/home-assistant/calendars">` +
-          `<label for="cal_entity">Calendar</label>` +
-          `<select id="cal_entity" name="entity_id">${options}</select>` +
-          `<label for="cal_name">Call it</label>` +
-          `<input id="cal_name" name="name" type="text" ` +
-          `placeholder="Leave empty to use its own name">` +
+          selectField({ label: 'Calendar', name: 'entity_id', optionsHtml: options }) +
+          textField({
+            label: 'Call it',
+            name: 'name',
+            placeholder: 'Leave empty to use its own name',
+          }) +
           `<button type="submit">Add calendar</button></form>`)
     );
   }
@@ -811,58 +828,82 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       (existing === '' ? '' : existing) +
       `<ul class="plain">${templates}</ul>` +
       `<form method="post" action="admin/home-assistant/rules">` +
-      `<label for="rule_name">What to say</label>` +
-      `<input id="rule_name" name="name" type="text" required maxlength="60" ` +
-      `value="${escapeHtml(template?.name ?? '')}" ` +
-      `placeholder="Water under the sink">` +
-      `<p class="hint">This is the sentence the wall shows, so write it as one.</p>` +
+      textField({
+        label: 'What to say',
+        name: 'name',
+        required: true,
+        value: template?.name ?? '',
+        placeholder: 'Water under the sink',
+        hint: 'This is the sentence the wall shows, so write it as one.',
+        attrs: 'maxlength="60"',
+      }) +
 
-      `<label for="rule_entity">Entity</label>` +
-      `<input id="rule_entity" name="entity_id" type="text" required list="ha-rule-entities" ` +
-      `autocomplete="off" placeholder="Start typing a name">` +
+      textField({
+        label: 'Entity',
+        name: 'entity_id',
+        required: true,
+        placeholder: 'Start typing a name',
+        attrs: 'list="ha-rule-entities" autocomplete="off"',
+      }) +
       `<datalist id="ha-rule-entities">${options}</datalist>` +
 
       `<div class="row-fields">` +
-      `<span><label for="rule_condition">When it is</label>` +
-      `<select id="rule_condition" name="condition">` +
-      option('equals', 'exactly', template?.condition.kind) +
-      option('above', 'above', template?.condition.kind) +
-      option('below', 'below', template?.condition.kind) +
-      option('changed_to', 'has just become', template?.condition.kind) +
-      `</select></span>` +
-      `<span><label for="rule_value">This</label>` +
-      `<input id="rule_value" name="value" type="text" required ` +
-      `value="${escapeHtml(template?.condition.value ?? 'on')}"></span>` +
-      `<span><label for="rule_for">For (minutes)</label>` +
-      `<input id="rule_for" name="for_minutes" type="number" min="0" max="1440" ` +
-      `inputmode="numeric" placeholder="0" ` +
-      `value="${template?.minDwellSec ? Math.round(template.minDwellSec / 60) : ''}"></span>` +
+      selectField({
+        label: 'When it is',
+        name: 'condition',
+        optionsHtml:
+          option('equals', 'exactly', template?.condition.kind) +
+          option('above', 'above', template?.condition.kind) +
+          option('below', 'below', template?.condition.kind) +
+          option('changed_to', 'has just become', template?.condition.kind),
+      }) +
+      textField({
+        label: 'This',
+        name: 'value',
+        required: true,
+        value: template?.condition.value ?? 'on',
+      }) +
+      textField({
+        label: 'For (minutes)',
+        name: 'for_minutes',
+        type: 'number',
+        placeholder: '0',
+        attrs: 'min="0" max="1440" inputmode="numeric"',
+        ...(template?.minDwellSec ? { value: String(Math.round(template.minDwellSec / 60)) } : {}),
+      }) +
       `</div>` +
       `<p class="hint">A door sensor reads <span class="code">on</span> when it is open. ` +
       `The wait is what separates “somebody is carrying shopping in” from “it has been ` +
       `open all night”.</p>` +
 
       `<div class="row-fields">` +
-      `<span><label for="from_time">Only after</label>` +
-      `<input id="from_time" name="from_time" type="time" ` +
-      `value="${escapeHtml(template?.condition.between?.from ?? '')}"></span>` +
-      `<span><label for="to_time">And before</label>` +
-      `<input id="to_time" name="to_time" type="time" ` +
-      `value="${escapeHtml(template?.condition.between?.to ?? '')}"></span>` +
+      textField({
+        label: 'Only after',
+        name: 'from_time',
+        type: 'time',
+        value: template?.condition.between?.from ?? '',
+      }) +
+      textField({
+        label: 'And before',
+        name: 'to_time',
+        type: 'time',
+        value: template?.condition.between?.to ?? '',
+      }) +
       `</div>` +
       `<p class="hint">Leave both empty and the rule applies at any hour. A garage door ` +
       `open at teatime is somebody carrying shopping in; the same sensor at midnight is ` +
       `worth walking downstairs for, and only the hour tells them apart. Times wrap past ` +
       `midnight, so 23:00 until 06:00 means the night.</p>` +
 
-      `<label for="rule_action">Show it as</label>` +
-      `<select id="rule_action" name="action">` +
-      ACTIONS.map(
-        (entry) =>
-          `<option value="${escapeHtml(entry.key)}"` +
-          `${entry.key === template?.action ? ' selected' : ''}>${escapeHtml(entry.label)}</option>`,
-      ).join('') +
-      `</select>` +
+      selectField({
+        label: 'Show it as',
+        name: 'action',
+        optionsHtml: ACTIONS.map(
+          (entry) =>
+            `<option value="${escapeHtml(entry.key)}"` +
+            `${entry.key === template?.action ? ' selected' : ''}>${escapeHtml(entry.label)}</option>`,
+        ).join(''),
+      }) +
       `<button type="submit">Add rule</button></form>`
     );
   }

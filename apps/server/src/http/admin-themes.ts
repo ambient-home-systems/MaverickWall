@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page } from './html.js';
+import { escapeHtml, errorBlock, page, selectField, textField } from './html.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
   COLOUR_TOKENS,
@@ -197,16 +197,18 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       `</div>`;
 
     const fontField = (token: string, label: string, help: string): string =>
-      `<label for="font-${escapeHtml(token)}">${escapeHtml(label)}</label>` +
-      `<select id="font-${escapeHtml(token)}" name="${escapeHtml(token)}">` +
-      `<option value=""${val(token, '') === '' ? ' selected' : ''}>Default</option>` +
-      FONTS.map(
-        (font) =>
-          `<option value="${escapeHtml(font.stack)}"${val(token, '') === font.stack ? ' selected' : ''}>` +
-          `${escapeHtml(font.label)}</option>`,
-      ).join('') +
-      `</select>` +
-      `<p class="hint">${escapeHtml(help)}</p>`;
+      selectField({
+        label,
+        name: token,
+        hint: help,
+        optionsHtml:
+          `<option value=""${val(token, '') === '' ? ' selected' : ''}>Default</option>` +
+          FONTS.map(
+            (font) =>
+              `<option value="${escapeHtml(font.stack)}"${val(token, '') === font.stack ? ' selected' : ''}>` +
+              `${escapeHtml(font.label)}</option>`,
+          ).join(''),
+      });
 
     const action = editing ? `admin/themes/${encodeURIComponent(theme.id)}` : 'admin/themes';
 
@@ -223,21 +225,27 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="${action}" class="theme-builder">` +
         `<div class="tb-controls">` +
-        `<label for="theme-name">Name</label>` +
-        `<input id="theme-name" name="name" type="text" required maxlength="60" ` +
-        `placeholder="Kitchen" value="${escapeHtml(nameVal)}">` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          placeholder: 'Kitchen',
+          value: nameVal,
+          attrs: 'maxlength="60"',
+        }) +
 
         `<label class="tb-group">Colours</label>` +
         TOKEN_HELP.map(colourField).join('') +
 
-        `<label for="theme-radius">Corners</label>` +
-        `<select id="theme-radius" name="radius">` +
-        RADII.map(
-          (r) =>
-            `<option value="${escapeHtml(r.value)}"${r.value === currentRadius ? ' selected' : ''}>` +
-            `${escapeHtml(r.label)}</option>`,
-        ).join('') +
-        `</select>` +
+        selectField({
+          label: 'Corners',
+          name: 'radius',
+          optionsHtml: RADII.map(
+            (r) =>
+              `<option value="${escapeHtml(r.value)}"${r.value === currentRadius ? ' selected' : ''}>` +
+              `${escapeHtml(r.label)}</option>`,
+          ).join(''),
+        }) +
 
         `<label class="tb-group">Fonts</label>` +
         fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +

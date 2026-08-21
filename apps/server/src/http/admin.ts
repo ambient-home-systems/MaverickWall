@@ -81,7 +81,8 @@ import { currentUser } from '../auth/session.js';
 import type { Fetcher, ShiftPlan } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, icon, page, type NavModule } from './html.js';
+import { errorBlock, escapeHtml, icon, page, selectField, switchRow, textField,
+  type NavModule } from './html.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
 /**
@@ -1691,12 +1692,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen(screen.lastSeenAt)}</div>` +
       `</div></div>` +
       `<div style="display:flex;gap:10px;margin-top:10px">` +
-      `<a class="btn ghost" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
+      // One filled action per card; the rest are outlined ("btn ghost" here
+      // never matched the .btn-ghost rule, so all three used to render filled).
+      `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
       `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/regenerate">` +
-      `<button class="btn ghost" type="submit">Show URL &amp; recipes</button></form>` +
+      `<button class="btn-ghost" type="submit">Show URL &amp; recipes</button></form>` +
       `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/revoke" ` +
       `onsubmit="return confirm('Remove ${escapeHtml(screen.name)}? Its URL stops working.')">` +
-      `<button class="btn ghost" type="submit">Remove</button></form>` +
+      `<button class="btn-danger" type="submit">Remove</button></form>` +
       `</div></div>`;
 
     const options = Object.entries(EPAPER_PRESETS)
@@ -1721,23 +1724,33 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (screens.length === 0 ? '' : `<div class="grid g2">${screens.map(card).join('')}</div>`) +
         `<h2 class="add" id="add">Add an eInk screen</h2>` +
         `<form method="post" action="admin/epaper">` +
-        `<label for="ep-name">Name</label>` +
-        `<input id="ep-name" name="name" type="text" required maxlength="80" placeholder="Hallway tag">` +
-        `<label for="ep-preset">Panel</label>` +
-        `<select id="ep-preset" name="preset">${options}` +
-        `<option value="custom">Custom size…</option></select>` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          placeholder: 'Hallway tag',
+          attrs: 'maxlength="80"',
+        }) +
+        selectField({
+          label: 'Panel',
+          name: 'preset',
+          optionsHtml: `${options}<option value="custom">Custom size…</option>`,
+        }) +
         `<div class="grid g2">` +
-        `<div><label for="ep-w">Width (px)</label>` +
-        `<input id="ep-w" name="width" inputmode="numeric" placeholder="800"></div>` +
-        `<div><label for="ep-h">Height (px)</label>` +
-        `<input id="ep-h" name="height" inputmode="numeric" placeholder="480"></div>` +
-        `</div>` +
+        `<div>` +
+        textField({ label: 'Width (px)', name: 'width', placeholder: '800', attrs: 'inputmode="numeric"' }) +
+        `</div><div>` +
+        textField({ label: 'Height (px)', name: 'height', placeholder: '480', attrs: 'inputmode="numeric"' }) +
+        `</div></div>` +
         `<p class="hint">Width and height are only used for a Custom panel. In the panel's ` +
         `native (landscape) resolution — rotation is separate.</p>` +
-        `<label for="ep-rot">Rotation</label>` +
-        `<select id="ep-rot" name="rotation">` +
-        `<option value="0">None</option><option value="90">90°</option>` +
-        `<option value="180">180°</option><option value="270">270°</option></select>` +
+        selectField({
+          label: 'Rotation',
+          name: 'rotation',
+          optionsHtml:
+            `<option value="0">None</option><option value="90">90°</option>` +
+            `<option value="180">180°</option><option value="270">270°</option>`,
+        }) +
         `<p class="hint">Colour panels are coming; today every e-paper screen is rendered ` +
         `black &amp; white.</p>` +
         `<button class="btn" type="submit">Create</button>` +
@@ -2180,10 +2193,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         );
       }).join('');
       fields =
-        `<label for="anchor_date">The cycle starts on</label>` +
-        `<input id="anchor_date" name="anchor_date" type="date" required ` +
-        `value="${escapeHtml(draft.anchorDate)}">` +
-        `<p class="hint">A day you know what you were doing. Day 1 below is that day.</p>` +
+        textField({
+          label: 'The cycle starts on',
+          name: 'anchor_date',
+          type: 'date',
+          required: true,
+          value: draft.anchorDate,
+          hint: 'A day you know what you were doing. Day 1 below is that day.',
+        }) +
         `<h2 class="add">The cycle</h2>` +
         `<p class="hint">Fill in as many days as the pattern is long, then leave the ` +
         `rest as “—”. It repeats from Day 1 for ever.</p>` +
@@ -2286,31 +2303,36 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (canAdd
           ? `<h2 class="add" id="add">Add a rotation</h2>` +
             `<form method="post" action="admin/shifts/new">` +
-            `<label for="who">Who</label>` +
-            `<select id="who" name="person_id">` +
-            people
-              .map(
-                (candidate) =>
-                  `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}</option>`,
-              )
-              .join('') +
-            `</select>` +
-            `<label for="kind">Where the shifts come from</label>` +
-            `<select id="kind" name="kind">` +
-            `<option value="calendar">A calendar that already has them</option>` +
-            `<option value="pattern">A pattern that repeats</option>` +
-            `</select>` +
-            `<label for="src">Which calendar</label>` +
-            `<select id="src" name="source_id">` +
-            `<option value="">—</option>` +
-            sources
-              .map(
-                (source) =>
-                  `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
-              )
-              .join('') +
-            `</select>` +
-            `<p class="hint">Only needed when the shifts come from a calendar.</p>` +
+            selectField({
+              label: 'Who',
+              name: 'person_id',
+              optionsHtml: people
+                .map(
+                  (candidate) =>
+                    `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}</option>`,
+                )
+                .join(''),
+            }) +
+            selectField({
+              label: 'Where the shifts come from',
+              name: 'kind',
+              optionsHtml:
+                `<option value="calendar">A calendar that already has them</option>` +
+                `<option value="pattern">A pattern that repeats</option>`,
+            }) +
+            selectField({
+              label: 'Which calendar',
+              name: 'source_id',
+              hint: 'Only needed when the shifts come from a calendar.',
+              optionsHtml:
+                `<option value="">—</option>` +
+                sources
+                  .map(
+                    (source) =>
+                      `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
+                  )
+                  .join(''),
+            }) +
             `<button type="submit">Continue</button></form>`
           : `<p>Add someone on the <a class="link" href="admin/people">People</a> screen first — ` +
             `a rotation belongs to a person.</p>`),
@@ -2371,16 +2393,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
         `anchored to this. A screen somewhere else can override it on its own card.</p>` +
         `<form method="post" action="admin/system/timezone">` +
-        `<label for="tz">Household timezone</label>` +
-        `<select id="tz" name="timezone">` +
-        supportedTimezones()
-          .map(
-            (zone) =>
-              `<option value="${escapeHtml(zone)}"` +
-              `${zone === household.timezone ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
-          )
-          .join('') +
-        `</select><button type="submit">Save</button></form>` +
+        selectField({
+          label: 'Household timezone',
+          name: 'timezone',
+          optionsHtml: supportedTimezones()
+            .map(
+              (zone) =>
+                `<option value="${escapeHtml(zone)}"` +
+                `${zone === household.timezone ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
+            )
+            .join(''),
+        }) +
+        `<button type="submit">Save</button></form>` +
 
         `<h2 class="add">Update check</h2>` +
         updateSection() +
@@ -2405,8 +2429,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Upload a database backup. It is checked and put aside, ` +
         `then applied when Maverick Wall next starts.</p>` +
         `<form method="post" action="admin/system/restore" enctype="multipart/form-data">` +
-        `<label for="backup">Backup file</label>` +
-        `<input id="backup" name="backup" type="file" required>` +
+        textField({ label: 'Backup file', name: 'backup', type: 'file', required: true }) +
         `<button type="submit">Stage restore</button></form>` +
 
         `<h2 class="add">Diagnostics</h2>` +
@@ -2467,10 +2490,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<span class="code">${escapeHtml(RELEASE_URL)}</span></p>` +
 
       `<form method="post" action="admin/system/updates">` +
-      `<div class="checks"><label>` +
-      `<input type="checkbox" name="update_check_enabled" value="1"` +
-      `${state.enabled ? ' checked' : ''}> Check for updates once a day</label></div>` +
-      `<p class="hint">Turning this off also forgets anything it had already found.</p>` +
+      switchRow({
+        label: 'Check for updates once a day',
+        name: 'update_check_enabled',
+        checked: state.enabled,
+        hint: 'Turning this off also forgets anything it had already found.',
+      }) +
       `<button type="submit">Save</button></form>` +
 
       status +
@@ -2516,22 +2541,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</p>` +
       `<form method="post" action="admin/people/${encodeURIComponent(person.id)}">` +
       `<div class="row-fields">` +
-      `<span><label for="name-${person.id}">Name</label>` +
-      `<input id="name-${person.id}" name="name" type="text" required ` +
-      `value="${escapeHtml(person.name)}"></span>` +
-      `<span><label for="colour-${person.id}">Colour</label>` +
-      `<input id="colour-${person.id}" name="color" type="color" ` +
-      `value="${escapeHtml(person.color)}"></span>` +
+      textField({ label: 'Name', name: 'name', required: true, value: person.name }) +
+      textField({ label: 'Colour', name: 'color', type: 'color', value: person.color }) +
       `</div>` +
       `<button type="submit">Save</button></form>` +
 
       `<form method="post" enctype="multipart/form-data" ` +
       `action="admin/people/${encodeURIComponent(person.id)}/avatar">` +
-      `<label for="avatar-${person.id}">Picture</label>` +
-      `<input id="avatar-${person.id}" name="avatar" type="file" ` +
-      `accept="image/png,image/jpeg,image/gif,image/webp">` +
-      `<p class="hint">PNG, JPEG, GIF or WebP, up to 2 MB. Leave the box empty ` +
-      `and save to remove the picture. SVG is not accepted — it can carry code.</p>` +
+      textField({
+        label: 'Picture',
+        name: 'avatar',
+        type: 'file',
+        hint:
+          'PNG, JPEG, GIF or WebP, up to 2 MB. Leave the box empty and save to ' +
+          'remove the picture. SVG is not accepted — it can carry code.',
+        attrs: 'accept="image/png,image/jpeg,image/gif,image/webp"',
+      }) +
       `<button class="secondary" type="submit">` +
       `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
 
@@ -2568,10 +2593,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add" id="add">Add someone</h2>` +
         `<form method="post" action="admin/people">` +
         `<div class="row-fields">` +
-        `<span><label for="new-name">Name</label>` +
-        `<input id="new-name" name="name" type="text" required placeholder="Sam"></span>` +
-        `<span><label for="new-colour">Colour</label>` +
-        `<input id="new-colour" name="color" type="color" value="#4C7FD1"></span>` +
+        textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sam' }) +
+        textField({ label: 'Colour', name: 'color', type: 'color', value: '#4C7FD1' }) +
         `</div>` +
         `<p class="hint">A picture can be added once they exist. The colour is what ` +
         `marks their events either way.</p>` +
@@ -2711,10 +2734,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<span class="code">${escapeHtml(formatShortCode(userCode))}</span></p>` +
         `<form method="post" action="admin/screens/approve">` +
         `<input type="hidden" name="code" value="${escapeHtml(userCode)}">` +
-        `<label for="approve-name">Name</label>` +
-        `<input id="approve-name" name="name" type="text" required maxlength="80" ` +
-        `value="New screen" placeholder="Kitchen">` +
-        `<p class="hint">This is how the screen shows up on the Screens page.</p>` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          value: 'New screen',
+          placeholder: 'Kitchen',
+          hint: 'This is how the screen shows up on the Screens page.',
+          attrs: 'maxlength="80"',
+        }) +
         `<button type="submit" name="action" value="approve">Approve</button> ` +
         `<button class="secondary" type="submit" name="action" value="deny" ` +
         `formnovalidate>Decline</button>` +
@@ -2752,9 +2780,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         .join('');
     // A density field: this wall's number, or blank showing the household's as a
     // placeholder so the default is visible without being typed.
-    const density = (name: string, value: number | null, fallback: number): string =>
-      `<input id="${name}-${screen.id}" name="${name}" type="number" inputmode="numeric" ` +
-      `placeholder="${fallback} (default)" value="${value === null ? '' : String(value)}">`;
+    const density = (name: string, label: string, value: number | null, fallback: number): string =>
+      textField({
+        label,
+        name,
+        type: 'number',
+        placeholder: `${fallback} (default)`,
+        attrs: 'inputmode="numeric"',
+        ...(value === null ? {} : { value: String(value) }),
+      });
 
     const helpId = `orient-help-${screen.id}`;
     return (
@@ -2763,59 +2797,76 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // --- Look: theme, daylight ---
       `<div class="tabpanel" data-tabpanel="look">` +
       `<div class="two-up">` +
-      `<div><label for="theme-${screen.id}">Theme</label>` +
-      `<select id="theme-${screen.id}" name="theme">` +
-      option('', 'Follow the default', screen.theme === null) +
-      THEMES.map((theme) =>
-        option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
-      ).join('') +
-      customThemeOptions(screen.theme) +
-      `</select></div>` +
-      `<div><label for="night-${screen.id}">During the day</label>` +
-      `<select id="night-${screen.id}" name="daytime_theme">` +
-      option('', 'Follow the default', screen.daytimeTheme === null) +
-      THEMES.map((theme) =>
-        option(theme.key, theme.label, displayThemeRef(screen.daytimeTheme ?? '') === theme.key),
-      ).join('') +
-      customThemeOptions(screen.daytimeTheme) +
-      `</select></div>` +
-      `</div>` +
+      `<div>` +
+      selectField({
+        label: 'Theme',
+        name: 'theme',
+        optionsHtml:
+          option('', 'Follow the default', screen.theme === null) +
+          THEMES.map((theme) =>
+            option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
+          ).join('') +
+          customThemeOptions(screen.theme),
+      }) +
+      `</div><div>` +
+      selectField({
+        label: 'During the day',
+        name: 'daytime_theme',
+        optionsHtml:
+          option('', 'Follow the default', screen.daytimeTheme === null) +
+          THEMES.map((theme) =>
+            option(theme.key, theme.label, displayThemeRef(screen.daytimeTheme ?? '') === theme.key),
+          ).join('') +
+          customThemeOptions(screen.daytimeTheme),
+      }) +
+      `</div></div>` +
       `<div class="two-up">` +
-      `<div><label for="from-${screen.id}">From</label>` +
-      `<input id="from-${screen.id}" name="daytime_starts_at" type="time" ` +
-      `value="${escapeHtml(screen.daytimeStartsAt ?? '07:00')}"></div>` +
-      `<div><label for="until-${screen.id}">Until</label>` +
-      `<input id="until-${screen.id}" name="daytime_ends_at" type="time" ` +
-      `value="${escapeHtml(screen.daytimeEndsAt ?? '21:00')}"></div>` +
-      `</div>` +
+      `<div>` +
+      textField({
+        label: 'From',
+        name: 'daytime_starts_at',
+        type: 'time',
+        value: screen.daytimeStartsAt ?? '07:00',
+      }) +
+      `</div><div>` +
+      textField({
+        label: 'Until',
+        name: 'daytime_ends_at',
+        type: 'time',
+        value: screen.daytimeEndsAt ?? '21:00',
+      }) +
+      `</div></div>` +
       `<p class="hint-1">“Follow the default” inherits the household theme. From/Until ` +
       `are only used when this wall sets its own daylight theme.</p>` +
       `</div>` +
 
       // --- Content: how much the calendar shows on the stacked layout ---
       `<div class="tabpanel" data-tabpanel="content" hidden>` +
-      `<label for="today_events-${screen.id}">Events today</label>` +
-      density('today_events', screen.displayTodayEvents, household.displayTodayEvents) +
-      `<label for="next_days-${screen.id}">Days ahead</label>` +
-      density('next_days', screen.displayNextDays, household.displayNextDays) +
-      `<label for="horizon_weeks-${screen.id}">Weeks of month</label>` +
-      density('horizon_weeks', screen.displayHorizonWeeks, household.displayHorizonWeeks) +
+      density('today_events', 'Events today', screen.displayTodayEvents, household.displayTodayEvents) +
+      density('next_days', 'Days ahead', screen.displayNextDays, household.displayNextDays) +
+      density('horizon_weeks', 'Weeks of month', screen.displayHorizonWeeks, household.displayHorizonWeeks) +
       `<p class="hint-1">How much a Calendar shows on this wall. Blank follows the ` +
       `Display default.</p>` +
       `</div>` +
 
       // --- Device: identity, how it is hung, and its input ---
       `<div class="tabpanel" data-tabpanel="device" hidden>` +
-      `<label for="name-${screen.id}">Name</label>` +
-      `<input id="name-${screen.id}" name="name" type="text" required ` +
-      `value="${escapeHtml(screen.name)}">` +
+      textField({ label: 'Name', name: 'name', required: true, value: screen.name }) +
       `<div class="two-up">` +
-      `<div>` +
-      `<span class="lbl-help"><label for="orientation-${screen.id}">Orientation</label>` +
+      `<div class="field-with-help">` +
+      selectField({
+        label: 'Orientation',
+        name: 'orientation',
+        optionsHtml:
+          option('auto', 'Follow the screen', screen.orientation === 'auto') +
+          option('portrait', 'Always portrait', screen.orientation === 'portrait') +
+          option('landscape', 'Always landscape', screen.orientation === 'landscape'),
+      }) +
+      // The "?" rides the field as a trailing icon, left of the dropdown caret;
+      // its prose keeps the two sentences telling this pin apart from the
+      // editor's canvas toggle.
       `<button type="button" class="fieldhelp" data-help="${helpId}" ` +
       `aria-label="About orientation">${icon('help')}</button>` +
-      // The prose that used to sit under the field, now behind the "?". It keeps
-      // the two sentences telling this pin apart from the editor's canvas toggle.
       `<div id="${helpId}" class="helppop" hidden>` +
       `<p><b>Orientation</b> chooses which layout this wall shows. <i>Follow the ` +
       `screen</i> picks portrait or landscape from how the screen reports itself — ` +
@@ -2823,41 +2874,48 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `landscape</i> only for a kiosk frame that reports the wrong size.</p>` +
       `<p>This is not the Portrait/Landscape buttons in the layout editor: those ` +
       `choose which canvas you are arranging (you arrange both), while this decides ` +
-      `which of the two the wall actually draws.</p></div></span>` +
-      `<select id="orientation-${screen.id}" name="orientation">` +
-      option('auto', 'Follow the screen', screen.orientation === 'auto') +
-      option('portrait', 'Always portrait', screen.orientation === 'portrait') +
-      option('landscape', 'Always landscape', screen.orientation === 'landscape') +
-      `</select></div>` +
-      `<div><label for="rotation-${screen.id}">Rotation</label>` +
-      `<select id="rotation-${screen.id}" name="rotation">` +
-      option('0', 'None', screen.rotation === 0) +
-      option('90', '90° clockwise', screen.rotation === 90) +
-      option('180', 'Upside down', screen.rotation === 180) +
-      option('270', '270° clockwise', screen.rotation === 270) +
-      `</select></div>` +
+      `which of the two the wall actually draws.</p></div>` +
       `</div>` +
+      `<div>` +
+      selectField({
+        label: 'Rotation',
+        name: 'rotation',
+        optionsHtml:
+          option('0', 'None', screen.rotation === 0) +
+          option('90', '90° clockwise', screen.rotation === 90) +
+          option('180', 'Upside down', screen.rotation === 180) +
+          option('270', '270° clockwise', screen.rotation === 270),
+      }) +
+      `</div></div>` +
       `<div class="two-up">` +
-      `<div><label for="tz-${screen.id}">Timezone</label>` +
-      `<select id="tz-${screen.id}" name="timezone">` +
-      option('', 'Follow the default', screen.timezone === null) +
-      supportedTimezones()
-        .map((zone) => option(zone, zone, screen.timezone === zone))
-        .join('') +
-      `</select></div>` +
-      `<div><label for="clock-${screen.id}">Clock</label>` +
-      `<select id="clock-${screen.id}" name="clock_24">` +
-      option('', 'Follow the default', screen.clock24 === null) +
-      option('1', '24-hour', screen.clock24 === 1) +
-      option('0', '12-hour', screen.clock24 === 0) +
-      `</select></div>` +
-      `</div>` +
-      `<div class="checks"><label>` +
-      `<input type="checkbox" name="allow_dismiss" value="1"` +
-      `${screen.allowDismiss === 1 ? ' checked' : ''}> ` +
-      `This wall can acknowledge alerts</label></div>` +
-      `<p class="hint-1">The OK button clears alerts household-wide. Leave off for a ` +
-      `screen with no input, or one that gets brushed against.</p>` +
+      `<div>` +
+      selectField({
+        label: 'Timezone',
+        name: 'timezone',
+        optionsHtml:
+          option('', 'Follow the default', screen.timezone === null) +
+          supportedTimezones()
+            .map((zone) => option(zone, zone, screen.timezone === zone))
+            .join(''),
+      }) +
+      `</div><div>` +
+      selectField({
+        label: 'Clock',
+        name: 'clock_24',
+        optionsHtml:
+          option('', 'Follow the default', screen.clock24 === null) +
+          option('1', '24-hour', screen.clock24 === 1) +
+          option('0', '12-hour', screen.clock24 === 0),
+      }) +
+      `</div></div>` +
+      switchRow({
+        label: 'This wall can acknowledge alerts',
+        name: 'allow_dismiss',
+        checked: screen.allowDismiss === 1,
+        hint:
+          'The OK button clears alerts household-wide. Leave off for a screen ' +
+          'with no input, or one that gets brushed against.',
+      }) +
       `</div>` +
 
       `</form>`
@@ -2952,11 +3010,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             `for the record. Their tokens no longer work.</p>`) +
         `<h2 class="add" id="add">Pair a new screen</h2>` +
         `<form method="post" action="admin/screens">` +
-        `<label for="new-screen">Name</label>` +
-        `<input id="new-screen" name="name" type="text" required maxlength="80" ` +
-        `placeholder="Kitchen">` +
-        `<p class="hint">You get a QR code and a short code to enter on the screen ` +
-        `itself. Open its page afterwards to arrange its layout and settings.</p>` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          placeholder: 'Kitchen',
+          hint:
+            'You get a QR code and a short code to enter on the screen itself. ' +
+            'Open its page afterwards to arrange its layout and settings.',
+          attrs: 'maxlength="80"',
+        }) +
         `<button type="submit">Add screen</button></form>` +
         `<p class="hint">Over SSH instead: <span class="code">add-screen "Kitchen"</span>.</p>`,
     });
@@ -3212,14 +3275,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       : `<div class="tpl-copy"><div class="tpl-cat">Or copy another display</div>` +
         `<form method="post" action="admin/displays/${ownerParam}/copy-from" ` +
         `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with a copy?"><div class="row">` +
-        `<label class="hep-field"><span>From</span><select name="sourceOwner">` +
-        others
-          .map(
-            (o) =>
-              `<option value="${o.id === null ? 'default' : escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`,
-          )
-          .join('') +
-        `</select></label>` +
+        selectField({
+          label: 'From',
+          name: 'sourceOwner',
+          optionsHtml: others
+            .map(
+              (o) =>
+                `<option value="${o.id === null ? 'default' : escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`,
+            )
+            .join(''),
+        }) +
         `<button class="secondary" type="submit">Copy its layout</button></div></form></div>`;
 
     // The client needs each template's portrait canvas to draw a preview.
@@ -3282,10 +3347,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         .join('');
 
     const number = (name: string, label: string, value: number, low: number, high: number, hint: string): string =>
-      `<label for="${name}">${escapeHtml(label)}</label>` +
-      `<input id="${name}" name="${name}" type="number" required inputmode="numeric" ` +
-      `min="${low}" max="${high}" value="${value}">` +
-      `<p class="hint">${escapeHtml(hint)}</p>`;
+      textField({
+        label,
+        name,
+        type: 'number',
+        required: true,
+        value: String(value),
+        hint,
+        attrs: `inputmode="numeric" min="${low}" max="${high}"`,
+      });
 
     return (
       `<form method="post" action="admin/display" data-settings>` +
@@ -3296,17 +3366,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `the shift colours best from across a room. Build your own on the ` +
       `<a class="link" href="admin/themes">Themes</a> screen.</p>` +
       themeCards(displayThemeRef(household.theme), custom) +
-      `<label for="daytime_theme">Switch to a lighter theme during the day</label>` +
-      `<select id="daytime_theme" name="daytime_theme">` +
-      `${themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true)}</select>` +
+      selectField({
+        label: 'Switch to a lighter theme during the day',
+        name: 'daytime_theme',
+        optionsHtml: themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true),
+      }) +
       `<div class="two-up">` +
-      `<div><label for="daytime_starts_at">From</label>` +
-      `<input id="daytime_starts_at" name="daytime_starts_at" type="time" ` +
-      `value="${escapeHtml(household.daytimeStartsAt ?? '07:00')}"></div>` +
-      `<div><label for="daytime_ends_at">Until</label>` +
-      `<input id="daytime_ends_at" name="daytime_ends_at" type="time" ` +
-      `value="${escapeHtml(household.daytimeEndsAt ?? '21:00')}"></div>` +
-      `</div>` +
+      `<div>` +
+      textField({
+        label: 'From',
+        name: 'daytime_starts_at',
+        type: 'time',
+        value: household.daytimeStartsAt ?? '07:00',
+      }) +
+      `</div><div>` +
+      textField({
+        label: 'Until',
+        name: 'daytime_ends_at',
+        type: 'time',
+        value: household.daytimeEndsAt ?? '21:00',
+      }) +
+      `</div></div>` +
       `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at ` +
       `2am is a lamp. From/Until apply only when a daytime theme is set.</p>` +
       `</div>` +
@@ -3319,22 +3399,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'How many upcoming days a Calendar agenda can list.') +
       number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
         'How many weeks a month Calendar draws. Five covers a month at a glance.') +
-      `<label for="week_start">Week starts on</label>` +
-      `<select id="week_start" name="week_start">` +
-      `<option value="sunday"${household.weekStart !== 'monday' ? ' selected' : ''}>Sunday</option>` +
-      `<option value="monday"${household.weekStart === 'monday' ? ' selected' : ''}>Monday</option>` +
-      `</select>` +
-      `<p class="hint">The left-hand column of the month grid and the week columns. ` +
-      `Applies to every wall.</p>` +
+      selectField({
+        label: 'Week starts on',
+        name: 'week_start',
+        hint: 'The left-hand column of the month grid and the week columns. Applies to every wall.',
+        optionsHtml:
+          `<option value="sunday"${household.weekStart !== 'monday' ? ' selected' : ''}>Sunday</option>` +
+          `<option value="monday"${household.weekStart === 'monday' ? ' selected' : ''}>Monday</option>`,
+      }) +
       `</div>` +
 
       // --- Device: the household clock default ---
       `<div class="tabpanel" data-tabpanel="device" hidden>` +
-      `<div class="checks"><label>` +
-      `<input type="checkbox" name="clock_24" value="1"${household.clock24 !== 0 ? ' checked' : ''}> ` +
-      `24-hour clock</label></div>` +
-      `<p class="hint-1">Off shows a 12-hour clock (9:30 pm) on the wall; on shows ` +
-      `24-hour (21:30). This is the household default every wall inherits.</p>` +
+      switchRow({
+        label: '24-hour clock',
+        name: 'clock_24',
+        checked: household.clock24 !== 0,
+        hint:
+          'Off shows a 12-hour clock (9:30 pm) on the wall; on shows 24-hour ' +
+          '(21:30). This is the household default every wall inherits.',
+      }) +
       `</div>` +
 
       `</form>`
@@ -3382,9 +3466,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           source.personId === null ? null : (people.find((p) => p.id === source.personId) ?? null);
         const colourField =
           owner === null
-            ? `<span><label for="c-${source.id}">Colour</label>` +
-              `<input id="c-${source.id}" name="color" type="color" ` +
-              `value="${escapeHtml(source.color)}"></span>`
+            ? textField({ label: 'Colour', name: 'color', type: 'color', value: source.color })
             : `<span><label>Colour</label>` +
               `<span class="owned-colour"><span class="swatch" ` +
               `style="--swatch:${escapeHtml(owner.color)}"></span>Uses ${escapeHtml(owner.name)}’s colour</span>` +
@@ -3392,25 +3474,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         return (
           `<form method="post" action="admin/calendars/${id}/settings">` +
           `<div class="row-fields">` +
-          `<span><label for="n-${source.id}">Name</label>` +
-          `<input id="n-${source.id}" name="name" type="text" required ` +
-          `value="${escapeHtml(source.name)}"></span>` +
+          textField({ label: 'Name', name: 'name', required: true, value: source.name }) +
           colourField +
-          `<span><label for="p-${source.id}">Belongs to</label>` +
-          `<select id="p-${source.id}" name="person_id">${personOptions}</select></span>` +
+          selectField({ label: 'Belongs to', name: 'person_id', optionsHtml: personOptions }) +
           `</div>`
         );
       })() +
 
-      `<div class="checks">` +
-      `<label><input type="checkbox" name="enabled" value="1"` +
-      `${source.enabled === 1 ? ' checked' : ''}> Sync this calendar</label>` +
-      `<label><input type="checkbox" name="allow_lan" value="1"` +
-      `${source.allowPrivateNetwork === 1 ? ' checked' : ''}> Allow a local network address</label>` +
-      `</div>` +
+      switchRow({
+        label: 'Sync this calendar',
+        name: 'enabled',
+        checked: source.enabled === 1,
+      }) +
       // Named as a risk rather than as a feature, because it is one.
-      `<p class="hint">Local network access lets this feed reach devices inside your ` +
-      `home. Only turn it on for a calendar you host yourself.</p>` +
+      switchRow({
+        label: 'Allow a local network address',
+        name: 'allow_lan',
+        checked: source.allowPrivateNetwork === 1,
+        hint:
+          'Local network access lets this feed reach devices inside your home. ' +
+          'Only turn it on for a calendar you host yourself.',
+      }) +
       `<button type="submit">Save</button></form>` +
 
       `<div class="row">` +
@@ -3491,26 +3575,37 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         (tested === undefined ? '' : previewPanel(tested)) +
         `<form method="post" action="admin/calendars">` +
-        `<label for="name">Name</label>` +
-        `<input id="name" name="name" type="text" required placeholder="Family" value="${escapeHtml(values.name ?? '')}">` +
-        `<label for="url">Address</label>` +
-        `<input id="url" name="url" type="text" required placeholder="https://…/basic.ics" value="${escapeHtml(values.url ?? '')}">` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          placeholder: 'Family',
+          value: values.name ?? '',
+        }) +
+        textField({
+          label: 'Address',
+          name: 'url',
+          required: true,
+          placeholder: 'https://…/basic.ics',
+          value: values.url ?? '',
+        }) +
         // Owner is offered at add time only when there is someone to pick, so a
         // household with no people never sees a control that does nothing.
         (people.length === 0
           ? ''
-          : `<label for="new-owner">Belongs to</label>` +
-            `<select id="new-owner" name="person_id">` +
-            `<option value="" selected>Everyone</option>` +
-            people
-              .map(
-                (person) =>
-                  `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
-              )
-              .join('') +
-            `</select>` +
-            `<p class="hint">When a calendar belongs to someone, its events take ` +
-            `their colour on the wall.</p>`) +
+          : selectField({
+              label: 'Belongs to',
+              name: 'person_id',
+              hint: 'When a calendar belongs to someone, its events take their colour on the wall.',
+              optionsHtml:
+                `<option value="" selected>Everyone</option>` +
+                people
+                  .map(
+                    (person) =>
+                      `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
+                  )
+                  .join(''),
+            })) +
         `<div class="checks">` +
         box('allow_lan', 'This feed is on my local network', values.allowPrivateNetwork === true) +
         box('allow_loopback', 'This feed is on this machine', values.allowLoopback === true) +
