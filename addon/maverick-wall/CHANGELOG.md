@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.36.0
 
 The upcoming list can carry the forecast. Turn on **Show the forecast** in a
 Calendar widget's settings and each date gets that day's high and low beneath
