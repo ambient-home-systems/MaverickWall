@@ -160,10 +160,22 @@ describe('the eInk Displays page', () => {
     // The list card links to the designer.
     expect(await (await h.call(`${B}/admin/epaper`)).text()).toContain(`admin/epaper/${id}/design`);
 
-    // The design page hosts the same drag-and-drop editor and the preview.
+    // The design page hosts the same drag-and-drop editor and the preview —
+    // and the editor actually loads. The mount div alone shipped for two
+    // releases while the module scripts were missing (the two-pane redesign
+    // moved script emission into the display page and this page lost it), and
+    // this test passed over it by matching only 'layout-editor'. The scripts
+    // and the save bar the chrome binds are asserted now, not assumed.
     const design = await (await h.call(`${B}/admin/epaper/${id}/design`)).text();
-    expect(design).toContain('layout-editor'); // the editor mount
+    expect(design).toContain('id="layout-editor"'); // the editor mount
+    expect(design).toContain('<script type="module" src="assets/display-editor.js">');
+    expect(design).toContain('<script type="module" src="assets/layout-editor.js">');
+    expect(design).toContain('id="savebar"');
+    expect(design).toContain('data-action="save"');
     expect(design).toContain(`admin/epaper/${id}/preview.png`); // the preview img
+    // A tag pointing at a 404 would be the same dead editor with extra steps.
+    expect((await h.call(`${B}/assets/display-editor.js`)).status).toBe(200);
+    expect((await h.call(`${B}/assets/layout-editor.js`)).status).toBe(200);
 
     // The preview renders a real PNG — the fixed layout before a canvas exists.
     const auto = await h.call(`${B}/admin/epaper/${id}/preview.png`);
@@ -171,15 +183,29 @@ describe('the eInk Displays page', () => {
     expect(auto.headers.get('content-type')).toBe('image/png');
     expect([...(await bytesOf(auto)).slice(0, 8)]).toEqual(PNG_SIGNATURE);
 
-    // With a saved free-form canvas, the preview still renders (now the canvas).
-    h.db.prepare(`UPDATE screens SET layout_mode = 'freeform' WHERE id = ?`).run(id);
-    const at = Date.now();
-    h.db
-      .prepare(
-        `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
-         VALUES ('cw', ?, 'landscape', 'calendar', 0.05, 0.05, 0.9, 0.9, 0, ?, ?, ?)`,
-      )
-      .run(id, JSON.stringify({ mode: 'month' }), at, at);
+    // Save a canvas through the same request the editor's save bar makes —
+    // the panel's own id, not the shared default.
+    const saved = await h.call(`${B}/admin/layout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        screen: id,
+        orientation: 'landscape',
+        mode: 'freeform',
+        aspect: 1.667,
+        widgets: [
+          { id: 'cw', type: 'calendar', x: 0.05, y: 0.05, w: 0.9, h: 0.9, z: 0, config: { mode: 'month' } },
+        ],
+        background: null,
+      }),
+    });
+    expect(saved.status).toBe(200);
+    const row = h.db
+      .prepare(`SELECT screen_id FROM layout_widgets WHERE id = 'cw'`)
+      .get() as { screen_id: string } | undefined;
+    expect(row?.screen_id).toBe(id);
+
+    // And the preview now renders that canvas.
     const freeform = await h.call(`${B}/admin/epaper/${id}/preview.png`);
     expect(freeform.status).toBe(200);
     expect([...(await bytesOf(freeform)).slice(0, 8)]).toEqual(PNG_SIGNATURE);

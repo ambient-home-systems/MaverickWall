@@ -1918,7 +1918,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         nav: 'epaper',
         heading: `${screen.name} — layout`,
         intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
-        body: preview + layoutEditorMount(initial),
+        body:
+          preview +
+          layoutEditorMount(initial) +
+          // The one save bar, same chrome as the display page minus its
+          // settings form — with no form the chrome saves the canvas and
+          // reloads. Chrome first, so its `mwEditorState` hook is registered
+          // before the editor publishes its bridge.
+          `<div class="savebar" id="savebar">` +
+          `<span class="msg" role="alert"></span>` +
+          `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
+          `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
+          `<button type="button" class="btn" data-action="save">Save this panel</button>` +
+          `</div>` +
+          `<script type="module" src="assets/display-editor.js"></script>` +
+          `<script type="module" src="assets/layout-editor.js"></script>`,
       }),
     );
   });
@@ -2955,8 +2969,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * `admin/layout` regardless of which page hosts it.
    */
   function layoutEditorMount(initial: unknown): string {
-    // The mount and its data only — the detail page emits the editor and chrome
-    // module scripts once, in order, at the foot of the body.
+    // The mount and its data only — each host page (the display detail page
+    // and the e-paper design page) emits the chrome and editor module scripts
+    // once, in order, at the foot of its body. The mount deliberately does not
+    // emit them itself any more; when it did, and the display page took over
+    // emission, the e-paper page silently lost its editor for two releases.
     return (
       `<div id="layout-editor" data-json="${escapeHtml(JSON.stringify(initial))}"></div>` +
       `<noscript><p class="hint">The layout editor needs JavaScript to arrange ` +

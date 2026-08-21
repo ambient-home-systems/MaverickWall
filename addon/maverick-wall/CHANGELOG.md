@@ -14,6 +14,15 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The eInk layout editor is back. Since the display editor was reworked in
+0.30.0, the Arrange section on an eInk panel's page was an empty space — the
+drag-and-drop editor never appeared, so a panel could not be rearranged from
+the web at all. It loads again now: drag widgets, press "Save this panel",
+and the black-and-white preview redraws with your arrangement within a few
+seconds, exactly as it did in 0.29.0.
+
 ## 0.32.0
 
 The settings screens have a new coat of paint: Material Design, in the wall's
