@@ -93,7 +93,16 @@ export function parseForecast(
     daily: { time: [], weather_code: [], temperature_2m_max: [], temperature_2m_min: [] },
   });
   const daily = document.daily;
-  const unit = units === 'metric' ? '°C' : '°F';
+  /*
+   * The letter only — "C", not "°C".
+   *
+   * The display adds the degree itself (`68°`) and appends the unit after it,
+   * so the row reads "84° 69°F" with one sign rather than repeating it five
+   * times across the strip. Emitting "°F" here made that "69°°F" on every
+   * Open-Meteo wall, while NWS (which sends `temperatureUnit: "F"`) was right.
+   * Found by a fixture written in this provider's own shape.
+   */
+  const unit = units === 'metric' ? 'C' : 'F';
   const days: ForecastDay[] = [];
   for (let i = 0; i < daily.time.length && days.length < limit; i++) {
     const date = daily.time[i];
@@ -101,6 +110,9 @@ export function parseForecast(
     const code = daily.weather_code[i] ?? 0;
     days.push({
       name: label(date, todayIso),
+      // Already the household's own calendar date: the request asks for
+      // `timezone: auto`, so the daily series is local to the location.
+      date,
       high: daily.temperature_2m_max[i] ?? null,
       low: daily.temperature_2m_min[i] ?? null,
       unit,

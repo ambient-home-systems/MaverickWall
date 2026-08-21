@@ -52,7 +52,11 @@ describe('reading a real forecast', () => {
     expect(first?.icon).toBe('☁');
     expect(first?.high).toBe(35.4);
     expect(first?.low).toBe(20.5);
-    expect(first?.unit).toBe('°C');
+    // The letter alone. The display draws the degree itself and appends the
+    // unit after it, so a row reads "35° 20°C" with one sign. This asserted
+    // '°C' for as long as the provider emitted it, and both were wrong
+    // together — every Open-Meteo wall read "20°°C".
+    expect(first?.unit).toBe('C');
   });
 
   it('labels days after today by weekday, not by date', () => {
@@ -61,11 +65,21 @@ describe('reading a real forecast', () => {
     expect(second?.name).toBe('Fri');
   });
 
-  it('reports °F when asked for imperial, without touching the numbers', () => {
+  it('reports F when asked for imperial, without touching the numbers', () => {
     // The unit label follows the request; converting is Open-Meteo's job, not
     // the parser's, so the numbers are whatever the (metric) fixture holds.
     const day = parseForecast(FORECAST, AT, 'imperial', TODAY, 1)?.days[0];
-    expect(day?.unit).toBe('°F');
+    expect(day?.unit).toBe('F');
+  });
+
+  it('agrees with the other provider about what a unit is', () => {
+    // Two providers feeding one renderer have to speak the same way. NWS sends
+    // `temperatureUnit: "F"`; this one has to match, or the strip's sentence
+    // depends on which provider the household picked.
+    for (const units of ['metric', 'imperial'] as const) {
+      const day = parseForecast(FORECAST, AT, units, TODAY, 1)?.days[0];
+      expect(day?.unit).not.toContain('°');
+    }
   });
 
   it('honours the limit it is given', () => {

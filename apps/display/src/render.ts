@@ -209,7 +209,7 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
 
 /* --------------------------------------------------------------- NEXT ---- */
 
-function renderDayRow(day: DayModel): HTMLElement {
+function renderDayRow(day: DayModel, showWeather = false): HTMLElement {
   const row = el('div', day.isToday ? 'day-row is-today' : 'day-row');
   const shift = day.shifts[0];
   paintShift(row, shift?.colorToken, shift?.color);
@@ -220,6 +220,15 @@ function renderDayRow(day: DayModel): HTMLElement {
   // The month under the number, so a row read on its own is unambiguous. A
   // wall is looked at in glances, and "14" a fortnight out is a question.
   when.appendChild(el('div', 'dr-mon', day.month));
+  // The day's numbers under its date, when the household asked for them — the
+  // forecast strip's information without the strip's row of the wall.
+  if (showWeather && day.weather !== undefined) {
+    const wx = el('div', 'dr-wx');
+    wx.appendChild(el('span', 'dr-wx-icon', day.weather.icon));
+    wx.appendChild(el('span', 'dr-wx-high', day.weather.high));
+    wx.appendChild(el('span', 'dr-wx-low', day.weather.low));
+    when.appendChild(wx);
+  }
   if (shift !== undefined) {
     when.appendChild(el('div', 'dr-shift', shift.label));
     const window = shiftWindow(shift);
@@ -767,6 +776,7 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
 
   const limit =
     typeof c['count'] === 'number' && c['count'] >= 1 ? Math.min(50, Math.trunc(c['count'])) : 12;
+  const showWeather = c['showWeather'] === true;
   const source = [model.today, ...model.next].filter(
     (day): day is DayModel => day !== undefined,
   );
@@ -783,7 +793,7 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
     if (events.length === 0 && !day.isToday) continue;
     budget -= events.length;
     any = any || events.length > 0;
-    section.appendChild(renderDayRow({ ...day, events, hiddenEventCount: 0 }));
+    section.appendChild(renderDayRow({ ...day, events, hiddenEventCount: 0 }, showWeather));
   }
   if (!any) section.appendChild(el('div', 'dr-empty', 'Nothing coming up.'));
   return section;

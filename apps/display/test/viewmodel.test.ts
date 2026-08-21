@@ -655,3 +655,52 @@ describe('an event that spans more than one day says how far in', () => {
     expect(built.today?.events[0]?.span).toBeUndefined();
   });
 });
+
+/*
+ * Weather in the agenda (RFC 007 phase 3).
+ *
+ * The join is by date and nothing else. A name cannot do it — "Tonight" names
+ * no weekday and "Monday" names no year — and joining by position would put
+ * tomorrow's rain on today's row, which is the kind of wrong a household
+ * believes.
+ */
+describe('the forecast beside a day', () => {
+  const panel = (days: unknown[]) => ({
+    panels: { weather: { provider: 'nws', days, fetchedAt: NOON, note: null } },
+  }) as Partial<Manifest>;
+
+  const wx = (date: string | undefined, high: number, low: number) => ({
+    name: 'Wednesday', icon: '☀', high, low, unit: 'F',
+    ...(date !== undefined ? { date } : {}),
+  });
+
+  it('lands on the day with the same date', () => {
+    const built = model(
+      [day('2026-07-15'), day('2026-07-16', [event({ title: 'Bins', startsAt: NOON })])],
+      panel([wx('2026-07-15', 80, 60), wx('2026-07-16', 70, 50)]),
+    );
+    expect(built.today?.weather).toMatchObject({ high: '80°', low: '60°F' });
+    // One degree sign, not two. The display adds it and the provider must send
+    // the letter alone — Open-Meteo sent "°F" and every wall read "69°°F".
+    expect(built.today?.weather?.low).not.toContain('°°');
+    expect(built.next[0]?.weather).toMatchObject({ high: '70°' });
+  });
+
+  it('leaves a day the forecast does not reach without one', () => {
+    // Never the neighbour's: a seven-day agenda against a three-day forecast
+    // must not decorate day five with day three's numbers.
+    const built = model(
+      [day('2026-07-15'), day('2026-07-16', [event({ title: 'Bins', startsAt: NOON })])],
+      panel([wx('2026-07-15', 80, 60)]),
+    );
+    expect(built.today?.weather).toBeDefined();
+    expect(built.next[0]?.weather).toBeUndefined();
+  });
+
+  it('joins nothing when the provider gave no dates', () => {
+    // A forecast cached by a server older than this field. The strip still
+    // draws from `name`; only the join goes quiet.
+    const built = model([day('2026-07-15')], panel([wx(undefined, 80, 60)]));
+    expect(built.today?.weather).toBeUndefined();
+  });
+});
