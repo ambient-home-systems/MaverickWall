@@ -183,10 +183,16 @@ function boot(): void {
   // Editor-only, so it lives beside the state rather than in it.
   let report: { readonly w: number; readonly h: number } | undefined;
 
-  // Whether the host page is an e-paper panel's designer. Only the words
-  // change on it — reset means "back to the built-in layout" there, and the
-  // server's reset route does the kind-aware thing either way.
+  // Whether the host page is an e-paper panel's designer. On a panel the words
+  // change (reset means "back to the built-in layout"), the preview behind the
+  // boxes is the panel's own 1-bit frame, and the canvas is the hardware's —
+  // one orientation, one ratio, neither of them the household's to choose.
   let epaperHost = false;
+  // The orientation the host draws, when it has only one. A panel is screwed to
+  // a wall the way it is screwed to a wall.
+  let hostOrientation: 'portrait' | 'landscape' | undefined;
+  // The panel's pixels, for the toolbar's static geometry chip.
+  let panelSize: { readonly w: number; readonly h: number } | undefined;
 
   let state: LayoutState;
   try {
@@ -200,12 +206,21 @@ function boot(): void {
       readonly readings?: unknown;
       readonly modules?: unknown;
       readonly report?: { readonly w?: unknown; readonly h?: unknown };
+      readonly orientation?: unknown;
+      readonly panel?: { readonly width?: unknown; readonly height?: unknown };
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
       report = { w: r.w, h: r.h };
     }
     epaperHost = parsed.kind === 'epaper';
+    if (parsed.orientation === 'landscape' || parsed.orientation === 'portrait') {
+      hostOrientation = parsed.orientation;
+    }
+    const pnl = parsed.panel;
+    if (pnl !== undefined && typeof pnl.width === 'number' && typeof pnl.height === 'number') {
+      panelSize = { w: pnl.width, h: pnl.height };
+    }
     // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
     // are the per-orientation defaults when a canvas has no aspect yet.
     const portrait = canvasFrom(parsed.portrait, 0.5625);
@@ -265,6 +280,13 @@ function boot(): void {
   let model: DisplayModel | undefined;
   let manifest: Manifest | undefined;
   let previewShadow: ShadowRoot | undefined;
+  // The e-paper designer's backdrop: the panel's own 1-bit frame, fetched from
+  // the server for whatever is on the canvas now. Kept as an <img> rather than
+  // a second renderer in this bundle — see `renderEpaperPreview`.
+  let epaperImage: HTMLImageElement | undefined;
+  let epaperObjectUrl: string | undefined;
+  let epaperTimer: number | undefined;
+  let epaperPending = false;
   let previewWall: HTMLElement | undefined;
 
   // ---- structure, built once -------------------------------------------
@@ -288,8 +310,25 @@ function boot(): void {
     orientToggle.appendChild(button);
   }
 
+  // A panel has one orientation and one ratio, both facts about the hardware.
+  // Offering the wall's Portrait/Landscape tabs and its aspect list let a
+  // household arrange a canvas the device would never draw, on a shape it does
+  // not have — so on a panel the two controls become one chip that states what
+  // the panel is. The canvases themselves are unchanged underneath: the other
+  // orientation is still loaded and still saved, it is simply not on offer.
+  const panelChip = document.createElement('span');
+  panelChip.className = 'le-panel-chip';
+  if (epaperHost) {
+    orientToggle.style.display = 'none';
+    const size = panelSize === undefined ? '' : `${panelSize.w}\u00d7${panelSize.h} \u00b7 `;
+    panelChip.textContent = `${size}${hostOrientation === 'portrait' ? 'portrait' : 'landscape'}`;
+  } else {
+    panelChip.style.display = 'none';
+  }
+
   const aspectSelect = document.createElement('select');
   aspectSelect.className = 'le-aspect';
+  if (epaperHost) aspectSelect.style.display = 'none';
   for (const a of ASPECTS) {
     const opt = document.createElement('option');
     opt.value = String(a.value);
@@ -467,6 +506,7 @@ function boot(): void {
 
   toolbar.append(
     orientToggle,
+    panelChip,
     palette,
     aspectSelect,
     matchButton,
@@ -515,7 +555,9 @@ function boot(): void {
   const preview = document.createElement('div');
   preview.className = 'le-preview';
   const overlay = document.createElement('div');
-  overlay.className = 'le-overlay';
+  // On a panel the backdrop *is* the artwork, so the boxes stop tinting it —
+  // each widget already draws its own border in the frame beneath.
+  overlay.className = epaperHost ? 'le-overlay is-epaper' : 'le-overlay';
   canvas.append(preview, overlay);
   stage.appendChild(canvas);
 
@@ -550,7 +592,15 @@ function boot(): void {
 
   // Load the real manifest and the display's stylesheet, then draw the preview.
   // Both behind the session; a failure just leaves the labelled overlay.
+  //
+  // A panel takes neither: its backdrop is the frame its own renderer draws,
+  // so the wall's manifest, stylesheet and shadow root are all beside the
+  // point there.
   void (async (): Promise<void> => {
+    if (epaperHost) {
+      renderPreview();
+      return;
+    }
     try {
       const [manifestRes, cssRes] = await Promise.all([
         fetch(`admin/layout/preview.json${screenQuery}`),
@@ -578,6 +628,11 @@ function boot(): void {
   })();
 
   function renderPreview(): void {
+    // On a panel the preview is the panel's own frame, not the wall's.
+    if (epaperHost) {
+      scheduleEpaperPreview();
+      return;
+    }
     if (model === undefined || previewWall === undefined || manifest === undefined) return;
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -627,16 +682,64 @@ function boot(): void {
       widgets: state.widgets.map((w) => ({ ...w })),
       ...(state.background !== undefined ? { background: state.background } : {}),
     }, EDITOR_MEDIA_BASE);
+  }
 
-    // An empty canvas means different things on the two kinds, and this preview
-    // is the *wall* renderer — so on a panel its "Nothing on this display yet"
-    // note contradicts the real 1-bit preview above, which is drawing the
-    // built-in layout (`frame.ts` renders fixed unless a canvas has widgets).
-    // Two previews of one panel disagreeing is how a household concludes that
-    // saving did nothing. Say what the panel actually does instead.
-    if (epaperHost && state.widgets.length === 0) {
-      const note = previewWall.querySelector('.canvas-empty');
-      if (note !== null) note.textContent = 'Nothing placed — this panel draws its built-in layout.';
+  /**
+   * The panel's own frame, behind the drag overlay.
+   *
+   * The arrange area used to draw through `renderFreeform` — the *wall*
+   * renderer — so a black-and-white panel was arranged against colour cards
+   * that shared none of its type, sizes or truncation. Rather than write a
+   * second 1-bit renderer here and have the two disagree (which is exactly how
+   * the clock came to read "08:3" on a panel while the editor showed 08:32),
+   * the server draws it: the canvas is posted as it stands and the reply is the
+   * frame the panel would put on glass.
+   *
+   * Debounced, because a drag is hundreds of moves and this is a round trip;
+   * the boxes you drag are the overlay, which never waits for it. A failed or
+   * refused request keeps the frame already showing rather than blanking the
+   * area somebody is working in.
+   */
+  function scheduleEpaperPreview(): void {
+    if (epaperTimer !== undefined) window.clearTimeout(epaperTimer);
+    epaperTimer = window.setTimeout(() => {
+      epaperTimer = undefined;
+      void renderEpaperPreview();
+    }, 220);
+  }
+
+  async function renderEpaperPreview(): Promise<void> {
+    if (state.screen === null) return;
+    // One in flight at a time; the newest state re-queues behind it so the
+    // frame that lands is always the canvas as it stands.
+    if (epaperPending) {
+      scheduleEpaperPreview();
+      return;
+    }
+    epaperPending = true;
+    try {
+      const response = await fetch(`admin/epaper/${detailSeg}/preview.png`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ widgets: widgetsForSave(state.widgets) }),
+      });
+      if (!response.ok) return;
+      const url = URL.createObjectURL(await response.blob());
+      if (epaperImage === undefined) {
+        const img = document.createElement('img');
+        img.className = 'le-epaper-preview';
+        img.alt = '';
+        preview.appendChild(img);
+        epaperImage = img;
+      }
+      epaperImage.src = url;
+      // Release the frame this one replaces, not this one.
+      if (epaperObjectUrl !== undefined) URL.revokeObjectURL(epaperObjectUrl);
+      epaperObjectUrl = url;
+    } catch {
+      // Keep the last good frame.
+    } finally {
+      epaperPending = false;
     }
   }
 
@@ -1608,11 +1711,16 @@ function boot(): void {
   // Keep the preview from being referenced-as-unused when a build tightens up.
   void previewShadow;
 
-  // Reopen on the orientation last edited on this device. Both canvases loaded
-  // from the server above; switching is a local swap (not dirty at boot, so it
-  // saves nothing) and draws the restored canvas itself.
-  if (rememberedOrientation(state.screen) === 'landscape' && state.orientation === 'portrait') {
-    void switchOrientation('landscape');
+  // Reopen on the orientation last edited on this device — except on a panel,
+  // which has exactly one and remembers nothing. The panel case is not a
+  // preference: opening a landscape 800x480 panel on the wall's portrait
+  // default put the drag boxes on a 9:16 canvas the device cannot draw, so
+  // everything arranged there landed somewhere else on the frame. Both
+  // canvases were loaded above; switching is a local swap (not dirty at boot,
+  // so it saves nothing) and draws the arriving canvas itself.
+  const openOn = epaperHost ? (hostOrientation ?? 'landscape') : rememberedOrientation(state.screen);
+  if (openOn !== null && openOn !== undefined && openOn !== state.orientation) {
+    void switchOrientation(openOn);
   } else {
     draw();
   }

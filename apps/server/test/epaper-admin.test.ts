@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inflateSync } from 'node:zlib';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -23,6 +24,66 @@ import { createFetcher } from '../src/net/fetcher.js';
  */
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+
+/**
+ * Where the ink is in a 1-bit PNG, as a fraction of the frame.
+ *
+ * "The frame changed when I moved the box" only proves the endpoint read the
+ * body; it would pass just as happily if every widget drew in the top-left.
+ * This project's rule for the QR encoder applies here too — verify by decoding,
+ * never by looking — so the box the household dragged is checked against the
+ * pixels the panel would actually turn black.
+ */
+function inkBounds(png: Uint8Array): { x: number; y: number; w: number; h: number; pixels: number } {
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  const idat: Uint8Array[] = [];
+  while (offset < png.length) {
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(png[offset + 4]!, png[offset + 5]!, png[offset + 6]!, png[offset + 7]!);
+    const data = png.subarray(offset + 8, offset + 8 + length);
+    if (type === 'IHDR') {
+      const d = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      width = d.getUint32(0);
+      height = d.getUint32(4);
+    } else if (type === 'IDAT') idat.push(data.slice());
+    offset += 12 + length;
+  }
+  const merged = new Uint8Array(idat.reduce((n, part) => n + part.length, 0));
+  let at = 0;
+  for (const part of idat) {
+    merged.set(part, at);
+    at += part.length;
+  }
+  const raw = inflateSync(merged);
+  const stride = (width + 7) >> 3;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  let pixels = 0;
+  for (let y = 0; y < height; y++) {
+    const row = y * (stride + 1) + 1; // +1 skips the per-row filter byte
+    for (let x = 0; x < width; x++) {
+      if (((raw[row + (x >> 3)]! >> (7 - (x & 7))) & 1) !== 0) continue; // 0 is black
+      pixels++;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return { x: 0, y: 0, w: 0, h: 0, pixels: 0 };
+  return {
+    x: minX / width,
+    y: minY / height,
+    w: (maxX - minX + 1) / width,
+    h: (maxY - minY + 1) / height,
+    pixels,
+  };
+}
 const roots: string[] = [];
 let nextAddress = 0;
 
@@ -173,6 +234,26 @@ describe('the eInk Displays page', () => {
     expect(design).toContain('id="savebar"');
     expect(design).toContain('data-action="save"');
     expect(design).toContain(`admin/epaper/${id}/preview.png`); // the preview img
+
+    // The canvas the editor opens is the panel's, not the wall's. A 800x480
+    // panel at rotation 0 shows landscape, and its ratio is 5:3 — the editor
+    // used to open every panel on the wall's portrait 9:16 default, so boxes
+    // were dragged on a shape the device cannot draw and landed elsewhere on
+    // the frame. Both facts travel in the mount JSON.
+    expect(design).toContain('&quot;orientation&quot;:&quot;landscape&quot;');
+    expect(design).toContain('&quot;panel&quot;:{&quot;width&quot;:800,&quot;height&quot;:480}');
+    expect(design).toContain(`&quot;aspect&quot;:${800 / 480}`);
+
+    // And a stored aspect does not win. On a wall the household may set one —
+    // nobody measured that television. A panel is 800x480, and a canvas saved
+    // at 16:9 (as one arranged before this fix would be) must not be honoured,
+    // or the boxes go back onto a shape the device cannot draw. This is the
+    // assertion that bites: without the fix the page echoes the 1.7778 below.
+    h.db.prepare(`UPDATE screens SET layout_landscape_aspect = 1.7778 WHERE id = ?`).run(id);
+    const withStored = await (await h.call(`${B}/admin/epaper/${id}/design`)).text();
+    expect(withStored).toContain(`&quot;aspect&quot;:${800 / 480}`);
+    expect(withStored).not.toContain('&quot;aspect&quot;:1.7778');
+    h.db.prepare(`UPDATE screens SET layout_landscape_aspect = NULL WHERE id = ?`).run(id);
     // A tag pointing at a 404 would be the same dead editor with extra steps.
     expect((await h.call(`${B}/assets/display-editor.js`)).status).toBe(200);
     expect((await h.call(`${B}/assets/layout-editor.js`)).status).toBe(200);
@@ -251,6 +332,78 @@ describe('the eInk Displays page', () => {
     const detail = await h.call(`${B}/admin/displays/${id}`, { redirect: 'manual' });
     expect(detail.status).toBe(302);
     expect(detail.headers.get('location')).toBe(`/admin/epaper/${encodeURIComponent(id)}/design`);
+  });
+
+  it('previews an unsaved canvas from what the editor posts, not what is stored', async () => {
+    const h = await harness();
+    await h.post(`${B}/admin/epaper`, { name: 'Study', preset: 'seeed-7in5', rotation: '0' });
+    const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
+
+    const png = async (response: Response): Promise<Uint8Array> => bytesOf(response);
+    const preview = (widgets: unknown): Promise<Response> =>
+      h.call(`${B}/admin/epaper/${id}/preview.png`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ widgets }),
+      });
+
+    // The arrange area draws through this: the boxes it has on screen now,
+    // rendered by the panel's own renderer rather than by the wall's.
+    const one = await preview([
+      { id: 'w1', type: 'clock', x: 0.05, y: 0.05, w: 0.4, h: 0.3, z: 0 },
+    ]);
+    expect(one.status).toBe(200);
+    expect(one.headers.get('content-type')).toBe('image/png');
+    // Read each body once — a Response body is a stream, not a buffer.
+    const oneBytes = await png(one);
+    expect([...oneBytes.slice(0, 8)]).toEqual(PNG_SIGNATURE);
+
+    // Moving the box changes the frame — the whole point of a live preview.
+    const moved = await preview([
+      { id: 'w1', type: 'clock', x: 0.5, y: 0.5, w: 0.4, h: 0.3, z: 0 },
+    ]);
+    const movedBytes = await png(moved);
+    expect([...movedBytes]).not.toEqual([...oneBytes]);
+
+    // …and it changes in the direction it was dragged. A frame that merely
+    // differs would satisfy the line above while drawing the widget anywhere;
+    // this decodes the ink and holds it to the box the household posted.
+    const first = inkBounds(oneBytes);
+    const second = inkBounds(movedBytes);
+    for (const [box, ink] of [
+      [{ x: 0.05, y: 0.05, w: 0.4, h: 0.3 }, first],
+      [{ x: 0.5, y: 0.5, w: 0.4, h: 0.3 }, second],
+    ] as const) {
+      expect(ink.pixels).toBeGreaterThan(0);
+      // Inside the box, allowing a pixel of rounding at each edge.
+      expect(ink.x).toBeGreaterThanOrEqual(box.x - 0.01);
+      expect(ink.y).toBeGreaterThanOrEqual(box.y - 0.01);
+      expect(ink.x + ink.w).toBeLessThanOrEqual(box.x + box.w + 0.01);
+      expect(ink.y + ink.h).toBeLessThanOrEqual(box.y + box.h + 0.01);
+    }
+    // Nothing else is on the canvas, so the second frame's ink is strictly
+    // lower and further right — the drag, measured rather than assumed.
+    expect(second.x).toBeGreaterThan(first.x);
+    expect(second.y).toBeGreaterThan(first.y);
+
+    // And none of it is stored: the panel's saved canvas is still empty, so
+    // the saved preview is the built-in layout rather than either of those.
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM layout_widgets WHERE screen_id = ?`).get(id)).toEqual({ n: 0 });
+
+    // Rule five: the same widget schema the save path uses, so a preview can
+    // express nothing a save could not.
+    const bad = await preview([{ id: 'w1', type: 'not-a-widget', x: 0.1, y: 0.1, w: 0.5, h: 0.5, z: 0 }]);
+    expect(bad.status).toBe(400);
+    const offCanvas = await preview([{ id: 'w1', type: 'clock', x: 9, y: 0.1, w: 0.5, h: 0.5, z: 0 }]);
+    expect(offCanvas.status).toBe(400);
+
+    // An id that is not a panel leaks nothing.
+    const nowhere = await h.call(`${B}/admin/epaper/nope/preview.png`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ widgets: [] }),
+    });
+    expect(nowhere.status).toBe(404);
   });
 
   it('keeps e-paper panels out of the browser Displays list', async () => {
