@@ -1265,7 +1265,7 @@ function boot(): void {
 
   function buildCalendarConfig(widget: Widget, cfg: Record<string, unknown>): void {
     const currentMode = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : 'month';
-    const modeField = cfgField('Show as');
+    const modeField = cfgField('Style');
     const modeSelect = document.createElement('select');
     for (const [value, label] of [
       ['month', 'Month grid'],
