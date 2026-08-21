@@ -2,12 +2,14 @@
  * The display editor's page chrome — the second (and smaller) of the admin's
  * client-side apps, beside `layout-editor.ts`.
  *
- * Vanilla TS, ES2019, same-origin: it ships in the image and loads only on the
- * per-display admin page. The server renders the two-pane shell — a sticky live
- * preview (the layout editor) on the left, tabbed settings on the right — and
- * one sticky save bar at the foot. This wires that chrome:
+ * Vanilla TS, ES2019, same-origin: it ships in the image and loads on the two
+ * admin pages that host the layout editor — the per-display page and the
+ * e-paper design page. The server renders the shell (on the display page a
+ * two-pane layout with tabbed settings; on the e-paper page the preview and
+ * the editor alone) and one sticky save bar at the foot. This wires that
+ * chrome:
  *
- *   - the Look / Content / Device tabs,
+ *   - the Look / Content / Device tabs (when the page has them),
  *   - the "?" help popovers that replaced the old prose paragraphs, and
  *   - the single save action.
  *
@@ -16,6 +18,16 @@
  * `window` (`mwEditor`); this bar saves the layout through it, then submits the
  * settings form — so the canvas and every tab persist together. Dirty state is
  * the union of the editor's and the form's, and the leave-guard keys off it.
+ *
+ * The settings form is optional on purpose: the e-paper design page has no
+ * settings beside the canvas, so there the save bar saves the layout and
+ * reloads — the same clean-slate the display page gets from its settings
+ * POST's redirect back. The savebar is the marker that this is an editor page;
+ * a page with neither savebar nor form gets none of this. Losing that
+ * distinction is exactly how the e-paper editor silently broke once: the
+ * mount used to emit its own script tag, the two-pane redesign moved script
+ * emission into the display page, and the other host page kept the mount but
+ * lost the editor.
  */
 
 interface EditorBridge {
@@ -30,8 +42,9 @@ type EditorWindow = typeof window & {
 function boot(): void {
   const form = document.querySelector<HTMLFormElement>('form[data-settings]');
   const bar = document.getElementById('savebar');
-  // Both are rendered together; without them this is not the editor page.
-  if (form === null || bar === null) return;
+  // The save bar marks an editor page; the settings form is the display
+  // page's extra (the e-paper design page has none).
+  if (bar === null) return;
 
   // ---- tabs -------------------------------------------------------------
 
@@ -103,8 +116,8 @@ function boot(): void {
     settingsDirty = true;
     refresh();
   };
-  form.addEventListener('input', markSettings);
-  form.addEventListener('change', markSettings);
+  form?.addEventListener('input', markSettings);
+  form?.addEventListener('change', markSettings);
 
   const editor = (): EditorBridge | undefined => (window as EditorWindow).mwEditor;
 
@@ -123,9 +136,11 @@ function boot(): void {
           return;
         }
         // Then persist the settings. The POST redirects back to this page, which
-        // reloads the freshly saved canvas and settings — a clean slate.
+        // reloads the freshly saved canvas and settings — a clean slate. With no
+        // settings form (the e-paper page), a plain reload is that clean slate.
         navigating = true;
-        form.submit();
+        if (form !== null) form.submit();
+        else window.location.reload();
       })();
     });
   }
