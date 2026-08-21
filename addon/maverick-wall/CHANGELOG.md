@@ -14,6 +14,21 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Shift panel's run counter, third time. 0.41.0 got it from "Day 2 of 3" to
+"Day 8 of 9" on a fortnight of straights — closer, and still wrong.
+
+Maverick only kept a week of past events. It reads a work-calendar rota by
+matching event titles, so a run could only ever be followed back seven days
+however far the rest of it looked: seven days of history and one of future,
+counted exactly. It now keeps three months either side of today, the same
+distance the run is worked out over, and day thirteen of fourteen reads
+"Day 13 of 14 · 1 more".
+
+Your calendars will fill in the older days on their next sync, within the hour.
+Nothing is fetched that was not already being downloaded.
+
 ## 0.41.0
 
 The Shift panel's run counter, properly this time. 0.40.0 was meant to fix it

@@ -34,8 +34,24 @@ afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
-const dayOffset = (days: number): string =>
-  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+/**
+ * A date `days` from today, **in the household's zone**.
+ *
+ * Not `toISOString()`, which is UTC. The manifest's `today` comes from
+ * `localDateOf(now, household.timezone)`, and this household is in London — so
+ * between 23:00 and midnight UTC in summer the two disagree by a day and the
+ * fixture seeds a run the app is not looking at. The first version of this test
+ * used UTC, passed at 21:00, and failed at 23:03: the wall-shows-the-wrong-day
+ * bug, in a test written to catch a different one.
+ */
+const ZONE = 'Europe/London';
+const dayOffset = (days: number): string => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(Date.now() + days * 86_400_000));
+  const find = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
+  return `${find('year')}-${find('month')}-${find('day')}`;
+};
 
 async function harness() {
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-run-'));
