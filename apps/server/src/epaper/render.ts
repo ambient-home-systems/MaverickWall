@@ -12,6 +12,8 @@
  * Rotation for a sideways-mounted panel happens later, when the frame is
  * packed, so this never has to think about it.
  */
+import type { CivilDate } from '@maverick-wall/core';
+
 import { ditherRect } from './dither.js';
 import { drawText, measureText, type TextOptions } from './font.js';
 import { Framebuffer } from './framebuffer.js';
@@ -122,14 +124,142 @@ export function drawAgendaBox(fb: Framebuffer, model: EpaperModel, box: Box, hea
   }
 }
 
+/**
+ * The upcoming list a calendar widget draws — today and the days after it.
+ *
+ * This is what "Upcoming list" on the designer promises, and until now the
+ * panel answered it with *today's* agenda: a household with nothing on today
+ * saw an empty box under a heading that said more was coming. It honours the
+ * two options the wall honours, read the same way — a set of source ids to
+ * keep (empty means all) and how many events in total.
+ */
+export function drawUpcomingBox(
+  fb: Framebuffer,
+  model: EpaperModel,
+  box: Box,
+  options: { readonly calendars?: readonly string[]; readonly count?: number } = {},
+): void {
+  const keep = options.calendars ?? [];
+  const limit = options.count !== undefined && options.count >= 1 ? Math.min(50, Math.trunc(options.count)) : 12;
+  const rows = model.upcoming
+    .filter((item) => keep.length === 0 || keep.includes(item.sourceId))
+    .slice(0, limit);
+
+  const right = box.x + box.w;
+  const bottom = box.y + box.h;
+  const timeColW = measureText('00:00', { scale: 2 }) + 12;
+  let y = box.y;
+  if (rows.length === 0) {
+    drawText(fb, box.x, y, 'Nothing coming up', { scale: 2 });
+    return;
+  }
+  let heading: CivilDate | undefined;
+  for (const item of rows) {
+    // A date rule where the day turns over, so a list spanning days reads as
+    // days rather than as one run of times.
+    if (item.date !== heading) {
+      if (y + 12 > bottom) break;
+      const label = item.isToday ? 'TODAY' : dayLabel(item.date);
+      drawText(fb, box.x, y, label, { scale: 1, tracking: 1 });
+      fb.hLine(box.x, right, y + 10, true);
+      y += 16;
+      heading = item.date;
+    }
+    if (y + 16 > bottom) break;
+    if (item.allDay) fb.strokeRect(box.x, y + 2, 12, 12, true);
+    else fb.fillRect(box.x, y + 2, 12, 12, true);
+    let titleX = box.x + 20;
+    if (!item.allDay) {
+      drawText(fb, box.x + 20, y, item.time, { scale: 2 });
+      titleX = box.x + 20 + timeColW;
+    }
+    drawText(fb, titleX, y, fit(asciiTitle(item.title), right - titleX, { scale: 2 }), { scale: 2 });
+    y += 30;
+  }
+}
+
+/**
+ * The coming seven days as columns — the widget's "Week columns".
+ *
+ * Built from the grid row that contains today, so it follows the household's
+ * week start exactly as the month does rather than inventing a second answer
+ * to "when does a week begin".
+ */
+export function drawWeekBox(fb: Framebuffer, model: EpaperModel, box: Box): void {
+  const row = model.weeks.find((week) => week.some((cell) => cell.isToday)) ?? model.weeks[0];
+  if (row === undefined) return;
+  const colW = Math.floor(box.w / 7);
+  const headH = 26;
+  for (let c = 0; c < 7; c++) {
+    const cell = row[c]!;
+    const x = box.x + c * colW;
+    // The day's head: its letter and its number, inverted for today so the
+    // column somebody is standing in front of is findable across a kitchen.
+    if (cell.isToday) fb.fillRect(x, box.y, colW, headH, true);
+    const label = `${model.weekdayLabels[c] ?? ''} ${cell.day}`;
+    const lw = measureText(label, { scale: 2 });
+    drawText(fb, x + Math.max(2, Math.floor((colW - lw) / 2)), box.y + 4, label, {
+      scale: 2,
+      ink: !cell.isToday,
+    });
+    fb.strokeRect(x, box.y, colW, box.h, true);
+
+    let y = box.y + headH + 4;
+    let drawn = 0;
+    for (const title of cell.titles) {
+      if (y + 8 > box.y + box.h - 2) break;
+      const line = fit(asciiTitle(title), colW - 6, { scale: 1 });
+      if (line === '') break;
+      drawText(fb, x + 3, y, line, { scale: 1 });
+      y += 11;
+      drawn++;
+    }
+    const rest = cell.eventCount - drawn;
+    if (rest > 0 && y + 8 <= box.y + box.h - 2) drawText(fb, x + 3, y, `+${rest}`, { scale: 1 });
+  }
+}
+
+/** `Mon 4` for a list's date rule, in the same en-GB the header uses. */
+function dayLabel(date: CivilDate): string {
+  const [y, m, d] = date.split('-').map((n) => Number.parseInt(n, 10));
+  const at = new Date(Date.UTC(y!, (m ?? 1) - 1, d ?? 1, 12));
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
+    .format(at)
+    .toUpperCase();
+}
+
+/** How a month grid says what is on a day. */
+export interface MonthOptions {
+  /**
+   * Name the events in each cell instead of shading it. The wall calls these
+   * pills; at 1-bit they are truncated lines under the day number, because a
+   * rounded chip costs the two pixels the words need. Dropped automatically
+   * when a cell is too small to hold a legible word — a panel that answers a
+   * setting with unreadable smudge is worse than one that answers with dots.
+   */
+  readonly pills?: boolean;
+}
+
+/**
+ * The smallest cell that can hold a labelled event under its day number:
+ * the number's own line plus one 8px row, with a pixel either side.
+ */
+const PILL_MIN_CELL = 34;
+
 /** The rolling month grid within a box. */
-export function drawMonthBox(fb: Framebuffer, model: EpaperModel, box: Box): void {
+export function drawMonthBox(fb: Framebuffer, model: EpaperModel, box: Box, options: MonthOptions = {}): void {
   const weeks = model.weeks.length;
   const labelH = 22;
   const gridTop = box.y + labelH;
   const cell = Math.max(12, Math.floor(Math.min(box.w / 7, (box.y + box.h - gridTop) / weeks)));
   const gridW = cell * 7;
   const gx = box.x + Math.floor((box.w - gridW) / 2);
+  const pills = options.pills === true && cell >= PILL_MIN_CELL;
+  // Deliberately not conditioned on `pills`: the day number is the thing a
+  // person scans for, and having it change size because a household ticked
+  // "labelled pills" is a surprise. It also keeps the setting honest — with
+  // nothing on any day, dots and pills draw the identical frame, so the only
+  // thing the switch can change is whether the events are named.
   const numScale = cell >= 34 ? 2 : 1;
 
   // Weekday labels, centred over their columns.
@@ -146,7 +276,10 @@ export function drawMonthBox(fb: Framebuffer, model: EpaperModel, box: Box): voi
       const y = gridTop + r * cell;
       if (item.isToday) {
         fb.fillRect(x, y, cell, cell, true); // the lit cell
-      } else {
+      } else if (!pills) {
+        // Shading is the *unlabelled* answer to "how busy is this day". With
+        // the names drawn in the cell they are the density, and dither behind
+        // them is ink under ink — the thing that makes 1-bit text unreadable.
         const density = densityOf(item);
         if (density > 0) ditherRect(fb, x + 1, y + 1, cell - 2, cell - 2, density);
       }
@@ -159,10 +292,42 @@ export function drawMonthBox(fb: Framebuffer, model: EpaperModel, box: Box): voi
       if (item.isToday) {
         drawText(fb, nx, ny, num, { scale: numScale, ink: false });
       } else {
-        if (densityOf(item) > 0) fb.fillRect(nx - 1, ny - 1, measureText(num, { scale: numScale }) + 2, 8 * numScale + 2, false);
+        if (!pills && densityOf(item) > 0) fb.fillRect(nx - 1, ny - 1, measureText(num, { scale: numScale }) + 2, 8 * numScale + 2, false);
         drawText(fb, nx, ny, num, { scale: numScale });
       }
+      // Today's cell is filled, so its names are knocked out of it exactly as
+      // its number is. Drawn in ink they were black on black — invisible on
+      // the one cell somebody actually walks over to read.
+      if (pills) drawCellTitles(fb, item, { x, y, w: cell, h: cell }, ny + 8 * numScale + 2, !item.isToday);
     }
+  }
+}
+
+/**
+ * The event names inside one month cell, under its day number.
+ *
+ * Each line is cleared behind before it is drawn, because the cell it sits in
+ * may be dithered or filled — ink on ink is a smudge, and the whole point of
+ * asking for pills is to read the words.
+ */
+function drawCellTitles(fb: Framebuffer, item: EpaperGridCell, cell: Box, top: number, ink: boolean): void {
+  const lineH = 10;
+  const inset = 3;
+  const width = cell.w - inset * 2;
+  let y = top;
+  let drawn = 0;
+  for (const title of item.titles) {
+    if (y + 8 > cell.y + cell.h - 2) break;
+    const line = fit(asciiTitle(title), width, { scale: 1 });
+    if (line === '') break;
+    drawText(fb, cell.x + inset, y, line, { scale: 1, ink });
+    y += lineH;
+    drawn++;
+  }
+  // Say what did not fit rather than silently showing three of seven.
+  const rest = item.eventCount - drawn;
+  if (rest > 0 && y + 8 <= cell.y + cell.h - 2) {
+    drawText(fb, cell.x + inset, y, fit(`+${rest}`, width, { scale: 1 }), { scale: 1, ink });
   }
 }
 

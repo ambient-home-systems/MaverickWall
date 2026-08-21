@@ -36,6 +36,38 @@ export interface EpaperAgendaItem {
   readonly allDay: boolean;
 }
 
+/**
+ * One row of the *upcoming* list a calendar widget can draw — today and the
+ * days after it, unfiltered and only loosely capped.
+ *
+ * `agenda` above is today's, already cut to the household's density for the
+ * built-in layout. A widget cannot select from that: filtering six rows by
+ * calendar leaves fewer than six, and a household asking for twelve events
+ * would never see more than six. So the widget's source is its own list,
+ * carrying the source id it filters on and the date it groups under, and the
+ * *renderer* does the cutting.
+ */
+export interface EpaperUpcomingItem {
+  readonly date: CivilDate;
+  /** `HH:MM`, or empty for an all-day entry. */
+  readonly time: string;
+  readonly title: string;
+  readonly allDay: boolean;
+  /** Which calendar it came from, for the widget's "calendars to show". */
+  readonly sourceId: string;
+  readonly isToday: boolean;
+}
+
+/**
+ * The most upcoming rows the model carries. Generous rather than exact: the
+ * widget's own cap is what a household set, and this only bounds the frame's
+ * working set. Fifty is the largest count the editor will store.
+ */
+export const EPAPER_UPCOMING_LIMIT = 60;
+
+/** The most event labels a grid cell carries, for the labelled-pill month. */
+export const EPAPER_CELL_TITLES = 4;
+
 export interface EpaperGridCell {
   /** Day-of-month number, 1–31. */
   readonly day: number;
@@ -45,6 +77,12 @@ export interface EpaperGridCell {
   readonly inWindow: boolean;
   /** How many events fall on this day, for density shading. */
   readonly eventCount: number;
+  /**
+   * The first few titles on this day, for the labelled-pill month and the week
+   * columns. Density shading only ever needed the count; a cell that names what
+   * is on it needs the names, and a panel has no second request to make.
+   */
+  readonly titles: readonly string[];
 }
 
 export interface EpaperShiftLine {
@@ -72,6 +110,8 @@ export interface EpaperModel {
   readonly agenda: readonly EpaperAgendaItem[];
   /** How many of today's events did not fit, so the renderer can say "+3 more". */
   readonly agendaOverflow: number;
+  /** Today and the days after it, for a calendar widget's upcoming list. */
+  readonly upcoming: readonly EpaperUpcomingItem[];
   /** Weekday labels for the grid header, in the household's week order. */
   readonly weekdayLabels: readonly string[];
   /** Rows of exactly seven cells, in the household's week order. */
@@ -150,6 +190,25 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
   }));
   const agendaOverflow = Math.max(0, todaysEvents.length - agenda.length);
 
+  // The widget's source: today and the days after it, in order, unfiltered.
+  // Deliberately not the capped `agenda` above — see `EpaperUpcomingItem`.
+  const upcoming: EpaperUpcomingItem[] = [];
+  for (const day of manifest.days) {
+    if (day.date < today) continue;
+    if (upcoming.length >= EPAPER_UPCOMING_LIMIT) break;
+    for (const event of [...day.events].sort(agendaOrder)) {
+      if (upcoming.length >= EPAPER_UPCOMING_LIMIT) break;
+      upcoming.push({
+        date: day.date,
+        time: event.allDay ? '' : clockLabel(event.startsAt, timezone, clock24),
+        title: event.title,
+        allDay: event.allDay,
+        sourceId: event.sourceId,
+        isToday: day.date === today,
+      });
+    }
+  }
+
   // Today's shifts, one line per person who has one. `shifts` is already
   // resolved per person in the manifest, so this only formats it for 1-bit.
   // A hyphen, not the wall's en dash: the bitmap font is ASCII, and anything
@@ -182,6 +241,10 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
         isToday: date === today,
         inWindow: day !== undefined,
         eventCount: day?.events.length ?? 0,
+        titles: [...(day?.events ?? [])]
+          .sort(agendaOrder)
+          .slice(0, EPAPER_CELL_TITLES)
+          .map((event) => event.title),
       });
     }
     weeks.push(row);
@@ -194,6 +257,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
     todayShifts,
     agenda,
     agendaOverflow,
+    upcoming,
     weekdayLabels: [...(weekStart === 'monday' ? WEEKDAY_LABELS_MONDAY : WEEKDAY_LABELS_SUNDAY)],
     weeks,
     timezone,
