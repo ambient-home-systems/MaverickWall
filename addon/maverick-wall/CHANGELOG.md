@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.41.1
 
 The Shift panel's run counter, third time. 0.41.0 got it from "Day 2 of 3" to
 "Day 8 of 9" on a fortnight of straights — closer, and still wrong.
