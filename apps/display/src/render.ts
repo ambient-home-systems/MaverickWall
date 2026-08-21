@@ -785,6 +785,10 @@ function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
 function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
   const c = widgetConfig(config);
   const mode = c['mode'];
+  // Named before the `!== 'list'` fallthrough below, which would otherwise draw
+  // a month grid for either of them — the 0.33.2 bug, one mode along.
+  if (mode === 'skyweek') return renderSkyWeek(model, config);
+  if (mode === 'skymonth') return renderSkyMonth(model, config);
   if (mode === 'week') return renderWeekColumns(model, config);
   if (mode !== 'list') {
     return renderHorizon(model, {
@@ -1114,6 +1118,106 @@ export function renderFreeform(
  */
 function calendarGridFills(config: unknown): boolean {
   return widgetConfig(config)['mode'] !== 'list';
+}
+
+/* ------------------------------------------------------- SKY (dense) ---- */
+
+/**
+ * The dense styles: the same week and month, drawn to spend every pixel.
+ *
+ * They are a *density* choice rather than a different calendar — same cells,
+ * same colours, same week start — so they read the household's settings
+ * identically and differ only in what they give up: the gaps between cells, the
+ * rounded cards, and the breathing room inside them. A wall bolted to a kitchen
+ * has a fixed number of pixels and no scrollbar, so trading that space for two
+ * more events a day is the whole point.
+ *
+ * Dividers are hairlines *between* cells rather than gaps around them, which is
+ * what actually reclaims the room: a 0.35rem gap on a seven-column grid spends
+ * six gaps of it on nothing, twice over in a six-row month.
+ */
+function skyCalendars(config: unknown): (sourceId: string) => boolean {
+  const calendars = configStrings(widgetConfig(config)['calendars']);
+  return (sourceId: string): boolean =>
+    calendars.length === 0 || calendars.includes(sourceId);
+}
+
+function renderSkyWeek(model: DisplayModel, config: unknown): HTMLElement {
+  const keep = skyCalendars(config);
+  const week = model.horizon[0] ?? [];
+  const section = el('section', 'sky skyweek');
+  const grid = el('div', 'sk-grid');
+  for (const cell of week) {
+    const classes = ['sk-col'];
+    if (cell.isToday) classes.push('is-today');
+    if (cell.isPast) classes.push('dim');
+    const col = el('div', classes.join(' '));
+
+    const head = el('div', 'sk-head');
+    head.appendChild(el('span', 'sk-wd', cell.weekday));
+    head.appendChild(el('span', 'sk-num', cell.dayNumber));
+    col.appendChild(head);
+
+    const body = el('div', 'sk-body');
+    // All-day first: they belong to the whole column, not to a time in it.
+    const events = cell.events.filter((e) => keep(e.sourceId));
+    for (const ev of [...events.filter((e) => e.allDay), ...events.filter((e) => !e.allDay)]) {
+      const chip = el('div', ev.allDay ? 'sk-ev allday' : 'sk-ev');
+      chip.style.setProperty('--pc', ev.color);
+      // The time above the title rather than beside it: a seventh of a wall is
+      // narrow, and side by side is what left the agenda breaking words.
+      if (!ev.allDay) chip.appendChild(el('span', 'sk-ev-time', ev.time));
+      chip.appendChild(el('span', 'sk-ev-title', ev.title));
+      body.appendChild(chip);
+    }
+    col.appendChild(body);
+    grid.appendChild(col);
+  }
+  section.appendChild(grid);
+  return section;
+}
+
+function renderSkyMonth(model: DisplayModel, config: unknown): HTMLElement {
+  const keep = skyCalendars(config);
+  const section = el('section', 'sky skymonth');
+  const grid = el('div', 'sk-mgrid');
+
+  // The weekday headings come from the first week's own cells, the same way the
+  // quiet month grid does it — so the household's week start has one source.
+  for (const cell of model.horizon[0] ?? []) {
+    grid.appendChild(el('div', 'sk-mhead', cell.weekday));
+  }
+
+  for (const week of model.horizon) {
+    for (const [index, cell] of week.entries()) {
+      const classes = ['sk-cell'];
+      // The row's first cell owns no left hairline. Marked here rather than
+      // matched with `nth-child(7n + 1)`, which only lines up while the heading
+      // row is exactly seven cells — add a week-number column later and every
+      // divider silently shifts by one.
+      if (index === 0) classes.push('row-start');
+      if (cell.isToday) classes.push('is-today');
+      if (cell.isPast) classes.push('dim');
+      if (!cell.inMonth) classes.push('outside');
+      const node = el('div', classes.join(' '));
+      paintShift(node, cell.shiftToken, cell.shiftColor);
+      node.appendChild(el('div', 'sk-mnum', cell.dayNumber));
+
+      const events = cell.events.filter((e) => keep(e.sourceId));
+      if (events.length > 0) {
+        const list = el('div', 'sk-bars');
+        for (const ev of events) {
+          const bar = el('div', ev.allDay ? 'sk-bar allday' : 'sk-bar', ev.title);
+          bar.style.setProperty('--pc', ev.color);
+          list.appendChild(bar);
+        }
+        node.appendChild(list);
+      }
+      grid.appendChild(node);
+    }
+  }
+  section.appendChild(grid);
+  return section;
 }
 
 /**

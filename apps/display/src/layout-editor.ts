@@ -1374,6 +1374,8 @@ function boot(): void {
       ['month', 'Month grid'],
       ['week', 'Week columns'],
       ['list', 'Upcoming list'],
+      ['skyweek', 'Sky week'],
+      ['skymonth', 'Sky month'],
     ] as const) {
       const opt = document.createElement('option');
       opt.value = value;

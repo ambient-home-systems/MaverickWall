@@ -320,7 +320,15 @@ function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string): vo
  */
 function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
   const mode = str(config, 'mode');
-  if (mode === 'week') return drawWeekBox(fb, model, box);
+  /*
+   * `skyweek`/`skymonth` are a browser-side density choice, not a different
+   * calendar: a 1-bit panel is already edge to edge with hairline rules and has
+   * no padding to reclaim. So they draw the same week and month a panel already
+   * draws, named explicitly rather than left to the `!== 'list'` fallthrough —
+   * which is what silently turned every mode into the month grid before 0.33.2,
+   * and would have turned `skyweek` into a month here.
+   */
+  if (mode === 'week' || mode === 'skyweek') return drawWeekBox(fb, model, box);
   if (mode !== 'list') return drawMonthBox(fb, model, box, { pills: str(config, 'cellEvents') === 'pills' });
   const calendars = strings(config, 'calendars');
   const count = num(config, 'count');

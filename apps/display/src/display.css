@@ -688,9 +688,10 @@ body {
    the box and the title wrapper become flex columns; the sections keep their
    own display (the month is a grid, the agenda is a grid) and merely stretch. */
 .fw-fill > .fw-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.fw-fill > .horizon, .fw-fill > .weekcols, .fw-fill > .next,
+.fw-fill > .horizon, .fw-fill > .weekcols, .fw-fill > .next, .fw-fill > .sky,
 .fw-fill > .fw-content > .horizon,
 .fw-fill > .fw-content > .weekcols,
+.fw-fill > .fw-content > .sky,
 .fw-fill > .fw-content > .next { flex: 1 1 auto; min-height: 0; }
 /* The month's rows share the box height: header auto, weeks 1fr, so it fills
    whatever a given month's four-to-six-week shape turns out to be. */
@@ -701,6 +702,115 @@ body {
 }
 .fw-fill .hz-cell { min-height: 0; }
 .fw-fill .weekcols .wc-grid { height: 100%; }
+
+/* ===================================================================== SKY ==
+ *
+ * The dense styles. Same weeks, same colours, same week start as the quiet
+ * ones — the difference is entirely what they stop spending on space.
+ *
+ * The rule that reclaims the room is dividers *between* cells rather than gaps
+ * *around* them: the quiet month grid spends six 0.35rem gaps horizontally and
+ * five more vertically on nothing at all, which on a 1080-wide wall is most of
+ * a column. Here a cell's edge is a hairline it shares with its neighbour, so
+ * the only space not carrying information is one pixel wide.
+ *
+ * Everything is `min-height: 0` and `overflow: hidden` down the whole chain,
+ * because these fill their box by design and a grid item's default minimum is
+ * its content — the same blow-out that cut the agenda's titles off.
+ */
+.sky { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+/* --- sky week: seven columns, edge to edge --- */
+.sk-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 0; height: 100%; min-height: 0;
+  border-top: 1px solid var(--rule);
+}
+.sk-col {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  overflow: hidden; border-left: 1px solid var(--rule);
+}
+.sk-col:first-child { border-left: 0; }
+.sk-col.dim { opacity: 0.55; }
+.sk-head {
+  display: flex; align-items: baseline; gap: 0.3rem;
+  padding: 0.2rem 0.3rem; border-bottom: 1px solid var(--rule);
+}
+.sk-wd {
+  font-family: var(--disp); font-size: 0.95rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+}
+.sk-num { font-family: var(--disp); font-size: 1.6rem; font-weight: 700; line-height: 1; }
+:root[data-theme="almanac"] .sk-num { font-weight: 400; }
+/* Today is the header block itself, not a colour on the text: at this density
+   a tinted word is invisible from across a room and a filled bar is not. */
+.sk-col.is-today .sk-head { background: var(--accent); }
+.sk-col.is-today .sk-wd, .sk-col.is-today .sk-num { color: var(--bg); }
+
+.sk-body {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column; gap: 1px; padding: 1px;
+}
+.sk-ev {
+  background: var(--pc); color: #fff; border-radius: 0.15rem;
+  padding: 0.1rem 0.3rem; min-width: 0; overflow: hidden;
+}
+/* An all-day event is the day's banner: a tinted strip with its colour on the
+   edge, the same grammar the agenda and the quiet month use. */
+.sk-ev.allday {
+  background: transparent; color: var(--ink);
+  border-left: 0.25rem solid var(--pc); border-radius: 0 0.15rem 0.15rem 0;
+}
+.sk-ev-time {
+  display: block; font-family: var(--f-mono);
+  font-size: 0.95rem; line-height: 1.1; opacity: 0.85;
+}
+.sk-ev-title {
+  display: block; font-size: 1.15rem; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* --- sky month: the month, edge to edge --- */
+.sk-mgrid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: auto; grid-auto-rows: 1fr;
+  gap: 0; height: 100%; min-height: 0;
+  flex: 1 1 auto;
+}
+.sk-mhead {
+  font-family: var(--disp); font-size: 0.95rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  padding: 0.15rem 0.3rem; border-bottom: 1px solid var(--rule);
+}
+.sk-cell {
+  min-width: 0; min-height: 0; overflow: hidden;
+  padding: 0.15rem 0.25rem 0;
+  border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  background: transparent;
+}
+.sk-cell.row-start { border-left: 0; }
+.sk-cell.has-shift { background: var(--sc-tint); }
+.sk-cell.dim { opacity: 0.5; }
+.sk-cell.outside .sk-mnum { color: var(--faint); }
+.sk-mnum { font-family: var(--disp); font-size: 1.3rem; font-weight: 700; line-height: 1.1; }
+:root[data-theme="almanac"] .sk-mnum { font-weight: 400; }
+/* Today's number, knocked out of a filled disc. Not an outline on the cell:
+   with no gaps the outline would sit on its neighbours' hairlines and read as
+   a thick rule rather than as a marked day. */
+.sk-cell.is-today .sk-mnum {
+  display: inline-block; background: var(--accent); color: var(--bg);
+  border-radius: 0.2rem; padding: 0 0.28rem;
+}
+.sk-bars { display: flex; flex-direction: column; gap: 1px; margin-top: 0.1rem; min-width: 0; }
+.sk-bar {
+  font-size: 1rem; line-height: 1.2; padding: 0 0.25rem;
+  border-radius: 0.12rem; background: var(--pc); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sk-bar.allday {
+  background: transparent; color: var(--ink);
+  border-left: 0.22rem solid var(--pc); border-radius: 0 0.12rem 0.12rem 0;
+}
 
 /* The week-columns mode: the current Mon–Sun week as vertical day columns. */
 .weekcols { min-height: 0; overflow: hidden; }
