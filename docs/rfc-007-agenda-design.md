@@ -20,8 +20,10 @@ comfortable as they go:
 
 The recommendation is a **design port in four phases**, of which the first is
 contained entirely in `apps/display` with no manifest change and no migration,
-and the second — **a week block, seven days side by side** — is the single
-biggest gap in the product's zoom pyramid today.
+and the second — **a week block, seven days side by side** — is the biggest gap
+in the product's zoom pyramid today. A **phase 0** goes ahead of both: renaming
+the free-form calendar widget's "Show as" control to **"Style"**, which is one
+line and wants doing before the diff that touches that panel for real.
 
 **We copy no code.** That is a design choice and not a legal one; see
 [Attribution](#attribution).
@@ -103,17 +105,27 @@ schema change, no migration.
 ### Tier 2 — real features, worth building
 
 - **Column view — a `week` block.** Seven days side by side, one column each, so
-  a week reads across the wall rather than down it. We have nothing between
-  `next` (a stacked list of the next few days) and `horizon` (six weeks as
-  colour), and this is exactly that missing zoom level. It is also the natural
-  landscape and television layout, where we currently put a list in the left
-  column and have space to spare.
+  a week reads across the wall rather than down it. This is the missing zoom
+  level between `next` (a stacked list of the next few days) and `horizon` (six
+  weeks as colour), and the natural landscape and television layout, where we
+  currently put a list in the left column and have space to spare.
+
+  **Half of this already exists, in the wrong place.** RFC 005 shipped
+  `renderWeekColumns` ([`render.ts`](../apps/display/src/render.ts)) as the
+  `week` mode of the free-form calendar widget — weekday, day number and event
+  pills, drawn off `model.horizon[0]`. So phase 2 is not "build week columns"; it
+  is **promote the renderer to a first-class block in the auto layout, and give
+  it the depth the agenda design calls for** — the date column of tier 1, the
+  minimum-width fallback below, weather, week numbers. That is a smaller and
+  better-founded phase than it looked before somebody read the file.
 
   Their responsive rule is worth copying wholesale as *reasoning*: a day column
   has a minimum readable width, and a card too narrow to give every day that
   much room **falls back to the list layout**. That is the same shape as
   `orientation.ts` — a computed answer from real measurements, not a media query
-  — and it should live beside it as a pure function for the same reason.
+  — and it should live beside it as a pure function for the same reason. The
+  free-form widget needs it too: a week widget dragged narrow today draws seven
+  unreadable slivers rather than falling back to anything.
 
 - **Weather beside the date, not in its own strip.** The weather module already
   supplies the data. Putting the day's high/low against the date in the agenda
@@ -160,13 +172,18 @@ phase 1.
 
 ## Phases
 
+**Phase 0 — "Show as" becomes "Style".** One line in the free-form editor, no
+dependency on anything below, and it wants doing *before* phase 2 rather than
+after. Its own section follows.
+
 **Phase 1 — the tokens and the day group.** Date column, accent rule,
 separators, progress bar, today indicator, empty day, multi-day position. All
 inside `apps/display`. No server change.
 
 **Phase 2 — the `week` block.** A new key in `DisplayBlock` alongside `now`,
-`weather`, `home`, `next`, `horizon`. Two consequences fall out of the existing
-model and neither is optional:
+`weather`, `home`, `next`, `horizon`, reusing and deepening the existing
+`renderWeekColumns`. Two consequences fall out of the existing model and neither
+is optional:
 
 - The order is stored per household (`display_blocks`, default
   `now,next,horizon`), so **a block that did not exist when they last saved can
@@ -185,6 +202,72 @@ change, a settings control for where the household wants it.
 
 Phases 1 and 2 are where nearly all the visual payoff is. 3 and 4 are small and
 can slip without hurting anything.
+
+## Phase 0 — "Show as" becomes "Style"
+
+The free-form calendar widget's presentation control is labelled **"Show as"**
+([`layout-editor.ts`](../apps/display/src/layout-editor.ts), `buildCalendarConfig`)
+and offers *Month grid / Week columns / Upcoming list*. It becomes **"Style"**.
+
+**Why, beyond preference.** The three options are the same events at three
+presentations, so the control belongs with the other presentation controls in
+that panel — Corners, Drop shadow, Background colour — rather than reading as a
+content filter, which is what "Show as" sits next to ("Calendars to show",
+"Readings to show", "Events in a day"). One word also survives a narrow config
+panel where a two-word phrase wraps. And it generalises: the moment a second
+widget grows a presentation choice, "Style" is the label it will want, and two
+widgets calling the same idea two different things is the kind of drift that is
+free to prevent now and annoying to unpick later.
+
+The counter-argument, stated so it is not rediscovered: every other label in
+that panel is a plain-language phrase rather than a noun, and "Style" is the
+first abstraction among them. That is a real cost and it is accepted — the
+grouping argument wins, because a household scanning the panel is looking for
+*where the appearance controls are*, not reading it as prose.
+
+**Scope: the visible label only. The stored key stays `mode`.**
+
+This is the part that matters and the part that is easy to get wrong. `mode` is
+persisted inside `household_settings.layout_widgets`, in the JSON of every
+canvas any household has already arranged. Renaming the key would mean:
+
+- a migration that rewrites JSON blobs — and this repository has already learned
+  what a generated table-recreate can do to data that looked fine
+  (`0009`, and the reason is written in the file);
+- `widgetConfigBody` (`apps/server/src/api/widget-schema.ts:42`,
+  `mode: z.enum(['month','week','list']).optional()`) accepting both spellings
+  for a release, or every existing canvas silently falling back to `month` —
+  a wall that changes overnight for no reason the household can see;
+- the same widening in the epaper widget reader
+  (`apps/server/src/epaper/widgets.ts:299` reads `str(config, 'mode')`) and in
+  `templates.ts`, which validates a gallery template through the same schema.
+
+Three files and a migration, for a key nobody sees. **Not worth it.** The label
+is the product surface; the key is an implementation detail that is already
+correct. `corners` and `cellEvents` set the same precedent in that panel —
+`'month'` and `'square'` are stored as *absence*, and the stored vocabulary has
+never had to match the printed one.
+
+**The change, in full:**
+
+- `layout-editor.ts` — `cfgField('Show as')` becomes `cfgField('Style')`. One
+  line. The option labels are unchanged.
+- Grep for the string first; today it appears in exactly two tracked places,
+  the other being RFC 005's Part C, which describes the control as built.
+- **RFC 005 is not rewritten.** It is an as-built record of a shipped decision,
+  and this project's convention is an `> **Update —**` block at the top rather
+  than editing the body under somebody who has read it. One line there, pointing
+  here.
+- No test asserts the label today. Whether one should is a fair question and the
+  answer is probably no — a census test that pins UI copy makes every future
+  wording change a two-file edit, and the label is not a security property the
+  way the script-set census in the wizard is.
+
+**Why before phase 2.** Phase 2 promotes `week` out of this widget and into the
+block list, which means touching `buildCalendarConfig` and its neighbours
+anyway. Doing the rename first means the diff that adds a block is not also a
+diff that renames a label, and a one-line cosmetic change does not end up
+buried in a layout change where nobody reviews it.
 
 ## Verification
 
