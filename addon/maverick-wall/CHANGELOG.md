@@ -14,6 +14,14 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Work schedules on a calendar are now a setting. Every Calendar style that draws
+the rota — the month grid, Sky month and the upcoming list — has a **Show work
+schedules** switch, and the colour key under the month goes with it, since a key
+to colours that are not there explains nothing. It is on unless you turn it off,
+so nothing changes on a wall you have already arranged.
+
 ## 0.38.0
 
 Two new Calendar styles, **Sky week** and **Sky month**, for when you want the

@@ -748,3 +748,37 @@ describe('what a horizon cell carries', () => {
     expect(cell?.events[0]?.time).toBe('All day');
   });
 });
+
+/*
+ * Turning the rota's colours off is a widget choice, so there is nothing to
+ * assert here — the model always carries the shifts and the renderer decides.
+ * What is worth pinning is the shape the renderer is handed, because a horizon
+ * cell flattens a day's shifts to *one* and that is the whole of the two-person
+ * limitation: `shifts[0]` wins and nothing downstream can see the rest.
+ */
+describe('a day with more than one person on a rota', () => {
+  const two = {
+    date: '2026-07-15',
+    events: [],
+    shifts: [
+      {
+        key: 'day', label: 'Day', shortCode: 'D', colorToken: '--s-day',
+        isWorking: true, source: 'pattern',
+        personId: 'amy', personName: 'Amy', personColor: '#4C7FD1', personAvatarUrl: null,
+      },
+      {
+        key: 'night', label: 'Nights', shortCode: 'N', colorToken: '--s-night',
+        isWorking: true, source: 'pattern',
+        personId: 'ben', personName: 'Ben', personColor: '#C05C7E', personAvatarUrl: null,
+      },
+    ],
+  } as unknown as ManifestDay;
+
+  it('keeps both on the day model, in the order the server sorted them', () => {
+    // The agenda could show both; only the month grid cannot. Asserting this
+    // separately is what stops a future "simplification" dropping the second
+    // person at the source, where nothing could get it back.
+    const built = model([two]);
+    expect(built.today?.shifts.map((s) => s.personName)).toEqual(['Amy', 'Ben']);
+  });
+});
