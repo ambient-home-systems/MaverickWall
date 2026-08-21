@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.33.0
 
 The settings are usable on a phone. Every page used to open with a block of
 eleven navigation buttons filling half the screen before anything you came to
