@@ -14,6 +14,19 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The settings are usable on a phone. Every page used to open with a block of
+eleven navigation buttons filling half the screen before anything you came to
+read — ungrouped, and back again on every tap — while sign-out and the
+light/dark switch were not reachable at all.
+
+There is a menu button in the top bar instead. It stays put as you scroll, so
+the navigation is one tap away wherever you are on a page, and it opens the
+same drawer you get on a computer: the sections named, the buttons big enough
+to hit, sign-out and the theme switch where they belong. Choosing somewhere
+closes it.
+
 ## 0.32.4
 
 eInk panels draw their widgets properly now. The clock could lose its last
