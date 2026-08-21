@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.40.0
 
 The Shift panel now says where you really are in a run. On a fortnight of
 straights, day thirteen said **"Day 2 of 3"** — and it said something like that
