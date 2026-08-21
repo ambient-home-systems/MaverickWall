@@ -14,6 +14,22 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The upcoming list on your wall reads better from across the room.
+
+Each date now shows its month under the day number, so a row you glance at a
+fortnight out tells you what it is without counting. Every event carries a thin
+line in its calendar's colour, which is the quickest way to see whose it is
+without reading a word — all-day events had one before, but always in the same
+colour rather than the calendar's own.
+
+An event that is happening right now shows how far through it is, so you can
+tell at a glance whether you have time. An event that runs over several days
+says which day you are on — "Day 2 of 4" — instead of leaving you to work it
+out. And a day with nothing on it now says so, rather than showing a dash that
+could just as easily mean the wall had failed to draw.
+
 ## 0.33.2
 
 The Calendar options on an eInk panel now do what they say. Every one of them

@@ -519,6 +519,17 @@ body {
 }
 .dr-num { font-family: var(--disp); font-size: 3.1rem; font-weight: 700; line-height: 0.95; }
 :root[data-theme="almanac"] .dr-num { font-weight: 400; }
+.dr-mon {
+  font-family: var(--disp);
+  font-size: 1.3rem; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted); margin-top: 0.15rem;
+}
+
+/* Today is the row somebody walked over to read. The marker is on the date
+   column rather than the whole row, because the row's left edge already
+   belongs to the rota and two rules on one edge read as one thick rule. */
+.day-row.is-today .dr-num { color: var(--accent); }
+.day-row.is-today .dr-dow { color: var(--accent); }
 .dr-shift {
   font-size: 1.1rem; letter-spacing: 0.13em; text-transform: uppercase;
   color: var(--sc); margin-top: 0.3rem; font-weight: 600;
@@ -529,18 +540,46 @@ body {
 }
 
 .dr-events { display: grid; gap: 0.5rem; align-content: center; }
-.dr-ev { display: grid; grid-template-columns: 8rem 1fr; gap: 1.2rem; align-items: baseline; }
+.dr-ev {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.35rem 1.2rem;
+  align-items: baseline;
+  /* The calendar's colour, on every event. `--ec` is set per event in the
+     renderer; the fallback keeps a row drawn from a manifest older than this
+     bundle looking deliberate rather than uncoloured. */
+  border-left: 0.3rem solid var(--ec, var(--accent));
+  padding-left: 0.9rem;
+}
 .dr-ev-time {
   font-family: var(--f-mono);
   font-size: 1.5rem; color: var(--muted); text-align: right; letter-spacing: -0.02em;
 }
 .dr-ev-title { font-size: 1.95rem; line-height: 1.2; }
-.dr-ev.allday .dr-ev-title {
-  font-weight: 600;
-  border-left: 0.3rem solid var(--accent);
-  padding-left: 0.9rem;
-  grid-column: 1 / -1;
+.dr-ev.allday .dr-ev-title { font-weight: 600; grid-column: 1 / -1; }
+
+/* "Day 2 of 4". Under the title, in the title's column, so it reads as part
+   of the event rather than as another event. */
+.dr-ev-span {
+  grid-column: 2;
+  font-family: var(--f-mono);
+  font-size: 1.15rem; letter-spacing: 0.06em; color: var(--muted);
 }
+.dr-ev.allday .dr-ev-span { grid-column: 1 / -1; }
+
+/* How much of a running event is left. Only today's events ever carry one —
+   the viewmodel leaves `progress` absent otherwise — so this is at most a
+   handful of bars on the wall at a time, which is what keeps it a signal. */
+.dr-ev-bar {
+  grid-column: 2;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--rule);
+  overflow: hidden;
+}
+.dr-ev.allday .dr-ev-bar { grid-column: 1 / -1; }
+.dr-ev-bar-fill { height: 100%; background: var(--ec, var(--accent)); }
+
 .dr-empty { font-size: 1.7rem; color: var(--faint); font-style: italic; }
 
 /* --- BLOCK 3 — HORIZON ------------------------------------------------ */
