@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.33.2
 
 The Calendar options on an eInk panel now do what they say. Every one of them
 was ignored: whichever of Month grid, Week columns or Upcoming list you picked,
