@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.32.2
 
 Reset on an eInk panel now does what it says. Pressing Reset in the panel's
 layout editor used to replace the arrangement with the wall calendar's layout
