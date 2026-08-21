@@ -37,6 +37,12 @@ step indicator, the same floating-label fields, and error messages in the
 same easy-to-spot colour blocks. They still work with no JavaScript at all,
 so setting up works even when nothing else does.
 
+When a calendar address points at a machine that is not answering, the error
+now says so in plain words — "the connection was refused — nothing is
+listening at that address and port", with what to check next — instead of a
+raw code like ECONNREFUSED. The same plain wording appears anywhere a feed
+fails to fetch, including a calendar's "last sync failed" note.
+
 ## 0.31.1
 
 The layout editor's live preview now matches the wall. After the widget-scaling
