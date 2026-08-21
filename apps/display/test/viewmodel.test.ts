@@ -565,3 +565,93 @@ describe('people, for the legend and the per-event owner cue', () => {
     expect(model([day(TODAY)]).people).toEqual([]);
   });
 });
+
+/*
+ * The day group, redrawn (RFC 007 phase 1).
+ *
+ * Two of these are the ones that matter. `spanLabel` reads `endsAt` as
+ * exclusive, which is the single most common ICS bug and the reason a
+ * one-day birthday must never say "Day 1 of 2". And `progress` is absent
+ * unless an event is actually running, because a bar is a claim about now.
+ */
+describe('how far through a running event we are', () => {
+  const running = event({
+    title: 'Dentist',
+    startsAt: Date.parse('2026-07-15T10:00:00Z'),
+  });
+
+  it('is the fraction elapsed while the event is running', () => {
+    // Starts 10:00, ends 11:00, and `now` is 10:30.
+    const built = model([day('2026-07-15', [running])], {}, Date.parse('2026-07-15T10:30:00Z'));
+    expect(built.today?.events[0]?.progress).toBeCloseTo(0.5, 5);
+  });
+
+  it('is absent before it starts and after it ends', () => {
+    const before = model([day('2026-07-15', [running])], {}, Date.parse('2026-07-15T09:59:00Z'));
+    expect(before.today?.events[0]?.progress).toBeUndefined();
+
+    const after = model([day('2026-07-15', [running])], {}, Date.parse('2026-07-15T11:00:00Z'));
+    expect(after.today?.events[0]?.progress).toBeUndefined();
+  });
+
+  it('is absent for an all-day event, which has no clock to be part-way through', () => {
+    const allDay = event({
+      title: 'Half term',
+      startsAt: Date.parse('2026-07-14T23:00:00Z'),
+      allDay: true,
+    });
+    const built = model([day('2026-07-15', [allDay])], {}, Date.parse('2026-07-15T12:00:00Z'));
+    expect(built.today?.events[0]?.progress).toBeUndefined();
+  });
+
+  it('is absent for a zero-length event rather than dividing by zero', () => {
+    const instant = event({
+      title: 'Reminder',
+      startsAt: Date.parse('2026-07-15T10:00:00Z'),
+    });
+    const built = model(
+      [day('2026-07-15', [{ ...instant, endsAt: instant.startsAt }])],
+      {},
+      Date.parse('2026-07-15T10:00:00Z'),
+    );
+    expect(built.today?.events[0]?.progress).toBeUndefined();
+  });
+});
+
+describe('an event that spans more than one day says how far in', () => {
+  it('says nothing for a one-day all-day event, because DTEND is exclusive', () => {
+    // The 15th, all day. DTEND is midnight on the 16th — and midnight is the
+    // household's, not UTC's, which is what `expand.ts` resolves. Reading that
+    // end date as a day the event occupies puts every birthday on two days.
+    const birthday = event({
+      title: 'Ada',
+      startsAt: Date.parse('2026-07-14T23:00:00Z'),
+      allDay: true,
+    });
+    const built = model([
+      day('2026-07-15', [{ ...birthday, endsAt: Date.parse('2026-07-15T23:00:00Z') }]),
+    ]);
+    expect(built.today?.events[0]?.span).toBeUndefined();
+  });
+
+  it('counts the days an event actually occupies', () => {
+    // The 15th to the 17th inclusive: DTEND is midnight on the 18th, London.
+    const holiday = {
+      ...event({ title: 'Cornwall', startsAt: Date.parse('2026-07-14T23:00:00Z'), allDay: true }),
+      endsAt: Date.parse('2026-07-17T23:00:00Z'),
+    };
+    const built = model([day('2026-07-15', [holiday]), day('2026-07-16', [holiday])]);
+    expect(built.today?.events[0]?.span).toBe('Day 1 of 3');
+    expect(built.next[0]?.events[0]?.span).toBe('Day 2 of 3');
+  });
+
+  it('does not count a timed event that ends exactly at midnight into the next day', () => {
+    // 22:00 to 00:00 is one evening, not two days.
+    const shift = {
+      ...event({ title: 'Late shift', startsAt: Date.parse('2026-07-15T21:00:00Z') }),
+      endsAt: Date.parse('2026-07-15T23:00:00Z'),
+    };
+    const built = model([day('2026-07-15', [shift])]);
+    expect(built.today?.events[0]?.span).toBeUndefined();
+  });
+});

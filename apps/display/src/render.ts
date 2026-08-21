@@ -209,13 +209,16 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
 /* --------------------------------------------------------------- NEXT ---- */
 
 function renderDayRow(day: DayModel): HTMLElement {
-  const row = el('div', 'day-row');
+  const row = el('div', day.isToday ? 'day-row is-today' : 'day-row');
   const shift = day.shifts[0];
   paintShift(row, shift?.colorToken, shift?.color);
 
   const when = el('div', 'dr-when');
   when.appendChild(el('div', 'dr-dow', day.weekday));
   when.appendChild(el('div', 'dr-num', day.dayNumber));
+  // The month under the number, so a row read on its own is unambiguous. A
+  // wall is looked at in glances, and "14" a fortnight out is a question.
+  when.appendChild(el('div', 'dr-mon', day.month));
   if (shift !== undefined) {
     when.appendChild(el('div', 'dr-shift', shift.label));
     const window = shiftWindow(shift);
@@ -225,17 +228,36 @@ function renderDayRow(day: DayModel): HTMLElement {
 
   const events = el('div', 'dr-events');
   if (day.events.length === 0) {
-    // A dash rather than nothing, so an empty day reads as "checked, nothing"
-    // rather than as a row that failed to render.
-    events.appendChild(el('div', 'dr-empty', '—'));
+    // Words rather than a dash. An empty day is a fact the wall checked, the
+    // same argument `shiftFor` makes with its synthetic rest day: somebody
+    // reading "—" from across a room cannot tell it from a row that failed.
+    events.appendChild(el('div', 'dr-empty', 'Nothing on'));
   } else {
     for (const event of day.events) {
       const entry = el('div', event.allDay ? 'dr-ev allday' : 'dr-ev');
+      // The accent rule, in the calendar's own colour — the one cue that says
+      // whose event this is without spending a word on it. Set on the entry
+      // rather than the title so timed and all-day events line up on one edge.
+      entry.style.setProperty('--ec', event.color);
       if (!event.allDay) entry.appendChild(el('div', 'dr-ev-time', event.time));
       const title = el('div', 'dr-ev-title');
       title.appendChild(ownerMark(event, 'dr-ev-mark'));
       title.appendChild(document.createTextNode(event.title));
       entry.appendChild(title);
+      if (event.span !== undefined) {
+        entry.appendChild(el('div', 'dr-ev-span', event.span));
+      }
+      if (event.progress !== undefined) {
+        const bar = el('div', 'dr-ev-bar');
+        const fill = el('div', 'dr-ev-bar-fill');
+        // Clamped rather than trusted: the fraction is computed from a server
+        // clock and a corrected wall clock, and a bar wider than its track
+        // would paint over the row beside it.
+        const pct = Math.max(0, Math.min(1, event.progress)) * 100;
+        fill.style.width = `${pct.toFixed(1)}%`;
+        bar.appendChild(fill);
+        entry.appendChild(bar);
+      }
       events.appendChild(entry);
     }
     if (day.hiddenEventCount > 0) {

@@ -1,8 +1,31 @@
 # RFC 007 — The agenda, redrawn (what to take from Calendar Card Pro)
 
 Status: **proposed, nothing built** · Owner: — · First drafted 2026-08-21 ·
-Builds on the display's block model (`display_blocks`, `viewmodel.ts`,
+Builds on the display's widget model (`renderWidget`, `viewmodel.ts`,
 `render.ts`) and RFC 005 (the free-form canvas)
+
+> **Correction — there is no block model any more, and this RFC was drafted as
+> if there were.** `main.ts` says it plainly: *"Every wall is free-form now —
+> the responsive `auto` layout was retired"*. `renderDayRow`, `renderHorizon`
+> and `renderWeekColumns` are reached only from `renderWidget`, and
+> `display_blocks` no longer decides what a wall draws. Two consequences:
+>
+> - **Tier 1 is unaffected in substance and re-homed in fact.** It lands on the
+>   Calendar widget's `list` style rather than on a NEXT block. Better, if
+>   anything: one widget with three styles means the same polish reaches month
+>   and week without being written three times.
+> - **Phase 2 as written is void.** "A new key in `DisplayBlock`", the
+>   `ensureBlock` insertion and the landscape-places-grids-by-name rule are all
+>   auto-layout machinery that no longer renders anything. `week` is *already* a
+>   first-class choice — it is the Style control phase 0 renamed. What survives
+>   is the part that is genuinely missing: **the minimum-width fallback** (a week
+>   widget dragged narrow today draws seven unreadable slivers) and tier-1 depth
+>   for the week and month styles.
+>
+> The lesson is the one this repository keeps re-learning: `CLAUDE.md`'s
+> "Current state" describes v0.1.x and the project is at 0.33.2. It was read as
+> current, and the code was read to confirm details rather than to check the
+> premise. The premise was the thing that had moved.
 
 ## Summary
 

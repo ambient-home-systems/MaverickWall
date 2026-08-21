@@ -101,6 +101,19 @@ export interface EventModel {
    * owner's (owner colour wins in the manifest), so this carries the face.
    */
   readonly owner: PersonModel | undefined;
+  /**
+   * How far through a running event we are, 0..1 — absent unless it has started
+   * and not ended. A bar on something that has not begun measures nothing, and
+   * a full bar on something finished is just a line. Only ever set for today,
+   * because only today has a `now` worth drawing against.
+   */
+  readonly progress: number | undefined;
+  /**
+   * "Day 2 of 4", for an event that spans more than one day. Absent otherwise.
+   * `continues` already says an event carries on; this says how far in we are,
+   * which is the thing somebody standing at the wall actually wants.
+   */
+  readonly span: string | undefined;
 }
 
 /**
@@ -594,12 +607,67 @@ function toPerson(person: ManifestPerson): PersonModel {
   };
 }
 
+function daysBetween(from: CivilDate, to: CivilDate): number {
+  return Math.round(
+    (Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000,
+  );
+}
+
+/**
+ * How far through, 0..1, or absent when the event is not running.
+ *
+ * All-day events are excluded deliberately. "73% through Tuesday" is true and
+ * useless — the bar is there to answer "have I got time", which only means
+ * something for an event with a clock on it. A zero-length event would divide
+ * by zero, so it is treated as not running rather than as instantly complete.
+ */
+function runningProgress(event: ManifestEvent, now: number): number | undefined {
+  if (event.allDay) return undefined;
+  if (now < event.startsAt || now >= event.endsAt) return undefined;
+  const length = event.endsAt - event.startsAt;
+  if (length <= 0) return undefined;
+  return (now - event.startsAt) / length;
+}
+
+/**
+ * "Day 2 of 4" when an event spans more than one day.
+ *
+ * `endsAt` is exclusive — an all-day event on the 15th ends at midnight on the
+ * 16th — so the last day it actually occupies is the one containing `endsAt`
+ * minus a millisecond. That single subtraction is the difference between "Day
+ * 1 of 1" on every birthday and "Day 1 of 2". It is also right for a timed
+ * event that ends at midnight, which occupies the evening before and not the
+ * day it technically touches.
+ */
+function spanLabel(
+  event: ManifestEvent,
+  onDate: CivilDate,
+  timezone: string,
+): string | undefined {
+  const first = localDate(event.startsAt, timezone);
+  const last = localDate(event.endsAt - 1, timezone);
+  const total = daysBetween(first, last) + 1;
+  if (total < 2) return undefined;
+  const position = daysBetween(first, onDate) + 1;
+  if (position < 1 || position > total) return undefined;
+  return `Day ${position} of ${total}`;
+}
+
+interface EventContext {
+  readonly isPast: boolean;
+  readonly isNext: boolean;
+  /** Corrected wall time, for the progress bar. */
+  readonly now: number;
+  /** Which day's row this is being drawn in, for the span label. */
+  readonly onDate: CivilDate;
+}
+
 function toEvent(
   event: ManifestEvent,
   timezone: string,
   hour12: boolean,
   people: ReadonlyMap<string, PersonModel>,
-  marks: { isPast: boolean; isNext: boolean } = { isPast: false, isNext: false },
+  context: EventContext,
 ): EventModel {
   return {
     id: event.id,
@@ -610,9 +678,11 @@ function toEvent(
     color: event.color,
     location: event.location,
     continues: event.continues,
-    isPast: marks.isPast,
-    isNext: marks.isNext,
+    isPast: context.isPast,
+    isNext: context.isNext,
     owner: event.personId !== undefined ? people.get(event.personId) : undefined,
+    progress: runningProgress(event, context.now),
+    span: spanLabel(event, context.onDate, timezone),
   };
 }
 
@@ -635,7 +705,12 @@ function markToday(
     const past = !event.allDay && event.endsAt <= now;
     const isNext = !past && !event.allDay && !foundNext && event.startsAt > now;
     if (isNext) foundNext = true;
-    return toEvent(event, timezone, hour12, people, { isPast: past, isNext });
+    return toEvent(event, timezone, hour12, people, {
+      isPast: past,
+      isNext,
+      now,
+      onDate: localDate(now, timezone),
+    });
   });
 }
 
@@ -657,6 +732,7 @@ function toShift(shift: ManifestShift): ShiftModel {
 function toDay(
   day: ManifestDay,
   today: CivilDate,
+  now: number,
   timezone: string,
   hour12: boolean,
   limit: number,
@@ -672,7 +748,14 @@ function toDay(
     isToday: day.date === today,
     isPast: day.date < today,
     shifts: day.shifts.map(toShift),
-    events: shown.map((event) => toEvent(event, timezone, hour12, people)),
+    events: shown.map((event) =>
+      toEvent(event, timezone, hour12, people, {
+        isPast: false,
+        isNext: false,
+        now,
+        onDate: day.date,
+      }),
+    ),
     hiddenEventCount: day.events.length - shown.length,
   };
 }
@@ -755,7 +838,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     const date = addDays(today, offset);
     if (date > manifest.window.to) break;
     const day = byDate.get(date) ?? { date, shifts: [], events: [] };
-    next.push(toDay(day, today, timezone, hour12, NEXT_EVENT_LIMIT, peopleById));
+    next.push(toDay(day, today, now, timezone, hour12, NEXT_EVENT_LIMIT, peopleById));
   }
 
   // The horizon starts on the first day of the week containing today (Sunday or
@@ -830,7 +913,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
       todayDay === undefined
         ? undefined
         : {
-            ...toDay(todayDay, today, timezone, hour12, todayLimit, peopleById),
+            ...toDay(todayDay, today, now, timezone, hour12, todayLimit, peopleById),
             events: markToday(todayDay.events.slice(0, todayLimit), now, timezone, hour12, peopleById),
           },
     people,
