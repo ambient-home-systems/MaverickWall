@@ -55,8 +55,15 @@ function manifestOf(shifts: ManifestPersonShift[]): Manifest {
 }
 
 /** One shift widget filling the panel, with whatever config is under test. */
-function frameOf(manifest: Manifest, config: Record<string, unknown>): Framebuffer {
-  const widget: PlacedEpaperWidget = { type: 'shift', x: 0, y: 0, w: 1, h: 1, z: 0, config };
+/** One shift widget on the panel — filling it, or in whatever box is asked for. */
+function frameOf(
+  manifest: Manifest,
+  config: Record<string, unknown>,
+  box: Partial<PlacedEpaperWidget> = {},
+): Framebuffer {
+  const widget: PlacedEpaperWidget = {
+    type: 'shift', x: 0, y: 0, w: 1, h: 1, z: 0, config, ...box,
+  };
   return renderFreeformEpaper(buildEpaperModel(manifest), manifest, [widget], PANEL);
 }
 
@@ -138,6 +145,60 @@ describe('the shift widget on a panel', () => {
     // Two: a compact line each, where the hours ride on the end of the line.
     expect(bitsOf(frameOf(manifestOf([amy, ben]), { showHours: false }))).toEqual(
       bitsOf(frameOf(manifestOf([untimed(amy), untimed(ben)]), {})),
+    );
+  });
+
+  it('gives up the ladder from the bottom as the box gets shorter', () => {
+    /*
+     * What replaced `box.h >= 44`. The threshold was a renderer's private
+     * opinion about the household's box; the ladder is arithmetic against the
+     * box there actually is, and it cuts from the bottom of a list the
+     * household wrote.
+     *
+     * Asserted by equivalence, not by "the frame changed": a short box drawing
+     * the top of the ladder is the frame of a *ladder that was that short to
+     * begin with*, in a box tall enough for it. A renderer that merely drew
+     * everything smaller would fail this.
+     */
+    // 0.11 of this 480px panel is a 53px box: room for the person and the
+    // shift, not for the hours underneath them.
+    const tall = frameOf(manifestOf([amy]), {}, { h: 1 });
+    const short = frameOf(manifestOf([amy]), {}, { h: 0.11 });
+    expect(bitsOf(short)).not.toEqual(bitsOf(tall));
+    expect(bitsOf(short)).toEqual(
+      bitsOf(frameOf(manifestOf([amy]), { fields: ['person', 'shift'] }, { h: 0.11 })),
+    );
+  });
+
+  it('gives up in the household\u2019s order, so reordering changes what survives', () => {
+    // The claim the ladder rests on. Two ladders over the same shift in the
+    // same short box, differing only in order, must not draw the same frame.
+    const personFirst = frameOf(manifestOf([amy]), { fields: ['person', 'hours'] });
+    const hoursFirst = frameOf(manifestOf([amy]), { fields: ['hours', 'person'] });
+    expect(bitsOf(personFirst)).not.toEqual(bitsOf(hoursFirst));
+    // And in a box too short for both, what survives differs too — which is the
+    // half a row of switches could never express.
+    const tiny = { h: 0.08 } as const;
+    expect(
+      bitsOf(frameOf(manifestOf([amy]), { fields: ['person', 'hours'] }, tiny)),
+    ).not.toEqual(
+      bitsOf(frameOf(manifestOf([amy]), { fields: ['hours', 'person'] }, tiny)),
+    );
+  });
+
+  it('never draws an empty badge, however short the box', () => {
+    // Rule nine: the head of the ladder survives, clipped if it comes to that.
+    const sliver = frameOf(manifestOf([amy]), {}, { h: 0.08 });
+    let ink = 0;
+    for (const bit of bitsOf(sliver)) ink += bit;
+    expect(ink).toBeGreaterThan(0);
+  });
+
+  it('is unchanged for a widget saved before the ladder existed', () => {
+    // The compatibility that matters: a stored `showHours: false` resolves to
+    // the same ladder, and so to the same frame, as writing it out by hand.
+    expect(bitsOf(frameOf(manifestOf([amy]), { showHours: false }, { h: 1 }))).toEqual(
+      bitsOf(frameOf(manifestOf([amy]), { fields: ['person', 'shift', 'run'] }, { h: 1 })),
     );
   });
 

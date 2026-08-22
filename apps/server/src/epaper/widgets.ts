@@ -30,6 +30,14 @@ import {
   type Box,
   type PanelGeometry,
 } from './render.js';
+import {
+  dropToFit,
+  ladderRows,
+  shiftLadder,
+  type LadderRole,
+  type LadderRow,
+  type ShiftField,
+} from './ladder.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 
 /** A widget placed on the canvas: fractional box, plus its stored options. */
@@ -227,7 +235,6 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
       ? model.todayShifts
       : model.todayShifts.filter((s) => chosen.includes(s.personId));
   const useCode = str(config, 'shiftName') === 'code';
-  const hours = config['showHours'] !== false;
   const nameOf = (s: (typeof shifts)[number]): string => {
     const preferred = useCode ? s.code : s.label;
     // Either can be empty on a shift type that only defines the other, so each
@@ -239,34 +246,96 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
     drawLines(fb, ['No shift today'], box, 2, 'left');
     return;
   }
+
+  const ladder = shiftLadder(config);
+  /*
+   * What each row would say. `run` is deliberately absent: the panel's model
+   * has never carried a run position, so the rung simply never resolves here
+   * and `ladderRows` drops it. The ladder is shared; the data is not.
+   */
+  const valuesFor = (s: (typeof shifts)[number]): Partial<Record<ShiftField, string>> => {
+    const values: Partial<Record<ShiftField, string>> = {
+      person: asciiTitle(s.person),
+      shift: asciiTitle(nameOf(s)),
+    };
+    if (s.time !== '') values.hours = s.time;
+    return values;
+  };
+
   const [only] = shifts;
-  // One person, and a box with room: the wall's card — who it is, then the
-  // shift's name at whatever size the box affords, then its hours.
-  if (shifts.length === 1 && only !== undefined && box.h >= 44) {
-    const name = asciiTitle(nameOf(only)).toUpperCase();
-    // Reserve the two small rows so the headline never squeezes them out.
-    const headroom = Math.max(GLYPH_SIZE, box.h - (GLYPH_SIZE + 4) * 2);
-    const nameScale = scaleToFit(name, box.w, Math.max(2, Math.min(7, Math.floor(headroom / GLYPH_SIZE))));
+  if (shifts.length === 1 && only !== undefined) {
+    const rows = ladderRows(ladder, valuesFor(only));
+    /*
+     * How tall each role is before the headline is allowed to grow.
+     *
+     * The headline is measured at its floor here so the fit question has one
+     * answer rather than depending on itself; whatever room the surviving rows
+     * leave is handed back to it below. This replaces `box.h >= 44`, which was
+     * a renderer's private opinion about the household's box — a number nobody
+     * outside this file could see, and one that decided the whole shape of the
+     * widget at a threshold nobody chose.
+     */
+    const ROW_GAP = 4;
+    const heightOf = (role: LadderRole): number =>
+      (role === 'headline' ? GLYPH_SIZE * 2 : GLYPH_SIZE) + ROW_GAP;
+    const kept = dropToFit(rows, box.h, heightOf);
+
+    /*
+     * One row left where there were more is a *line*, not a word.
+     *
+     * A box too short for two rows used to draw "Daddy: S 07:00-19:00" and
+     * would otherwise now draw "DADDY" — the same room spent on strictly less.
+     * Collapsing keeps every field the household asked for, in the order they
+     * asked for it, and lets the truncation in `drawLines` decide what the box
+     * can actually hold.
+     */
+    if (kept.length === 1 && rows.length > 1) {
+      drawLines(fb, [compactLine(rows)], box, scaleToFit(compactLine(rows), box.w, 2), 'left');
+      return;
+    }
+
+    // The headline takes whatever the surviving rows did not need.
+    const others = kept.filter((row) => row.role !== 'headline');
+    const headroom = Math.max(GLYPH_SIZE, box.h - others.length * (GLYPH_SIZE + ROW_GAP));
+    const stack = kept.map((row) => {
+      if (row.role !== 'headline') return { text: row.text, scale: 1 };
+      const text = row.text.toUpperCase();
+      return {
+        text,
+        scale: scaleToFit(text, box.w, Math.max(2, Math.min(7, Math.floor(headroom / GLYPH_SIZE)))),
+      };
+    });
     drawStack(
       fb,
       box,
-      [
-        { text: asciiTitle(only.person).toUpperCase(), scale: 1 },
-        { text: name, scale: nameScale },
-        { text: hours ? only.time : '', scale: 1 },
-      ],
+      stack.map((row) => (row.scale === 1 ? { ...row, text: row.text.toUpperCase() } : row)),
       'left',
     );
     return;
   }
+
   // More than one person: a compact line each, sized so the longest still fits
-  // rather than being cut at the box edge.
-  const lines = shifts.map((s) => {
-    const rest = [nameOf(s), hours ? s.time : ''].filter((p) => p !== '').join('  ');
-    return asciiTitle(`${s.person}: ${rest}`);
-  });
+  // rather than being cut at the box edge. The ladder decides which parts are
+  // on the line and in what order, exactly as it decides the rows above.
+  const lines = shifts.map((s) => compactLine(ladderRows(ladder, valuesFor(s))));
   const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
   drawLines(fb, lines, box, scale, 'left');
+}
+
+/**
+ * A ladder as one line, in the household's own order.
+ *
+ * The person keeps its colon when it leads, because "Amy: Nights" reads as an
+ * attribution and "Amy Nights" reads as a mistake. Anywhere else it is just
+ * another part, since "Nights: Amy" would attribute the wrong way round.
+ */
+function compactLine(rows: readonly LadderRow[]): string {
+  const parts = rows.map((row) => row.text);
+  if (rows[0]?.field === 'person' && parts.length > 1) {
+    const [head, ...rest] = parts;
+    return asciiTitle(`${head}: ${rest.join('  ')}`);
+  }
+  return asciiTitle(parts.join('  '));
 }
 
 function drawTodo(fb: Framebuffer, box: Box, config: Config): void {

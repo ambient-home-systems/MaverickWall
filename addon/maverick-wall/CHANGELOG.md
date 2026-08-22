@@ -14,6 +14,30 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Shift widget says what matters, in the order you choose.
+
+Its Content tab now has **What it says** — a list of the four things a shift
+badge can show: who it is, the shift, the hours, and how far through. Tick what
+you want, and drag to put them in the order you care about.
+
+**The order does two jobs.** It is the order they are drawn in, and it is the
+order they are given up in. When a box is too small to hold everything, the
+bottom of the list goes first — so a small badge with the hours at the top
+keeps the hours. Nothing needs to be set per screen size: the same list answers
+a kitchen tablet, a hall television and an eInk panel, each against the room it
+actually has.
+
+The list marks the rows a box is currently too small for, read from the live
+preview rather than guessed, so you can see the effect of dragging a box
+smaller while you do it. And a box with room for only one row now draws
+everything on that one line rather than a single word — the same on a wall as
+on a panel.
+
+The two old switches, "Show the hours" and "Show how far through", are part of
+that list now. A widget you have already set up is unchanged.
+
 ## 0.46.0
 
 The Clock and Weather widgets have settings, and a panel draws a real forecast.

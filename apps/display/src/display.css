@@ -1216,6 +1216,28 @@ body {
 
 .fw-shift { justify-content: center; }
 /*
+ * The one-line badge, for a box with room for a single row. It is the wall's
+ * version of the panel's compact line: the same parts, in the household's own
+ * order, on one line instead of a stack.
+ */
+.shift-badge.is-line .what {
+  font-size: calc(var(--u) * 3.6);
+  line-height: 1.25;
+  /*
+   * One line, and it *ends* rather than spilling.
+   *
+   * `nowrap` alone let the text run out past the badge's own tinted background
+   * and get chopped mid-word at the box edge — found by looking at one, not by
+   * measuring, because the box did not overflow: the badge did. The ellipsis is
+   * the wall's version of the truncation `fit()` already does on the panel, so
+   * a line too long for its box says so the same way on both.
+   */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+/*
  * More than one person on a rota today: their badges stack, with a gap that
  * reads as a gap at ten feet. Not a grid — the badges are different heights
  * (an untimed shift has no hours row) and a grid would pad the short one to

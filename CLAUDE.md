@@ -804,6 +804,51 @@ rather than shape: the frame must change when a temperature changes and must
 not change when the fetch timestamp does, which is exactly the pair the old
 draw had backwards.
 
+**The field ladder is how a widget decides what to give up (RFC 005 / the
+module editor, direction C).** A widget's content is an ordered list of fields,
+and the order carries two meanings: it is the order they are drawn in *and* the
+order they are sacrificed in when the box cannot hold them all. `ladder.ts` in
+the display is the model — an ordered subset of a fixed allowlist, with a role
+per field — and it replaced two private opinions nobody outside the source
+could see: `box.h >= 44` in `epaper/widgets.ts`, which decided the whole shape
+of a shift card at a threshold nobody chose, and the badge's fixed four rows on
+the wall.
+
+**It is not a language, and the emphasis is a property of the field.** A ladder
+is names and order, the same shape as `display_blocks` one level down — no
+expression, no concatenation, nothing household-authored reaching a renderer.
+Size comes from the field rather than its position, deliberately: deriving it
+from position would re-typeset every badge already hanging in a kitchen the
+moment somebody reordered anything, and would make "put the hours first" mean
+"draw the hours enormous".
+
+**The two renderers drop differently and that is honest.** The panel predicts —
+it owns its line heights, so `dropToFit` is arithmetic. The wall measures: a
+badge is `rem`-sized against a letterboxed canvas, so `fitToBox` now *reports*
+whether it clipped and the drop loop takes a rung off and asks again. That is
+the week-columns fallback's shape and the same rule — a drawing decision, never
+a saved one, so widening the box brings the rows straight back. Both stop at
+one row, and both then draw a *line* rather than a word: a box with room for
+one row spending it on "Amy" when "Amy: Days · 07:00–19:00" fits is the same
+room spent on strictly less.
+
+**The table is written twice because it has to be.** The display bundle has no
+dependencies and no bundler — plain `tsc` output with `rootDir` pinned to its
+own `src` — so it cannot import `packages/core`, and a server test cannot
+import *from* it without failing `tsconfig.test.json`. So
+`epaper/ladder.ts` transcribes it and `epaper-ladder-parity.test.ts` reads both
+files and compares the tables in both directions, the way
+`migration-upgrade.test.ts` compares the migrations directory with its journal.
+Checked by drifting one role and watching it go red.
+
+**The editor marks the cut from the preview, not from a prediction.** The
+inspector's list strikes through the rows the box is currently too small for,
+counted out of the real `renderFreeform` output in the shadow-root preview —
+because two opinions about what fits is the whole class of bug this project
+keeps finding. It also checks for the collapsed badge rather than inferring
+from the child count, which gets it exactly backwards: a one-line badge has cut
+nothing.
+
 **Panels are modules, and weather is the first.** `src/modules/` holds a
 registry: a module owns a block key, a slice of the manifest, usually a job,
 and a corner of the settings. `collectPanels` catches per module, so a provider

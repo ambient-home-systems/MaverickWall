@@ -1280,6 +1280,36 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/*
+ * The field ladder: what a widget says, in the order it matters.
+ *
+ * One list whether a row is on or off, so there is nowhere else to look and no
+ * add/remove mode to be in. "is-off" is a row not on the ladder; "is-cut" is a
+ * row the box is currently too small to draw, read back out of the real
+ * preview rather than predicted — the editor and the wall must not hold two
+ * opinions about what fits. (No backticks in here: this stylesheet lives in a
+ * template literal, and one would end it.)
+ */
+.le-ladder{display:flex;flex-direction:column;gap:2px;
+  border:1px solid var(--md-sys-color-outline-variant);
+  border-radius:var(--md-sys-shape-corner-small);padding:4px}
+.le-ladder-row{display:flex;align-items:center;gap:8px;padding:6px 8px;
+  border-radius:var(--md-sys-shape-corner-extra-small);min-height:40px}
+.le-ladder-row.is-off{opacity:.55}
+.le-ladder-row.is-off .le-ladder-eg{visibility:hidden}
+/* Dashed, not hidden: the row is still on the ladder and comes back the moment
+   the box grows. Struck through says "not drawn here" without saying "gone". */
+.le-ladder-row.is-cut{opacity:.6;
+  border:1px dashed var(--md-sys-color-outline);padding:5px 7px}
+.le-ladder-row.is-cut .le-ladder-name{text-decoration:line-through}
+.le-ladder-name{flex:0 0 auto;
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking)}
+.le-ladder-eg{flex:1;min-width:0;text-align:right;color:var(--faint);
+  font-size:var(--md-sys-typescale-body-small-size);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 /* Per-widget options — the body of the contextual inspector, which is itself
  * the card. On the e-paper design page there is no inspector column, so the
  * same panel is built into .le-inspect-card under the stage instead. */
