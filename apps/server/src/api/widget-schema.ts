@@ -92,8 +92,9 @@ export const widgetConfigBody = z
      *
      * Absent means the ladder the widget always drew, minus whatever its own
      * switches turned off (`showHours`/`showRun` for a shift badge,
-     * `showIcon`/`showLow` for a forecast strip) — so a widget saved before this
-     * existed is untouched. Present, it is the complete list and those switches
+     * `showIcon`/`showLow` for a forecast strip, and each entity's own
+     * `display_mode` for a Home Assistant reading) — so a widget saved before
+     * this existed is untouched. Present, it is the complete list and those switches
      * no longer apply to it; the editor clears them when it writes this.
      *
      * One enum for every widget with a ladder, because the config is one strict
@@ -103,8 +104,14 @@ export const widgetConfigBody = z
      * four names for one idea.
      */
     fields: z
-      .array(z.enum(['person', 'shift', 'hours', 'run', 'name', 'icon', 'high', 'low']))
-      .max(8)
+      .array(
+        z.enum([
+          'person', 'shift', 'hours', 'run',
+          'name', 'icon', 'high', 'low',
+          'label', 'value',
+        ]),
+      )
+      .max(10)
       .optional(),
     shiftName: z.enum(['label', 'code']).optional(),
     showFace: z.boolean().optional(),
