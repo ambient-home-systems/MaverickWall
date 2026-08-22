@@ -14,6 +14,28 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Clock and Weather widgets have settings, and a panel draws a real forecast.
+
+Every widget's Content tab now does something. The two that had nothing under
+it were the Clock and the Weather strip:
+
+- **Clock** — 12-hour or 24-hour for this one clock (or follow the household,
+  which is what it did before), and whether to show the date underneath.
+- **Weather** — how many days to show, whether to show the overnight low, and
+  whether to show the little weather symbol.
+- **A module's panel** also gained "how many rows", for a module that sends
+  more readings than fit the box you dragged.
+
+**Weather on an eInk panel was broken and is fixed.** It drew two lines of
+internals — the provider's name and a raw timestamp — and not one temperature.
+It draws the forecast now: the day, the high, and the low, in columns when
+there is room and a line each when there is not.
+
+A 12-hour clock also no longer wraps onto two lines in a box sized for a
+24-hour one.
+
 ## 0.45.0
 
 The Shift widget shows everybody on a rota, and it has options.

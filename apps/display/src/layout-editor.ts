@@ -1505,6 +1505,8 @@ function boot(): void {
       else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
       else if (widget.type === 'image') buildImageConfig(widget, cfg);
       else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
+      else if (widget.type === 'clock') buildClockConfig(widget, cfg);
+      else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
     } else {
       // Style is the same set of controls for every widget — one
       // implementation, writing the same per-widget keys it always has.
@@ -1538,6 +1540,31 @@ function boot(): void {
     select.addEventListener('change', () => setConfig(widget, 'module', select.value || undefined));
     field.appendChild(select);
     configPanel.appendChild(field);
+
+    /*
+     * How many of the module's rows to draw.
+     *
+     * A module decides its own panel's shape and may send twelve readings; this
+     * is the household deciding how many fit the box they dragged. It is
+     * presentation of data the module already sent — nothing new is asked of it.
+     */
+    const rows = cfgField('How many rows');
+    const count = document.createElement('input');
+    count.type = 'number';
+    count.min = '1';
+    count.max = '12';
+    count.placeholder = 'All of them';
+    count.value = typeof cfg['count'] === 'number' ? String(cfg['count']) : '';
+    count.addEventListener('change', () => {
+      const n = Math.round(Number(count.value));
+      setConfig(widget, 'count', Number.isFinite(n) && n >= 1 ? Math.min(12, n) : undefined);
+    });
+    rows.appendChild(count);
+    configPanel.appendChild(rows);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Only applies to a module that sends a list.';
+    configPanel.appendChild(note);
   }
 
   function buildCountdownConfig(widget: Widget, cfg: Record<string, unknown>): void {
@@ -1945,6 +1972,78 @@ function boot(): void {
    * the run have been drawn since the badge existed and a household who
    * arranged a canvas around them must not lose them to a schema change.
    */
+  /**
+   * The Clock widget's options.
+   *
+   * No "show seconds": the wall redraws every fifteen seconds, so the control
+   * would promise a precision the widget cannot keep. Its absence is the
+   * decision, and it is written down in the schema too.
+   */
+  function buildClockConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    configPanel.appendChild(
+      segControl(
+        'Time format',
+        [
+          ['', 'Follow the household'],
+          ['12', '12-hour'],
+          ['24', '24-hour'],
+        ],
+        cfg['clockFormat'] === '12' || cfg['clockFormat'] === '24'
+          ? (cfg['clockFormat'] as string)
+          : '',
+        // The household's own setting is stored as an absence, so a wall that
+        // switches to 24-hour later takes its clocks with it.
+        (value) => setConfig(widget, 'clockFormat', value === '' ? undefined : value),
+      ),
+    );
+    configPanel.appendChild(
+      switchRow('Show the date', '', cfg['showDate'] !== false, (checked) =>
+        setConfig(widget, 'showDate', checked ? undefined : false),
+      ),
+    );
+  }
+
+  /**
+   * The Weather widget's options.
+   *
+   * "How many days" is capped at what the household's forecast setting supplies
+   * rather than at the schema's 50 — a widget asking for ten days of a
+   * five-day forecast is a control that does nothing for half its range.
+   */
+  function buildWeatherConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const field = cfgField('How many days');
+    const count = document.createElement('input');
+    count.type = 'number';
+    count.min = '1';
+    count.max = '10';
+    count.placeholder = 'All of them';
+    count.value = typeof cfg['count'] === 'number' ? String(cfg['count']) : '';
+    count.addEventListener('change', () => {
+      const n = Math.round(Number(count.value));
+      setConfig(widget, 'count', Number.isFinite(n) && n >= 1 ? Math.min(10, n) : undefined);
+    });
+    field.appendChild(count);
+    configPanel.appendChild(field);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Empty shows every day the forecast has.';
+    configPanel.appendChild(note);
+
+    configPanel.appendChild(
+      switchRow('Show the overnight low', '', cfg['showLow'] !== false, (checked) =>
+        setConfig(widget, 'showLow', checked ? undefined : false),
+      ),
+    );
+    configPanel.appendChild(
+      switchRow(
+        'Show the weather symbol',
+        epaperHost ? 'The wall only — a panel has no symbol to draw in black and white.' : '',
+        cfg['showIcon'] !== false,
+        (checked) => setConfig(widget, 'showIcon', checked ? undefined : false),
+      ),
+    );
+  }
+
   function buildShiftConfig(widget: Widget, cfg: Record<string, unknown>): void {
     const who = cfgField('Whose rota');
     who.appendChild(

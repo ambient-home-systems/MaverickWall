@@ -6,12 +6,18 @@ import type {
   InterruptModel,
   TodayShiftModel,
 } from './viewmodel.js';
-import { localDate } from './viewmodel.js';
+import { localDate, localTime } from './viewmodel.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
-import { shiftWidgetView, type ShiftWidgetView } from './shift-widget.js';
+import {
+  clockWidgetView,
+  panelRowLimit,
+  shiftWidgetView,
+  weatherWidgetView,
+  type ShiftWidgetView,
+} from './widget-options.js';
 
 /**
  * The DOM, and no decisions.
@@ -149,17 +155,19 @@ function ownerMark(event: EventModel, className: string): HTMLElement {
  * URL and rule three forbids the wall from fetching one, so the server maps
  * the forecast wording to a glyph the device already has.
  */
-function renderWeather(model: DisplayModel): HTMLElement | undefined {
-  if (model.weather.length === 0) return undefined;
+function renderWeather(model: DisplayModel, config?: unknown): HTMLElement | undefined {
+  const view = weatherWidgetView(model.weather, config);
+  if (view.days.length === 0) return undefined;
 
   const strip = el('section', 'wx');
-  for (const day of model.weather) {
+  for (const day of view.days) {
     const cell = el('div', 'wx-day');
     cell.appendChild(el('div', 'wx-name', day.name));
-    cell.appendChild(el('div', 'wx-ico', day.icon));
+    if (view.icon) cell.appendChild(el('div', 'wx-ico', day.icon));
     const temp = el('div', 'wx-temp');
-    temp.appendChild(document.createTextNode(`${day.high} `));
-    temp.appendChild(el('span', 'lo', day.low));
+    // The high keeps its trailing space only when something follows it.
+    temp.appendChild(document.createTextNode(view.low ? `${day.high} ` : day.high));
+    if (view.low) temp.appendChild(el('span', 'lo', day.low));
     cell.appendChild(temp);
     strip.appendChild(cell);
   }
@@ -553,10 +561,24 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 /* ----------------------------------------------------------- FREEFORM --- */
 
 /** The clock, as a widget: the time the today block already shows, on its own. */
-function renderClockWidget(model: DisplayModel): HTMLElement {
+function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
+  const view = clockWidgetView(config);
   const box = el('div', 'fw-clock');
-  box.appendChild(el('div', 'clock', model.clock));
-  box.appendChild(el('div', 'today-date', model.todayLabel));
+  /*
+   * `model.clock` is already in the household's own format, so following it
+   * costs nothing; an override re-reads the same corrected wall time through
+   * the same formatter, rather than trying to reformat a rendered string.
+   */
+  const time =
+    view.format === 'follow'
+      ? model.clock
+      : localTime(model.now, model.timezone, view.format === '12');
+  const face = el('div', 'clock', time);
+  // The type is sized per character (see `.fw-clock .clock`): "08:26 pm" is
+  // eight of them and "20:26" is five, and one constant cannot serve both.
+  face.style.setProperty('--clock-chars', String(Math.max(1, time.length)));
+  box.appendChild(face);
+  if (view.date) box.appendChild(el('div', 'today-date', model.todayLabel));
   return box;
 }
 
@@ -596,11 +618,11 @@ export function renderWidget(
 ): HTMLElement | undefined {
   switch (type) {
     case 'clock':
-      return renderClockWidget(model);
+      return renderClockWidget(model, config);
     case 'calendar':
       return renderCalendarWidget(model, config);
     case 'weather':
-      return renderWeather(model);
+      return renderWeather(model, config);
     case 'homeassistant':
       return renderHouse(model, config);
     case 'shift':
@@ -694,7 +716,7 @@ function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement
   const id = widgetConfig(config)['module'];
   const panel = typeof id === 'string' ? model.externalPanels[`ext:${id}`] : undefined;
   if (panel === undefined) return el('div', 'cd-empty', 'Pick a module in this widget’s options.');
-  return renderGenericPanel(panel);
+  return renderGenericPanel(panel, panelRowLimit(config));
 }
 
 /**
@@ -895,13 +917,24 @@ function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
  * never inject markup, an origin, or a script. The shape is already validated
  * and sanitised (`panelFrom`); this only lays it out.
  */
-export function renderGenericPanel(data: PanelData): HTMLElement {
+export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement {
   const section = el('section', `gp gp-${data.kind}`);
   if (data.title !== undefined) section.appendChild(el('div', 'gp-title', data.title));
 
+  /*
+   * How many of the module's rows to draw.
+   *
+   * The module decides its panel's shape and may send twelve readings; the
+   * household decides how many of them fit the box they dragged. Applies only
+   * to the two list kinds — a stat has one value and text is one paragraph, so
+   * there is nothing there to take the first three of.
+   */
+  const take = <T,>(items: readonly T[]): readonly T[] =>
+    rows === undefined ? items : items.slice(0, rows);
+
   if (data.kind === 'readings') {
     const list = el('div', 'gp-readings');
-    for (const reading of data.items) {
+    for (const reading of take(data.items)) {
       const row = el('div', 'gp-reading');
       if (reading.icon !== undefined) row.appendChild(el('span', 'gp-ico', reading.icon));
       row.appendChild(el('span', 'gp-label', reading.label));
@@ -914,7 +947,7 @@ export function renderGenericPanel(data: PanelData): HTMLElement {
     if (data.caption !== undefined) section.appendChild(el('div', 'gp-stat-caption', data.caption));
   } else if (data.kind === 'tiles') {
     const strip = el('div', 'gp-tiles');
-    for (const tile of data.items) {
+    for (const tile of take(data.items)) {
       const cell = el('div', 'gp-tile');
       cell.appendChild(el('div', 'gp-tile-value', tile.value));
       cell.appendChild(el('div', 'gp-tile-label', tile.label));

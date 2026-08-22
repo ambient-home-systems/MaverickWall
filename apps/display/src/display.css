@@ -1185,11 +1185,27 @@ body {
 
 /* The clock widget scales to its own box, not the canvas. */
 .fw-clock { justify-content: center; }
+/*
+ * The width term is per *character*, not a constant.
+ *
+ * It was `--buw * 26`, which is right for the five characters of "20:26" and
+ * wrong for the eight of "08:26 pm" — a 12-hour clock in a box sized for a
+ * 24-hour one wrapped onto two lines, which is how it was found: by looking at
+ * one. `--clock-chars` is set by the renderer from the string it is about to
+ * draw, so the box shrinks the type rather than the type breaking the line.
+ * 130 over five characters is the 26 this always was.
+ */
 .fw-clock .clock {
   font-family: var(--f-cond, var(--f-sans));
-  font-size: min(calc(var(--buw) * 26), calc(var(--buh) * 52));
+  font-size: min(
+    calc(var(--buw) * 130 / var(--clock-chars, 5)),
+    calc(var(--buh) * 52)
+  );
   line-height: 1;
   color: var(--ink);
+  /* A belt: if anything is still too wide it clips at the box edge rather than
+     wrapping, because a clock on two lines does not read as a clock. */
+  white-space: nowrap;
 }
 .fw-clock .today-date {
   font-family: var(--f-sans);
