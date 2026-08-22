@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.42.1
 
 Two fixes to the wall editor.
 
