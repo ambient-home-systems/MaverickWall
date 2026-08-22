@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.48.0
 
 The Weather widget gets the same **What it says** list the Shift badge has.
 
