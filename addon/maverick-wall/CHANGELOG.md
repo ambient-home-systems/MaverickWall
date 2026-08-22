@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.50.0
 
 **An eInk panel can now show your wall, in black and white.**
 
