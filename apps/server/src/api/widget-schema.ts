@@ -34,7 +34,7 @@ export const storedImageName = z
  * manifest: calendar `source id`s and Home Assistant reading `label`s, never an
  * entity id, which the manifest deliberately does not carry.
  */
-export const widgetConfigBody = z
+const widgetConfigFields = z
   .object({
     // Calendar
     calendars: z.array(z.string().max(64)).max(50).optional(),
@@ -169,7 +169,46 @@ export const widgetConfigBody = z
     opacity: z.number().int().min(0).max(100).optional(),
     corners: z.enum(['square', 'rounded']).optional(),
     shadow: z.boolean().optional(),
+  });
+
+/**
+ * The ink lane: what this widget does differently on a black-and-white panel
+ * (RFC 005, direction B).
+ *
+ * *Picked* from the fields above rather than declared again, so an ink override
+ * is validated by exactly the rule its wall twin is — a `count` that is out of
+ * range on the wall is out of range here, with the same message, for ever,
+ * without anybody remembering to change two places.
+ *
+ * The pick is what makes "one level deep" a fact about the shape rather than a
+ * promise in a comment: `ink` is not among the picked keys, so `ink.ink` is a
+ * rejected key and not a recursion anybody has to bound. It is also why the
+ * lane cannot carry a title, a note's text, an image or a module — a panel says
+ * *less* than the wall it follows, never something else. `INK_KEYS` in
+ * `epaper/honours.ts` is the same list from the renderer's side, and
+ * `epaper-ink.test.ts` holds the two to each other.
+ *
+ * Strict, like everything else: an unknown key here is a 400 and never a
+ * silently dropped option (rule five).
+ */
+export const inkOverrideBody = widgetConfigFields
+  .pick({
+    align: true,
+    calendars: true,
+    cellEvents: true,
+    clockFormat: true,
+    count: true,
+    fields: true,
+    mode: true,
+    people: true,
+    readings: true,
+    shiftName: true,
+    showDate: true,
   })
+  .strict();
+
+export const widgetConfigBody = widgetConfigFields
+  .extend({ ink: inkOverrideBody.optional() })
   .strict();
 
 /**

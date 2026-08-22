@@ -101,7 +101,10 @@ export function drawAgendaBox(fb: Framebuffer, model: EpaperModel, box: Box, hea
   const rowH = 34;
   const timeColW = measureText('00:00', { scale: 2 }) + 12;
   if (model.agenda.length === 0) {
-    drawText(fb, x0, y, 'Nothing on today', { scale: 2 });
+    // Sized to the box, for the same reason as the upcoming list below.
+    const note = 'Nothing on today';
+    const scale = measureText(note, { scale: 2 }) <= box.w ? 2 : 1;
+    drawText(fb, x0, y, fit(note, box.w, { scale }), { scale });
     return;
   }
   for (const item of model.agenda) {
@@ -150,7 +153,21 @@ export function drawUpcomingBox(
   const timeColW = measureText('00:00', { scale: 2 }) + 12;
   let y = box.y;
   if (rows.length === 0) {
-    drawText(fb, box.x, y, 'Nothing coming up', { scale: 2 });
+    /*
+     * Sized to the box, not to the sentence.
+     *
+     * This drew at a fixed scale 2 with no width bound at all, so in a narrow
+     * column it ran straight out of its box and over whatever was beside it —
+     * on the first canvas a panel ever drew, "Nothing coming up" lay across the
+     * month grid. Invisible until a panel started drawing a *wall's*
+     * arrangement, where a box is whatever the household dragged rather than a
+     * half of the built-in layout. `fit` is the belt: at scale 1 in a box too
+     * narrow even for that, a truncated line still beats a line in the widget
+     * next door.
+     */
+    const note = 'Nothing coming up';
+    const scale = measureText(note, { scale: 2 }) <= box.w ? 2 : 1;
+    drawText(fb, box.x, y, fit(note, box.w, { scale }), { scale });
     return;
   }
   let heading: CivilDate | undefined;

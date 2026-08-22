@@ -57,6 +57,7 @@ import {
   countUsers,
   readEvents,
   readLayoutWidgets,
+  panelCanvasOwner,
   effectiveDisplay,
   readHousehold,
   readLastSync,
@@ -842,11 +843,18 @@ export function createApp(deps: AppDeps): Hono {
     // screens exist, the same reason the media route stays behind the gate.
     if (!screen) return c.body(null, 404);
 
-    // A free-form panel draws the household's own canvas for the orientation it
-    // shows; anything else draws the fixed layout, so the read is skipped.
+    /*
+     * Whose canvas this panel draws — its own, a wall's, or none at all.
+     *
+     * `panelCanvasOwner` is the one place that decides, shared with the admin
+     * preview so the frame on the glass and the frame on the design page cannot
+     * disagree. `undefined` means the built-in fixed layout and the read is
+     * skipped entirely.
+     */
+    const canvasOwner = panelCanvasOwner(screen);
     const widgets =
-      screen.layoutMode === 'freeform'
-        ? readLayoutWidgets(deps.db, screen.id, epaperOrientation(screen)).map((row) => ({
+      canvasOwner !== undefined
+        ? readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)).map((row) => ({
             type: row.type,
             x: row.x,
             y: row.y,

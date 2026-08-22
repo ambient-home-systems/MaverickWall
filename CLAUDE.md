@@ -892,6 +892,86 @@ keeps finding. It also checks for the collapsed badge rather than inferring
 from the child count, which gets it exactly backwards: a one-line badge has cut
 nothing.
 
+**A panel can follow a wall, and that is what made the ink lane worth
+building (RFC 005, direction B).** The lane is one optional `ink: {}` on a
+widget's config, one level deep, read by the panel renderer and by nothing else
+— but an override needs a canvas drawn on *two* media, and there wasn't one.
+Every screen is seeded with its own canvas at creation, and an e-paper panel
+starts on the built-in fixed layout; the only way to get a wall's arrangement
+onto a panel was `copy-from`, which forks it, and two canvases drift apart the
+first time somebody moves a box. So `screens.layout_mode` gained a third state:
+`follow`, with `layout_follows` naming the wall (migration `0032`, additive).
+`panelCanvasOwner` is the one resolver — its own canvas, a wall's, or none —
+and it is deliberately *not* `effectiveDisplay`: a wall with no canvas follows
+the household, a panel with none draws the layout designed for its medium, and
+inheriting a colour arrangement by accident would be a worse panel rather than a
+better one. Following is a choice a household makes, on the panel's page.
+
+**The one-way property is the whole of it.** An override changes the panel and
+never the wall, and the mistake that would break it is one character wide —
+writing into `config` instead of `config.ink`. So the lane's arithmetic is a
+pure module (`apps/display/src/ink.ts`) rather than something resolved inside a
+click handler, for the same reason `widget-options.ts` exists: there is no DOM
+in the display's test suite, so a rule that lives in a handler is a rule nothing
+can check. The place it nearly leaked is the ladder: writing one clears the
+switches it supersedes, and clearing the *wall's* copy of them from the ink lane
+would have been a panel's settings rewriting a kitchen wall.
+
+**`renderScreenFrame` stopped having a second opinion.** It used to AND
+`widgets.length > 0` with `screen.layoutMode === 'freeform'` — so the admin
+preview had to pass a screen it had edited to say `freeform`, and a *following*
+panel has no freeform of its own. Handing over widgets is now what asks for a
+canvas, and the caller (which is the only thing that knows about `follow`)
+decides. An empty list is still the built-in layout, which is what a reset panel
+relies on.
+
+**What a panel honours is a fact about the renderer, so it is derived from the
+renderer.** `epaper/honours.ts` holds three tables and `epaper-ink.test.ts`
+checks them by *rendering*: set a key, decode the frame, see whether the ink
+moved. `PANEL_HONOURS` must move ink for every key it names — a key that changes
+nothing is a control that does nothing, which is the `options.json` bug — and
+`PANEL_IGNORES` must move none, on any widget, or the sentence beside it in the
+editor is a lie. Both directions were confirmed by breaking the table each way
+and watching it go red. The set is closed against `widgetConfigBody` itself, so
+a key in neither table fails rather than falling quietly between them.
+
+**`INK_LANE` is a smaller list than that on purpose.** What the renderer
+honours is not what the editor should offer: the lane carries how much a widget
+*says* — the ladder, the count, the pickers, the clock's format — and never its
+title, its note, its picture, its module or its countdown date. A household
+looking at a wall and a panel has to be able to believe they are showing the
+same canvas. `showHours` and `showLow` are honoured and deliberately absent too:
+the ladder replaced both switches, so offering them again would be two controls
+for one decision. The schema's `ink` object is *picked* from the wall's own
+fields, which makes "one level deep" a fact about the shape rather than a
+promise — `ink` is not among the picked keys, so `ink.ink` is a rejected key and
+not a recursion anybody has to bound.
+
+**An un-annotated control is hidden on the ink lane, not shown.** The builders
+are one implementation for both lanes; `cfgField`/`switchRow`/`segControl` take
+an optional key and `pruneToLane` drops every child it was not told about. The
+default is what matters: a control added later by somebody who never read this
+disappears from the lane instead of appearing there and doing nothing.
+
+**The lane's preview is in the inspector, not behind the boxes.** The panel's
+*own* designer draws the real frame as the backdrop, which works because there
+the canvas is the panel's ratio; a wall's canvas is not, so the same trick would
+put every box somewhere it is not — the exact fault the Arrange fix was for.
+It sits beside the controls instead, which is the side-by-side this lane was
+always for. And because a widget row belongs to one orientation, the lane picks
+its panel by orientation and *says so* when the only follower draws the other
+canvas, rather than quietly disappearing or quietly writing overrides nothing
+reads.
+
+**Two panel bugs surfaced the moment a panel drew a wall's canvas, and only by
+looking at the frame.** `drawUpcomingBox` drew "Nothing coming up" at a fixed
+scale with no width bound at all, so in a narrow column it ran clean out of its
+box and lay across the month grid; `drawShift` drew "No shift today" at a fixed
+scale too, which in the same column read "No shift t" — not a smaller message
+but a broken one. Neither was reachable before, because a panel's boxes were
+always halves of the built-in layout. Both are sized to their box now, and
+`EPAPER_RENDERER_VERSION` is 2 because that is a pixel change.
+
 **Panels are modules, and weather is the first.** `src/modules/` holds a
 registry: a module owns a block key, a slice of the manifest, usually a job,
 and a corner of the settings. `collectPanels` catches per module, so a provider
