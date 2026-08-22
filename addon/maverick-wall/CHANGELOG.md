@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.44.0
 
 Every widget's settings now read the same way.
 
