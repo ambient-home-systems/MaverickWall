@@ -80,6 +80,22 @@ export const widgetConfigBody = z
      * them to a schema change. The only value ever stored is `false`.
      */
     people: z.array(z.string().max(64)).max(20).optional(),
+    /*
+     * The field ladder: which rows the badge draws, in the order they matter.
+     *
+     * The order is the drop order too — when the box cannot hold them all the
+     * renderer gives them up from the bottom — so one list carries both what is
+     * shown and what is sacrificed. An *ordered allowlist*, deliberately, and
+     * not a template: there is no expression here and no household-authored
+     * string that reaches a renderer, which is the same argument the recipe
+     * engine's transform makes.
+     *
+     * Absent means the ladder the badge always drew, minus whatever the two
+     * switches below turned off — so a widget saved before this existed is
+     * untouched. Present, it is the complete list and those switches no longer
+     * apply to it; the editor clears them when it writes this.
+     */
+    fields: z.array(z.enum(['person', 'shift', 'hours', 'run'])).max(4).optional(),
     shiftName: z.enum(['label', 'code']).optional(),
     showFace: z.boolean().optional(),
     showHours: z.boolean().optional(),

@@ -1,3 +1,4 @@
+import { shiftLadder, type ShiftField } from './ladder.js';
 import type { TodayShiftModel, WeatherDayModel } from './viewmodel.js';
 
 /**
@@ -45,21 +46,25 @@ export interface ShiftWidgetView {
   readonly entries: readonly TodayShiftModel[];
   /** Their photo, when they have one. */
   readonly face: boolean;
-  /** The `HH:MM–HH:MM` window, when the shift has one. */
-  readonly hours: boolean;
-  /** "Day 2 of 4 · 2 more", when the run is known. */
-  readonly run: boolean;
   /** The shift's full name, or its short code — the month grid's abbreviation. */
   readonly name: 'label' | 'code';
+  /**
+   * Which rows the badge draws, in the order they matter — and so the order
+   * they are given up in when the box will not hold them (see `ladder.ts`).
+   */
+  readonly ladder: readonly ShiftField[];
 }
 
 /**
  * Resolve one Shift widget's options against today's rota.
  *
- * Every flag is *absence means on*: the face, the hours and the run have been
- * drawn since the badge existed, so a canvas arranged around them keeps them
- * through a schema change and only `false` is ever stored (see
- * `widgetConfigBody`). `people` is the same "none chosen means all" the
+ * `showFace` is *absence means on*: the photo has been drawn since the badge
+ * existed, so a canvas arranged around it keeps it through a schema change and
+ * only `false` is ever stored (see `widgetConfigBody`). The hours and the run
+ * are no longer flags here — they are rows on the ladder, which is the single
+ * place that says which rows exist and in what order; `shiftLadder` is what
+ * still honours `showHours` / `showRun` for a widget saved before it.
+ * `people` is the same "none chosen means all" the
  * calendar and reading pickers use — which is what an untouched widget has
  * always drawn under, except that it used to mean "whoever sorted first".
  *
@@ -79,9 +84,8 @@ export function shiftWidgetView(
       (entry) => chosen.length === 0 || chosen.includes(entry.shift.personId),
     ),
     face: c['showFace'] !== false,
-    hours: c['showHours'] !== false,
-    run: c['showRun'] !== false,
     name: c['shiftName'] === 'code' ? 'code' : 'label',
+    ladder: shiftLadder(config),
   };
 }
 

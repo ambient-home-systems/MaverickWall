@@ -11,6 +11,7 @@ import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
+import { ladderRows, type ShiftField } from './ladder.js';
 import {
   clockWidgetView,
   panelRowLimit,
@@ -81,36 +82,102 @@ function shiftWindow(shift: { readonly startTime?: string; readonly endTime?: st
  * one person on a rota and the wall used to draw only whoever sorted first.
  * What it is allowed to say is decided in `shiftWidgetView`, not here.
  */
-function shiftBadge(entry: TodayShiftModel, options: ShiftWidgetView): HTMLElement {
+function shiftBadge(
+  entry: TodayShiftModel,
+  options: ShiftWidgetView,
+  ladder: readonly ShiftField[] = options.ladder,
+): HTMLElement {
   const shift = entry.shift;
   const badge = el('div', 'shift-badge');
   paintShift(badge, shift.colorToken, shift.color);
-  /*
-   * The picture, where the person already is. Same-origin and behind the
-   * display token — rule three, and the wall works with no internet.
-   */
-  const who = el('div', 'who');
-  const avatar = shift.personAvatarUrl;
-  if (options.face && avatar !== undefined && avatar !== null && avatar !== '') {
-    const image = document.createElement('img');
-    image.className = 'who-face';
-    image.src = avatar;
-    // Decorative: the name is right beside it, so a reader gains nothing from
-    // hearing the filename.
-    image.alt = '';
-    who.appendChild(image);
-  }
-  who.appendChild(document.createTextNode(shift.personName));
-  badge.appendChild(who);
-  badge.appendChild(
-    el('div', 'what', options.name === 'code' ? shift.shortCode : shift.label),
-  );
-  const window = options.hours ? shiftWindow(shift) : undefined;
-  if (window !== undefined) badge.appendChild(el('div', 'shift-when', window));
-  if (options.run && entry.run !== undefined) {
-    badge.appendChild(el('div', 'until', entry.run));
+
+  for (const row of ladderRows(ladder, shiftValues(entry, options))) {
+    if (row.field === 'person') {
+      /*
+       * The picture, where the person already is. Same-origin and behind the
+       * display token — rule three, and the wall works with no internet.
+       */
+      const who = el('div', 'who');
+      const avatar = shift.personAvatarUrl;
+      if (options.face && avatar !== undefined && avatar !== null && avatar !== '') {
+        const image = document.createElement('img');
+        image.className = 'who-face';
+        image.src = avatar;
+        // Decorative: the name is right beside it, so a reader gains nothing
+        // from hearing the filename.
+        image.alt = '';
+        who.appendChild(image);
+      }
+      who.appendChild(document.createTextNode(row.text));
+      badge.appendChild(who);
+      continue;
+    }
+    badge.appendChild(el('div', SHIFT_ROW_CLASS[row.field], row.text));
   }
   return badge;
+}
+
+/**
+ * The badge as one line, when the box has room for exactly one row.
+ *
+ * Dropping to a single rung would spend the same room on strictly less: "Amy"
+ * where "Amy · Days · 07:00–19:00" fits. The panel renderer has always
+ * collapsed rather than truncated in this case, and this is the wall saying the
+ * same thing — the two renderers agreeing about a small box is the whole point
+ * of there being one ladder.
+ *
+ * The person keeps a colon when they lead, because "Amy: Days" reads as an
+ * attribution and "Amy Days" reads as a mistake; anywhere else they are just
+ * another part, since "Days: Amy" attributes the wrong way round.
+ */
+function shiftLineBadge(
+  entry: TodayShiftModel,
+  options: ShiftWidgetView,
+  ladder: readonly ShiftField[],
+): HTMLElement {
+  const rows = ladderRows(ladder, shiftValues(entry, options));
+  const parts = rows.map((row) => row.text);
+  const head = rows[0];
+  const text =
+    head !== undefined && head.field === 'person' && parts.length > 1
+      ? `${parts[0]}: ${parts.slice(1).join(' · ')}`
+      : parts.join(' · ');
+
+  const badge = el('div', 'shift-badge is-line');
+  paintShift(badge, entry.shift.colorToken, entry.shift.color);
+  badge.appendChild(el('div', 'what', text));
+  return badge;
+}
+
+/** The class each ladder row keeps, so the stylesheet is unchanged by ordering. */
+const SHIFT_ROW_CLASS: Readonly<Record<ShiftField, string>> = {
+  person: 'who',
+  shift: 'what',
+  hours: 'shift-when',
+  run: 'until',
+};
+
+/**
+ * What each row would say, or nothing when the day has nothing for it.
+ *
+ * Absent is different from switched off: an untimed shift has no hours and a
+ * run the server could not establish has no position, and neither is the
+ * household asking for a gap. `ladderRows` drops those.
+ */
+function shiftValues(
+  entry: TodayShiftModel,
+  options: ShiftWidgetView,
+): Partial<Record<ShiftField, string>> {
+  const shift = entry.shift;
+  const name = options.name === 'code' ? shift.shortCode : shift.label;
+  const values: Partial<Record<ShiftField, string>> = {
+    person: shift.personName,
+    shift: name,
+  };
+  const window = shiftWindow(shift);
+  if (window !== undefined) values.hours = window;
+  if (entry.run !== undefined) values.run = entry.run;
+  return values;
 }
 
 /**
@@ -1047,8 +1114,20 @@ export function renderFreeform(
   // column. Includes the ones the week fallback below produces.
   const agendas: HTMLElement[] = [];
 
+  // Shift badges, to be re-checked once they have a real size. The ladder's
+  // bottom rungs are given up one at a time when the box cannot hold them —
+  // measured after layout for the same reason the week columns are, and by the
+  // same rule: a drawing decision, never a saved one.
+  const shiftBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
+
   for (const widget of layout.widgets) {
     const box = el('div', `fw fw-${widget.type}`);
+    /*
+     * Which widget this box is, for anything that has to find it again after
+     * layout. The editor reads it to show how much of a ladder actually
+     * survived in the real preview; nothing on a wall reads it.
+     */
+    box.dataset['widgetId'] = widget.id;
     // Percentages of the canvas, so the same layout fills any resolution of
     // the authored aspect.
     box.style.left = `${widget.x * 100}%`;
@@ -1106,6 +1185,7 @@ export function renderFreeform(
       box.appendChild(scale);
       toFit.push({ box, scale, min: minScaleFor(widget.type) });
       if (widget.type === 'calendar' && body.classList.contains('next')) agendas.push(body);
+      if (widget.type === 'shift') shiftBoxes.push({ box, widget });
     }
     canvas.appendChild(box);
   }
@@ -1131,6 +1211,50 @@ export function renderFreeform(
 
   // Now that everything has a size, fit each reused section to its box.
   for (const { box, scale, min } of toFit) fitToBox(box, scale, { min });
+
+  /*
+   * A badge with no room for its whole ladder gives up its bottom rung.
+   *
+   * The wall has no fixed line heights to do this arithmetic against — a badge
+   * is `rem`-sized against a canvas that is itself letterboxed into the frame —
+   * so it is measured rather than predicted: fit, and if the section still
+   * overflows at its floor, drop the last row and fit again. `fitToBox` clamps
+   * at `minScaleFor('shift')` and clips below it, which is exactly the state
+   * this replaces with something readable.
+   *
+   * The same shape as the week-columns fallback below, and the same rule: a
+   * *drawing* decision, not a saved one. The ladder still says four rows, the
+   * editor still shows four rows, and widening the box brings them straight
+   * back. The head of the ladder always survives — a household who dragged a
+   * box too small should see the thing they put first, clipped if it comes to
+   * that, rather than an empty rectangle (rule nine).
+   */
+  for (const { box, widget } of shiftBoxes) {
+    const view = shiftWidgetView(model.todayShifts, widget.config);
+    let ladder = view.ladder;
+    let scale = box.querySelector('.fw-scale');
+    while (
+      ladder.length > 1 &&
+      scale instanceof HTMLElement &&
+      fitToBox(box, scale, { min: minScaleFor('shift') })
+    ) {
+      ladder = ladder.slice(0, -1);
+      const rebuilt = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
+      // Down to one row where the ladder asked for more: a line, not a word.
+      const line = ladder.length === 1 && view.ladder.length > 1;
+      for (const entry of view.entries) {
+        rebuilt.appendChild(
+          line ? shiftLineBadge(entry, view, view.ladder) : shiftBadge(entry, view, ladder),
+        );
+      }
+      const next = el('div', 'fw-scale');
+      next.appendChild(contentWithTitle(rebuilt, widget.config));
+      box.textContent = '';
+      box.appendChild(next);
+      fitToBox(box, next, { min: minScaleFor('shift') });
+      scale = next;
+    }
+  }
 
   /*
    * A week too narrow to read becomes the agenda instead.
@@ -1318,11 +1442,23 @@ function minScaleFor(type: string): number {
  * `min` is a readable floor: below it the section clips at the box edge rather
  * than shrinking to an illegible size (rule nine — degrade, never smear).
  */
+/**
+ * Scale a section to its box, and say whether it still did not fit.
+ *
+ * The return value is what lets a caller do something better than clipping —
+ * the shift ladder gives up its bottom rung and asks again. Everything else
+ * ignores it, because clipping at the floor is the right answer when there is
+ * nothing to give up.
+ *
+ * Idempotent: it re-measures from layout (`scrollWidth`/`scrollHeight`), which
+ * a transform does not affect, so calling it twice on the same nodes is the
+ * same as calling it once.
+ */
 export function fitToBox(
   box: HTMLElement,
   scale: HTMLElement,
   opts: { readonly min?: number; readonly max?: number } = {},
-): void {
+): boolean {
   const min = opts.min ?? 0.25;
   // A ceiling so a one-word note in a huge box grows to fill without becoming a
   // caricature of itself; well above any sane fill factor, so it rarely bites.
@@ -1333,13 +1469,13 @@ export function fitToBox(
   const padT = parseFloat(style.paddingTop);
   const availW = box.clientWidth - padL - parseFloat(style.paddingRight);
   const availH = box.clientHeight - padT - parseFloat(style.paddingBottom);
-  if (availW <= 0 || availH <= 0) return;
+  if (availW <= 0 || availH <= 0) return false;
 
   // Baseline: lay the section out at the full box width and measure it.
   scale.style.width = `${availW}px`;
   let contentW = scale.scrollWidth;
   let contentH = scale.scrollHeight;
-  if (contentH <= 0) return;
+  if (contentH <= 0) return false;
 
   if (contentW <= availW && contentH <= availH) {
     // Room to grow: re-flow at an aspect-matched width and re-measure.
@@ -1361,6 +1497,10 @@ export function fitToBox(
   scale.style.left = `${padL + Math.max(0, (availW - scaledW) / 2)}px`;
   scale.style.top = `${padT + Math.max(0, (availH - scaledH) / 2)}px`;
   scale.style.transform = `scale(${factor})`;
+
+  // Rounded by a pixel: a section one subpixel over its box is a rounding
+  // artefact, not a badge that needs a row taken off it.
+  return scaledW > availW + 1 || scaledH > availH + 1;
 }
 
 /**

@@ -80,15 +80,28 @@ describe('the shift widget view', () => {
     ).toEqual(['amy']);
   });
 
-  it('keeps the face, the hours and the run unless they are switched off', () => {
-    // Absence means on, for all three: they have been drawn since the badge
-    // existed, so a canvas arranged around them survives the schema change.
-    const untouched = shiftWidgetView([amy]);
-    expect(untouched).toMatchObject({ face: true, hours: true, run: true, name: 'label' });
-    expect(shiftWidgetView([amy], {})).toMatchObject({ face: true, hours: true, run: true });
+  it('keeps the photo unless it is switched off', () => {
+    // Absence means on: it has been drawn since the badge existed, so a canvas
+    // arranged around it survives the schema change.
+    expect(shiftWidgetView([amy])).toMatchObject({ face: true, name: 'label' });
+    expect(shiftWidgetView([amy], {})).toMatchObject({ face: true });
+    expect(shiftWidgetView([amy], { showFace: false })).toMatchObject({ face: false });
+  });
 
-    const off = shiftWidgetView([amy], { showFace: false, showHours: false, showRun: false });
-    expect(off).toMatchObject({ face: false, hours: false, run: false });
+  it('carries the ladder, which is the one place rows are decided', () => {
+    // The hours and the run stopped being flags on this view when the ladder
+    // arrived — two representations of one fact is the drift the seam exists to
+    // stop. `shiftLadder` is what still honours the old switches.
+    expect(shiftWidgetView([amy]).ladder).toEqual(['person', 'shift', 'hours', 'run']);
+    expect(shiftWidgetView([amy], { showHours: false }).ladder).toEqual([
+      'person',
+      'shift',
+      'run',
+    ]);
+    expect(shiftWidgetView([amy], { fields: ['shift', 'person'] }).ladder).toEqual([
+      'shift',
+      'person',
+    ]);
   });
 
   it('offers the short code only when it is asked for by name', () => {
@@ -106,6 +119,7 @@ describe('the shift widget view', () => {
       const view = shiftWidgetView([amy, ben], config);
       expect(view.entries).toHaveLength(2);
       expect(view.name).toBe('label');
+      expect(view.ladder).toEqual(['person', 'shift', 'hours', 'run']);
     }
   });
 });

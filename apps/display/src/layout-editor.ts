@@ -21,6 +21,7 @@ import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
 import { WIDGET_VIEWS } from './widget-views.js';
+import { SHIFT_FIELDS, shiftLadder } from './ladder.js';
 
 interface Widget {
   id: string;
@@ -263,6 +264,12 @@ function boot(): void {
 
   let selected: string | undefined;
   let dirty = false;
+  /*
+   * The ladder lists currently on screen, so the cut marker can be refreshed
+   * after the preview redraws. Rebuilt with the config panel; never more than
+   * one, but a list is simpler than a nullable and cannot go stale.
+   */
+  let ladderPanels: { readonly widget: Widget; readonly list: HTMLElement }[] = [];
   // Whether the anchored Layers / Canvas popovers are open. UI-only; not saved.
   let layersOpen = false;
   let canvasOpen = false;
@@ -915,6 +922,10 @@ function boot(): void {
       widgets: state.widgets.map((w) => ({ ...w })),
       ...(state.background !== undefined ? { background: state.background } : {}),
     }, EDITOR_MEDIA_BASE);
+
+    // The ladder's cut marker is read back out of what was just drawn, so the
+    // editor and the wall cannot disagree about what fits.
+    markLadderCut();
   }
 
   /**
@@ -1468,6 +1479,7 @@ function boot(): void {
 
   function renderConfigPanel(): void {
     configPanel.textContent = '';
+    ladderPanels = [];
     const widget = state.widgets.find((w) => w.id === selected);
     if (widget === undefined) {
       closeInspector();
@@ -2079,19 +2091,163 @@ function boot(): void {
         setConfig(widget, 'showFace', checked ? undefined : false),
       ),
     );
-    configPanel.appendChild(
-      switchRow('Show the hours', '', cfg['showHours'] !== false, (checked) =>
-        setConfig(widget, 'showHours', checked ? undefined : false),
-      ),
-    );
-    configPanel.appendChild(
-      switchRow(
-        'Show how far through',
-        epaperHost ? 'The wall only — a panel has never drawn this line.' : '"Day 2 of 4 · 2 more".',
-        cfg['showRun'] !== false,
-        (checked) => setConfig(widget, 'showRun', checked ? undefined : false),
-      ),
-    );
+    buildLadder(widget, cfg);
+  }
+
+  /** What each ladder field is called, and what it says, for the editor. */
+  const LADDER_LABELS: Readonly<Record<string, readonly [string, string]>> = {
+    person: ['Who it is', 'Amy'],
+    shift: ['The shift', 'Nights'],
+    hours: ['The hours', '19:00–07:00'],
+    run: ['How far through', 'Day 2 of 4 · 2 more'],
+  };
+
+  /**
+   * The field ladder: what the badge says, in the order it matters.
+   *
+   * One list rather than a row of switches, because the order carries a second
+   * meaning the switches could not express — it is also the order rows are
+   * given up in when the box will not hold them all. Everything is on the list
+   * whether or not it is ticked, so there is one place to look and no
+   * add/remove mode to be in.
+   *
+   * Writing it clears `showHours` and `showRun`, the two switches it replaces.
+   * A widget is described one way or the other and never half in each; those
+   * switches keep working for a widget nobody has touched (`shiftLadder`).
+   */
+  function buildLadder(widget: Widget, cfg: Record<string, unknown>): void {
+    const field = cfgField('What it says');
+    const list = document.createElement('div');
+    list.className = 'le-ladder';
+
+    const chosen = shiftLadder(cfg);
+    const order = [...chosen, ...SHIFT_FIELDS.filter((name) => !chosen.includes(name))];
+
+    const write = (next: readonly string[]): void => {
+      const cleaned: Record<string, unknown> = { ...(widget.config ?? {}) };
+      delete cleaned['showHours'];
+      delete cleaned['showRun'];
+      widget.config = cleaned;
+      setConfig(widget, 'fields', [...next]);
+      renderConfigPanel();
+    };
+
+    for (const name of order) {
+      const on = chosen.includes(name as (typeof SHIFT_FIELDS)[number]);
+      const [label, example] = LADDER_LABELS[name] ?? [name, ''];
+      const row = document.createElement('div');
+      row.className = 'le-ladder-row' + (on ? '' : ' is-off');
+      row.dataset['field'] = name;
+
+      const grip = document.createElement('span');
+      grip.className = 'le-layer-grip';
+      grip.textContent = '⋮⋮';
+      grip.title = 'Drag to reorder';
+      if (on) grip.addEventListener('pointerdown', (event) => startLadderDrag(event, name, list, write));
+
+      const tick = document.createElement('input');
+      tick.type = 'checkbox';
+      tick.checked = on;
+      tick.addEventListener('change', () => {
+        const next = tick.checked
+          ? [...chosen, name]
+          : chosen.filter((entry) => entry !== name);
+        // Never all four off: the badge would have nothing to draw, and the
+        // renderer would fall back to the default and contradict this list.
+        write(next.length > 0 ? next : [name]);
+      });
+
+      const text = document.createElement('span');
+      text.className = 'le-ladder-name';
+      text.textContent = label;
+      const eg = document.createElement('span');
+      eg.className = 'le-ladder-eg';
+      eg.textContent = example;
+
+      row.append(grip, tick, text, eg);
+      list.appendChild(row);
+    }
+
+    field.appendChild(list);
+    configPanel.appendChild(field);
+
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent =
+      'First is drawn first, and given up last. When the box is too small the ' +
+      'bottom of the list goes first — so put what matters at the top.';
+    configPanel.appendChild(note);
+    ladderPanels.push({ widget, list });
+    markLadderCut();
+  }
+
+  /** Drag a ladder row to reorder. Same shape as the Layers list's reorder. */
+  function startLadderDrag(
+    event: PointerEvent,
+    name: string,
+    list: HTMLElement,
+    write: (next: readonly string[]) => void,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const move = (moveEvent: PointerEvent): void => {
+      const rows = Array.from(list.querySelectorAll<HTMLElement>('.le-ladder-row:not(.is-off)'));
+      const order = rows.map((row) => row.dataset['field'] ?? '');
+      let target = order.length;
+      for (let index = 0; index < rows.length; index++) {
+        const rect = rows[index]!.getBoundingClientRect();
+        if (moveEvent.clientY < rect.top + rect.height / 2) {
+          target = index;
+          break;
+        }
+      }
+      const from = order.indexOf(name);
+      if (from === -1) return;
+      const insertAt = target > from ? target - 1 : target;
+      if (insertAt === from) return;
+      order.splice(from, 1);
+      order.splice(insertAt, 0, name);
+      write(order);
+    };
+    const up = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  /**
+   * Mark the rows the box is currently too small to draw.
+   *
+   * Read out of the *real* preview rather than predicted: the preview renders
+   * the household's manifest through the wall's own `renderFreeform`, which
+   * does the dropping, so counting what survived is the same answer the screen
+   * gives. A slider that guessed would be a second opinion about fit, and two
+   * opinions about fit is the whole class of bug this project keeps finding.
+   */
+  function markLadderCut(): void {
+    for (const { widget, list } of ladderPanels) {
+      const badge = previewShadow?.querySelector(`[data-widget-id="${widget.id}"] .shift-badge`);
+      const rows = Array.from(list.querySelectorAll<HTMLElement>('.le-ladder-row:not(.is-off)'));
+      /*
+       * A collapsed badge has cut nothing.
+       *
+       * With room for a single row the wall draws every field joined onto one
+       * line, so the fields are all there and striking them through would say
+       * the opposite of what the screen shows. Counting children alone gets
+       * this exactly backwards, which is why the class is checked rather than
+       * inferred from the count.
+       */
+      const collapsed = badge?.classList.contains('is-line') === true;
+      const drawn = badge?.childElementCount;
+      rows.forEach((row, index) => {
+        row.classList.toggle(
+          'is-cut',
+          !collapsed && drawn !== undefined && drawn > 0 && index >= drawn,
+        );
+      });
+    }
   }
 
   function buildHaConfig(widget: Widget, cfg: Record<string, unknown>): void {
