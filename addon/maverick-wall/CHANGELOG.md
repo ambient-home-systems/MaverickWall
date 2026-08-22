@@ -14,6 +14,18 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Two fixes to the wall editor.
+
+Closing a widget's settings left the preview drawn small in the corner of its
+box, and nothing you did afterwards put it right — you had to reload the page.
+It fills the canvas again as soon as the panel closes.
+
+The landscape canvas was drawn slightly wider than it had room for, so the
+preview inside it was cropped down its right-hand edge. Both canvases are now
+exactly the shape you are arranging.
+
 ## 0.42.0
 
 Editing a wall is three screens now instead of one long one.
