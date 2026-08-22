@@ -763,7 +763,7 @@ manifest, and a test named "treats an explicit rest day as not working, not as
 unknown" asserted the empty list that proved they were not.
 
 **A widget's options are resolved as data, and the Shift widget is where that
-started.** `shift-widget.ts` in the display is pure: it takes today's rota and
+started.** `widget-options.ts` in the display is pure: it takes today's rota and
 the widget's stored config and answers with who to draw and which of the
 badge's lines — so `render.ts` keeps building nodes and doing no thinking, and
 the options can be tested at all. There is no DOM in the display's test suite,
@@ -777,6 +777,32 @@ from whoever sorted first. `showRun` is deliberately the wall's alone: the panel
 has never had a row for it, and an option whose absence means "on" would
 otherwise grow one on every existing panel at upgrade. The eInk test pins that
 as byte-identical rather than leaving it to be discovered.
+
+**The file was renamed the moment a second widget needed it**, rather than
+growing a second home for the same job — `shift-widget.ts` became
+`widget-options.ts` when the Clock and Weather widgets got their own options,
+because two modules resolving widget config is the drift the seam exists to
+stop. The Clock has no "show seconds" and the absence is the decision: the wall
+redraws every fifteen seconds, so the control would promise a precision the
+widget cannot keep. Its 12/24-hour override re-reads the corrected wall time
+through the same formatter rather than reformatting a rendered string — and it
+uncovered a bug by being looked at, not measured: the clock's type was sized
+`--buw * 26`, right for the five characters of "20:26" and wrong for the eight
+of "08:26 pm", so a 12-hour clock in a box sized for a 24-hour one wrapped onto
+two lines. The width term is per character now, with `nowrap` as the belt.
+
+**The eInk Weather widget drew `provider: nws` and a raw timestamp.**
+`drawPanel`'s tolerant reader looks for an `items`/`readings` array and, failing
+that, prints every scalar field on the object — and the weather panel carries
+neither, it carries `days`. So a household who put Weather on a panel got two
+lines of internals and not one temperature, while every structural test passed
+over it: the widget drew inside its box, did not throw, and produced ink. Found
+by rendering one and *looking* at it. It has its own draw now — day, high, low,
+in columns when each has room and a line each when it has not, the same
+two-mode shape `drawShift` uses. The test that guards it asserts *content*
+rather than shape: the frame must change when a temperature changes and must
+not change when the fetch timestamp does, which is exactly the pair the old
+draw had backwards.
 
 **Panels are modules, and weather is the first.** `src/modules/` holds a
 registry: a module owns a block key, a slice of the manifest, usually a job,

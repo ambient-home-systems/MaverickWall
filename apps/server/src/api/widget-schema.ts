@@ -84,6 +84,28 @@ export const widgetConfigBody = z
     showFace: z.boolean().optional(),
     showHours: z.boolean().optional(),
     showRun: z.boolean().optional(),
+    /*
+     * Clock.
+     *
+     * `clockFormat` absent means "follow the household", which is what every
+     * clock on every wall has drawn until now — so it is an absence and not a
+     * third enum member that would have to be stored to mean the default.
+     * `showDate` is absence-means-on like the shift switches above.
+     *
+     * There is deliberately no "show seconds": the wall redraws every fifteen
+     * seconds, so a seconds field would be wrong far more often than right.
+     */
+    clockFormat: z.enum(['12', '24']).optional(),
+    showDate: z.boolean().optional(),
+    /*
+     * Weather. `count` is shared with the calendar's agenda above — one strict
+     * object for every type, and a key a type does not read is simply not read.
+     *
+     * `showIcon` is the wall's: the panel's bitmap font is 0x20–0x7E and a
+     * forecast glyph is not in it, so a 1-bit frame has no icon to hide.
+     */
+    showLow: z.boolean().optional(),
+    showIcon: z.boolean().optional(),
     // Home Assistant
     readings: z.array(z.string().max(80)).max(50).optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.

@@ -30,7 +30,7 @@ import {
   type Box,
   type PanelGeometry,
 } from './render.js';
-import type { EpaperModel } from './viewmodel.js';
+import { clockLabel, type EpaperModel } from './viewmodel.js';
 
 /** A widget placed on the canvas: fractional box, plus its stored options. */
 export interface PlacedEpaperWidget {
@@ -145,14 +145,27 @@ function drawFrame(fb: Framebuffer, box: Box, config: Config): Box {
   return inner;
 }
 
+/**
+ * The clock, honouring the same two options the wall's does.
+ *
+ * `clockFormat` re-reads the frame's own time rather than reformatting the
+ * string the viewmodel already built, which is the only way to change a clock
+ * without parsing one. `showDate` is absence-means-on, matching the schema.
+ */
 function drawClock(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+  const format = str(config, 'clockFormat');
+  const time =
+    format === '12' || format === '24'
+      ? clockLabel(model.generatedAt, model.timezone, format === '24')
+      : model.time;
   // Bounded by the height it has *and* the width it has: a box taller than it
   // is wide used to pick a size the time could not fit, and lost its last
   // digit to the truncation in `drawLines`.
   const byHeight = Math.max(2, Math.min(8, Math.floor(box.h / 18)));
-  const timeScale = scaleToFit(model.time, box.w, byHeight);
+  const timeScale = scaleToFit(time, box.w, byHeight);
   const align = alignOf(config);
-  drawLines(fb, [model.time], { ...box, h: GLYPH_SIZE * timeScale }, timeScale, align);
+  drawLines(fb, [time], { ...box, h: GLYPH_SIZE * timeScale }, timeScale, align);
+  if (config['showDate'] === false) return;
   const dateScale = Math.max(1, Math.min(3, Math.floor(timeScale / 2)));
   const date = `${model.header.weekday} ${model.header.day} ${model.header.month}`;
   const dateTop = box.y + GLYPH_SIZE * timeScale + 8;
@@ -324,8 +337,100 @@ function panelLines(panel: unknown, max: number): string[] {
   return out;
 }
 
-function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string): void {
-  const lines = panelLines(panel, Math.max(1, Math.floor(box.h / 24))).map(asciiTitle);
+/**
+ * The forecast, drawn as a forecast.
+ *
+ * This used to go through `drawPanel`, whose tolerant reader looks for an
+ * `items`/`readings` array and, failing that, prints every scalar field it can
+ * see. The weather panel has neither — it carries `days` — so a household who
+ * put Weather on a panel got exactly two lines:
+ *
+ *     provider: nws
+ *     fetchedAt: 1787654321000
+ *
+ * Internals, and no temperatures. Found by rendering one and looking at it.
+ *
+ * The degree sign is not in the 0x20–0x7E font, so the unit rides on the low
+ * the way the wall's strip already does it: "24  13F" rather than five repeated
+ * degree marks across the row.
+ */
+interface EpaperForecastDay {
+  readonly name: string;
+  readonly high: string;
+  readonly low: string;
+}
+
+/** Read the weather panel defensively — a module's shape is its own. */
+function forecastDays(panel: unknown): EpaperForecastDay[] {
+  if (panel === null || typeof panel !== 'object') return [];
+  const raw = (panel as { days?: unknown }).days;
+  if (!Array.isArray(raw)) return [];
+  const out: EpaperForecastDay[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const day = entry as { name?: unknown; high?: unknown; low?: unknown; unit?: unknown };
+    if (typeof day.name !== 'string') continue;
+    const unit = typeof day.unit === 'string' ? asciiTitle(day.unit) : '';
+    const degrees = (value: unknown): string =>
+      typeof value === 'number' ? String(Math.round(value)) : '-';
+    out.push({
+      name: asciiTitle(day.name),
+      high: degrees(day.high),
+      low: `${degrees(day.low)}${unit}`,
+    });
+  }
+  return out;
+}
+
+function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Config): void {
+  let days = forecastDays(manifest.panels['weather']);
+  if (days.length === 0) {
+    drawLines(fb, ['No weather yet'], box, 2, 'left');
+    return;
+  }
+  const wanted = config['count'];
+  if (typeof wanted === 'number' && Number.isFinite(wanted) && wanted >= 1) {
+    days = days.slice(0, Math.trunc(wanted));
+  }
+  const lows = config['showLow'] !== false;
+
+  /*
+   * Columns when each one has room to be read, lines when it has not — the same
+   * two-mode shape `drawShift` uses, and for the same reason: a weather widget
+   * is usually a wide short strip, but a household can drag it into a tall
+   * narrow box and a strip of 20px columns is a smudge.
+   */
+  const columnWidth = Math.floor(box.w / days.length);
+  if (columnWidth >= 56 && box.h >= 40) {
+    days.forEach((day, index) => {
+      const column: Box = { x: box.x + columnWidth * index, y: box.y, w: columnWidth - 4, h: box.h };
+      const nameScale = scaleToFit(day.name, column.w, 1);
+      drawLines(fb, [fit(day.name, column.w, { scale: nameScale })], column, nameScale, 'left');
+      const rest: { text: string; scale: number }[] = [
+        { text: day.high, scale: scaleToFit(day.high, column.w, 3) },
+      ];
+      if (lows) rest.push({ text: day.low, scale: scaleToFit(day.low, column.w, 2) });
+      drawStack(
+        fb,
+        { ...column, y: column.y + GLYPH_SIZE + 6, h: Math.max(0, column.h - GLYPH_SIZE - 6) },
+        rest,
+        'left',
+      );
+    });
+    return;
+  }
+
+  const lines = days.map((day) =>
+    [day.name, day.high, lows ? day.low : ''].filter((part) => part !== '').join('  '),
+  );
+  const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
+  drawLines(fb, lines, box, scale, 'left');
+}
+
+function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string, rows?: number): void {
+  // The box's own limit, and then the household's if they set a smaller one.
+  const fits = Math.max(1, Math.floor(box.h / 24));
+  const lines = panelLines(panel, rows === undefined ? fits : Math.min(fits, rows)).map(asciiTitle);
   drawLines(fb, lines.length > 0 ? lines : [empty], box, 2, 'left');
 }
 
@@ -377,12 +482,19 @@ function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel,
     case 'todo':
       return drawTodo(fb, box, config);
     case 'weather':
-      return drawPanel(fb, box, manifest.panels['weather'], 'No weather yet');
+      return drawWeather(fb, box, manifest, config);
     case 'homeassistant':
       return drawPanel(fb, box, manifest.panels['home'] ?? manifest.panels['homeassistant'], 'No readings yet');
     case 'external': {
       const mod = str(config, 'module');
-      return drawPanel(fb, box, mod !== undefined ? manifest.panels[mod] : undefined, 'No data yet');
+      const rows = config['count'];
+      return drawPanel(
+        fb,
+        box,
+        mod !== undefined ? manifest.panels[mod] : undefined,
+        'No data yet',
+        typeof rows === 'number' && Number.isFinite(rows) && rows >= 1 ? Math.trunc(rows) : undefined,
+      );
     }
     case 'image':
       return drawImage(fb, box, config);

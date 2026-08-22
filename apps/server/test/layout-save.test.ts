@@ -365,6 +365,40 @@ describe('saving a layout', () => {
     }
   });
 
+  it('carries the clock, weather and module-panel options through to the manifest', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [
+        { id: 'ck', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0,
+          config: { clockFormat: '12', showDate: false } },
+        { id: 'wx', type: 'weather', x: 0, y: 0.25, w: 1, h: 0.2, z: 1,
+          config: { count: 3, showLow: false, showIcon: false } },
+        { id: 'md', type: 'external', x: 0, y: 0.5, w: 0.5, h: 0.2, z: 2,
+          config: { module: 'bins', count: 4 } },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { portrait: { widgets: { id: string; config?: unknown }[] } } };
+    const byId = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.id, w.config]));
+    expect(byId['ck']).toEqual({ clockFormat: '12', showDate: false });
+    expect(byId['wx']).toEqual({ count: 3, showLow: false, showIcon: false });
+    expect(byId['md']).toEqual({ module: 'bins', count: 4 });
+  });
+
+  it('rejects a clock format it cannot read the time in (rule five)', async () => {
+    const h = await harness();
+    for (const config of [{ clockFormat: '48' }, { clockFormat: 12 }, { showLow: 'no' }]) {
+      const res = await h.saveLayout({
+        mode: 'freeform', aspect: 0.5625,
+        widgets: [{ id: 'ck', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0, config }],
+      });
+      expect(res.status, JSON.stringify(config)).toBe(400);
+    }
+  });
+
   it('rejects an unknown config key rather than dropping it (rule five)', async () => {
     const h = await harness();
     const res = await h.saveLayout({

@@ -163,7 +163,8 @@ function headerParts(today: CivilDate): EpaperModel['header'] {
 }
 
 /** `HH:MM` for a timed event in the panel's zone; 24-hour unless asked otherwise. */
-function clockLabel(epochMs: number, timezone: string, clock24: boolean): string {
+/** Exported so a clock widget can re-read the time in its own format. */
+export function clockLabel(epochMs: number, timezone: string, clock24: boolean): string {
   return new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
