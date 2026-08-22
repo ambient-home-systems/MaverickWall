@@ -334,6 +334,14 @@ body.shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
 .topbar .crumb{font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
   letter-spacing:var(--md-sys-typescale-label-medium-tracking);
   color:var(--md-sys-color-on-surface-variant);margin:0 0 2px}
+/* The same crumb as a real link back up a level, with the arrow that says so.
+ * Its pointer target is stretched the way every sub-48px control here is. */
+.crumb-back{position:relative;display:inline-flex;align-items:center;gap:5px;
+  color:var(--md-sys-color-primary);text-decoration:none}
+.crumb-back::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;
+  height:44px;transform:translateY(-50%)}
+.crumb-back:hover{text-decoration:underline}
+.crumb-back svg{width:15px;height:15px}
 .topbar h1{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
   letter-spacing:var(--md-sys-typescale-title-large-tracking);
   color:var(--md-sys-color-on-surface);margin:0}
@@ -605,30 +613,30 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--md-sys-shape-corn
   font-family:var(--sans);font-weight:400;font-size:14px;letter-spacing:0;
   color:var(--md-sys-color-on-surface);cursor:pointer}
 .checks input[type=checkbox],.hep-row input[type=checkbox],
-.le-toggle input[type=checkbox],.le-cfg-check input[type=checkbox]{
+.le-cfg-check input[type=checkbox]{
   appearance:none;-webkit-appearance:none;position:relative;flex:0 0 auto;margin:0;
   width:18px;height:18px;border-radius:2px;cursor:pointer;background:transparent;
   border:2px solid var(--md-sys-color-on-surface-variant)}
 .checks input[type=checkbox]::before,.hep-row input[type=checkbox]::before,
-.le-toggle input[type=checkbox]::before,.le-cfg-check input[type=checkbox]::before{
+.le-cfg-check input[type=checkbox]::before{
   content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
   transform:translate(-50%,-50%)}
 .checks input[type=checkbox]:hover::before,.hep-row input[type=checkbox]:hover::before,
-.le-toggle input[type=checkbox]:hover::before,.le-cfg-check input[type=checkbox]:hover::before{
+.le-cfg-check input[type=checkbox]:hover::before{
   background:radial-gradient(circle 20px at 50% 50%,color-mix(in srgb,
   var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent) 0 20px,
   transparent 20px)}
 .checks input[type=checkbox]:checked,.hep-row input[type=checkbox]:checked,
-.le-toggle input[type=checkbox]:checked,.le-cfg-check input[type=checkbox]:checked{
+.le-cfg-check input[type=checkbox]:checked{
   background:var(--md-sys-color-primary);border-color:var(--md-sys-color-primary)}
 .checks input[type=checkbox]:checked:hover::before,.hep-row input[type=checkbox]:checked:hover::before,
-.le-toggle input[type=checkbox]:checked:hover::before,.le-cfg-check input[type=checkbox]:checked:hover::before{
+.le-cfg-check input[type=checkbox]:checked:hover::before{
   background:radial-gradient(circle 20px at 50% 50%,color-mix(in srgb,
   var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent) 0 20px,
   transparent 20px)}
 /* The check glyph: a drawn tick, on-primary, centred in the 14px inner box. */
 .checks input[type=checkbox]:checked::after,.hep-row input[type=checkbox]:checked::after,
-.le-toggle input[type=checkbox]:checked::after,.le-cfg-check input[type=checkbox]:checked::after{
+.le-cfg-check input[type=checkbox]:checked::after{
   content:"";position:absolute;left:3px;top:6px;width:8px;height:4px;
   border-left:2px solid var(--md-sys-color-on-primary);
   border-bottom:2px solid var(--md-sys-color-on-primary);
@@ -1035,7 +1043,13 @@ pre.code{background:var(--md-sys-color-surface-container-high);
 
 /* ---- Layout editor (behaviour lives in the display bundle; this styles it) */
 /* position:relative so the Layers popover anchors here, never on <body>. */
-.le-toolbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 1rem}
+.le-toolbar{position:relative;display:flex;flex-direction:column;align-items:stretch;
+  gap:10px;margin:0 0 12px}
+/* Row one is what a household reaches for every time: which canvas, add a
+ * widget, start from a template. Row two is the rest, at compact density. */
+.le-bar-main{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.le-bar-tools{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.le-orient{flex:0 0 auto}
 .le-tool-spacer{flex:1 1 auto}
 /* Toolbar tools are compact outlined buttons — the shared anatomy at 32px
  * density, targets stretched back to 48px. */
@@ -1069,8 +1083,6 @@ pre.code{background:var(--md-sys-color-surface-container-high);
 .le-layers-sub{font-size:12px;color:var(--faint);margin-top:2px}
 .le-layers-empty{padding:14px 16px;font-size:13px;color:var(--faint)}
 .le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
-.le-toggle{display:inline-flex;align-items:center;gap:.65rem;font-size:14px;
-  color:var(--md-sys-color-on-surface);margin:0}
 /* Deliberately under the 48px target rule: the editor toolbar is compact
  * density (32px buttons whose pointer targets stretch via ::after), and a
  * select is a replaced element that cannot carry a pseudo target — stretching
@@ -1092,6 +1104,7 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);cursor:pointer;text-align:left}
 .le-add::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,48px);
   height:48px;transform:translate(-50%,-50%)}
+.le-add{text-decoration:none}
 .le-add:hover{background:color-mix(in srgb,
   var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity),transparent)}
 .le-add svg{width:18px;height:18px;flex:0 0 auto}
@@ -1138,12 +1151,31 @@ pre.code{background:var(--md-sys-color-surface-container-high);
 .le-modal-item:hover{background:color-mix(in srgb,
   var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),
   var(--md-sys-color-surface-container-highest))}
-.le-delete{margin-top:0;height:32px;padding:0 16px;background:transparent;
-  color:var(--md-sys-color-error);border:1px solid var(--md-sys-color-outline);
-  border-radius:var(--md-sys-shape-corner-full);cursor:pointer}
-.le-delete:hover{background:color-mix(in srgb,
-  var(--md-sys-color-error) var(--md-sys-state-hover-state-layer-opacity),transparent)}
-.le-delete:disabled{opacity:.4;cursor:default}
+/* Canvas settings: size, match screen, snap and the canvas background, behind
+ * one button. They are real choices, and they are not everyday ones — a row of
+ * outlined buttons for each gave a canvas control the same weight as "add a
+ * widget", which is the whole complaint the redesign answers. */
+.le-canvas-pop{position:absolute;top:calc(100% + 6px);left:0;width:min(340px,92vw);z-index:30;
+  padding:14px 16px 16px;background:var(--md-sys-color-surface-container);
+  border-radius:var(--md-sys-shape-corner-extra-small);
+  box-shadow:var(--md-sys-elevation-level2)}
+.le-canvas-pop[hidden]{display:none}
+.le-pop-title{
+  font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
+  letter-spacing:var(--md-sys-typescale-title-medium-tracking);color:var(--ink);margin-bottom:2px}
+.le-pop-sub{font-size:12px;color:var(--md-sys-color-on-surface-variant);margin-bottom:12px}
+.le-pop-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-height:44px;font-size:13px;color:var(--md-sys-color-on-surface)}
+.le-pop-row>span:first-child{flex:1;min-width:0}
+.le-pop-row select{width:auto;max-width:60%}
+.le-pop-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--ruleSoft)}
+.le-pop-sep{height:1px;margin:10px 0;background:var(--ruleSoft)}
+/* The tools row's own switch, at the row density the popover uses. */
+.le-pop-row .switch{flex:1;margin:0;min-height:44px}
+/* The state of the canvas, stated once on the preview header rather than
+ * repeated under every widget panel. */
+.le-canvas-state{font-size:12px;color:var(--md-sys-color-on-surface-variant)}
 /* No min-height: the canvas is width-driven and must not push into the settings
    pane. The stage sizes to whatever the canvas needs. */
 .le-stage{display:flex;justify-content:center;align-items:flex-start;padding:16px;
@@ -1248,10 +1280,22 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* Per-widget options, shown under the stage when a widget is selected. */
-.le-config{margin-top:16px;border:1px solid var(--rule);border-radius:10px;
-  padding:16px 18px;background:var(--panel)}
+/* Per-widget options — the body of the contextual inspector, which is itself
+ * the card. On the e-paper design page there is no inspector column, so the
+ * same panel is built into .le-inspect-card under the stage instead. */
+.le-config{margin:0}
 .le-config>.kick{margin-bottom:12px}
+.le-inspect-card{margin-top:16px;border:1px solid var(--rule);
+  border-radius:var(--md-sys-shape-corner-medium);background:var(--panel)}
+.le-inspect-card .insp-head{background:var(--panel);
+  border-radius:var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0}
+.le-inspect-card .insp-empty{padding:16px 18px}
+/* A segmented control inside the inspector fills the column rather than
+ * hugging its labels — the boxes are the target, and the column is narrow. */
+.le-cfg-field .seg{display:flex;width:100%;max-width:100%}
+.le-cfg-field .seg button{padding:0 10px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.le-config .switch{margin:.5rem 0}
 .le-cfg-field{display:block;margin:12px 0 0}
 .le-cfg-field>span{display:block;
   font:var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-label-medium-font);
@@ -1362,52 +1406,225 @@ pre.code{background:var(--md-sys-color-surface-container-high);
 .tpl-copy{margin-top:34px;padding-top:22px;border-top:1px solid var(--rule)}
 .tpl-copy .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 
-/* ---- Display editor: two-pane shell, tabs, sticky save bar -------------- */
-.disp-editor{padding-bottom:72px}
-.disp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;
-  flex-wrap:wrap;margin:0 0 20px}
-.disp-head .link{margin-top:2px}
-.disp-status{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.disp-status .seen{display:flex;align-items:center;gap:9px}
-.disp-status .seen .who{line-height:1.15}
-.disp-status .seen b{font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
-  letter-spacing:var(--md-sys-typescale-title-small-tracking);display:block}
-.disp-status .seen small{font-size:12px;color:var(--faint)}
-.disp-status form{margin:0}
-.disp-panes{display:grid;grid-template-columns:minmax(480px,1.7fr) minmax(320px,0.9fr);
-  gap:26px;align-items:start}
-/* The preview stays in view while the settings pane scrolls — the whole point. */
-.disp-left{position:sticky;top:96px;min-width:0}
-.disp-right{min-width:0}
-.disp-cap{font-size:12px;color:var(--faint);margin:10px 0 0;text-align:right}
-.settings-head{font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
-  letter-spacing:var(--md-sys-typescale-title-large-tracking);margin:0 0 12px}
-/* M3 primary tabs: 48px, label-large mixed case, a 3px primary indicator with
- * rounded top corners on the active one. */
-.tabbar{display:flex;gap:0;border-bottom:1px solid var(--md-sys-color-outline-variant);
-  margin:0 0 18px}
-.tab{position:relative;margin:0;height:48px;padding:0 16px;background:none;border:0;
-  border-radius:0;
+/* ---- Wall editor: local header, two modes, canvas + inspector -----------
+ * The editor used to be one continuous page: status and pairing, the canvas,
+ * whichever widget was selected, and every wall-wide setting, all at one
+ * visual weight. On a phone that is a scroll with no landmarks — nobody could
+ * tell whether they were editing the wall, a widget, or the screen it hangs
+ * on. It is three contexts now: Layout, the selected widget's inspector, and
+ * Wall settings, and only one of them is on screen at a time. */
+/* Room for the sticky save bar, plus the phone's home indicator. */
+.disp-editor{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+
+/* The wall's identity is the app bar's: the crumb links back to Walls and the
+ * heading is the wall's name, so the page adds no second header and no second
+ * hamburger. What it does add is one row — what you are editing, whether the
+ * screen is up, and an overflow for the infrequent and the destructive. */
+.wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:7px;
+  font-size:12.5px;color:var(--md-sys-color-on-surface-variant);min-width:0}
+.wall-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wall-status b{color:var(--md-sys-color-on-surface);font-weight:500}
+
+/* The overflow menu. A <details>, so it opens with no script at all; the page
+ * chrome only adds Escape, outside-click and focus return on top. */
+.ovf{position:relative;flex:0 0 auto}
+.ovf-btn{list-style:none;display:grid;place-items:center;width:48px;height:48px;
+  border-radius:var(--md-sys-shape-corner-full);cursor:pointer;
+  color:var(--md-sys-color-on-surface-variant)}
+.ovf-btn::-webkit-details-marker{display:none}
+.ovf-btn::marker{content:""}
+.ovf-btn svg{width:22px;height:22px}
+.ovf-btn:hover,.ovf[open] .ovf-btn{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.ovf-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:min(280px,88vw);
+  padding:8px 0;background:var(--md-sys-color-surface-container);
+  border-radius:var(--md-sys-shape-corner-extra-small);
+  box-shadow:var(--md-sys-elevation-level2)}
+.ovf-menu form{margin:0}
+.ovf-item{position:static;display:flex;width:100%;align-items:center;gap:12px;margin:0;
+  height:48px;padding:0 16px;background:none;border:0;border-radius:0;
+  color:var(--md-sys-color-on-surface);text-decoration:none;text-align:left;
+  justify-content:flex-start;
   font-family:var(--md-sys-typescale-label-large-font);
   font-size:var(--md-sys-typescale-label-large-size);
   font-weight:var(--md-sys-typescale-label-large-weight);
-  letter-spacing:var(--md-sys-typescale-label-large-tracking);
-  color:var(--md-sys-color-on-surface-variant);cursor:pointer}
-.tab:hover{color:var(--md-sys-color-on-surface);background:color-mix(in srgb,
+  letter-spacing:var(--md-sys-typescale-label-large-tracking);cursor:pointer}
+.ovf-item::after{content:none}
+.ovf-item:hover{background:color-mix(in srgb,
   var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
-.tab:active{background:color-mix(in srgb,
-  var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
-.tab.is-on{color:var(--md-sys-color-primary)}
-/* The indicator lives on ::before — ::after is every button's 48px pointer
- * target, and sharing the pseudo let the target's top/transform drag the
- * indicator to mid-height, striking through the label. */
-.tab.is-on::before{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;
+.ovf-item.is-danger{color:var(--md-sys-color-error)}
+.ovf-item.is-danger:hover{background:color-mix(in srgb,
+  var(--md-sys-color-error) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.ovf-sep{height:1px;margin:8px 0;background:var(--ruleSoft)}
+
+/* Layout | Wall settings. Two contexts, one control, and it is the segmented
+ * button the rest of the admin already uses. */
+.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:10px 12px;margin:0 0 18px}
+.modeswitch{flex:1 1 260px;max-width:440px;display:flex}
+.modebar .ovf{margin-left:auto}
+.mode[hidden]{display:none}
+
+/* ---- Layout mode ------------------------------------------------------- */
+/* Canvas left, the selected widget's inspector right. The inspector is a
+ * sheet below 1200px — see the compact block at the foot of this section. */
+.lay-panes{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,.9fr);
+  gap:24px;align-items:start}
+.lay-canvas{min-width:0}
+/* Said once, here — it used to be repeated under every widget panel. */
+.prev-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  flex-wrap:wrap;margin:0 0 10px}
+.prev-head b{font:var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size)/var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-title-small-font);
+  letter-spacing:var(--md-sys-typescale-title-small-tracking);color:var(--ink)}
+.prev-head small{font-size:12px;color:var(--md-sys-color-on-surface-variant)}
+.lay-inspector{position:sticky;top:96px;min-width:0;
+  background:var(--panel);border:1px solid var(--rule);
+  border-radius:var(--md-sys-shape-corner-medium);
+  max-height:calc(100vh - 150px);overflow:auto}
+.insp-empty{padding:22px 18px;font-size:13px;
+  color:var(--md-sys-color-on-surface-variant);line-height:1.55}
+.insp-empty[hidden],.insp-head[hidden],.insp-body[hidden]{display:none}
+/* The inspector's own header: which widget this is, and the way out. */
+.insp-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:10px;
+  padding:12px 8px 12px 18px;background:var(--panel);
+  border-bottom:1px solid var(--ruleSoft)}
+.insp-title{flex:1;min-width:0;
+  font:var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size)/var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-title-medium-font);
+  letter-spacing:var(--md-sys-typescale-title-medium-tracking);color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insp-close{position:relative;flex:0 0 auto;margin:0;width:44px;height:44px;padding:0;
+  display:grid;place-items:center;background:none;border:0;
+  border-radius:var(--md-sys-shape-corner-full);
+  color:var(--md-sys-color-on-surface-variant);cursor:pointer}
+.insp-close:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.insp-close svg{width:20px;height:20px}
+.insp-body{padding:4px 18px 18px}
+/* Content | Style, inside the inspector. Only drawn when both apply. */
+.insp-tabs[hidden]{display:none}
+.insp-tabs{display:flex;gap:0;border-bottom:1px solid var(--md-sys-color-outline-variant);
+  margin:0 0 6px}
+.insp-tab{position:relative;margin:0;height:44px;padding:0 14px;background:none;border:0;
+  border-radius:0;color:var(--md-sys-color-on-surface-variant);cursor:pointer;
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking)}
+.insp-tab::after{content:none}
+.insp-tab:hover{color:var(--md-sys-color-on-surface)}
+.insp-tab.is-on{color:var(--md-sys-color-primary)}
+.insp-tab.is-on::before{content:"";position:absolute;left:8px;right:8px;bottom:0;height:3px;
   border-radius:3px 3px 0 0;background:var(--md-sys-color-primary)}
+/* Removing the selected widget lives with the widget, not in the toolbar —
+ * a disabled "Remove selected" beside the everyday tools said nothing. */
+.insp-danger{margin-top:18px;padding-top:14px;border-top:1px solid var(--ruleSoft)}
+.insp-remove{margin:0;width:100%;height:44px;background:transparent;
+  color:var(--md-sys-color-error);border:1px solid var(--md-sys-color-outline)}
+.insp-remove:hover{background:color-mix(in srgb,
+  var(--md-sys-color-error) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+
+/* ---- Wall settings mode ------------------------------------------------- */
+/* Categories, not one long form. A rail beside the panel on a wide screen; a
+ * list that opens one focused screen on a phone. */
+.wset{display:grid;grid-template-columns:minmax(230px,290px) minmax(0,1fr);
+  gap:26px;align-items:start}
+.wset-nav{display:flex;flex-direction:column;gap:2px;position:sticky;top:96px}
+.wset-nav[hidden]{display:none}
+.wset-navrow{position:relative;display:flex;align-items:center;gap:12px;width:100%;
+  min-height:56px;margin:0;padding:8px 16px;background:none;border:0;
+  border-radius:var(--md-sys-shape-corner-full);color:var(--ink);cursor:pointer;
+  text-align:left;justify-content:flex-start}
+.wset-navrow::after{content:none}
+.wset-navrow span{flex:1;min-width:0}
+.wset-navrow b{display:block;
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking)}
+.wset-navrow small{display:block;font-size:12px;line-height:1.4;
+  color:var(--md-sys-color-on-surface-variant);font-weight:400;letter-spacing:0}
+.wset-navrow:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.wset-navrow.is-on{background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container)}
+.wset-navrow.is-on small{color:var(--md-sys-color-on-secondary-container);opacity:.8}
+.wset-navrow .rowchev{display:none;flex:0 0 auto;color:var(--faint)}
+.wset-navrow .rowchev svg{width:20px;height:20px}
+.wset-panels{min-width:0;max-width:720px}
+.wset-panel[hidden]{display:none}
+.wset-panel>h3{margin:0 0 4px;
+  font:var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size)/var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-title-large-font);
+  letter-spacing:var(--md-sys-typescale-title-large-tracking)}
+.wset-panel>form{margin:0}
+.wset-back{display:none}
+.wset-lead{margin:0 0 14px;font-size:13px;line-height:1.55;color:var(--muted)}
+.wset-group{position:relative;margin:22px 0 0}
+.wset-group:first-of-type{margin-top:14px}
+.wset-group>.kick{margin:0 0 8px}
+
+/* ---- Compact settings rows ---------------------------------------------- */
+/* A grouped surface of rows, with dividers rather than a box round each one. */
+.rows{display:flex;flex-direction:column;background:var(--panel);
+  border:1px solid var(--rule);border-radius:var(--md-sys-shape-corner-medium)}
+.rows>*+*{border-top:1px solid var(--ruleSoft)}
+.rows>.field,.rows>.field-hint{border-top:0}
+.rows .switch{margin:0;padding:8px 16px;min-height:56px}
+.rows .field{margin:14px 16px}
+.rows .field-hint{margin:-6px 16px 12px}
+.rows>.rowsub{padding:0 16px 12px}
+.rows>.rowsub>.field{margin:6px 0 0}
+.rows>.rowsub>.field-hint{margin:4px 0 0}
+.rows>.rowsub[hidden]{display:none}
+.srow{display:flex;align-items:center;gap:12px;min-height:56px;margin:0;padding:6px 16px;
+  cursor:pointer;text-transform:none;letter-spacing:normal}
+.srow:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.srow-text{flex:1;min-width:0}
+.srow-text b{display:block;font-weight:500;font-size:15px;line-height:1.35;
+  color:var(--md-sys-color-on-surface)}
+.srow-text small{display:block;font-size:12px;line-height:1.4;
+  color:var(--md-sys-color-on-surface-variant)}
+.srow-value{display:flex;align-items:center;gap:2px;min-width:0;max-width:56%}
+/* A native select wearing the row: no box, the value right-aligned beside the
+ * chevron. It keeps its name, its options and its platform picker. */
+/* 16px, not 14: below 16px iOS Safari zooms the page when a form control takes
+ * focus, and a settings screen that jumps on every tap is its own bug. */
+.srow-select{width:auto;max-width:100%;margin:0;padding:0;border:0;background:transparent;
+  color:var(--md-sys-color-on-surface-variant);font-family:inherit;font-size:16px;
+  text-align:right;text-align-last:right;text-overflow:ellipsis;cursor:pointer;
+  appearance:none;-webkit-appearance:none}
+.srow-chev{display:inline-flex;flex:0 0 auto;color:var(--faint)}
+.srow-chev svg{width:18px;height:18px}
+/* A row that opens something rather than choosing a value (Advanced actions). */
+.arow{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;margin:0;
+  padding:6px 16px;background:none;border:0;border-radius:0;color:var(--ink);
+  text-align:left;justify-content:flex-start;cursor:pointer;text-decoration:none;
+  font-family:inherit;font-size:14px;font-weight:500;letter-spacing:normal}
+.arow::after{content:none}
+.arow:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.arow small{display:block;font-size:12px;line-height:1.4;font-weight:400;
+  color:var(--md-sys-color-on-surface-variant)}
+.arow.is-danger{color:var(--md-sys-color-error)}
+.arow.is-danger small{color:var(--md-sys-color-error);opacity:.8}
+.arow-text{flex:1;min-width:0}
+.rows form{margin:0}
+/* A read-only fact (the pairing id), not a control. */
+.frow{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-height:52px;padding:8px 16px;font-size:14px;color:var(--ink)}
+.frow code{font-family:var(--mono);font-size:12.5px;
+  color:var(--md-sys-color-on-surface-variant)}
+
+/* ---- Tabs (kept for the widget inspector's Content/Style pair) ----------- */
 .tabpanel[hidden]{display:none}
-.tabpanel>form,.disp-right form{margin:0}
-.tabpanel .two-up{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-/* A single-line hint replaces the old multi-line grey prose. */
-.hint-1{font-size:12.5px;color:var(--faint);margin:.5rem 0 0;line-height:1.5}
+.tabpanel>form{margin:0}
+.two-up{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* A single-line hint replaces the old multi-line grey prose. On the M3
+ * on-surface-variant role rather than the faint token: measured, faint came
+ * out at 3.87:1 on a card in the light scheme, which is under AA for text. */
+.hint-1{font-size:12.5px;color:var(--md-sys-color-on-surface-variant);
+  margin:.5rem 0 0;line-height:1.5}
 /* The "?" help affordance and its popover, in place of a prose paragraph.
  * (It rides a .field-with-help wrapper now — see the field rules.) */
 /* A small icon button; the visual stays 20px, the target is 48px. */
@@ -1432,13 +1649,16 @@ pre.code{background:var(--md-sys-color-surface-container-high);
 .helppop[hidden]{display:none}
 .helppop p{margin:.35rem 0}
 .helppop p:first-child{margin-top:0}
-/* One sticky save bar for the whole page — layout and settings save together.
- * The M3 bottom-bar shape it already had, on a solid container colour now:
- * left clears the 280px drawer and follows it through the collapse. */
-.savebar{position:fixed;left:280px;right:0;bottom:0;z-index:20;display:flex;align-items:center;
-  justify-content:flex-end;gap:16px;padding:12px 28px;
+
+/* ---- The one sticky save bar -------------------------------------------- */
+/* Layout, the selected widget and the wall settings all save together. Height
+ * is a token because the widget sheet has to sit exactly on top of it. */
+:root{--savebar-h:64px}
+.savebar{position:fixed;left:280px;right:0;bottom:0;z-index:40;display:flex;align-items:center;
+  justify-content:flex-end;gap:14px;padding:12px 28px;
+  padding-bottom:calc(12px + env(safe-area-inset-bottom));
   background:var(--md-sys-color-surface-container)}
-.savebar-flag{
+.savebar-flag{margin-right:auto;
   font:var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size)/var(--md-sys-typescale-label-large-line-height) var(--md-sys-typescale-label-large-font);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);
   color:var(--md-custom-color-warning)}
@@ -1448,16 +1668,77 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   line-height:var(--md-sys-typescale-body-medium-line-height);
   color:var(--md-sys-color-error)}
 .savebar button{margin:0}
-/* The editor's two panes need ~830px of content; with the 280px drawer that
- * is a ~1160px viewport, so they stack below it — earlier than the shell's
- * own 900px collapse, which is where the savebar stops clearing the drawer. */
-@media(max-width:1160px){
-  .disp-panes{grid-template-columns:1fr}
-  .disp-left{position:static}
-  .tabpanel .two-up{grid-template-columns:1fr}
+.savebar button[hidden]{display:none}
+/* Disabled Save still reads as the primary action, quietly: the M3 disabled
+ * treatment, never a control that has vanished. */
+.savebar button:disabled{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) 12%,transparent);
+  color:color-mix(in srgb,var(--md-sys-color-on-surface) 38%,transparent);
+  cursor:default}
+.savebar button:disabled:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) 12%,transparent)}
+
+/* ---- Compact: one column, and the inspector becomes a sheet -------------- */
+/* The canvas and the inspector need ~830px of content; with the 280px drawer
+ * that is a ~1200px viewport, so they stack below it — earlier than the
+ * shell's own 900px collapse, which is where the savebar stops clearing the
+ * drawer. */
+@media(max-width:560px){
+  /* A long value takes the line under its label rather than being clipped to
+   * the half that says nothing. */
+  .srow.is-wide{flex-wrap:wrap;align-items:flex-start;padding-top:10px;padding-bottom:10px}
+  .srow.is-wide .srow-value{max-width:100%;width:100%;justify-content:space-between}
+  .srow.is-wide .srow-select{flex:1;text-align:left;text-align-last:left}
+}
+@media(max-width:1199px){
+  .lay-panes{grid-template-columns:1fr}
+  .wset{grid-template-columns:1fr}
+  /* A category list is a column of rows, not a banner: it keeps a readable
+   * measure on a tablet rather than running the width of the page. */
+  .wset-nav{position:static;gap:0;max-width:620px;background:var(--panel);
+    border:1px solid var(--rule);border-radius:var(--md-sys-shape-corner-medium)}
+  .wset-navrow{border-radius:0}
+  .wset-navrow+.wset-navrow{border-top:1px solid var(--ruleSoft)}
+  .wset-navrow:first-child{border-radius:var(--md-sys-shape-corner-medium)
+    var(--md-sys-shape-corner-medium) 0 0}
+  .wset-navrow:last-child{border-radius:0 0 var(--md-sys-shape-corner-medium)
+    var(--md-sys-shape-corner-medium)}
+  .wset-navrow .rowchev{display:inline-flex}
+  /* One screen at a time: the list, or the category you opened. */
+  .wset:not(.is-drilled) .wset-panels{display:none}
+  .wset.is-drilled .wset-nav{display:none}
+  .wset-back{display:inline-flex;align-items:center;gap:6px;height:44px;margin:0 0 4px;
+    padding:0 12px 0 6px;background:none;border:0;border-radius:var(--md-sys-shape-corner-full);
+    color:var(--md-sys-color-primary);cursor:pointer;
+    font-family:var(--md-sys-typescale-label-large-font);
+    font-size:var(--md-sys-typescale-label-large-size);
+    font-weight:var(--md-sys-typescale-label-large-weight);
+    letter-spacing:var(--md-sys-typescale-label-large-tracking)}
+  .wset-back::after{content:none}
+  .wset-back svg{width:20px;height:20px}
+  .two-up{grid-template-columns:1fr}
+  /* Enough page below the canvas for it to be scrolled clear of an open
+   * sheet. A short document has nowhere to scroll to, and the canvas stays
+   * behind the sheet however small it is made. */
+  .mw-insp-open .disp-editor{padding-bottom:calc(70vh + env(safe-area-inset-bottom))}
+  /* The widget inspector, as a sheet that sits on the save bar rather than
+   * over it — Save stays reachable while a widget is open, and the canvas
+   * above stays visible, which is the point of editing it here at all. */
+  .lay-inspector{position:fixed;left:0;right:0;top:auto;
+    bottom:calc(var(--savebar-h) + env(safe-area-inset-bottom));z-index:45;
+    max-height:min(58vh,520px);border:0;
+    border-radius:var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0;
+    background:var(--md-sys-color-surface-container-high);
+    box-shadow:var(--md-sys-elevation-level3);
+    transform:translateY(101%);visibility:hidden}
+  /* Off-canvas is not enough on its own: a sheet that is only translated away
+   * still hands every control in it to the keyboard. */
+  .lay-inspector.is-open{transform:none;visibility:visible}
+  .insp-head{background:var(--md-sys-color-surface-container-high)}
+  .insp-empty{display:none}
 }
 @media(max-width:900px){
-  .savebar{left:0;padding:12px 20px}
+  .savebar{left:0;padding:12px 20px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
 }
 
 /* ---- Focus: the M3 ring, keyboard-driven ---------------------------------
@@ -1515,12 +1796,25 @@ pre.code{background:var(--md-sys-color-surface-container-high);
       background-color var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard)}
   /* Checkboxes fill. */
   .checks input[type=checkbox],.hep-row input[type=checkbox],
-  .le-toggle input[type=checkbox],.le-cfg-check input[type=checkbox]{
+  .le-cfg-check input[type=checkbox]{
     transition:background-color var(--md-sys-motion-duration-short-2) var(--md-sys-motion-easing-standard),
       border-color var(--md-sys-motion-duration-short-2) var(--md-sys-motion-easing-standard)}
   /* The active tab's indicator grows in. */
-  .tab.is-on::before{animation:mw-tab-in var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-emphasized-decelerate)}
+  .insp-tab.is-on::before{animation:mw-tab-in var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-emphasized-decelerate)}
   @keyframes mw-tab-in{from{transform:scaleX(0)}}
+  /* The widget sheet slides up from the foot of a phone; the reduced-motion
+   * reader gets the same two states with no travel between them.
+   *
+   * Visibility is switched at the two ends of the slide rather than
+   * transitioned across it, and the direction matters: opening makes it
+   * visible at once (a transitioned visibility still computes hidden at
+   * progress zero, so the sheet's close button could not take focus — the
+   * whole point of opening it), while closing waits for the slide to finish
+   * before taking it away from the keyboard. */
+  .lay-inspector{transition:transform var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate),
+      visibility 0s linear var(--md-sys-motion-duration-medium-2)}
+  .lay-inspector.is-open{transition:transform var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate),
+      visibility 0s linear 0s}
   /* The dialog: enter decelerates, exit accelerates. */
   .le-modal{transition:opacity var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate),
       display var(--md-sys-motion-duration-medium-2) allow-discrete}
@@ -1744,6 +2038,14 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   module: '<path d="M666-440 440-666l226-226 226 226-226 226Zm-546-80v-320h320v320H120Zm400 400v-320h320v320H520Zm-400 0v-320h320v320H120Zm80-480h160v-160H200v160Zm467 48 113-113-113-113-113 113 113 113Zm-67 352h160v-160H600v160Zm-400 0h160v-160H200v160Zm160-400Zm194-65ZM360-360Zm240 0Z"/>',
   /* menu */
   menu: '<path d="M120-240v-80h720v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z"/>',
+  /* arrow_back — the mirror of `arrow`, for a back affordance that reads as one. */
+  back: '<path d="M313-440l224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z"/>',
+  /* more_vert */
+  more: '<path d="M480-160q-33 0-56.5-23.5T400-240q0-33 23.5-56.5T480-320q33 0 56.5 23.5T560-240q0 33-23.5 56.5T480-160Zm0-240q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm0-240q-33 0-56.5-23.5T400-720q0-33 23.5-56.5T480-800q33 0 56.5 23.5T560-720q0 33-23.5 56.5T480-640Z"/>',
+  /* close */
+  close: '<path d="M256-200l-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>',
+  /* chevron_right — the trailing glyph on a settings row that opens a choice. */
+  chev: '<path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>',
   /* help */
   help: '<path d="M478-240q21 0 35.5-14.5T528-290q0-21-14.5-35.5T478-340q-21 0-35.5 14.5T428-290q0 21 14.5 35.5T478-240Zm-36-154h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/>',
 };
@@ -1911,6 +2213,13 @@ export interface PageOptions {
    */
   readonly action?: { readonly label: string; readonly href: string };
   /**
+   * Where this page sits inside its section, e.g. one wall inside Walls. Turns
+   * the app bar's crumb into a real back link, so a page nested one level down
+   * needs no back affordance of its own — and, in particular, no second
+   * hamburger to stand for the list it came from.
+   */
+  readonly back?: { readonly label: string; readonly href: string };
+  /**
    * The installed modules to list in the sidebar's Modules group. Read live per
    * request (see `navModules` in `admin.ts`) and passed in, because this file
    * never touches the database. Absent on the wizard/sign-in, which have no
@@ -2047,7 +2356,14 @@ export function page(options: PageOptions): string {
     // so it is one tap away at any scroll depth; at this width it is not drawn.
     `<label class="navbtn" for="mw-nav" title="Navigation menu">${icon('menu')}</label>` +
     `<div class="topbar-title">` +
-    `<div class="crumb">${escapeHtml(groupLabelFor(options.nav))}</div>` +
+    // The crumb is a link when the page is inside something — one back
+    // affordance, in the app bar, rather than a second one in the page (and
+    // never a second hamburger, which is what a wall list button would read
+    // as beside the navigation drawer's).
+    (options.back === undefined
+      ? `<div class="crumb">${escapeHtml(groupLabelFor(options.nav))}</div>`
+      : `<a class="crumb crumb-back" href="${options.back.href}">${icon('back')}` +
+        `${escapeHtml(options.back.label)}</a>`) +
     `<h1>${escapeHtml(options.heading)}</h1>` +
     `</div>${action}</header>` +
     // The intro leads the content now, not the sticky bar — one lead line kept
@@ -2213,5 +2529,50 @@ export function switchRow(options: SwitchRowOptions): string {
     (options.checked ? ' checked' : '') +
     (options.attrs === undefined ? '' : ` ${options.attrs}`) +
     `></label>`
+  );
+}
+
+/**
+ * A compact settings row: a label, the value it currently holds, and a chevron.
+ *
+ * The outlined text field is the right control for something you *type*; for a
+ * choice out of a list it is 72px of box for one word, and a settings screen
+ * made of them scrolls for ever on a phone. This is the same choice in ~56px:
+ * the label and its supporting line on the left, the value on the right.
+ *
+ * It is still a native `<select>` inside a wrapping `<label>` — so the control
+ * is labelled programmatically, keyboard operable, and opens the platform's own
+ * picker. Only its clothes changed; every caller's `name` and options are
+ * untouched, and so is the handler that reads them.
+ */
+export interface SelectRowOptions {
+  readonly label: string;
+  readonly name: string;
+  /** The <option> elements, built and escaped by the caller. */
+  readonly optionsHtml: string;
+  /** Supporting text under the label — where inheritance is spelled out. */
+  readonly hint?: string;
+  readonly attrs?: string;
+  /**
+   * The value is long enough to want its own line on a phone — a timezone, or
+   * a theme named as the household's. Marked by the caller rather than guessed:
+   * a row that wraps when it does not need to is as untidy as one that clips
+   * the half of the value carrying the information.
+   */
+  readonly wide?: boolean;
+}
+
+export function selectRow(options: SelectRowOptions): string {
+  return (
+    `<label class="srow${options.wide === true ? ' is-wide' : ''}">` +
+    `<span class="srow-text"><b>${escapeHtml(options.label)}</b>` +
+    (options.hint === undefined ? '' : `<small>${escapeHtml(options.hint)}</small>`) +
+    `</span>` +
+    `<span class="srow-value">` +
+    `<select class="srow-select" name="${escapeHtml(options.name)}"` +
+    (options.attrs === undefined ? '' : ` ${options.attrs}`) +
+    `>${options.optionsHtml}</select>` +
+    `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span>` +
+    `</span></label>`
   );
 }

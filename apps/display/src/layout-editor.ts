@@ -133,6 +133,14 @@ const round3 = (n: number): number => Math.round(n * 1000) / 1000;
  */
 const SNAP = 1 / 24;
 
+/**
+ * What the canvas must leave clear above an open widget sheet: the sticky app
+ * bar it must not slide under, the save bar the sheet sits on, and a little
+ * air. Only the sheet's own height is measured — these three are chrome the
+ * canvas never overlaps at any viewport.
+ */
+const SHEET_CLEARANCE = 96 + 64 + 16;
+
 function labelFor(type: string): string {
   return PALETTE.find((p) => p.type === type)?.label ?? type;
 }
@@ -250,8 +258,9 @@ function boot(): void {
 
   let selected: string | undefined;
   let dirty = false;
-  // Whether the anchored Layers popover is open. UI-only; not saved.
+  // Whether the anchored Layers / Canvas popovers are open. UI-only; not saved.
   let layersOpen = false;
+  let canvasOpen = false;
   // The wall this canvas belongs to, as a URL segment for the per-display admin
   // routes the toolbar links to (the gallery and the reset action).
   const detailSeg = state.screen === null ? 'default' : encodeURIComponent(state.screen);
@@ -291,260 +300,6 @@ function boot(): void {
 
   // ---- structure, built once -------------------------------------------
 
-  const toolbar = document.createElement('div');
-  toolbar.className = 'le-toolbar';
-
-  // Portrait | Landscape — which of the display's two canvases is being edited.
-  const orientToggle = document.createElement('div');
-  orientToggle.className = 'le-orient';
-  const orientButtons: Record<'portrait' | 'landscape', HTMLButtonElement> = {
-    portrait: document.createElement('button'),
-    landscape: document.createElement('button'),
-  };
-  for (const which of ['portrait', 'landscape'] as const) {
-    const button = orientButtons[which];
-    button.type = 'button';
-    button.textContent = which === 'portrait' ? 'Portrait' : 'Landscape';
-    button.className = 'le-orient-btn' + (state.orientation === which ? ' is-on' : '');
-    button.addEventListener('click', () => void switchOrientation(which));
-    orientToggle.appendChild(button);
-  }
-
-  // A panel has one orientation and one ratio, both facts about the hardware.
-  // Offering the wall's Portrait/Landscape tabs and its aspect list let a
-  // household arrange a canvas the device would never draw, on a shape it does
-  // not have — so on a panel the two controls become one chip that states what
-  // the panel is. The canvases themselves are unchanged underneath: the other
-  // orientation is still loaded and still saved, it is simply not on offer.
-  const panelChip = document.createElement('span');
-  panelChip.className = 'le-panel-chip';
-  if (epaperHost) {
-    orientToggle.style.display = 'none';
-    const size = panelSize === undefined ? '' : `${panelSize.w}\u00d7${panelSize.h} \u00b7 `;
-    panelChip.textContent = `${size}${hostOrientation === 'portrait' ? 'portrait' : 'landscape'}`;
-  } else {
-    panelChip.style.display = 'none';
-  }
-
-  const aspectSelect = document.createElement('select');
-  aspectSelect.className = 'le-aspect';
-  if (epaperHost) aspectSelect.style.display = 'none';
-  for (const a of ASPECTS) {
-    const opt = document.createElement('option');
-    opt.value = String(a.value);
-    opt.textContent = a.label;
-    if (Math.abs(a.value - state.aspect) < 0.01) opt.selected = true;
-    aspectSelect.appendChild(opt);
-  }
-
-  // "Match screen" — set the active canvas's aspect to this screen's real
-  // reported size, for the orientation being edited. Only a paired screen that
-  // has checked in reports one; the shared Default has no single size to match.
-  const matchButton = document.createElement('button');
-  matchButton.type = 'button';
-  matchButton.className = 'le-add';
-  if (report !== undefined) {
-    const big = Math.max(report.w, report.h);
-    const small = Math.min(report.w, report.h);
-    matchButton.textContent = `Match screen (${report.w}×${report.h})`;
-    matchButton.addEventListener('click', () => {
-      // Wide for landscape, tall for portrait, from the same reported pixels.
-      state.aspect = round3(state.orientation === 'landscape' ? big / small : small / big);
-      syncAspectSelect();
-      draw();
-      markDirty();
-    });
-  } else {
-    matchButton.style.display = 'none';
-  }
-
-  const snapToggle = document.createElement('label');
-  snapToggle.className = 'le-toggle';
-  const snapInput = document.createElement('input');
-  snapInput.type = 'checkbox';
-  snapInput.checked = snap;
-  snapToggle.appendChild(snapInput);
-  snapToggle.appendChild(document.createTextNode(' Snap to grid'));
-
-  // One "+ Add widget" button in the toolbar opens a modal grid of the widget
-  // types, rather than a row of chips — closer to the reference, and it keeps the
-  // toolbar uncluttered as the palette grows. The grid is first-party only
-  // (rule three): no website, video or embed widget can be placed.
-  const palette = document.createElement('div');
-  palette.className = 'le-palette';
-  const addWidgetButton = document.createElement('button');
-  addWidgetButton.type = 'button';
-  addWidgetButton.className = 'le-add le-add-primary';
-  addWidgetButton.textContent = '+ Add widget';
-  palette.appendChild(addWidgetButton);
-
-  const modal = document.createElement('div');
-  modal.className = 'le-modal';
-  modal.hidden = true;
-  const openAddModal = (): void => {
-    modal.hidden = false;
-  };
-  const closeAddModal = (): void => {
-    modal.hidden = true;
-  };
-  const modalCard = document.createElement('div');
-  modalCard.className = 'le-modal-card';
-  const modalHead = document.createElement('div');
-  modalHead.className = 'le-modal-head';
-  const modalTitle = document.createElement('span');
-  modalTitle.textContent = 'Add a widget';
-  const modalClose = document.createElement('button');
-  modalClose.type = 'button';
-  modalClose.className = 'le-modal-close';
-  modalClose.setAttribute('aria-label', 'Close');
-  modalClose.textContent = '×';
-  modalClose.addEventListener('click', closeAddModal);
-  modalHead.append(modalTitle, modalClose);
-  const modalGrid = document.createElement('div');
-  modalGrid.className = 'le-modal-grid';
-  for (const item of PALETTE) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'le-modal-item';
-    button.textContent = item.label;
-    button.addEventListener('click', () => {
-      addWidget(item.type);
-      closeAddModal();
-    });
-    modalGrid.appendChild(button);
-  }
-  modalCard.append(modalHead, modalGrid);
-  modal.appendChild(modalCard);
-  addWidgetButton.addEventListener('click', openAddModal);
-  // A click on the backdrop (not the card) closes; Escape closes.
-  modal.addEventListener('click', (event) => {
-    if (event.target === modal) closeAddModal();
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !modal.hidden) closeAddModal();
-  });
-
-  const deleteButton = document.createElement('button');
-  deleteButton.type = 'button';
-  deleteButton.className = 'le-delete';
-  deleteButton.textContent = 'Remove selected';
-  deleteButton.addEventListener('click', removeSelected);
-
-  // The toolbar's right cluster: a spacer pushes Template / Reset / Layers to the
-  // end (the reference layout). Template and Reset are ordinary admin actions —
-  // a link to the gallery and a POST to reset — built here so the whole toolbar
-  // is one row. The editor is admin-only, so pointing at admin routes is in
-  // keeping with the endpoints it already calls.
-  const toolSpacer = document.createElement('span');
-  toolSpacer.className = 'le-tool-spacer';
-
-  const templateLink = document.createElement('a');
-  templateLink.className = 'le-tool-link';
-  templateLink.href = `admin/displays/${detailSeg}/gallery`;
-  templateLink.textContent = 'Template';
-
-  const resetForm = document.createElement('form');
-  resetForm.className = 'le-reset-form';
-  resetForm.method = 'post';
-  resetForm.action = `admin/displays/${detailSeg}/reset-layout`;
-  resetForm.addEventListener('submit', (event) => {
-    const question = epaperHost
-      ? 'Reset this panel to its built-in layout? Your current arrangement is removed.'
-      : 'Reset this display to the Classic layout? Your current arrangement is replaced.';
-    if (!window.confirm(question)) {
-      event.preventDefault();
-    }
-  });
-  const resetButton = document.createElement('button');
-  resetButton.type = 'submit';
-  resetButton.className = 'le-tool-btn';
-  resetButton.textContent = 'Reset';
-  resetForm.appendChild(resetButton);
-
-  // Layers: a toggle that opens an anchored popover (built below). Anchored to
-  // the toolbar, never <body>, so it cannot float over the settings pane.
-  const layersButton = document.createElement('button');
-  layersButton.type = 'button';
-  layersButton.className = 'le-layers-btn';
-  layersButton.textContent = 'Layers';
-
-  const layersPopover = document.createElement('div');
-  layersPopover.className = 'le-layers-pop';
-  layersPopover.hidden = true;
-  const layersHead = document.createElement('div');
-  layersHead.className = 'le-layers-head';
-  const layersTitle = document.createElement('div');
-  layersTitle.className = 'le-layers-title';
-  layersTitle.textContent = 'Widget Layers';
-  const layersSub = document.createElement('div');
-  layersSub.className = 'le-layers-sub';
-  layersSub.textContent = 'Drag to reorder — top shows in front';
-  layersHead.append(layersTitle, layersSub);
-  // The body drawLayers fills. It keeps the old class so the row styling applies.
-  const layersPanel = document.createElement('div');
-  layersPanel.className = 'le-layers';
-  layersPopover.append(layersHead, layersPanel);
-
-  const setLayersOpen = (open: boolean): void => {
-    layersOpen = open;
-    layersPopover.hidden = !open;
-    layersButton.classList.toggle('is-on', open);
-  };
-  layersButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    setLayersOpen(!layersOpen);
-  });
-  // Click outside the popover (and off its button) closes it; so does Escape.
-  document.addEventListener('click', (event) => {
-    if (!layersOpen) return;
-    const target = event.target as Node;
-    if (!layersPopover.contains(target) && target !== layersButton) setLayersOpen(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && layersOpen) setLayersOpen(false);
-  });
-
-  toolbar.append(
-    orientToggle,
-    panelChip,
-    palette,
-    aspectSelect,
-    matchButton,
-    snapToggle,
-    deleteButton,
-    toolSpacer,
-    templateLink,
-    resetForm,
-    layersButton,
-    layersPopover,
-  );
-
-  /**
-   * Make the aspect dropdown reflect `state.aspect`: select a matching preset,
-   * or show a "Custom" option when a matched or hand-set aspect is not one of
-   * them (a real screen is rarely exactly 9:16). One stale custom option at
-   * most — it is rebuilt each call.
-   */
-  function syncAspectSelect(): void {
-    for (const opt of Array.from(aspectSelect.options)) {
-      if (opt.dataset['custom'] === '1') aspectSelect.removeChild(opt);
-    }
-    let matched = false;
-    for (const opt of Array.from(aspectSelect.options)) {
-      const on = Math.abs(Number(opt.value) - state.aspect) < 0.01;
-      opt.selected = on;
-      matched = matched || on;
-    }
-    if (!matched) {
-      const opt = document.createElement('option');
-      opt.value = String(state.aspect);
-      opt.textContent = `Custom (${round3(state.aspect)})`;
-      opt.dataset['custom'] = '1';
-      opt.selected = true;
-      aspectSelect.appendChild(opt);
-    }
-  }
-
   const stage = document.createElement('div');
   stage.className = 'le-stage';
   const canvas = document.createElement('div');
@@ -577,16 +332,489 @@ function boot(): void {
   const backgroundPanel = document.createElement('div');
   backgroundPanel.className = 'le-bg';
 
+  /**
+   * The toolbar, in two rows.
+   *
+   * Row one is what a household reaches for every time it opens this: which of
+   * the two canvases it is arranging, add a widget, start from a template. Row
+   * two is everything else at compact density, and most of it lives behind one
+   * "Canvas" button — the canvas size, matching the screen, snapping, the
+   * background and the reset. They were seven outlined buttons in a row, which
+   * gave "reset this layout" exactly the weight of "add a widget".
+   */
+  const toolbar = document.createElement('div');
+  toolbar.className = 'le-toolbar';
+  const barMain = document.createElement('div');
+  barMain.className = 'le-bar-main';
+  const barTools = document.createElement('div');
+  barTools.className = 'le-bar-tools';
+  toolbar.append(barMain, barTools);
+
+  // Portrait | Landscape — which of the display's two canvases is being edited.
+  const orientToggle = document.createElement('div');
+  orientToggle.className = 'le-orient seg';
+  orientToggle.setAttribute('role', 'group');
+  orientToggle.setAttribute('aria-label', 'Which canvas you are arranging');
+  const orientButtons: Record<'portrait' | 'landscape', HTMLButtonElement> = {
+    portrait: document.createElement('button'),
+    landscape: document.createElement('button'),
+  };
+  for (const which of ['portrait', 'landscape'] as const) {
+    const button = orientButtons[which];
+    button.type = 'button';
+    button.textContent = which === 'portrait' ? 'Portrait' : 'Landscape';
+    button.className = 'le-orient-btn' + (state.orientation === which ? ' is-on' : '');
+    // Selected state announced, not drawn only — the tick and the fill are the
+    // sighted half of the same fact.
+    button.setAttribute('aria-pressed', state.orientation === which ? 'true' : 'false');
+    button.addEventListener('click', () => void switchOrientation(which));
+    orientToggle.appendChild(button);
+  }
+
+  // A panel has one orientation and one ratio, both facts about the hardware.
+  // Offering the wall's Portrait/Landscape tabs and its aspect list let a
+  // household arrange a canvas the device would never draw, on a shape it does
+  // not have — so on a panel the two controls become one chip that states what
+  // the panel is. The canvases themselves are unchanged underneath: the other
+  // orientation is still loaded and still saved, it is simply not on offer.
+  const panelChip = document.createElement('span');
+  panelChip.className = 'le-panel-chip';
+  if (epaperHost) {
+    orientToggle.style.display = 'none';
+    const size = panelSize === undefined ? '' : `${panelSize.w}×${panelSize.h} · `;
+    panelChip.textContent = `${size}${hostOrientation === 'portrait' ? 'portrait' : 'landscape'}`;
+  } else {
+    panelChip.style.display = 'none';
+  }
+
+  const aspectSelect = document.createElement('select');
+  aspectSelect.className = 'le-aspect';
+  aspectSelect.setAttribute('aria-label', 'Canvas size');
+  for (const a of ASPECTS) {
+    const opt = document.createElement('option');
+    opt.value = String(a.value);
+    opt.textContent = a.label;
+    if (Math.abs(a.value - state.aspect) < 0.01) opt.selected = true;
+    aspectSelect.appendChild(opt);
+  }
+
+  // "Match screen" — set the active canvas's aspect to this screen's real
+  // reported size, for the orientation being edited. Only a paired screen that
+  // has checked in reports one; the shared Default has no single size to match.
+  const matchButton = document.createElement('button');
+  matchButton.type = 'button';
+  matchButton.className = 'le-add';
+  if (report !== undefined) {
+    const big = Math.max(report.w, report.h);
+    const small = Math.min(report.w, report.h);
+    matchButton.textContent = `Match this screen (${report.w}×${report.h})`;
+    matchButton.addEventListener('click', () => {
+      // Wide for landscape, tall for portrait, from the same reported pixels.
+      state.aspect = round3(state.orientation === 'landscape' ? big / small : small / big);
+      syncAspectSelect();
+      draw();
+      markDirty();
+    });
+  } else {
+    matchButton.style.display = 'none';
+  }
+
+  /** A switch built the way the admin's own settings rows are, so a persistent
+   *  on/off setting looks like one wherever it appears. */
+  function switchRow(label: string, hint: string, on: boolean, onChange: (v: boolean) => void): HTMLElement {
+    const wrap = document.createElement('label');
+    wrap.className = 'switch';
+    const text = document.createElement('span');
+    text.className = 'switch-text';
+    const strong = document.createElement('b');
+    strong.textContent = label;
+    text.appendChild(strong);
+    if (hint !== '') {
+      const small = document.createElement('small');
+      small.textContent = hint;
+      text.appendChild(small);
+    }
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = on;
+    input.addEventListener('change', () => onChange(input.checked));
+    wrap.append(text, input);
+    return wrap;
+  }
+
+  const snapToggle = switchRow('Snap to grid', '', snap, (on) => {
+    snap = on;
+    // The grid is drawn on the overlay only while snapping, as a placement aid;
+    // it is not part of the wall. Sizes are a percentage of the canvas, so the
+    // lines fall exactly on the snap steps at any canvas size.
+    overlay.classList.toggle('is-snapping', snap);
+    overlay.style.backgroundSize = snap ? `${SNAP * 100}% ${SNAP * 100}%` : '';
+  });
+
+  // One "+ Add widget" button in the toolbar opens a modal grid of the widget
+  // types, rather than a row of chips — closer to the reference, and it keeps the
+  // toolbar uncluttered as the palette grows. The grid is first-party only
+  // (rule three): no website, video or embed widget can be placed.
+  const palette = document.createElement('div');
+  palette.className = 'le-palette';
+  const addWidgetButton = document.createElement('button');
+  addWidgetButton.type = 'button';
+  addWidgetButton.className = 'le-add le-add-primary';
+  addWidgetButton.textContent = '+ Add widget';
+  addWidgetButton.setAttribute('aria-haspopup', 'dialog');
+  palette.appendChild(addWidgetButton);
+
+  const modal = document.createElement('div');
+  modal.className = 'le-modal';
+  modal.hidden = true;
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Add a widget');
+  const openAddModal = (): void => {
+    modal.hidden = false;
+    modalGrid.querySelector('button')?.focus();
+  };
+  const closeAddModal = (): void => {
+    modal.hidden = true;
+    addWidgetButton.focus();
+  };
+  const modalCard = document.createElement('div');
+  modalCard.className = 'le-modal-card';
+  const modalHead = document.createElement('div');
+  modalHead.className = 'le-modal-head';
+  const modalTitle = document.createElement('span');
+  modalTitle.textContent = 'Add a widget';
+  const modalClose = document.createElement('button');
+  modalClose.type = 'button';
+  modalClose.className = 'le-modal-close';
+  modalClose.setAttribute('aria-label', 'Close');
+  modalClose.textContent = '×';
+  modalClose.addEventListener('click', closeAddModal);
+  modalHead.append(modalTitle, modalClose);
+  const modalGrid = document.createElement('div');
+  modalGrid.className = 'le-modal-grid';
+  for (const item of PALETTE) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'le-modal-item';
+    button.textContent = item.label;
+    button.addEventListener('click', () => {
+      modal.hidden = true;
+      addWidget(item.type);
+    });
+    modalGrid.appendChild(button);
+  }
+  modalCard.append(modalHead, modalGrid);
+  modal.appendChild(modalCard);
+  addWidgetButton.addEventListener('click', openAddModal);
+  // A click on the backdrop (not the card) closes; Escape closes.
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeAddModal();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) closeAddModal();
+  });
+
+  // Templates sits beside Add widget as its quieter neighbour: both start a
+  // layout, one widget at a time or all at once.
+  const templateLink = document.createElement('a');
+  templateLink.className = 'le-add';
+  templateLink.href = `admin/displays/${detailSeg}/gallery`;
+  templateLink.textContent = 'Templates';
+
+  const resetForm = document.createElement('form');
+  resetForm.className = 'le-reset-form';
+  resetForm.method = 'post';
+  resetForm.action = `admin/displays/${detailSeg}/reset-layout`;
+  resetForm.addEventListener('submit', (event) => {
+    // Says which layouts go, because a wall has two of them and only one is on
+    // screen — "Reset" on its own never said what it would take.
+    const question = epaperHost
+      ? 'Reset this panel to its built-in layout? Your current arrangement is removed.'
+      : 'Reset both the portrait and landscape layouts of this display to the Classic ' +
+        'layout? Everything arranged here is replaced.';
+    if (!window.confirm(question)) {
+      event.preventDefault();
+    }
+  });
+  const resetButton = document.createElement('button');
+  resetButton.type = 'submit';
+  resetButton.className = 'le-tool-btn';
+  resetButton.textContent = 'Reset layout…';
+  resetForm.appendChild(resetButton);
+
+  /**
+   * Canvas settings: the shape being arranged, whether dragging snaps, and what
+   * is behind the widgets — plus the reset, which is a fact about this canvas
+   * and is destructive, so it is the last thing in a panel you had to open.
+   */
+  const canvasButton = document.createElement('button');
+  canvasButton.type = 'button';
+  canvasButton.className = 'le-tool-btn';
+  canvasButton.setAttribute('aria-haspopup', 'true');
+  canvasButton.setAttribute('aria-expanded', 'false');
+
+  const canvasPopover = document.createElement('div');
+  canvasPopover.className = 'le-canvas-pop';
+  canvasPopover.hidden = true;
+  {
+    const title = document.createElement('div');
+    title.className = 'le-pop-title';
+    title.textContent = 'Canvas';
+    const sub = document.createElement('div');
+    sub.className = 'le-pop-sub';
+    sub.textContent = epaperHost
+      ? 'The panel’s own shape. It is fixed by the hardware.'
+      : 'The shape you are arranging. The wall fits it to the screen it is on.';
+    canvasPopover.append(title, sub);
+    if (!epaperHost) {
+      const sizeRow = document.createElement('div');
+      sizeRow.className = 'le-pop-row';
+      const sizeLabel = document.createElement('span');
+      sizeLabel.textContent = 'Canvas size';
+      sizeRow.append(sizeLabel, aspectSelect);
+      canvasPopover.appendChild(sizeRow);
+      if (report !== undefined) {
+        const matchRow = document.createElement('div');
+        matchRow.className = 'le-pop-row';
+        matchRow.appendChild(matchButton);
+        canvasPopover.appendChild(matchRow);
+      }
+      const sep1 = document.createElement('div');
+      sep1.className = 'le-pop-sep';
+      canvasPopover.appendChild(sep1);
+    }
+    const snapRow = document.createElement('div');
+    snapRow.className = 'le-pop-row';
+    snapRow.appendChild(snapToggle);
+    canvasPopover.appendChild(snapRow);
+    if (!epaperHost) {
+      const sep2 = document.createElement('div');
+      sep2.className = 'le-pop-sep';
+      canvasPopover.append(sep2, backgroundPanel);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'le-pop-actions';
+    actions.appendChild(resetForm);
+    canvasPopover.appendChild(actions);
+  }
+
+  // Layers: a toggle that opens an anchored popover (built below). Anchored to
+  // the tools row, never <body>, so it cannot float over the settings pane.
+  const layersButton = document.createElement('button');
+  layersButton.type = 'button';
+  layersButton.className = 'le-layers-btn';
+  layersButton.textContent = 'Layers';
+  layersButton.setAttribute('aria-haspopup', 'true');
+  layersButton.setAttribute('aria-expanded', 'false');
+
+  const layersPopover = document.createElement('div');
+  layersPopover.className = 'le-layers-pop';
+  layersPopover.hidden = true;
+  const layersHead = document.createElement('div');
+  layersHead.className = 'le-layers-head';
+  const layersTitle = document.createElement('div');
+  layersTitle.className = 'le-layers-title';
+  layersTitle.textContent = 'Widget Layers';
+  const layersSub = document.createElement('div');
+  layersSub.className = 'le-layers-sub';
+  layersSub.textContent = 'Drag to reorder — top shows in front';
+  layersHead.append(layersTitle, layersSub);
+  // The body drawLayers fills. It keeps the old class so the row styling applies.
+  const layersPanel = document.createElement('div');
+  layersPanel.className = 'le-layers';
+  layersPopover.append(layersHead, layersPanel);
+
+  const setLayersOpen = (open: boolean): void => {
+    layersOpen = open;
+    layersPopover.hidden = !open;
+    layersButton.classList.toggle('is-on', open);
+    layersButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) setCanvasOpen(false);
+  };
+  const setCanvasOpen = (open: boolean): void => {
+    canvasOpen = open;
+    canvasPopover.hidden = !open;
+    canvasButton.classList.toggle('is-on', open);
+    canvasButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) setLayersOpen(false);
+  };
+  layersButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setLayersOpen(!layersOpen);
+  });
+  canvasButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setCanvasOpen(!canvasOpen);
+  });
+  // Click outside a popover (and off its button) closes it; so does Escape,
+  // which then hands focus back to the button that opened it.
+  document.addEventListener('click', (event) => {
+    const target = event.target as Node;
+    if (layersOpen && !layersPopover.contains(target) && target !== layersButton) setLayersOpen(false);
+    if (canvasOpen && !canvasPopover.contains(target) && target !== canvasButton) setCanvasOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (layersOpen) {
+      setLayersOpen(false);
+      layersButton.focus();
+    }
+    if (canvasOpen) {
+      setCanvasOpen(false);
+      canvasButton.focus();
+    }
+  });
+
+  palette.appendChild(templateLink);
+  barMain.append(orientToggle, panelChip, palette);
+  barTools.append(canvasButton, canvasPopover, layersButton, layersPopover);
+
+  /**
+   * What the canvas currently is, in words — on the "Canvas" button and on the
+   * preview header, which is the one place the wall's size and its update
+   * cadence are stated. They used to be repeated under every widget panel.
+   */
+  function canvasSizeLabel(): string {
+    if (panelSize !== undefined) return `${panelSize.w}×${panelSize.h}`;
+    if (report !== undefined) {
+      const big = Math.max(report.w, report.h);
+      const small = Math.min(report.w, report.h);
+      const matched = state.orientation === 'landscape' ? big / small : small / big;
+      if (Math.abs(matched - state.aspect) < 0.01) return `Match screen · ${report.w}×${report.h}`;
+    }
+    const preset = ASPECTS.find((a) => Math.abs(a.value - state.aspect) < 0.01);
+    return preset?.label ?? `Custom · ${round3(state.aspect)}`;
+  }
+
+  function updateCanvasLabel(): void {
+    canvasButton.textContent = `Canvas — ${canvasSizeLabel()}`;
+    const dims = document.querySelector<HTMLElement>('[data-preview-dims]');
+    if (dims !== null) dims.textContent = `${canvasSizeLabel()} · updates within a minute`;
+  }
+
+  /**
+   * Make the aspect dropdown reflect `state.aspect`: select a matching preset,
+   * or show a "Custom" option when a matched or hand-set aspect is not one of
+   * them (a real screen is rarely exactly 9:16). One stale custom option at
+   * most — it is rebuilt each call.
+   */
+  function syncAspectSelect(): void {
+    for (const opt of Array.from(aspectSelect.options)) {
+      if (opt.dataset['custom'] === '1') aspectSelect.removeChild(opt);
+    }
+    let matched = false;
+    for (const opt of Array.from(aspectSelect.options)) {
+      const on = Math.abs(Number(opt.value) - state.aspect) < 0.01;
+      opt.selected = on;
+      matched = matched || on;
+    }
+    if (!matched) {
+      const opt = document.createElement('option');
+      opt.value = String(state.aspect);
+      opt.textContent = `Custom (${round3(state.aspect)})`;
+      opt.dataset['custom'] = '1';
+      opt.selected = true;
+      aspectSelect.appendChild(opt);
+    }
+  }
+
   // The layers list — every widget, front on top, drag a row to restack, click
   // to select — lives in the anchored popover built in the toolbar above, not
   // as an inline panel here.
 
-  // The per-widget options, shown under the stage when a widget is selected.
+  /**
+   * The contextual widget inspector.
+   *
+   * Selecting a widget opens this, and it says which widget it is, what it
+   * holds (Content), how it looks (Style), how to close it and how to remove
+   * it. On a wall the host is the page's own `#wall-inspector` — a column
+   * beside the canvas on a wide screen, a bottom sheet that leaves the canvas
+   * visible above it on a phone. The e-paper design page has no such host, so
+   * the same panel is built into a card under the stage there.
+   *
+   * The per-widget options used to be a bare panel that appeared under the
+   * canvas and ran straight into the wall's own settings below it, with no
+   * heading to say which widget — or indeed that this was a widget at all.
+   */
+  const inspectorHost =
+    document.getElementById('wall-inspector') ?? document.createElement('div');
+  const inspectorInline = inspectorHost.id !== 'wall-inspector';
+  if (inspectorInline) inspectorHost.className = 'le-inspect-card';
+  inspectorHost.textContent = '';
+
+  const inspectorHead = document.createElement('div');
+  inspectorHead.className = 'insp-head';
+  const inspectorTitle = document.createElement('div');
+  inspectorTitle.className = 'insp-title';
+  const inspectorClose = document.createElement('button');
+  inspectorClose.type = 'button';
+  inspectorClose.className = 'insp-close';
+  inspectorClose.setAttribute('aria-label', 'Close widget settings');
+  inspectorClose.innerHTML = '';
+  inspectorClose.textContent = '×';
+  inspectorClose.addEventListener('click', () => clearSelection(true));
+  inspectorHead.append(inspectorTitle, inspectorClose);
+
+  const inspectorBody = document.createElement('div');
+  inspectorBody.className = 'insp-body';
+
+  // Content | Style. Drawn only when the widget actually has both — a Clock
+  // has nothing to configure but its box, and a tab bar with one live tab is
+  // a control that says nothing.
+  const inspectorTabs = document.createElement('div');
+  inspectorTabs.className = 'insp-tabs';
+  inspectorTabs.setAttribute('role', 'tablist');
+  const inspectorTabButtons: Record<'content' | 'style', HTMLButtonElement> = {
+    content: document.createElement('button'),
+    style: document.createElement('button'),
+  };
+  let inspectorTab: 'content' | 'style' = 'content';
+  for (const which of ['content', 'style'] as const) {
+    const button = inspectorTabButtons[which];
+    button.type = 'button';
+    button.className = 'insp-tab';
+    button.setAttribute('role', 'tab');
+    button.textContent = which === 'content' ? 'Content' : 'Style';
+    button.addEventListener('click', () => {
+      inspectorTab = which;
+      renderConfigPanel();
+    });
+    inspectorTabs.appendChild(button);
+  }
+
+  // The per-widget options themselves. Boxless — the inspector is the card.
   const configPanel = document.createElement('div');
   configPanel.className = 'le-config';
-  configPanel.style.display = 'none';
 
-  mount.append(toolbar, backgroundPanel, stage, configPanel, hint, modal);
+  const inspectorDanger = document.createElement('div');
+  inspectorDanger.className = 'insp-danger';
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'insp-remove';
+  removeButton.addEventListener('click', removeSelected);
+  inspectorDanger.appendChild(removeButton);
+
+  inspectorBody.append(inspectorTabs, configPanel, inspectorDanger);
+  inspectorHost.append(inspectorHead, inspectorBody);
+  // Nothing selected yet: on a wall the host keeps the empty note the server
+  // rendered, so the column is not a blank box on a desktop.
+  const inspectorEmpty = document.createElement('p');
+  inspectorEmpty.className = 'insp-empty';
+  inspectorEmpty.textContent =
+    'Nothing selected. Tap a widget on the canvas to change what it shows and how it looks.';
+  inspectorHost.appendChild(inspectorEmpty);
+
+  // Escape closes the inspector wherever focus is inside it, and hands focus
+  // back to the widget on the canvas — the element that opened it.
+  inspectorHost.addEventListener('keydown', (event) => {
+    if ((event as KeyboardEvent).key !== 'Escape') return;
+    event.stopPropagation();
+    clearSelection(true);
+  });
+
+  mount.append(toolbar, stage, hint, modal);
+  if (inspectorInline) mount.appendChild(inspectorHost);
 
   // ---- the live preview ------------------------------------------------
 
@@ -755,7 +983,24 @@ function boot(): void {
     // sticky, so cap the height to the viewport too — a tall portrait canvas
     // must not run off the bottom and take the preview out of view.
     const maxW = Math.min(stage.clientWidth || 360, 720);
-    const maxH = Math.min(720, Math.max(360, window.innerHeight - 220));
+    // With the inspector open as a sheet, the canvas keeps the top third of
+    // the viewport rather than running underneath it — a preview you cannot
+    // see is not a preview.
+    const sheetOpen = inspectorIsSheet() && inspectorHost.classList.contains('is-open');
+    const narrow = window.innerWidth < 900;
+    // Measured against the sheet rather than guessed at a fraction of the
+    // viewport: the sheet's own height is a min() of two values in the
+    // stylesheet, and a second copy of that sum here would drift.
+    const maxH = sheetOpen
+      ? Math.max(
+          140,
+          Math.round(
+            window.innerHeight - inspectorHost.getBoundingClientRect().height - SHEET_CLEARANCE,
+          ),
+        )
+      : narrow
+        ? Math.max(260, Math.round(window.innerHeight * 0.46))
+        : Math.min(720, Math.max(360, window.innerHeight - 220));
     let w = maxW;
     let h = w / state.aspect;
     if (h > maxH) {
@@ -772,7 +1017,6 @@ function boot(): void {
     const ordered = [...state.widgets].sort((a, b) => a.z - b.z);
     for (const widget of ordered) overlay.appendChild(overlayNode(widget));
     hint.style.display = state.widgets.length === 0 ? '' : 'none';
-    deleteButton.disabled = selected === undefined;
     renderConfigPanel();
   }
 
@@ -782,6 +1026,22 @@ function boot(): void {
     box.dataset['id'] = widget.id;
     positionBox(box, widget);
     box.style.zIndex = String(widget.z);
+
+    /*
+     * A widget on the canvas is a control, so it is one: a tab stop with a
+     * name and a pressed state. Dragging needs a pointer, but *choosing* a
+     * widget to edit must not — and it is also where focus returns when the
+     * inspector closes, which a plain <div> could not accept.
+     */
+    box.tabIndex = 0;
+    box.setAttribute('role', 'button');
+    box.setAttribute('aria-label', `${labelFor(widget.type)} widget`);
+    box.setAttribute('aria-pressed', widget.id === selected ? 'true' : 'false');
+    box.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      selectWidget(widget.id);
+    });
 
     const label = document.createElement('span');
     label.className = 'le-widget-label';
@@ -838,11 +1098,7 @@ function boot(): void {
       name.textContent = labelFor(widget.type);
 
       row.append(grip, swatch, name);
-      row.addEventListener('click', () => {
-        selected = widget.id;
-        drawOverlay();
-        drawLayers();
-      });
+      row.addEventListener('click', () => selectWidget(widget.id));
       layersPanel.appendChild(row);
     }
   }
@@ -973,11 +1229,26 @@ function boot(): void {
 
   /** Everything: size the canvas, redraw the overlay, layers and background, then preview. */
   function draw(): void {
+    updateCanvasLabel();
     sizeCanvas();
     drawOverlay();
     drawLayers();
     drawBackgroundPanel();
     renderPreview();
+  }
+
+  /**
+   * Drop the selection, close the inspector, and — when the person asked for
+   * that in so many words (the sheet's Close, or Escape) — put focus back on
+   * the widget they came in from, which is a real tab stop on the canvas.
+   */
+  function clearSelection(restoreFocus: boolean): void {
+    const previous = selected;
+    selected = undefined;
+    for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
+    renderConfigPanel();
+    if (!restoreFocus || previous === undefined) return;
+    overlay.querySelector<HTMLElement>(`.le-widget[data-id="${previous}"]`)?.focus();
   }
 
   // ---- per-widget config ------------------------------------------------
@@ -1042,31 +1313,115 @@ function boot(): void {
     return box;
   }
 
+  /**
+   * Which widget types have anything to say beyond their box.
+   *
+   * A Clock, a Weather panel and a Shift badge draw one thing and draw it
+   * whole — there is nothing to choose but how the box looks. So the inspector
+   * shows them Style alone rather than a Content tab with nothing in it.
+   */
+  const CONTENT_TYPES = new Set([
+    'calendar', 'homeassistant', 'countdown', 'external', 'notes', 'todo', 'image',
+  ]);
+
+  /** True where the inspector is the phone's bottom sheet rather than a column. */
+  function inspectorIsSheet(): boolean {
+    if (inspectorInline) return false;
+    try {
+      return window.matchMedia('(max-width: 1199px)').matches;
+    } catch {
+      return false;
+    }
+  }
+
+  function openInspector(): void {
+    const wasOpen = inspectorHost.classList.contains('is-open');
+    inspectorEmpty.hidden = true;
+    inspectorHead.hidden = false;
+    inspectorBody.hidden = false;
+    inspectorHost.classList.add('is-open');
+    if (wasOpen || !inspectorIsSheet()) return;
+    /*
+     * The sheet takes the foot of the screen, so the canvas above it shrinks to
+     * stay visible — the preview is what you are editing against, and a
+     * widget's settings that hide it are settings for something you cannot see.
+     *
+     * Both halves are needed and the second is the one that is easy to miss:
+     * the class opens up enough page below the canvas to scroll it clear. The
+     * first version only scrolled, and on a short page there was nothing to
+     * scroll into — the canvas sat behind the sheet exactly as before, which
+     * looks like the shrink not working.
+     */
+    document.documentElement.classList.add('mw-insp-open');
+    sizeCanvas();
+    // Not scrollIntoView({block:'center'}): centring a canvas in a viewport
+    // whose bottom half is the sheet puts half of it behind the sheet. Its top
+    // goes just below the sticky app bar, where the whole of it is visible.
+    const top = window.scrollY + canvas.getBoundingClientRect().top - 88;
+    window.scrollTo(0, Math.max(0, top));
+    inspectorClose.focus();
+  }
+
+  function closeInspector(): void {
+    const wasOpen = inspectorHost.classList.contains('is-open');
+    inspectorHost.classList.remove('is-open');
+    inspectorHead.hidden = true;
+    inspectorBody.hidden = true;
+    inspectorEmpty.hidden = false;
+    document.documentElement.classList.remove('mw-insp-open');
+    if (wasOpen && inspectorIsSheet()) sizeCanvas();
+  }
+
+  /** Select a widget from anywhere — a tap, the keyboard, the layers list. */
+  function selectWidget(id: string): void {
+    selected = id;
+    drawOverlay();
+    drawLayers();
+  }
+
   function renderConfigPanel(): void {
     configPanel.textContent = '';
     const widget = state.widgets.find((w) => w.id === selected);
     if (widget === undefined) {
-      configPanel.style.display = 'none';
+      closeInspector();
       return;
     }
-    configPanel.style.display = '';
-    const title = document.createElement('div');
-    title.className = 'kick';
-    title.textContent = labelFor(widget.type) + ' options';
-    configPanel.appendChild(title);
 
-    // Layering moved to the Layers list below the canvas (drag a row to
-    // restack); the per-widget front/back buttons it replaces are gone.
+    // Which widget this is, said outright. The panel used to open with
+    // "Clock options" buried under the canvas, with the wall's own settings
+    // running on directly beneath it.
+    const name = labelFor(widget.type);
+    inspectorTitle.textContent = `${name} widget`;
+    removeButton.textContent = `Remove this ${name.toLowerCase()} widget`;
+
+    const hasContent = CONTENT_TYPES.has(widget.type);
+    if (!hasContent) inspectorTab = 'style';
+    inspectorTabs.hidden = !hasContent;
+    for (const which of ['content', 'style'] as const) {
+      const button = inspectorTabButtons[which];
+      const on = inspectorTab === which;
+      button.classList.toggle('is-on', on);
+      button.setAttribute('aria-selected', on ? 'true' : 'false');
+      button.tabIndex = on ? 0 : -1;
+    }
+
+    // Layering moved to the Layers list (drag a row to restack); the
+    // per-widget front/back buttons it replaces are gone.
     const cfg = widget.config ?? {};
-    if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
-    else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
-    else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
-    else if (widget.type === 'external') buildExternalConfig(widget, cfg);
-    else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
-    else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
-    else if (widget.type === 'image') buildImageConfig(widget, cfg);
-    // Every widget gets the Format section — it is all box-level.
-    buildFormatConfig(widget, cfg);
+    if (hasContent && inspectorTab === 'content') {
+      if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
+      else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
+      else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
+      else if (widget.type === 'external') buildExternalConfig(widget, cfg);
+      else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
+      else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
+      else if (widget.type === 'image') buildImageConfig(widget, cfg);
+    } else {
+      // Style is the same set of controls for every widget — one
+      // implementation, writing the same per-widget keys it always has.
+      buildFormatConfig(widget, cfg);
+    }
+    openInspector();
   }
 
   function buildExternalConfig(widget: Widget, cfg: Record<string, unknown>): void {
@@ -1242,65 +1597,83 @@ function boot(): void {
     configPanel.appendChild(field);
   }
 
-  function optionSelect(
+  /**
+   * A short mutually-exclusive choice, as a segmented control.
+   *
+   * Left/Centre/Right and Square/Rounded were dropdowns, which is a picker for
+   * two or three words that are already short enough to show.
+   */
+  function segControl(
+    label: string,
     options: readonly (readonly [string, string])[],
     current: string,
     onChange: (value: string) => void,
-  ): HTMLSelectElement {
-    const select = document.createElement('select');
-    for (const [value, label] of options) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (value === current) opt.selected = true;
-      select.appendChild(opt);
+  ): HTMLElement {
+    const field = cfgField(label);
+    const group = document.createElement('div');
+    group.className = 'seg le-seg';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', label);
+    for (const [value, text] of options) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = text;
+      button.className = value === current ? 'on' : '';
+      button.setAttribute('aria-pressed', value === current ? 'true' : 'false');
+      button.addEventListener('click', () => {
+        onChange(value);
+        renderConfigPanel();
+      });
+      group.appendChild(button);
     }
-    select.addEventListener('change', () => onChange(select.value));
-    return select;
+    field.appendChild(group);
+    return field;
   }
 
-  function toggle(label: string, on: boolean, onChange: (checked: boolean) => void): HTMLElement {
-    const wrap = document.createElement('label');
-    wrap.className = 'le-cfg-check';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = on;
-    input.addEventListener('change', () => onChange(input.checked));
-    wrap.appendChild(input);
-    wrap.appendChild(document.createTextNode(' ' + label));
-    return wrap;
-  }
-
+  /**
+   * The Style tab: the box-level format every widget carries.
+   *
+   * One implementation for all ten widget types — it writes the same
+   * per-widget config keys it always did, so nothing stored changed shape.
+   * What changed is that a control is only drawn when it does something:
+   * the title field appears when the title is set to show, and the background
+   * colour and its opacity appear when there is a background to colour.
+   *
+   * Corners and the drop shadow are deliberately *not* behind the background
+   * switch: `applyWidgetFormat` rounds and clips the box, and casts the shadow,
+   * whether or not a background colour is set — so hiding them there would
+   * remove working controls rather than irrelevant ones.
+   */
   function buildFormatConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const heading = document.createElement('div');
-    heading.className = 'kick';
-    heading.style.marginTop = '18px';
-    heading.textContent = 'Format';
-    configPanel.appendChild(heading);
-
-    // Title — countdown sets its own label in Settings (the same `title` key),
+    // Title — countdown sets its own label in Content (the same `title` key),
     // so offering it again here would be two fields for one value.
     if (widget.type !== 'countdown') {
-      const titleField = cfgField('Title');
-      const titleInput = document.createElement('input');
-      titleInput.type = 'text';
-      titleInput.maxLength = 60;
-      titleInput.placeholder = 'e.g. This week';
-      titleInput.value = typeof cfg['title'] === 'string' ? (cfg['title'] as string) : '';
-      titleInput.addEventListener('change', () => setConfig(widget, 'title', titleInput.value.trim()));
-      titleField.appendChild(titleInput);
-      configPanel.appendChild(titleField);
+      const showTitle = cfg['showTitle'] === true;
       configPanel.appendChild(
-        toggle('Show title on the wall', cfg['showTitle'] === true, (checked) =>
-          setConfig(widget, 'showTitle', checked ? true : undefined),
-        ),
+        switchRow('Show title', 'Draws a heading above this widget on the wall.', showTitle, (checked) => {
+          setConfig(widget, 'showTitle', checked ? true : undefined);
+          renderConfigPanel();
+        }),
       );
+      // Off keeps whatever was typed — `showTitle` is the only key touched —
+      // so turning it back on brings the same title with it.
+      if (showTitle) {
+        const titleField = cfgField('Title');
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.maxLength = 60;
+        titleInput.placeholder = 'e.g. This week';
+        titleInput.value = typeof cfg['title'] === 'string' ? (cfg['title'] as string) : '';
+        titleInput.addEventListener('change', () => setConfig(widget, 'title', titleInput.value.trim()));
+        titleField.appendChild(titleInput);
+        configPanel.appendChild(titleField);
+      }
     }
 
     // Alignment — 'left' is the default, stored as an absence.
-    const alignField = cfgField('Text alignment');
-    alignField.appendChild(
-      optionSelect(
+    configPanel.appendChild(
+      segControl(
+        'Text alignment',
         [
           ['left', 'Left'],
           ['center', 'Centre'],
@@ -1310,12 +1683,11 @@ function boot(): void {
         (value) => setConfig(widget, 'align', value === 'left' ? undefined : value),
       ),
     );
-    configPanel.appendChild(alignField);
 
     // Background
     const hasBg = typeof cfg['background'] === 'string';
     configPanel.appendChild(
-      toggle('Give it a background', hasBg, (checked) => {
+      switchRow('Card background', 'Fills the widget’s box behind what it draws.', hasBg, (checked) => {
         setConfig(widget, 'background', checked ? '#111820' : undefined);
         if (!checked) setConfig(widget, 'opacity', undefined);
         renderConfigPanel();
@@ -1346,9 +1718,9 @@ function boot(): void {
     }
 
     // Corners — 'square' is the default.
-    const cornersField = cfgField('Corners');
-    cornersField.appendChild(
-      optionSelect(
+    configPanel.appendChild(
+      segControl(
+        'Corners',
         [
           ['square', 'Square'],
           ['rounded', 'Rounded'],
@@ -1357,10 +1729,9 @@ function boot(): void {
         (value) => setConfig(widget, 'corners', value === 'square' ? undefined : value),
       ),
     );
-    configPanel.appendChild(cornersField);
 
     configPanel.appendChild(
-      toggle('Drop shadow', cfg['shadow'] === true, (checked) =>
+      switchRow('Drop shadow', '', cfg['shadow'] === true, (checked) =>
         setConfig(widget, 'shadow', checked ? true : undefined),
       ),
     );
@@ -1399,8 +1770,11 @@ function boot(): void {
      * who arranged a canvas around those colours keeps them by default.
      */
     configPanel.appendChild(
-      toggle('Show work schedules', cfg['showShifts'] !== false, (checked) =>
-        setConfig(widget, 'showShifts', checked ? undefined : false),
+      switchRow(
+        'Show work schedules',
+        'Colours the days a rota covers.',
+        cfg['showShifts'] !== false,
+        (checked) => setConfig(widget, 'showShifts', checked ? undefined : false),
       ),
     );
 
@@ -1408,7 +1782,7 @@ function boot(): void {
     // number per day group would repeat itself down the wall.
     if (currentMode !== 'list') {
       configPanel.appendChild(
-        toggle('Show week numbers', cfg['showWeekNumbers'] === true, (checked) =>
+        switchRow('Show week numbers', '', cfg['showWeekNumbers'] === true, (checked) =>
           setConfig(widget, 'showWeekNumbers', checked ? true : undefined),
         ),
       );
@@ -1416,9 +1790,9 @@ function boot(): void {
 
     // Month cells: quiet dots, or Skylight-style labelled event pills.
     if (currentMode === 'month') {
-      const eventsField = cfgField('Events in a day');
-      eventsField.appendChild(
-        optionSelect(
+      configPanel.appendChild(
+        segControl(
+          'Events in a day',
           [
             ['dots', 'Dots'],
             ['pills', 'Labelled pills'],
@@ -1427,7 +1801,6 @@ function boot(): void {
           (value) => setConfig(widget, 'cellEvents', value === 'pills' ? 'pills' : undefined),
         ),
       );
-      configPanel.appendChild(eventsField);
     }
 
     // Which calendars to show — for the week columns and the agenda, where
@@ -1482,8 +1855,11 @@ function boot(): void {
       // Off unless asked for: a wall that already carries a weather widget
       // would otherwise say the same numbers twice.
       configPanel.appendChild(
-        toggle('Show the forecast', cfg['showWeather'] === true, (checked) =>
-          setConfig(widget, 'showWeather', checked ? true : undefined),
+        switchRow(
+          'Show the forecast',
+          'Off by default: a wall with a Weather widget would say it twice.',
+          cfg['showWeather'] === true,
+          (checked) => setConfig(widget, 'showWeather', checked ? true : undefined),
         ),
       );
     }
@@ -1516,7 +1892,6 @@ function boot(): void {
     box.style.zIndex = String(widget.z);
     for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
     box.classList.add('is-selected');
-    deleteButton.disabled = false;
     renderConfigPanel();
     drawLayers();
 
@@ -1574,10 +1949,24 @@ function boot(): void {
     markDirty();
   }
 
+  /**
+   * Remove the widget the inspector is showing.
+   *
+   * It asks, and it names what it is removing — the control used to be a
+   * "Remove selected" button in the toolbar, permanently visible and usually
+   * disabled, which said neither. Nothing is written until Save, so Discard
+   * changes is the undo, and the question says so.
+   */
   function removeSelected(): void {
     if (selected === undefined) return;
-    state.widgets = state.widgets.filter((w) => w.id !== selected);
-    selected = undefined;
+    const widget = state.widgets.find((w) => w.id === selected);
+    if (widget === undefined) return;
+    const question =
+      `Remove the ${labelFor(widget.type)} widget from this canvas? ` +
+      'Nothing is written until you press Save wall, so Discard changes brings it back.';
+    if (!window.confirm(question)) return;
+    state.widgets = state.widgets.filter((w) => w.id !== widget.id);
+    clearSelection(false);
     draw();
     markDirty();
   }
@@ -1587,20 +1976,10 @@ function boot(): void {
     draw();
     markDirty();
   });
-  snapInput.addEventListener('change', () => {
-    snap = snapInput.checked;
-    // The grid is drawn on the overlay only while snapping, as a placement aid;
-    // it is not part of the wall. Sizes are a percentage of the canvas, so the
-    // lines fall exactly on the snap steps at any canvas size.
-    overlay.classList.toggle('is-snapping', snap);
-    overlay.style.backgroundSize = snap ? `${SNAP * 100}% ${SNAP * 100}%` : '';
-  });
-  // A pointer on the empty canvas clears the selection.
+  // A pointer on the empty canvas clears the selection, and with it the
+  // inspector — but never steals focus, because this is a tap on the canvas.
   overlay.addEventListener('pointerdown', () => {
-    selected = undefined;
-    for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
-    deleteButton.disabled = true;
-    renderConfigPanel();
+    clearSelection(false);
   });
   window.addEventListener('resize', draw);
 
@@ -1661,9 +2040,13 @@ function boot(): void {
     // clean until touched. Tell the save bar.
     setDirty(false);
 
-    // Reflect the switch in the toolbar: the active button, and the aspect select.
+    // Reflect the switch in the toolbar: the active button, and the aspect
+    // select. `aria-pressed` moves with the class — the fill and the tick are
+    // the sighted half of the same fact, and leaving the state behind is a
+    // control that lies to everybody who cannot see it.
     for (const key of ['portrait', 'landscape'] as const) {
       orientButtons[key].classList.toggle('is-on', key === which);
+      orientButtons[key].setAttribute('aria-pressed', key === which ? 'true' : 'false');
     }
     syncAspectSelect();
     draw();
