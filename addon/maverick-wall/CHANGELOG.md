@@ -14,6 +14,25 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Every widget's settings now read the same way.
+
+A widget's settings are Content and Style: what it draws, and how its box looks.
+Until now only some widgets had both — a Clock or a Weather panel opened
+straight onto Style, with no Content at all — and the Calendar had a dropdown
+labelled "Style" sitting on its Content tab, right beside the Style tab, which
+meant two different things by the same word.
+
+Every widget has both tabs now, and each one starts by saying what it draws:
+its **View**. The Calendar's is the picker it always was — Month grid, Week
+columns, Upcoming list, Sky week, Sky month — under a name that says what it
+does. The other widgets each have one view, named, stated rather than offered
+as a list you cannot change: Time and date, Forecast strip, Today's shift, and
+so on.
+
+Nothing you have arranged changes, and every setting keeps the value it had.
+
 ## 0.43.1
 
 Buttons no longer go unreadable when you touch them.

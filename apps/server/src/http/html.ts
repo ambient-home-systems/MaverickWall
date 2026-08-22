@@ -1302,6 +1302,8 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   letter-spacing:var(--md-sys-typescale-label-medium-tracking);
   color:var(--md-sys-color-on-surface-variant);margin-bottom:6px}
 .le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
+/* A view a widget cannot change: stated, not offered as a dropdown of one. */
+.le-cfg-fact{font-size:14px;line-height:1.4;color:var(--md-sys-color-on-surface)}
 .le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;
   border:1px solid var(--rule);border-radius:var(--md-sys-shape-corner-extra-small);background:var(--panel2);color:var(--ink);
   resize:vertical;line-height:1.4}

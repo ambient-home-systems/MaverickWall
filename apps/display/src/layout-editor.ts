@@ -20,6 +20,7 @@ import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
+import { WIDGET_VIEWS } from './widget-views.js';
 
 interface Widget {
   id: string;
@@ -1358,15 +1359,53 @@ function boot(): void {
   }
 
   /**
-   * Which widget types have anything to say beyond their box.
+   * The View row, which every widget has and most cannot change.
    *
-   * A Clock, a Weather panel and a Shift badge draw one thing and draw it
-   * whole — there is nothing to choose but how the box looks. So the inspector
-   * shows them Style alone rather than a Content tab with nothing in it.
+   * Every type declares its views in `VIEWS`, so the Content tab is never empty
+   * and the inspector reads the same from one widget to the next: what it draws,
+   * then what it draws it from. A type with one view states it rather than
+   * offering a dropdown of one, because a control that cannot be changed is a
+   * control that does nothing — and the day a second view exists it becomes a
+   * real picker with no other change here.
    */
-  const CONTENT_TYPES = new Set([
-    'calendar', 'homeassistant', 'countdown', 'external', 'notes', 'todo', 'image',
-  ]);
+  function buildViewField(widget: Widget, cfg: Record<string, unknown>): void {
+    const views = WIDGET_VIEWS[widget.type] ?? [];
+    const first = views[0];
+    if (first === undefined) return;
+
+    if (views.length === 1) {
+      // Not a <label>: there is no control for it to name.
+      const row = document.createElement('div');
+      row.className = 'le-cfg-field';
+      const name = document.createElement('span');
+      name.textContent = 'View';
+      const fact = document.createElement('div');
+      fact.className = 'le-cfg-fact';
+      fact.textContent = first.label;
+      row.append(name, fact);
+      configPanel.appendChild(row);
+      return;
+    }
+
+    const field = cfgField('View');
+    const current = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : first.value;
+    const select = document.createElement('select');
+    for (const view of views) {
+      const option = document.createElement('option');
+      option.value = view.value;
+      option.textContent = view.label;
+      if (view.value === current) option.selected = true;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', () => {
+      // The default view is stored as an absence, exactly as `mode` always was.
+      setConfig(widget, 'mode', select.value === first.value ? undefined : select.value);
+      // Which options apply depends on the view, so the panel is rebuilt.
+      renderConfigPanel();
+    });
+    field.appendChild(select);
+    configPanel.appendChild(field);
+  }
 
   /** True where the inspector is the phone's bottom sheet rather than a column. */
   function inspectorIsSheet(): boolean {
@@ -1438,9 +1477,9 @@ function boot(): void {
     inspectorTitle.textContent = `${name} widget`;
     removeButton.textContent = `Remove this ${name.toLowerCase()} widget`;
 
-    const hasContent = CONTENT_TYPES.has(widget.type);
-    if (!hasContent) inspectorTab = 'style';
-    inspectorTabs.hidden = !hasContent;
+    // Both tabs, always: every widget has a view to state, so neither tab is
+    // ever empty and the inspector reads the same whichever widget is open.
+    inspectorTabs.hidden = false;
     for (const which of ['content', 'style'] as const) {
       const button = inspectorTabButtons[which];
       const on = inspectorTab === which;
@@ -1452,7 +1491,8 @@ function boot(): void {
     // Layering moved to the Layers list (drag a row to restack); the
     // per-widget front/back buttons it replaces are gone.
     const cfg = widget.config ?? {};
-    if (hasContent && inspectorTab === 'content') {
+    if (inspectorTab === 'content') {
+      buildViewField(widget, cfg);
       if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
       else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
       else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
@@ -1783,28 +1823,6 @@ function boot(): void {
 
   function buildCalendarConfig(widget: Widget, cfg: Record<string, unknown>): void {
     const currentMode = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : 'month';
-    const modeField = cfgField('Style');
-    const modeSelect = document.createElement('select');
-    for (const [value, label] of [
-      ['month', 'Month grid'],
-      ['week', 'Week columns'],
-      ['list', 'Upcoming list'],
-      ['skyweek', 'Sky week'],
-      ['skymonth', 'Sky month'],
-    ] as const) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (currentMode === value) opt.selected = true;
-      modeSelect.appendChild(opt);
-    }
-    modeSelect.addEventListener('change', () => {
-      // 'month' is the default, so it is stored as an absence rather than a key.
-      setConfig(widget, 'mode', modeSelect.value === 'month' ? undefined : modeSelect.value);
-      renderConfigPanel();
-    });
-    modeField.appendChild(modeSelect);
-    configPanel.appendChild(modeField);
 
     /*
      * The rota's colours, on every style that draws them.
