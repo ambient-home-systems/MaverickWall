@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.50.1
 
 **A setting you could not read.** In the widget settings, a choice with a long
 name — "Follow the household", on a clock's time format — was cut off at both
