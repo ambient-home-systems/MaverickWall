@@ -134,6 +134,46 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('un-watches a calendar somebody added as a reading (0031)', () => {
+    /*
+     * Removing an option does not remove what it already created.
+     *
+     * `calendar` was a supported domain for the entity picker, so a household
+     * could add `calendar.bins` beside their temperatures and get a chip
+     * reading "Bins · On" — the entity's state, which means "an event is
+     * happening right now". Dropping the domain stops it being *offered*, and
+     * the panel query selects on `watched = 1` with no domain filter — so
+     * without this migration every wall that already had one would carry on
+     * drawing it, and the household would report the same bug a second time.
+     *
+     * The cache row itself stays: it is refreshed from Home Assistant on the
+     * next poll, so deleting it would only bring it back.
+     */
+    const db = new Database(':memory:');
+    const entries = journal();
+    const before = entries.filter((entry) => entry.tag < '0031');
+    for (const entry of before) apply(db, entry.tag);
+
+    const at = Date.now();
+    db.prepare(
+      `INSERT INTO ha_entity_cache (entity_id, watched, sort_order, fetched_at)
+       VALUES ('calendar.bins', 1, 0, ?), ('sensor.hall', 1, 1, ?)`,
+    ).run(at, at);
+
+    for (const entry of entries.filter((entry) => entry.tag >= '0031')) apply(db, entry.tag);
+
+    const watched = db
+      .prepare('SELECT entity_id FROM ha_entity_cache WHERE watched = 1')
+      .all() as { entity_id: string }[];
+    // The calendar stops being a reading; the thermometer beside it is untouched.
+    expect(watched.map((row) => row.entity_id)).toEqual(['sensor.hall']);
+    expect(
+      db.prepare("SELECT count(*) AS n FROM ha_entity_cache WHERE entity_id = 'calendar.bins'")
+        .get(),
+    ).toEqual({ n: 1 });
+    db.close();
+  });
+
   it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
     // A wall arranged before the two-canvas split has widgets with no
     // orientation column. The 0024 migration adds it with a `portrait` default,

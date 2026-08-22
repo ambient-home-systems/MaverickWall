@@ -41,8 +41,18 @@ describe('reading entities', () => {
   it('keeps only the domains a wall has any use for', () => {
     expect(isSupported('sensor.temperature')).toBe(true);
     expect(isSupported('binary_sensor.door')).toBe(true);
-    expect(isSupported('calendar.family')).toBe(true);
     expect(isSupported('automation.morning')).toBe(false);
+    /*
+     * A calendar is not a reading, and it used to be one.
+     *
+     * Its state is `on`/`off`, meaning "an event is happening right now", so
+     * adding `calendar.bins` here put "Bins · On" on the wall — not a reading
+     * anybody wants and not the calendar they were after. A household reported
+     * exactly that. Calendar entities have their own path (`calendars.ts`,
+     * which turns one into a real `calendar_sources` row), so this domain is
+     * refused rather than offered and useless.
+     */
+    expect(isSupported('calendar.family')).toBe(false);
     expect(isSupported('light.kitchen')).toBe(false);
     // Nothing that could be mistaken for a control surface.
     expect(isSupported('switch.boiler')).toBe(false);

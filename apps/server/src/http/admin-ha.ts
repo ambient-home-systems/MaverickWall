@@ -367,7 +367,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         {
           message: 'Choose an entity from the list.',
           suggestion:
-            'Sensors, binary sensors, weather, people, device trackers and calendars. ' +
+            'Sensors, binary sensors, weather, people and device trackers. ' +
             'Anything else is not a reading a wall can show.',
         },
         400,
@@ -705,6 +705,12 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<h2 class="add">On the wall</h2>` +
       `<p class="hint">A few readings beside the calendar. This is deliberately not a ` +
       `dashboard — Home Assistant already has one, and it is better at it.</p>` +
+      // Calendars used to be offered here too, and a calendar added as a
+      // reading drew "Bins · On" — its state, which means "an event is on right
+      // now". They are not in this picker any more, so this says where they went
+      // rather than leaving somebody hunting for one that has quietly vanished.
+      `<p class="hint">Calendar entities are not readings — they are added as ` +
+      `calendars, below, and behave like any other feed.</p>` +
       (rows === '' ? `<p>Nothing on the wall yet.</p>` : rows) +
       `<h2 class="add">Add readings</h2>` +
       `<div id="ha-entity-picker" ` +

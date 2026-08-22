@@ -1,0 +1,14 @@
+-- Un-watch every calendar entity added as a "reading".
+--
+-- `calendar` used to be a supported domain for the entity picker, so a
+-- household could add `calendar.bins` beside their temperatures — and get a
+-- chip reading "Bins · On", because a calendar entity's state is `on`/`off`
+-- meaning "an event is happening right now". The domain is gone from
+-- `SUPPORTED_DOMAINS`, which stops it being offered; it does not touch the
+-- rows already there, and the panel query selects on `watched = 1` with no
+-- domain filter — so without this, every wall that already had one would keep
+-- drawing it, and the household would report the same bug again.
+--
+-- The row itself stays: it is a cache entry, refreshed from Home Assistant on
+-- the next poll, and deleting it would only make it come back.
+UPDATE ha_entity_cache SET watched = 0 WHERE entity_id LIKE 'calendar.%';

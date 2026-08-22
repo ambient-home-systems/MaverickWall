@@ -2,6 +2,9 @@ import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 import type { Signal } from '@maverick-wall/core';
 import { call, resolveConnection } from './client.js';
+import { parseCalendarList, type CalendarEntity } from './calendars.js';
+import type { Keyring } from '../../secrets/keyring.js';
+import type { Fetcher } from '@maverick-wall/core';
 import {
   iconFor,
   parseStates,
@@ -83,6 +86,32 @@ function stateFrom(row: WatchRow): HaState {
     deviceClass,
     lastChangedAt: row.lastChangedAt,
   };
+}
+
+/**
+ * The calendar entities Home Assistant is offering, or none.
+ *
+ * `/api/calendars` rather than `/api/states`: it is the small request, and the
+ * Calendars screen only wants the list to offer. Never throws and never
+ * explains itself — a household with no Home Assistant, an expired token or a
+ * box that is down simply sees no Home Assistant section on that page, which
+ * is the truth. The Home Assistant screen is where a broken connection is
+ * diagnosed; the calendar screen must not become slow or alarming because
+ * something else is unwell (rule nine).
+ */
+export async function fetchCalendarEntities(
+  db: SqliteDatabase,
+  keyring: Keyring,
+  fetcher: Fetcher,
+): Promise<readonly CalendarEntity[]> {
+  try {
+    const resolved = resolveConnection(db, keyring);
+    if (!resolved.ok) return [];
+    const list = await call(fetcher, resolved.connection, '/calendars');
+    return list.ok ? parseCalendarList(list.body) : [];
+  } catch {
+    return [];
+  }
 }
 
 const SELECT_WATCHED = `SELECT entity_id AS entityId, label, display_mode AS displayMode,
