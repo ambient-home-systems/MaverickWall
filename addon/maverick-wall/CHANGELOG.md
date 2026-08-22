@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.45.0
 
 The Shift widget shows everybody on a rota, and it has options.
 
