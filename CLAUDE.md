@@ -839,7 +839,31 @@ import *from* it without failing `tsconfig.test.json`. So
 `epaper/ladder.ts` transcribes it and `epaper-ladder-parity.test.ts` reads both
 files and compares the tables in both directions, the way
 `migration-upgrade.test.ts` compares the migrations directory with its journal.
-Checked by drifting one role and watching it go red.
+Checked by drifting one role and watching it go red — and then again, because
+the first version only compared the tables it had been *told* about, so a third
+widget gaining a ladder on one side alone sailed through. It compares the two
+*sets* of tables now, each derived from its own file, and both directions were
+confirmed by adding a table to one side at a time.
+
+**A second widget has one, and its shape is different — which is the point.**
+A shift badge is one card of rows; a forecast is a strip of days whose ladder
+applies *inside each column*, so reordering moves the same row in every column
+and dropping gives up the same row in every column. How many days is `count`, a
+different axis. Two rules are specific to it and both exist to keep an arranged
+wall identical: the high and the low share a line while they are **adjacent**
+(`pairsTemperatures`), because a range reads as one thing and splitting it by
+default would re-typeset every strip already hanging in a kitchen; and an
+unpaired low keeps the `.lo` treatment, because its emphasis is a property of
+the field and not of what the household put next to it.
+
+**Sizing by row index broke the ladder's own rule, and only a reordered strip
+showed it.** The panel's first cut sized row 0 small and the rest large — fine
+for the default, and it drew enormous day names the moment somebody put the
+temperatures first. Size comes from the role now. The same render also had each
+column choosing its own scale from its own string, so `20  9C` fitted a size
+`24  13C` did not and the strip came out as five unrelated widgets; one scale
+per row across every column is what keeps a strip a strip. Both found by
+rendering a frame and looking at it.
 
 **The editor marks the cut from the preview, not from a prediction.** The
 inspector's list strikes through the rows the box is currently too small for,

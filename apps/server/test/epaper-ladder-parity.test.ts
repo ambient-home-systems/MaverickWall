@@ -4,13 +4,19 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import * as panelLadder from '../src/epaper/ladder.js';
 import {
   DEFAULT_SHIFT_LADDER,
+  DEFAULT_WEATHER_LADDER,
   SHIFT_FIELDS,
   SHIFT_ROLES,
+  WEATHER_FIELDS,
+  WEATHER_ROLES,
   dropToFit,
   ladderRows,
+  pairsTemperatures,
   shiftLadder,
+  weatherLadder,
   type LadderRow,
 } from '../src/epaper/ladder.js';
 
@@ -53,17 +59,47 @@ function table(name: string): Record<string, string> {
   return out;
 }
 
-describe('the ladder table, on both renderers', () => {
-  it('names the same fields, in the same order', () => {
+describe('the ladder tables, on both renderers', () => {
+  it('names the same shift fields, in the same order', () => {
     expect(tuple('SHIFT_FIELDS')).toEqual([...SHIFT_FIELDS]);
+  });
+
+  it('names the same weather fields, in the same order', () => {
+    expect(tuple('WEATHER_FIELDS')).toEqual([...WEATHER_FIELDS]);
   });
 
   it('gives every field the same emphasis', () => {
     expect(table('SHIFT_ROLES')).toEqual({ ...SHIFT_ROLES });
+    expect(table('WEATHER_ROLES')).toEqual({ ...WEATHER_ROLES });
   });
 
-  it('starts from the same default ladder', () => {
+  it('starts from the same default ladders', () => {
     expect(tuple('DEFAULT_SHIFT_LADDER')).toEqual([...DEFAULT_SHIFT_LADDER]);
+    expect(tuple('DEFAULT_WEATHER_LADDER')).toEqual([...DEFAULT_WEATHER_LADDER]);
+  });
+
+  it('has the same set of ladders on each side, in both directions', () => {
+    /*
+     * The parity that is easiest to lose: a third widget gaining a ladder on one
+     * renderer and not the other passes every assertion above, because those
+     * only compare the tables they were told about.
+     *
+     * Compared as *sets*, and from each file's own declarations rather than
+     * from a list written here — a hard-coded expectation would have to be
+     * updated by the same person who forgot the other file. Checked by adding a
+     * table to one side and watching it go red, which is how the first version
+     * of this test was found to only look one way.
+     */
+    const inDisplay = [...source.matchAll(/export const (\w+)_FIELDS\b/g)]
+      .map((m) => m[1] as string)
+      .sort();
+    const inPanel = Object.keys(panelLadder)
+      .filter((name) => name.endsWith('_FIELDS'))
+      .map((name) => name.replace(/_FIELDS$/, ''))
+      .sort();
+    expect(inPanel).toEqual(inDisplay);
+    expect(inPanel).toContain('SHIFT');
+    expect(inPanel).toContain('WEATHER');
   });
 
   it('reads the display file it claims to, so a rename fails loudly', () => {
@@ -71,6 +107,37 @@ describe('the ladder table, on both renderers', () => {
     // assertion above by comparing two empty lists.
     expect(source).toContain('The field ladder');
     expect(tuple('SHIFT_FIELDS').length).toBeGreaterThan(0);
+  });
+});
+
+describe('resolving a weather ladder', () => {
+  it('is the strip every wall already drew, when nothing was set', () => {
+    expect(weatherLadder({})).toEqual(['name', 'icon', 'high', 'low']);
+  });
+
+  it('still honours the switches that predate it', () => {
+    expect(weatherLadder({ showIcon: false })).toEqual(['name', 'high', 'low']);
+    expect(weatherLadder({ showLow: false })).toEqual(['name', 'icon', 'high']);
+  });
+
+  it('ignores a field that belongs to another widget', () => {
+    // One `fields` key serves every ladder, so a Weather widget carrying a
+    // shift field must read as "not for me" rather than as an unrenderable row.
+    expect(weatherLadder({ fields: ['person', 'shift'] })).toEqual([
+      'name',
+      'icon',
+      'high',
+      'low',
+    ]);
+    expect(weatherLadder({ fields: ['high', 'person', 'name'] })).toEqual(['high', 'name']);
+  });
+
+  it('pairs the temperatures only while they are next to each other', () => {
+    // A range reads as one thing, which is how the strip has always drawn it.
+    expect(pairsTemperatures(['name', 'icon', 'high', 'low'])).toBe(true);
+    expect(pairsTemperatures(['low', 'high'])).toBe(true);
+    expect(pairsTemperatures(['high', 'name', 'low'])).toBe(false);
+    expect(pairsTemperatures(['name', 'high'])).toBe(false);
   });
 });
 
@@ -117,11 +184,15 @@ describe('resolving a ladder', () => {
   });
 
   it('drops a row the day has no data for, which is not the same as off', () => {
-    const rows = ladderRows(['person', 'shift', 'hours', 'run'], {
-      person: 'Amy',
-      shift: 'Days',
-      // An untimed shift, and a run the server could not establish.
-    });
+    const rows = ladderRows(
+      ['person', 'shift', 'hours', 'run'],
+      {
+        person: 'Amy',
+        shift: 'Days',
+        // An untimed shift, and a run the server could not establish.
+      },
+      SHIFT_ROLES,
+    );
     expect(rows.map((r) => r.field)).toEqual(['person', 'shift']);
   });
 

@@ -14,6 +14,24 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Weather widget gets the same **What it says** list the Shift badge has.
+
+Tick what a day in the forecast shows — the day, the symbol, the high, the
+overnight low — and drag them into the order you care about. As with the shift
+badge, that order is also the order things are given up in when the box is too
+small: a short strip keeps the top of your list.
+
+Two details worth knowing. The high and the low sit on one line while they are
+next to each other in the list, because a temperature range reads as one thing
+— separate them and they separate on the wall. And a row's size follows what it
+*is*, not where you put it: moving the temperatures above the day name does not
+make the day name enormous.
+
+"Show the weather symbol" and "Show the overnight low" are rows on that list
+now. A widget you have already set up is unchanged.
+
 ## 0.47.0
 
 The Shift widget says what matters, in the order you choose.

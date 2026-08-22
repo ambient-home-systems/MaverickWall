@@ -155,6 +155,44 @@ describe('the weather widget on a panel', () => {
     expect(bitsOf(frameOf(manifestOf(warmer), { showLow: false }))).not.toEqual(bitsOf(noLow));
   });
 
+  it('gives up the ladder from the bottom as the column gets shorter', () => {
+    /*
+     * The forecast's ladder applies inside each day's column, so a short strip
+     * gives up the same row in every column. Asserted by equivalence: the short
+     * frame is the frame of a ladder that was that short to begin with.
+     */
+    const tall = frameOf(manifestOf(FIVE), {});
+    const short = frameOf(manifestOf(FIVE), {}, 'weather', { h: 0.28 });
+    expect(bitsOf(short)).not.toEqual(bitsOf(tall));
+    expect(bitsOf(short)).toEqual(
+      bitsOf(frameOf(manifestOf(FIVE), { fields: ['name', 'high'] }, 'weather', { h: 0.28 })),
+    );
+  });
+
+  it('draws the rows in the household’s order', () => {
+    // Reordering is not the same frame drawn differently — it is a different
+    // frame, and the reverse of the default is not the default.
+    expect(bitsOf(frameOf(manifestOf(FIVE), { fields: ['high', 'name'] }))).not.toEqual(
+      bitsOf(frameOf(manifestOf(FIVE), { fields: ['name', 'high'] })),
+    );
+  });
+
+  it('keeps the temperatures on one line only while they are adjacent', () => {
+    // A range reads as one thing. Separated in the list, they separate on the
+    // frame — so these two ladders, over the same days, cannot draw the same.
+    const together = frameOf(manifestOf(FIVE), { fields: ['high', 'low', 'name'] });
+    const apart = frameOf(manifestOf(FIVE), { fields: ['high', 'name', 'low'] });
+    expect(bitsOf(together)).not.toEqual(bitsOf(apart));
+  });
+
+  it('is unchanged for a widget saved before the ladder existed', () => {
+    // The compatibility that matters: a stored `showLow: false` resolves to the
+    // same ladder, and so to the same frame, as writing the list out by hand.
+    expect(bitsOf(frameOf(manifestOf(FIVE), { showLow: false }))).toEqual(
+      bitsOf(frameOf(manifestOf(FIVE), { fields: ['name', 'icon', 'high'] })),
+    );
+  });
+
   it('changes nothing for the symbol, which a 1-bit font has no glyph for', () => {
     /*
      * `showIcon` is the wall's. The panel's font is 0x20–0x7E and a forecast

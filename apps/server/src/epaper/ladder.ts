@@ -29,19 +29,37 @@ export const SHIFT_ROLES: Readonly<Record<ShiftField, LadderRole>> = {
 
 export const DEFAULT_SHIFT_LADDER: readonly ShiftField[] = ['person', 'shift', 'hours', 'run'];
 
-const isShiftField = (value: unknown): value is ShiftField =>
-  typeof value === 'string' && (SHIFT_FIELDS as readonly string[]).includes(value);
+export const WEATHER_FIELDS = ['name', 'icon', 'high', 'low'] as const;
+export type WeatherField = (typeof WEATHER_FIELDS)[number];
+
+export const WEATHER_ROLES: Readonly<Record<WeatherField, LadderRole>> = {
+  name: 'kicker',
+  icon: 'body',
+  high: 'headline',
+  low: 'small',
+};
+
+export const DEFAULT_WEATHER_LADDER: readonly WeatherField[] = ['name', 'icon', 'high', 'low'];
+
+/** A stored ladder, filtered to the fields this widget can actually draw. */
+function storedLadder<F extends string>(
+  stored: unknown,
+  allowed: readonly F[],
+): readonly F[] | undefined {
+  if (!Array.isArray(stored)) return undefined;
+  const seen: F[] = [];
+  for (const entry of stored) {
+    if (typeof entry !== 'string') continue;
+    const field = allowed.find((name) => name === entry);
+    if (field !== undefined && !seen.includes(field)) seen.push(field);
+  }
+  return seen.length > 0 ? seen : undefined;
+}
 
 /** The stored ladder, or the one derived from the switches that predate it. */
 export function shiftLadder(config: Readonly<Record<string, unknown>>): readonly ShiftField[] {
-  const stored = config['fields'];
-  if (Array.isArray(stored)) {
-    const seen: ShiftField[] = [];
-    for (const entry of stored) {
-      if (isShiftField(entry) && !seen.includes(entry)) seen.push(entry);
-    }
-    if (seen.length > 0) return seen;
-  }
+  const stored = storedLadder(config['fields'], SHIFT_FIELDS);
+  if (stored !== undefined) return stored;
   return DEFAULT_SHIFT_LADDER.filter((field) => {
     if (field === 'hours') return config['showHours'] !== false;
     if (field === 'run') return config['showRun'] !== false;
@@ -49,22 +67,45 @@ export function shiftLadder(config: Readonly<Record<string, unknown>>): readonly
   });
 }
 
-export interface LadderRow {
-  readonly field: ShiftField;
+export function weatherLadder(
+  config: Readonly<Record<string, unknown>>,
+): readonly WeatherField[] {
+  const stored = storedLadder(config['fields'], WEATHER_FIELDS);
+  if (stored !== undefined) return stored;
+  return DEFAULT_WEATHER_LADDER.filter((field) => {
+    if (field === 'icon') return config['showIcon'] !== false;
+    if (field === 'low') return config['showLow'] !== false;
+    return true;
+  });
+}
+
+/**
+ * Whether the high and the low share a line — true when they are adjacent,
+ * because a temperature range reads as one thing. See the display's copy.
+ */
+export function pairsTemperatures(ladder: readonly WeatherField[]): boolean {
+  const high = ladder.indexOf('high');
+  const low = ladder.indexOf('low');
+  return high >= 0 && low >= 0 && Math.abs(high - low) === 1;
+}
+
+export interface LadderRow<F extends string = string> {
+  readonly field: F;
   readonly role: LadderRole;
   readonly text: string;
 }
 
 /** The ladder against the data there actually is — an absent field is dropped. */
-export function ladderRows(
-  ladder: readonly ShiftField[],
-  values: Readonly<Partial<Record<ShiftField, string>>>,
-): readonly LadderRow[] {
-  const rows: LadderRow[] = [];
+export function ladderRows<F extends string>(
+  ladder: readonly F[],
+  values: Readonly<Partial<Record<F, string>>>,
+  roles: Readonly<Record<F, LadderRole>>,
+): readonly LadderRow<F>[] {
+  const rows: LadderRow<F>[] = [];
   for (const field of ladder) {
     const text = values[field];
     if (text === undefined || text === '') continue;
-    rows.push({ field, role: SHIFT_ROLES[field], text });
+    rows.push({ field, role: roles[field], text });
   }
   return rows;
 }
@@ -73,11 +114,11 @@ export function ladderRows(
  * Give up rows from the bottom until what is left fits. The first always
  * survives — an empty widget is the one outcome rule nine forbids.
  */
-export function dropToFit(
-  rows: readonly LadderRow[],
+export function dropToFit<F extends string>(
+  rows: readonly LadderRow<F>[],
   budget: number,
   heightOf: (role: LadderRole) => number,
-): readonly LadderRow[] {
+): readonly LadderRow<F>[] {
   let kept = rows;
   while (kept.length > 1) {
     const total = kept.reduce((sum, row) => sum + heightOf(row.role), 0);

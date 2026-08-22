@@ -21,7 +21,7 @@ import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
 import { WIDGET_VIEWS } from './widget-views.js';
-import { SHIFT_FIELDS, shiftLadder } from './ladder.js';
+import { SHIFT_FIELDS, WEATHER_FIELDS, shiftLadder, weatherLadder } from './ladder.js';
 
 interface Widget {
   id: string;
@@ -2041,19 +2041,9 @@ function boot(): void {
     note.textContent = 'Empty shows every day the forecast has.';
     configPanel.appendChild(note);
 
-    configPanel.appendChild(
-      switchRow('Show the overnight low', '', cfg['showLow'] !== false, (checked) =>
-        setConfig(widget, 'showLow', checked ? undefined : false),
-      ),
-    );
-    configPanel.appendChild(
-      switchRow(
-        'Show the weather symbol',
-        epaperHost ? 'The wall only — a panel has no symbol to draw in black and white.' : '',
-        cfg['showIcon'] !== false,
-        (checked) => setConfig(widget, 'showIcon', checked ? undefined : false),
-      ),
-    );
+    // The symbol and the low used to be two switches here; they are rows on the
+    // ladder now, which is the one place a widget's rows are decided.
+    buildLadder(widget, cfg);
   }
 
   function buildShiftConfig(widget: Widget, cfg: Record<string, unknown>): void {
@@ -2100,6 +2090,39 @@ function boot(): void {
     shift: ['The shift', 'Nights'],
     hours: ['The hours', '19:00–07:00'],
     run: ['How far through', 'Day 2 of 4 · 2 more'],
+    name: ['The day', 'Today'],
+    icon: ['The symbol', '☀'],
+    high: ['The high', '24°'],
+    low: ['The overnight low', '13°C'],
+  };
+
+  /**
+   * Each widget's ladder: its fields, and the switches writing a list replaces.
+   *
+   * A widget with no entry has no ladder and gets its ordinary options. Adding
+   * one here is what makes a third widget's rows orderable — the table is the
+   * seam, not a branch inside the builder.
+   */
+  const LADDERS: Readonly<
+    Record<
+      string,
+      {
+        readonly fields: readonly string[];
+        readonly resolve: (cfg: unknown) => readonly string[];
+        readonly replaces: readonly string[];
+      }
+    >
+  > = {
+    shift: {
+      fields: SHIFT_FIELDS,
+      resolve: (cfg) => shiftLadder(cfg),
+      replaces: ['showHours', 'showRun'],
+    },
+    weather: {
+      fields: WEATHER_FIELDS,
+      resolve: (cfg) => weatherLadder(cfg),
+      replaces: ['showIcon', 'showLow'],
+    },
   };
 
   /**
@@ -2120,20 +2143,21 @@ function boot(): void {
     const list = document.createElement('div');
     list.className = 'le-ladder';
 
-    const chosen = shiftLadder(cfg);
-    const order = [...chosen, ...SHIFT_FIELDS.filter((name) => !chosen.includes(name))];
+    const spec = LADDERS[widget.type];
+    if (spec === undefined) return;
+    const chosen = spec.resolve(cfg);
+    const order = [...chosen, ...spec.fields.filter((name) => !chosen.includes(name))];
 
     const write = (next: readonly string[]): void => {
       const cleaned: Record<string, unknown> = { ...(widget.config ?? {}) };
-      delete cleaned['showHours'];
-      delete cleaned['showRun'];
+      for (const key of spec.replaces) delete cleaned[key];
       widget.config = cleaned;
       setConfig(widget, 'fields', [...next]);
       renderConfigPanel();
     };
 
     for (const name of order) {
-      const on = chosen.includes(name as (typeof SHIFT_FIELDS)[number]);
+      const on = chosen.includes(name);
       const [label, example] = LADDER_LABELS[name] ?? [name, ''];
       const row = document.createElement('div');
       row.className = 'le-ladder-row' + (on ? '' : ' is-off');
@@ -2228,7 +2252,10 @@ function boot(): void {
    */
   function markLadderCut(): void {
     for (const { widget, list } of ladderPanels) {
-      const badge = previewShadow?.querySelector(`[data-widget-id="${widget.id}"] .shift-badge`);
+      // The unit a ladder fills: one badge for a shift, one day's column for a
+      // forecast. Both are "the thing whose children are the ladder's rows".
+      const selector = widget.type === 'weather' ? '.wx-day' : '.shift-badge';
+      const badge = previewShadow?.querySelector(`[data-widget-id="${widget.id}"] ${selector}`);
       const rows = Array.from(list.querySelectorAll<HTMLElement>('.le-ladder-row:not(.is-off)'));
       /*
        * A collapsed badge has cut nothing.
