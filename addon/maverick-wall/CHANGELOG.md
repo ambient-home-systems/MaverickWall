@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.43.1
 
 Buttons no longer go unreadable when you touch them.
 
