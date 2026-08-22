@@ -1497,6 +1497,21 @@ that opens up 70vh of page below it, and the assertion is
 `canvas.bottom <= sheet.top && canvas.top >= appbar.bottom` at 390, 430 and 768.
 "The sheet opened" would have passed over both.
 
+**`text-overflow: ellipsis` does nothing on a flex container, and says nothing
+about it.** The widget inspector's segmented control was `white-space:nowrap`
+plus `overflow:hidden` plus `text-overflow:ellipsis` — which reads as a graceful
+degradation and had never been one: a segment is `display:inline-flex` with
+`justify-content:center`, so its label is an anonymous *flex item* and the
+ellipsis has no inline content to act on. "Follow the household" was 142px of
+label centred in a 111px segment and came out clipped at **both** ends as
+"ollow the househ". Reported from a real screen, and the measurement is the only
+way to see it: the declaration looks like the fix for exactly the bug it was
+failing to prevent. The labels wrap now, because they *are* the choices — "Follow
+the hou…" is a choice a household cannot make — and the same scope had quietly
+reintroduced the `overflow:hidden` the global rule avoids on purpose, which
+clips the focus ring. `test/admin-seg-labels.test.ts` pins the absence of all
+three, the way the mobile-nav test pins the absences its redesign created.
+
 **A control that opts out of the filled button must opt out of its states.**
 `button,.btn` is the filled variant — primary ground, on-primary label — and its
 `:hover`/`:active` rules are `(0,1,1)`, which beats any single-class rule. So a
