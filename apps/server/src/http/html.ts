@@ -1321,10 +1321,26 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   border-radius:var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0}
 .le-inspect-card .insp-empty{padding:16px 18px}
 /* A segmented control inside the inspector fills the column rather than
- * hugging its labels — the boxes are the target, and the column is narrow. */
+ * hugging its labels — the boxes are the target, and the column is narrow.
+ *
+ * Its labels *wrap*, and that is the fix for a real fault rather than a
+ * preference. This rule used to say nowrap plus overflow:hidden plus
+ * text-overflow:ellipsis, which reads like a graceful degradation and is not
+ * one: a segment is display:inline-flex with justify-content:center, so the
+ * label is an anonymous flex item and text-overflow has nothing to act on.
+ * The label was simply clipped at *both* ends, centred — "Follow the household"
+ * came out as "ollow the househ" in a 111px segment measuring 142px of text.
+ * An ellipsis would not have been much better: these labels are the choices
+ * themselves, and a choice you cannot read is a choice you cannot make.
+ *
+ * So: two lines when it needs them, every segment growing together because the
+ * row stretches, and overflow-wrap for a single long word that cannot break at
+ * a space. overflow:hidden is gone with it — the global rule above avoids it
+ * deliberately so a focus ring is not clipped, and this scope had quietly put
+ * it back. */
 .le-cfg-field .seg{display:flex;width:100%;max-width:100%}
-.le-cfg-field .seg button{padding:0 10px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
+.le-cfg-field .seg button{padding:0 8px;white-space:normal;overflow-wrap:anywhere;
+  height:auto;min-height:38px;line-height:1.15;text-align:center;overflow:visible}
 .le-config .switch{margin:.5rem 0}
 .le-cfg-field{display:block;margin:12px 0 0}
 .le-cfg-field>span{display:block;
