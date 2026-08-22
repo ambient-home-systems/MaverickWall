@@ -982,7 +982,23 @@ function boot(): void {
     // to drag in than the old inline-below-the-settings size. The left pane is
     // sticky, so cap the height to the viewport too — a tall portrait canvas
     // must not run off the bottom and take the preview out of view.
-    const maxW = Math.min(stage.clientWidth || 360, 720);
+    /*
+     * The stage's *content* width, not its `clientWidth` — which includes its
+     * own 16px padding either side.
+     *
+     * Asking for 32px more than the stage can give does not overflow: the
+     * canvas is a flex item, so it is shrunk back to fit, keeping the height
+     * this function set. The canvas then has a ratio that is not the one being
+     * authored, and the preview — which is fitted from the height and is
+     * correct — runs off the side and is clipped. Portrait hid it, because
+     * there the height clamp recomputes the width and lands inside the stage
+     * anyway; landscape is width-driven, so it showed.
+     */
+    const stagePad = (() => {
+      const cs = getComputedStyle(stage);
+      return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    })();
+    const maxW = Math.min(Math.max(120, (stage.clientWidth || 360) - stagePad), 720);
     // With the inspector open as a sheet, the canvas keeps the top third of
     // the viewport rather than running underneath it — a preview you cannot
     // see is not a preview.
@@ -1225,6 +1241,34 @@ function boot(): void {
       });
       backgroundPanel.appendChild(angle);
     }
+  }
+
+  /*
+   * Keep the preview fitted to the canvas, whoever resized it.
+   *
+   * The preview is the wall rendered at a reference resolution and scaled into
+   * the canvas with a transform computed *at render time* from the canvas box
+   * (see `renderPreview`). So a canvas that changes size without a re-render
+   * keeps the scale it was given, for ever — and closing the widget sheet did
+   * exactly that: the canvas grew back to full size while the preview stayed at
+   * the sheet-sized scale, a small picture in the corner of a big empty box,
+   * with nothing in the editor that would ever put it right. Opening only
+   * looked correct by accident, because the tap that opens the inspector ends
+   * in a pointer release that re-renders.
+   *
+   * This is an observer rather than a `renderPreview()` beside every
+   * `sizeCanvas()` because the fit is a fact about the geometry, not a step in
+   * a routine somebody has to remember: the canvas is sized from three places
+   * today and the next one would have the same bug. `draw()` still renders
+   * directly, for a different reason — it rebuilds the *content*, and that has
+   * to happen in the same frame as the edit that caused it.
+   *
+   * Not on a panel: its backdrop is a server-rendered frame stretched to the
+   * box by CSS, so it needs no re-fit, and re-rendering would post to the
+   * server on every resize.
+   */
+  if (!epaperHost && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => renderPreview()).observe(canvas);
   }
 
   /** Everything: size the canvas, redraw the overlay, layers and background, then preview. */
