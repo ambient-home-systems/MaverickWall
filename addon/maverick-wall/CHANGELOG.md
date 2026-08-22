@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.49.0
 
 **Home Assistant readings on an eInk panel ignored how you set them up.**
 
