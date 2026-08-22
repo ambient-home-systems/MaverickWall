@@ -1244,6 +1244,54 @@ in for, and the one this project counts. What has not happened is the sidebar of
 a real supervisor, where two hamburgers now stack: Home Assistant's and this
 one. That is a different screen from a phone browser and still unproven.
 
+**The wall editor is three contexts, and it used to be one column.** A display's
+page carried its status and pairing buttons, the canvas, whichever widget was
+selected, the Look/Content/Device tabs and the save bar, all at one visual
+weight and all at once. On a phone that is a scroll with no landmarks — nobody
+could tell whether they were editing the wall, a widget, or the screen it hangs
+on, and *Unpair* sat beside *Add widget* as an equal. It is **Layout** and
+**Wall settings** now (a segmented tablist under a compact header), with the
+selected widget's own settings in a **contextual inspector** — a column beside
+the canvas at 1200px and up, a bottom sheet below it. Measured on a 390px phone,
+Layout mode went from a 1880px document to 936px, and the first editable control
+from 294px down the page to 87px.
+
+Four things in it are load-bearing and none is obvious from the markup:
+
+- **The Advanced actions are outside the settings form.** Pairing, reset and
+  unpair are each their own POST and HTML has no nested forms, so putting them
+  in the panel would have made Unpair a button the browser silently drops.
+- **A settings row's value is a real `<select>` in a wrapping `<label>`**, so
+  the compact row is still labelled, keyboard-operable and opens the platform's
+  own picker. Its type is 16px because below that iOS Safari zooms the page on
+  focus, and a settings screen that jumps on every tap is its own bug.
+- **An inherited number is absent, not blank.** "Use the household default"
+  disables the input, so the browser sends nothing and the handler reads null
+  exactly as it always has — and turning inheritance *off* seeds the field with
+  the value it was following, because an empty override is not an override and
+  the switch would otherwise spring back on at the next save.
+- **Corners and the drop shadow are deliberately not behind the Card background
+  switch.** `applyWidgetFormat` rounds, clips and casts a shadow with no
+  background set, so hiding them there would have removed working controls
+  rather than irrelevant ones. Progressive disclosure has to be checked against
+  the renderer, not assumed from the grouping.
+
+**Two of the faults it introduced were only ever going to be found by
+measuring.** A transitioned `visibility` computes `hidden` at progress zero, so
+the sheet's close button could not take focus on the frame it opened —
+`document.activeElement` said `BODY` while the sheet was plainly on screen (the
+same shape as the `autofocus` bug, and found the same way). And shrinking the
+canvas so it clears the sheet does nothing on a short page: there is nowhere to
+scroll it *to*, so it sat behind the sheet exactly as before. The fix is a class
+that opens up 70vh of page below it, and the assertion is
+`canvas.bottom <= sheet.top && canvas.top >= appbar.bottom` at 390, 430 and 768.
+"The sheet opened" would have passed over both.
+
+The one header is the app bar's: its crumb became a real back link ("← Walls"),
+so the page adds no second header and, in particular, no second hamburger — the
+supervisor's sidebar already stacks one against the admin drawer's, and a third
+standing for the wall list would have been the third of three.
+
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody
 already signed in to Home Assistant, so asking for a second login in the

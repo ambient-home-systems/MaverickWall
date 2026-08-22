@@ -82,7 +82,7 @@ import { currentUser } from '../auth/session.js';
 import type { Fetcher, ShiftPlan } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, icon, page, selectField, switchRow, textField,
+import { errorBlock, escapeHtml, icon, page, selectField, selectRow, switchRow, textField,
   type NavModule } from './html.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
@@ -2869,9 +2869,107 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * A category of wall settings: the rail row that selects it, and the panel it
+   * shows. One tablist, one panel visible — a rail beside the panel on a wide
+   * screen, and one focused screen at a time on a phone.
+   */
+  function wsetRow(key: string, label: string, blurb: string, on: boolean): string {
+    return (
+      `<button type="button" class="wset-navrow${on ? ' is-on' : ''}" role="tab" ` +
+      `id="wset-tab-${key}" aria-controls="wset-${key}" aria-selected="${on ? 'true' : 'false'}"` +
+      `${on ? '' : ' tabindex="-1"'} data-wset="${key}">` +
+      `<span><b>${escapeHtml(label)}</b><small>${escapeHtml(blurb)}</small></span>` +
+      `<span class="rowchev" aria-hidden="true">${icon('chev')}</span></button>`
+    );
+  }
+
+  function wsetPanel(key: string, title: string, lead: string, body: string, on: boolean): string {
+    return (
+      `<section class="wset-panel" id="wset-${key}" role="tabpanel" ` +
+      `aria-labelledby="wset-tab-${key}" data-wset-panel="${key}"${on ? '' : ' hidden'}>` +
+      `<button type="button" class="wset-back" data-wset-back>${icon('back')}All settings</button>` +
+      `<h3 tabindex="-1">${escapeHtml(title)}</h3>` +
+      (lead === '' ? '' : `<p class="wset-lead">${escapeHtml(lead)}</p>`) +
+      body +
+      `</section>`
+    );
+  }
+
+  /** A group of rows under a heading — spacing and a kicker, not another box. */
+  function wsetGroup(kicker: string, body: string): string {
+    return (
+      `<div class="wset-group">` +
+      (kicker === '' ? '' : `<div class="kick">${escapeHtml(kicker)}</div>`) +
+      body +
+      `</div>`
+    );
+  }
+
+  /** The display name of a theme reference — a built-in key or `custom:<id>`. */
+  function themeLabel(ref: string | null): string {
+    const value = displayThemeRef(ref ?? '');
+    if (value === '') return 'the same theme all day';
+    if (value.startsWith('custom:')) {
+      const found = readThemes(deps.db).find((t) => `custom:${t.id}` === value);
+      return found?.name ?? 'a theme you built';
+    }
+    return themeName(value);
+  }
+
+  /**
+   * A number this wall may either inherit or set for itself.
+   *
+   * The stored shape is unchanged — blank means "follow the household" exactly
+   * as it always has. What changed is that the inheritance is *stated*: the
+   * source and the effective value, rather than a placeholder reading
+   * "8 (default)" that nobody could tell from a value already typed. The switch
+   * is not submitted; the page chrome disables the number input while it is on,
+   * which is how a blank (an absent field) reaches the handler.
+   */
+  function inheritedNumber(
+    name: string,
+    label: string,
+    unit: string,
+    value: number | null,
+    fallback: number,
+    low: number,
+    high: number,
+    hint: string,
+  ): string {
+    const inheriting = value === null;
+    return (
+      switchRow({
+        label: `${label}: follow the household`,
+        name: `inherit_${name}`,
+        checked: inheriting,
+        hint: `Household default — ${fallback} ${unit}`,
+        attrs: `data-inherit-toggle="${escapeHtml(name)}"`,
+      }) +
+      // `data-inherit-default` is what the field is seeded with the first time
+      // inheritance is turned off. Without it the revealed field is empty, and
+      // an empty override *is* inheritance — so the switch would spring back on
+      // at the next save and read as a control that does not work.
+      `<div class="rowsub" data-inherit-field="${escapeHtml(name)}" ` +
+      `data-inherit-default="${fallback}"${inheriting ? ' hidden' : ''}>` +
+      textField({
+        label,
+        name,
+        type: 'number',
+        value: value === null ? '' : String(value),
+        hint,
+        attrs: `inputmode="numeric" min="${low}" max="${high}"${inheriting ? ' disabled' : ''}`,
+      }) +
+      `</div>`
+    );
+  }
+
+  /**
    * The settings for one wall — everything about how that screen shows the
-   * household's stuff, shown on the wall's own page beside its layout. Empty on
-   * any override follows the shared default set on the Display screen.
+   * household's stuff, in categories rather than one continuous form.
+   *
+   * Every field keeps its name, so `POST /admin/screens/:id` is untouched: an
+   * empty override still means "follow the household". The one addition is that
+   * inheritance now says what it inherits *and* what that currently is.
    */
   function wallSettingsForm(screen: AdminScreenRow): string {
     const household = readHousehold(deps.db);
@@ -2884,147 +2982,212 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       readThemes(deps.db)
         .map((theme) => option(`custom:${theme.id}`, theme.name, selected === `custom:${theme.id}`))
         .join('');
-    // A density field: this wall's number, or blank showing the household's as a
-    // placeholder so the default is visible without being typed.
-    const density = (name: string, label: string, value: number | null, fallback: number): string =>
-      textField({
-        label,
-        name,
-        type: 'number',
-        placeholder: `${fallback} (default)`,
-        attrs: 'inputmode="numeric"',
-        ...(value === null ? {} : { value: String(value) }),
-      });
 
     const helpId = `orient-help-${screen.id}`;
-    return (
-      `<form method="post" action="${action}" class="wall-settings" data-settings>` +
+    const scheduled = screen.daytimeTheme !== null && screen.daytimeTheme !== '';
 
-      // --- Look: theme, daylight ---
-      `<div class="tabpanel" data-tabpanel="look">` +
-      `<div class="two-up">` +
-      `<div>` +
-      selectField({
-        label: 'Theme',
-        name: 'theme',
-        optionsHtml:
-          option('', 'Follow the default', screen.theme === null) +
-          THEMES.map((theme) =>
-            option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
-          ).join('') +
-          customThemeOptions(screen.theme),
-      }) +
-      `</div><div>` +
-      selectField({
-        label: 'During the day',
-        name: 'daytime_theme',
-        optionsHtml:
-          option('', 'Follow the default', screen.daytimeTheme === null) +
-          THEMES.map((theme) =>
-            option(theme.key, theme.label, displayThemeRef(screen.daytimeTheme ?? '') === theme.key),
-          ).join('') +
-          customThemeOptions(screen.daytimeTheme),
-      }) +
-      `</div></div>` +
-      `<div class="two-up">` +
-      `<div>` +
-      textField({
-        label: 'From',
-        name: 'daytime_starts_at',
-        type: 'time',
-        value: screen.daytimeStartsAt ?? '07:00',
-      }) +
-      `</div><div>` +
-      textField({
-        label: 'Until',
-        name: 'daytime_ends_at',
-        type: 'time',
-        value: screen.daytimeEndsAt ?? '21:00',
-      }) +
-      `</div></div>` +
-      `<p class="hint-1">“Follow the default” inherits the household theme. From/Until ` +
-      `are only used when this wall sets its own daylight theme.</p>` +
-      `</div>` +
+    // --- Appearance ------------------------------------------------------
+    const appearance =
+      wsetGroup(
+        'Theme',
+        `<div class="rows">` +
+          selectRow({
+            label: 'Theme',
+            name: 'theme',
+            wide: true,
+            optionsHtml:
+              option('', `Household default — ${themeLabel(household.theme)}`, screen.theme === null) +
+              THEMES.map((theme) =>
+                option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
+              ).join('') +
+              customThemeOptions(screen.theme),
+          }) +
+          selectRow({
+            label: 'Daytime theme',
+            name: 'daytime_theme',
+            wide: true,
+            hint: 'A lighter theme during the hours below.',
+            optionsHtml:
+              option(
+                '',
+                `Household default — ${themeLabel(household.daytimeTheme)}`,
+                screen.daytimeTheme === null,
+              ) +
+              THEMES.map((theme) =>
+                option(theme.key, theme.label, displayThemeRef(screen.daytimeTheme ?? '') === theme.key),
+              ).join('') +
+              customThemeOptions(screen.daytimeTheme),
+          }) +
+          // From/Until do nothing at all while this wall follows the household's
+          // schedule, so they are not shown until it sets one of its own.
+          `<div class="rowsub" data-reveal-if="daytime_theme"${scheduled ? '' : ' hidden'}>` +
+          `<div class="two-up"><div>` +
+          textField({
+            label: 'From',
+            name: 'daytime_starts_at',
+            type: 'time',
+            value: screen.daytimeStartsAt ?? '07:00',
+          }) +
+          `</div><div>` +
+          textField({
+            label: 'Until',
+            name: 'daytime_ends_at',
+            type: 'time',
+            value: screen.daytimeEndsAt ?? '21:00',
+          }) +
+          `</div></div></div>` +
+          `</div>` +
+          `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at 2am ` +
+          `is a lamp.</p>`,
+      );
 
-      // --- Content: how much the calendar shows on the stacked layout ---
-      `<div class="tabpanel" data-tabpanel="content" hidden>` +
-      density('today_events', 'Events today', screen.displayTodayEvents, household.displayTodayEvents) +
-      density('next_days', 'Days ahead', screen.displayNextDays, household.displayNextDays) +
-      density('horizon_weeks', 'Weeks of month', screen.displayHorizonWeeks, household.displayHorizonWeeks) +
-      `<p class="hint-1">How much a Calendar shows on this wall. Blank follows the ` +
-      `Display default.</p>` +
-      `</div>` +
+    // --- Content defaults -------------------------------------------------
+    const content =
+      `<div class="rows">` +
+      inheritedNumber(
+        'today_events', 'Events today', 'events',
+        screen.displayTodayEvents, household.displayTodayEvents, 1, 20,
+        'Anything past this is counted rather than listed. 1 to 20.',
+      ) +
+      inheritedNumber(
+        'next_days', 'Days ahead', 'days',
+        screen.displayNextDays, household.displayNextDays, 0, 14,
+        'How many upcoming days an agenda can list. 0 to 14.',
+      ) +
+      inheritedNumber(
+        'horizon_weeks', 'Weeks of month', 'weeks',
+        screen.displayHorizonWeeks, household.displayHorizonWeeks, 1, 8,
+        'How many weeks a month Calendar draws. 1 to 8.',
+      ) +
+      `</div>`;
 
-      // --- Device: identity, how it is hung, and its input ---
-      `<div class="tabpanel" data-tabpanel="device" hidden>` +
-      textField({ label: 'Name', name: 'name', required: true, value: screen.name }) +
-      `<div class="two-up">` +
-      `<div class="field-with-help">` +
-      selectField({
-        label: 'Orientation',
-        name: 'orientation',
-        optionsHtml:
-          option('auto', 'Follow the screen', screen.orientation === 'auto') +
-          option('portrait', 'Always portrait', screen.orientation === 'portrait') +
-          option('landscape', 'Always landscape', screen.orientation === 'landscape'),
-      }) +
-      // The "?" rides the field as a trailing icon, left of the dropdown caret;
-      // its prose keeps the two sentences telling this pin apart from the
-      // editor's canvas toggle.
-      `<button type="button" class="fieldhelp" data-help="${helpId}" ` +
-      `aria-label="About orientation">${icon('help')}</button>` +
-      `<div id="${helpId}" class="helppop" hidden>` +
-      `<p><b>Orientation</b> chooses which layout this wall shows. <i>Follow the ` +
-      `screen</i> picks portrait or landscape from how the screen reports itself — ` +
-      `right for almost every wall. Pick <i>Always portrait</i> or <i>Always ` +
-      `landscape</i> only for a kiosk frame that reports the wrong size.</p>` +
-      `<p>This is not the Portrait/Landscape buttons in the layout editor: those ` +
-      `choose which canvas you are arranging (you arrange both), while this decides ` +
-      `which of the two the wall actually draws.</p></div>` +
+    // --- Device and time --------------------------------------------------
+    const device =
+      wsetGroup('Identity', textField({ label: 'Wall name', name: 'name', required: true, value: screen.name })) +
+      `<div class="wset-group">` +
+      `<div class="kick">How it is hung ` +
+        `<button type="button" class="fieldhelp" data-help="${helpId}" ` +
+        `aria-label="About layout orientation">${icon('help')}</button></div>` +
+        (
+          `<div id="${helpId}" class="helppop" hidden>` +
+          `<p><b>Layout orientation</b> chooses which layout this wall shows. ` +
+          `<i>Automatic</i> picks portrait or landscape from how the screen reports ` +
+          `itself — right for almost every wall. Pick <i>Always portrait</i> or ` +
+          `<i>Always landscape</i> only for a kiosk frame that reports the wrong size.</p>` +
+          `<p>This is not the Portrait/Landscape buttons in the layout editor: those ` +
+          `choose which canvas you are arranging (you arrange both), while this decides ` +
+          `which of the two the wall actually draws.</p></div>` +
+          `<div class="rows">` +
+          selectRow({
+            label: 'Layout orientation',
+            name: 'orientation',
+            hint: 'Which of the two layouts this wall draws.',
+            optionsHtml:
+              option('auto', 'Automatic', screen.orientation === 'auto') +
+              option('portrait', 'Always portrait', screen.orientation === 'portrait') +
+              option('landscape', 'Always landscape', screen.orientation === 'landscape'),
+          }) +
+          selectRow({
+            label: 'Display mounting',
+            name: 'rotation',
+            hint: 'For a screen hung on its side.',
+            optionsHtml:
+              option('0', 'No rotation', screen.rotation === 0) +
+              option('90', '90° clockwise', screen.rotation === 90) +
+              option('180', 'Upside down', screen.rotation === 180) +
+              option('270', '270° clockwise', screen.rotation === 270),
+          }) +
+          `</div>`
+        ) +
       `</div>` +
-      `<div>` +
-      selectField({
-        label: 'Rotation',
-        name: 'rotation',
-        optionsHtml:
-          option('0', 'None', screen.rotation === 0) +
-          option('90', '90° clockwise', screen.rotation === 90) +
-          option('180', 'Upside down', screen.rotation === 180) +
-          option('270', '270° clockwise', screen.rotation === 270),
-      }) +
-      `</div></div>` +
-      `<div class="two-up">` +
-      `<div>` +
-      selectField({
-        label: 'Timezone',
-        name: 'timezone',
-        optionsHtml:
-          option('', 'Follow the default', screen.timezone === null) +
-          supportedTimezones()
-            .map((zone) => option(zone, zone, screen.timezone === zone))
-            .join(''),
-      }) +
-      `</div><div>` +
-      selectField({
-        label: 'Clock',
-        name: 'clock_24',
-        optionsHtml:
-          option('', 'Follow the default', screen.clock24 === null) +
-          option('1', '24-hour', screen.clock24 === 1) +
-          option('0', '12-hour', screen.clock24 === 0),
-      }) +
-      `</div></div>` +
+      wsetGroup(
+        'Time',
+        `<div class="rows">` +
+          selectRow({
+            label: 'Timezone',
+            name: 'timezone',
+            wide: true,
+            optionsHtml:
+              option('', `Household default — ${household.timezone}`, screen.timezone === null) +
+              supportedTimezones()
+                .map((zone) => option(zone, zone, screen.timezone === zone))
+                .join(''),
+          }) +
+          selectRow({
+            label: 'Time format',
+            name: 'clock_24',
+            wide: true,
+            optionsHtml:
+              option(
+                '',
+                `Household default — ${household.clock24 !== 0 ? '24-hour time' : '12-hour time'}`,
+                screen.clock24 === null,
+              ) +
+              option('1', '24-hour (21:30)', screen.clock24 === 1) +
+              option('0', '12-hour (9:30 pm)', screen.clock24 === 0),
+          }) +
+          `</div>`,
+      );
+
+    // --- Alerts and interaction -------------------------------------------
+    const alerts =
+      `<div class="rows">` +
       switchRow({
-        label: 'This wall can acknowledge alerts',
+        label: 'Allow alert dismissal',
         name: 'allow_dismiss',
         checked: screen.allowDismiss === 1,
         hint:
-          'The OK button clears alerts household-wide. Leave off for a screen ' +
-          'with no input, or one that gets brushed against.',
+          'Lets this display clear alerts for the household. Leave this off for ' +
+          'displays without intentional input or screens that may be touched accidentally.',
       }) +
-      `</div>` +
+      `</div>`;
 
-      `</form>`
+    // --- Advanced ---------------------------------------------------------
+    //
+    // Outside the settings form on purpose: each of these is its own POST, and
+    // a form cannot be nested inside another. They are also the actions worth
+    // a second thought, which is why they are behind their own category and
+    // carry confirmations.
+    const id = encodeURIComponent(screen.id);
+    const advanced =
+      `<div class="rows">` +
+      `<form method="post" action="admin/screens/${id}/regenerate">` +
+      `<button class="arow" type="submit"><span class="arow-text">Pairing link` +
+      `<small>Shows a fresh link and code. The old one stops working.</small></span>` +
+      `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button></form>` +
+      `<a class="arow" href="admin/displays/${id}/gallery"><span class="arow-text">Start from a template` +
+      `<small>Replace this wall's layout with one we ship, or copy another wall's.</small></span>` +
+      `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
+      `<form method="post" action="admin/displays/${id}/reset-layout" ` +
+      `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(screen.name)} ` +
+      `to the Classic layout? Everything arranged here is replaced.">` +
+      `<button class="arow is-danger" type="submit"><span class="arow-text">Reset layout` +
+      `<small>Both orientations, back to the Classic layout.</small></span></button></form>` +
+      `<form method="post" action="admin/screens/${id}/revoke" ` +
+      `data-confirm="Unpair ${escapeHtml(screen.name)}? Its token stops working and it drops off the wall.">` +
+      `<button class="arow is-danger" type="submit"><span class="arow-text">Unpair display` +
+      `<small>The screen stops receiving this wall until it is paired again.</small></span></button></form>` +
+      `<div class="frow"><span>Display id</span><code>${escapeHtml(screen.id)}</code></div>` +
+      `</div>`;
+
+    return (
+      `<div class="wset" data-wset-root>` +
+      `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Wall settings">` +
+      wsetRow('appearance', 'Appearance', 'Theme and daylight schedule', true) +
+      wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
+      wsetRow('device', 'Device and time', 'Name, mounting, timezone', false) +
+      wsetRow('alerts', 'Alerts and interaction', 'Whether this screen can clear alerts', false) +
+      wsetRow('advanced', 'Advanced', 'Pairing, reset, unpair', false) +
+      `</nav>` +
+      `<div class="wset-panels">` +
+      `<form method="post" action="${action}" class="wall-settings" data-settings>` +
+      wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the Default display.', appearance, true) +
+      wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
+      wsetPanel('device', 'Device and time', 'What this screen is called, how it is hung, and the clock it keeps.', device, false) +
+      wsetPanel('alerts', 'Alerts and interaction', 'What this screen may do when an alert is showing.', alerts, false) +
+      `</form>` +
+      wsetPanel('advanced', 'Advanced', 'Infrequent, and some of it destructive. These act at once — they are not part of Save wall.', advanced, false) +
+      `</div></div>`
     );
   }
 
@@ -3185,13 +3348,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * defaults still live on the Display screen and are linked to from here.
    */
   /**
-   * One display, in two sub-views: Appearance and Layout.
+   * One wall's editor: its identity, its layout, and its settings.
    *
-   * Both are per wall — the Default (`ownerId` null) included, which is the
-   * "default for new screens" surface. The sub-views are plain links carrying a
-   * `?view`, marked active server-side, so there is no client tab state. A real
-   * screen also shows its status and pairing above the switcher, on both views,
-   * because that is its identity rather than a setting.
+   * Three contexts, kept apart. **Layout** is the canvas, its tools and the
+   * live preview, with the selected widget's own settings in a contextual
+   * inspector beside it (a sheet on a phone). **Wall settings** is everything
+   * wall-wide, in categories rather than one continuous form. The wall's
+   * identity — where it goes back to, what it is called, whether it is on, and
+   * the infrequent or destructive actions — is a compact header above both.
+   *
+   * It used to be one column of everything at one weight: status and pairing
+   * buttons, the canvas, whichever widget was selected, then Look/Content/
+   * Device, then Save. On a phone nobody could tell which of the three they
+   * were editing, and pairing sat beside the everyday tools as an equal.
    */
   function displayDetailPage(ownerId: string | null, error?: string): string {
     const at = now();
@@ -3249,82 +3418,117 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         : {}),
     };
 
-    // The header's right-hand cluster: status, plus a real screen's pairing and
-    // unpair actions. Compact — the identity, not a settings card.
+    // ---- the wall's own header ------------------------------------------
+    //
+    // Status in words rather than a colour alone, and short enough to sit on
+    // one line beside a name that may be long. The five-minute freshness test
+    // is the one the list page has always used.
     const online = owner !== null && owner.lastSeenAt !== null && at - owner.lastSeenAt < 5 * 60_000;
-    const statusCluster =
+    const statusLine =
       owner === null
+        ? `<b>Shared default</b> · every wall starts from this`
+        : owner.lastSeenAt === null
+          ? `<b>Never connected</b> · open its pairing link on the screen`
+          : online
+            ? `<b>Online</b>${owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`}`
+            : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(owner.lastSeenAt, at))}`;
+
+    const ownerParam = owner === null ? 'default' : encodeURIComponent(owner.id);
+    const menuItems =
+      (owner === null
         ? ''
-        : `<div class="disp-status">` +
-          `<div class="seen">` +
-          seenDot(owner.lastSeenAt, at) +
-          `<div class="who"><b>${online ? 'Online' : 'Not seen recently'}</b>` +
-          `<small>Last seen ${escapeHtml(ago(owner.lastSeenAt, at))}` +
-          (owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`) +
-          `</small></div></div>` +
-          `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate">` +
-          `<button class="btn-ghost btn-sm" type="submit">Pairing link</button></form>` +
-          `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/revoke" ` +
-          `data-confirm="Unpair this screen? Its token stops working and it drops off the wall.">` +
-          `<button class="btn-danger btn-sm" type="submit">Unpair</button></form>` +
-          `</div>`;
+        : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate">` +
+          `<button class="ovf-item" type="submit">Pairing link…</button></form>`) +
+      `<a class="ovf-item" href="admin/displays/${ownerParam}/gallery">Start from a template…</a>` +
+      `<div class="ovf-sep"></div>` +
+      `<form method="post" action="admin/displays/${ownerParam}/reset-layout" ` +
+      `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(
+        owner === null ? 'the Default display' : owner.name,
+      )} to the Classic layout? Everything arranged here is replaced.">` +
+      `<button class="ovf-item is-danger" type="submit">Reset layout…</button></form>` +
+      (owner === null
+        ? ''
+        : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/revoke" ` +
+          `data-confirm="Unpair ${escapeHtml(owner.name)}? Its token stops working and it drops off the wall.">` +
+          `<button class="ovf-item is-danger" type="submit">Unpair display…</button></form>`);
 
-    // The tabbed settings form itself; wallSettingsForm / defaultsForm carry the
-    // three `.tabpanel` groups the tab bar switches between. No submit button of
-    // their own — the one sticky save bar below saves the layout and the
-    // settings together.
-    const appearance = owner === null ? defaultsForm() : wallSettingsForm(owner);
+    // Status and the overflow ride the mode bar rather than a header of their
+    // own: the app bar already carries the way back and the wall's name, and a
+    // second header on a phone is a screenful before anything is editable.
+    const statusAndMenu =
+      `<p class="wall-status">` +
+      (owner === null ? '' : seenDot(owner.lastSeenAt, at)) +
+      `<span>${statusLine}</span></p>` +
+      `<details class="ovf" data-overflow>` +
+      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+      `aria-label="More actions for this display" title="More">${icon('more')}</summary>` +
+      `<div class="ovf-menu" role="menu">${menuItems}</div>` +
+      `</details>`;
 
-    const tab = (name: string, label: string, on: boolean): string =>
-      `<button type="button" class="tab${on ? ' is-on' : ''}" data-tab="${name}" ` +
-      `role="tab" aria-selected="${on ? 'true' : 'false'}">${label}</button>`;
+    // ---- the two modes ---------------------------------------------------
 
-    // The under-canvas caption: the size to match (a paired screen reports one),
-    // and the cadence — the wall picks a change up on its own within a minute.
-    const caption =
+    const modeButton = (key: string, label: string, on: boolean): string =>
+      `<button type="button" role="tab" id="mode-tab-${key}" aria-controls="mode-${key}" ` +
+      `aria-selected="${on ? 'true' : 'false'}"${on ? '' : ' tabindex="-1"'} ` +
+      `class="${on ? 'on' : ''}" data-mode="${key}">${escapeHtml(label)}</button>`;
+
+    // A settings error is about the settings, so the page opens on them.
+    const startMode = error === undefined ? 'layout' : 'settings';
+
+    // Said once, above the canvas, rather than repeated under each panel.
+    const previewCaption =
       owner?.reportW != null && owner?.reportH != null
-        ? `Match screen ${owner.reportW}×${owner.reportH} · updates within a minute`
-        : 'The wall picks up changes within a minute';
+        ? `${owner.reportW}×${owner.reportH} · updates within a minute`
+        : 'updates within a minute';
+
+    const layoutPane =
+      `<section class="mode" id="mode-layout" role="tabpanel" aria-labelledby="mode-tab-layout" ` +
+      `data-mode-panel="layout"${startMode === 'layout' ? '' : ' hidden'}>` +
+      `<div class="lay-panes">` +
+      `<div class="lay-canvas" id="layout">` +
+      `<div class="prev-head"><b>Live preview</b>` +
+      `<small data-preview-dims>${escapeHtml(previewCaption)}</small></div>` +
+      layoutEditorMount(initial) +
+      `</div>` +
+      // The contextual inspector. The editor script fills it when a widget is
+      // selected; below 1200px the same element is the bottom sheet.
+      `<aside class="lay-inspector" id="wall-inspector" aria-label="Selected widget">` +
+      `<p class="insp-empty">Nothing selected. Tap a widget on the canvas to change ` +
+      `what it shows and how it looks.</p>` +
+      `</aside>` +
+      `</div></section>`;
+
+    const settingsPane =
+      `<section class="mode" id="mode-settings" role="tabpanel" aria-labelledby="mode-tab-settings" ` +
+      `data-mode-panel="settings"${startMode === 'settings' ? '' : ' hidden'}>` +
+      (owner === null ? defaultsForm() : wallSettingsForm(owner)) +
+      `</section>`;
 
     return page({
       modules: navModules(deps.db),
       title: `${owner ? owner.name : 'Default display'} — Maverick Wall`,
       nav: 'displays',
       heading: owner ? owner.name : 'Default display',
-      intro: owner
-        ? 'Watch the preview react as you edit — the layout on the left, everything that dresses it on the right.'
-        : 'The layout every wall starts from, and the theme that dresses it — the preview left, its settings right.',
+      back: { label: 'Walls', href: 'admin/displays' },
       body:
-        `<div class="disp-editor">` +
-        `<div class="disp-head">` +
-        `<a class="link" href="admin/displays">${icon('arrow')} All displays</a>` +
-        statusCluster +
-        `</div>` +
+        `<div class="disp-editor" data-wall-editor>` +
         (error === undefined ? '' : errorBlock(error)) +
-        `<div class="disp-panes">` +
-        // Left: the sticky live preview / layout editor. `id="layout"` is where
-        // the "Arrange layout" links and the apply-a-template redirect land.
-        `<div class="disp-left" id="layout">` +
-        layoutEditorMount(initial) +
-        `<p class="disp-cap">${escapeHtml(caption)}</p>` +
+        `<div class="modebar">` +
+        `<div class="seg modeswitch" role="tablist" aria-label="What you are editing">` +
+        modeButton('layout', 'Layout', startMode === 'layout') +
+        modeButton('settings', 'Wall settings', startMode === 'settings') +
         `</div>` +
-        // Right: the tabbed settings.
-        `<div class="disp-right">` +
-        `<div class="settings-head">Settings</div>` +
-        `<div class="tabbar" role="tablist">` +
-        tab('look', 'Look', true) +
-        tab('content', 'Content', false) +
-        tab('device', 'Device', false) +
+        statusAndMenu +
         `</div>` +
-        appearance +
-        `</div>` +
-        `</div>` +
-        // The one save bar, pinned to the foot of the viewport.
+        layoutPane +
+        settingsPane +
+        // The one save bar, pinned to the foot of the viewport. It saves the
+        // canvas, the selected widget and every settings category together.
         `<div class="savebar" id="savebar">` +
-        `<span class="msg" role="alert"></span>` +
         `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
-        `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
-        `<button type="button" class="btn" data-action="save">Save this wall</button>` +
+        `<span class="msg" role="alert"></span>` +
+        `<button type="button" class="btn-ghost" data-action="discard" hidden>Discard changes</button>` +
+        `<button type="button" class="btn" data-action="save" disabled>Save wall</button>` +
         `</div>` +
         // Chrome first, so its `mwEditorState` hook is registered before the
         // editor publishes its bridge.
@@ -3427,10 +3631,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The household's default appearance — theme, daylight schedule, block order
-   * and density — shown as the Default display's Appearance view. Every wall
-   * inherits these until it overrides them on its own page. Weather lives on the
-   * Weather page now, not here; this is only what a screen draws by default.
+   * The household's default appearance — theme, daylight schedule and density —
+   * shown as the Default display's Wall settings. Every wall inherits these
+   * until it overrides them on its own page. Same categories as a wall's own
+   * settings, so the two read as one screen with one of them missing its
+   * hardware. Weather lives on the Weather page now, not here.
    */
   function defaultsForm(): string {
     const household = readHousehold(deps.db);
@@ -3465,71 +3670,117 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         attrs: `inputmode="numeric" min="${low}" max="${high}"`,
       });
 
-    return (
-      `<form method="post" action="admin/display" data-settings>` +
+    // --- Appearance ------------------------------------------------------
+    const appearance =
+      wsetGroup(
+        'Theme',
+        `<p class="hint-1">How the layout looks — its colours and type. Panels separates ` +
+          `the shift colours best from across a room. Build your own on the ` +
+          `<a class="link" href="admin/themes">Themes</a> screen.</p>` +
+          themeCards(displayThemeRef(household.theme), custom),
+      ) +
+      wsetGroup(
+        'Daylight',
+        `<div class="rows">` +
+          selectRow({
+            label: 'Daytime theme',
+            name: 'daytime_theme',
+            wide: true,
+            hint: 'A lighter theme during the hours below.',
+            optionsHtml: themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true),
+          }) +
+          // The window is ignored outright with no daytime theme set, so it is
+          // not drawn until there is one.
+          `<div class="rowsub" data-reveal-if="daytime_theme" data-reveal-empty="none"` +
+          `${scheduled ? '' : ' hidden'}>` +
+          `<div class="two-up"><div>` +
+          textField({
+            label: 'From',
+            name: 'daytime_starts_at',
+            type: 'time',
+            value: household.daytimeStartsAt ?? '07:00',
+          }) +
+          `</div><div>` +
+          textField({
+            label: 'Until',
+            name: 'daytime_ends_at',
+            type: 'time',
+            value: household.daytimeEndsAt ?? '21:00',
+          }) +
+          `</div></div></div>` +
+          `</div>` +
+          `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at ` +
+          `2am is a lamp.</p>`,
+      );
 
-      // --- Look: the household theme and daylight schedule ---
-      `<div class="tabpanel" data-tabpanel="look">` +
-      `<p class="hint-1">How the layout looks — its colours and type. Panels separates ` +
-      `the shift colours best from across a room. Build your own on the ` +
-      `<a class="link" href="admin/themes">Themes</a> screen.</p>` +
-      themeCards(displayThemeRef(household.theme), custom) +
-      selectField({
-        label: 'Switch to a lighter theme during the day',
-        name: 'daytime_theme',
-        optionsHtml: themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true),
-      }) +
-      `<div class="two-up">` +
-      `<div>` +
-      textField({
-        label: 'From',
-        name: 'daytime_starts_at',
-        type: 'time',
-        value: household.daytimeStartsAt ?? '07:00',
-      }) +
-      `</div><div>` +
-      textField({
-        label: 'Until',
-        name: 'daytime_ends_at',
-        type: 'time',
-        value: household.daytimeEndsAt ?? '21:00',
-      }) +
-      `</div></div>` +
-      `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at ` +
-      `2am is a lamp. From/Until apply only when a daytime theme is set.</p>` +
-      `</div>` +
-
-      // --- Content: how far the calendar looks ---
-      `<div class="tabpanel" data-tabpanel="content" hidden>` +
+    // --- Content defaults -------------------------------------------------
+    const content =
       number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
         'Anything past this is counted rather than listed.') +
       number('next_days', 'Days an agenda looks ahead', household.displayNextDays, 0, 14,
         'How many upcoming days a Calendar agenda can list.') +
       number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
         'How many weeks a month Calendar draws. Five covers a month at a glance.') +
-      selectField({
+      `<div class="rows">` +
+      selectRow({
         label: 'Week starts on',
         name: 'week_start',
-        hint: 'The left-hand column of the month grid and the week columns. Applies to every wall.',
+        hint: 'The left-hand column of the month grid, on every wall.',
         optionsHtml:
           `<option value="sunday"${household.weekStart !== 'monday' ? ' selected' : ''}>Sunday</option>` +
           `<option value="monday"${household.weekStart === 'monday' ? ' selected' : ''}>Monday</option>`,
       }) +
-      `</div>` +
+      `</div>`;
 
-      // --- Device: the household clock default ---
-      `<div class="tabpanel" data-tabpanel="device" hidden>` +
+    // --- Device and time --------------------------------------------------
+    const device =
+      `<div class="rows">` +
       switchRow({
         label: '24-hour clock',
         name: 'clock_24',
         checked: household.clock24 !== 0,
         hint:
-          'Off shows a 12-hour clock (9:30 pm) on the wall; on shows 24-hour ' +
-          '(21:30). This is the household default every wall inherits.',
+          'Off shows a 12-hour clock (9:30 pm) on the wall; on shows 24-hour (21:30). ' +
+          'Every wall inherits this until it sets its own.',
       }) +
       `</div>` +
+      `<p class="hint-1">The Default display is not a screen, so it has no name, ` +
+      `mounting or timezone of its own.</p>`;
 
-      `</form>`
+    return (
+      `<div class="wset" data-wset-root>` +
+      `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Default display settings">` +
+      wsetRow('appearance', 'Appearance', 'Theme and daylight schedule', true) +
+      wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
+      wsetRow('device', 'Device and time', 'The household clock', false) +
+      wsetRow('advanced', 'Advanced', 'Templates and reset', false) +
+      `</nav>` +
+      `<div class="wset-panels">` +
+      `<form method="post" action="admin/display" data-settings>` +
+      wsetPanel('appearance', 'Appearance', 'The look every wall starts from. A wall can override any of it on its own page.', appearance, true) +
+      wsetPanel('content', 'Content defaults', 'How much the calendars show, on every wall that has not said otherwise.', content, false) +
+      wsetPanel('device', 'Device and time', 'The clock every wall inherits. The household timezone is on the System screen.', device, false) +
+      `</form>` +
+      wsetPanel(
+        'advanced',
+        'Advanced',
+        'These act at once — they are not part of Save wall.',
+        `<div class="rows">` +
+          `<a class="arow" href="admin/displays/default/gallery"><span class="arow-text">Start from a template` +
+          `<small>Replace the default layout with one we ship, or copy a wall's.</small></span>` +
+          `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
+          `<a class="arow" href="admin/system"><span class="arow-text">Household timezone` +
+          `<small>${escapeHtml(household.timezone)} — set on the System screen.</small></span>` +
+          `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
+          `<form method="post" action="admin/displays/default/reset-layout" ` +
+          `data-confirm="Reset both the portrait and landscape default layouts to the Classic layout? ` +
+          `Everything arranged here is replaced.">` +
+          `<button class="arow is-danger" type="submit"><span class="arow-text">Reset layout` +
+          `<small>Both orientations, back to the Classic layout.</small></span></button></form>` +
+          `</div>`,
+        false,
+      ) +
+      `</div></div>`
     );
   }
 

@@ -14,6 +14,32 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Editing a wall is three screens now instead of one long one.
+
+Opening a display used to give you everything at once: whether the screen was
+online, its pairing buttons, the canvas, whichever widget you had tapped, every
+setting for that wall, and Save — all the same size, all down one column. On a
+phone it was hard to tell whether you were changing the wall, one widget, or the
+screen on the shelf, and Unpair sat next to Add widget looking just as everyday.
+
+It opens on Layout now — the canvas and the tools that arrange it — with Wall
+settings one tap away. Tapping a widget opens a panel for that widget alone,
+named after it and with its own Remove; on a phone it slides up from the bottom
+and the canvas stays in view above it, so you can see what you are changing
+while you change it. Wall settings is five short screens — Appearance, Content
+defaults, Device and time, Alerts, Advanced — rather than one long form, and
+pairing, reset and unpair have moved out of the everyday tools into a menu.
+
+Anything a wall borrows from the household now says what it is borrowing:
+"Household default — Paper Almanac" rather than "Follow the default". Controls
+that do nothing until something else is switched on are not shown until it is,
+and Save is greyed out until there is something to save.
+
+Nothing you have already arranged has moved, and no setting means anything
+different from what it meant before.
+
 ## 0.41.1
 
 The Shift panel's run counter, third time. 0.41.0 got it from "Day 2 of 3" to
