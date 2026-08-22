@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.46.0
 
 The Clock and Weather widgets have settings, and a panel draws a real forecast.
 
