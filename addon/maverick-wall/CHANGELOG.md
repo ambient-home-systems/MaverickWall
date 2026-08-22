@@ -14,6 +14,21 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**Home Assistant readings on an eInk panel ignored how you set them up.**
+
+Each entity has a shape you choose on the Home Assistant screen — just the
+reading, the name and the reading, or an icon with both. A wall has always
+drawn what you chose. A panel drew every one of them as "Front door: Locked",
+whichever shape you picked. It draws what you chose now, on both.
+
+The Home Assistant widget also gets the **What it says** list the Shift badge
+and the Weather strip have: tick and drag the icon, the name and the reading
+into the order you want. Leave it alone and each reading keeps the shape you
+gave it. Change it and every reading in that widget follows the list instead —
+one shape for all of them, which the editor says underneath.
+
 ## 0.48.0
 
 The Weather widget gets the same **What it says** list the Shift badge has.

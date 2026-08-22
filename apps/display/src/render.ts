@@ -12,11 +12,14 @@ import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
 import {
+  HOUSE_ROLES,
   SHIFT_ROLES,
   WEATHER_ROLES,
   ladderRows,
+  houseLadder,
   pairsTemperatures,
   weatherLadder,
+  type HouseField,
   type ShiftField,
   type WeatherField,
 } from './ladder.js';
@@ -329,14 +332,18 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
   const strip = el('section', 'house');
   for (const reading of readings) {
     const cell = el('div', `hs-item hs-${reading.mode}${reading.stale ? ' hs-stale' : ''}`);
-
-    if (reading.mode === 'icon_state' || reading.mode === 'presence') {
-      cell.appendChild(el('span', 'hs-ico', reading.icon));
-    }
-    if (reading.mode !== 'value') {
-      cell.appendChild(el('span', 'hs-label', reading.label));
-    }
-    cell.appendChild(el('span', 'hs-value', reading.value));
+    /*
+     * Which parts this reading shows, from the widget's own list when it has
+     * one and otherwise from the entity's `display_mode`. The two `if`
+     * statements this replaces *were* the mode's meaning, written down nowhere
+     * else — which is how the panel came to ignore it entirely.
+     */
+    const rows = ladderRows(
+      houseLadder(config, reading.mode),
+      { icon: reading.icon, label: reading.label, value: reading.value },
+      HOUSE_ROLES,
+    );
+    for (const row of rows) cell.appendChild(el('span', HOUSE_ROW_CLASS[row.field], row.text));
     strip.appendChild(cell);
   }
 
@@ -345,6 +352,13 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
   }
   return strip;
 }
+
+/** The class each reading's row keeps, so the stylesheet is unchanged by order. */
+const HOUSE_ROW_CLASS: Readonly<Record<HouseField, string>> = {
+  icon: 'hs-ico',
+  label: 'hs-label',
+  value: 'hs-value',
+};
 
 /* --------------------------------------------------------------- NEXT ---- */
 
@@ -1293,6 +1307,12 @@ export function renderFreeform(
   for (const { box, widget } of ladderBoxes) {
     const shift = widget.type === 'shift';
     const view = shift ? shiftWidgetView(model.todayShifts, widget.config) : undefined;
+    /*
+     * The house widget is not in the drop loop's own list: its ladder is per
+     * *reading* — each one resolves from its own `display_mode` — so there is
+     * no single list here to take a rung off. It scales like everything else
+     * and clips at the floor, which is what it has always done.
+     */
     let ladder: readonly string[] = shift
       ? (view?.ladder ?? [])
       : weatherLadder(widget.config);

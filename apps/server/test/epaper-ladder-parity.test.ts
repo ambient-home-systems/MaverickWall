@@ -8,11 +8,15 @@ import * as panelLadder from '../src/epaper/ladder.js';
 import {
   DEFAULT_SHIFT_LADDER,
   DEFAULT_WEATHER_LADDER,
+  HOUSE_FIELDS,
+  HOUSE_MODE_LADDERS,
+  HOUSE_ROLES,
   SHIFT_FIELDS,
   SHIFT_ROLES,
   WEATHER_FIELDS,
   WEATHER_ROLES,
   dropToFit,
+  houseLadder,
   ladderRows,
   pairsTemperatures,
   shiftLadder,
@@ -68,9 +72,42 @@ describe('the ladder tables, on both renderers', () => {
     expect(tuple('WEATHER_FIELDS')).toEqual([...WEATHER_FIELDS]);
   });
 
+  it('names the same house fields, in the same order', () => {
+    expect(tuple('HOUSE_FIELDS')).toEqual([...HOUSE_FIELDS]);
+  });
+
   it('gives every field the same emphasis', () => {
     expect(table('SHIFT_ROLES')).toEqual({ ...SHIFT_ROLES });
     expect(table('WEATHER_ROLES')).toEqual({ ...WEATHER_ROLES });
+    expect(table('HOUSE_ROLES')).toEqual({ ...HOUSE_ROLES });
+  });
+
+  it('reads each display mode as the same ladder on both sides', () => {
+    /*
+     * The table that closes the divergence: `display_mode` is a per-entity
+     * setting whose meaning used to live in two `if` statements on the wall and
+     * nowhere at all on the panel. If these two copies disagreed, one screen
+     * would draw a reading the other does not — which is the whole fault.
+     */
+    const from = source.indexOf('export const HOUSE_MODE_LADDERS');
+    const body = source.slice(from, source.indexOf('};', from));
+    const inDisplay: Record<string, string[]> = {};
+    for (const [, mode, list] of body.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
+      inDisplay[mode as string] = [...(list as string).matchAll(/'([^']+)'/g)].map(
+        (m) => m[1] as string,
+      );
+    }
+    expect(inDisplay).toEqual(
+      Object.fromEntries(Object.entries(HOUSE_MODE_LADDERS).map(([k, v]) => [k, [...v]])),
+    );
+    // Every mode the column allows has an entry; a missing one would silently
+    // fall back and draw something the household did not choose.
+    expect(Object.keys(inDisplay).sort()).toEqual([
+      'icon_state',
+      'label_value',
+      'presence',
+      'value',
+    ]);
   });
 
   it('starts from the same default ladders', () => {
@@ -100,6 +137,7 @@ describe('the ladder tables, on both renderers', () => {
     expect(inPanel).toEqual(inDisplay);
     expect(inPanel).toContain('SHIFT');
     expect(inPanel).toContain('WEATHER');
+    expect(inPanel).toContain('HOUSE');
   });
 
   it('reads the display file it claims to, so a rename fails loudly', () => {
@@ -138,6 +176,31 @@ describe('resolving a weather ladder', () => {
     expect(pairsTemperatures(['low', 'high'])).toBe(true);
     expect(pairsTemperatures(['high', 'name', 'low'])).toBe(false);
     expect(pairsTemperatures(['name', 'high'])).toBe(false);
+  });
+});
+
+describe('resolving a house ladder', () => {
+  it('is the entity\u2019s own display mode when the widget says nothing', () => {
+    expect(houseLadder({}, 'value')).toEqual(['value']);
+    expect(houseLadder({}, 'label_value')).toEqual(['label', 'value']);
+    expect(houseLadder({}, 'icon_state')).toEqual(['icon', 'label', 'value']);
+    expect(houseLadder({}, 'presence')).toEqual(['icon', 'label', 'value']);
+  });
+
+  it('falls back to the column\u2019s own default for a mode it does not know', () => {
+    // A newer server, or a hand-edited row. Never an empty reading.
+    expect(houseLadder({}, 'nonsense')).toEqual(['label', 'value']);
+    expect(houseLadder({}, '')).toEqual(['label', 'value']);
+  });
+
+  it('lets a widget\u2019s list win for every reading in it', () => {
+    // The trade the household makes by touching it: one shape for all of them.
+    expect(houseLadder({ fields: ['value'] }, 'icon_state')).toEqual(['value']);
+    expect(houseLadder({ fields: ['value', 'label'] }, 'value')).toEqual(['value', 'label']);
+  });
+
+  it('ignores fields that belong to another widget', () => {
+    expect(houseLadder({ fields: ['person', 'high'] }, 'value')).toEqual(['value']);
   });
 });
 

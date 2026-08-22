@@ -183,6 +183,62 @@ export function pairsTemperatures(ladder: readonly WeatherField[]): boolean {
   return high >= 0 && low >= 0 && Math.abs(high - low) === 1;
 }
 
+/* ---------------------------------------------------------------- HOUSE --- */
+
+/**
+ * The parts of one Home Assistant reading.
+ *
+ * A third shape again: the shift badge is one card, the forecast is a strip of
+ * days, and this is a list whose *length* belongs to the household rather than
+ * to the widget — they choose the entities on the Home Assistant screen, and
+ * `readings` picks which of those this widget shows. The ladder is what each
+ * one says, not how many there are.
+ */
+export const HOUSE_FIELDS = ['icon', 'label', 'value'] as const;
+export type HouseField = (typeof HOUSE_FIELDS)[number];
+
+export const HOUSE_ROLES: Readonly<Record<HouseField, LadderRole>> = {
+  icon: 'body',
+  label: 'kicker',
+  value: 'headline',
+};
+
+/**
+ * What each `display_mode` means, as a ladder.
+ *
+ * This is not a new idea layered over the old one — it is the old one written
+ * down. `display_mode` is a per-entity setting with four named shapes, and
+ * until now what each shape *drew* lived in two `if` statements inside
+ * `renderHouse` and nowhere else. The panel never read it at all: every mode
+ * came out as "label: value", so a reading the household set to `value` said
+ * `Locked` on the wall and `Front door: Locked` on a panel. One stored value,
+ * two renderers, two answers — the same fault as `shifts[0]`, and the reason
+ * this table exists rather than a second setting.
+ *
+ * An unknown mode falls back to `label_value`, which is the column's default.
+ */
+export const HOUSE_MODE_LADDERS: Readonly<Record<string, readonly HouseField[]>> = {
+  value: ['value'],
+  label_value: ['label', 'value'],
+  icon_state: ['icon', 'label', 'value'],
+  presence: ['icon', 'label', 'value'],
+};
+
+/**
+ * The ladder one reading draws, from the widget's list or from its own mode.
+ *
+ * `fields` present is authoritative *for every reading in the widget*, which is
+ * the trade the household makes by touching it: a per-widget list cannot
+ * express per-entity shapes, so writing one flattens them. Leave it alone and
+ * each reading keeps the mode set on the Home Assistant screen — which is what
+ * every wall does today, and what a panel will now do for the first time.
+ */
+export function houseLadder(config: unknown, mode: string): readonly HouseField[] {
+  const stored = storedLadder(asConfig(config)['fields'], HOUSE_FIELDS);
+  if (stored !== undefined) return stored;
+  return HOUSE_MODE_LADDERS[mode] ?? HOUSE_MODE_LADDERS['label_value'] ?? HOUSE_FIELDS;
+}
+
 /* ------------------------------------------------------------- RESOLVING --- */
 
 /** One resolved row: a field, how loudly to draw it, and what it says. */

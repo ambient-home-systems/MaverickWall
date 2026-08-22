@@ -31,10 +31,12 @@ import {
   type PanelGeometry,
 } from './render.js';
 import {
+  HOUSE_ROLES,
   SHIFT_ROLES,
   WEATHER_ROLES,
   dropToFit,
   ladderRows,
+  houseLadder,
   pairsTemperatures,
   shiftLadder,
   weatherLadder,
@@ -560,6 +562,88 @@ function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Conf
   drawLines(fb, lines, box, scale, 'left');
 }
 
+/**
+ * The house, honouring the setting it used to ignore.
+ *
+ * This went through `drawPanel`'s tolerant reader, which builds "label: value"
+ * out of anything with a `readings` array — so all four `display_mode` shapes
+ * came out identical here, and a reading the household set to `value` said
+ * `Locked` on the wall and `Front door: Locked` on a panel. One stored value,
+ * two renderers, two answers. Found by rendering one and looking at it.
+ *
+ * The icon rung resolves to nothing: a glyph is not in the 0x20–0x7E font, the
+ * same way a forecast symbol is not. So `icon_state` and `presence` draw their
+ * label and value here, which is the honest 1-bit reading of them.
+ */
+interface EpaperReading {
+  readonly label: string;
+  readonly value: string;
+  readonly mode: string;
+}
+
+function houseReadings(panel: unknown): EpaperReading[] {
+  if (panel === null || typeof panel !== 'object') return [];
+  const raw = (panel as { readings?: unknown }).readings;
+  if (!Array.isArray(raw)) return [];
+  const out: EpaperReading[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const row = entry as { label?: unknown; value?: unknown; mode?: unknown };
+    if (typeof row.label !== 'string' || typeof row.value !== 'string') continue;
+    out.push({
+      label: asciiTitle(row.label),
+      value: asciiTitle(row.value),
+      mode: typeof row.mode === 'string' ? row.mode : 'label_value',
+    });
+  }
+  return out;
+}
+
+function drawHouse(fb: Framebuffer, box: Box, manifest: Manifest, config: Config): void {
+  const panel = manifest.panels['home'] ?? manifest.panels['homeassistant'];
+  let readings = houseReadings(panel);
+  if (readings.length === 0) {
+    drawLines(fb, ['No readings yet'], box, 2, 'left');
+    return;
+  }
+  // Which readings, by the label the household sees — the manifest carries no
+  // entity id, exactly as the wall's widget reads it.
+  const wanted = list(config, 'readings').filter((r): r is string => typeof r === 'string');
+  if (wanted.length > 0) readings = readings.filter((r) => wanted.includes(r.label));
+  if (readings.length === 0) {
+    drawLines(fb, ['No readings yet'], box, 2, 'left');
+    return;
+  }
+  const cap = config['count'];
+  if (typeof cap === 'number' && Number.isFinite(cap) && cap >= 1) {
+    readings = readings.slice(0, Math.trunc(cap));
+  }
+
+  /*
+   * One line each, the parts in the household's own order.
+   *
+   * A reading is a line rather than a stack because the panel's list is read
+   * down, not across — the same reason the multi-person shift card collapses.
+   * The label keeps its colon when it leads, because "Kitchen: 19.4 C" reads as
+   * an attribution and "Kitchen 19.4 C" reads as a mistake.
+   */
+  const lines = readings.map((reading) => {
+    const rows = ladderRows(
+      houseLadder(config, reading.mode),
+      { label: reading.label, value: reading.value },
+      HOUSE_ROLES,
+    );
+    const parts = rows.map((row) => row.text);
+    if (rows[0]?.field === 'label' && parts.length > 1) {
+      return `${parts[0]}: ${parts.slice(1).join('  ')}`;
+    }
+    return parts.join('  ');
+  });
+
+  const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
+  drawLines(fb, lines, box, scale, 'left');
+}
+
 function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string, rows?: number): void {
   // The box's own limit, and then the household's if they set a smaller one.
   const fits = Math.max(1, Math.floor(box.h / 24));
@@ -617,7 +701,7 @@ function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel,
     case 'weather':
       return drawWeather(fb, box, manifest, config);
     case 'homeassistant':
-      return drawPanel(fb, box, manifest.panels['home'] ?? manifest.panels['homeassistant'], 'No readings yet');
+      return drawHouse(fb, box, manifest, config);
     case 'external': {
       const mod = str(config, 'module');
       const rows = config['count'];
