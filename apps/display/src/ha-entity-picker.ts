@@ -37,7 +37,6 @@ const DOMAIN_LABELS: Readonly<Record<string, string>> = {
   climate: 'Climate',
   light: 'Lights',
   switch: 'Switches',
-  calendar: 'Calendars',
 };
 function domainLabel(domain: string): string {
   return DOMAIN_LABELS[domain] ?? domain;

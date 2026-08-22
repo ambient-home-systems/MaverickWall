@@ -248,6 +248,7 @@ import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
+import { fetchCalendarEntities } from '../modules/homeassistant/index.js';
 
 /**
  * The admin screens.
@@ -751,7 +752,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Calendars
   // -------------------------------------------------------------------------
 
-  app.get('/admin/calendars', (c: Context) => c.html(calendarsPage()));
+  app.get('/admin/calendars', async (c: Context) =>
+    // One small request to Home Assistant, for the calendars it could offer.
+    // It answers with none when there is no connection or the box is down, so
+    // this page never waits on Home Assistant to be well (rule nine).
+    c.html(calendarsPage({}, undefined, undefined, await fetchCalendarEntities(
+      deps.db, deps.keyring, deps.fetcher,
+    ))),
+  );
 
   /**
    * Test, then save — and testing is a first-class outcome.
@@ -3812,8 +3820,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<article class="card">` +
       `<h2><span class="swatch" style="--swatch:${escapeHtml(source.color)}"></span>` +
       `${escapeHtml(source.name)}${source.enabled === 1 ? '' : ' (off)'}</h2>` +
-      // The host and never the path. The path is the credential.
-      `<p class="host">${escapeHtml(source.urlHost ?? 'unknown host')}</p>` +
+      // The host and never the path. The path is the credential. A Home
+      // Assistant calendar has neither — it is an entity read through the one
+      // connection — so it says what it is rather than "unknown host".
+      `<p class="host">${escapeHtml(
+        source.kind === 'homeassistant'
+          ? `Home Assistant · ${source.haEntityId ?? 'calendar entity'}`
+          : source.urlHost ?? 'unknown host',
+      )}</p>` +
       status +
 
       // When a calendar belongs to someone, their colour wins on the wall — so
@@ -3845,15 +3859,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         name: 'enabled',
         checked: source.enabled === 1,
       }) +
-      // Named as a risk rather than as a feature, because it is one.
-      switchRow({
-        label: 'Allow a local network address',
-        name: 'allow_lan',
-        checked: source.allowPrivateNetwork === 1,
-        hint:
-          'Local network access lets this feed reach devices inside your home. ' +
-          'Only turn it on for a calendar you host yourself.',
-      }) +
+      // Named as a risk rather than as a feature, because it is one — and not
+      // drawn at all for a Home Assistant calendar, which is not fetched from
+      // an address the household typed. Its events arrive through the one
+      // Home Assistant connection, so there is no outbound rule to relax and
+      // the control would do nothing whichever way it was set.
+      (source.kind === 'homeassistant'
+        ? ''
+        : switchRow({
+            label: 'Allow a local network address',
+            name: 'allow_lan',
+            checked: source.allowPrivateNetwork === 1,
+            hint:
+              'Local network access lets this feed reach devices inside your home. ' +
+              'Only turn it on for a calendar you host yourself.',
+          })) +
       `<button type="submit">Save</button></form>` +
 
       `<div class="row">` +
@@ -3902,6 +3922,49 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+  /**
+   * Calendars Home Assistant already has, offered here.
+   *
+   * The path existed before this — on the Home Assistant screen — and nobody
+   * arriving at "I want to add a calendar" would ever have found it. Adding it
+   * posts to the same endpoint that screen does, so there is one validation and
+   * one writer, and what lands is an ordinary `calendar_sources` row: same
+   * cache, same manifest, same renderer, edited on this page like any other.
+   *
+   * Drawn only when there is something to add. A household with no Home
+   * Assistant, or one that has already added all of them, sees nothing.
+   */
+  function haCalendarSection(
+    available: readonly { readonly entityId: string; readonly name: string }[],
+    sources: readonly AdminSourceRow[],
+  ): string {
+    const already = new Set(
+      sources.filter((s) => s.kind === 'homeassistant').map((s) => s.haEntityId),
+    );
+    const offer = available.filter((entity) => !already.has(entity.entityId));
+    if (offer.length === 0) return '';
+
+    return (
+      `<h2 class="add">From Home Assistant</h2>` +
+      `<p class="hint">Home Assistant is connected and has ` +
+      `${offer.length} calendar${offer.length === 1 ? '' : 's'} you have not added yet. ` +
+      `Adding one here needs no address — its events come through the same ` +
+      `connection, and it behaves exactly like a feed once it is in.</p>` +
+      `<form method="post" action="admin/home-assistant/calendars">` +
+      selectField({
+        label: 'Calendar',
+        name: 'entity_id',
+        optionsHtml: offer
+          .map(
+            (entity) =>
+              `<option value="${escapeHtml(entity.entityId)}">${escapeHtml(entity.name)}</option>`,
+          )
+          .join(''),
+      }) +
+      `<button type="submit">Add from Home Assistant</button></form>`
+    );
+  }
+
   function calendarsPage(
     values: {
       name?: string;
@@ -3912,6 +3975,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     } = {},
     error?: { message: string; suggestion?: string },
     tested?: TestFeedResult,
+    /**
+     * The Home Assistant calendars on offer, when there are any.
+     *
+     * Passed in rather than looked up here, because this function is sync and
+     * the lookup is a request. Empty is the ordinary case — no Home Assistant,
+     * or a connection that is unwell — and draws nothing at all rather than an
+     * empty section explaining itself.
+     */
+    haCalendars: readonly { readonly entityId: string; readonly name: string }[] = [],
   ): string {
     const at = now();
     const sources = readAdminSources(deps.db);
@@ -3930,6 +4002,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         : {}),
       body:
         sources.map((source) => sourceRow(source, at, people)).join('') +
+        haCalendarSection(haCalendars, sources) +
         `<h2 class="add" id="add">Add a calendar</h2>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         (tested === undefined ? '' : previewPanel(tested)) +

@@ -28,8 +28,24 @@ export const SUPPORTED_DOMAINS = [
   'weather',
   'person',
   'device_tracker',
-  'calendar',
 ] as const;
+
+/*
+ * `calendar` was in this list, and it was the wrong shape of answer.
+ *
+ * A calendar entity's *state* is `on` or `off`, meaning "an event is happening
+ * right now" — so adding one here put a chip on the wall reading "Bins · On",
+ * which is not a reading anybody wants and is not the calendar they were
+ * after. It is the "Garage · on" fault again, except here no wording would
+ * have rescued it: the thing a household means by "show my Home Assistant
+ * calendar" is the events, and those already have a path — a calendar entity
+ * becomes a real `calendar_sources` row (see `calendars.ts`) and is drawn by
+ * the Calendar widgets like any other feed.
+ *
+ * So it is not offered as a reading at all rather than offered and useless.
+ * The Home Assistant screen says where calendars go instead, and migration
+ * 0031 un-watches the ones added before this.
+ */
 
 export type SupportedDomain = (typeof SUPPORTED_DOMAINS)[number];
 
@@ -164,7 +180,6 @@ export function iconFor(state: HaState): string {
   }
   if (state.domain === 'person' || state.domain === 'device_tracker') return '🧍';
   if (state.domain === 'weather') return '☁';
-  if (state.domain === 'calendar') return '🗓';
   return '·';
 }
 

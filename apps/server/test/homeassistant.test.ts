@@ -1049,3 +1049,120 @@ describe('disconnecting', () => {
     expect(counts.weather).toBeGreaterThan(0);
   });
 });
+
+/**
+ * The Calendars screen and Home Assistant, which is one seam and used to be two
+ * unconnected halves.
+ *
+ * A household reported adding "a calendar" on the Home Assistant screen and
+ * getting a chip that said **On**. They had used the readings picker, which
+ * offered calendar entities — and a calendar entity's state is `on`/`off`,
+ * meaning "an event is happening right now". The calendar path existed the
+ * whole time, one section further down the same page, and nothing on the
+ * Calendars screen ever mentioned it.
+ *
+ * So: calendars are not offered as readings at all, and the Calendars screen
+ * offers the ones Home Assistant has.
+ */
+describe('Home Assistant calendars, from the Calendars screen', () => {
+  it('offers what Home Assistant has, and adds it as an ordinary calendar', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    const page = await (await h.call('/admin/calendars')).text();
+    expect(page).toContain('From Home Assistant');
+    expect(page).toContain('calendar.family');
+    expect(page).toContain('Family');
+
+    // The same endpoint the Home Assistant screen posts to — one validation,
+    // one writer — and what lands is a calendar source like any other.
+    const added = await h.form('/admin/home-assistant/calendars', {
+      entity_id: 'calendar.family',
+    });
+    expect(added.status).toBe(302);
+    expect(added.headers.get('location')).toBe('/admin/calendars');
+
+    const row = h.db
+      .prepare(`SELECT name, kind, ha_entity_id AS entityId, url_host AS host
+                  FROM calendar_sources WHERE ha_entity_id = 'calendar.family'`)
+      .get() as { name: string; kind: string; entityId: string; host: string | null };
+    expect(row.kind).toBe('homeassistant');
+    expect(row.name).toBe('Family');
+    expect(row.host).toBe(null);
+  });
+
+  it('stops offering one that has already been added', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await h.form('/admin/home-assistant/calendars', { entity_id: 'calendar.family' });
+
+    const page = await (await h.call('/admin/calendars')).text();
+    // The only calendar the fake has, so the whole section goes rather than
+    // standing there empty explaining itself.
+    expect(page).not.toContain('From Home Assistant');
+  });
+
+  it('says what an added Home Assistant calendar is, and drops the control that cannot apply', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await h.form('/admin/home-assistant/calendars', { entity_id: 'calendar.family' });
+
+    const page = await (await h.call('/admin/calendars')).text();
+    // It has no URL, so it must not read "unknown host".
+    expect(page).toContain('Home Assistant · calendar.family');
+    expect(page).not.toContain('unknown host');
+    // Its events arrive through the Home Assistant connection, never the
+    // guarded fetcher, so there is no outbound rule to relax.
+    expect(page).not.toContain('Allow a local network address');
+  });
+
+  it('draws no Home Assistant section when there is no Home Assistant', async () => {
+    const h = await harness();
+    const page = await (await h.call('/admin/calendars')).text();
+    expect(page).not.toContain('From Home Assistant');
+    // And the page is still the page — a missing connection is not an error here.
+    expect(page).toContain('Add a calendar');
+  });
+
+  it('does not wait on a Home Assistant that is down', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    ha.down = true;
+
+    const response = await h.call('/admin/calendars');
+    expect(response.status).toBe(200);
+    const page = await response.text();
+    // Nothing to offer, and nothing alarming: the Home Assistant screen is
+    // where a broken connection is diagnosed (rule nine).
+    expect(page).not.toContain('From Home Assistant');
+    expect(page).toContain('Add a calendar');
+  });
+
+  it('refuses a calendar entity as a reading, and says where it went instead', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    const refused = await h.form('/admin/home-assistant/entities', {
+      entity_id: 'calendar.family',
+    });
+    expect(refused.status).toBe(400);
+    const body = await refused.text();
+    expect(body).toContain('Choose an entity from the list.');
+    expect(body).not.toContain('and calendars');
+    // Nothing was watched, so nothing draws "Family · On" on the wall.
+    const watched = h.db
+      .prepare("SELECT count(*) AS n FROM ha_entity_cache WHERE watched = 1 AND entity_id LIKE 'calendar.%'")
+      .get() as { n: number };
+    expect(watched.n).toBe(0);
+
+    // And the picker's own section says where calendars go, so their absence
+    // reads as deliberate rather than as something missing.
+    const screen = await (await h.call('/admin/home-assistant')).text();
+    expect(screen).toContain('Calendar entities are not readings');
+  });
+});

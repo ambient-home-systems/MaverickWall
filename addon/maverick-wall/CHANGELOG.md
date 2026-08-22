@@ -14,6 +14,31 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Your Home Assistant calendars, where you would look for them.
+
+Maverick has been able to show a Home Assistant calendar for a while — its
+events arrive through the same connection as your sensors, and it then behaves
+exactly like any other calendar. The trouble was finding it. The only way in was
+on the Home Assistant screen, and the entity picker on that same screen also
+offered calendars, so picking one there gave you a chip on the wall that just
+said "On" — a calendar entity's state, which only means "an event is on right
+now". Several people added a calendar that way and reasonably concluded it did
+not work.
+
+The Calendars screen now offers the calendars Home Assistant has, when it is
+connected and there are any you have not added. No address to find; pick it and
+it is a calendar, editable on that page like the rest.
+
+Calendar entities are no longer offered as readings, because there was nothing
+useful they could ever show there, and any that were added that way are quietly
+dropped from the wall. Nothing else about your readings changes.
+
+An added Home Assistant calendar also reads correctly on the Calendars screen
+now: it says which entity it is instead of "unknown host", and no longer shows
+the local-network setting, which never applied to it.
+
 ## 0.42.1
 
 Two fixes to the wall editor.
