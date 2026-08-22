@@ -21,6 +21,7 @@ import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
 import { WIDGET_VIEWS } from './widget-views.js';
+import { clearLaneKeys, inkOf, mergeInk, setLaneValue } from './ink.js';
 import {
   HOUSE_FIELDS,
   SHIFT_FIELDS,
@@ -213,6 +214,32 @@ function boot(): void {
   // The panel's pixels, for the toolbar's static geometry chip.
   let panelSize: { readonly w: number; readonly h: number } | undefined;
 
+  /**
+   * The ink lane (RFC 005, direction B), when a panel is looking at this canvas.
+   *
+   * The server sends this block only when an e-paper panel actually follows the
+   * canvas being edited, so its presence *is* the gate: no panel, no lane, and
+   * not one control anywhere that would do nothing. `lane` names which of a
+   * widget's two sets of options is being edited — the wall's, or what it says
+   * differently in black and white.
+   */
+  interface InkPanel {
+    readonly id: string;
+    readonly name: string;
+    readonly width: number;
+    readonly height: number;
+    readonly orientation: string;
+  }
+  interface InkTables {
+    readonly panels: readonly InkPanel[];
+    /** Which keys the lane offers, per widget type. */
+    readonly lane: Readonly<Record<string, readonly string[]>>;
+    /** Wall settings a panel cannot draw, each with the reason. */
+    readonly ignores: readonly { readonly key: string; readonly label: string; readonly why: string }[];
+  }
+  let ink: InkTables | undefined;
+  let lane: 'wall' | 'ink' = 'wall';
+
   let state: LayoutState;
   try {
     const parsed = JSON.parse(mount.dataset['json'] ?? '{}') as {
@@ -228,6 +255,7 @@ function boot(): void {
       readonly report?: { readonly w?: unknown; readonly h?: unknown };
       readonly orientation?: unknown;
       readonly panel?: { readonly width?: unknown; readonly height?: unknown };
+      readonly ink?: unknown;
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
@@ -240,6 +268,20 @@ function boot(): void {
     const pnl = parsed.panel;
     if (pnl !== undefined && typeof pnl.width === 'number' && typeof pnl.height === 'number') {
       panelSize = { w: pnl.width, h: pnl.height };
+    }
+    // Read defensively and drop the whole block on anything unexpected: a lane
+    // built from half a table would offer controls with no meaning, which is
+    // worse than no lane at all.
+    const rawInk = parsed.ink as InkTables | undefined;
+    if (
+      rawInk !== undefined &&
+      Array.isArray(rawInk.panels) &&
+      rawInk.panels.length > 0 &&
+      typeof rawInk.lane === 'object' &&
+      rawInk.lane !== null &&
+      Array.isArray(rawInk.ignores)
+    ) {
+      ink = rawInk;
     }
     // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
     // are the per-orientation defaults when a canvas has no aspect yet.
@@ -440,9 +482,16 @@ function boot(): void {
 
   /** A switch built the way the admin's own settings rows are, so a persistent
    *  on/off setting looks like one wherever it appears. */
-  function switchRow(label: string, hint: string, on: boolean, onChange: (v: boolean) => void): HTMLElement {
+  function switchRow(
+    label: string,
+    hint: string,
+    on: boolean,
+    onChange: (v: boolean) => void,
+    key?: string,
+  ): HTMLElement {
     const wrap = document.createElement('label');
     wrap.className = 'switch';
+    if (key !== undefined) wrap.dataset['cfgKey'] = key;
     const text = document.createElement('span');
     text.className = 'switch-text';
     const strong = document.createElement('b');
@@ -802,6 +851,39 @@ function boot(): void {
     inspectorTabs.appendChild(button);
   }
 
+  /*
+   * The two lanes (RFC 005, direction B): the wall's settings, and what this
+   * widget says differently on a panel that follows this canvas.
+   *
+   * Drawn only when a panel is actually following — the server sends the tables
+   * only then — so a household with no e-paper never sees it. It sits above the
+   * Content/Style tabs rather than beside them because it is not a third tab: it
+   * chooses *which widget's settings* the tabs are showing.
+   */
+  const laneBar = document.createElement('div');
+  laneBar.className = 'insp-lanes';
+  laneBar.setAttribute('role', 'tablist');
+  laneBar.hidden = true;
+  const laneButtons: Record<'wall' | 'ink', HTMLButtonElement> = {
+    wall: document.createElement('button'),
+    ink: document.createElement('button'),
+  };
+  for (const which of ['wall', 'ink'] as const) {
+    const button = laneButtons[which];
+    button.type = 'button';
+    button.className = 'insp-lane';
+    button.setAttribute('role', 'tab');
+    button.textContent = which === 'wall' ? 'On the wall' : 'On ink';
+    button.addEventListener('click', () => {
+      if (lane === which) return;
+      lane = which;
+      inspectorTab = 'content';
+      renderConfigPanel();
+      renderPreview();
+    });
+    laneBar.appendChild(button);
+  }
+
   // The per-widget options themselves. Boxless — the inspector is the card.
   const configPanel = document.createElement('div');
   configPanel.className = 'le-config';
@@ -814,7 +896,7 @@ function boot(): void {
   removeButton.addEventListener('click', removeSelected);
   inspectorDanger.appendChild(removeButton);
 
-  inspectorBody.append(inspectorTabs, configPanel, inspectorDanger);
+  inspectorBody.append(laneBar, inspectorTabs, configPanel, inspectorDanger);
   inspectorHost.append(inspectorHead, inspectorBody);
   // Nothing selected yet: on a wall the host keeps the empty note the server
   // rendered, so the column is not a blank box on a desktop.
@@ -880,6 +962,10 @@ function boot(): void {
       scheduleEpaperPreview();
       return;
     }
+    // The ink lane's frame is the real panel, so it has to be re-fetched when
+    // anything changes — the wall preview below still redraws, because the lane
+    // switch does not stop somebody dragging a box.
+    if (lane === 'ink') scheduleInkFrame();
     if (model === undefined || previewWall === undefined || manifest === undefined) return;
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -951,6 +1037,72 @@ function boot(): void {
    * refused request keeps the frame already showing rather than blanking the
    * area somebody is working in.
    */
+  /*
+   * The ink lane's frame: the panel's own drawing of this canvas.
+   *
+   * Not a backdrop behind the drag boxes, which is what the panel's *own*
+   * designer does — there the canvas is the panel's ratio, so the boxes line up
+   * with the frame. Here the canvas is the wall's ratio and the panel's is not,
+   * so drawing one behind the other would put every box somewhere it is not.
+   * It sits in the inspector instead, beside the controls that change it, which
+   * is the "side by side" this lane was always for: the household reads the
+   * real frame rather than a browser's impression of one.
+   *
+   * Debounced and single-flight, the same shape as the designer's backdrop, and
+   * a failed request keeps the frame already showing.
+   */
+  let inkImage: HTMLImageElement | undefined;
+  let inkObjectUrl: string | undefined;
+  let inkTimer: number | undefined;
+  let inkPending = false;
+
+  /**
+   * The following panel that draws the canvas currently open, if any.
+   *
+   * A widget row belongs to one orientation, so an ink override on a portrait
+   * widget is only ever read by a panel that draws the portrait canvas. Picking
+   * the panel by orientation is what stops the lane offering settings that
+   * nothing would read — the `options.json` rule, one level down.
+   */
+  function inkPanelForCanvas(): InkPanel | undefined {
+    return ink?.panels.find((panel) => panel.orientation === state.orientation);
+  }
+
+  function scheduleInkFrame(): void {
+    if (ink === undefined) return;
+    if (inkTimer !== undefined) window.clearTimeout(inkTimer);
+    inkTimer = window.setTimeout(() => {
+      inkTimer = undefined;
+      void refreshInkFrame();
+    }, 260);
+  }
+
+  async function refreshInkFrame(): Promise<void> {
+    const panel = inkPanelForCanvas();
+    if (panel === undefined) return;
+    if (inkPending) {
+      scheduleInkFrame();
+      return;
+    }
+    inkPending = true;
+    try {
+      const response = await fetch(`admin/epaper/${encodeURIComponent(panel.id)}/preview.png`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ widgets: widgetsForSave(state.widgets) }),
+      });
+      if (!response.ok) return;
+      const url = URL.createObjectURL(await response.blob());
+      if (inkImage !== undefined) inkImage.src = url;
+      if (inkObjectUrl !== undefined) URL.revokeObjectURL(inkObjectUrl);
+      inkObjectUrl = url;
+    } catch {
+      // Keep the last good frame.
+    } finally {
+      inkPending = false;
+    }
+  }
+
   function scheduleEpaperPreview(): void {
     if (epaperTimer !== undefined) window.clearTimeout(epaperTimer);
     epaperTimer = window.setTimeout(() => {
@@ -1320,29 +1472,75 @@ function boot(): void {
 
   // ---- per-widget config ------------------------------------------------
 
-  /** Merge one option into the selected widget's config, dropping empties. */
+  /**
+   * Merge one option into the selected widget's config, dropping empties.
+   *
+   * On the ink lane the same call writes into `config.ink` instead — one level
+   * deep, never nested further, matching `inkOverrideBody` on the server. That
+   * is the whole of the two lanes at this end: every control in the editor is
+   * unchanged and simply lands in a different place depending on which lane is
+   * open. Clearing the last override removes `ink` entirely, so a widget that
+   * says nothing different on a panel carries nothing.
+   */
   function setConfig(widget: Widget, key: string, value: unknown): void {
-    const cfg: Record<string, unknown> = { ...(widget.config ?? {}) };
-    const empty =
-      value === undefined ||
-      value === null ||
-      value === '' ||
-      (Array.isArray(value) && value.length === 0);
-    if (empty) delete cfg[key];
-    else cfg[key] = value;
-    if (Object.keys(cfg).length > 0) widget.config = cfg;
+    const next = setLaneValue(widget.config, lane, key, value);
+    if (next !== undefined) widget.config = next;
     else delete widget.config;
     markDirty();
     renderPreview();
   }
 
-  function cfgField(label: string): HTMLElement {
+  /**
+   * The config the open lane's controls should show.
+   *
+   * On the ink lane that is the *effective* value — the wall's setting unless
+   * this widget overrides it — so the controls say what the panel will actually
+   * draw rather than what has been typed here. Touching one then pins it, which
+   * is ordinary override behaviour and is why the lane says how many are pinned
+   * and offers to clear them.
+   */
+  function laneConfig(widget: Widget): Record<string, unknown> {
+    return lane === 'ink' ? mergeInk(widget.config) : (widget.config ?? {});
+  }
+
+  /**
+   * One labelled control in the inspector, optionally naming the config key it
+   * writes.
+   *
+   * The key is what makes the ink lane honest. A panel reads a *subset* of a
+   * widget's options, so the lane must show that subset and nothing else — and
+   * the safe way round is for an unnamed control to be *hidden* there rather
+   * than shown. Annotate the handful of controls the lane offers and everything
+   * else disappears from it by default, including anything added later by
+   * somebody who never read this comment. `pruneToLane` is the pass that does
+   * it.
+   */
+  function cfgField(label: string, key?: string): HTMLElement {
     const wrap = document.createElement('label');
     wrap.className = 'le-cfg-field';
+    if (key !== undefined) wrap.dataset['cfgKey'] = key;
     const span = document.createElement('span');
     span.textContent = label;
     wrap.appendChild(span);
     return wrap;
+  }
+
+  /**
+   * Keep only the controls the open lane can honour.
+   *
+   * Runs after the type's own builder, so the builders stay one implementation
+   * for both lanes rather than growing a branch each. On the wall lane it does
+   * nothing at all; on the ink lane every direct child without a key this
+   * widget's type offers is dropped, hints and headings included — a note about
+   * a control that is not there reads as a bug.
+   */
+  function pruneToLane(type: string): void {
+    if (lane !== 'ink') return;
+    const allowed = ink?.lane[type] ?? [];
+    for (const child of [...configPanel.children]) {
+      const key = (child as HTMLElement).dataset['cfgKey'];
+      if (key === undefined || !allowed.includes(key)) child.remove();
+    }
   }
 
   /** A set of checkboxes; empty selection means "all", stated where used. */
@@ -1409,7 +1607,7 @@ function boot(): void {
       return;
     }
 
-    const field = cfgField('View');
+    const field = cfgField('View', 'mode');
     const current = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : first.value;
     const select = document.createElement('select');
     for (const view of views) {
@@ -1500,9 +1698,35 @@ function boot(): void {
     inspectorTitle.textContent = `${name} widget`;
     removeButton.textContent = `Remove this ${name.toLowerCase()} widget`;
 
+    /*
+     * The lane switch, when a panel follows this canvas.
+     *
+     * The ink lane has no Content/Style split: a panel honours a handful of
+     * keys and they are one short list, so two tabs over them would be two
+     * mostly-empty tabs. The tabs come back with the wall lane.
+     */
+    laneBar.hidden = ink === undefined;
+    if (ink === undefined) lane = 'wall';
+    for (const which of ['wall', 'ink'] as const) {
+      const button = laneButtons[which];
+      const on = lane === which;
+      button.classList.toggle('is-on', on);
+      button.setAttribute('aria-selected', on ? 'true' : 'false');
+      button.tabIndex = on ? 0 : -1;
+    }
+    const overrides = Object.keys(inkOf(widget.config));
+    laneButtons.ink.classList.toggle('has-override', overrides.length > 0);
+
+    if (lane === 'ink') {
+      renderInkPanel(widget);
+      openInspector();
+      return;
+    }
+
     // Both tabs, always: every widget has a view to state, so neither tab is
     // ever empty and the inspector reads the same whichever widget is open.
     inspectorTabs.hidden = false;
+    inspectorDanger.hidden = false;
     for (const which of ['content', 'style'] as const) {
       const button = inspectorTabButtons[which];
       const on = inspectorTab === which;
@@ -1514,24 +1738,161 @@ function boot(): void {
     // Layering moved to the Layers list (drag a row to restack); the
     // per-widget front/back buttons it replaces are gone.
     const cfg = widget.config ?? {};
-    if (inspectorTab === 'content') {
-      buildViewField(widget, cfg);
-      if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
-      else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
-      else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
-      else if (widget.type === 'external') buildExternalConfig(widget, cfg);
-      else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
-      else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
-      else if (widget.type === 'image') buildImageConfig(widget, cfg);
-      else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
-      else if (widget.type === 'clock') buildClockConfig(widget, cfg);
-      else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
-    } else {
+    if (inspectorTab === 'content') buildTypeConfig(widget, cfg);
+    else {
       // Style is the same set of controls for every widget — one
       // implementation, writing the same per-widget keys it always has.
       buildFormatConfig(widget, cfg);
     }
     openInspector();
+  }
+
+  /** The type's own controls — the Content tab, and the ink lane's raw material. */
+  function buildTypeConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    buildViewField(widget, cfg);
+    if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
+    else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
+    else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
+    else if (widget.type === 'external') buildExternalConfig(widget, cfg);
+    else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
+    else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
+    else if (widget.type === 'image') buildImageConfig(widget, cfg);
+    else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
+    else if (widget.type === 'clock') buildClockConfig(widget, cfg);
+    else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
+  }
+
+  /**
+   * The ink lane: what this widget says differently in black and white.
+   *
+   * The same controls the wall lane draws, built by the same builders against
+   * the *effective* ink config, and then cut down to the keys a panel actually
+   * honours (`pruneToLane`). Building both the type's controls and the format
+   * ones is deliberate: alignment is a format control and a panel does honour
+   * it, so gating by tab would have hidden a working setting while showing
+   * nothing in its place.
+   *
+   * What is *not* offered is as considered as what is. A panel's title, note,
+   * picture, module and countdown date are the wall's — a household looking at
+   * two screens has to be able to believe they are showing the same canvas, so
+   * the lane changes how much a widget says and never what it is.
+   */
+  function renderInkPanel(widget: Widget): void {
+    inspectorTabs.hidden = true;
+    // Removing a widget here would remove it from the wall, which is not what
+    // "on ink" means anywhere else on this panel.
+    inspectorDanger.hidden = true;
+
+    const panel = inkPanelForCanvas();
+    if (panel === undefined) {
+      /*
+       * A panel follows this wall, but it draws the *other* canvas.
+       *
+       * Said rather than hidden: a lane that quietly disappeared on one
+       * orientation would read as a bug, and a lane that stayed and worked
+       * would be writing overrides onto widget rows the panel never reads.
+       */
+      const other = ink?.panels[0];
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent =
+        other === undefined
+          ? 'No panel is drawing this canvas.'
+          : `${other.name} draws the ${other.orientation} canvas. Switch the canvas above to ` +
+            `${other.orientation === 'landscape' ? 'Landscape' : 'Portrait'} to change what it says there.`;
+      configPanel.appendChild(note);
+      return;
+    }
+
+    const head = document.createElement('p');
+    head.className = 'hint insp-ink-head';
+    const others = (ink?.panels.length ?? 1) - 1;
+    head.textContent =
+      `What this widget says on ${panel.name} — ${panel.width}×${panel.height}, black & white.` +
+      (others > 0 ? ` And on ${others} other panel${others > 1 ? 's' : ''}.` : '');
+    configPanel.appendChild(head);
+
+    /*
+     * The real frame, not a drawing of one.
+     *
+     * The same `preview.png` the panel's own designer uses: the canvas as it
+     * stands is posted and the server answers with the exact frame the device
+     * would put on glass. Two renderers disagreeing is the fault this endpoint
+     * was built for, and reaching for a second 1-bit renderer in the browser
+     * here would have reintroduced it.
+     */
+    const frame = document.createElement('img');
+    frame.className = 'insp-ink-frame';
+    frame.alt = `${panel.name} as it will draw this canvas`;
+    if (inkObjectUrl !== undefined) frame.src = inkObjectUrl;
+    inkImage = frame;
+    configPanel.appendChild(frame);
+    scheduleInkFrame();
+
+    const offered = ink?.lane[widget.type] ?? [];
+    if (offered.length === 0) {
+      const none = document.createElement('p');
+      none.className = 'hint';
+      none.textContent =
+        'This widget draws the same on a panel as on the wall — there is nothing here worth ' +
+        'saying differently in black and white.';
+      configPanel.appendChild(none);
+    } else {
+      const cfg = laneConfig(widget);
+      buildTypeConfig(widget, cfg);
+      buildFormatConfig(widget, cfg);
+      pruneToLane(widget.type);
+      // Put the heading and the frame back: `pruneToLane` drops everything it
+      // was not told about, which is the right default and takes these with it.
+      configPanel.insertBefore(frame, configPanel.firstChild);
+      configPanel.insertBefore(head, configPanel.firstChild);
+    }
+
+    /*
+     * What the panel will not draw, said where the setting was made.
+     *
+     * Only the ones this widget actually has set — a list of everything a panel
+     * cannot do would be a wall of text on every widget, and a household who
+     * never set a shadow does not need to be told about shadows. This is the
+     * "states what it cannot honour" half of the lane, and the reason it is
+     * here rather than on the wall lane is that this is the screen the sentence
+     * is about.
+     */
+    const wall = widget.config ?? {};
+    const ignored = (ink?.ignores ?? []).filter((entry) => wall[entry.key] !== undefined);
+    if (ignored.length > 0) {
+      const heading = document.createElement('p');
+      heading.className = 'hint insp-ink-note';
+      heading.textContent = 'Set on the wall, not drawn here:';
+      configPanel.appendChild(heading);
+      const list = document.createElement('ul');
+      list.className = 'insp-ink-list';
+      for (const entry of ignored) {
+        const row = document.createElement('li');
+        row.textContent = `${entry.label} — ${entry.why}`;
+        list.appendChild(row);
+      }
+      configPanel.appendChild(list);
+    }
+
+    const overrides = Object.keys(inkOf(widget.config));
+    if (overrides.length > 0) {
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'btn-ghost insp-ink-reset';
+      reset.textContent =
+        overrides.length === 1 ? 'Match the wall again (1 change)' : `Match the wall again (${overrides.length} changes)`;
+      reset.addEventListener('click', () => {
+        const cfgNow: Record<string, unknown> = { ...(widget.config ?? {}) };
+        delete cfgNow['ink'];
+        if (Object.keys(cfgNow).length > 0) widget.config = cfgNow;
+        else delete widget.config;
+        markDirty();
+        renderConfigPanel();
+        renderPreview();
+      });
+      configPanel.appendChild(reset);
+    }
   }
 
   function buildExternalConfig(widget: Widget, cfg: Record<string, unknown>): void {
@@ -1567,7 +1928,7 @@ function boot(): void {
      * is the household deciding how many fit the box they dragged. It is
      * presentation of data the module already sent — nothing new is asked of it.
      */
-    const rows = cfgField('How many rows');
+    const rows = cfgField('How many rows', 'count');
     const count = document.createElement('input');
     count.type = 'number';
     count.min = '1';
@@ -1583,6 +1944,7 @@ function boot(): void {
     const note = document.createElement('p');
     note.className = 'hint';
     note.textContent = 'Only applies to a module that sends a list.';
+    note.dataset['cfgKey'] = 'count';
     configPanel.appendChild(note);
   }
 
@@ -1743,8 +2105,9 @@ function boot(): void {
     options: readonly (readonly [string, string])[],
     current: string,
     onChange: (value: string) => void,
+    key?: string,
   ): HTMLElement {
-    const field = cfgField(label);
+    const field = cfgField(label, key);
     const group = document.createElement('div');
     group.className = 'seg le-seg';
     group.setAttribute('role', 'group');
@@ -1816,6 +2179,7 @@ function boot(): void {
         ],
         typeof cfg['align'] === 'string' ? (cfg['align'] as string) : 'left',
         (value) => setConfig(widget, 'align', value === 'left' ? undefined : value),
+        'align',
       ),
     );
 
@@ -1912,6 +2276,7 @@ function boot(): void {
           ],
           cfg['cellEvents'] === 'pills' ? 'pills' : 'dots',
           (value) => setConfig(widget, 'cellEvents', value === 'pills' ? 'pills' : undefined),
+          'cellEvents',
         ),
       );
     }
@@ -1919,7 +2284,7 @@ function boot(): void {
     // Which calendars to show — for the week columns and the agenda, where
     // filtering means something; the month grid is a whole month at a glance.
     if (currentMode === 'week') {
-      const which = cfgField('Calendars to show');
+      const which = cfgField('Calendars to show', 'calendars');
       which.appendChild(
         checkList(
           state.calendars.map((c) => ({ value: c.id, label: c.name })),
@@ -1932,12 +2297,13 @@ function boot(): void {
       const note = document.createElement('p');
       note.className = 'hint';
       note.textContent = 'None ticked shows them all.';
+      note.dataset['cfgKey'] = 'calendars';
       configPanel.appendChild(note);
     }
 
     // Filtering plus a count for the list — the agenda.
     if (currentMode === 'list') {
-      const which = cfgField('Calendars to show');
+      const which = cfgField('Calendars to show', 'calendars');
       which.appendChild(
         checkList(
           state.calendars.map((c) => ({ value: c.id, label: c.name })),
@@ -1950,9 +2316,10 @@ function boot(): void {
       const note = document.createElement('p');
       note.className = 'hint';
       note.textContent = 'None ticked shows them all.';
+      note.dataset['cfgKey'] = 'calendars';
       configPanel.appendChild(note);
 
-      const countField = cfgField('How many events');
+      const countField = cfgField('How many events', 'count');
       const count = document.createElement('input');
       count.type = 'number';
       count.min = '1';
@@ -2013,11 +2380,16 @@ function boot(): void {
         // The household's own setting is stored as an absence, so a wall that
         // switches to 24-hour later takes its clocks with it.
         (value) => setConfig(widget, 'clockFormat', value === '' ? undefined : value),
+        'clockFormat',
       ),
     );
     configPanel.appendChild(
-      switchRow('Show the date', '', cfg['showDate'] !== false, (checked) =>
-        setConfig(widget, 'showDate', checked ? undefined : false),
+      switchRow(
+        'Show the date',
+        '',
+        cfg['showDate'] !== false,
+        (checked) => setConfig(widget, 'showDate', checked ? undefined : false),
+        'showDate',
       ),
     );
   }
@@ -2030,7 +2402,7 @@ function boot(): void {
    * five-day forecast is a control that does nothing for half its range.
    */
   function buildWeatherConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const field = cfgField('How many days');
+    const field = cfgField('How many days', 'count');
     const count = document.createElement('input');
     count.type = 'number';
     count.min = '1';
@@ -2046,6 +2418,7 @@ function boot(): void {
     const note = document.createElement('p');
     note.className = 'hint';
     note.textContent = 'Empty shows every day the forecast has.';
+    note.dataset['cfgKey'] = 'count';
     configPanel.appendChild(note);
 
     // The symbol and the low used to be two switches here; they are rows on the
@@ -2054,7 +2427,7 @@ function boot(): void {
   }
 
   function buildShiftConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const who = cfgField('Whose rota');
+    const who = cfgField('Whose rota', 'people');
     who.appendChild(
       checkList(
         state.people.map((person) => ({ value: person.id, label: person.name })),
@@ -2068,6 +2441,7 @@ function boot(): void {
       const note = document.createElement('p');
       note.className = 'hint';
       note.textContent = 'None ticked shows everyone who is on today.';
+      note.dataset['cfgKey'] = 'people';
       configPanel.appendChild(note);
     }
 
@@ -2080,6 +2454,7 @@ function boot(): void {
         ],
         cfg['shiftName'] === 'code' ? 'code' : 'label',
         (value) => setConfig(widget, 'shiftName', value === 'code' ? 'code' : undefined),
+        'shiftName',
       ),
     );
 
@@ -2158,7 +2533,7 @@ function boot(): void {
    * switches keep working for a widget nobody has touched (`shiftLadder`).
    */
   function buildLadder(widget: Widget, cfg: Record<string, unknown>): void {
-    const field = cfgField('What it says');
+    const field = cfgField('What it says', 'fields');
     const list = document.createElement('div');
     list.className = 'le-ladder';
 
@@ -2168,9 +2543,17 @@ function boot(): void {
     const order = [...chosen, ...spec.fields.filter((name) => !chosen.includes(name))];
 
     const write = (next: readonly string[]): void => {
-      const cleaned: Record<string, unknown> = { ...(widget.config ?? {}) };
-      for (const key of spec.replaces) delete cleaned[key];
-      widget.config = cleaned;
+      /*
+       * Clear the switches this list replaces — in whichever lane is open.
+       *
+       * On the wall that is the widget's own config; on the ink lane it is the
+       * override object, and clearing the wall's copy from there would rewrite
+       * the household's wall from a panel's settings. The lanes are one-way by
+       * design and this is the one place that could have quietly broken it.
+       */
+      const cleared = clearLaneKeys(widget.config, lane, spec.replaces);
+      if (cleared !== undefined) widget.config = cleared;
+      else delete widget.config;
       setConfig(widget, 'fields', [...next]);
       renderConfigPanel();
     };
@@ -2301,7 +2684,7 @@ function boot(): void {
   }
 
   function buildHaConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const which = cfgField('Readings to show');
+    const which = cfgField('Readings to show', 'readings');
     which.appendChild(
       checkList(
         state.readings.map((r) => ({ value: r, label: r })),
@@ -2314,6 +2697,7 @@ function boot(): void {
     const note = document.createElement('p');
     note.className = 'hint';
     note.textContent = 'None ticked shows them all.';
+    note.dataset['cfgKey'] = 'readings';
     configPanel.appendChild(note);
 
     // What each of those readings says. Its default is per entity rather than

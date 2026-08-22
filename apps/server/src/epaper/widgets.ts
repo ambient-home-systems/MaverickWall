@@ -45,6 +45,7 @@ import {
   type ShiftField,
   type WeatherField,
 } from './ladder.js';
+import { withInk } from './honours.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 
 /** A widget placed on the canvas: fractional box, plus its stored options. */
@@ -250,7 +251,9 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
   };
 
   if (shifts.length === 0) {
-    drawLines(fb, ['No shift today'], box, 2, 'left');
+    // Sized to the box: at a fixed scale this read "No shift t" in a narrow
+    // column, which is not a smaller message but a broken one.
+    drawLines(fb, ['No shift today'], box, scaleToFit('No shift today', box.w, 2), 'left');
     return;
   }
 
@@ -461,7 +464,7 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
 function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Config): void {
   let days = forecastDays(manifest.panels['weather']);
   if (days.length === 0) {
-    drawLines(fb, ['No weather yet'], box, 2, 'left');
+    drawLines(fb, ['No weather yet'], box, scaleToFit('No weather yet', box.w, 2), 'left');
     return;
   }
   const wanted = config['count'];
@@ -743,8 +746,20 @@ export function renderFreeformEpaper(
       h: Math.round(widget.h * geometry.height),
     };
     if (box.w < 16 || box.h < 16) continue;
-    const inner = drawFrame(fb, box, widget.config);
-    drawWidget(fb, widget.type, inner, model, manifest, widget.config);
+    /*
+     * The ink lane, applied once and only here (RFC 005, direction B).
+     *
+     * A widget carries the household's wall settings and, optionally, an `ink`
+     * object saying what it does differently in black and white. Merging at the
+     * one place the panel draws a widget means every reader below — the frame,
+     * the ladders, each draw — is untouched and none of them can forget to ask.
+     * The wall renderer never looks at `ink` at all, which is what keeps the
+     * lane one-way: a household cannot change their kitchen wall by tuning a
+     * panel.
+     */
+    const config = withInk(widget.config);
+    const inner = drawFrame(fb, box, config);
+    drawWidget(fb, widget.type, inner, model, manifest, config);
   }
   return fb;
 }

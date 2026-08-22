@@ -14,6 +14,36 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**An eInk panel can now show your wall, in black and white.**
+
+Until now a panel had two choices: the layout it came with, or an arrangement
+you built for it from scratch. Building a second one meant every change you made
+to your wall had to be made again on the panel, by hand, for ever.
+
+A panel can now **follow a display**. Pick it under *What this panel draws* on
+the panel's own page — one of your walls, or the Default display — and it draws
+that arrangement. Move a box on the wall and the panel moves with it. Nothing
+is copied, so nothing drifts apart.
+
+**And each widget can say less on ink.** A panel is smaller, has no colour and
+no photographs, so open the wall's editor, tap a widget, and there is a new
+**On ink** switch beside its settings. What you change there changes the panel
+and nothing else — your wall keeps exactly what it had. A forecast can show
+three days on the panel and seven on the wall; a shift badge can drop to a name
+and a time; a clock can read differently.
+
+The panel's real frame is drawn right there beside the settings, in black and
+white, as the device would actually print it — not a browser's impression of
+one. And where a setting simply cannot survive the trip, it says so in plain
+words rather than quietly dropping it: *"Drop shadow — a shadow needs a grey the
+panel does not have."*
+
+Two smaller fixes on panels, both found by looking at a real frame: "No shift
+today" no longer reads "No shift t" in a narrow box, and "Nothing coming up" no
+longer runs out of its box and across the calendar beside it.
+
 ## 0.49.0
 
 **Home Assistant readings on an eInk panel ignored how you set them up.**

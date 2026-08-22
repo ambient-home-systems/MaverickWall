@@ -1533,6 +1533,46 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   color:var(--md-sys-color-on-surface)}
 .insp-close svg{width:20px;height:20px}
 .insp-body{padding:4px 18px 18px}
+/* The two lanes: the wall's settings, and what the widget says on ink.
+ *
+ * Above the tabs rather than beside them, because it does not choose a tab —
+ * it chooses which of the widget's two sets of settings the tabs are showing.
+ * A pill pair rather than an underline, so it cannot be mistaken for one.
+ *
+ * Both states are declared because the rule clears its background: see
+ * admin-button-states.test.ts, which derives that requirement from this
+ * stylesheet rather than from a list somebody remembers to update. */
+.insp-lanes[hidden]{display:none}
+.insp-lanes{display:flex;gap:6px;margin:8px 0 10px}
+.insp-lane{position:relative;margin:0;height:36px;padding:0 14px;background:none;border:0;
+  border-radius:18px;color:var(--md-sys-color-on-surface-variant);cursor:pointer;
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking)}
+.insp-lane::after{content:none}
+.insp-lane:hover,.insp-lane:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.insp-lane.is-on,.insp-lane.is-on:hover,.insp-lane.is-on:active{
+  background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container)}
+/* A widget that says something different on ink says so on the chip, so the
+ * lane can be read without opening it. */
+.insp-lane.has-override::before{content:"";position:absolute;top:8px;right:7px;width:6px;
+  height:6px;border-radius:50%;background:var(--md-sys-color-primary)}
+.insp-ink-head{margin:0 0 8px}
+/* The real frame the panel would draw, from the server. A white plate on both
+ * schemes, on the same argument as the QR and the e-paper preview: a physically
+ * white medium drawn honestly. */
+.insp-ink-frame{display:block;width:100%;height:auto;margin:0 0 12px;background:#fff;
+  border:1px solid var(--md-sys-color-outline-variant);border-radius:8px;
+  image-rendering:pixelated}
+.insp-ink-note{margin:14px 0 4px}
+.insp-ink-list{margin:0 0 4px;padding-left:18px;
+  color:var(--md-sys-color-on-surface-variant);
+  font-size:var(--md-sys-typescale-body-small-size);line-height:1.45}
+.insp-ink-reset{margin-top:12px;width:100%}
 /* Content | Style, inside the inspector. Only drawn when both apply. */
 .insp-tabs[hidden]{display:none}
 .insp-tabs{display:flex;gap:0;border-bottom:1px solid var(--md-sys-color-outline-variant);

@@ -405,6 +405,21 @@ export const screens = sqliteTable(
     /** 24-hour clock override; null follows the household (RFC 005). */
     clock24: integer('clock_24'),
     layoutMode: text('layout_mode'),
+    /**
+     * Whose canvas this screen draws when `layout_mode` is `follow`.
+     *
+     * A screen id, or null for the Default display's canvas. Only an e-paper
+     * panel is offered it: a panel that follows a wall draws the household's
+     * *arrangement* rather than a copy of it, which is what makes the per-widget
+     * `ink` override worth having — one canvas, two media, instead of two
+     * canvases that drift apart the first time somebody moves a box.
+     *
+     * A plain column, like `screen_id` on `layout_widgets` and for the same
+     * reason: SQLite cannot add a foreign key by `ALTER`. A screen that has been
+     * revoked or deleted since simply reads as a canvas with no widgets, which
+     * falls back to the built-in layout (rule nine) rather than to a blank panel.
+     */
+    layoutFollows: text('layout_follows'),
     layoutAspect: real('layout_aspect'),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */
     layoutLandscapeAspect: real('layout_landscape_aspect'),
