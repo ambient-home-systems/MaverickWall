@@ -442,7 +442,17 @@ body {
 }
 .wx-ico { font-size: 2.1rem; line-height: 1.5; }
 .wx-temp { font-size: 1.7rem; font-weight: 600; }
-.wx-temp .lo { color: var(--muted); font-weight: 400; }
+/*
+ * The low is quieter than the high, whether it sits beside it or on its own.
+ *
+ * It rides in a `.lo` span while the two are paired, and gets the class itself
+ * when the household separated them on the ladder — without that it drew as
+ * loudly as the high, which is the field's emphasis changing because of where
+ * it was put. That is the one thing the ladder promises never happens.
+ */
+.wx-temp .lo,
+.wx-temp.lo { color: var(--muted); font-weight: 400; }
+.wx-temp.lo { font-size: 1.3rem; }
 /* Spans the strip, because it is about the forecast rather than about a day. */
 .wx-note {
   grid-column: 1 / -1;

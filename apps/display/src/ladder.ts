@@ -8,10 +8,14 @@
  * kiosk, a 65" television, a 7.5" panel, a box dragged smaller yesterday —
  * resolves that same list against the room it actually has.
  *
- * It replaces two private opinions that lived in the renderers and that nobody
+ * It replaces private opinions that lived in the renderers and that nobody
  * outside the source could see or change: `box.h >= 44` in `epaper/widgets.ts`,
- * which decided when a shift card became a compact line, and the implicit "the
- * badge draws these four rows in this order, always" on the wall.
+ * which decided when a shift card became a compact line, and the implicit "these
+ * rows, in this order, always" in the shift badge and the forecast strip.
+ *
+ * Two widgets have one so far and their shapes are different, which is the
+ * point: a shift badge is one card of rows, and a forecast is a strip of days
+ * whose ladder applies inside each column. The model does not care.
  *
  * **It is deliberately not a language.** A ladder is an ordered subset of a
  * fixed, per-widget allowlist of field names — the same shape as
@@ -64,8 +68,31 @@ export const SHIFT_ROLES: Readonly<Record<ShiftField, LadderRole>> = {
  */
 export const DEFAULT_SHIFT_LADDER: readonly ShiftField[] = ['person', 'shift', 'hours', 'run'];
 
-const isShiftField = (value: unknown): value is ShiftField =>
-  typeof value === 'string' && (SHIFT_FIELDS as readonly string[]).includes(value);
+/**
+ * A stored ladder, filtered to the fields this widget can actually draw.
+ *
+ * Shared by every widget's resolver: the config object is one strict shape for
+ * all types (see `widgetConfigBody`), so a Weather widget carrying a Shift
+ * field — a canvas whose widget was retyped, or a hand-edited row — must read
+ * as "not for me" rather than as a row nothing can render. Duplicates are
+ * dropped, exactly as `parseBlocks` treats a repeated block name.
+ */
+function storedLadder<F extends string>(
+  stored: unknown,
+  allowed: readonly F[],
+): readonly F[] | undefined {
+  if (!Array.isArray(stored)) return undefined;
+  const seen: F[] = [];
+  for (const entry of stored) {
+    if (typeof entry !== 'string') continue;
+    const field = allowed.find((name) => name === entry);
+    if (field !== undefined && !seen.includes(field)) seen.push(field);
+  }
+  return seen.length > 0 ? seen : undefined;
+}
+
+const asConfig = (config: unknown): Record<string, unknown> =>
+  typeof config === 'object' && config !== null ? (config as Record<string, unknown>) : {};
 
 /**
  * Read a stored ladder, or derive one from the switches that predate it.
@@ -85,18 +112,9 @@ const isShiftField = (value: unknown): value is ShiftField =>
  * be a mistake than a household asking for a blank box.
  */
 export function shiftLadder(config?: unknown): readonly ShiftField[] {
-  const c = typeof config === 'object' && config !== null ? (config as Record<string, unknown>) : {};
-  const stored = c['fields'];
-
-  if (Array.isArray(stored)) {
-    const seen: ShiftField[] = [];
-    for (const entry of stored) {
-      // Duplicates are dropped rather than drawn twice, exactly as `parseBlocks`
-      // treats a repeated block name.
-      if (isShiftField(entry) && !seen.includes(entry)) seen.push(entry);
-    }
-    if (seen.length > 0) return seen;
-  }
+  const c = asConfig(config);
+  const stored = storedLadder(c['fields'], SHIFT_FIELDS);
+  if (stored !== undefined) return stored;
 
   return DEFAULT_SHIFT_LADDER.filter((field) => {
     if (field === 'hours') return c['showHours'] !== false;
@@ -105,9 +123,71 @@ export function shiftLadder(config?: unknown): readonly ShiftField[] {
   });
 }
 
+/* -------------------------------------------------------------- WEATHER --- */
+
+/**
+ * The rows one day of the forecast can draw. Stable for ever once shipped.
+ *
+ * A ladder for a widget whose shape is a *strip of days* rather than one card:
+ * it applies inside each day's column, so reordering moves the same rows in
+ * every column and dropping gives up the same row in every column. How many
+ * days there are is `count`, a separate question and a different axis.
+ */
+export const WEATHER_FIELDS = ['name', 'icon', 'high', 'low'] as const;
+export type WeatherField = (typeof WEATHER_FIELDS)[number];
+
+export const WEATHER_ROLES: Readonly<Record<WeatherField, LadderRole>> = {
+  name: 'kicker',
+  icon: 'body',
+  high: 'headline',
+  low: 'small',
+};
+
+/** The strip every wall already drew: the day, its glyph, then its two numbers. */
+export const DEFAULT_WEATHER_LADDER: readonly WeatherField[] = ['name', 'icon', 'high', 'low'];
+
+/**
+ * The stored weather ladder, or the one the old switches describe.
+ *
+ * `showIcon` / `showLow` are to this what `showHours` / `showRun` are to the
+ * shift badge: absence-means-on switches that predate the list, honoured here so
+ * a widget nobody has touched keeps drawing what it drew.
+ */
+export function weatherLadder(config?: unknown): readonly WeatherField[] {
+  const c = asConfig(config);
+  const stored = storedLadder(c['fields'], WEATHER_FIELDS);
+  if (stored !== undefined) return stored;
+
+  return DEFAULT_WEATHER_LADDER.filter((field) => {
+    if (field === 'icon') return c['showIcon'] !== false;
+    if (field === 'low') return c['showLow'] !== false;
+    return true;
+  });
+}
+
+/**
+ * Whether the high and the low share a line.
+ *
+ * They do when they are next to each other, because a temperature *range* reads
+ * as one thing — "24° 13°C" is how the strip has always drawn it, and splitting
+ * it would re-typeset every wall already hanging in a kitchen for the sake of a
+ * uniform rule nobody asked for. Separate them in the list and they separate on
+ * the wall, which is the household saying they want them apart.
+ *
+ * Deliberately about adjacency and not about which is first: a household who
+ * puts the low before the high gets "13°C 24°", still one line, still a range.
+ */
+export function pairsTemperatures(ladder: readonly WeatherField[]): boolean {
+  const high = ladder.indexOf('high');
+  const low = ladder.indexOf('low');
+  return high >= 0 && low >= 0 && Math.abs(high - low) === 1;
+}
+
+/* ------------------------------------------------------------- RESOLVING --- */
+
 /** One resolved row: a field, how loudly to draw it, and what it says. */
-export interface LadderRow {
-  readonly field: ShiftField;
+export interface LadderRow<F extends string = string> {
+  readonly field: F;
   readonly role: LadderRole;
   readonly text: string;
 }
@@ -120,15 +200,16 @@ export interface LadderRow {
  * position. That is not the same as the household switching it off, and neither
  * is it a gap in the badge.
  */
-export function ladderRows(
-  ladder: readonly ShiftField[],
-  values: Readonly<Partial<Record<ShiftField, string>>>,
-): readonly LadderRow[] {
-  const rows: LadderRow[] = [];
+export function ladderRows<F extends string>(
+  ladder: readonly F[],
+  values: Readonly<Partial<Record<F, string>>>,
+  roles: Readonly<Record<F, LadderRole>>,
+): readonly LadderRow<F>[] {
+  const rows: LadderRow<F>[] = [];
   for (const field of ladder) {
     const text = values[field];
     if (text === undefined || text === '') continue;
-    rows.push({ field, role: SHIFT_ROLES[field], text });
+    rows.push({ field, role: roles[field], text });
   }
   return rows;
 }
@@ -145,11 +226,11 @@ export function ladderRows(
  * dragged a box too small should see the thing they put at the top of the list,
  * clipped if it comes to that, rather than an empty rectangle.
  */
-export function dropToFit(
-  rows: readonly LadderRow[],
+export function dropToFit<F extends string>(
+  rows: readonly LadderRow<F>[],
   budget: number,
   heightOf: (role: LadderRole) => number,
-): readonly LadderRow[] {
+): readonly LadderRow<F>[] {
   let kept = rows;
   while (kept.length > 1) {
     const total = kept.reduce((sum, row) => sum + heightOf(row.role), 0);

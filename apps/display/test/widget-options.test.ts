@@ -171,12 +171,14 @@ describe('the weather widget view', () => {
     expect(weatherWidgetView(forecast(3), { count: 10 }).days).toHaveLength(3);
   });
 
-  it('keeps the low and the symbol unless they are switched off', () => {
-    expect(weatherWidgetView(forecast(1))).toMatchObject({ low: true, icon: true });
-    expect(weatherWidgetView(forecast(1), { showLow: false, showIcon: false })).toMatchObject({
-      low: false,
-      icon: false,
-    });
+  it('answers only how many days, because the rows are the ladder’s question', () => {
+    // `showLow` and `showIcon` stopped being flags here when the ladder arrived
+    // — `weatherLadder` is the one place a forecast's rows are decided, and two
+    // representations of one fact is the drift the seam exists to stop.
+    expect(Object.keys(weatherWidgetView(forecast(1)))).toEqual(['days']);
+    expect(weatherWidgetView(forecast(4), { showLow: false, showIcon: false }).days).toHaveLength(
+      4,
+    );
   });
 
   it('reads a count it cannot use as no count at all', () => {

@@ -11,7 +11,15 @@ import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
-import { ladderRows, type ShiftField } from './ladder.js';
+import {
+  SHIFT_ROLES,
+  WEATHER_ROLES,
+  ladderRows,
+  pairsTemperatures,
+  weatherLadder,
+  type ShiftField,
+  type WeatherField,
+} from './ladder.js';
 import {
   clockWidgetView,
   panelRowLimit,
@@ -91,7 +99,7 @@ function shiftBadge(
   const badge = el('div', 'shift-badge');
   paintShift(badge, shift.colorToken, shift.color);
 
-  for (const row of ladderRows(ladder, shiftValues(entry, options))) {
+  for (const row of ladderRows(ladder, shiftValues(entry, options), SHIFT_ROLES)) {
     if (row.field === 'person') {
       /*
        * The picture, where the person already is. Same-origin and behind the
@@ -135,7 +143,7 @@ function shiftLineBadge(
   options: ShiftWidgetView,
   ladder: readonly ShiftField[],
 ): HTMLElement {
-  const rows = ladderRows(ladder, shiftValues(entry, options));
+  const rows = ladderRows(ladder, shiftValues(entry, options), SHIFT_ROLES);
   const parts = rows.map((row) => row.text);
   const head = rows[0];
   const text =
@@ -222,21 +230,72 @@ function ownerMark(event: EventModel, className: string): HTMLElement {
  * URL and rule three forbids the wall from fetching one, so the server maps
  * the forecast wording to a glyph the device already has.
  */
-function renderWeather(model: DisplayModel, config?: unknown): HTMLElement | undefined {
+/** The class each forecast row keeps, so the stylesheet is unchanged by order. */
+const WEATHER_ROW_CLASS: Readonly<Record<WeatherField, string>> = {
+  name: 'wx-name',
+  icon: 'wx-ico',
+  high: 'wx-temp',
+  low: 'wx-temp',
+};
+
+/**
+ * One day of the strip, from the ladder.
+ *
+ * The high and the low share a row when the household left them next to each
+ * other, because a temperature range reads as one thing and that is how this
+ * strip has always drawn it. `pairsTemperatures` is where that rule lives; here
+ * it only decides whether the second of the pair is skipped as its own row.
+ *
+ * A column down to its last row is *not* collapsed onto one line the way a
+ * shift badge is, and that is deliberate rather than an omission. A badge is
+ * one wide card, so joining its rows spends the same room on more; a forecast
+ * column is narrow by construction — a fifth of the box — so "Today 24° 13°C"
+ * in one would truncate rather than inform. The panel makes the same call by
+ * column width in `drawWeather`, not by row count.
+ */
+function weatherColumn(
+  rows: readonly { readonly field: WeatherField; readonly text: string }[],
+  paired: boolean,
+): HTMLElement {
+  const cell = el('div', 'wx-day');
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]!;
+    const next = rows[index + 1];
+    if (paired && (row.field === 'high' || row.field === 'low') && next !== undefined &&
+        (next.field === 'high' || next.field === 'low')) {
+      const temp = el('div', 'wx-temp');
+      temp.appendChild(document.createTextNode(`${row.text} `));
+      temp.appendChild(el('span', 'lo', next.text));
+      cell.appendChild(temp);
+      index++;
+      continue;
+    }
+    // A low on its own row keeps the quieter treatment it has when it rides
+    // beside the high: its emphasis is a property of the field, not of whether
+    // the household happened to put it next to something.
+    const cls = row.field === 'low' ? `${WEATHER_ROW_CLASS[row.field]} lo` : WEATHER_ROW_CLASS[row.field];
+    cell.appendChild(el('div', cls, row.text));
+  }
+  return cell;
+}
+
+function renderWeather(
+  model: DisplayModel,
+  config?: unknown,
+  ladder: readonly WeatherField[] = weatherLadder(config),
+): HTMLElement | undefined {
   const view = weatherWidgetView(model.weather, config);
   if (view.days.length === 0) return undefined;
 
+  const paired = pairsTemperatures(ladder);
   const strip = el('section', 'wx');
   for (const day of view.days) {
-    const cell = el('div', 'wx-day');
-    cell.appendChild(el('div', 'wx-name', day.name));
-    if (view.icon) cell.appendChild(el('div', 'wx-ico', day.icon));
-    const temp = el('div', 'wx-temp');
-    // The high keeps its trailing space only when something follows it.
-    temp.appendChild(document.createTextNode(view.low ? `${day.high} ` : day.high));
-    if (view.low) temp.appendChild(el('span', 'lo', day.low));
-    cell.appendChild(temp);
-    strip.appendChild(cell);
+    const rows = ladderRows(
+      ladder,
+      { name: day.name, icon: day.icon, high: day.high, low: day.low },
+      WEATHER_ROLES,
+    );
+    strip.appendChild(weatherColumn(rows, paired));
   }
 
   if (model.weatherNote !== undefined) {
@@ -1114,11 +1173,11 @@ export function renderFreeform(
   // column. Includes the ones the week fallback below produces.
   const agendas: HTMLElement[] = [];
 
-  // Shift badges, to be re-checked once they have a real size. The ladder's
-  // bottom rungs are given up one at a time when the box cannot hold them —
-  // measured after layout for the same reason the week columns are, and by the
-  // same rule: a drawing decision, never a saved one.
-  const shiftBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
+  // Widgets with a field ladder, to be re-checked once they have a real size.
+  // The ladder's bottom rungs are given up one at a time when the box cannot
+  // hold them — measured after layout for the same reason the week columns are,
+  // and by the same rule: a drawing decision, never a saved one.
+  const ladderBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
 
   for (const widget of layout.widgets) {
     const box = el('div', `fw fw-${widget.type}`);
@@ -1185,7 +1244,9 @@ export function renderFreeform(
       box.appendChild(scale);
       toFit.push({ box, scale, min: minScaleFor(widget.type) });
       if (widget.type === 'calendar' && body.classList.contains('next')) agendas.push(body);
-      if (widget.type === 'shift') shiftBoxes.push({ box, widget });
+      if (widget.type === 'shift' || widget.type === 'weather') {
+        ladderBoxes.push({ box, widget });
+      }
     }
     canvas.appendChild(box);
   }
@@ -1229,29 +1290,42 @@ export function renderFreeform(
    * box too small should see the thing they put first, clipped if it comes to
    * that, rather than an empty rectangle (rule nine).
    */
-  for (const { box, widget } of shiftBoxes) {
-    const view = shiftWidgetView(model.todayShifts, widget.config);
-    let ladder = view.ladder;
+  for (const { box, widget } of ladderBoxes) {
+    const shift = widget.type === 'shift';
+    const view = shift ? shiftWidgetView(model.todayShifts, widget.config) : undefined;
+    let ladder: readonly string[] = shift
+      ? (view?.ladder ?? [])
+      : weatherLadder(widget.config);
+    const full = ladder.length;
     let scale = box.querySelector('.fw-scale');
     while (
       ladder.length > 1 &&
       scale instanceof HTMLElement &&
-      fitToBox(box, scale, { min: minScaleFor('shift') })
+      fitToBox(box, scale, { min: minScaleFor(widget.type) })
     ) {
       ladder = ladder.slice(0, -1);
-      const rebuilt = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
-      // Down to one row where the ladder asked for more: a line, not a word.
-      const line = ladder.length === 1 && view.ladder.length > 1;
-      for (const entry of view.entries) {
-        rebuilt.appendChild(
-          line ? shiftLineBadge(entry, view, view.ladder) : shiftBadge(entry, view, ladder),
-        );
+      let body: HTMLElement | undefined;
+      if (shift && view !== undefined) {
+        const rebuilt = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
+        // Down to one row where the ladder asked for more: a line, not a word.
+        const line = ladder.length === 1 && full > 1;
+        for (const entry of view.entries) {
+          rebuilt.appendChild(
+            line
+              ? shiftLineBadge(entry, view, view.ladder)
+              : shiftBadge(entry, view, ladder as readonly ShiftField[]),
+          );
+        }
+        body = rebuilt;
+      } else {
+        body = renderWeather(model, widget.config, ladder as readonly WeatherField[]);
       }
+      if (body === undefined) break;
       const next = el('div', 'fw-scale');
-      next.appendChild(contentWithTitle(rebuilt, widget.config));
+      next.appendChild(contentWithTitle(body, widget.config));
       box.textContent = '';
       box.appendChild(next);
-      fitToBox(box, next, { min: minScaleFor('shift') });
+      fitToBox(box, next, { min: minScaleFor(widget.type) });
       scale = next;
     }
   }

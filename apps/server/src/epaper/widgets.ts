@@ -31,12 +31,17 @@ import {
   type PanelGeometry,
 } from './render.js';
 import {
+  SHIFT_ROLES,
+  WEATHER_ROLES,
   dropToFit,
   ladderRows,
+  pairsTemperatures,
   shiftLadder,
+  weatherLadder,
   type LadderRole,
   type LadderRow,
   type ShiftField,
+  type WeatherField,
 } from './ladder.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 
@@ -264,7 +269,7 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
 
   const [only] = shifts;
   if (shifts.length === 1 && only !== undefined) {
-    const rows = ladderRows(ladder, valuesFor(only));
+    const rows = ladderRows(ladder, valuesFor(only), SHIFT_ROLES);
     /*
      * How tall each role is before the headline is allowed to grow.
      *
@@ -317,7 +322,7 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
   // More than one person: a compact line each, sized so the longest still fits
   // rather than being cut at the box edge. The ladder decides which parts are
   // on the line and in what order, exactly as it decides the rows above.
-  const lines = shifts.map((s) => compactLine(ladderRows(ladder, valuesFor(s))));
+  const lines = shifts.map((s) => compactLine(ladderRows(ladder, valuesFor(s), SHIFT_ROLES)));
   const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
   drawLines(fb, lines, box, scale, 'left');
 }
@@ -329,7 +334,7 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
  * attribution and "Amy Nights" reads as a mistake. Anywhere else it is just
  * another part, since "Nights: Amy" would attribute the wrong way round.
  */
-function compactLine(rows: readonly LadderRow[]): string {
+function compactLine(rows: readonly LadderRow<ShiftField>[]): string {
   const parts = rows.map((row) => row.text);
   if (rows[0]?.field === 'person' && parts.length > 1) {
     const [head, ...rest] = parts;
@@ -461,7 +466,43 @@ function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Conf
   if (typeof wanted === 'number' && Number.isFinite(wanted) && wanted >= 1) {
     days = days.slice(0, Math.trunc(wanted));
   }
-  const lows = config['showLow'] !== false;
+
+  const ladder = weatherLadder(config);
+  const paired = pairsTemperatures(ladder);
+  /*
+   * `icon` never resolves here: the panel's font is 0x20–0x7E and a forecast
+   * glyph is not in it, so the rung is simply dropped — the same way `run` is
+   * dropped from a shift ladder on a screen that has never had a row for it.
+   * The ladder is shared; the data is not.
+   */
+  const rowsFor = (day: EpaperForecastDay): readonly LadderRow<WeatherField>[] =>
+    ladderRows(ladder, { name: day.name, high: day.high, low: day.low }, WEATHER_ROLES);
+
+  /**
+   * The rows of one column, with the temperatures folded onto one line when the
+   * household left them adjacent — "24  13F" is how the strip reads, and it is
+   * what the wall does with the same ladder.
+   */
+  const foldPairs = (
+    rows: readonly LadderRow<WeatherField>[],
+  ): { readonly text: string; readonly role: LadderRole }[] => {
+    const out: { text: string; role: LadderRole }[] = [];
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index]!;
+      const next = rows[index + 1];
+      const isTemp = (field: WeatherField): boolean => field === 'high' || field === 'low';
+      if (paired && isTemp(row.field) && next !== undefined && isTemp(next.field)) {
+        // The pair takes the louder of the two roles: a range led by the high
+        // is a headline, and pairing must not quietly demote it.
+        const role = row.role === 'headline' || next.role === 'headline' ? 'headline' : row.role;
+        out.push({ text: `${row.text}  ${next.text}`, role });
+        index++;
+        continue;
+      }
+      out.push({ text: row.text, role: row.role });
+    }
+    return out;
+  };
 
   /*
    * Columns when each one has room to be read, lines when it has not — the same
@@ -471,27 +512,50 @@ function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Conf
    */
   const columnWidth = Math.floor(box.w / days.length);
   if (columnWidth >= 56 && box.h >= 40) {
-    days.forEach((day, index) => {
+    const ROW_GAP = 6;
+    const heightOf = (role: LadderRole): number =>
+      (role === 'headline' ? GLYPH_SIZE * 3 : GLYPH_SIZE) + ROW_GAP;
+    // Size comes from the *role*, never from the row's position. Putting the
+    // temperatures above the day name must not make the day name enormous —
+    // that is the ladder's own rule, and sizing by index broke it the moment a
+    // household reordered anything. Found by rendering a reordered strip.
+    const maxScale = (role: LadderRole): number => (role === 'headline' ? 3 : 1);
+
+    const columns = days.map((day) => foldPairs(dropToFit(rowsFor(day), box.h, heightOf)));
+    /*
+     * One scale per row, across every column.
+     *
+     * `scaleToFit` answers per string, so "20  9C" fits a size that "24  13C"
+     * does not and the strip came out with one column twice the size of its
+     * neighbours — a forecast that reads as five unrelated widgets. Taking the
+     * smallest that fits them all is what keeps a strip a strip.
+     */
+    const rowCount = columns.reduce((most, rows) => Math.max(most, rows.length), 0);
+    const scales: number[] = [];
+    for (let row = 0; row < rowCount; row++) {
+      let scale = 0;
+      for (const rows of columns) {
+        const cell = rows[row];
+        if (cell === undefined) continue;
+        const fits = scaleToFit(cell.text, columnWidth - 4, maxScale(cell.role));
+        scale = scale === 0 ? fits : Math.min(scale, fits);
+      }
+      scales.push(Math.max(1, scale));
+    }
+
+    columns.forEach((rows, index) => {
       const column: Box = { x: box.x + columnWidth * index, y: box.y, w: columnWidth - 4, h: box.h };
-      const nameScale = scaleToFit(day.name, column.w, 1);
-      drawLines(fb, [fit(day.name, column.w, { scale: nameScale })], column, nameScale, 'left');
-      const rest: { text: string; scale: number }[] = [
-        { text: day.high, scale: scaleToFit(day.high, column.w, 3) },
-      ];
-      if (lows) rest.push({ text: day.low, scale: scaleToFit(day.low, column.w, 2) });
       drawStack(
         fb,
-        { ...column, y: column.y + GLYPH_SIZE + 6, h: Math.max(0, column.h - GLYPH_SIZE - 6) },
-        rest,
+        column,
+        rows.map((cell, row) => ({ text: cell.text, scale: scales[row] ?? 1 })),
         'left',
       );
     });
     return;
   }
 
-  const lines = days.map((day) =>
-    [day.name, day.high, lows ? day.low : ''].filter((part) => part !== '').join('  '),
-  );
+  const lines = days.map((day) => foldPairs(rowsFor(day)).map((cell) => cell.text).join('  '));
   const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
   drawLines(fb, lines, box, scale, 'left');
 }

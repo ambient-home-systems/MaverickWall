@@ -125,16 +125,6 @@ export function clockWidgetView(config?: unknown): ClockWidgetView {
 export interface WeatherWidgetView {
   /** The days to draw, already capped. Empty means draw nothing. */
   readonly days: readonly WeatherDayModel[];
-  /** The overnight low beside the high. */
-  readonly low: boolean;
-  /**
-   * The forecast glyph.
-   *
-   * The wall's only: a panel's bitmap font is 0x20–0x7E and a weather glyph is
-   * not in it, so a 1-bit frame has no icon to hide. Stated rather than left to
-   * be discovered on a panel that quietly ignores the switch.
-   */
-  readonly icon: boolean;
 }
 
 /**
@@ -144,6 +134,11 @@ export interface WeatherWidgetView {
  * strict config object for every type, and a key a type does not read is simply
  * not read. Absent means every day the household's forecast setting supplies,
  * which is what a bare widget has always drawn.
+ *
+ * Which *rows* each day draws is the ladder's question, not this one, and it is
+ * answered in `ladder.ts` — `showIcon` and `showLow` stopped being flags here
+ * when the ladder arrived, for the reason the shift badge's did: two
+ * representations of one fact is the drift the seam exists to stop.
  */
 export function weatherWidgetView(
   days: readonly WeatherDayModel[],
@@ -151,11 +146,7 @@ export function weatherWidgetView(
 ): WeatherWidgetView {
   const c = read(config);
   const wanted = count(c['count'], 50);
-  return {
-    days: wanted === undefined ? days : days.slice(0, wanted),
-    low: c['showLow'] !== false,
-    icon: c['showIcon'] !== false,
-  };
+  return { days: wanted === undefined ? days : days.slice(0, wanted) };
 }
 
 /* --------------------------------------------------------- MODULE PANEL --- */

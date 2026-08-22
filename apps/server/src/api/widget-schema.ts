@@ -90,12 +90,22 @@ export const widgetConfigBody = z
      * string that reaches a renderer, which is the same argument the recipe
      * engine's transform makes.
      *
-     * Absent means the ladder the badge always drew, minus whatever the two
-     * switches below turned off — so a widget saved before this existed is
-     * untouched. Present, it is the complete list and those switches no longer
-     * apply to it; the editor clears them when it writes this.
+     * Absent means the ladder the widget always drew, minus whatever its own
+     * switches turned off (`showHours`/`showRun` for a shift badge,
+     * `showIcon`/`showLow` for a forecast strip) — so a widget saved before this
+     * existed is untouched. Present, it is the complete list and those switches
+     * no longer apply to it; the editor clears them when it writes this.
+     *
+     * One enum for every widget with a ladder, because the config is one strict
+     * object for every type: each resolver filters to its own allowlist, so a
+     * Weather widget carrying a shift field reads as "not for me" rather than as
+     * a row nothing can render. The alternative — a key per widget — would be
+     * four names for one idea.
      */
-    fields: z.array(z.enum(['person', 'shift', 'hours', 'run'])).max(4).optional(),
+    fields: z
+      .array(z.enum(['person', 'shift', 'hours', 'run', 'name', 'icon', 'high', 'low']))
+      .max(8)
+      .optional(),
     shiftName: z.enum(['label', 'code']).optional(),
     showFace: z.boolean().optional(),
     showHours: z.boolean().optional(),
