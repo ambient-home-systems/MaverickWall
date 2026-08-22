@@ -865,6 +865,25 @@ column choosing its own scale from its own string, so `20  9C` fitted a size
 per row across every column is what keeps a strip a strip. Both found by
 rendering a frame and looking at it.
 
+**A third widget has one, and it found a live divergence rather than adding a
+setting.** `display_mode` is a *per-entity* column with four named shapes
+(`value`, `label_value`, `icon_state`, `presence`), and what each one drew lived
+in two `if` statements inside `renderHouse` and nowhere else — so
+`epaper/widgets.ts` never read it at all. Every reading went through
+`drawPanel`'s tolerant reader as "label: value", and a reading set to `value`
+said `Locked` on the wall and `Front door: Locked` on a panel. One stored value,
+two renderers, two answers: `shifts[0]` again, in a different widget. Found by
+rendering one and looking at it.
+
+So the mode is not duplicated by the ladder — it *is* a ladder, and
+`HOUSE_MODE_LADDERS` is that meaning written down where both renderers read it.
+A stored `fields` list is the override, and the trade it makes is real and
+stated in the editor: a per-widget list cannot express per-entity shapes, so
+writing one flattens them. The house widget is deliberately *not* in the wall's
+drop loop — its ladder is per reading, so there is no single list to take a rung
+off — and the icon rung resolves to nothing on a panel, the same way a forecast
+glyph does.
+
 **The editor marks the cut from the preview, not from a prediction.** The
 inspector's list strikes through the rows the box is currently too small for,
 counted out of the real `renderFreeform` output in the shadow-root preview —

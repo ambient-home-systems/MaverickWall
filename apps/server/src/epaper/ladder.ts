@@ -89,6 +89,40 @@ export function pairsTemperatures(ladder: readonly WeatherField[]): boolean {
   return high >= 0 && low >= 0 && Math.abs(high - low) === 1;
 }
 
+export const HOUSE_FIELDS = ['icon', 'label', 'value'] as const;
+export type HouseField = (typeof HOUSE_FIELDS)[number];
+
+export const HOUSE_ROLES: Readonly<Record<HouseField, LadderRole>> = {
+  icon: 'body',
+  label: 'kicker',
+  value: 'headline',
+};
+
+/** What each `display_mode` means, as a ladder. See the display's copy. */
+export const HOUSE_MODE_LADDERS: Readonly<Record<string, readonly HouseField[]>> = {
+  value: ['value'],
+  label_value: ['label', 'value'],
+  icon_state: ['icon', 'label', 'value'],
+  presence: ['icon', 'label', 'value'],
+};
+
+/**
+ * The ladder one reading draws, from the widget's list or from its own mode.
+ *
+ * Until this existed the panel ignored `display_mode` outright — every reading
+ * came out as "label: value" through `drawPanel`'s tolerant reader, so a
+ * reading set to `value` said `Locked` on the wall and `Front door: Locked`
+ * here. This is that divergence closed.
+ */
+export function houseLadder(
+  config: Readonly<Record<string, unknown>>,
+  mode: string,
+): readonly HouseField[] {
+  const stored = storedLadder(config['fields'], HOUSE_FIELDS);
+  if (stored !== undefined) return stored;
+  return HOUSE_MODE_LADDERS[mode] ?? HOUSE_MODE_LADDERS['label_value'] ?? HOUSE_FIELDS;
+}
+
 export interface LadderRow<F extends string = string> {
   readonly field: F;
   readonly role: LadderRole;

@@ -21,7 +21,14 @@ import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
 import { WIDGET_VIEWS } from './widget-views.js';
-import { SHIFT_FIELDS, WEATHER_FIELDS, shiftLadder, weatherLadder } from './ladder.js';
+import {
+  HOUSE_FIELDS,
+  SHIFT_FIELDS,
+  WEATHER_FIELDS,
+  houseLadder,
+  shiftLadder,
+  weatherLadder,
+} from './ladder.js';
 
 interface Widget {
   id: string;
@@ -2094,6 +2101,8 @@ function boot(): void {
     icon: ['The symbol', '☀'],
     high: ['The high', '24°'],
     low: ['The overnight low', '13°C'],
+    label: ['What it is', 'Kitchen'],
+    value: ['The reading', '19.4 °C'],
   };
 
   /**
@@ -2122,6 +2131,16 @@ function boot(): void {
       fields: WEATHER_FIELDS,
       resolve: (cfg) => weatherLadder(cfg),
       replaces: ['showIcon', 'showLow'],
+    },
+    /*
+     * A reading's parts. Its default comes from each entity's own display mode
+     * rather than from one list, so the editor shows the commonest of those —
+     * `label_value` — until the household writes a list of their own.
+     */
+    homeassistant: {
+      fields: HOUSE_FIELDS,
+      resolve: (cfg) => houseLadder(cfg, 'label_value'),
+      replaces: [],
     },
   };
 
@@ -2198,8 +2217,12 @@ function boot(): void {
     const note = document.createElement('p');
     note.className = 'hint';
     note.textContent =
-      'First is drawn first, and given up last. When the box is too small the ' +
-      'bottom of the list goes first — so put what matters at the top.';
+      widget.type === 'homeassistant'
+        ? 'Each reading follows the shape you set it on the Home Assistant ' +
+          'screen. Change this list and every reading in this widget uses it ' +
+          'instead — one shape for all of them.'
+        : 'First is drawn first, and given up last. When the box is too small ' +
+          'the bottom of the list goes first — so put what matters at the top.';
     configPanel.appendChild(note);
     ladderPanels.push({ widget, list });
     markLadderCut();
@@ -2292,6 +2315,10 @@ function boot(): void {
     note.className = 'hint';
     note.textContent = 'None ticked shows them all.';
     configPanel.appendChild(note);
+
+    // What each of those readings says. Its default is per entity rather than
+    // per widget, which the ladder's own hint explains.
+    buildLadder(widget, cfg);
   }
 
   // ---- pointer interaction ---------------------------------------------

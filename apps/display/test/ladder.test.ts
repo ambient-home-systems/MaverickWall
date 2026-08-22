@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SHIFT_LADDER,
   DEFAULT_WEATHER_LADDER,
+  HOUSE_FIELDS,
+  HOUSE_MODE_LADDERS,
+  HOUSE_ROLES,
   SHIFT_FIELDS,
   SHIFT_ROLES,
   WEATHER_FIELDS,
   WEATHER_ROLES,
   dropToFit,
+  houseLadder,
   ladderRows,
   pairsTemperatures,
   shiftLadder,
@@ -223,5 +227,61 @@ describe('the forecast strip’s ladder', () => {
       WEATHER_ROLES,
     );
     expect(rows.map((r) => r.field)).toEqual(['name', 'high', 'low']);
+  });
+});
+
+/* ---------------------------------------------------------------- HOUSE --- */
+
+describe('a Home Assistant reading’s ladder', () => {
+  it('is the entity’s own display mode when the widget says nothing', () => {
+    /*
+     * `display_mode` is a per-entity setting, and this table *is* its meaning —
+     * written down for the first time. It used to live in two `if` statements
+     * inside `renderHouse`, which is how the panel came to ignore it and draw
+     * "Front door: Locked" where the wall drew "Locked".
+     */
+    expect(houseLadder({}, 'value')).toEqual(['value']);
+    expect(houseLadder({}, 'label_value')).toEqual(['label', 'value']);
+    expect(houseLadder({}, 'icon_state')).toEqual(['icon', 'label', 'value']);
+    expect(houseLadder({}, 'presence')).toEqual(['icon', 'label', 'value']);
+  });
+
+  it('covers every mode the column allows', () => {
+    // A missing mode would fall back silently and draw a shape the household
+    // did not choose. The four are the enum on `ha_entities.display_mode`.
+    expect(Object.keys(HOUSE_MODE_LADDERS).sort()).toEqual([
+      'icon_state',
+      'label_value',
+      'presence',
+      'value',
+    ]);
+    for (const ladder of Object.values(HOUSE_MODE_LADDERS)) {
+      expect(ladder.length).toBeGreaterThan(0);
+      for (const field of ladder) expect(HOUSE_FIELDS).toContain(field);
+    }
+  });
+
+  it('falls back to the column’s own default for a mode it does not know', () => {
+    // A wall a version ahead of its server, or a document out of IndexedDB.
+    expect(houseLadder({}, 'nonsense')).toEqual(['label', 'value']);
+    expect(houseLadder(undefined, '')).toEqual(['label', 'value']);
+  });
+
+  it('lets a widget’s list win for every reading in it', () => {
+    // The trade a household makes by touching it: a per-widget list cannot
+    // express per-entity shapes, so writing one flattens them — which is what
+    // the editor's hint says in words.
+    expect(houseLadder({ fields: ['value'] }, 'icon_state')).toEqual(['value']);
+    expect(houseLadder({ fields: ['value', 'label'] }, 'value')).toEqual(['value', 'label']);
+  });
+
+  it('ignores fields that belong to another widget', () => {
+    expect(houseLadder({ fields: ['person', 'high', 'label'] }, 'value')).toEqual(['label']);
+    // Nothing of its own in the list is no list at all — never an empty reading.
+    expect(houseLadder({ fields: ['person', 'high'] }, 'value')).toEqual(['value']);
+  });
+
+  it('gives every field an emphasis', () => {
+    for (const field of HOUSE_FIELDS) expect(HOUSE_ROLES[field], field).toBeDefined();
   });
 });
