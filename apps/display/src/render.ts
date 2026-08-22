@@ -4,12 +4,14 @@ import type {
   EventModel,
   HorizonCell,
   InterruptModel,
+  TodayShiftModel,
 } from './viewmodel.js';
 import { localDate } from './viewmodel.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
+import { shiftWidgetView, type ShiftWidgetView } from './shift-widget.js';
 
 /**
  * The DOM, and no decisions.
@@ -67,15 +69,14 @@ function shiftWindow(shift: { readonly startTime?: string; readonly endTime?: st
 }
 
 /**
- * The shift badge, shared by the today block and the free-form shift widget.
+ * One person's shift badge.
  *
- * Absent when nobody is on a rota — the same statement in both places, so a
- * household with no shift worker never sees a hole where a feature would be.
+ * Built per entry rather than per model, because a household can have more than
+ * one person on a rota and the wall used to draw only whoever sorted first.
+ * What it is allowed to say is decided in `shiftWidgetView`, not here.
  */
-function shiftBadge(model: DisplayModel): HTMLElement | undefined {
-  const shift = model.todayShift;
-  if (shift === undefined) return undefined;
-
+function shiftBadge(entry: TodayShiftModel, options: ShiftWidgetView): HTMLElement {
+  const shift = entry.shift;
   const badge = el('div', 'shift-badge');
   paintShift(badge, shift.colorToken, shift.color);
   /*
@@ -84,7 +85,7 @@ function shiftBadge(model: DisplayModel): HTMLElement | undefined {
    */
   const who = el('div', 'who');
   const avatar = shift.personAvatarUrl;
-  if (avatar !== undefined && avatar !== null && avatar !== '') {
+  if (options.face && avatar !== undefined && avatar !== null && avatar !== '') {
     const image = document.createElement('img');
     image.className = 'who-face';
     image.src = avatar;
@@ -95,10 +96,14 @@ function shiftBadge(model: DisplayModel): HTMLElement | undefined {
   }
   who.appendChild(document.createTextNode(shift.personName));
   badge.appendChild(who);
-  badge.appendChild(el('div', 'what', shift.label));
-  const window = shiftWindow(shift);
+  badge.appendChild(
+    el('div', 'what', options.name === 'code' ? shift.shortCode : shift.label),
+  );
+  const window = options.hours ? shiftWindow(shift) : undefined;
   if (window !== undefined) badge.appendChild(el('div', 'shift-when', window));
-  if (model.shiftRun !== undefined) badge.appendChild(el('div', 'until', model.shiftRun));
+  if (options.run && entry.run !== undefined) {
+    badge.appendChild(el('div', 'until', entry.run));
+  }
   return badge;
 }
 
@@ -556,18 +561,22 @@ function renderClockWidget(model: DisplayModel): HTMLElement {
 }
 
 /**
- * The shift, as a widget: the badge alone.
+ * The shift, as a widget: a badge for each person the household asked for.
  *
- * Undefined on a day with no rota, exactly like weather and house on a day with
- * no data — so `renderFreeform` draws the one box-relative "nothing yet" note
- * for all three, rather than this one scaling a note that is already sized to
- * its box and ending up drawn twice as small.
+ * Undefined when nobody the widget is watching is on a rota today, exactly like
+ * weather and house on a day with no data — so `renderFreeform` draws the one
+ * box-relative "nothing yet" note for all three, rather than this one scaling a
+ * note that is already sized to its box and ending up drawn twice as small.
+ *
+ * "Nobody the widget is watching" is the honest empty here: a household who
+ * pointed this box at one person should see that box say nothing on the days
+ * they are off, not quietly promote somebody else's nights into it.
  */
-function renderShiftWidget(model: DisplayModel): HTMLElement | undefined {
-  const badge = shiftBadge(model);
-  if (badge === undefined) return undefined;
-  const box = el('div', 'fw-shift');
-  box.appendChild(badge);
+function renderShiftWidget(model: DisplayModel, config?: unknown): HTMLElement | undefined {
+  const view = shiftWidgetView(model.todayShifts, config);
+  if (view.entries.length === 0) return undefined;
+  const box = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
+  for (const entry of view.entries) box.appendChild(shiftBadge(entry, view));
   return box;
 }
 
@@ -595,7 +604,7 @@ export function renderWidget(
     case 'homeassistant':
       return renderHouse(model, config);
     case 'shift':
-      return renderShiftWidget(model);
+      return renderShiftWidget(model, config);
     case 'countdown':
       return renderCountdownWidget(model, config);
     case 'external':

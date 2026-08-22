@@ -64,6 +64,8 @@ interface LayoutState {
   readings: readonly string[];
   /** The registered modules, for the External widget's "which module". */
   modules: readonly { readonly id: string; readonly name: string }[];
+  /** The household, for the Shift widget's "whose rota". */
+  people: readonly { readonly id: string; readonly name: string }[];
 }
 
 /** The first-party palette. No web embed is offered — the wall cannot draw one. */
@@ -214,6 +216,7 @@ function boot(): void {
       readonly calendars?: unknown;
       readonly readings?: unknown;
       readonly modules?: unknown;
+      readonly people?: unknown;
       readonly report?: { readonly w?: unknown; readonly h?: unknown };
       readonly orientation?: unknown;
       readonly panel?: { readonly width?: unknown; readonly height?: unknown };
@@ -245,12 +248,13 @@ function boot(): void {
       calendars: Array.isArray(parsed.calendars) ? (parsed.calendars as LayoutState['calendars']) : [],
       readings: Array.isArray(parsed.readings) ? (parsed.readings as string[]) : [],
       modules: Array.isArray(parsed.modules) ? (parsed.modules as LayoutState['modules']) : [],
+      people: Array.isArray(parsed.people) ? (parsed.people as LayoutState['people']) : [],
     };
   } catch {
     state = {
       screen: null, mode: 'auto', orientation: 'portrait', aspect: 0.5625, widgets: [],
       stash: { aspect: 1.7778, widgets: [] },
-      calendars: [], readings: [], modules: [],
+      calendars: [], readings: [], modules: [], people: [],
     };
   }
 
@@ -1500,6 +1504,7 @@ function boot(): void {
       else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
       else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
       else if (widget.type === 'image') buildImageConfig(widget, cfg);
+      else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     } else {
       // Style is the same set of controls for every widget — one
       // implementation, writing the same per-widget keys it always has.
@@ -1925,6 +1930,69 @@ function boot(): void {
         ),
       );
     }
+  }
+
+  /**
+   * The Shift widget's options: whose rota, and which of the badge's lines.
+   *
+   * "None ticked shows everyone" matches the calendar and reading pickers, and
+   * is what an untouched widget has always drawn — except that until 0.45.0 it
+   * silently drew only whoever sorted first, so a second shift worker could not
+   * be put on the wall at all.
+   *
+   * The three switches are written the other way round from most in this panel:
+   * their *unticked* state is what gets stored, because the face, the hours and
+   * the run have been drawn since the badge existed and a household who
+   * arranged a canvas around them must not lose them to a schema change.
+   */
+  function buildShiftConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const who = cfgField('Whose rota');
+    who.appendChild(
+      checkList(
+        state.people.map((person) => ({ value: person.id, label: person.name })),
+        Array.isArray(cfg['people']) ? (cfg['people'] as string[]) : [],
+        (values) => setConfig(widget, 'people', values),
+        'Nobody has a rota yet — set one up on the Shifts screen.',
+      ),
+    );
+    configPanel.appendChild(who);
+    if (state.people.length > 0) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'None ticked shows everyone who is on today.';
+      configPanel.appendChild(note);
+    }
+
+    configPanel.appendChild(
+      segControl(
+        'Shift name',
+        [
+          ['label', 'Full name'],
+          ['code', 'Short code'],
+        ],
+        cfg['shiftName'] === 'code' ? 'code' : 'label',
+        (value) => setConfig(widget, 'shiftName', value === 'code' ? 'code' : undefined),
+      ),
+    );
+
+    configPanel.appendChild(
+      switchRow('Show their photo', '', cfg['showFace'] !== false, (checked) =>
+        setConfig(widget, 'showFace', checked ? undefined : false),
+      ),
+    );
+    configPanel.appendChild(
+      switchRow('Show the hours', '', cfg['showHours'] !== false, (checked) =>
+        setConfig(widget, 'showHours', checked ? undefined : false),
+      ),
+    );
+    configPanel.appendChild(
+      switchRow(
+        'Show how far through',
+        epaperHost ? 'The wall only — a panel has never drawn this line.' : '"Day 2 of 4 · 2 more".',
+        cfg['showRun'] !== false,
+        (checked) => setConfig(widget, 'showRun', checked ? undefined : false),
+      ),
+    );
   }
 
   function buildHaConfig(widget: Widget, cfg: Record<string, unknown>): void {

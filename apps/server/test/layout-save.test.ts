@@ -334,6 +334,37 @@ describe('saving a layout', () => {
     expect(res.status).toBe(400);
   });
 
+  it('carries the shift widget\u2019s options through to the manifest', async () => {
+    const h = await harness();
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [
+        { id: 'sh', type: 'shift', x: 0, y: 0, w: 0.5, h: 0.3, z: 0,
+          config: { people: ['amy', 'ben'], shiftName: 'code', showHours: false } },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const layout = (await (
+      await h.call('/admin/layout/preview.json')
+    ).json()) as { layout: { portrait: { widgets: { id: string; config?: unknown }[] } } };
+    expect(layout.layout.portrait.widgets[0]?.config).toEqual({
+      people: ['amy', 'ben'],
+      shiftName: 'code',
+      showHours: false,
+    });
+  });
+
+  it('rejects a shift name style it cannot draw (rule five)', async () => {
+    const h = await harness();
+    for (const config of [{ shiftName: 'initials' }, { people: 'amy' }, { showHours: 'no' }]) {
+      const res = await h.saveLayout({
+        mode: 'freeform', aspect: 0.5625,
+        widgets: [{ id: 'sh', type: 'shift', x: 0, y: 0, w: 0.5, h: 0.3, z: 0, config }],
+      });
+      expect(res.status, JSON.stringify(config)).toBe(400);
+    }
+  });
+
   it('rejects an unknown config key rather than dropping it (rule five)', async () => {
     const h = await harness();
     const res = await h.saveLayout({

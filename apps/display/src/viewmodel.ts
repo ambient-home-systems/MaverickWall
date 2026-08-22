@@ -145,6 +145,19 @@ export interface ShiftModel {
   readonly isWorking: boolean;
 }
 
+/**
+ * One person's shift today, with the run already put into words.
+ *
+ * The run is resolved here rather than in the renderer for the usual reason:
+ * `render.ts` builds nodes and does no thinking, and "Day 2 of 4 · 2 more" is a
+ * decision about what a run means, not about how it is drawn.
+ */
+export interface TodayShiftModel {
+  readonly shift: ManifestShift;
+  /** "Day 2 of 4 · 2 more", when the run is known. */
+  readonly run: string | undefined;
+}
+
 export interface DayModel {
   readonly date: CivilDate;
   readonly weekday: string;
@@ -249,10 +262,17 @@ export interface DisplayModel {
    * no strip and reads exactly as it did before people existed.
    */
   readonly people: readonly PersonModel[];
-  /** The badge: the single most important element on the wall. */
-  readonly todayShift: ManifestShift | undefined;
-  /** "Day 2 of 4 · 2 more", or undefined when there is no rota today. */
-  readonly shiftRun: string | undefined;
+  /**
+   * The badge: the single most important element on the wall.
+   *
+   * One entry per person on a rota today, in the household's own order, because
+   * a household can have more than one shift worker and the manifest has always
+   * carried them all. This read `shifts[0]` until 0.45.0 — the wall drew the
+   * first person sorted and there was no setting anywhere that could say
+   * otherwise, while the panel renderer drew everybody. Two renderers
+   * disagreeing about who is on nights is exactly the fault this shape removes.
+   */
+  readonly todayShifts: readonly TodayShiftModel[];
   readonly next: readonly DayModel[];
   readonly horizon: readonly (readonly HorizonCell[])[];
   readonly notices: readonly { readonly level: string; readonly message: string }[];
@@ -970,8 +990,10 @@ export function buildModel(options: BuildOptions): DisplayModel {
             events: markToday(todayDay.events.slice(0, todayLimit), now, timezone, hour12, peopleById),
           },
     people,
-    todayShift: todayDay?.shifts[0],
-    shiftRun: todayDay === undefined ? undefined : describeRun(byDate, today, timezone),
+    todayShifts: (todayDay?.shifts ?? []).map((shift) => ({
+      shift,
+      run: describeRun(byDate, today, shift),
+    })),
     next,
     horizon: intoWeeks(cells),
     weather: weather.days,
@@ -998,11 +1020,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
 function describeRun(
   byDate: Map<CivilDate, ManifestDay>,
   today: CivilDate,
-  _timezone: string,
+  shift: ManifestShift,
 ): string | undefined {
-  const shift = byDate.get(today)?.shifts[0];
-  if (shift === undefined) return undefined;
-
   /*
    * The server's answer, when it has one.
    *
@@ -1024,8 +1043,16 @@ function describeRun(
     return `Day ${run.position} of ${run.total} · ${after} more`;
   }
 
-  const key = shift.key;
-  const sameAs = (date: CivilDate): boolean => byDate.get(date)?.shifts[0]?.key === key;
+  /*
+   * Matched on the person as well as the shift, because a day can carry an
+   * entry for each of them and position in that list means nothing: with two
+   * people on rotas, `shifts[0]` is whoever sorts first, not whoever this run
+   * belongs to.
+   */
+  const sameAs = (date: CivilDate): boolean =>
+    (byDate.get(date)?.shifts ?? []).some(
+      (other) => other.personId === shift.personId && other.key === shift.key,
+    );
 
   let before = 0;
   while (before < 14 && sameAs(addDays(today, -(before + 1)))) before++;

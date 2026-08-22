@@ -294,8 +294,8 @@ describe('the horizon', () => {
     const built = model([
       nights('2026-07-14'), nights('2026-07-15'), nights('2026-07-16'), nights('2026-07-17'),
     ]);
-    expect(built.shiftRun).toBe('Day 2 of 4 · 2 more');
-    expect(built.todayShift?.label).toBe('Mids');
+    expect(built.todayShifts[0]?.run).toBe('Day 2 of 4 · 2 more');
+    expect(built.todayShifts[0]?.shift.label).toBe('Mids');
   });
 
   it('says when today is the last of a run', () => {
@@ -308,7 +308,7 @@ describe('the horizon', () => {
         },
       ]);
     const built = model([nights('2026-07-14'), nights('2026-07-15'), day('2026-07-16')]);
-    expect(built.shiftRun).toBe('Last of 2');
+    expect(built.todayShifts[0]?.run).toBe('Last of 2');
   });
 
   it('marks days outside the current month so the shape reads', () => {
@@ -781,6 +781,53 @@ describe('a day with more than one person on a rota', () => {
     const built = model([two]);
     expect(built.today?.shifts.map((s) => s.personName)).toEqual(['Amy', 'Ben']);
   });
+
+  it('offers the badge both people, not whoever sorted first', () => {
+    // The bug this shape exists to remove. `todayShift` was `shifts[0]`, so a
+    // two-worker household could put Amy's day shift on the wall and had no way
+    // to put Ben's nights anywhere — while the panel renderer drew them both.
+    const built = model([two]);
+    expect(built.todayShifts.map((entry) => entry.shift.personName)).toEqual(['Amy', 'Ben']);
+  });
+
+  it('counts each run against its own person, not against the day', () => {
+    /*
+     * Amy is on days for the whole stretch; Ben starts nights on the middle
+     * day. Counted per *day* — the old `shifts[0]` walk — Ben's run would take
+     * its length from whatever Amy is on, because the day matched on the first
+     * entry's key. Each is now walked against their own entry.
+     */
+    const both = (date: string, ben: string | undefined) =>
+      ({
+        date, events: [],
+        shifts: [
+          {
+            key: 'day', label: 'Day', shortCode: 'D', colorToken: '--s-day',
+            isWorking: true, source: 'pattern',
+            personId: 'amy', personName: 'Amy', personColor: '#4C7FD1', personAvatarUrl: null,
+          },
+          ...(ben === undefined
+            ? []
+            : [{
+                key: ben, label: ben === 'night' ? 'Nights' : 'Day', shortCode: 'N',
+                colorToken: '--s-night', isWorking: true, source: 'pattern',
+                personId: 'ben', personName: 'Ben', personColor: '#C05C7E', personAvatarUrl: null,
+              }]),
+        ],
+      }) as unknown as ManifestDay;
+
+    const built = model([
+      both('2026-07-14', undefined),
+      both('2026-07-15', 'night'),
+      both('2026-07-16', 'night'),
+    ]);
+    const [amy, ben] = built.todayShifts;
+    expect(amy?.shift.personName).toBe('Amy');
+    expect(amy?.run).toBe('Day 2 of 3 · 1 more');
+    // Ben's nights start today: first of two, not second of three.
+    expect(ben?.shift.personName).toBe('Ben');
+    expect(ben?.run).toBe('Day 1 of 2 · 1 more');
+  });
 });
 
 /*
@@ -808,18 +855,18 @@ describe('how far through a run today is', () => {
     // The reported bug: a 14-day run on day 13 read "Day 2 of 3 · 1 more",
     // because one day of history was all the wall could see.
     const built = model([shiftOn('2026-07-15', { position: 13, total: 14 })]);
-    expect(built.shiftRun).toBe('Day 13 of 14 · 1 more');
+    expect(built.todayShifts[0]?.run).toBe('Day 13 of 14 · 1 more');
   });
 
   it('says so on the last day rather than counting down to nothing', () => {
     const built = model([shiftOn('2026-07-15', { position: 14, total: 14 })]);
-    expect(built.shiftRun).toBe('Last of 14');
+    expect(built.todayShifts[0]?.run).toBe('Last of 14');
   });
 
   it('falls back to counting the manifest when the server did not say', () => {
     // What every wall did before this: one day of history, so at most "Day 2".
     // Pinned as the floor it is, not as a correct answer.
     const built = model([shiftOn('2026-07-14'), shiftOn('2026-07-15'), shiftOn('2026-07-16')]);
-    expect(built.shiftRun).toBe('Day 2 of 3 · 1 more');
+    expect(built.todayShifts[0]?.run).toBe('Day 2 of 3 · 1 more');
   });
 });
