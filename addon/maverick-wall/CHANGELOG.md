@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.47.0
 
 The Shift widget says what matters, in the order you choose.
 
