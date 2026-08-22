@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.42.0
 
 Editing a wall is three screens now instead of one long one.
 
