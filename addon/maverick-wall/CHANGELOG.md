@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.43.0
 
 Your Home Assistant calendars, where you would look for them.
 
