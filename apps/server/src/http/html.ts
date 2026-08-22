@@ -1741,6 +1741,43 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   .savebar{left:0;padding:12px 20px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
 }
 
+/* ---- Pressed and hover states for every control with no container ---------
+ *
+ * button,.btn is the *filled* variant: primary ground, on-primary label. A
+ * control that opts out of that by clearing its background — a tab, a menu
+ * row, an icon button — has to opt out of the state layers too, because
+ * button:hover and button:active are (0,1,1) and beat any single-class rule.
+ * Miss one and it looks right at rest and fills with primary the moment a
+ * pointer touches it, drawing its own label in a colour chosen for a different
+ * ground: gold on gold. That is what was reported, on the widget inspector's
+ * Style tab.
+ *
+ * :active matters more than it looks. A phone has no hover — a tap is
+ * :active — so every one of these was flashing an unreadable gold on every
+ * press, on the one device the editor was redesigned for.
+ *
+ * The layer is the on-surface role at the state opacity, the way every other
+ * state layer in this file is written. (currentColor would say the M3 rule
+ * more directly — the layer is the content colour over the container — but
+ * inside color-mix it computes to roughly a tenth of the intended alpha here,
+ * which is a state layer nobody can see.) Grouped in one place so the next
+ * control that clears its background joins a list rather than re-finding this
+ * bug; test/admin-button-states.test.ts fails if one goes missing. */
+.ic:hover,.insp-tab:hover,.wset-back:hover{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity),transparent)}
+.ic:active,.signout:active,.fieldhelp:active,
+.insp-tab:active,.insp-close:active,.insp-remove:active,
+.wset-navrow:active,.wset-back:active,.ovf-item:active,.arow:active,
+.le-add:active,.le-tool-btn:active,.le-layers-btn:active,.le-modal-close:active,
+.hep-chip:active,.hep-pill-x:active,
+.le-tool-link:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity),transparent)}
+/* The one with a ground of its own: its layer goes over that, not over
+ * whatever happens to be behind the dialog. */
+.le-modal-item:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity),
+  var(--md-sys-color-surface-container-highest))}
+
 /* ---- Focus: the M3 ring, keyboard-driven ---------------------------------
  * One treatment for every control: a 3px primary ring offset outward, drawn
  * only for keyboard focus (:focus-visible). Text fields are the exception the

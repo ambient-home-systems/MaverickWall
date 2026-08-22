@@ -1287,6 +1287,25 @@ that opens up 70vh of page below it, and the assertion is
 `canvas.bottom <= sheet.top && canvas.top >= appbar.bottom` at 390, 430 and 768.
 "The sheet opened" would have passed over both.
 
+**A control that opts out of the filled button must opt out of its states.**
+`button,.btn` is the filled variant — primary ground, on-primary label — and its
+`:hover`/`:active` rules are `(0,1,1)`, which beats any single-class rule. So a
+tab, a menu row or an icon button that clears its background looks right at rest
+and fills with **primary** the moment a pointer touches it, drawing its label in
+a colour chosen for a different ground: gold on gold. That was reported from a
+real screen on the inspector's Style tab. `:active` is the same fault and the
+half that matters more — a phone has no hover, a tap is `:active`, so a dozen
+controls were flashing unreadable on every press on the one device the editor
+was redesigned for. The states are grouped in one rule now, and
+`test/admin-button-states.test.ts` derives the set from the stylesheet itself:
+any single-class rule that clears its background *and* says `cursor:pointer` is
+a control with no container and must declare both. Finding it took four attempts
+because the measuring script was wrong three separate ways — an 8% state layer
+read as an opaque background, hidden elements measured as if visible, and
+`color-mix()`'s `color(srgb …)` floats parsed as 0–255. Forcing `:hover` through
+the debugger lies too; moving a real pointer and reading the computed pair does
+not.
+
 The one header is the app bar's: its crumb became a real back link ("← Walls"),
 so the page adds no second header and, in particular, no second hamburger — the
 supervisor's sidebar already stacks one against the admin drawer's, and a third

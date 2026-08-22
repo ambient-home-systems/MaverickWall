@@ -14,6 +14,19 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Buttons no longer go unreadable when you touch them.
+
+Several controls in the admin — the Content/Style tabs in a widget's settings,
+the menu rows, the small icon buttons — turned solid gold under the pointer and
+drew their own label on top of it, which made the word disappear. The same thing
+happened on every *press*, which is what a phone or a tablet does instead of
+hovering, so on a touch screen it flashed on every tap.
+
+They now lighten slightly, the way the rest of the admin does, and the label
+stays readable throughout.
+
 ## 0.43.0
 
 Your Home Assistant calendars, where you would look for them.
