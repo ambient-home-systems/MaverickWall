@@ -194,19 +194,43 @@ function drawCountdown(fb: Framebuffer, box: Box, model: EpaperModel, config: Co
   );
 }
 
-function drawShift(fb: Framebuffer, box: Box, model: EpaperModel): void {
-  if (model.todayShifts.length === 0) {
+/**
+ * Today's rota, honouring the same options the wall's badge does.
+ *
+ * `people` filters, `shiftName` picks the label or the short code, and
+ * `showHours` drops the times — all *absence means on*, matching the schema, so
+ * a panel arranged before these existed draws exactly what it drew.
+ *
+ * `showRun` is deliberately not read here: this renderer has never drawn the
+ * run line, so honouring an option whose absence means "on" would make every
+ * existing panel grow a row nobody asked for. It is the wall's option until the
+ * panel has a row for it.
+ */
+function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+  // None chosen shows everyone, the same rule the wall's widget follows.
+  const chosen = list(config, 'people').filter((p): p is string => typeof p === 'string');
+  const shifts =
+    chosen.length === 0
+      ? model.todayShifts
+      : model.todayShifts.filter((s) => chosen.includes(s.personId));
+  const useCode = str(config, 'shiftName') === 'code';
+  const hours = config['showHours'] !== false;
+  const nameOf = (s: (typeof shifts)[number]): string => {
+    const preferred = useCode ? s.code : s.label;
+    // Either can be empty on a shift type that only defines the other, so each
+    // falls back to its twin rather than drawing a card with no name on it.
+    return preferred !== '' ? preferred : useCode ? s.label : s.code;
+  };
+
+  if (shifts.length === 0) {
     drawLines(fb, ['No shift today'], box, 2, 'left');
     return;
   }
-  const [only] = model.todayShifts;
+  const [only] = shifts;
   // One person, and a box with room: the wall's card — who it is, then the
-  // shift's *name* at whatever size the box affords, then its hours. The name
-  // is the label ("Straights"), not the short code: a code is an abbreviation
-  // for a month cell, and a widget given a whole box should spend it on the
-  // word rather than leaving "Daddy: S" alone in the white.
-  if (model.todayShifts.length === 1 && only !== undefined && box.h >= 44) {
-    const name = asciiTitle(only.label !== '' ? only.label : only.code).toUpperCase();
+  // shift's name at whatever size the box affords, then its hours.
+  if (shifts.length === 1 && only !== undefined && box.h >= 44) {
+    const name = asciiTitle(nameOf(only)).toUpperCase();
     // Reserve the two small rows so the headline never squeezes them out.
     const headroom = Math.max(GLYPH_SIZE, box.h - (GLYPH_SIZE + 4) * 2);
     const nameScale = scaleToFit(name, box.w, Math.max(2, Math.min(7, Math.floor(headroom / GLYPH_SIZE))));
@@ -216,7 +240,7 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel): void {
       [
         { text: asciiTitle(only.person).toUpperCase(), scale: 1 },
         { text: name, scale: nameScale },
-        { text: only.time, scale: 1 },
+        { text: hours ? only.time : '', scale: 1 },
       ],
       'left',
     );
@@ -224,8 +248,8 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel): void {
   }
   // More than one person: a compact line each, sized so the longest still fits
   // rather than being cut at the box edge.
-  const lines = model.todayShifts.map((s) => {
-    const rest = [s.label !== '' ? s.label : s.code, s.time].filter((p) => p !== '').join('  ');
+  const lines = shifts.map((s) => {
+    const rest = [nameOf(s), hours ? s.time : ''].filter((p) => p !== '').join('  ');
     return asciiTitle(`${s.person}: ${rest}`);
   });
   const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
@@ -345,7 +369,7 @@ function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel,
     case 'calendar':
       return drawCalendarWidget(fb, box, model, config);
     case 'shift':
-      return drawShift(fb, box, model);
+      return drawShift(fb, box, model, config);
     case 'countdown':
       return drawCountdown(fb, box, model, config);
     case 'notes':

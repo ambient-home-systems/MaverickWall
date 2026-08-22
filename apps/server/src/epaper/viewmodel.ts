@@ -86,6 +86,13 @@ export interface EpaperGridCell {
 }
 
 export interface EpaperShiftLine {
+  /**
+   * Whose shift, for the widget's "whose rota" option.
+   *
+   * The id rather than the name, because that is what the editor stores and a
+   * household may rename a person without meaning to empty their widget.
+   */
+  readonly personId: string;
   readonly person: string;
   readonly code: string;
   readonly label: string;
@@ -217,6 +224,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
   const shiftTime = (shift: ManifestPersonShift): string =>
     shift.startTime && shift.endTime ? `${shift.startTime}-${shift.endTime}` : '';
   const todayShifts: EpaperShiftLine[] = (byDate.get(today)?.shifts ?? []).map((shift) => ({
+    personId: shift.personId,
     person: shift.personName,
     code: shift.shortCode,
     label: shift.label,

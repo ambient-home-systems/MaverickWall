@@ -14,6 +14,30 @@
   saying nothing.
 -->
 
+## Unreleased
+
+The Shift widget shows everybody on a rota, and it has options.
+
+If two people in the house work shifts, the wall only ever showed one of them.
+It picked whoever came first in your list of people and there was no setting
+anywhere that could change it — while an eInk panel, from the same arrangement,
+showed both. Now both screens show both, each with their own colour and their
+own "Day 2 of 4 · 2 more".
+
+The widget also has its own settings for the first time, under Content:
+
+- **Whose rota** — leave it alone to show everyone who is on today, or tick
+  one person to give them a box of their own. A box pointed at one person says
+  nothing on the days they are off, rather than quietly showing somebody else.
+- **Shift name** — the full name ("Nights"), or the short code ("N") for a
+  small box.
+- **Show their photo**, **Show the hours**, **Show how far through** — each on
+  unless you turn it off, so a wall you have already arranged looks exactly as
+  it did.
+
+A panel draws all of these except "how far through", which it has never had a
+line for.
+
 ## 0.44.0
 
 Every widget's settings now read the same way.

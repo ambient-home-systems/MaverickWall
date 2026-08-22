@@ -762,6 +762,22 @@ the rota says nothing about plain. Before this the two were identical in the
 manifest, and a test named "treats an explicit rest day as not working, not as
 unknown" asserted the empty list that proved they were not.
 
+**A widget's options are resolved as data, and the Shift widget is where that
+started.** `shift-widget.ts` in the display is pure: it takes today's rota and
+the widget's stored config and answers with who to draw and which of the
+badge's lines — so `render.ts` keeps building nodes and doing no thinking, and
+the options can be tested at all. There is no DOM in the display's test suite,
+so a widget whose options are resolved inside a `createElement` call is a widget
+nothing can check. `epaper/widgets.ts` makes the same decisions against the same
+keys, which is the point: **the wall drew `todayDay.shifts[0]` while the panel
+drew everybody**, so a household with two shift workers got different answers
+from two screens and no setting anywhere could reconcile them. Each person's run
+is walked against their own entry too — counted per *day* it took its length
+from whoever sorted first. `showRun` is deliberately the wall's alone: the panel
+has never had a row for it, and an option whose absence means "on" would
+otherwise grow one on every existing panel at upgrade. The eInk test pins that
+as byte-identical rather than leaving it to be discovered.
+
 **Panels are modules, and weather is the first.** `src/modules/` holds a
 registry: a module owns a block key, a slice of the manifest, usually a job,
 and a corner of the settings. `collectPanels` catches per module, so a provider

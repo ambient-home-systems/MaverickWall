@@ -1199,6 +1199,17 @@ body {
 }
 
 .fw-shift { justify-content: center; }
+/*
+ * More than one person on a rota today: their badges stack, with a gap that
+ * reads as a gap at ten feet. Not a grid — the badges are different heights
+ * (an untimed shift has no hours row) and a grid would pad the short one to
+ * match the tall one, which reads as a missing line rather than a shorter card.
+ */
+.fw-shift.is-several {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 4);
+}
 
 /*
  * The reused sections (weather, house, shift, notes…) are laid out at the box

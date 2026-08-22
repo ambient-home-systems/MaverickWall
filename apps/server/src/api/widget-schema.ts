@@ -66,6 +66,24 @@ export const widgetConfigBody = z
     showShifts: z.boolean().optional(),
     showTimes: z.boolean().optional(),
     showLocations: z.boolean().optional(),
+    /*
+     * Shift — whose rota the badge draws, and which of its lines.
+     *
+     * `people` is a list of person ids; none chosen means everyone on a rota,
+     * the same "empty selection means all" the calendar and reading pickers
+     * use. It is what makes a two-worker household expressible: before it, the
+     * wall drew the first person sorted and nothing could say otherwise.
+     *
+     * The three `show…` keys follow `showShifts` above — *absence means on*,
+     * because the face, the hours and the run have been drawn since the badge
+     * existed and a household who arranged a canvas around them must not lose
+     * them to a schema change. The only value ever stored is `false`.
+     */
+    people: z.array(z.string().max(64)).max(20).optional(),
+    shiftName: z.enum(['label', 'code']).optional(),
+    showFace: z.boolean().optional(),
+    showHours: z.boolean().optional(),
+    showRun: z.boolean().optional(),
     // Home Assistant
     readings: z.array(z.string().max(80)).max(50).optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.

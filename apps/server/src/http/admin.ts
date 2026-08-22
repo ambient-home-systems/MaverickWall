@@ -1990,6 +1990,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       calendars: [],
       readings: [],
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+      // The Shift widget's "whose rota" is real here: a panel filters by person
+      // exactly as the wall does, and draws a line each when several are on.
+      people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
     };
 
     const preview =
@@ -3418,6 +3421,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       readings: haReadingLabels(),
       // The registered modules, for the External widget's module picker.
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+      // The household, for the Shift widget's "whose rota" picker.
+      people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
       // The viewport this screen last reported, so the editor can offer "match
       // this screen's size" (RFC 005). Only a paired screen reports one — the
       // shared Default has no single size to match.

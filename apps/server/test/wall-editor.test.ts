@@ -148,6 +148,32 @@ describe('the wall editor is two modes, not one page', () => {
     expect((html.match(/updates within a minute/g) ?? []).length).toBe(1);
   });
 
+  it("hands the editor the household, so the Shift widget's picker is a real one", async () => {
+    /*
+     * The Shift widget filters by person id, and the ids only exist server-side
+     * — so a household missing from this payload is a picker with nothing in
+     * it, on a screen where the household cannot tell whether that means "no
+     * rota" or "this control is broken". Read out of the mount's own JSON,
+     * because that is the whole of what the editor gets.
+     */
+    const h = await ready();
+    h.pairScreen('s1', 'Kitchen');
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO people (id, name, color, sort_order, created_at, updated_at)
+         VALUES (?,?,?,?,?,?)`,
+      )
+      .run('amy', 'Amy', '#4C7FD1', 0, at, at);
+
+    const html = await (await h.call('/admin/displays/s1')).text();
+    const json = /<div id="layout-editor" data-json="([^"]*)"/.exec(html)?.[1] ?? '';
+    const initial = JSON.parse(
+      json.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'),
+    ) as { people?: { id: string; name: string }[] };
+    expect(initial.people).toEqual([{ id: 'amy', name: 'Amy' }]);
+  });
+
   it('gives the wall one header: a back link in the app bar, no second hamburger', async () => {
     const h = await ready();
     h.pairScreen('s2', 'Hall');
