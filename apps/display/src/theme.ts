@@ -29,6 +29,15 @@ export type ThemeName = 'household' | 'blueprint' | 'panels' | 'almanac';
 
 export type ThemeTokens = Readonly<Record<string, string>>;
 
+/*
+ * A note on '--radius', because the unit is not what it looks like: 1rem on the
+ * wall is 1% of the *canvas* height, so on the 1920px portrait target 1rem is
+ * 19.2px. Household and Panels used to carry 1.1rem and 1.2rem — 21 and 23
+ * real pixels — which is a rounded bubble, not a panel. They are 0.35 and 0.4
+ * now (7-8px): enough to read as deliberate, not enough to read as an app.
+ * Blueprint and Almanac were always square and are untouched.
+ */
+
 /** Warm daylight paper; per-person colour does the heavy lifting. */
 const HOUSEHOLD: ThemeTokens = {
   '--bg': '#F4F0E8',
@@ -42,7 +51,7 @@ const HOUSEHOLD: ThemeTokens = {
   '--s-night': '#4C7FD1',
   '--s-break': '#35916A',
   '--s-straight': '#6B7684',
-  '--radius': '1.1rem',
+  '--radius': '0.35rem',
 };
 
 /** Steel-blue on a light technical ground: the bound design system as a wall. */
@@ -74,7 +83,7 @@ const PANELS: ThemeTokens = {
   '--s-night': '#5C93E0',
   '--s-break': '#35916A',
   '--s-straight': '#6B7684',
-  '--radius': '1.2rem',
+  '--radius': '0.4rem',
 };
 
 /** Month-as-hero paper ledger: cream ground, red accent, serif display face. */

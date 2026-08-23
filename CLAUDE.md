@@ -853,6 +853,35 @@ two, so the cell and badge tints are pre-mixed per theme against that theme's
 own background; and no web font is fetched, so the design's Roboto Condensed
 and Roboto Mono are used only if the device already has them.
 
+**The wall got the same design pass, and needed much less of it.** It was
+never Material — it has no shadow anywhere and every colour was already a token
+— so two things changed. Household and Panels carried `--radius` at 1.1 and
+1.2rem, which on the 1920px design height is 21 and 23 real pixels: a rounded
+bubble, not a panel. They are 0.35 and 0.4rem now; Blueprint and Almanac were
+always square. And `display.css` gained a type scale (`--t-micro` through
+`--t-hero`) with its px-at-design-height table written out, whose floor exists
+because this wall is read from five to ten feet and text below ~22px there
+stops being small and starts being absent — several labels sat at 18-21px and
+are raised to it.
+
+The floor has an honest exemption, stated at each declaration rather than left
+to be rediscovered: text whose box is fixed by something other than type —
+initials inside a 1.7rem avatar, the "+2" inside a full month cell — cannot be
+raised without overflowing what contains it. Raising one of those is a layout
+change, not a typography change, and this document's own table is mostly the
+difference between the two. The pass was checked by pairing a real screen and
+measuring the drawn wall at 1080x1920, 1920x1080 and 1280x720 for overflow and
+for children clipped by more than half a line.
+
+Two things that measurement got wrong first, both worth keeping. It seeded the
+display token into `localStorage` and reported "no overflow" three times over —
+for the *pairing screen*, because the token is an HttpOnly cookie the server
+sets at `/pair`. And its first clip detector flagged `.clock` and `.dr-num`,
+which set `line-height` below 1 and so exceed their own client height by the
+leading alone with nothing hidden. The `.fw-clock` flag that survives both
+fixes is real and **pre-existing** — confirmed by stashing the changes,
+rebuilding and measuring the identical 187>173 — and is not chased here.
+
 **It works in portrait and landscape, and they are different layouts.** The
 design is drawn for portrait 1080x1920 and that is the stacked arrangement.
 Landscape is not that squashed: it is two columns, the day and week ahead on
@@ -1556,30 +1585,58 @@ step and no bundle that can fail to load, which is the same reason the wizard
 is. `apps/admin` has not been started and may never need to be — that is worth
 deciding deliberately before the Shifts screen rather than by drift.
 
-**The admin and the wizard are faithful Material Design 3 now**, adopted over
-several passes and then audited as a whole: colour schemes generated from the
-wall's own amber seed, the M3 type scale on bundled Roboto, shape/elevation/
-state tokens, real M3 controls (floating-label outlined fields built in pure
-CSS, switches, segmented buttons, chips, tabs), a 280px navigation drawer
-that collapses at 900px, Material Symbols icons inlined, and the motion
-system — all behind `prefers-reduced-motion`, with a shell-only ripple
-script. Everything lives in `http/html.ts` (the `STYLE` constant plus the
-field/icon helpers); the schemes are committed in `http/m3-tokens.ts` and
-regenerated with `node scripts/generate-m3-tokens.mjs` (same engine and
-choices as the request-time theme generator — the two files say so). Three
-deliberate exceptions to fidelity, and only three: the brand lockup (Oswald
-wordmark, small-caps ADMIN line, the mark's own pre-mixed fills), the
-script-free wizard and sign-in (no ripple; CSS pressed states instead — a
-census test pins the exact script set), and the QR's white plate (with the
-e-paper preview on the same argument — a physically white medium drawn
-honestly in both schemes). `test/m3-tokens.test.ts` proves the scheme
-contrast, `test/admin-origins.test.ts` proves rule three across every page
-and asset the admin serves.
+**Material Design 3 was adopted across the admin and then taken back out
+again.** The paragraph that used to sit here described that adoption at length
+and it is worth knowing why it is gone, because the objection was not that the
+implementation was unfaithful — it was faithful, which was the problem. A tonal
+engine tints *every* surface with its seed, so the whole admin sat on a
+brown-black `#18120B` and read as an app wearing somebody's wallpaper rather
+than as a fixture in a house. Around that: fully rounded buttons and 56px pill
+nav rows, a five-level double-layer shadow ladder, and a floating-label
+outlined field whose border was drawn as three elements so the label could open
+a notch in it — and land at 12.5px, the smallest text in a form, on a product
+whose brief is glanceability.
+
+**What replaced it is hand-picked and much smaller.** `http/design-tokens.ts`
+holds two schemes as literal hex — three surfaces, three inks, two rules, one
+accent, the status hues each with a soft ground — in place of thirty-odd
+generated roles. Hand-picked means these are facts rather than outputs: nothing
+regenerates them, and changing one is a diff a person can review.
+`http/m3-tokens.ts` and `scripts/generate-m3-tokens.mjs` are deleted;
+`@material/material-color-utilities` stays a dependency because
+`api/theme-generator.ts` still runs it at request time for the household's own
+*wall* themes, which is the case a tonal engine is actually for — there the
+seed is a colour somebody chose for their kitchen.
+
+The rest follows from the same argument. Separation is a ground step and a
+hairline, never a shadow: two shadows survive, both single-layer, for the modal
+drawer and the widget sheet, which genuinely float. The shape scale tops out at
+8px and `--mw-r-full` is reserved for things that are actually circles — the
+switch track and an 18px close dot, and a test names them. The type scale is
+ten roles at weight 650 for headings with tracking going negative as size goes
+up, where Material's fifteen set every heading at 400 and tracked body text
+*out*. Fields are a label above a bordered input. The nav row is 48px, the
+touch minimum, with a 2px accent bar rather than a tinted pill.
+
+Two deliberate exceptions survive from the old list and one is retired: the
+brand lockup and the script-free wizard/sign-in stay exceptions; the QR's white
+plate and the e-paper preview are no longer *exceptions* so much as the same
+honest argument (a physically white medium drawn white in both schemes), and
+the design-system test allows `#fff`/`#000` for exactly that reason.
+
+`test/design-tokens.test.ts` proves every pair the stylesheet paints against
+the contrast it needs, and that both schemes declare identical role sets — a
+role in one and not the other is a `var()` resolving to nothing on the theme
+nobody happened to be looking at. `test/admin-design-system.test.ts` pins the
+absences (no `--md-*` token, no pill rectangle, no stacked shadow, no colour
+outside the palette) plus two bug classes the swap itself produced: a
+`var(--mw-…)` nothing declares, and a rule painting one token on itself.
+`test/admin-origins.test.ts` still proves rule three.
 
 **Below 900px that drawer is a modal one, and the change is mostly a
-deletion.** It used to be recast in place: the 280px panel became a static
+deletion.** It used to be recast in place: the drawer panel became a static
 header whose eleven-plus pills wrapped into a field, with the group headings
-hidden, the pills cut to 40px, and the foot — sign-out and the theme toggle —
+hidden, the rows cut to 40px, and the foot — sign-out and the theme toggle —
 removed outright. Measured on a 390px phone, that put the first content
 **407px down an 844px viewport**: half the screen, on every page, because each
 admin screen is a fresh document and the whole field came back on every tap.

@@ -68,6 +68,48 @@ body {
   cursor: none;
 }
 
+/*
+ * The type scale, in canvas-relative rem.
+ *
+ * 1rem is 1% of the canvas height, so on the 1080x1920 portrait target 1rem is
+ * 19.2px and the table below is what a person actually sees:
+ *
+ *     --t-micro    1.15rem   22px
+ *     --t-xs       1.30rem   25px
+ *     --t-sm       1.50rem   29px
+ *     --t-base     1.70rem   33px
+ *     --t-md       2.00rem   38px
+ *     --t-lg       2.60rem   50px
+ *     --t-xl       3.60rem   69px
+ *     --t-display  5.00rem   96px
+ *     --t-hero    11.00rem  211px
+ *
+ * --t-micro is a *floor*, and the reason it exists is the brief: this wall is
+ * read from five to ten feet, and text below about 22px at the design height
+ * stops being small and starts being absent. Several labels sat at 0.95-1.1rem
+ * (18-21px) and are raised to it.
+ *
+ * The floor has one honest exemption, and it is written here rather than left
+ * to be rediscovered: text whose *box* is fixed by something other than type —
+ * initials inside a 1.7rem avatar, an overflow count inside a month cell, the
+ * compact widget renderings that fitToBox already scales — cannot be raised
+ * without overflowing the thing that contains it. Those keep bespoke sizes and
+ * say so at the declaration. Raising one of them is not a typography change,
+ * it is a layout change, and this project's history is full of the difference:
+ * a month grid that clipped through a row, a week that ran off the bottom.
+ */
+:root {
+  --t-micro: 1.15rem;
+  --t-xs: 1.3rem;
+  --t-sm: 1.5rem;
+  --t-base: 1.7rem;
+  --t-md: 2rem;
+  --t-lg: 2.6rem;
+  --t-xl: 3.6rem;
+  --t-display: 5rem;
+  --t-hero: 11rem;
+}
+
 :root {
   --f-cond: 'Roboto Condensed', 'Arial Narrow', 'Helvetica Neue', system-ui, sans-serif;
   --f-sans: system-ui, 'Roboto', 'Segoe UI', -apple-system, sans-serif;
@@ -411,6 +453,8 @@ body {
   font-weight: 700; line-height: 1;
 }
 .ev-face { display: inline-block; border-radius: 50%; object-fit: cover; }
+/* Below the --t-micro floor by exemption: the size is set by the avatar, not
+ * by the scale. Raising the type here spills the initials out of the circle. */
 .te-mark.ev-initials, .te-mark.ev-face { width: 2rem; height: 2rem; font-size: 1.05rem; }
 .dr-ev-mark.ev-initials, .dr-ev-mark.ev-face { width: 1.7rem; height: 1.7rem; font-size: 0.95rem; }
 .dr-ev-mark.ev-dot { width: 1rem; height: 1rem; }
@@ -553,11 +597,11 @@ body {
 .dr-wx-low { color: var(--muted); }
 
 .dr-shift {
-  font-size: 1.1rem; letter-spacing: 0.13em; text-transform: uppercase;
+  font-size: var(--t-micro); letter-spacing: 0.13em; text-transform: uppercase;
   color: var(--sc); margin-top: 0.3rem; font-weight: 600;
 }
 .dr-when {
-  font-family: var(--f-mono); font-size: 1rem; color: var(--muted);
+  font-family: var(--f-mono); font-size: var(--t-micro); color: var(--muted);
   margin-top: 0.15rem; font-variant-numeric: tabular-nums;
 }
 
@@ -651,7 +695,7 @@ body {
   margin-bottom: 0.5rem;
 }
 .hz-head {
-  font-size: 1.1rem; letter-spacing: 0.16em; text-transform: uppercase;
+  font-size: var(--t-micro); letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--faint); text-align: center; padding-bottom: 0.45rem;
 }
 .hz-cell {
@@ -684,6 +728,8 @@ body {
 }
 /* An all-day pill reads as a tint with its own colour, like the agenda's. */
 .hz-pill.allday { background: transparent; color: var(--ink); border-left: 0.28rem solid var(--pc); border-radius: 0 0.28rem 0.28rem 0; }
+/* Below the floor by exemption: this rides inside a month cell that is already
+ * full, which is why it says "+2" instead of showing them. */
 .hz-pill-more { font-size: 1.05rem; color: var(--muted); padding-left: 0.42rem; }
 
 /*
@@ -833,7 +879,7 @@ body {
 }
 .wc-col.is-today .wc-head { border-bottom-color: var(--accent); }
 .wc-wd {
-  display: block; font-size: 1.05rem; letter-spacing: 0.12em; text-transform: uppercase;
+  display: block; font-size: var(--t-micro); letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--faint);
 }
 .wc-col.is-today .wc-wd, .wc-col.is-today .wc-num { color: var(--accent); }
