@@ -1282,6 +1282,59 @@ body {
 }
 .td-text { font-size: 2.1rem; line-height: 1.3; }
 
+/* Chores (RFC 008 phase 2): a read-only board. The box is a marker, not a
+   control — nothing here is tickable, and phase 3 is what makes it one. */
+.ch { display: flex; flex-direction: column; gap: 0.9rem; min-width: 0; }
+.ch-row { display: flex; align-items: baseline; gap: 0.9rem; min-width: 0; }
+.ch-box {
+  flex: 0 0 auto; width: 1.5rem; height: 1.5rem; align-self: center;
+  border: 0.2rem solid var(--who, var(--muted)); border-radius: 0.3rem;
+}
+/* Done: the box fills with whoever's colour it carries, and the row steps back
+   a tone. Struck through as well as dimmed, so the state survives a theme where
+   muted and foreground sit closer together than they do in Board. */
+.ch-box-on { background: var(--who, var(--muted)); }
+.ch-done .ch-name { text-decoration: line-through; color: var(--muted); }
+.ch-name { font-size: 2rem; line-height: 1.25; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-who {
+  flex: 0 0 auto; font-family: var(--f-cond, var(--f-sans)); font-size: 1.4rem;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--who, var(--muted));
+}
+.ch-time { flex: 0 0 auto; margin-left: auto; font-family: var(--f-mono, var(--f-sans));
+  font-size: 1.5rem; color: var(--muted); }
+
+/* By person: a column each, only for people who actually have something due. */
+.ch-people { display: flex; gap: 2rem; min-width: 0; align-items: flex-start; }
+.ch-col { display: flex; flex-direction: column; gap: 0.9rem; min-width: 0; flex: 1 1 0; }
+/* In a column, a name wraps rather than ellipsing.
+   Measured at three columns on a 1280px wall, three of four names were cut —
+   "Put th…", "Hoover dow…" — which is a chore board that cannot be used to
+   tell which chore it means. A column is narrow by construction, so wrapping
+   is the shape that fits it; the single-column views keep the ellipsis, where
+   the box is wide and a cut is genuinely the last resort. */
+.ch-col .ch-name { white-space: normal; overflow: visible; text-overflow: clip; }
+.ch-col .ch-row { align-items: flex-start; }
+.ch-col .ch-box { align-self: flex-start; margin-top: 0.35rem; }
+/* And the time follows the name instead of being pushed to a far edge that,
+   in a narrow column, is on top of it. */
+.ch-col .ch-time { margin-left: 0; }
+
+.ch-col-head {
+  font-family: var(--f-cond, var(--f-sans)); font-weight: 700; font-size: 1.5rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--who, var(--muted));
+  border-bottom: 0.15rem solid var(--who, var(--line, var(--muted)));
+  padding-bottom: 0.35rem;
+}
+
+/* This week: a group per day that has anything, headed by its weekday. */
+.ch-week { gap: 1.4rem; }
+.ch-day { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; }
+.ch-dow {
+  font-family: var(--f-cond, var(--f-sans)); font-weight: 700; font-size: 1.4rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+}
+
 /* The generic module panel (docs/rfc-001-module-framework.md). Scaled to its
    box like the other reused sections; drawn only from validated, sanitised
    strings. */

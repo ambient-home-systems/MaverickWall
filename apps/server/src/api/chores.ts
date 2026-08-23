@@ -220,6 +220,31 @@ export function completionDates(
 }
 
 /**
+ * Every completion in a date range, as `choreId|date` keys.
+ *
+ * One query for the whole board rather than one per chore: a household with a
+ * dozen chores and a seven-day panel is otherwise eighty-four round trips on
+ * every display poll, on a Raspberry Pi. The compound key is what the caller
+ * asks with, so nothing has to build a map of maps.
+ */
+export function completionsBetween(
+  db: SqliteDatabase,
+  from: CivilDate,
+  to: CivilDate,
+): Set<string> {
+  const rows = db
+    .prepare('SELECT chore_id AS choreId, date FROM chore_completions WHERE date >= ? AND date <= ?')
+    .all(from, to) as { choreId: string; date: string }[];
+  return new Set(rows.map((row) => `${row.choreId}|${row.date}`));
+}
+
+/** Whether this household has any chores at all — what gates the wall's block. */
+export function anyChores(db: SqliteDatabase): boolean {
+  const row = db.prepare('SELECT COUNT(*) AS n FROM chores').get() as { n: number };
+  return row.n > 0;
+}
+
+/**
  * Record a chore as done on a civil date, or clear it.
  *
  * **Idempotent by the unique index**, which is what lets the caller be careless:

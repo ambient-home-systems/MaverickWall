@@ -265,6 +265,8 @@ export interface DisplayModel {
   readonly weatherNote: string | undefined;
   /** Third-party module panels, keyed by their `ext:<id>` block key. */
   readonly externalPanels: Readonly<Record<string, PanelData>>;
+  /** The chore board, when the household has any (RFC 008 phase 2). */
+  readonly chores: ChoreBoardModel | undefined;
   /** Readings from the house, when a module contributed any. */
   readonly house: readonly HouseReadingModel[];
   /** Something quiet to say about them, such as a connection that is failing. */
@@ -510,6 +512,81 @@ export function panelFrom(raw: unknown): PanelData | null {
     default:
       return null;
   }
+}
+
+export interface ChoreItemModel {
+  readonly name: string;
+  readonly person: string | undefined;
+  readonly color: string | undefined;
+  readonly dueTime: string | undefined;
+  readonly done: boolean;
+}
+
+export interface ChoreDayModel {
+  readonly date: CivilDate;
+  readonly items: readonly ChoreItemModel[];
+}
+
+export interface ChoreBoardModel {
+  readonly today: CivilDate;
+  readonly days: readonly ChoreDayModel[];
+}
+
+/**
+ * The chore panel, read defensively (RFC 008 phase 2).
+ *
+ * The same treatment `weatherFrom` and `houseFrom` give a slice: the server
+ * validated it, and this reads it as untrusted anyway, because a wall can be a
+ * version ahead of the server that is answering it. Every string is sanitised
+ * and capped — a chore name is text a household typed, and it lands beside the
+ * calendar on the highest-prominence surface in the product.
+ *
+ * A day whose shape is wrong is dropped; the rest of the week still draws. Days
+ * with nothing due are **kept**, because the week view needs the empty columns
+ * to line its days up and re-inventing them from a sparse list is how two
+ * renderers start disagreeing about which day is which.
+ */
+export function choresFrom(panel: unknown): ChoreBoardModel | undefined {
+  if (typeof panel !== 'object' || panel === null) return undefined;
+  const raw = panel as { today?: unknown; days?: unknown };
+  if (typeof raw.today !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw.today)) return undefined;
+  if (!Array.isArray(raw.days)) return undefined;
+
+  const days: ChoreDayModel[] = [];
+  for (const entry of raw.days) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const day = entry as { date?: unknown; items?: unknown };
+    if (typeof day.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day.date)) continue;
+
+    const items: ChoreItemModel[] = [];
+    if (Array.isArray(day.items)) {
+      for (const candidate of day.items.slice(0, 40)) {
+        if (typeof candidate !== 'object' || candidate === null) continue;
+        const item = candidate as {
+          name?: unknown; person?: unknown; color?: unknown; dueTime?: unknown; done?: unknown;
+        };
+        const name = text(item.name, 60);
+        if (name === undefined) continue;
+        items.push({
+          name,
+          person: text(item.person, 40),
+          // Only a six-digit hex reaches a style attribute. Anything else is no
+          // colour rather than a string handed to the renderer.
+          color:
+            typeof item.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(item.color)
+              ? item.color
+              : undefined,
+          dueTime:
+            typeof item.dueTime === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(item.dueTime)
+              ? item.dueTime
+              : undefined,
+          done: item.done === true,
+        });
+      }
+    }
+    days.push({ date: day.date, items });
+  }
+  return days.length === 0 ? undefined : { today: raw.today, days };
 }
 
 /**
@@ -943,6 +1020,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
   }
 
   const house = houseFrom(manifest.panels?.['home']);
+  const chores = choresFrom(manifest.panels?.['chores']);
 
   // Third-party module panels: every `ext:*` slice, read through the same
   // defensive parser (docs/rfc-001-module-framework.md). A slice that does not
@@ -977,6 +1055,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     weather: weather.days,
     weatherNote: weather.note,
     externalPanels,
+    chores,
     house: house.readings,
     houseNote: house.note,
     now,

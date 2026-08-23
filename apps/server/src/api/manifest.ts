@@ -52,6 +52,9 @@ export const WIDGET_TYPES = [
   'shift',
   'notes',
   'todo',
+  // The household's chore board (RFC 008). Read-only in phase 2: it says what
+  // is due and what is done, and offers no way to tick one off.
+  'chores',
   'countdown',
   'image',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).

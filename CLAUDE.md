@@ -259,7 +259,7 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Chores are half built, and the split is the design (RFC 008, phase 1).** A
+**Chores are on the wall, read-only, and the split is the design (RFC 008, phases 1–2).** A
 chore has two lifecycles with nothing in common: *defining* one is rare and
 considered, *completing* one happens several times a day, by whoever is
 standing in the kitchen. The admin is right for the first and wrong for the
@@ -295,6 +295,43 @@ landmarks" fault one screen along, and the cure is the same shape — the editor
 is folded behind a `<details>` (script-free, like the overflow menu), and a
 date field belonging to a kind the chore is not shows blank rather than today,
 because a monthly chore reading "Starting 23/08/2026" was true of nothing.
+
+**Chores draw on a wall and on a panel, and both read one stored view the same
+way.** `modules/chores/` is a panel module — no job, because a chore is due on a
+day or it is not and "done" is a row keyed on that date, so the obvious midnight
+sweeper would be a job that destroys history and misfires in the hour the clocks
+go back; and no `signals()`, because a chore that raises an interrupt is a wall
+that nags and interrupts are reserved for tornado warnings and a garage left
+open at midnight. The `chores` widget has three views (Today, By person, This
+week) and the e-paper `drawChores` mirrors them; **an absent `mode` is the
+default in both**, and `apps/display/test/chores.test.ts` holds the two
+renderers to the same literals by reading both sources — the e-paper calendar
+shipped without that assertion and drew the same thing for all three of its
+settings.
+
+The ETag needed nothing: the chore panel travels inside `panels`, which is in
+`manifestEtag`'s preimage, and the manifest's own days carry dates — so a tick
+changes it and midnight rolls it. That is free by accident rather than by
+design, so a test pins it.
+
+**Three faults came out of it, all found by looking at a real wall and none by a
+test.** The week board inherited the note widget's 0.3 scale floor, and a week
+of four daily chores is 28 rows — `fitToBox` shrank the names to **8.1px** on a
+1280px display, which is not small, it is gone, and nobody would report it as
+broken. Three of four names in the by-person columns were ellipsised, because a
+column is narrow by construction and its rows were built to ellipse like the
+wide views. And once the floor was raised so the box clipped instead, it clipped
+*through a row*, which reads as a broken renderer rather than as a list that ran
+out of room — the month-grid bug one widget along. The floor now lives in
+`density.ts` beside the other calibrated ones with its measurement table, names
+wrap in columns, and the week trims to whole days **and re-fits**, so fewer days
+are drawn larger. The first trim measured `.fw-content`, which sits *inside* the
+transform and is sized to its own content, so nothing was ever trimmed and the
+frame looked identical — which is exactly how that kind of mistake survives.
+
+**Still read-only.** Nothing on a wall or a panel can record a completion, and
+`POST /d/chores/tick` is a 404 with a test asserting it, so phase 3 has to
+notice when that changes.
 
 **Not started:** ws push · a published docs site · the Android app · a second
 weather provider.

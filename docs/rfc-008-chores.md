@@ -1,6 +1,6 @@
 # RFC 008 — Chores
 
-Status: **phase 1 built; phases 2 and 3 not started** · Owner: — · First
+Status: **phases 1 and 2 built; phase 3 not started** · Owner: — · First
 drafted 2026-08-22 · Builds on `people`, the module registry (RFC 001), the
 free-form canvas (RFC 005), and the one existing write path from a wall
 (`POST /d/interrupts/dismiss`)
@@ -35,6 +35,39 @@ free-form canvas (RFC 005), and the one existing write path from a wall
 > a kind the chore is not shows **blank** rather than today, because seeding it
 > read as fact: a monthly chore displayed "Starting 23/08/2026", which was true
 > of nothing.
+
+> **Update — phase 2 is implemented.** The board reaches both renderers.
+> `modules/chores/` is a panel module (no job, no `signals` — see below), whose
+> slice is today plus six days with `done` per item; the wall gets a `chores`
+> widget with three views (Today, By person, This week) and the panel gets
+> `drawChores` at 1-bit. Both read the stored view *identically*, which is the
+> whole of the e-paper calendar lesson, and `apps/display/test/chores.test.ts`
+> holds them to each other by reading both sources. Still read-only: there is
+> no way to record a completion from a screen, and a test asserts
+> `POST /d/chores/tick` is a 404 so phase 3 has to notice.
+>
+> The ETag worry below turned out to be already satisfied and is worth
+> recording rather than deleting: the chore panel travels inside `panels`,
+> which is in `manifestEtag`'s preimage, and the manifest's own `days` carry
+> dates — so a tick changes the ETag and midnight rolls it, with nothing added.
+> A test pins the first half, because the property is load-bearing and free
+> only by accident.
+>
+> **Three faults, all found by looking at a real wall in a real browser, none
+> by a test.** The week board inherited the note widget's 0.3 scale floor and a
+> week of four daily chores is 28 rows, so `fitToBox` duly shrank the names to
+> **8.1px** on a 1280px display — not small, gone, and nobody would report it
+> as broken. Three of four names in the by-person columns were ellipsised
+> ("Put th…", "Hoover dow…") because a column is narrow by construction and the
+> rows were built to ellipse like the wide views. And once the floor was raised
+> so the box clipped instead, it clipped *through a row*, which reads as a
+> broken renderer rather than as a list that ran out of room. The floor now
+> lives in `density.ts` beside the other calibrated ones, with its measurement
+> table; names wrap in columns; and the week trims to whole days and re-fits, so
+> fewer days are drawn larger. The first attempt at that trim measured
+> `.fw-content`, which sits *inside* the transform and is sized to its own
+> content — so nothing was ever trimmed and the frame looked identical, which
+> is exactly how that kind of mistake survives.
 
 ## Summary
 

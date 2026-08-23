@@ -42,7 +42,11 @@ export const widgetConfigBody = z
     // `skyweek` and `skymonth` are the same two shapes drawn edge to edge, with
     // hairline dividers instead of gaps and cards — every pixel spent on the
     // calendar rather than on the space around it.
-    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth']).optional(),
+    // `people` is the Chores widget's by-person board; `week` is shared with the
+    // calendar's day columns and means the same thing on both — seven days
+    // across. One key for every type's view, because the editor's View picker is
+    // generic and writes this for all of them.
+    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people']).optional(),
     // How a month cell draws its events: quiet dots (default) or Skylight-style
     // labelled pills. Absent means dots, so an existing wall is unchanged.
     cellEvents: z.enum(['dots', 'pills']).optional(),
@@ -80,6 +84,10 @@ export const widgetConfigBody = z
     image: storedImageName.optional(),
     // Notes — free text the household typed, drawn as written (line breaks kept).
     text: z.string().max(2000).optional(),
+    // Chores — whose to show, by person name (the manifest carries no person id
+    // on a chore, so a selection can only be by the name the household sees).
+    // None ticked shows everybody, which is what a bare widget draws.
+    people: z.array(z.string().max(60)).max(20).optional(),
     // To-do — a static checklist. Each item is a line the household typed; the
     // wall is read-only, so items are shown, not ticked (edited in the admin).
     items: z.array(z.string().max(200)).max(40).optional(),

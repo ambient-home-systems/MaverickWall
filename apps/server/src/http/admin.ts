@@ -12,6 +12,7 @@ import {
   readTitleObservations,
   readTitlesByDate,
   saveShiftPlan,
+  readPeople,
   readPeopleAdmin,
   updatePerson,
   updateSource,
@@ -1991,6 +1992,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // whole), so those pickers start empty; the module picker is real.
       calendars: [],
       readings: [],
+      // The Chores picker is real on a panel: `drawChores` honours it exactly
+      // as the wall does.
+      people: readPeople(deps.db).map((person) => person.name),
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
     };
 
@@ -3418,6 +3422,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // its pickers without a second round trip.
       calendars: readAdminSources(deps.db).map((s) => ({ id: s.id, name: s.name })),
       readings: haReadingLabels(),
+      // The household's people, by name, for the Chores widget's "whose chores"
+      // picker. By name because the manifest carries no person id on a chore —
+      // the same reason readings are picked by their label.
+      people: readPeople(deps.db).map((person) => person.name),
       // The registered modules, for the External widget's module picker.
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
       // The viewport this screen last reported, so the editor can offer "match

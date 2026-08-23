@@ -31,6 +31,7 @@ import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
+import { choresModule } from '../modules/chores/index.js';
 import { weatherModule } from '../modules/weather/index.js';
 import { haModule } from '../modules/homeassistant/index.js';
 import { externalPanelModules } from '../modules/external/index.js';
@@ -255,7 +256,7 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
  * same list, and the Display screen offers their blocks from it too — so
  * adding a module is one entry rather than three edits in three files.
  */
-export const MODULES = [weatherModule, haModule, calendarModule];
+export const MODULES = [weatherModule, haModule, calendarModule, choresModule];
 
 /**
  * The wall clock in a zone, as `HH:MM`.

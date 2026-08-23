@@ -62,6 +62,8 @@ interface LayoutState {
   calendars: readonly { readonly id: string; readonly name: string }[];
   /** The Home Assistant reading labels resolving now, for the HA widget picker. */
   readings: readonly string[];
+  /** The household's people, by name, for the Chores widget's picker. */
+  people: readonly string[];
   /** The registered modules, for the External widget's "which module". */
   modules: readonly { readonly id: string; readonly name: string }[];
 }
@@ -76,6 +78,7 @@ const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
   { type: 'countdown', label: 'Countdown' },
   { type: 'notes', label: 'Notes' },
   { type: 'todo', label: 'To-do' },
+  { type: 'chores', label: 'Chores' },
   { type: 'image', label: 'Image' },
   { type: 'external', label: 'Module' },
 ];
@@ -97,6 +100,7 @@ const SWATCH: Readonly<Record<string, string>> = {
   countdown: 'var(--accent)',
   notes: 'var(--muted)',
   todo: 'var(--night)',
+  chores: 'var(--ok)',
   image: 'var(--ok)',
   external: 'var(--warn)',
 };
@@ -213,6 +217,7 @@ function boot(): void {
       readonly landscape?: RawCanvas;
       readonly calendars?: unknown;
       readonly readings?: unknown;
+      readonly people?: unknown;
       readonly modules?: unknown;
       readonly report?: { readonly w?: unknown; readonly h?: unknown };
       readonly orientation?: unknown;
@@ -244,13 +249,14 @@ function boot(): void {
       stash: landscape,
       calendars: Array.isArray(parsed.calendars) ? (parsed.calendars as LayoutState['calendars']) : [],
       readings: Array.isArray(parsed.readings) ? (parsed.readings as string[]) : [],
+      people: Array.isArray(parsed.people) ? (parsed.people as string[]) : [],
       modules: Array.isArray(parsed.modules) ? (parsed.modules as LayoutState['modules']) : [],
     };
   } catch {
     state = {
       screen: null, mode: 'auto', orientation: 'portrait', aspect: 0.5625, widgets: [],
       stash: { aspect: 1.7778, widgets: [] },
-      calendars: [], readings: [], modules: [],
+      calendars: [], readings: [], people: [], modules: [],
     };
   }
 
@@ -1499,6 +1505,7 @@ function boot(): void {
       else if (widget.type === 'external') buildExternalConfig(widget, cfg);
       else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
       else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
+      else if (widget.type === 'chores') buildChoresConfig(widget, cfg);
       else if (widget.type === 'image') buildImageConfig(widget, cfg);
     } else {
       // Style is the same set of controls for every widget — one
@@ -1661,6 +1668,35 @@ function boot(): void {
     area.addEventListener('input', () => setConfig(widget, 'text', area.value));
     field.appendChild(area);
     configPanel.appendChild(field);
+  }
+
+  /**
+   * The Chores widget's own options: whose to show.
+   *
+   * By *name*, not by id, because the manifest deliberately carries no person id
+   * on a chore — the same reason the Home Assistant widget filters by the
+   * reading label a household sees. None ticked shows everybody, which is what a
+   * bare widget draws, and is stated rather than left to be discovered.
+   *
+   * There is no count here and no "hide the done ones". A household's chores in
+   * a day are few, and a board that hides what has been done cannot be used to
+   * check that it was.
+   */
+  function buildChoresConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const which = cfgField('Whose chores to show');
+    which.appendChild(
+      checkList(
+        state.people.map((person) => ({ value: person, label: person })),
+        Array.isArray(cfg['people']) ? (cfg['people'] as string[]) : [],
+        (values) => setConfig(widget, 'people', values),
+        'No people yet — add them on the People screen.',
+      ),
+    );
+    configPanel.appendChild(which);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'None ticked shows everybody, including chores nobody owns.';
+    configPanel.appendChild(note);
   }
 
   function buildTodoConfig(widget: Widget, cfg: Record<string, unknown>): void {
