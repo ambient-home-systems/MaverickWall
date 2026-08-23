@@ -229,17 +229,33 @@ day. This is the single most common ICS bug.
 
 ## Current state
 
-**v0.1.1 is released and installable.** One branch (`main`), one tag, one
-published image, and all three agree with each other.
+> **Check this section before trusting it.** It is 84% of this document and it
+> accretes: every feature adds a paragraph and almost nothing is ever revised,
+> so the oldest claims here are the most confident and the least true. Three
+> were caught in one session — a version reading `0.1.1` at release 0.51.0,
+> `963 tests` at 1692, and "the Android app" listed as not started while its
+> signed APK ships with every release. Each one had been wrong for months.
+>
+> The reasoning in these paragraphs is the valuable part and mostly still
+> holds. The *counts and statuses* are the part that rots. `git log`,
+> `pnpm test` and the file tree are authoritative; this is a narrative.
+
+**0.51.0 is the current release.** `main`, the tag and the published image
+agree with each other, and `advertise` is what keeps them that way — it writes
+`config.yaml`'s version last, after the image is built for both architectures,
+signed, pulled anonymously and verified.
 
 ```bash
 docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
 ```
 
-That is verified rather than asserted: pulled anonymously with nothing cached,
-healthy in eight seconds, wizard at `/`, assets served, uid 1000. `cosign
-verify` passes and names `release.yml@refs/tags/v0.1.1`. The manifest carries
-`linux/amd64` and `linux/arm64` plus two attestations.
+**The paragraph below is about v0.1.1 and is kept as history**, because what it
+records is a method rather than a state: the first time an install was proven
+from *outside* the machine that built it. Pulled anonymously with nothing
+cached, healthy in eight seconds, wizard at `/`, assets served, uid 1000.
+`cosign verify` passed and named `release.yml@refs/tags/v0.1.1`. The manifest
+carried `linux/amd64` and `linux/arm64` plus two attestations. Every release
+since has been verified the same way, by the `verify` job.
 
 **That commit is no longer reachable from `main`, and this paragraph used to
 claim it was.** `main`'s history now begins at two *parentless* commits dated
@@ -259,7 +275,7 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**963 tests passing.** calendar 153 · core 266 · server 466 · display 78. CI
+**1692 tests passing.** calendar 153 · core 305 · display 214 · server 1020. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -267,9 +283,12 @@ Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
 rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 
-**Done:** ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift rotation
-(per person, pattern or calendar-derived, with title analysis) · secrets at rest
-· 21-table schema · migrations behind a file lock · scheduler · ICS sync ·
+**Done, as of v0.1.x** — an early list, kept because it names the load-bearing
+pieces rather than because it is complete; everything after it in this section
+is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
+rotation (per person, pattern or calendar-derived, with title analysis) ·
+secrets at rest · the schema (27 tables, 34 migrations) · migrations behind a
+file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
@@ -393,12 +412,31 @@ one tap marking a chore done in both widgets at once, an undo, `Enter`, and a
 44×44 target behind a 17px box — but by this project's history the next fault
 is on the wall in somebody's kitchen.
 
-**Not started:** ws push · a published docs site · the Android app · a second
-weather provider.
+**Not started: a published docs site.** That is the whole list, and the three
+things that used to sit beside it are a lesson in how this section rots — all
+three were shipped and none was struck off:
+
+- **ws push is built and half-connected.** `net/push-hub.ts` is a real
+  `WebSocketServer`, wired into `main.ts` and covered by
+  `test/push-socket.test.ts`, and the **Android app connects to it**
+  (`push/PushService.kt`). What does *not* connect is the browser display —
+  `apps/display` still polls on `POLL_MS = 60_000` and has no `WebSocket` in
+  it. So the honest status is: the server half and the native client are done,
+  the browser wall is not, and `ingress_stream: true` finally has something to
+  carry even though the display is not yet the thing carrying it.
+- **The Android app exists** (`apps/android`), and `release.yml` builds and
+  attaches a signed APK to every GitHub Release.
+- **A second weather provider exists.** Open-Meteo
+  (`modules/weather/open-meteo.ts`) sits beside NWS and is the key-less
+  catalogue entry the store ships — which this document describes at length
+  further down while still listing it as not started up here.
 
 **eInk (e-paper) screens are built in code and unproven on hardware (RFC 006,
-phase 1).** Server-rendered frames served from `/d/epaper/<token>.{png,bin}`,
-consumed by an ESPHome wifi panel (device pulls) or an OpenDisplay BLE tag (Home
+phases 1–2 — the free-form editor, the 1-bit widget set and the per-widget ink
+lane all landed after this paragraph was written, and RFC 006's own status line
+understates itself the same way).** Server-rendered frames served from
+`/d/epaper/<token>.{png,bin}`, consumed by an ESPHome wifi panel (device pulls)
+or an OpenDisplay BLE tag (Home
 Assistant pushes, core `opendisplay.upload_image`). The whole rendering path is
 a new backend behind the existing `viewmodel`, in `apps/server/src/epaper/`: a
 pure 1-bit framebuffer, a `node:zlib` PNG encoder, an embedded font, Bayer
@@ -1784,9 +1822,12 @@ distinct address.
     the log", and the boot line already prints a full `…/setup?token=` URL;
     the gap is only that the token is not pre-filled into the form a browser
     lands on. Tabled deliberately, not forgotten.
-- **The WebSocket.** The contract is fixed (`api/push.ts`) and tested; nothing
-  sends one. Polling carries interrupts in the manifest today, which is why a
-  reconnecting display gets them at all.
+- **The WebSocket, for the *browser* wall.** No longer the open question it was
+  written as: the hub is built (`net/push-hub.ts`), wired into boot, tested,
+  and the Android app connects to it. What is still open is `apps/display`,
+  which polls every sixty seconds and opens no socket. Polling carries
+  interrupts in the manifest, which is why a reconnecting browser wall gets
+  them at all — so this is an optimisation with a working fallback, not a gap.
 - **Whether a second screen kind needs its own acknowledge affordance.** The
   control is a real button plus a global `Enter` handler, which covers a
   remote, a touchscreen and a keyboard. A voice assistant or a wall switch
