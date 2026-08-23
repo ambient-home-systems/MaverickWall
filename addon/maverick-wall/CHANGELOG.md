@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.51.0
 
 Chores, on the wall — and you tick them off there, not in here.
 
