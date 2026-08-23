@@ -14,7 +14,7 @@
   Left as a comment rather than filled with a placeholder, because a stock
   photo or a mockup here would be a claim about the product that is not true.
 -->
-##THIS IS UNDER ACTIVE DEVELOPMENT
+## THIS IS UNDER ACTIVE DEVELOPMENT
 
 <!--
   The mark, not the lockup: the wordmark would only repeat the heading under
@@ -65,6 +65,23 @@ configure first, no account to create anywhere else, no key to paste.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
+- **Arrange the wall yourself.** Drag the calendar, a clock, the forecast, a
+  shift badge, Home Assistant readings, notes, a to-do list, a countdown or a
+  photograph anywhere on the canvas — or start from a template and move things
+  around. Portrait and landscape are arranged separately, and a screen either
+  follows the household's arrangement or keeps its own.
+- **eInk panels.** A wifi or battery e-paper panel can show the same wall in
+  black and white. The server draws the frame, so the device only has to
+  receive a picture — an ESPHome panel fetches it, a Home Assistant tag is sent
+  it. A panel draws its own arrangement or **follows one of your walls**, in
+  which case moving a box on the wall moves it on the panel; each widget can
+  then say *less* on ink — three days of forecast instead of seven, a name and
+  a time instead of a whole card — without changing the wall it follows. Built
+  and not yet proven on real hardware; see limitations.
+- **A small store of extras**, built into the image rather than fetched from
+  anywhere, so it works on a wall with no internet. A module contributes a
+  panel of readings and never code the wall runs; adding one to the store is
+  [a pull request](docs/adding-to-the-store.md) against this repository.
 - **It keeps drawing when the server does not.** The last good calendar is kept
   on the device and painted before the first request is even sent, labelled
   with how old it is. A power cut is a few seconds, not a blank rectangle.
@@ -164,6 +181,11 @@ weather radio depends on none of them.
   reasonably modern one. There is no native app yet.
 - **One household per container.** There is no multi-tenancy and there will not
   be. If you need a second wall, run a second container.
+- **eInk panels are unproven on hardware.** The whole path is built and tested
+  — the frame, the ESPHome and Home Assistant recipes, the editor — but no
+  frame has been photographed on a real panel yet. Treat it as a glance
+  display and not an alert one: a sleeping battery panel cannot show you a
+  tornado warning.
 - **No push yet.** The display polls. A WebSocket channel is specified and not
   built, so an alert appears within a poll interval rather than instantly.
 - **Alerts wake a screen only where the platform allows it.** A browser cannot
