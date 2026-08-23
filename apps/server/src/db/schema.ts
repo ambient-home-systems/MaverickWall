@@ -460,6 +460,29 @@ export const screens = sqliteTable(
      */
     allowDismiss: integer('allow_dismiss', { mode: 'boolean' }).notNull().default(false),
 
+    /**
+     * Whether this screen may tick a chore off (RFC 008 phase 3).
+     *
+     * The same argument as `allow_dismiss`, one control along, and off by
+     * default for the same reason: it is a fact about the hardware. A tablet at
+     * elbow height in a kitchen is exactly what this is for; a panel behind
+     * glass in a hallway has nothing to press it with, and a screen a coat
+     * sleeve brushes past would mark the bins as done every time somebody
+     * walked through.
+     *
+     * The *effect* stays household-wide, again like dismissal: one completion
+     * row keyed on the chore and the day, so a kitchen tablet and a hall
+     * television can never disagree about whether the bins went out. This only
+     * decides which screens may do the asking.
+     *
+     * Separate from `allow_dismiss` rather than one "this screen accepts input"
+     * flag, because the two are not the same risk. Clearing a tornado warning
+     * is a household saying it has read something; ticking a chore is a claim
+     * about the world that somebody may act on. A household can reasonably want
+     * one and not the other.
+     */
+    allowChores: integer('allow_chores', { mode: 'boolean' }).notNull().default(false),
+
     /** Rotated when the token is regenerated, invalidating old sessions. */
     tokenIssuedAt: integer('token_issued_at', { mode: 'number' }).notNull().$defaultFn(now),
     revokedAt: integer('revoked_at', { mode: 'number' }),

@@ -12,7 +12,7 @@ import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
-import { createChore, localToday, setChoreDone } from '../src/api/chores.js';
+import { completionDates, createChore, localToday, readChores, setChoreDone } from '../src/api/chores.js';
 import { buildChoreBoard, choresModule } from '../src/modules/chores/index.js';
 
 /**
@@ -475,20 +475,25 @@ describe('the chore board on an e-paper panel', () => {
     expect(one.pixels).toBeLessThan(all.pixels);
   });
 
-  it('offers nowhere to record a completion from a screen — phase 2 is read-only', async () => {
+  it('refuses a tick from a panel, which cannot offer one anyway', async () => {
     /*
-     * The design assertion for this phase, made about the *server* rather than
-     * about pixels, because that is where it is real: a wall could draw a box
-     * and there would still be nothing behind it. This flips in phase 3, and it
-     * should be this test that notices.
+     * This assertion used to say the endpoint was a 404 — phase 2's "the wall
+     * is read-only" — and it flipping is phase 3 landing, which is exactly what
+     * it was written to notice.
+     *
+     * What survives is the half that still holds for a *panel*: `allow_chores`
+     * is off by default, and an e-paper screen has no way to switch it on that
+     * would mean anything, because a sleeping ESP32 cannot honour a tap.
      */
     const h = await harness();
     seed(h);
+    const chore = readChores(h.db)[0]!;
     const response = await h.call('http://localhost:8080/d/chores/tick', {
       method: 'POST',
       headers: { authorization: `Bearer ${h.token}`, 'content-type': 'application/x-www-form-urlencoded' },
-      body: 'id=whatever&date=2026-08-25',
+      body: `id=${chore.id}`,
     });
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
+    expect([...completionDates(h.db, chore.id, '2000-01-01', '2100-01-01')]).toEqual([]);
   });
 });

@@ -24,8 +24,8 @@ const BOARD = {
     {
       date: '2026-08-25',
       items: [
-        { name: 'Put the bins out', person: 'Sam', color: '#4C7FD1', dueTime: '19:00', done: false },
-        { name: 'Feed the cat', person: null, color: null, dueTime: null, done: true },
+        { id: 'c1', name: 'Put the bins out', person: 'Sam', color: '#4C7FD1', dueTime: '19:00', done: false },
+        { id: 'c2', name: 'Feed the cat', person: null, color: null, dueTime: null, done: true },
       ],
     },
     { date: '2026-08-26', items: [] },
@@ -45,6 +45,7 @@ describe('choresFrom', () => {
     expect(board?.days).toHaveLength(2);
     expect(board?.days[1]?.items).toEqual([]);
     expect(board?.days[0]?.items[0]).toEqual({
+      id: 'c1',
       name: 'Put the bins out',
       person: 'Sam',
       color: '#4C7FD1',
@@ -70,8 +71,8 @@ describe('choresFrom', () => {
     const board = choresFrom({
       today: '2026-08-25',
       days: [
-        { date: 'sometime', items: [{ name: 'Nope' }] },
-        { date: '2026-08-26', items: [{ name: 'Bins' }, { nope: true }, 'not an object'] },
+        { date: 'sometime', items: [{ id: 'x', name: 'Nope' }] },
+        { date: '2026-08-26', items: [{ id: 'y', name: 'Bins' }, { nope: true }, 'not an object'] },
       ],
     });
     expect(board?.days).toHaveLength(1);
@@ -84,6 +85,17 @@ describe('choresFrom', () => {
     expect(choresFrom({ today: '2026-08-25' })).toBeUndefined();
     expect(choresFrom({ today: 'today', days: [] })).toBeUndefined();
     expect(choresFrom({ days: [{ date: '2026-08-25', items: [] }] })).toBeUndefined();
+  });
+
+  it('keeps a chore with no id, drawn read-only rather than dropped', () => {
+    // Losing the control costs a household nothing they had; losing the chore
+    // costs them the thing they walked over to read. Rule nine, on a row.
+    const board = choresFrom({
+      today: '2026-08-25',
+      days: [{ date: '2026-08-25', items: [{ name: 'Bins' }] }],
+    });
+    expect(board?.days[0]?.items.map((item) => item.name)).toEqual(['Bins']);
+    expect(board?.days[0]?.items[0]?.id).toBeUndefined();
   });
 
   it('refuses a due time that is not one', () => {
@@ -177,5 +189,48 @@ describe('the readable floor', () => {
     // the measurement above load-bearing.
     const render = readFileSync(join(SRC, 'render.ts'), 'utf8');
     expect(render).toMatch(/case 'chores':\s*\n\s*return MIN_CHORE_SCALE;/);
+  });
+});
+
+describe('the tick control does not wipe the state it shares', () => {
+  /*
+   * The admin's button-states fault, one surface along, and it shipped here for
+   * a few minutes: `.ch-tick` clears its background so a real `<button>` looks
+   * like the read-only box, and `.ch-box-on` fills that background to say a
+   * chore is done. Equal specificity, so source order decided it and the tick
+   * won — a ticked chore on a screen allowed to tick drew an empty outline,
+   * losing the one thing on the board worth seeing from across a room.
+   *
+   * The read-only `<span>` filled correctly the whole time, which is what made
+   * it invisible; and the *class* was applied, so anything asserting on
+   * `.ch-box-on` passed while the pixels were wrong. Hence this reads the
+   * stylesheet rather than the markup, and asserts the restoring rule exists
+   * and comes last.
+   */
+  const css = readFileSync(join(SRC, 'display.css'), 'utf8');
+
+  it('fills a done box even when it is a button', () => {
+    expect(css).toMatch(/\.ch-tick\.ch-box-on\s*\{[^}]*background:/);
+  });
+
+  it('restores it after the rule that cleared it, since specificity is a tie', () => {
+    const cleared = css.indexOf('.ch-tick {');
+    const restored = css.indexOf('.ch-tick.ch-box-on');
+    expect(cleared).toBeGreaterThan(-1);
+    expect(restored).toBeGreaterThan(cleared);
+  });
+
+  it('keeps a focus ring on both :focus and :focus-visible', () => {
+    /*
+     * Also measured wrong first. With only `:focus-visible` the outline
+     * computed to 0px after a tap or a scripted focus, because the browser's
+     * heuristic decides a pointer-driven focus wants no ring — a heuristic
+     * written for a page that has a pointer. A wall sets `cursor: none` and is
+     * driven by a D-pad, so every other control here declares both.
+     */
+    expect(css).toContain('.ch-tick:focus,');
+    expect(css).toContain('.ch-tick:focus-visible');
+    // The convention this follows, so a future control has an example to copy.
+    expect(css).toContain('.alert-ack:focus,');
   });
 });

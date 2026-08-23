@@ -1,6 +1,6 @@
 # RFC 008 — Chores
 
-Status: **phases 1 and 2 built; phase 3 not started** · Owner: — · First
+Status: **built (phases 1–3); unproven on real hardware** · Owner: — · First
 drafted 2026-08-22 · Builds on `people`, the module registry (RFC 001), the
 free-form canvas (RFC 005), and the one existing write path from a wall
 (`POST /d/interrupts/dismiss`)
@@ -35,6 +35,57 @@ free-form canvas (RFC 005), and the one existing write path from a wall
 > a kind the chore is not shows **blank** rather than today, because seeding it
 > read as fact: a monthly chore displayed "Starting 23/08/2026", which was true
 > of nothing.
+
+> **Update — phase 3 is implemented, and chores are complete in code.** The
+> wall writes: `screens.allow_chores` (migration `0033`, additive, off by
+> default) puts a real `<button>` beside each chore, and `POST /d/chores/tick`
+> records it — behind `requireScreen`, household-wide, with the server as the
+> authority exactly as `/d/interrupts/dismiss` is.
+>
+> **The endpoint refuses three things from the caller, and each is a bug it
+> would otherwise have.** The *day*: a wall tablet's clock drifts and plenty
+> never get NTP, so the client sends a chore and never a date, and a date sent
+> anyway is ignored — a test posts yesterday and asserts today is what lands.
+> Whether the chore is *due*: a completion for a day it does not fall on is a
+> row that shows nowhere, refused rather than stored. And whether this *screen*
+> may ask: the wall hides the control, but the display token is on the wall, so
+> the check is here and the hidden control is only a courtesy.
+>
+> **Three faults, and two of them were only ever going to be found by
+> looking.** The done box drew as an empty outline on a screen allowed to tick:
+> `.ch-tick` clears its background so a button looks like the read-only box, and
+> `.ch-box-on` fills that background — equal specificity, so source order
+> decided it and the tick won. The read-only `<span>` filled correctly the whole
+> time, which is what hid it, and the *class* was applied, so a measurement
+> counting `.ch-box-on` passed while the pixels were wrong. That is the admin's
+> button-states fault one surface along, and the rule it re-teaches is: assert
+> on the computed background, never on the class. The focus ring was declared
+> `:focus-visible` only and computed to **0px** after a tap — a heuristic
+> written for a page with a pointer, on a wall that sets `cursor: none` and is
+> driven by a D-pad; every other control here already declares both, which is
+> the convention this one failed to copy. And `Enter` on a focused tick box
+> would have fired the button *and* acknowledged a showing banner, two actions
+> from one key.
+>
+> Two labels went stale the moment the second switch landed and were fixed with
+> it: the settings section read "Whether this screen can clear alerts" and its
+> panel "What this screen may do when an alert is showing", both describing half
+> of what they now hold.
+>
+> One decision was reversed while writing the tests. A chore whose panel item
+> carries no id was first *dropped*; it is now drawn read-only, because that is
+> exactly what a screen without permission shows anyway — losing the control
+> costs a household nothing they had, losing the chore costs them the thing they
+> walked over to read.
+>
+> **Verified on a real screen in a real browser**, which is what this project
+> counts: ticking off gives a read-only board (0 buttons, 6 boxes); the
+> household's own switch turns it on; one tap marks the chore done in *both*
+> widgets on the wall, filled in that person's colour and struck through; a
+> second tap undoes it; `Enter` on a focused box works; and the tap target
+> measures 44×44 while the drawn box stays 17px. **What remains is a real
+> household's tablet** — by this project's history, that is where the next fault
+> is.
 
 > **Update — phase 2 is implemented.** The board reaches both renderers.
 > `modules/chores/` is a panel module (no job, no `signals` — see below), whose

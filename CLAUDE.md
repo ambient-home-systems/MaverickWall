@@ -259,7 +259,7 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
-**Chores are on the wall, read-only, and the split is the design (RFC 008, phases 1–2).** A
+**Chores are built end to end, and the split is the design (RFC 008).** A
 chore has two lifecycles with nothing in common: *defining* one is rare and
 considered, *completing* one happens several times a day, by whoever is
 standing in the kitchen. The admin is right for the first and wrong for the
@@ -329,9 +329,39 @@ are drawn larger. The first trim measured `.fw-content`, which sits *inside* the
 transform and is sized to its own content, so nothing was ever trimmed and the
 frame looked identical — which is exactly how that kind of mistake survives.
 
-**Still read-only.** Nothing on a wall or a panel can record a completion, and
-`POST /d/chores/tick` is a 404 with a test asserting it, so phase 3 has to
-notice when that changes.
+**The wall writes, and that is the first time it ever has beyond an
+acknowledgement.** `screens.allow_chores` (off by default, its own switch
+beside alert dismissal because clearing a warning and claiming a chore is done
+are not the same risk) puts a real `<button>` beside each chore, and
+`POST /d/chores/tick` records it — behind `requireScreen`, household-wide, the
+server as authority, all copied from `/d/interrupts/dismiss`. **The endpoint
+refuses three things from the caller**: the *day*, because a wall tablet's
+clock drifts and plenty never get NTP, so the client sends a chore and never a
+date and a date sent anyway is ignored; whether the chore is *due*, because a
+completion for a day it does not fall on shows nowhere; and whether this
+*screen* may ask, because the wall hides the control but the display token is
+on the wall. Idempotent by the unique index, which is why there is no
+client-side queue: a tick that cannot reach the server fails and leaves the box
+empty, exactly as `acknowledge` does, because an optimistic tick reads better
+on one screen and buys a distributed-state problem across two.
+
+**Two of phase 3's three faults were only ever going to be found by looking.**
+The done box drew as an empty outline on a screen allowed to tick — `.ch-tick`
+clears its background so a button looks like the read-only box, `.ch-box-on`
+fills it, equal specificity, source order decided it. The read-only `<span>`
+filled correctly the whole time, which is what hid it, and the *class* was
+applied, so a measurement counting `.ch-box-on` passed while the pixels were
+wrong: **assert on the computed background, never on the class.** The focus
+ring was `:focus-visible` only and computed to **0px** after a tap — a
+heuristic written for a page with a pointer, on a wall that sets `cursor: none`;
+every other control here already declares both. And `Enter` on a focused tick
+would have fired the button *and* cleared a showing banner.
+
+**Unproven where it counts: a real household's tablet.** It has been driven end
+to end in a headless browser — read-only by default, the household's switch,
+one tap marking a chore done in both widgets at once, an undo, `Enter`, and a
+44×44 target behind a 17px box — but by this project's history the next fault
+is on the wall in somebody's kitchen.
 
 **Not started:** ws push · a published docs site · the Android app · a second
 weather provider.

@@ -172,6 +172,7 @@ export interface Manifest {
     readonly rotation?: number;
     /** Whether this screen may offer a way to acknowledge an interrupt. */
     readonly allowDismiss?: boolean;
+    readonly allowChores?: boolean;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

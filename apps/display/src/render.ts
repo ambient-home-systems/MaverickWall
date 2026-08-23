@@ -751,10 +751,35 @@ function weekdayOfDate(date: string): string {
   }
 }
 
-/** One chore, as a row: its box, its name, whose it is, and when by. */
-function choreRow(item: ChoreItemModel, withPerson: boolean): HTMLElement {
+/**
+ * One chore, as a row: its box, its name, whose it is, and when by.
+ *
+ * The box is a `<span>` on a screen that may not tick, and a real `<button>` on
+ * one that may (RFC 008 phase 3). A real button rather than a tappable div
+ * because a wall is reached by a fingertip, a keyboard and a television remote,
+ * and only one of those three is served by a click handler on a box — the same
+ * argument that made the interrupt's acknowledge control a button.
+ *
+ * `data-chore` is what `main.ts` listens for. The row is marked rather than the
+ * page wired per node, so a redraw between polls does not have to re-attach
+ * anything.
+ */
+function choreRow(item: ChoreItemModel, withPerson: boolean, tickable = false): HTMLElement {
   const row = el('div', `ch-row${item.done ? ' ch-done' : ''}`);
-  const box = el('span', `ch-box${item.done ? ' ch-box-on' : ''}`);
+  // A row with no id cannot be ticked whatever the screen is allowed to do, so
+  // it draws the read-only box. That is a degraded row, not a missing one.
+  const canTick = tickable && item.id !== undefined;
+  const box = canTick
+    ? el('button', `ch-box ch-tick${item.done ? ' ch-box-on' : ''}`)
+    : el('span', `ch-box${item.done ? ' ch-box-on' : ''}`);
+  if (canTick) {
+    (box as HTMLButtonElement).type = 'button';
+    box.setAttribute('data-chore', item.id as string);
+    box.setAttribute('aria-pressed', item.done ? 'true' : 'false');
+    // Named, because "button" is what a screen reader would otherwise say for
+    // every row on the board.
+    box.setAttribute('aria-label', `${item.done ? 'Undo' : 'Done'}: ${item.name}`);
+  }
   // The person's colour marks the box rather than the text: a chore name has to
   // stay legible from across a room, and tinting it would trade that away for a
   // cue the swatch already carries.
@@ -795,6 +820,16 @@ function renderChoresWidget(model: DisplayModel, config?: unknown): HTMLElement 
 
   const cfg = widgetConfig(config);
   const mode = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : '';
+  /*
+   * Whether this screen offers the control at all.
+   *
+   * Per screen and off by default, because it is a fact about the hardware: a
+   * tablet at elbow height is what it is for, a panel behind glass has nothing
+   * to press it with, and a screen a sleeve brushes would mark the bins done
+   * on the way past. Hiding it is only a courtesy — the endpoint checks the
+   * same flag, because the display token is on the wall.
+   */
+  const tickable = model.allowChores;
   // Whose chores to show, by the name the household sees — the panel carries no
   // person id, exactly as the Home Assistant widget filters by reading label.
   // None chosen shows everybody, which is what a bare widget draws.
@@ -820,7 +855,7 @@ function renderChoresWidget(model: DisplayModel, config?: unknown): HTMLElement 
       const head = el('div', 'ch-day-head');
       head.appendChild(el('span', 'ch-dow', day.date === board.today ? 'Today' : weekdayOfDate(day.date)));
       group.appendChild(head);
-      for (const item of items) group.appendChild(choreRow(item, true));
+      for (const item of items) group.appendChild(choreRow(item, true, tickable));
       list.appendChild(group);
       drawn++;
     }
@@ -857,7 +892,7 @@ function renderChoresWidget(model: DisplayModel, config?: unknown): HTMLElement 
       const colour = list.find((item) => item.color !== undefined)?.color;
       if (colour !== undefined) head.style.setProperty('--who', colour);
       col.appendChild(head);
-      for (const item of list) col.appendChild(choreRow(item, false));
+      for (const item of list) col.appendChild(choreRow(item, false, tickable));
       board_.appendChild(col);
     };
     for (const [name, list] of columns) column(name, list);
@@ -869,7 +904,7 @@ function renderChoresWidget(model: DisplayModel, config?: unknown): HTMLElement 
   const items = keep(today?.items ?? []);
   if (items.length === 0) return el('div', 'cd-empty', 'Nothing due today.');
   const list = el('div', 'ch');
-  for (const item of items) list.appendChild(choreRow(item, true));
+  for (const item of items) list.appendChild(choreRow(item, true, tickable));
   return list;
 }
 

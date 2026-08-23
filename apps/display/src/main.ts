@@ -320,14 +320,76 @@ function start(): void {
 
   document.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key !== 'Enter') return;
+    /*
+     * Not when a chore's tick box has focus.
+     *
+     * The OK key acknowledges whatever is showing rather than whatever has
+     * focus, which is right for a remote pointed at a wall — but a native
+     * `<button>` also fires its own click on Enter, so with a *banner* up (which
+     * does not cover the wall) one press would tick the chore and clear the
+     * banner at the same time. Two actions from one key, and only one of them
+     * asked for.
+     */
+    if (document.activeElement?.closest?.('[data-chore]') !== null &&
+        document.activeElement?.closest?.('[data-chore]') !== undefined) {
+      return;
+    }
     const key = dismissTarget();
     if (key === undefined) return;
     event.preventDefault();
     void acknowledge(key);
   });
 
+  /*
+   * Ticking a chore off (RFC 008 phase 3).
+   *
+   * Deliberately the same shape as `acknowledge`, including what it does when
+   * it fails: nothing. The wall does not paint the box in and hope — the server
+   * decides whether a chore is done, and the row only changes when the next
+   * document says so. That is a *choice*, not a missing feature: an optimistic
+   * tick with a retry queue reads better on one screen and buys a
+   * distributed-state problem across two, for a feature whose worst case is
+   * "press it again". Offline, the box stays empty, which is the honest answer.
+   *
+   * What it does not send is the day. A wall tablet's clock drifts and plenty
+   * never get NTP, so the server resolves the household's civil date; the
+   * client says which chore and whether it is done, and nothing else.
+   *
+   * The immediate re-poll is what makes it feel like a button rather than
+   * something that eventually happens.
+   */
+  const tickChore = async (id: string, done: boolean): Promise<void> => {
+    try {
+      const response = await fetch('/d/chores/tick', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        // The display token is an HttpOnly cookie set at pairing.
+        credentials: 'same-origin',
+        body: new URLSearchParams({ id, done: done ? '1' : '0' }).toString(),
+      });
+      // A 403 means this screen may not tick; a 409 means the chore is not due
+      // today. The server is the authority on both, so nothing happens here —
+      // the same as a rule that said an interrupt may not be cleared.
+      if (!response.ok) return;
+    } catch {
+      return;
+    }
+    await poll();
+  };
+
   root.addEventListener('click', (event: Event) => {
     const target = event.target as Element | null;
+
+    const chore = target?.closest?.('[data-chore]');
+    if (chore !== null && chore !== undefined) {
+      const id = chore.getAttribute('data-chore') ?? '';
+      // `aria-pressed` is the row's current state, so the press asks for its
+      // opposite — one attribute, read by the handler and by a screen reader,
+      // rather than a second source of truth that can disagree with the paint.
+      if (id !== '') void tickChore(id, chore.getAttribute('aria-pressed') !== 'true');
+      return;
+    }
+
     const key = target?.closest?.('[data-dismiss]')?.getAttribute('data-dismiss');
     if (key === null || key === undefined || key === '') return;
     void acknowledge(key);

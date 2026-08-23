@@ -293,6 +293,8 @@ export interface DisplayModel {
    * passing sleeve can press.
    */
   readonly allowDismiss: boolean;
+  /** Whether this screen may tick a chore off (RFC 008 phase 3). */
+  readonly allowChores: boolean;
 }
 
 export interface HouseReadingModel {
@@ -515,6 +517,15 @@ export function panelFrom(raw: unknown): PanelData | null {
 }
 
 export interface ChoreItemModel {
+  /**
+   * What a tick posts back (RFC 008 phase 3). Opaque; never shown.
+   *
+   * Absent means this row cannot be ticked — it is still drawn, read-only,
+   * which is exactly what a screen without permission shows anyway. Dropping
+   * the chore instead would trade a missing control for missing information,
+   * and rule nine is the other way round.
+   */
+  readonly id: string | undefined;
   readonly name: string;
   readonly person: string | undefined;
   readonly color: string | undefined;
@@ -563,11 +574,26 @@ export function choresFrom(panel: unknown): ChoreBoardModel | undefined {
       for (const candidate of day.items.slice(0, 40)) {
         if (typeof candidate !== 'object' || candidate === null) continue;
         const item = candidate as {
-          name?: unknown; person?: unknown; color?: unknown; dueTime?: unknown; done?: unknown;
+          id?: unknown; name?: unknown; person?: unknown; color?: unknown;
+          dueTime?: unknown; done?: unknown;
         };
         const name = text(item.name, 60);
         if (name === undefined) continue;
+        /*
+         * The id is what a tick posts back, so a row without one simply cannot
+         * be ticked — and is drawn read-only rather than dropped, which is what
+         * a screen without permission shows anyway. Losing the control costs a
+         * household nothing they had; losing the chore costs them the thing
+         * they walked over to read.
+         *
+         * Not sanitised like the strings beside it: it is never rendered, only
+         * sent, and it has to match the row byte for byte.
+         */
+        const id = typeof item.id === 'string' && item.id !== '' && item.id.length <= 64
+          ? item.id
+          : undefined;
         items.push({
+          id,
           name,
           person: text(item.person, 40),
           // Only a six-digit hex reaches a style attribute. Anything else is no
@@ -1061,6 +1087,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     now,
     interrupts: interruptsFrom(manifest.interrupts),
     allowDismiss: manifest.screen?.allowDismiss === true,
+    allowChores: manifest.screen?.allowChores === true,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,
