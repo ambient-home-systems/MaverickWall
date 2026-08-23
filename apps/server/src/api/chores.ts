@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import type { ChoreSchedule, CivilDate } from '@maverick-wall/core';
+import { addDays, dueDatesBetween, dueOn, type ChoreSchedule, type CivilDate } from '@maverick-wall/core';
 
 import type { SqliteDatabase } from '../db/open.js';
 import { parseOr, z } from '../validation.js';
@@ -94,6 +94,10 @@ export interface ChoreRow {
   readonly personColor: string | null;
   readonly schedule: ChoreSchedule;
   readonly dueTime: string | null;
+  /** Suspended, keeping its history. Never on a wall; still on this screen. */
+  readonly paused: boolean;
+  /** When it was created. A record must not count days before a chore existed. */
+  readonly createdAt: number;
   readonly sortOrder: number;
 }
 
@@ -115,7 +119,8 @@ export function readChores(db: SqliteDatabase): ChoreRow[] {
   return db
     .prepare(
       `SELECT c.id, c.name, c.person_id AS personId, c.schedule,
-              c.due_time AS dueTime, c.sort_order AS sortOrder,
+              c.due_time AS dueTime, c.paused, c.created_at AS createdAt,
+              c.sort_order AS sortOrder,
               p.name AS personName, p.color AS personColor
          FROM chores c
          LEFT JOIN people p ON p.id = c.person_id
@@ -134,6 +139,8 @@ export function readChores(db: SqliteDatabase): ChoreRow[] {
         personColor: str(record['personColor']),
         schedule: readSchedule(record['schedule']),
         dueTime: str(record['dueTime']),
+        paused: record['paused'] === 1,
+        createdAt: Number(record['createdAt'] ?? 0),
         sortOrder: Number(record['sortOrder'] ?? 0),
       };
     });
@@ -171,6 +178,35 @@ export function updateChore(db: SqliteDatabase, id: string, input: ChoreInput): 
 export function deleteChore(db: SqliteDatabase, id: string): void {
   db.prepare('DELETE FROM chore_completions WHERE chore_id = ?').run(id);
   db.prepare('DELETE FROM chores WHERE id = ?').run(id);
+}
+
+/**
+ * Suspend a chore, or bring it back.
+ *
+ * Its own function and its own column rather than a field on `ChoreInput`,
+ * because pausing is not editing: it is a button on the card, one POST, and it
+ * must not require the household to open the editor and re-save a form whose
+ * other fields they did not mean to touch.
+ */
+export function setChorePaused(db: SqliteDatabase, id: string, paused: boolean): void {
+  db.prepare('UPDATE chores SET paused = ?, updated_at = ? WHERE id = ?').run(
+    paused ? 1 : 0,
+    Date.now(),
+    id,
+  );
+}
+
+/**
+ * Whether this chore belongs on a wall on this day.
+ *
+ * One rule in one place, because three callers need it and they must agree: the
+ * board the wall draws, the panel's frame, and the endpoint that records a tick.
+ * A paused chore is not on any wall, so a tick for one could only have come from
+ * something holding the display token rather than from a finger — and the
+ * endpoint refuses it for the same reason it refuses a chore that is not due.
+ */
+export function activeOn(chore: ChoreRow, date: CivilDate): boolean {
+  return !chore.paused && dueOn(chore.schedule, date);
 }
 
 /** Swap one chore with its neighbour, the way the People and Shift Types lists do. */
@@ -238,10 +274,92 @@ export function completionsBetween(
   return new Set(rows.map((row) => `${row.choreId}|${row.date}`));
 }
 
-/** Whether this household has any chores at all — what gates the wall's block. */
-export function anyChores(db: SqliteDatabase): boolean {
-  const row = db.prepare('SELECT COUNT(*) AS n FROM chores').get() as { n: number };
-  return row.n > 0;
+/**
+ * How far back a record looks for occurrences. A monthly chore needs months.
+ */
+const RECORD_LOOKBACK_DAYS = 400;
+/** How many past occurrences a record is drawn from. */
+const RECORD_OCCURRENCES = 7;
+
+export interface ChoreRecord {
+  /** Occurrences counted — never more than `RECORD_OCCURRENCES`. */
+  readonly of: number;
+  readonly done: number;
+  /**
+   * The weekday all of them fell on, when the schedule has exactly one.
+   *
+   * Present only so the sentence can say "the last 7 Tuesdays", which is how a
+   * household says it; every other schedule gets "times", because "the last 7
+   * Mondays and Thursdays" is not a thing anybody says.
+   */
+  readonly weekday: string | undefined;
+}
+
+const WEEKDAY_NAMES = [
+  'Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays',
+];
+
+/**
+ * How a chore has been going: done, out of the last few times it fell due.
+ *
+ * The question a household actually asks, and the reason completions are stored
+ * per civil date rather than as a boolean that resets at midnight.
+ *
+ * Counted over **occurrences, not days**. "Done 6 of the last 7 Tuesdays" is
+ * the sentence; "done 6 of 8 in the last four weeks" is a different and worse
+ * one, because a weekly chore's denominator should be weeks and a monthly
+ * chore's should be months. `dueDatesBetween` supplies the occurrences and this
+ * takes the last few.
+ *
+ * **Today is excluded, deliberately.** The day is not over. Counting it would
+ * mean every chore read one worse than it is from midnight until somebody got
+ * to it, and a screen that tells a household they are behind at nine in the
+ * morning is a screen they will stop believing.
+ *
+ * Written in phase 1, removed before it shipped because nothing could record a
+ * completion then and the line would have structurally read zero — and restored
+ * here, where it is finally true.
+ */
+export function recentRecord(
+  db: SqliteDatabase,
+  chore: ChoreRow,
+  today: CivilDate,
+  timezone: string,
+): ChoreRecord | undefined {
+  const yesterday = addDays(today, -1);
+  /*
+   * Never count a day before the chore existed.
+   *
+   * Without this, a chore created a minute ago reports "Done 0 of the last 7
+   * times" — seven failures a household could not possibly have committed, on
+   * the screen they just used to set it up. It reads as an accusation and it is
+   * the first thing they would see. Found by writing the test that asserted the
+   * zero, then reading the sentence out loud.
+   */
+  const born = localToday(timezone, chore.createdAt);
+  const from = born > addDays(today, -RECORD_LOOKBACK_DAYS)
+    ? born
+    : addDays(today, -RECORD_LOOKBACK_DAYS);
+  if (from > yesterday) return undefined;
+
+  const past = dueDatesBetween(chore.schedule, from, yesterday);
+  if (past.length === 0) return undefined;
+
+  const window = past.slice(-RECORD_OCCURRENCES);
+  const first = window[0] as CivilDate;
+  const last = window[window.length - 1] as CivilDate;
+  const completed = completionDates(db, chore.id, first, last);
+
+  const weekday =
+    chore.schedule.kind === 'weekdays' && chore.schedule.days.length === 1
+      ? WEEKDAY_NAMES[chore.schedule.days[0] as number]
+      : undefined;
+
+  return {
+    of: window.length,
+    done: window.filter((date) => completed.has(date)).length,
+    weekday,
+  };
 }
 
 /**

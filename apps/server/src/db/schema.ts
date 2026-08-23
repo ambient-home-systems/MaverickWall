@@ -849,6 +849,21 @@ export const chores = sqliteTable(
      */
     dueTime: text('due_time'),
 
+    /**
+     * Suspended, keeping its history.
+     *
+     * The difference between this and deleting is the whole reason it exists:
+     * a chore paused over the school holidays comes back with "done 6 of the
+     * last 7 Tuesdays" intact, and a chore deleted takes its completions with
+     * it. Both are things a household means, and only one of them was possible.
+     *
+     * Deliberately not shipped in phase 1. Nothing could record a completion
+     * then, so a switch that preserved history would have preserved nothing —
+     * an option that does nothing is worse than an option not offered, and this
+     * is the first version where it does something.
+     */
+    paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+
     sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
     ...timestamps,
   },

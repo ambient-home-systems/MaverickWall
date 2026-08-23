@@ -1,7 +1,7 @@
-import { addDays, dueOn, type CivilDate } from '@maverick-wall/core';
+import { addDays, type CivilDate } from '@maverick-wall/core';
 
 import type { SqliteDatabase } from '../../db/open.js';
-import { anyChores, completionsBetween, localToday, readChores } from '../../api/chores.js';
+import { activeOn, completionsBetween, localToday, readChores } from '../../api/chores.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 
 /**
@@ -88,7 +88,7 @@ export function buildChoreBoard(db: SqliteDatabase, today: CivilDate): ChorePane
     const date = addDays(today, offset);
     const items: ChorePanelItem[] = [];
     for (const chore of chores) {
-      if (!dueOn(chore.schedule, date)) continue;
+      if (!activeOn(chore, date)) continue;
       items.push({
         id: chore.id,
         name: chore.name,
@@ -115,7 +115,10 @@ export const choresModule: PanelModule = {
    * not set any up should not have to remove a widget to stop seeing one.
    */
   ready(db: SqliteDatabase): boolean {
-    return anyChores(db);
+    // Active chores, not merely rows. A household who paused all of theirs over
+    // the holidays asked for no chore board, and a block drawing "nothing due"
+    // for a fortnight is the hole in the wall this gate exists to prevent.
+    return readChores(db).some((chore) => !chore.paused);
   },
 
   contribute(context: ModuleContext): ChorePanel | null {

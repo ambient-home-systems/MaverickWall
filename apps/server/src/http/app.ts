@@ -31,13 +31,13 @@ import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
-import { localToday, readChores, setChoreDone } from '../api/chores.js';
+import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { choresModule } from '../modules/chores/index.js';
 import { weatherModule } from '../modules/weather/index.js';
 import { haModule } from '../modules/homeassistant/index.js';
 import { externalPanelModules } from '../modules/external/index.js';
 import { calendarModule } from '../modules/calendar/index.js';
-import { dueOn, evaluateInterrupts } from '@maverick-wall/core';
+import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { errorBlock, escapeHtml, page, textField } from './html.js';
@@ -671,7 +671,13 @@ export function createApp(deps: AppDeps): Hono {
     const today = localToday(household.timezone, now());
     const chore = readChores(deps.db).find((candidate) => candidate.id === id);
     if (chore === undefined) return c.json({ error: 'no-such-chore' }, 404);
-    if (!dueOn(chore.schedule, today)) {
+    /*
+     * Due today *and* not paused, which is one rule shared with the board the
+     * wall drew — `activeOn`. A paused chore is on no wall, so a tick for one
+     * cannot have come from a finger; it came from something holding the
+     * display token, which is exactly the case this endpoint assumes.
+     */
+    if (!activeOn(chore, today)) {
       return c.json({ error: 'not-due', message: 'That chore is not due today.' }, 409);
     }
 

@@ -651,6 +651,17 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--md-sys-shape-corn
 .checks-inline legend{width:100%}
 .checks-inline label{min-width:4.5rem}
 
+/* A paused chore's card. Quieter, not hidden: it is still a chore the household
+   set up and the screen it lives on is where they go to bring it back. The tag
+   in the heading is what says so; this only stops it competing with the ones
+   that are actually running. */
+.card.is-paused>*:not(.row){opacity:.62}
+.card.is-paused h2 .tag{margin-left:10px;vertical-align:middle}
+/* The action row keeps full contrast. Dimming the whole card also dimmed
+   *Resume*, which is the one control somebody opens a paused chore to press —
+   quieting the content is the point, quieting the way back out is not. */
+.card.is-paused .row{opacity:1}
+
 /* A card's editor, folded away until asked for. A <details>, so it costs no
  * script — the same reason the overflow menu is one. The point is that a list
  * of things reads as a list: the summary carries the affordance and the card's

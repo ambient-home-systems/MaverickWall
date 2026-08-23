@@ -14,13 +14,16 @@ import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import {
+  activeOn,
   completionDates,
   createChore,
   deleteChore,
   localToday,
   moveChore,
   readChores,
+  recentRecord,
   setChoreDone,
+  setChorePaused,
   updateChore,
 } from '../src/api/chores.js';
 
@@ -510,5 +513,231 @@ describe('the chores screen', () => {
     const body = await (await h.call('/admin/chores')).text();
     expect(body).not.toContain('/done');
     expect(body).not.toMatch(/name="done"/);
+  });
+
+  it('pauses a chore from the card, and says so instead of listing dates', async () => {
+    /*
+     * A paused chore has no "next": it will not appear on a wall whatever its
+     * schedule says, and listing dates it will be absent on is the "Not due
+     * again" fault in the other direction — a true-sounding sentence about
+     * something that is not going to happen.
+     */
+    const h = await harness();
+    await h.form('/admin/chores', { name: 'Bins', person_id: '', kind: 'daily' });
+    const id = readChores(h.db)[0]!.id;
+
+    const paused = await h.form(`/admin/chores/${id}/pause`, {});
+    expect(paused.status).toBe(302);
+    expect(readChores(h.db)[0]?.paused).toBe(true);
+
+    const body = await (await h.call('/admin/chores')).text();
+    expect(body).toContain('Paused');
+    expect(body).toContain('not shown on any wall');
+    expect(body).not.toContain('Next:');
+    expect(body).toContain('Resume');
+  });
+
+  it('says nothing about how a paused chore is going', async () => {
+    /*
+     * Its occurrences while paused are days it was on no wall and nobody could
+     * have done it, so a record would read "Done 0 of the last 7" — the
+     * new-chore fault again, an accusation for something the household chose.
+     */
+    const h = await harness();
+    await h.form('/admin/chores', { name: 'Bins', person_id: '', kind: 'daily' });
+    const id = readChores(h.db)[0]!.id;
+    h.db.prepare('UPDATE chores SET created_at = ?').run(Date.parse('2020-01-01T00:00:00Z'));
+    expect(await (await h.call('/admin/chores')).text()).toContain('Done 0 of the last 7 times');
+
+    await h.form(`/admin/chores/${id}/pause`, {});
+    const body = await (await h.call('/admin/chores')).text();
+    expect(body).toContain('Paused');
+    expect(body).not.toContain('Done 0 of the last');
+  });
+
+  it('resumes it again from the same button', async () => {
+    const h = await harness();
+    await h.form('/admin/chores', { name: 'Bins', person_id: '', kind: 'daily' });
+    const id = readChores(h.db)[0]!.id;
+    await h.form(`/admin/chores/${id}/pause`, {});
+    await h.form(`/admin/chores/${id}/pause`, { resume: '1' });
+    expect(readChores(h.db)[0]?.paused).toBe(false);
+    expect(await (await h.call('/admin/chores')).text()).toContain('Next:');
+  });
+
+  it('shows how a chore has been going, once it has come round', async () => {
+    const h = await harness();
+    await h.form('/admin/chores', { name: 'Bins', person_id: '', kind: 'daily' });
+    const id = readChores(h.db)[0]!.id;
+    const today = localToday('Europe/London');
+
+    // A chore created a minute ago has no record and says so by saying nothing.
+    expect(await (await h.call('/admin/chores')).text()).not.toContain('Done 0 of the last');
+
+    // Once it has been around a while, the line is real.
+    h.db.prepare('UPDATE chores SET created_at = ?').run(Date.parse('2020-01-01T00:00:00Z'));
+    for (let back = 1; back <= 3; back++) setChoreDone(h.db, id, addDays(today, -back), true);
+    expect(await (await h.call('/admin/chores')).text()).toContain('Done 3 of the last 7 times');
+  });
+
+  it('asks before removing a chore, and names what goes with it', async () => {
+    /*
+     * It did not ask in the earlier phases, and that was defensible then —
+     * nothing could record a completion, so there was no history to destroy.
+     * There is now, and there is a Pause beside it that keeps it, so a one-click
+     * Remove would be the household silently choosing the destructive one of two
+     * options they may not know are different.
+     */
+    const h = await harness();
+    await h.form('/admin/chores', { name: 'Bins', person_id: '', kind: 'daily' });
+    const id = readChores(h.db)[0]!.id;
+    h.db.prepare('UPDATE chores SET created_at = ?').run(Date.parse('2020-01-01T00:00:00Z'));
+    setChoreDone(h.db, id, addDays(localToday('Europe/London'), -1), true);
+
+    const ask = await h.call(`/admin/chores/${id}/delete`);
+    expect(ask.status).toBe(200);
+    const body = await ask.text();
+    expect(body).toContain('cannot be undone');
+    expect(body).toContain('pause it instead');
+    expect(body).toContain('It was done 1 of the last 7 times');
+    // Asking changed nothing.
+    expect(readChores(h.db)).toHaveLength(1);
+
+    expect((await h.form(`/admin/chores/${id}/delete`, {})).status).toBe(302);
+    expect(readChores(h.db)).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pausing, and the record
+// ---------------------------------------------------------------------------
+
+describe('pausing a chore', () => {
+  it('keeps every completion, which is the whole difference from removing it', () => {
+    const db = database();
+    const id = createChore(db, BINS);
+    setChoreDone(db, id, '2026-08-25', true);
+    setChorePaused(db, id, true);
+
+    expect(readChores(db)[0]?.paused).toBe(true);
+    expect([...completionDates(db, id, '2026-08-01', '2026-08-31')]).toEqual(['2026-08-25']);
+
+    setChorePaused(db, id, false);
+    expect(readChores(db)[0]?.paused).toBe(false);
+    expect([...completionDates(db, id, '2026-08-01', '2026-08-31')]).toEqual(['2026-08-25']);
+  });
+
+  it('takes it off every wall without touching its schedule', () => {
+    // One rule, `activeOn`, shared by the board the wall draws and the endpoint
+    // that records a tick — so a paused chore cannot be drawn *or* ticked, and
+    // the two can never disagree about which.
+    const db = database();
+    const id = createChore(db, BINS);
+    const chore = () => readChores(db)[0]!;
+    expect(activeOn(chore(), '2026-08-25')).toBe(true); // a Tuesday
+
+    setChorePaused(db, id, true);
+    expect(activeOn(chore(), '2026-08-25')).toBe(false);
+    // The schedule is untouched: it still says Tuesdays, and resuming proves it.
+    expect(chore().schedule).toEqual({ kind: 'weekdays', days: [2] });
+    setChorePaused(db, id, false);
+    expect(activeOn(chore(), '2026-08-25')).toBe(true);
+  });
+});
+
+/**
+ * The chore, as if it had been in the household a while.
+ *
+ * A record must not count days before the chore existed, so every fixture below
+ * — whose occurrences are historical dates — needs a chore that is older than
+ * they are. Back-dating the row is what a real household's would be; the test
+ * that a *new* chore reports nothing is separate, and deliberate.
+ */
+function aged(db: SqliteDatabase) {
+  db.prepare('UPDATE chores SET created_at = ?').run(Date.parse('2020-01-01T00:00:00Z'));
+  return readChores(db)[0]!;
+}
+
+describe('how a chore has been going', () => {
+  /*
+   * Counted over *occurrences*, not days: a weekly chore's denominator should
+   * be weeks. "Done 6 of the last 7 Tuesdays" is the sentence a household says;
+   * "6 of 8 in the last four weeks" is a different and worse one.
+   */
+  /** The seven Tuesdays before Tuesday 2026-08-25, newest last. */
+  const tuesdays = [
+    '2026-07-07', '2026-07-14', '2026-07-21', '2026-07-28',
+    '2026-08-04', '2026-08-11', '2026-08-18',
+  ] as const;
+  const TODAY = '2026-08-25';
+
+  it('counts the last few times it fell due, and names the weekday', () => {
+    const db = database();
+    const id = createChore(db, BINS); // Tuesdays
+    // Six of the seven — one Tuesday missed, in the middle, so a bug that
+    // counted a contiguous run would not pass.
+    for (const date of tuesdays.filter((d) => d !== '2026-07-28')) {
+      setChoreDone(db, id, date, true);
+    }
+
+    const record = recentRecord(db, aged(db), TODAY, 'Europe/London');
+    expect(record).toEqual({ of: 7, done: 6, weekday: 'Tuesdays' });
+  });
+
+  it('excludes today, whether or not today has been done', () => {
+    /*
+     * The half that decides whether a household believes the line. Counting
+     * today would have every chore reading one worse than it is from midnight
+     * until somebody got to it — and ticking it would then bump a number that
+     * is supposed to be about the past. Neither happens: the window ends
+     * yesterday, so today moves nothing at all.
+     */
+    const db = database();
+    const id = createChore(db, BINS);
+    for (const date of tuesdays) setChoreDone(db, id, date, true);
+
+    const before = recentRecord(db, aged(db), TODAY, 'Europe/London');
+    expect(before).toEqual({ of: 7, done: 7, weekday: 'Tuesdays' });
+
+    setChoreDone(db, id, TODAY, true);
+    expect(recentRecord(db, aged(db), TODAY, 'Europe/London')).toEqual(before);
+  });
+
+  it('says "times" when no single weekday would be true', () => {
+    const db = database();
+    createChore(db, {
+      ...BINS,
+      schedule: { kind: 'weekdays', days: [1, 4] },
+    });
+    // "The last 7 Mondays and Thursdays" is not a thing anybody says.
+    expect(recentRecord(db, aged(db), '2026-08-25', 'Europe/London')?.weekday).toBeUndefined();
+  });
+
+  it('caps at seven occurrences however far back they go', () => {
+    const db = database();
+    createChore(db, { ...BINS, schedule: { kind: 'daily' } });
+    expect(recentRecord(db, aged(db), '2026-08-25', 'Europe/London')?.of).toBe(7);
+  });
+
+  it('says nothing about a chore created a minute ago', () => {
+    /*
+     * Without the clamp this read "Done 0 of the last 7 times" — seven failures
+     * a household could not have committed, on the screen they had just used to
+     * create it. The record is about a chore's own life, not about the calendar.
+     */
+    const db = database();
+    createChore(db, { ...BINS, schedule: { kind: 'daily' } });
+    const chore = readChores(db)[0]!;
+    expect(recentRecord(db, chore, localToday('Europe/London'), 'Europe/London')).toBeUndefined();
+  });
+
+  it('has nothing to say about a chore that has never come round', () => {
+    // "0 of 0" is not a record, it is a sentence with no content in it.
+    const db = database();
+    createChore(db, {
+      ...BINS,
+      schedule: { kind: 'once', date: '2099-01-04' },
+    });
+    expect(recentRecord(db, aged(db), '2026-08-25', 'Europe/London')).toBeUndefined();
   });
 });

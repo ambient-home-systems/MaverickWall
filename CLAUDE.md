@@ -357,6 +357,20 @@ heuristic written for a page with a pointer, on a wall that sets `cursor: none`;
 every other control here already declares both. And `Enter` on a focused tick
 would have fired the button *and* cleared a showing banner.
 
+**A chore can be paused, and its record is about its own life.**
+`chores.paused` suspends one and keeps its history, which is the entire
+difference from Remove — so Remove now asks, names what it destroys, and offers
+Pause instead. `activeOn` is one rule shared by the board the wall draws and the
+endpoint that records a tick, so a paused chore can be neither drawn nor ticked.
+The record counts **occurrences, not days** ("Done 6 of the last 7 Tuesdays"),
+because a weekly chore's denominator should be weeks. Both of its faults were
+the same shape: a chore created a minute ago read "Done 0 of the last 7 times",
+and so did a paused one — seven failures a household could not have committed,
+on a screen they had just used. The window is clamped to the chore's own
+lifetime, and a paused chore says nothing at all. Neither the record nor the
+pause switch shipped in phase 1, deliberately: nothing could tick then, so both
+would have been controls that did nothing.
+
 **Unproven where it counts: a real household's tablet.** It has been driven end
 to end in a headless browser — read-only by default, the household's switch,
 one tap marking a chore done in both widgets at once, an undo, `Enter`, and a

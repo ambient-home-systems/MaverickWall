@@ -36,6 +36,40 @@ free-form canvas (RFC 005), and the one existing write path from a wall
 > read as fact: a monthly chore displayed "Starting 23/08/2026", which was true
 > of nothing.
 
+> **Update — the two follow-ups phase 1 deferred are built.** Both were left
+> out then for the same reason and are only honest now that a completion can be
+> recorded.
+>
+> **The record.** `recentRecord` was written in phase 1 and removed before it
+> shipped, because nothing could tick and the line would have structurally read
+> zero. It is back, counted over **occurrences rather than days** — "Done 6 of
+> the last 7 Tuesdays", because a weekly chore's denominator should be weeks and
+> a monthly one's should be months. Today is excluded: the day is not over, and
+> a screen that tells a household they are behind at nine in the morning is one
+> they stop believing.
+>
+> **Pause.** `chores.paused` (migration `0034`, additive) suspends a chore and
+> keeps its history — which is the entire difference from Remove, and the reason
+> Remove now *asks*, names what it destroys, and offers Pause as the alternative.
+> It did not ask before, and that was defensible while there was no history to
+> destroy. `activeOn` is one rule shared by the board the wall draws and the
+> endpoint that records a tick, so a paused chore can be neither drawn nor
+> ticked and the two can never disagree about which.
+>
+> **Two faults, both the same shape, and the second was found by looking.** A
+> chore created a minute ago reported "Done 0 of the last 7 times" — seven
+> failures a household could not have committed, on the screen they had just
+> used to create it; the window is clamped to the chore's own lifetime now. And
+> a *paused* chore reported the same thing, for days it was on no wall and
+> nobody could have done it. Both read as accusations for something the
+> household chose. Freezing a paused chore's record at the moment of pausing
+> would be better than hiding it and needs a `paused_at` column to know when
+> that was — worth adding the day somebody asks, not worth inventing for a
+> sentence nobody has missed.
+>
+> Dimming the paused card also dimmed *Resume*, which is the one control
+> somebody opens a paused chore to press.
+
 > **Update — phase 3 is implemented, and chores are complete in code.** The
 > wall writes: `screens.allow_chores` (migration `0033`, additive, off by
 > default) puts a real `<button>` beside each chore, and `POST /d/chores/tick`

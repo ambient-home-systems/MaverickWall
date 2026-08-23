@@ -1,0 +1,1 @@
+ALTER TABLE `chores` ADD `paused` integer DEFAULT false NOT NULL;

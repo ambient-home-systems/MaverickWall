@@ -14,6 +14,8 @@ import {
   localToday,
   moveChore,
   readChores,
+  recentRecord,
+  setChorePaused,
   updateChore,
   type ChoreRow,
 } from '../api/chores.js';
@@ -221,6 +223,62 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
     return c.redirect('/admin/chores', 302);
   });
 
+  /**
+   * Pause or resume, as its own POST.
+   *
+   * Not a field on the edit form: pausing is a button on the card, and making
+   * it part of a save would mean opening an editor and re-submitting every
+   * other field to suspend the bins for a fortnight. It is also the control a
+   * household reaches for *instead of* Remove, so it belongs beside it.
+   */
+  app.post('/admin/chores/:id/pause', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    setChorePaused(deps.db, c.req.param('id') ?? '', body['resume'] !== '1');
+    return c.redirect('/admin/chores', 302);
+  });
+
+  /**
+   * Removing a chore asks first, and names what goes with it.
+   *
+   * It did not, in the phases before this one, and it was defensible then:
+   * nothing could record a completion, so there was no history to destroy. Now
+   * there is — and there is a *Pause* beside the button that keeps it — so a
+   * one-click Remove is the household silently choosing the destructive one of
+   * two options they may not know are different. The same GET-then-POST shape
+   * the People screen uses.
+   */
+  app.get('/admin/chores/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const chore = readChores(deps.db).find((candidate) => candidate.id === id);
+    if (chore === undefined) return c.redirect('/admin/chores', 302);
+
+    const record = recentRecord(deps.db, chore, today(), readHousehold(deps.db).timezone);
+    return c.html(
+      page({
+        modules: navModules(deps.db),
+        title: 'Remove chore',
+        nav: 'chores',
+        heading: `Remove “${chore.name}”?`,
+        back: { label: 'Chores', href: 'admin/chores' },
+        intro:
+          'Every record of it having been done goes too, and that cannot be ' +
+          'undone. To stop it appearing on the wall but keep its history, ' +
+          'pause it instead.',
+        body:
+          (record === undefined || record.done === 0
+            ? ''
+            : `<p class="hint">It was done ${record.done} of the last ${record.of} ` +
+              `${escapeHtml(record.weekday ?? (record.of === 1 ? 'time' : 'times'))}.</p>`) +
+          `<form method="post" action="admin/chores/${encodeURIComponent(id)}/delete">` +
+          `<button class="btn-danger" type="submit">Remove it and its history</button></form>` +
+          `<form method="post" action="admin/chores/${encodeURIComponent(id)}/pause">` +
+          `<button class="secondary" type="submit">Pause it instead</button></form>` +
+          `<form method="get" action="admin/chores">` +
+          `<button class="secondary" type="submit">Keep it</button></form>`,
+      }),
+    );
+  });
+
   app.post('/admin/chores/:id/delete', (c: Context) => {
     deleteChore(deps.db, c.req.param('id') ?? '');
     return c.redirect('/admin/chores', 302);
@@ -303,6 +361,11 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
    * wall for a fortnight. Three real dates is where that shows.
    */
   function nextDue(chore: ChoreRow, from: CivilDate): string {
+    // A paused chore has no next: it will not appear on a wall whatever its
+    // schedule says, and listing dates it will be absent on is the "Not due
+    // again" fault in the other direction — a true-sounding sentence about
+    // something that is not going to happen.
+    if (chore.paused) return 'Paused — not shown on any wall';
     const dates = dueDatesBetween(chore.schedule, from, addDays(from, PREVIEW_DAYS));
     if (dates.length === 0) {
       /*
@@ -346,14 +409,48 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
     const everyFrom = chore.schedule.kind === 'everyNDays' ? chore.schedule.from : '';
     const onceDate = chore.schedule.kind === 'once' ? chore.schedule.date : '';
 
+    /*
+     * How it has been going, over the last few times it fell due.
+     *
+     * Occurrences rather than days, so a weekly chore's denominator is weeks —
+     * and today is excluded because the day is not over, which is the
+     * difference between a readout a household believes and one that tells them
+     * they are behind at nine in the morning. Absent for a chore that has never
+     * come round yet, where "0 of 0" says nothing.
+     */
+    /*
+     * Not while it is paused.
+     *
+     * A paused chore's occurrences are days it was on no wall and nobody could
+     * have done it, so "Done 0 of the last 7 times" is the new-chore fault
+     * again: an accusation for something the household chose. The card already
+     * says it is paused, which is the honest answer to "how is it going".
+     *
+     * Freezing the record at the moment of pausing would be better still and
+     * needs a `paused_at` column to know when that was. Worth adding the day
+     * somebody asks for it; not worth inventing a column for a sentence nobody
+     * has missed yet.
+     */
+    const record = chore.paused
+      ? undefined
+      : recentRecord(deps.db, chore, from, readHousehold(deps.db).timezone);
+    const recordLine =
+      record === undefined
+        ? ''
+        : `<p class="hint">Done ${record.done} of the last ${record.of} ` +
+          `${escapeHtml(record.weekday ?? (record.of === 1 ? 'time' : 'times'))}</p>`;
+
     return (
-      `<article class="card">` +
+      `<article class="card${chore.paused ? ' is-paused' : ''}">` +
       `<h2><span class="swatch" style="--swatch:${escapeHtml(swatch)}"></span>` +
-      `${escapeHtml(chore.name)}</h2>` +
+      `${escapeHtml(chore.name)}` +
+      (chore.paused ? `<span class="tag">Paused</span>` : '') +
+      `</h2>` +
       `<p class="host">${escapeHtml(describeSchedule(chore.schedule))}` +
       (chore.dueTime === null ? '' : ` · by ${escapeHtml(chore.dueTime)}`) +
       ` · ${escapeHtml(chore.personName ?? 'Anyone in the house')}</p>` +
       `<p class="hint">${escapeHtml(nextDue(chore, from))}</p>` +
+      recordLine +
 
       /*
        * Folded away, because a list of chores has to read as a list.
@@ -402,8 +499,11 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
         : `<form method="post" action="admin/chores/${id}/move">` +
           `<input type="hidden" name="dir" value="down">` +
           `<button class="secondary" type="submit">↓ Down</button></form>`) +
-      `<form method="post" action="admin/chores/${id}/delete">` +
-      `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
+      `<form method="post" action="admin/chores/${id}/pause" style="margin-left:auto">` +
+      (chore.paused ? `<input type="hidden" name="resume" value="1">` : '') +
+      `<button class="secondary" type="submit">${chore.paused ? 'Resume' : 'Pause'}</button></form>` +
+      `<form method="get" action="admin/chores/${id}/delete">` +
+      `<button class="btn-danger" type="submit">Remove</button></form>` +
       `</div></article>`
     );
   }
