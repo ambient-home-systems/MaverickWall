@@ -120,6 +120,7 @@ const PAGES = [
   '/admin/calendars',
   '/admin/shifts',
   '/admin/shifts/types',
+  '/admin/chores',
   '/admin/alerts',
   '/admin/home-assistant',
   '/admin/modules',

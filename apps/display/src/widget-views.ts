@@ -46,6 +46,19 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
   countdown: [{ value: '', label: 'Days remaining' }],
   notes: [{ value: '', label: 'Note' }],
   todo: [{ value: '', label: 'Checklist' }],
+  /*
+   * Chores. The default is stored as an *absence*, like every other type's, and
+   * both renderers have to read it that way — the wall's `renderChoresWidget`
+   * and the panel's `drawChores`. The e-paper calendar shipped with those two
+   * disagreeing (`mode === 'month'` against a default nobody stores), so all
+   * three of its settings drew the same thing. `week` is deliberately the same
+   * spelling the calendar uses for seven days across.
+   */
+  chores: [
+    { value: '', label: 'Today' },
+    { value: 'people', label: 'By person' },
+    { value: 'week', label: 'This week' },
+  ],
   image: [{ value: '', label: 'Picture' }],
   external: [{ value: '', label: 'Module panel' }],
 };

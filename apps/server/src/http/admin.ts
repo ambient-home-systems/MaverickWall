@@ -156,6 +156,7 @@ const screenBody = z.object({
   daytime_ends_at: optionalText(5),
   timezone: optionalText(64),
   allow_dismiss: checkbox(),
+  allow_chores: checkbox(),
   // '' follows the household, '1' forces 24-hour, '0' forces 12-hour (RFC 005).
   clock_24: optionalText(1),
   // How much this wall shows. Empty follows the household default; a number is
@@ -268,6 +269,7 @@ import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
+import { registerChoreRoutes } from './admin-chores.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
@@ -602,6 +604,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerAlertRoutes(app, deps);
   registerModuleRoutes(app, deps);
   registerShiftTypeRoutes(app, deps);
+  registerChoreRoutes(app, deps);
   registerThemeRoutes(app, deps);
 
   /**
@@ -1460,7 +1463,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * cannot draw and a zone `Intl` does not know are both facts about this
      * process rather than about the shape of the request.
      */
-    const { name, orientation, rotation, allow_dismiss: allowDismiss } = shaped.value;
+    const {
+      name, orientation, rotation,
+      allow_dismiss: allowDismiss,
+      allow_chores: allowChores,
+    } = shaped.value;
     // '' follows the household, '1' forces 24-hour, '0' forces 12-hour.
     const clockRaw = shaped.value.clock_24 ?? '';
     const clock24 = clockRaw === '1' ? 1 : clockRaw === '0' ? 0 : null;
@@ -1523,6 +1530,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         daytimeStartsAt: scheduled ? startsAt : null,
         daytimeEndsAt: scheduled ? endsAt : null,
         allowDismiss,
+        allowChores,
         displayTodayEvents: today.value,
         displayNextDays: nextDays.value,
         displayHorizonWeeks: weeks.value,
@@ -3279,6 +3287,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'Lets this display clear alerts for the household. Leave this off for ' +
           'displays without intentional input or screens that may be touched accidentally.',
       }) +
+      /*
+       * Its own switch rather than one "this screen accepts input", because the
+       * two are not the same risk. Clearing a warning is a household saying it
+       * has read something; ticking a chore is a claim about the world somebody
+       * may act on. A household can reasonably want one and not the other — and
+       * the wording says what the wall will actually do, since a control that
+       * appears on a screen nobody meant to touch is the failure being avoided.
+       */
+      switchRow({
+        label: 'Allow ticking chores off',
+        name: 'allow_chores',
+        checked: screen.allowChores === 1,
+        hint:
+          'Puts a tick box beside each chore on this display. Best on a tablet ' +
+          'somebody can reach; leave it off for a screen behind glass, or one a ' +
+          'passing sleeve could press.',
+      }) +
       `</div>`;
 
     // --- Advanced ---------------------------------------------------------
@@ -3315,7 +3340,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       wsetRow('appearance', 'Appearance', 'Theme and daylight schedule', true) +
       wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
       wsetRow('device', 'Device and time', 'Name, mounting, timezone', false) +
-      wsetRow('alerts', 'Alerts and interaction', 'Whether this screen can clear alerts', false) +
+      // Names both switches: the section holds one about alerts and one about
+      // chores, and a subtitle that mentions only the first is a heading a
+      // household would not open looking for the second.
+      wsetRow('alerts', 'Alerts and interaction', 'What this screen can press', false) +
       wsetRow('advanced', 'Advanced', 'Pairing, reset, unpair', false) +
       `</nav>` +
       `<div class="wset-panels">` +
@@ -3323,7 +3351,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the Default display.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this screen is called, how it is hung, and the clock it keeps.', device, false) +
-      wsetPanel('alerts', 'Alerts and interaction', 'What this screen may do when an alert is showing.', alerts, false) +
+      // Both switches, not just the alert one — this panel is now where every
+      // "can this screen write anything" decision lives, and it is worth saying
+      // that a wall display can only ever press what is listed here.
+      wsetPanel('alerts', 'Alerts and interaction', 'What a person standing at this screen is allowed to press. Both are off until you turn them on.', alerts, false) +
       `</form>` +
       wsetPanel('advanced', 'Advanced', 'Infrequent, and some of it destructive. These act at once — they are not part of Save wall.', advanced, false) +
       `</div></div>`

@@ -63,3 +63,26 @@ export function agendaTimeFitsBeside(sectionWidthPx: number, remPx: number): boo
   if (!(sectionWidthPx > 0) || !(remPx > 0)) return true;
   return sectionWidthPx / remPx >= MIN_AGENDA_ROW_REM;
 }
+
+/**
+ * The least a chore board may be scaled to before it stops being readable.
+ *
+ * Measured, not picked, and the measurement is why it is not the 0.3 the notes
+ * and to-do widgets use. A "this week" board of four daily chores is 28 rows;
+ * `fitToBox` duly shrank it to that floor, and on a 1280px wall the chore names
+ * came out at **8.1px**. That is not small — it is gone, on the one surface the
+ * product exists for.
+ *
+ * | scale | chore name on a 1280px wall | what it looks like                |
+ * |-------|-----------------------------|-----------------------------------|
+ * | 1.00  | 21.6px                      | the design                        |
+ * | 0.62  | 13.4px                      | dense, still readable across a room|
+ * | 0.30  | 8.1px                       | grey texture with boxes in it     |
+ *
+ * A note that shrinks is still a note; a board nobody can read from the doorway
+ * has stopped being the thing it was put on the wall for. So the floor is set
+ * where it stays legible and the box clips below it — rule nine's "degrade to
+ * showing less rather than showing nothing readable" — and the week view trims
+ * to whole days so the clip lands between rows rather than through one.
+ */
+export const MIN_CHORE_SCALE = 0.62;

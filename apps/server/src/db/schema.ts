@@ -475,6 +475,29 @@ export const screens = sqliteTable(
      */
     allowDismiss: integer('allow_dismiss', { mode: 'boolean' }).notNull().default(false),
 
+    /**
+     * Whether this screen may tick a chore off (RFC 008 phase 3).
+     *
+     * The same argument as `allow_dismiss`, one control along, and off by
+     * default for the same reason: it is a fact about the hardware. A tablet at
+     * elbow height in a kitchen is exactly what this is for; a panel behind
+     * glass in a hallway has nothing to press it with, and a screen a coat
+     * sleeve brushes past would mark the bins as done every time somebody
+     * walked through.
+     *
+     * The *effect* stays household-wide, again like dismissal: one completion
+     * row keyed on the chore and the day, so a kitchen tablet and a hall
+     * television can never disagree about whether the bins went out. This only
+     * decides which screens may do the asking.
+     *
+     * Separate from `allow_dismiss` rather than one "this screen accepts input"
+     * flag, because the two are not the same risk. Clearing a tornado warning
+     * is a household saying it has read something; ticking a chore is a claim
+     * about the world that somebody may act on. A household can reasonably want
+     * one and not the other.
+     */
+    allowChores: integer('allow_chores', { mode: 'boolean' }).notNull().default(false),
+
     /** Rotated when the token is regenerated, invalidating old sessions. */
     tokenIssuedAt: integer('token_issued_at', { mode: 'number' }).notNull().$defaultFn(now),
     revokedAt: integer('revoked_at', { mode: 'number' }),
@@ -785,6 +808,116 @@ export const shiftOverrides = sqliteTable(
   (table) => ({
     byPersonDate: uniqueIndex('shift_overrides_person_date_idx').on(table.personId, table.date),
     byDate: index('shift_overrides_date_idx').on(table.date),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Chores
+// ---------------------------------------------------------------------------
+
+/**
+ * A chore: something somebody in the house does on a repeating day.
+ *
+ * Two tables rather than one, and the split is the whole model. A chore is a
+ * *definition* — a name, whose it is, and when it falls due — and it is edited
+ * rarely, in the admin. A completion is a *fact about one day*, recorded
+ * often, and (from RFC 008 phase 3) from the wall itself. Storing "done" as a
+ * boolean on the chore would work exactly until midnight, and would leave no
+ * way to answer "did the bins go out last Tuesday".
+ */
+export const chores = sqliteTable(
+  'chores',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+
+    /**
+     * Whose chore this is, or nobody's.
+     *
+     * `set null` rather than cascade: removing a person from the household
+     * should not silently delete the bins. The chore becomes unassigned, which
+     * is a state the wall and the admin both already have to draw.
+     *
+     * This is the third thing `people` owns, after a calendar source and a
+     * shift rotation — so a chore inherits the colour that person is already
+     * drawn in and there is no new identity model anywhere (RFC 008).
+     */
+    personId: text('person_id').references(() => people.id, { onDelete: 'set null' }),
+
+    /**
+     * The `ChoreSchedule` from `@maverick-wall/core`, as JSON.
+     *
+     * JSON because it is never queried by its contents — "is this due today"
+     * is a pure function over a civil date, evaluated in code, not a WHERE
+     * clause. Validated by Zod on the way in and read back defensively: `dueOn`
+     * is total and answers "not due" for anything it cannot read, because it
+     * runs inside manifest assembly.
+     */
+    schedule: text('schedule', { mode: 'json' }).$type<unknown>().notNull(),
+
+    /**
+     * `HH:MM` the chore is meant to happen by, or null for any time that day.
+     *
+     * Display only, and deliberately not part of `dueOn`. A chore's day is a
+     * civil date; the time is a note about that day, not a second boundary that
+     * could disagree with it.
+     */
+    dueTime: text('due_time'),
+
+    /**
+     * Suspended, keeping its history.
+     *
+     * The difference between this and deleting is the whole reason it exists:
+     * a chore paused over the school holidays comes back with "done 6 of the
+     * last 7 Tuesdays" intact, and a chore deleted takes its completions with
+     * it. Both are things a household means, and only one of them was possible.
+     *
+     * Deliberately not shipped in phase 1. Nothing could record a completion
+     * then, so a switch that preserved history would have preserved nothing —
+     * an option that does nothing is worse than an option not offered, and this
+     * is the first version where it does something.
+     */
+    paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+
+    sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
+    ...timestamps,
+  },
+  (table) => ({
+    byPerson: index('chores_person_idx').on(table.personId),
+  }),
+);
+
+/**
+ * One chore, done, on one civil date.
+ *
+ * **Keyed on a civil date, never an instant**, which is the single most
+ * important thing in this table. "Bins out Tuesday" ticked at 23:50 on Monday
+ * belongs to Monday; the day rolls at the household's local midnight, not at
+ * UTC's. Writing this as a timestamp and deriving the day later is the same
+ * bug as rendering `DTEND` inclusive, and it would present as a chore that
+ * un-ticks itself in the evening.
+ *
+ * `completedAt` is kept beside it because the two answer different questions —
+ * the date is *which day it counts for*, the timestamp is *when somebody
+ * pressed it* — and only the first is unique.
+ *
+ * The unique index is what makes the tick idempotent: a wall that presses twice
+ * on a flaky network records one completion, so no client needs to be careful.
+ */
+export const choreCompletions = sqliteTable(
+  'chore_completions',
+  {
+    id: text('id').primaryKey(),
+    choreId: text('chore_id')
+      .notNull()
+      .references(() => chores.id, { onDelete: 'cascade' }),
+    /** Civil date, `YYYY-MM-DD`, in the household's zone. */
+    date: text('date').notNull(),
+    completedAt: integer('completed_at', { mode: 'number' }).notNull().$defaultFn(now),
+  },
+  (table) => ({
+    byChoreDate: uniqueIndex('chore_completions_chore_date_idx').on(table.choreId, table.date),
+    byDate: index('chore_completions_date_idx').on(table.date),
   }),
 );
 

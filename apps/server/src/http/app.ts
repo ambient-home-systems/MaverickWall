@@ -31,6 +31,8 @@ import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
+import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
+import { choresModule } from '../modules/chores/index.js';
 import { weatherModule } from '../modules/weather/index.js';
 import { haModule } from '../modules/homeassistant/index.js';
 import { externalPanelModules } from '../modules/external/index.js';
@@ -256,7 +258,7 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
  * same list, and the Display screen offers their blocks from it too — so
  * adding a module is one entry rather than three edits in three files.
  */
-export const MODULES = [weatherModule, haModule, calendarModule];
+export const MODULES = [weatherModule, haModule, calendarModule, choresModule];
 
 /**
  * The wall clock in a zone, as `HH:MM`.
@@ -619,6 +621,72 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   /**
+   * Ticking a chore off, from the wall (RFC 008 phase 3).
+   *
+   * The first time anything on a wall writes household data other than an
+   * acknowledgement, and it is built from `/d/interrupts/dismiss` deliberately
+   * — same gate, same household-wide effect, same "the server is the authority,
+   * not the button".
+   *
+   * Three things it refuses to take from the caller, and each one is a bug it
+   * would otherwise have:
+   *
+   * **The day.** The client sends a chore, never a date. A wall tablet's clock
+   * drifts and plenty never get NTP at all, so a screen deciding which day it
+   * is would tick yesterday's bins on a device an hour behind — and the whole
+   * chore model hangs on the day being the household's civil date. It is
+   * resolved here, once, in the household's zone, exactly as the panel that
+   * drew the board resolved it.
+   *
+   * **Whether the chore is due.** A completion for a day the chore does not
+   * fall on is a row that means nothing and shows nowhere, so it is refused
+   * rather than stored — an unreadable record is worse than none.
+   *
+   * **Whether this screen may ask.** `allow_chores` is off by default and the
+   * wall hides the control when it is, but the display token is on the wall
+   * where anybody can reach it, so the check is here and the hidden control is
+   * only a courtesy.
+   *
+   * Idempotent by the unique index on `(chore_id, date)`, which is what lets
+   * the wall be careless: two screens pressed at once, or one retrying on a
+   * flaky network, record one completion between them. No queue, no
+   * reconciliation, no client-side state.
+   */
+  app.post('/d/chores/tick', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    if (screen.allowChores !== 1) {
+      return c.json(
+        { error: 'not-allowed', message: 'This screen cannot tick chores off.' },
+        403,
+      );
+    }
+
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const id = typeof body['id'] === 'string' ? body['id'].trim() : '';
+    if (id === '' || id.length > 64) return c.json({ error: 'bad-id' }, 400);
+    // Absent means done. A wall posting only an id is saying "this is done",
+    // which is the overwhelmingly common press; `done=0` is the correction.
+    const done = body['done'] !== '0' && body['done'] !== 'false';
+
+    const household = readHousehold(deps.db);
+    const today = localToday(household.timezone, now());
+    const chore = readChores(deps.db).find((candidate) => candidate.id === id);
+    if (chore === undefined) return c.json({ error: 'no-such-chore' }, 404);
+    /*
+     * Due today *and* not paused, which is one rule shared with the board the
+     * wall drew — `activeOn`. A paused chore is on no wall, so a tick for one
+     * cannot have come from a finger; it came from something holding the
+     * display token, which is exactly the case this endpoint assumes.
+     */
+    if (!activeOn(chore, today)) {
+      return c.json({ error: 'not-due', message: 'That chore is not due today.' }, 409);
+    }
+
+    setChoreDone(deps.db, chore.id, today, done, now());
+    return c.json({ ok: true, date: today, done });
+  });
+
+  /**
    * The manifest, built for a given screen.
    *
    * Shared by the wall (a paired screen) and the layout editor's preview (a
@@ -631,6 +699,7 @@ export function createApp(deps: AppDeps): Hono {
     readonly orientation: string;
     readonly rotation: number;
     readonly allowDismiss: boolean;
+    readonly allowChores: boolean;
     readonly theme: string | null;
     readonly daytimeTheme: string | null;
     readonly daytimeStartsAt: string | null;
@@ -734,6 +803,7 @@ export function createApp(deps: AppDeps): Hono {
         orientation: screenLike.orientation,
         rotation: screenLike.rotation,
         allowDismiss: screenLike.allowDismiss,
+        allowChores: screenLike.allowChores,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -759,6 +829,7 @@ export function createApp(deps: AppDeps): Hono {
       orientation: screen.orientation,
       rotation: screen.rotation,
       allowDismiss: screen.allowDismiss === 1,
+      allowChores: screen.allowChores === 1,
       theme: screen.theme,
       daytimeTheme: screen.daytimeTheme,
       daytimeStartsAt: screen.daytimeStartsAt,
@@ -1008,6 +1079,7 @@ export function createApp(deps: AppDeps): Hono {
         orientation: 'portrait',
         rotation: 0,
         allowDismiss: false,
+        allowChores: false,
         theme: null,
         daytimeTheme: null,
         daytimeStartsAt: null,

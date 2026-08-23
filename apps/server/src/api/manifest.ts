@@ -52,6 +52,9 @@ export const WIDGET_TYPES = [
   'shift',
   'notes',
   'todo',
+  // The household's chore board (RFC 008). Read-only in phase 2: it says what
+  // is due and what is done, and offers no way to tick one off.
+  'chores',
   'countdown',
   'image',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
@@ -423,6 +426,8 @@ export interface Manifest {
      * acknowledging stays household-wide.
      */
     readonly allowDismiss: boolean;
+    /** Whether this screen may tick a chore off (RFC 008 phase 3). */
+    readonly allowChores: boolean;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -576,6 +581,7 @@ export interface BuildManifestInput {
     readonly orientation: string;
     readonly rotation: number;
     readonly allowDismiss?: boolean;
+    readonly allowChores?: boolean;
     readonly theme?: string | null;
     readonly timezone?: string | null;
     readonly daytimeTheme?: string | null;
@@ -1002,6 +1008,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // hand the display something it has to defend against.
       rotation: ((Math.round((input.screen?.rotation ?? 0) / 90) % 4) + 4) % 4 * 90,
       allowDismiss: input.screen?.allowDismiss === true,
+      allowChores: input.screen?.allowChores === true,
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

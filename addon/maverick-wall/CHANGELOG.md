@@ -14,6 +14,40 @@
   saying nothing.
 -->
 
+## Unreleased
+
+Chores, on the wall — and you tick them off there, not in here.
+
+Set them up on the new **Chores** screen: a name, who does it, and when it comes
+round — every day, certain days of the week, every so many days, a day of the
+month, or just once. Each one shows the next few days it falls due, so you can
+see straight away that what you typed means what you meant.
+
+Then put a **Chores** widget on a wall. It draws today's list, or a column per
+person, or the week ahead. A chore belongs to somebody by taking their colour,
+the same one their calendar and their rota already use.
+
+**Ticking one off happens on the wall**, which is the point of the whole thing —
+whoever is standing in the kitchen presses the box, and every screen in the
+house agrees a moment later. That is off until you turn it on, per display,
+under **Wall settings → Alerts and interaction**: a tablet somebody can reach is
+what it is for, and a screen behind glass or one a passing sleeve could brush is
+what it is off for by default. There is deliberately no tick box on the Chores
+screen itself.
+
+A chore ticked late at night counts for that day, not the next one.
+
+Each chore also shows how it has been going — "Done 6 of the last 7 Tuesdays" —
+counted from the day you created it, and never counting today, because the day
+is not over yet.
+
+**Pause** a chore to take it off the wall for a while and keep its history;
+**Remove** deletes that history for good, and now says so and offers to pause it
+instead.
+
+eInk panels draw the same three views. They show chores; they cannot tick them
+off, because a panel that has been asleep for an hour cannot answer a press.
+
 ## 0.50.1
 
 **A setting you could not read.** In the widget settings, a choice with a long

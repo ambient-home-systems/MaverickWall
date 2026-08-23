@@ -687,6 +687,205 @@ function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, confi
   });
 }
 
+/**
+ * The chore board, at 1-bit (RFC 008 phase 2).
+ *
+ * A dedicated draw rather than `drawPanel`, because chores are first-party data
+ * with a shape the generic reader would flatten into unlabelled lines — and
+ * because the box carries the one thing worth seeing from across a kitchen:
+ * done or not.
+ *
+ * **The view is read exactly as the wall's `renderChoresWidget` reads it**, and
+ * that sentence is the whole reason this function is worth reviewing. The
+ * e-paper calendar shipped testing `mode === 'month'` while the editor stored
+ * the default by leaving the key out, so every "Show as" value drew the same
+ * thing and the commonest setting was the broken one. The rule that came out of
+ * it: the wall is the spec, an absent `mode` is the default, and a test holds
+ * the two renderers to each other.
+ *
+ * **A panel never offers a tick**, in this phase or any later one. A sleeping
+ * ESP32 cannot honour a tap, so drawing a control it could not answer would be
+ * a lie in ink — the same reason battery panels are documented as a glance
+ * class rather than an alert class.
+ */
+function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): void {
+  const board = readChorePanel(panel);
+  if (board === undefined) {
+    drawLines(fb, ['(no chores yet)'], box, 2, 'left');
+    return;
+  }
+
+  const mode = str(config, 'mode') ?? '';
+  const wanted = strings(config, 'people');
+  const keep = (items: readonly ChoreLine[]): ChoreLine[] =>
+    wanted === undefined
+      ? [...items]
+      : items.filter((item) => item.personId !== undefined && wanted.includes(item.personId));
+
+  const rowH = 22;
+  const bottom = box.y + box.h;
+  let y = box.y;
+
+  /** One chore: an empty box, or a filled one when it is done, then its name. */
+  const drawRow = (item: ChoreLine, indent: number): void => {
+    const left = box.x + indent;
+    // Done is a *filled* box rather than a drawn tick: at 1-bit a 12px tick is
+    // four pixels of ink that reads as a smudge from two metres, and solid
+    // against empty is the strongest contrast the medium has.
+    fb.strokeRect(left, y + 3, 12, 12, true);
+    if (item.done) fb.fillRect(left + 3, y + 6, 6, 6, true);
+    const width = box.w - indent - 20;
+    /*
+     * The owner's name is dropped whole rather than truncated.
+     *
+     * `fit` cuts a character at a time, so a box one letter too narrow turned
+     * "Feed the cat (Ella)" into "Feed the cat (E" — a parenthesis opened and
+     * never closed, which reads as a rendering fault rather than as a name that
+     * did not fit. Losing the owner is a real loss; losing it *visibly
+     * mid-bracket* is a loss plus a bug the household has to explain to
+     * themselves. The chore is the thing they walked over to read.
+     */
+    const name = asciiTitle(item.name);
+    const withOwner = item.person === undefined ? name : `${name} (${asciiTitle(item.person)})`;
+    const label = measureText(withOwner, { scale: 2 }) <= width ? withOwner : name;
+    drawText(fb, left + 20, y, fit(label, width, { scale: 2 }), { scale: 2 });
+    y += rowH;
+  };
+
+  if (mode === 'week') {
+    for (const day of board.days) {
+      const items = keep(day.items);
+      // Empty days are skipped, the same as the wall's week view. The panel
+      // keeps them so a caller drawing a grid can line them up; neither of
+      // these two draws a grid.
+      if (items.length === 0) continue;
+      if (y + 14 > bottom) break;
+      const heading = day.date === board.today ? 'TODAY' : weekdayOf(day.date).toUpperCase();
+      drawText(fb, box.x, y, fit(heading, box.w, { scale: 1 }), { scale: 1 });
+      y += 12;
+      for (const item of items) {
+        if (y + 14 > bottom) break;
+        drawRow(item, 8);
+      }
+      y += 6;
+    }
+    if (y === box.y) drawLines(fb, ['(nothing due this week)'], box, 2, 'left');
+    return;
+  }
+
+  const today = keep(board.days[0]?.items ?? []);
+  if (today.length === 0) {
+    drawLines(fb, ['(nothing due today)'], box, 2, 'left');
+    return;
+  }
+
+  if (mode === 'people') {
+    /*
+     * Grouped by person and stacked, not laid out in columns.
+     *
+     * A 1-bit panel is 800x480 and a widget box is a fraction of it; two
+     * columns of 2x-scale text is about eleven characters each, which is a
+     * chore board nobody can read. The *grouping* is what the setting asked
+     * for, so that is what it gets, drawn the way this medium can carry it.
+     */
+    const groups = new Map<string, ChoreLine[]>();
+    for (const item of today) {
+      const key = item.person ?? '';
+      const group = groups.get(key);
+      if (group === undefined) groups.set(key, [item]);
+      else group.push(item);
+    }
+    const loose = groups.get('');
+    groups.delete('');
+    const draw = (name: string, items: readonly ChoreLine[]): void => {
+      if (y + 14 > bottom) return;
+      drawText(fb, box.x, y, fit(asciiTitle(name).toUpperCase(), box.w, { scale: 1 }), { scale: 1 });
+      y += 12;
+      for (const item of items) {
+        if (y + 14 > bottom) break;
+        // The name is already the heading; repeating it on every row would
+        // spend a third of a narrow box saying it twice.
+        drawRow({ ...item, person: undefined }, 8);
+      }
+      y += 6;
+    };
+    for (const [name, items] of groups) draw(name, items);
+    if (loose !== undefined) draw('Anyone', loose);
+    return;
+  }
+
+  // Today, the default, and what an absent `mode` means — the wall's rule.
+  for (const item of today) {
+    if (y + 14 > bottom) break;
+    drawRow(item, 0);
+  }
+}
+
+interface ChoreLine {
+  readonly name: string;
+  /** The id the "whose chores" filter matches on; never drawn. */
+  readonly personId: string | undefined;
+  readonly person: string | undefined;
+  readonly done: boolean;
+}
+
+interface ChoreBoard {
+  readonly today: string;
+  readonly days: readonly { readonly date: string; readonly items: readonly ChoreLine[] }[];
+}
+
+/**
+ * The chore panel out of the manifest, read tolerantly.
+ *
+ * This process built the slice, but it is read as untrusted for the same reason
+ * the display's `choresFrom` is: a panel and a server are two versions that can
+ * drift, and rule nine says a bad slice costs a widget rather than the frame.
+ */
+function readChorePanel(panel: unknown): ChoreBoard | undefined {
+  if (typeof panel !== 'object' || panel === null) return undefined;
+  const raw = panel as { today?: unknown; days?: unknown };
+  if (typeof raw.today !== 'string' || !Array.isArray(raw.days)) return undefined;
+
+  const days: { date: string; items: ChoreLine[] }[] = [];
+  for (const entry of raw.days) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const day = entry as { date?: unknown; items?: unknown };
+    if (typeof day.date !== 'string') continue;
+    const items: ChoreLine[] = [];
+    for (const candidate of Array.isArray(day.items) ? day.items : []) {
+      if (typeof candidate !== 'object' || candidate === null) continue;
+      const item = candidate as {
+        name?: unknown; person?: unknown; personId?: unknown; done?: unknown;
+      };
+      if (typeof item.name !== 'string' || item.name === '') continue;
+      items.push({
+        name: item.name,
+        personId:
+          typeof item.personId === 'string' && item.personId !== '' ? item.personId : undefined,
+        person: typeof item.person === 'string' && item.person !== '' ? item.person : undefined,
+        done: item.done === true,
+      });
+    }
+    days.push({ date: day.date, items });
+  }
+  return days.length === 0 ? undefined : { today: raw.today, days };
+}
+
+/**
+ * A civil date's short weekday.
+ *
+ * At UTC midnight, because the string is a calendar date with no zone in it —
+ * reading it as a local instant slides it a day for anybody west of Greenwich.
+ * Fixed English names rather than `Intl`: the bitmap font is ASCII, so a
+ * localised weekday would come out as boxes on the one surface that cannot fall
+ * back to a system font.
+ */
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function weekdayOf(date: string): string {
+  const at = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(at.getTime()) ? '' : (WEEKDAYS[at.getUTCDay()] ?? '');
+}
+
 function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel, manifest: Manifest, config: Config): void {
   switch (type) {
     case 'clock':
@@ -701,6 +900,8 @@ function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel,
       return drawLines(fb, wrap(str(config, 'text') ?? '', box.w, 2), box, 2, alignOf(config));
     case 'todo':
       return drawTodo(fb, box, config);
+    case 'chores':
+      return drawChores(fb, box, manifest.panels['chores'], config);
     case 'weather':
       return drawWeather(fb, box, manifest, config);
     case 'homeassistant':

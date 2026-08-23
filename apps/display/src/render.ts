@@ -1,4 +1,5 @@
 import type {
+  ChoreItemModel,
   DayModel,
   DisplayModel,
   EventModel,
@@ -7,7 +8,7 @@ import type {
   TodayShiftModel,
 } from './viewmodel.js';
 import { localDate, localTime } from './viewmodel.js';
-import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
+import { agendaTimeFitsBeside, MIN_CHORE_SCALE, weekColumnsFit } from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
@@ -775,6 +776,8 @@ export function renderWidget(
       return renderNotesWidget(config);
     case 'todo':
       return renderTodoWidget(config);
+    case 'chores':
+      return renderChoresWidget(model, config);
     case 'image':
       return renderImageWidget(config, mediaBase);
     default:
@@ -901,6 +904,181 @@ function renderCountdownWidget(model: DisplayModel, config: unknown): HTMLElemen
  * but the renderer reads what this process wrote as untrusted all the same — a
  * manifest one version ahead costs the widget its options, not the wall.
  */
+/**
+ * A civil date's short weekday, for a board that carries dates and no labels.
+ *
+ * Parsed at UTC midnight and formatted in UTC — the string is a *calendar date*
+ * with no zone in it, so reading it as a local instant would slide it a day for
+ * anybody west of Greenwich. The same reasoning as `DTEND` being exclusive, and
+ * the same trap.
+ */
+function weekdayOfDate(date: string): string {
+  const at = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(at.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: 'UTC' }).format(at);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * One chore, as a row: its box, its name, whose it is, and when by.
+ *
+ * The box is a `<span>` on a screen that may not tick, and a real `<button>` on
+ * one that may (RFC 008 phase 3). A real button rather than a tappable div
+ * because a wall is reached by a fingertip, a keyboard and a television remote,
+ * and only one of those three is served by a click handler on a box — the same
+ * argument that made the interrupt's acknowledge control a button.
+ *
+ * `data-chore` is what `main.ts` listens for. The row is marked rather than the
+ * page wired per node, so a redraw between polls does not have to re-attach
+ * anything.
+ */
+function choreRow(item: ChoreItemModel, withPerson: boolean, tickable = false): HTMLElement {
+  const row = el('div', `ch-row${item.done ? ' ch-done' : ''}`);
+  // A row with no id cannot be ticked whatever the screen is allowed to do, so
+  // it draws the read-only box. That is a degraded row, not a missing one.
+  const canTick = tickable && item.id !== undefined;
+  const box = canTick
+    ? el('button', `ch-box ch-tick${item.done ? ' ch-box-on' : ''}`)
+    : el('span', `ch-box${item.done ? ' ch-box-on' : ''}`);
+  if (canTick) {
+    (box as HTMLButtonElement).type = 'button';
+    box.setAttribute('data-chore', item.id as string);
+    box.setAttribute('aria-pressed', item.done ? 'true' : 'false');
+    // Named, because "button" is what a screen reader would otherwise say for
+    // every row on the board.
+    box.setAttribute('aria-label', `${item.done ? 'Undo' : 'Done'}: ${item.name}`);
+  }
+  // The person's colour marks the box rather than the text: a chore name has to
+  // stay legible from across a room, and tinting it would trade that away for a
+  // cue the swatch already carries.
+  if (item.color !== undefined) box.style.setProperty('--who', item.color);
+  row.appendChild(box);
+  row.appendChild(el('span', 'ch-name', item.name));
+  if (withPerson && item.person !== undefined) {
+    const who = el('span', 'ch-who', item.person);
+    if (item.color !== undefined) who.style.setProperty('--who', item.color);
+    row.appendChild(who);
+  }
+  if (item.dueTime !== undefined) row.appendChild(el('span', 'ch-time', item.dueTime));
+  return row;
+}
+
+/**
+ * The Chores widget (RFC 008 phase 2) — three views over one board.
+ *
+ * **Read-only, and that is the design rather than a stage it is passing
+ * through.** It says what is due and what is done and offers no way to tick
+ * anything: a box here is a marker, not a control. Making it one is phase 3,
+ * and it lands with a per-screen gate and a POST behind the display token,
+ * because a wall in a hallway and a tablet at elbow height are not the same
+ * hardware.
+ *
+ * The view is read from `mode` exactly as `renderCalendarWidget` reads it, and
+ * the default is an **absence**. Both halves matter: the e-paper calendar
+ * shipped testing `mode === 'month'` against a default nobody stores, so all
+ * three of its settings drew the same thing and the commonest one was the one
+ * that broke. The panel's `drawChores` reads this identically, and a test holds
+ * the two to each other.
+ */
+function renderChoresWidget(model: DisplayModel, config?: unknown): HTMLElement {
+  const board = model.chores;
+  if (board === undefined) {
+    return el('div', 'cd-empty', 'No chores yet — add some on the Chores screen.');
+  }
+
+  const cfg = widgetConfig(config);
+  const mode = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : '';
+  /*
+   * Whether this screen offers the control at all.
+   *
+   * Per screen and off by default, because it is a fact about the hardware: a
+   * tablet at elbow height is what it is for, a panel behind glass has nothing
+   * to press it with, and a screen a sleeve brushes would mark the bins done
+   * on the way past. Hiding it is only a courtesy — the endpoint checks the
+   * same flag, because the display token is on the wall.
+   */
+  const tickable = model.allowChores;
+  // Whose chores to show, by person id — the same key and the same meaning the
+  // Shift widget's picker uses. None chosen shows everybody, including the
+  // chores nobody owns, which is what a bare widget draws.
+  const wanted = configStrings(cfg['people']);
+  const keep = (items: readonly ChoreItemModel[]): ChoreItemModel[] =>
+    wanted.length === 0
+      ? [...items]
+      : items.filter((item) => item.personId !== undefined && wanted.includes(item.personId));
+
+  const today = board.days[0];
+
+  if (mode === 'week') {
+    const list = el('div', 'ch ch-week');
+    let drawn = 0;
+    for (const day of board.days) {
+      const items = keep(day.items);
+      // Days with nothing are skipped here, though the panel keeps them: a
+      // column of blanks tells a household nothing, which is the same call the
+      // days-ahead block makes. They are kept in the *panel* because a caller
+      // drawing a grid needs them to line its days up.
+      if (items.length === 0) continue;
+      const group = el('div', 'ch-day');
+      const head = el('div', 'ch-day-head');
+      head.appendChild(el('span', 'ch-dow', day.date === board.today ? 'Today' : weekdayOfDate(day.date)));
+      group.appendChild(head);
+      for (const item of items) group.appendChild(choreRow(item, true, tickable));
+      list.appendChild(group);
+      drawn++;
+    }
+    if (drawn === 0) return el('div', 'cd-empty', 'Nothing due this week.');
+    return list;
+  }
+
+  if (mode === 'people') {
+    const items = keep(today?.items ?? []);
+    if (items.length === 0) return el('div', 'cd-empty', 'Nothing due today.');
+
+    /*
+     * A column per person, in the order their chores appear.
+     *
+     * Derived from the board rather than from the household's people list, so a
+     * column only exists when somebody has something due — a board of five
+     * names and two chores is a wall spending its width on emptiness. Anyone's
+     * chores go last, under a heading that says so rather than under a blank.
+     */
+    const columns = new Map<string, ChoreItemModel[]>();
+    for (const item of items) {
+      const key = item.person ?? '';
+      const column = columns.get(key);
+      if (column === undefined) columns.set(key, [item]);
+      else column.push(item);
+    }
+    const unassigned = columns.get('');
+    columns.delete('');
+
+    const board_ = el('div', 'ch-people');
+    const column = (name: string, list: readonly ChoreItemModel[]): void => {
+      const col = el('div', 'ch-col');
+      const head = el('div', 'ch-col-head', name);
+      const colour = list.find((item) => item.color !== undefined)?.color;
+      if (colour !== undefined) head.style.setProperty('--who', colour);
+      col.appendChild(head);
+      for (const item of list) col.appendChild(choreRow(item, false, tickable));
+      board_.appendChild(col);
+    };
+    for (const [name, list] of columns) column(name, list);
+    if (unassigned !== undefined) column('Anyone', unassigned);
+    return board_;
+  }
+
+  // Today, the default, and the one an absent `mode` means.
+  const items = keep(today?.items ?? []);
+  if (items.length === 0) return el('div', 'cd-empty', 'Nothing due today.');
+  const list = el('div', 'ch');
+  for (const item of items) list.appendChild(choreRow(item, true, tickable));
+  return list;
+}
+
 function widgetConfig(config: unknown): Record<string, unknown> {
   return typeof config === 'object' && config !== null ? (config as Record<string, unknown>) : {};
 }
@@ -1285,7 +1463,47 @@ export function renderFreeform(
   root.appendChild(screen);
 
   // Now that everything has a size, fit each reused section to its box.
-  for (const { box, scale, min } of toFit) fitToBox(box, scale, { min });
+  for (const { box, scale, min } of toFit) {
+    fitToBox(box, scale, { min });
+
+    /*
+     * Cut a chore week on a whole day, never through one.
+     *
+     * The board holds a legible floor and clips below it, which is right — but
+     * `overflow: hidden` cuts wherever the pixel falls, and a row sliced across
+     * the middle reads as a broken renderer rather than as a list that ran out
+     * of room. Same fault as the month grid losing its last week, one widget
+     * along, and visible only by measuring.
+     *
+     * Measured against the **box**, which is the element that clips. The first
+     * attempt measured `.fw-content`, which sits *inside* the transform and is
+     * sized to its own content — so its bottom is always past the last row and
+     * nothing was ever trimmed. The frame looked identical, which is exactly
+     * how that kind of mistake survives.
+     */
+    const week = scale.querySelector('.ch-week');
+    if (week === null) continue;
+    const style = getComputedStyle(box);
+    const limit = box.getBoundingClientRect().bottom - parseFloat(style.paddingBottom || '0');
+    const groups = week.querySelectorAll('.ch-day');
+    let trimmed = false;
+    for (let index = groups.length - 1; index >= 0; index--) {
+      const group = groups[index] as HTMLElement;
+      if (group.getBoundingClientRect().bottom <= limit + 1) break;
+      group.remove();
+      trimmed = true;
+    }
+    /*
+     * Then fit again, because what is left is smaller than what was measured.
+     *
+     * The first fit scaled seven days down to the floor and clipped; with the
+     * days that did not fit now gone, that scale is a board drawn at 62% in a
+     * box with room to spare — the exact "cramped, just in a bigger box" fault
+     * `fitToBox` was rewritten to stop. Trimming and re-fitting is one pass
+     * each way: fewer days, drawn larger.
+     */
+    if (trimmed) fitToBox(box, scale, { min });
+  }
 
   /*
    * A badge with no room for its whole ladder gives up its bottom rung.
@@ -1511,6 +1729,13 @@ function minScaleFor(type: string): number {
     case 'notes':
     case 'todo':
       return 0.3;
+    /*
+     * A chore board holds its type far harder than a note does — see
+     * `MIN_CHORE_SCALE`, which carries the measurement and the reason it is not
+     * the 0.3 the note and the checklist use.
+     */
+    case 'chores':
+      return MIN_CHORE_SCALE;
     default:
       return 0.2;
   }

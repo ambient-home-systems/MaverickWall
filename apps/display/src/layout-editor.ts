@@ -73,7 +73,7 @@ interface LayoutState {
   readings: readonly string[];
   /** The registered modules, for the External widget's "which module". */
   modules: readonly { readonly id: string; readonly name: string }[];
-  /** The household, for the Shift widget's "whose rota". */
+  /** The household, for the Shift and Chores widgets' "whose" pickers. */
   people: readonly { readonly id: string; readonly name: string }[];
 }
 
@@ -87,6 +87,7 @@ const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
   { type: 'countdown', label: 'Countdown' },
   { type: 'notes', label: 'Notes' },
   { type: 'todo', label: 'To-do' },
+  { type: 'chores', label: 'Chores' },
   { type: 'image', label: 'Image' },
   { type: 'external', label: 'Module' },
 ];
@@ -108,6 +109,7 @@ const SWATCH: Readonly<Record<string, string>> = {
   countdown: 'var(--accent)',
   notes: 'var(--muted)',
   todo: 'var(--night)',
+  chores: 'var(--ok)',
   image: 'var(--ok)',
   external: 'var(--warn)',
 };
@@ -1756,6 +1758,7 @@ function boot(): void {
     else if (widget.type === 'external') buildExternalConfig(widget, cfg);
     else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
     else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
+    else if (widget.type === 'chores') buildChoresConfig(widget, cfg);
     else if (widget.type === 'image') buildImageConfig(widget, cfg);
     else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
@@ -2074,6 +2077,36 @@ function boot(): void {
     area.addEventListener('input', () => setConfig(widget, 'text', area.value));
     field.appendChild(area);
     configPanel.appendChild(field);
+  }
+
+  /**
+   * The Chores widget's own options: whose to show.
+   *
+   * By person *id*, which is the same key and the same meaning the Shift
+   * widget's "Whose rota" uses — one config key must not mean two things, and
+   * an id survives a rename where a name does not. None ticked shows everybody,
+   * including the chores nobody owns, and that is stated rather than left to be
+   * discovered.
+   *
+   * There is no count here and no "hide the done ones". A household's chores in
+   * a day are few, and a board that hides what has been done cannot be used to
+   * check that it was.
+   */
+  function buildChoresConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const which = cfgField('Whose chores to show', 'people');
+    which.appendChild(
+      checkList(
+        state.people.map((person) => ({ value: person.id, label: person.name })),
+        Array.isArray(cfg['people']) ? (cfg['people'] as string[]) : [],
+        (values) => setConfig(widget, 'people', values),
+        'No people yet — add them on the People screen.',
+      ),
+    );
+    configPanel.appendChild(which);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'None ticked shows everybody, including chores nobody owns.';
+    configPanel.appendChild(note);
   }
 
   function buildTodoConfig(widget: Widget, cfg: Record<string, unknown>): void {

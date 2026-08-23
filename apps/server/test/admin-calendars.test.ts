@@ -535,14 +535,21 @@ describe('screens', () => {
       (await (
         await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
       ).json()) as {
-        screen: { orientation: string; rotation: number; allowDismiss: boolean };
+        screen: {
+          orientation: string; rotation: number;
+          allowDismiss: boolean; allowChores: boolean;
+        };
       };
 
+    // Exhaustive on purpose: this is the whole of what a screen tells its wall
+    // about itself, and a field appearing here without a decision behind it is
+    // worth failing over. Both input permissions are off, which is the default
+    // a newly paired screen has to have.
     expect(await manifestFor(kitchen.token)).toHaveProperty('screen', {
-      orientation: 'portrait', rotation: 90, allowDismiss: false,
+      orientation: 'portrait', rotation: 90, allowDismiss: false, allowChores: false,
     });
     expect(await manifestFor(hall.token)).toHaveProperty('screen', {
-      orientation: 'auto', rotation: 0, allowDismiss: false,
+      orientation: 'auto', rotation: 0, allowDismiss: false, allowChores: false,
     });
   });
 

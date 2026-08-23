@@ -259,6 +259,124 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
+**Chores are built end to end, and the split is the design (RFC 008).** A
+chore has two lifecycles with nothing in common: *defining* one is rare and
+considered, *completing* one happens several times a day, by whoever is
+standing in the kitchen. The admin is right for the first and wrong for the
+second — so `/admin/chores` defines them and there is deliberately **no tick
+box on it**, with a test asserting that absence, because it is the thing
+somebody reading the screen as ordinary CRUD would helpfully add. Completion is
+the wall's, and it is the first time the wall would write anything: the
+template is `POST /d/interrupts/dismiss`, which is already household-wide,
+gated per screen and off by default, and treats the server rather than the
+button as the authority.
+
+The model is `packages/core/src/domain/chores/` — self-contained like
+`domain/shift/`, with its own five-case schedule vocabulary rather than an
+RRULE, for the same reason shift rotations declined one: a rule that parses,
+expands to nothing and leaves the wall silent cannot be explained standing at a
+fridge. `dueOn` is total and answers **not due** for a schedule it cannot read,
+because it runs inside manifest assembly and the loud fallback would put a
+broken chore on the wall every day. Completions are keyed on a **civil date**,
+never an instant — a chore ticked at 23:50 belongs to that day — and the unique
+index on `(chore_id, date)` is what makes the tick idempotent, which is why
+phase 3 needs no client-side queue. `monthlyDate` caps at 28 and refuses 31
+rather than clamping it to "the last day": one chore behaving differently in
+February with nothing on the form to say so is worse than a control that is
+honestly missing.
+
+Two faults came out of building the screen and both were found by *looking* at
+it. "Not due again" was shown for a chore anchored beyond the window that had
+actually been searched — a claim about never, from a function that checked 400
+days. And every chore rendered as a fully-expanded edit form: four of them made
+a 5,000px page whose real content was three lines each, and on a 390px phone
+one card did not fit in the viewport. That is the wall editor's "scroll with no
+landmarks" fault one screen along, and the cure is the same shape — the editor
+is folded behind a `<details>` (script-free, like the overflow menu), and a
+date field belonging to a kind the chore is not shows blank rather than today,
+because a monthly chore reading "Starting 23/08/2026" was true of nothing.
+
+**Chores draw on a wall and on a panel, and both read one stored view the same
+way.** `modules/chores/` is a panel module — no job, because a chore is due on a
+day or it is not and "done" is a row keyed on that date, so the obvious midnight
+sweeper would be a job that destroys history and misfires in the hour the clocks
+go back; and no `signals()`, because a chore that raises an interrupt is a wall
+that nags and interrupts are reserved for tornado warnings and a garage left
+open at midnight. The `chores` widget has three views (Today, By person, This
+week) and the e-paper `drawChores` mirrors them; **an absent `mode` is the
+default in both**, and `apps/display/test/chores.test.ts` holds the two
+renderers to the same literals by reading both sources — the e-paper calendar
+shipped without that assertion and drew the same thing for all three of its
+settings.
+
+The ETag needed nothing: the chore panel travels inside `panels`, which is in
+`manifestEtag`'s preimage, and the manifest's own days carry dates — so a tick
+changes it and midnight rolls it. That is free by accident rather than by
+design, so a test pins it.
+
+**Three faults came out of it, all found by looking at a real wall and none by a
+test.** The week board inherited the note widget's 0.3 scale floor, and a week
+of four daily chores is 28 rows — `fitToBox` shrank the names to **8.1px** on a
+1280px display, which is not small, it is gone, and nobody would report it as
+broken. Three of four names in the by-person columns were ellipsised, because a
+column is narrow by construction and its rows were built to ellipse like the
+wide views. And once the floor was raised so the box clipped instead, it clipped
+*through a row*, which reads as a broken renderer rather than as a list that ran
+out of room — the month-grid bug one widget along. The floor now lives in
+`density.ts` beside the other calibrated ones with its measurement table, names
+wrap in columns, and the week trims to whole days **and re-fits**, so fewer days
+are drawn larger. The first trim measured `.fw-content`, which sits *inside* the
+transform and is sized to its own content, so nothing was ever trimmed and the
+frame looked identical — which is exactly how that kind of mistake survives.
+
+**The wall writes, and that is the first time it ever has beyond an
+acknowledgement.** `screens.allow_chores` (off by default, its own switch
+beside alert dismissal because clearing a warning and claiming a chore is done
+are not the same risk) puts a real `<button>` beside each chore, and
+`POST /d/chores/tick` records it — behind `requireScreen`, household-wide, the
+server as authority, all copied from `/d/interrupts/dismiss`. **The endpoint
+refuses three things from the caller**: the *day*, because a wall tablet's
+clock drifts and plenty never get NTP, so the client sends a chore and never a
+date and a date sent anyway is ignored; whether the chore is *due*, because a
+completion for a day it does not fall on shows nowhere; and whether this
+*screen* may ask, because the wall hides the control but the display token is
+on the wall. Idempotent by the unique index, which is why there is no
+client-side queue: a tick that cannot reach the server fails and leaves the box
+empty, exactly as `acknowledge` does, because an optimistic tick reads better
+on one screen and buys a distributed-state problem across two.
+
+**Two of phase 3's three faults were only ever going to be found by looking.**
+The done box drew as an empty outline on a screen allowed to tick — `.ch-tick`
+clears its background so a button looks like the read-only box, `.ch-box-on`
+fills it, equal specificity, source order decided it. The read-only `<span>`
+filled correctly the whole time, which is what hid it, and the *class* was
+applied, so a measurement counting `.ch-box-on` passed while the pixels were
+wrong: **assert on the computed background, never on the class.** The focus
+ring was `:focus-visible` only and computed to **0px** after a tap — a
+heuristic written for a page with a pointer, on a wall that sets `cursor: none`;
+every other control here already declares both. And `Enter` on a focused tick
+would have fired the button *and* cleared a showing banner.
+
+**A chore can be paused, and its record is about its own life.**
+`chores.paused` suspends one and keeps its history, which is the entire
+difference from Remove — so Remove now asks, names what it destroys, and offers
+Pause instead. `activeOn` is one rule shared by the board the wall draws and the
+endpoint that records a tick, so a paused chore can be neither drawn nor ticked.
+The record counts **occurrences, not days** ("Done 6 of the last 7 Tuesdays"),
+because a weekly chore's denominator should be weeks. Both of its faults were
+the same shape: a chore created a minute ago read "Done 0 of the last 7 times",
+and so did a paused one — seven failures a household could not have committed,
+on a screen they had just used. The window is clamped to the chore's own
+lifetime, and a paused chore says nothing at all. Neither the record nor the
+pause switch shipped in phase 1, deliberately: nothing could tick then, so both
+would have been controls that did nothing.
+
+**Unproven where it counts: a real household's tablet.** It has been driven end
+to end in a headless browser — read-only by default, the household's switch,
+one tap marking a chore done in both widgets at once, an undo, `Enter`, and a
+44×44 target behind a 17px box — but by this project's history the next fault
+is on the wall in somebody's kitchen.
+
 **Not started:** ws push · a published docs site · the Android app · a second
 weather provider.
 

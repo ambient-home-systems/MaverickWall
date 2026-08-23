@@ -850,7 +850,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
   return db
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
-              orientation, rotation, allow_dismiss AS allowDismiss, timezone,
+              orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
               daytime_theme AS daytimeTheme,
@@ -884,6 +884,8 @@ export interface ScreenSettings {
   readonly daytimeEndsAt: string | null;
   /** Whether this screen offers a way to acknowledge an interrupt. */
   readonly allowDismiss: boolean;
+  /** Whether this screen offers a way to tick a chore off (RFC 008 phase 3). */
+  readonly allowChores: boolean;
   /** How much this wall shows; null on any follows the household default. */
   readonly displayTodayEvents: number | null;
   readonly displayNextDays: number | null;
@@ -899,7 +901,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         `UPDATE screens
             SET name = ?, orientation = ?, rotation = ?, theme = ?, timezone = ?,
                 daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
-                allow_dismiss = ?,
+                allow_dismiss = ?, allow_chores = ?,
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
                 clock_24 = ?, updated_at = ?
           WHERE id = ?`,
@@ -907,7 +909,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
       .run(
         s.name, s.orientation, s.rotation, s.theme, s.timezone,
         s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt,
-        s.allowDismiss ? 1 : 0,
+        s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, Date.now(), id,
       ).changes > 0
@@ -1396,6 +1398,7 @@ export interface ScreenRow {
   readonly daytimeStartsAt: string | null;
   readonly daytimeEndsAt: string | null;
   readonly allowDismiss: number;
+  readonly allowChores: number;
   /** Per-screen display overrides; null follows the household. */
   readonly displayTodayEvents: number | null;
   readonly displayNextDays: number | null;
@@ -1415,7 +1418,7 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
   return db
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
-              orientation, rotation, allow_dismiss AS allowDismiss, timezone,
+              orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
               daytime_theme AS daytimeTheme,

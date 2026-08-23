@@ -42,7 +42,11 @@ const widgetConfigFields = z
     // `skyweek` and `skymonth` are the same two shapes drawn edge to edge, with
     // hairline dividers instead of gaps and cards — every pixel spent on the
     // calendar rather than on the space around it.
-    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth']).optional(),
+    // `people` is the Chores widget's by-person board; `week` is shared with the
+    // calendar's day columns and means the same thing on both — seven days
+    // across. One key for every type's view, because the editor's View picker is
+    // generic and writes this for all of them.
+    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people']).optional(),
     // How a month cell draws its events: quiet dots (default) or Skylight-style
     // labelled pills. Absent means dots, so an existing wall is unchanged.
     cellEvents: z.enum(['dots', 'pills']).optional(),
@@ -69,7 +73,13 @@ const widgetConfigFields = z
     /*
      * Shift — whose rota the badge draws, and which of its lines.
      *
-     * `people` is a list of person ids; none chosen means everyone on a rota,
+     * `people` is a list of person ids, shared with the Chores widget's "whose
+     * chores" picker — one key, one meaning. Chores first filtered by *name*,
+     * which collided here on a merge: two declarations of one key, the later
+     * silently winning. Ids are also simply better, since renaming somebody no
+     * longer empties the widget that was filtering on them.
+     *
+     * None chosen means everyone on a rota,
      * the same "empty selection means all" the calendar and reading pickers
      * use. It is what makes a two-worker household expressible: before it, the
      * wall drew the first person sorted and nothing could say otherwise.
