@@ -239,9 +239,25 @@ docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/m
 That is verified rather than asserted: pulled anonymously with nothing cached,
 healthy in eight seconds, wizard at `/`, assets served, uid 1000. `cosign
 verify` passes and names `release.yml@refs/tags/v0.1.1`. The manifest carries
-`linux/amd64` and `linux/arm64` plus two attestations. **The v0.1.1 commit is
-an ancestor of `main`** — the PRs were merged with merge commits rather than
-squashed precisely so that stayed true.
+`linux/amd64` and `linux/arm64` plus two attestations.
+
+**That commit is no longer reachable from `main`, and this paragraph used to
+claim it was.** `main`'s history now begins at two *parentless* commits dated
+20 and 21 August 2026 — `785d9f5` and `2578a1c` — so everything up to and
+including `v0.31.1` sits on a disconnected earlier line. Those tags still
+exist and still point at real commits; they are simply not ancestors of
+anything `main` can see, so `git log main` never shows them and
+`git describe` bottoms out at `v0.32.0`. Whatever re-rooted the history is not
+recorded anywhere, and this document went on asserting the opposite across the
+thirty releases from `v0.32.0` to `v0.51.0`.
+
+Two things survive the correction. **A tag is still a photograph, not a
+pointer** — that is the v0.1.0 lesson below and it is untouched. And PRs are
+still merged with **merge commits rather than squashes**, which is worth
+keeping for its own sake: a squash throws away the branch's own commits, and
+this repository's commit messages are where the reasoning lives. What it no
+longer buys is the reachability of the early tags; that was lost when the
+history was re-rooted, not by how any PR was merged.
 
 **963 tests passing.** calendar 153 · core 266 · server 466 · display 78. CI
 runs the whole suite and then the README's one-liner against a clean volume on
