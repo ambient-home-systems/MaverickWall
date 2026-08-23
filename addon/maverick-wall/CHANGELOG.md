@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.53.0
 
 **A new way for the month to look, and a new theme to go with it.**
 
