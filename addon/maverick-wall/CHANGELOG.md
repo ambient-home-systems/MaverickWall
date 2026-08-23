@@ -14,6 +14,45 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**The settings look different.** They were built on Google's Material Design,
+and the trouble with it here was that it made a wall calendar's settings look
+like a phone app: rounded buttons, cards floating on stacked shadows, and a
+colour scheme mixed from one orange so that even the greys were faintly brown.
+This is a house fixture, not an app, so it now reads like one — flat panels
+separated by a hairline, square-cornered controls, and greys that are actually
+grey.
+
+**Every field says what it is, at full size.** Labels used to sit inside the
+box and shrink onto the border once you started typing, which made the name of
+the thing you were filling in the smallest text on the screen. They sit above
+the box now and stay put.
+
+**More of each screen is the screen.** The menu rows are a little shorter and
+the sidebar a little narrower, so a page shows more of itself before you
+scroll — most noticeable on a phone.
+
+**Dark mode is easier on the eyes at night**, and light mode is warm paper
+rather than plain white. Every colour pair in both was checked for contrast, so
+nothing is grey-on-grey.
+
+Three things that were quietly wrong and now are not:
+
+- Opening the menu on a phone barely dimmed the page behind it, so the two
+  overlapped and were hard to tell apart. It dims properly.
+- Some cards on the Overview screen had lost their background entirely.
+- In the wall layout editor, every widget box was drawn in the same green the
+  rest of the settings use for "working" — so a wall full of widgets looked
+  like a wall full of passing checks. The boxes are neutral; only the one you
+  have selected is coloured.
+
+**On the wall itself:** the Household and Panels themes had noticeably rounded
+panel corners, which are much squarer now. Blueprint and Almanac are unchanged.
+Some small labels — the day names above the month, the times down the side —
+were under 20 pixels tall on a 1080p screen, which is fine on a desk and gone
+from across a kitchen. They are bigger.
+
 ## 0.51.0
 
 Chores, on the wall — and you tick them off there, not in here.
