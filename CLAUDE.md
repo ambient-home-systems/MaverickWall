@@ -853,6 +853,55 @@ two, so the cell and badge tints are pre-mixed per theme against that theme's
 own background; and no web font is fetched, so the design's Roboto Condensed
 and Roboto Mono are used only if the device already has them.
 
+**The month grid has a Swiss mode, and it is a mode rather than a
+restyling.** `cellEvents: 'swiss'` draws the International Typographic Style
+version of the month: no cards, no radius, no pills — flat rows of plain text
+under an oversized tight-tracked date, one small dot each for whose calendar it
+is, a hairline between weeks and nothing else. Today is isolated by turning its
+number the accent colour rather than by drawing a ring around it, which is the
+one thing a grid with no other boxes in it cannot afford. There is a fifth
+theme, **Swiss**, for the near-black ground it was drawn against — but the mode
+reads tokens like everything else, so on Almanac it is a light Swiss grid on
+cream. Either half alone still reads as deliberate, and `pills` is untouched, so
+no wall already hanging changed.
+
+**How many events a cell shows is measured, never counted.** The old grid
+hard-coded three. A calendar widget is whatever size the household dragged it
+to, and the same grid is drawn at 1080x1920, on a 1280px television and inside a
+200px preview — so `trimSwissCells` runs at the same seam `fitToBox` does, after
+the wall has a size, and hides what does not fit. Proven by rendering: a 323px
+cell draws seven rows, a 184px cell four, an 85px cell one. The counter is paid
+for out of the same budget, so a cell showing "+5" shows one fewer event than
+one that does not, and it counts the *day's* total rather than the rows
+rendered — the model's slim list stops at twelve, so a day with twenty must say
+"+17" and not "+9".
+
+**Three faults, and the third is the one worth keeping.** The first version
+subtracted `cell.offsetTop` — the cell's position in the grid, nothing to do
+with its inside — so `available` came out hundreds of pixels too large, every
+row "fitted", and today drew 299px into a 135px cell. The second summed row
+heights, which is short by exactly the things that are not heights: the flex
+gap and the counter's margin, leaving a 2px overflow that looked like rounding.
+Both are gone: it reads `offsetTop` and compares against `clientHeight`, so the
+arithmetic is removed rather than corrected.
+
+The third was invisible to every measurement taken. With the date number two
+rungs larger, today showed **"+6" and not one of its six events** — nothing
+overflowed, nothing wrapped, every counter was truthful, and the grid had
+stopped saying what was on. The checks verified that nothing *spilled* and none
+verified that anything was *shown*. There is an assertion for it now, and the
+type came down a rung: a month cell cannot be both readable from ten feet and
+hold a sentence, so the grid is the glance and the agenda beside it is where the
+day is read.
+
+**The panel had to be told, and that is the same bug as `shifts[0]`.**
+`epaper/honours.ts` declares `cellEvents` honoured and the panel read it as
+`=== 'pills'`, so `swiss` would have fallen through to dots while the wall it
+follows drew names. On one bit there is no difference between a coloured bubble
+and a coloured dot, so both resolve to the same question — does the cell show
+the name? — and `test/swiss-month.test.ts` pins the two frames as *identical*
+rather than merely different from dots.
+
 **The wall got the same design pass, and needed much less of it.** It was
 never Material — it has no shadow anywhere and every colour was already a token
 — so two things changed. Household and Panels carried `--radius` at 1.1 and

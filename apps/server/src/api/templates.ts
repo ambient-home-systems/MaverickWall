@@ -56,7 +56,7 @@ export const templateSchema = z
      * together — a white background under a dark theme would be unreadable. Only
      * the four built-ins; a household's custom theme is theirs to choose.
      */
-    theme: z.enum(['household', 'blueprint', 'panels', 'almanac']).optional(),
+    theme: z.enum(['household', 'blueprint', 'panels', 'almanac', 'swiss']).optional(),
     // Both orientations are always authored (RFC 005's "require both"), so a
     // template-started display is never in the letterbox-one-side case.
     portrait: templateCanvasSchema,

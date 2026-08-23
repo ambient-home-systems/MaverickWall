@@ -2298,17 +2298,28 @@ function boot(): void {
       );
     }
 
-    // Month cells: quiet dots, or Skylight-style labelled event pills.
+    // Month cells: quiet dots, Skylight-style labelled pills, or Swiss — flat
+    // rows of plain text under an oversized date, cut to what the cell holds.
     if (currentMode === 'month') {
+      const cellStyles = ['dots', 'pills', 'swiss'] as const;
+      const stored = cfg['cellEvents'];
+      const current = cellStyles.find((key) => key === stored) ?? 'dots';
       configPanel.appendChild(
         segControl(
           'Events in a day',
           [
             ['dots', 'Dots'],
             ['pills', 'Labelled pills'],
+            ['swiss', 'Swiss rows'],
           ],
-          cfg['cellEvents'] === 'pills' ? 'pills' : 'dots',
-          (value) => setConfig(widget, 'cellEvents', value === 'pills' ? 'pills' : undefined),
+          current,
+          (value) => {
+            // Dots is the default and the default is stored as an *absence*,
+            // which is what keeps an existing wall unchanged when a new value
+            // is added here.
+            const next = cellStyles.find((key) => key === value);
+            setConfig(widget, 'cellEvents', next === undefined || next === 'dots' ? undefined : next);
+          },
           'cellEvents',
         ),
       );

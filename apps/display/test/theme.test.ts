@@ -94,3 +94,71 @@ describe('shiftTint (per-type shift colour wash)', () => {
     expect(onDark).toBe('#330000');
   });
 });
+
+/**
+ * The Swiss theme, held to the contrast a wall read from across a room needs.
+ *
+ * This one is checked rather than eyeballed because it is the darkest ground in
+ * the bundle: a hue that clears 4.5:1 on Panels can sit at 4.1:1 on #09090B and
+ * look fine on the machine it was picked on. `--s-straight` did exactly that
+ * and was lifted; without an assertion here the next hue added would repeat it.
+ *
+ * `--faint` is the deliberate exception and is asserted from *both* sides: it
+ * must stay dim enough that a day belonging to the next month does not compete
+ * with this one, and present enough that the day is not simply missing.
+ */
+describe('the Swiss theme', () => {
+  const luminance = (hex: string): number => {
+    const value = parseInt(hex.slice(1), 16);
+    const channel = (raw: number): number => {
+      const c = raw / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return (
+      0.2126 * channel((value >> 16) & 0xff) +
+      0.7152 * channel((value >> 8) & 0xff) +
+      0.0722 * channel(value & 0xff)
+    );
+  };
+  const contrast = (a: string, b: string): number => {
+    const [la, lb] = [luminance(a), luminance(b)];
+    const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  const tokensOf = (name: string): Record<string, string> => {
+    const el = fake();
+    applyTheme(el, name);
+    return el.props;
+  };
+
+  it('is a theme this bundle draws, not an unknown key falling back', () => {
+    const el = fake();
+    applyTheme(el, 'swiss');
+    // An unrecognised key resolves to the default, so asserting the attribute
+    // is what separates "Swiss exists" from "Swiss silently became Panels".
+    expect(el.attrs['data-theme']).toBe('swiss');
+    expect(el.props['--bg']).toBe('#09090B');
+  });
+
+  it('carries every readable token at 4.5:1 over its own canvas', () => {
+    const t = tokensOf('swiss');
+    const bg = t['--bg'] as string;
+    for (const token of ['--ink', '--muted', '--accent', '--s-day', '--s-night', '--s-break', '--s-straight']) {
+      const value = t[token];
+      expect(value, `swiss is missing ${token}`).toBeDefined();
+      expect(contrast(value as string, bg), `${token} over the canvas`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('keeps the out-of-month grey present but not competing', () => {
+    const t = tokensOf('swiss');
+    const ratio = contrast(t['--faint'] as string, t['--bg'] as string);
+    expect(ratio, '--faint has become readable and now competes with this month').toBeLessThan(3);
+    expect(ratio, '--faint has vanished and a next-month day is simply missing').toBeGreaterThan(1.4);
+  });
+
+  it('squares its corners, because a Swiss panel is not a card', () => {
+    expect(tokensOf('swiss')['--radius']).toBe('0');
+  });
+});

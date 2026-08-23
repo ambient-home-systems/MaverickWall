@@ -25,7 +25,7 @@
  * than blanking a wall (rule nine).
  */
 
-export type ThemeName = 'household' | 'blueprint' | 'panels' | 'almanac';
+export type ThemeName = 'household' | 'blueprint' | 'panels' | 'almanac' | 'swiss';
 
 export type ThemeTokens = Readonly<Record<string, string>>;
 
@@ -102,11 +102,51 @@ const ALMANAC: ThemeTokens = {
   '--radius': '0',
 };
 
+
+/**
+ * Swiss: the International Typographic Style, after dark.
+ *
+ * The other four themes are rooms — paper, blueprint, a lit dashboard. This one
+ * is deliberately not a room: a near-black ground with nothing on it, and the
+ * grid doing all the work through type, negative space and one accent. It is
+ * the ground the Swiss calendar mode was drawn against, though the mode reads
+ * tokens like everything else and works on any theme here.
+ *
+ * '--bg' is #09090B rather than pure #000000. On an OLED panel a true black
+ * clips to the panel's own off state, so the hairline rules sitting a couple of
+ * points above it stop being a *step* and start being the only thing lit —
+ * which reads as a grid drawn on nothing rather than as a grid. Two points of
+ * lift keeps the relationship and is indistinguishable from black in a kitchen.
+ *
+ * '--faint' is the out-of-month grey and is the one token here deliberately
+ * below the contrast bar: at 1.91:1 a day belonging to the next month is
+ * present without being readable across a room, which is exactly its job. Every
+ * other token clears 4.5:1 on the canvas, checked in test/theme.test.ts.
+ */
+const SWISS: ThemeTokens = {
+  '--bg': '#09090B',
+  '--panel': '#0F0F12',
+  '--rule': '#27272A',
+  '--ink': '#FFFFFF',
+  '--muted': '#A1A1AA',
+  '--faint': '#3F3F46',
+  '--accent': '#FFB224',
+  '--s-day': '#E8A33D',
+  '--s-night': '#5C93E0',
+  '--s-break': '#35916A',
+  // Lifted from the #71717A this wanted to be: that read 4.12:1 on the canvas,
+  // and a rota colour a household cannot read is a rota colour that is not
+  // doing anything.
+  '--s-straight': '#7E7E86',
+  '--radius': '0',
+};
+
 const THEMES: Readonly<Record<ThemeName, ThemeTokens>> = {
   household: HOUSEHOLD,
   blueprint: BLUEPRINT,
   panels: PANELS,
   almanac: ALMANAC,
+  swiss: SWISS,
 };
 
 /** The fallback for an unknown key — a version skew, or a retired theme. */
@@ -152,6 +192,12 @@ const CELL_TINT: Readonly<Record<ThemeName, number>> = {
   blueprint: 0.13,
   panels: 0.2,
   almanac: 0.13,
+  // Swiss is darker than Panels, so the same wash reads fainter on it — but it
+  // is also the theme whose whole argument is that colour is scarce, and a
+  // rota tint loud enough to fill a cell would be the one filled shape on a
+  // wall built out of type and space. It stays at the light themes' amount on
+  // the dark ground deliberately: present, and no more than that.
+  swiss: 0.13,
 };
 const BADGE_TINT = 0.16;
 

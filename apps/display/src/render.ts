@@ -434,7 +434,14 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
 
 /* ------------------------------------------------------------ HORIZON ---- */
 
-function renderCell(cell: HorizonCell, pills = false, showShifts = true): HTMLElement {
+/** How a month cell draws what is on that day. */
+export type CellStyle = 'dots' | 'pills' | 'swiss';
+
+function renderCell(
+  cell: HorizonCell,
+  style: CellStyle = 'dots',
+  showShifts = true,
+): HTMLElement {
   const classes = ['hz-cell'];
   if (cell.isToday) classes.push('is-today');
   if (cell.isPast) classes.push('dim');
@@ -444,7 +451,43 @@ function renderCell(cell: HorizonCell, pills = false, showShifts = true): HTMLEl
   if (showShifts) paintShift(node, cell.shiftToken, cell.shiftColor);
   node.appendChild(el('div', 'hz-num', cell.dayNumber));
 
-  if (pills) {
+  if (style === 'swiss') {
+    /*
+     * Flat rows of plain text under the number, one small colour dot each.
+     *
+     * Every event the model carries is rendered; nothing is cut here. What
+     * fits is a question about the *box*, and only layout can answer it, so
+     * `trimSwissCells` does the cutting after the wall has a size. That is the
+     * same seam `fitToBox` uses and the same rule: a drawing decision, never a
+     * saved one, so a widened box brings the rows straight back.
+     *
+     * `el` sets textContent, so a stranger's event title is drawn and never
+     * interpreted.
+     */
+    if (cell.events.length > 0) {
+      const list = el('div', 'hz-rows');
+      for (const ev of cell.events) {
+        const row = el('div', ev.allDay ? 'hz-row allday' : 'hz-row');
+        const dot = el('span', 'hz-rowdot');
+        dot.style.setProperty('--pc', ev.color);
+        row.appendChild(dot);
+        row.appendChild(el('span', 'hz-rowtext', ev.title));
+        list.appendChild(row);
+      }
+      node.appendChild(list);
+      // Always present, empty until the trim pass has something to report —
+      // measuring is easier against a node that already exists, and an empty
+      // one draws nothing.
+      node.appendChild(el('div', 'hz-more'));
+      // The true total, which is not the same as the number of rows above: the
+      // model caps its slim list at twelve. `trimSwissCells` needs it to say
+      // "+9" rather than "+3" on a very busy day.
+      node.setAttribute('data-count', String(cell.eventCount));
+    }
+    return node;
+  }
+
+  if (style === 'pills') {
     // Skylight-style: a coloured, labelled bar per event, in the owning
     // calendar's colour (`--pc`). `el` uses textContent, so a stranger's title
     // is drawn, never interpreted. Three fit a cell; the rest read as "+N".
@@ -473,14 +516,27 @@ function renderCell(cell: HorizonCell, pills = false, showShifts = true): HTMLEl
 function renderHorizon(
   model: DisplayModel,
   opts: {
-    readonly pills?: boolean;
+    readonly cells?: CellStyle;
     readonly weekNumbers?: boolean;
     readonly shifts?: boolean;
   } = {},
 ): HTMLElement {
-  const pills = opts.pills === true;
+  const style: CellStyle = opts.cells ?? 'dots';
   const showShifts = opts.shifts !== false;
-  const horizon = el('section', pills ? 'horizon horizon-pills' : 'horizon');
+  const variant =
+    style === 'pills' ? 'horizon horizon-pills' : style === 'swiss' ? 'horizon horizon-swiss' : 'horizon';
+  const horizon = el('section', variant);
+  /*
+   * The month, oversized, in the top-left corner.
+   *
+   * Swiss only, and the asymmetry is the point: a centred title over a
+   * symmetrical grid is the arrangement this style exists to argue against. It
+   * is drawn before the grid so it is also the first thing a screen reader and
+   * the DOM order agree on.
+   */
+  if (style === 'swiss' && model.horizonMonth !== undefined) {
+    horizon.appendChild(el('h1', 'hz-title', model.horizonMonth));
+  }
   /*
    * Week numbers get a column of their own rather than a corner of the first
    * cell: a number tucked into Monday reads as something about Monday. Only
@@ -504,7 +560,7 @@ function renderHorizon(
   for (const cell of headerWeek) grid.appendChild(el('div', 'hz-head', cell.weekday));
   for (const week of model.horizon) {
     if (weekNumbers) grid.appendChild(el('div', 'hz-wk', String(week[0]?.weekNumber ?? '')));
-    for (const cell of week) grid.appendChild(renderCell(cell, pills, showShifts));
+    for (const cell of week) grid.appendChild(renderCell(cell, style, showShifts));
   }
   horizon.appendChild(grid);
 
@@ -1150,8 +1206,9 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
   if (mode === 'skymonth') return renderSkyMonth(model, config);
   if (mode === 'week') return renderWeekColumns(model, config);
   if (mode !== 'list') {
+    const cellEvents = c['cellEvents'];
     return renderHorizon(model, {
-      pills: c['cellEvents'] === 'pills',
+      cells: cellEvents === 'pills' ? 'pills' : cellEvents === 'swiss' ? 'swiss' : 'dots',
       weekNumbers: c['showWeekNumbers'] === true,
       shifts: showShifts,
     });
@@ -1318,6 +1375,91 @@ function backgroundCss(background: CanvasBackground | undefined, mediaBase: stri
   return `center / cover no-repeat url("${mediaBase}${background.image}")`;
 }
 
+
+/**
+ * Cut each Swiss month cell to the rows its box can actually hold.
+ *
+ * The cell is a fixed height and the rows are uniform, so "how many fit" looks
+ * like arithmetic — and it is not, because a calendar widget in a free-form box
+ * is whatever size the household dragged it to, and the same grid is drawn at
+ * 1080x1920, on a 1280px television and inside a 200px preview. Any constant
+ * here would be a second opinion about what fits, which is the fault this
+ * project keeps finding. So it measures, exactly as `fitToBox` does, and for
+ * the same reason.
+ *
+ * Two things the arithmetic would get wrong even at a fixed size. The "+N" is
+ * itself a line and has to be paid for out of the same budget, so a cell that
+ * overflows shows one *fewer* row than one that does not. And the count is
+ * `data-count` — the day's true total — not the number of rows rendered: the
+ * model caps its slim list at twelve, so a day with twenty events must say
+ * "+17" and not "+9".
+ *
+ * A drawing decision, never a saved one. Nothing here writes to the model, so
+ * widening the box brings the rows straight back on the next draw.
+ */
+export function trimSwissCells(root: HTMLElement): void {
+  const cells = root.querySelectorAll('.horizon-swiss .hz-cell');
+  for (let index = 0; index < cells.length; index++) {
+    const cell = cells[index] as HTMLElement;
+    const list = cell.querySelector('.hz-rows') as HTMLElement | null;
+    const more = cell.querySelector('.hz-more') as HTMLElement | null;
+    if (list === null || more === null) continue;
+
+    const rows: HTMLElement[] = [];
+    for (let r = 0; r < list.children.length; r++) rows.push(list.children[r] as HTMLElement);
+    if (rows.length === 0) continue;
+
+    // Start from a clean slate: this runs again on every redraw, and a row left
+    // hidden from the last pass would shrink the cell a little further each
+    // time the wall refreshed.
+    for (const row of rows) row.style.display = '';
+    more.textContent = '';
+
+    const style = getComputedStyle(cell);
+    /*
+     * Everything below is measured from the rows' own positions rather than by
+     * adding up their heights.
+     *
+     * Summing heights was the first approach and it was short by exactly the
+     * things that are not heights: the flex `gap` between rows, and the
+     * counter's own top margin. That left today's cell overflowing by 2px on
+     * two of three screen sizes — small enough to look like a rounding error
+     * and big enough to clip the last row's descenders. `offsetTop` already
+     * carries the gaps, the margins and the date number above, so reading it
+     * removes the arithmetic instead of correcting it.
+     *
+     * `clientHeight` is the padding box and a child's `offsetTop` is measured
+     * from that box's top edge — the cell is `position:relative`, so it is the
+     * offsetParent — which is what lets the two be compared directly.
+     */
+    const limit = cell.clientHeight - parseFloat(style.paddingBottom);
+    const bottomOf = (node: HTMLElement): number => node.offsetTop + node.offsetHeight;
+
+    let fits = 0;
+    while (fits < rows.length && bottomOf(rows[fits] as HTMLElement) <= limit) fits++;
+
+    const total = Number(cell.getAttribute('data-count') ?? rows.length);
+    // Something is being left out if rows did not fit, or if the model never
+    // sent them all — its slim list stops at twelve.
+    if (fits < rows.length || total > fits) {
+      // The counter is a line and has to be paid for out of the same budget, so
+      // a cell that shows one shows one fewer event. It is `display:none` while
+      // empty, so it needs content before it has a height to measure.
+      more.textContent = '+0';
+      const moreStyle = getComputedStyle(more);
+      const reserved = more.offsetHeight + parseFloat(moreStyle.marginTop);
+      const budget = limit - reserved;
+
+      let shown = 0;
+      while (shown < rows.length && bottomOf(rows[shown] as HTMLElement) <= budget) shown++;
+      for (let r = shown; r < rows.length; r++) (rows[r] as HTMLElement).style.display = 'none';
+
+      const hidden = total - shown;
+      more.textContent = hidden > 0 ? `+${hidden}` : '';
+    }
+  }
+}
+
 export function renderFreeform(
   root: HTMLElement,
   model: DisplayModel,
@@ -1461,6 +1603,11 @@ export function renderFreeform(
 
   root.textContent = '';
   root.appendChild(screen);
+
+  // A Swiss month grid cuts its rows to the box, and has to do it before the
+  // fits below: a calendar widget is one of the sections `fitToBox` scales, and
+  // scaling it first would measure rows that are about to be hidden.
+  trimSwissCells(root);
 
   // Now that everything has a size, fit each reused section to its box.
   for (const { box, scale, min } of toFit) {
