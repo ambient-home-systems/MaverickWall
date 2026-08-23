@@ -14,6 +14,33 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**A new way for the month to look, and a new theme to go with it.**
+
+On a wall's calendar widget, **Events in a day** now offers **Swiss rows**
+beside Dots and Labelled pills. It draws the month the way a printed timetable
+does: no cards, no coloured bubbles, just the date in large type with each
+event on its own line underneath and a small coloured dot to say whose calendar
+it came from. Weeks are separated by a hairline and nothing else. Today is
+picked out by turning its date the accent colour rather than drawing a box
+round it.
+
+**It shows as many events as actually fit.** The month grid used to stop at
+three per day whatever size you had made it. It now measures the space and
+fills it — a tall calendar on a portrait wall shows seven events on a busy day,
+a small one shows one — and whatever is left over reads as a quiet "+5" in the
+corner. Long names are cut off cleanly rather than wrapping, so the columns
+stay lined up.
+
+There is also a fifth theme, **Swiss**: near-black, one accent colour, and no
+panel edges anywhere. It was drawn for the calendar above, but the two are
+independent — Swiss rows work on any theme, and the Swiss theme works with any
+calendar style.
+
+Nothing changes on a wall you have already set up. Dots and pills are exactly
+as they were, and the new look only appears if you pick it.
+
 ## 0.52.0
 
 **The settings look different.** They were built on Google's Material Design,

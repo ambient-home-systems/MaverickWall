@@ -250,6 +250,37 @@ export type Staleness =
   | { readonly level: 'stale'; readonly message: string }
   | { readonly level: 'offline'; readonly message: string };
 
+/**
+ * The month a horizon grid is about, as "August 2026".
+ *
+ * Taken from the first cell the server marked `inMonth` rather than from today:
+ * the two agree on every grid this bundle draws, but the grid's own cells are
+ * what the title is a title *for*, and reading today would make the heading
+ * disagree with the numbers under it the first time anything draws a horizon
+ * that is not this month.
+ */
+function horizonMonthLabel(
+  cells: readonly HorizonCell[],
+  timezone: string,
+): string | undefined {
+  const anchor = cells.find((cell) => cell.inMonth) ?? cells[0];
+  if (anchor === undefined) return undefined;
+  const [year, month, day] = anchor.date.split('-').map(Number);
+  if (year === undefined || month === undefined || day === undefined) return undefined;
+  // Noon UTC, so a timezone either side of the date line cannot roll the month.
+  const at = new Date(Date.UTC(year, month - 1, day, 12));
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    timeZone: timezone,
+    month: 'long',
+    year: 'numeric',
+  });
+  const found = (type: string): string =>
+    formatter.formatToParts(at).find((part) => part.type === type)?.value ?? '';
+  const name = found('month');
+  const yearText = found('year');
+  return name === '' ? undefined : `${name} ${yearText}`.trim();
+}
+
 export interface DisplayModel {
   readonly timezone: string;
   readonly theme: string;
@@ -275,6 +306,16 @@ export interface DisplayModel {
   readonly todayShifts: readonly TodayShiftModel[];
   readonly next: readonly DayModel[];
   readonly horizon: readonly (readonly HorizonCell[])[];
+  /**
+   * The month the horizon is *about*, spelled out — "August 2026".
+   *
+   * The grid spans five or six weeks and so usually straddles two months; the
+   * one it is about is the one its `inMonth` cells belong to. Derived here
+   * rather than in the renderer because this is where the timezone and `Intl`
+   * live, and `render.ts` builds nodes and does no thinking. Undefined when the
+   * horizon is empty, so a title is never drawn over nothing.
+   */
+  readonly horizonMonth: string | undefined;
   readonly notices: readonly { readonly level: string; readonly message: string }[];
   readonly staleness: Staleness;
   /** Which blocks to draw, in order. The renderer walks this and nothing else. */
@@ -1107,6 +1148,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     })),
     next,
     horizon: intoWeeks(cells),
+    horizonMonth: horizonMonthLabel(cells, timezone),
     weather: weather.days,
     weatherNote: weather.note,
     externalPanels,

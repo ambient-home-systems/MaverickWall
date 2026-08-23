@@ -47,9 +47,12 @@ const widgetConfigFields = z
     // across. One key for every type's view, because the editor's View picker is
     // generic and writes this for all of them.
     mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people']).optional(),
-    // How a month cell draws its events: quiet dots (default) or Skylight-style
-    // labelled pills. Absent means dots, so an existing wall is unchanged.
-    cellEvents: z.enum(['dots', 'pills']).optional(),
+    // How a month cell draws its events: quiet dots (default), Skylight-style
+    // labelled pills, or `swiss` — flat rows of plain text under an oversized
+    // date, one small category dot each, cut to what the cell can hold with a
+    // muted +N for the rest. Absent means dots, so an existing wall is
+    // unchanged.
+    cellEvents: z.enum(['dots', 'pills', 'swiss']).optional(),
     count: z.number().int().min(1).max(50).optional(),
     // The day's high and low beside its date in the agenda (RFC 007 phase 3).
     // Absent means off, so a wall that already carries a weather strip does not

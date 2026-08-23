@@ -732,6 +732,158 @@ body {
  * full, which is why it says "+2" instead of showing them. */
 .hz-pill-more { font-size: 1.05rem; color: var(--muted); padding-left: 0.42rem; }
 
+/* ---------------------------------------------- SWISS MONTH GRID --------- */
+/*
+ * The month as International Typographic Style: no cards, no bubbles, no
+ * boxes. The grid is held together by negative space and one hairline, the
+ * date numbers carry the structure, and colour appears exactly twice — a dot
+ * per event, and today.
+ *
+ * Every value here is a token, so this mode is not tied to the Swiss *theme*:
+ * on Almanac it is a light Swiss grid on cream. The theme supplies the
+ * near-black canvas the style was drawn against; the mode supplies the
+ * typography. Either alone still reads as deliberate.
+ */
+
+/* Stage 3.1 — the month, oversized, hard into the top-left corner. Asymmetry
+ * is the argument: a centred title over a symmetrical grid is the arrangement
+ * this style exists to reject. line-height under 1 pulls the cap-height up to
+ * the corner so the type sits on the edge rather than floating near it. */
+.hz-title {
+  font-family: var(--f-cond, var(--f-sans));
+  font-size: var(--t-xl);
+  font-weight: 700;
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  text-align: left;
+  margin: 0 0 1.4rem;
+}
+
+/* Stage 1.2 — an invisible grid. The columns are separated by negative space
+ * and the weeks by one razor-thin rule, which is there to stop six weeks of
+ * numbers reading as one field rather than to draw a table. */
+.horizon-swiss .hz-grid { gap: 0 0.9rem; }
+.horizon-swiss .hz-head {
+  color: var(--faint);
+  text-align: left;
+  padding: 0 0 0.8rem;
+  letter-spacing: 0.18em;
+}
+.horizon-swiss .hz-cell {
+  /* Stage 1.1 — no card, no radius, no shadow, nothing to contain the day. */
+  background: transparent;
+  border-radius: 0;
+  border-top: 1px solid var(--rule);
+  /* Stage 2.1 / 3.2 — a rigid height, and enough room inside it that the rows
+   * are not crowded when read from across a room. The height is what
+   * trimSwissCells measures; it is not duplicated in the script. */
+  min-height: 8.2rem;
+  padding: 0.55rem 0.6rem 0.5rem 0;
+  overflow: hidden;
+}
+/* A rota still tints its day, but as a hairline above the number rather than a
+ * filled cell: a solid block of colour is the one thing this grid has no room
+ * for, and the rule is already there to carry it. */
+.horizon-swiss .hz-cell.has-shift { background: transparent; border-top-color: var(--sc); }
+
+/* Stage 1.3 — the date number is the structure: oversized, bold, tracked
+ * tight. */
+.horizon-swiss .hz-num {
+  font-family: var(--f-cond, var(--f-sans));
+  /*
+   * --t-md, not --t-lg. The first cut set this two rungs higher and the number
+   * ate the cell: on a 1080x1920 wall today showed "+6" and not one of its six
+   * events, which is a month grid that has stopped saying what is on. The
+   * trim pass was right — there genuinely was no room — the type was wrong.
+   * Still well above the 1.85rem the other modes use, still bold, still
+   * tracked tight; just not at the cost of the thing under it.
+   */
+  font-size: var(--t-md);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  color: var(--muted);
+}
+:root[data-theme="almanac"] .horizon-swiss .hz-num { font-weight: 700; }
+
+/* Stage 3.3 — today is isolated by colour, not by a box. The outline the other
+ * modes draw is explicitly removed: a ring around one cell in a grid with no
+ * other boxes in it is the loudest possible object on the wall. */
+.horizon-swiss .hz-cell.is-today { outline: none; }
+.horizon-swiss .hz-cell.is-today .hz-num { color: var(--accent); }
+/* Past days soften rather than the whole cell fading: `opacity` on the cell
+ * would take the event dots and their text down with it, and a past day still
+ * has to be readable — it is only *less* important than today, not gone. */
+.horizon-swiss .hz-cell.dim { opacity: 1; }
+.horizon-swiss .hz-cell.dim .hz-num { color: var(--faint); }
+.horizon-swiss .hz-cell.dim .hz-rowtext { color: var(--muted); }
+/* Stage 1.5 — a day belonging to the next month is present and not readable
+ * across a room, which is the whole of its job. */
+.horizon-swiss .hz-cell.outside .hz-num { color: var(--faint); opacity: 0.55; }
+.horizon-swiss .hz-cell.outside .hz-rowtext,
+.horizon-swiss .hz-cell.outside .hz-rowdot { opacity: 0.4; }
+
+/* Stage 1.4 — flat rows of plain text. No bubble, no ground, no radius: one
+ * small dot for the category and then the words. */
+.horizon-swiss .hz-rows {
+  display: flex; flex-direction: column;
+  gap: 0.26rem; margin-top: 0.4rem;
+}
+.horizon-swiss .hz-row {
+  display: flex; align-items: baseline; gap: 0.42rem;
+  min-width: 0;
+}
+.horizon-swiss .hz-rowdot {
+  flex: 0 0 auto;
+  width: 0.5rem; height: 0.5rem;
+  border-radius: 50%;
+  background: var(--pc);
+  /* Nudged off the baseline the row aligns on, so a round dot reads as
+     centred against lower-case text rather than sitting on its feet. */
+  transform: translateY(-0.08rem);
+}
+/* An all-day event is the same row with a hollow dot — the distinction the
+ * pill style draws with a border and a tint, at the one scale this grid has. */
+.horizon-swiss .hz-row.allday .hz-rowdot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pc);
+}
+/* Stage 2.2 — text never wraps. It clips cleanly, which is what keeps every
+ * column in the grid aligned to the same baselines. */
+.horizon-swiss .hz-rowtext {
+  min-width: 0; flex: 1 1 auto;
+  /*
+   * At the --t-micro floor rather than a rung above it, and this is the one
+   * place on the wall where that floor is doing real work. Seven columns of a
+   * 1080px portrait wall are 154px each; at --t-xs an event read as "Quar…"
+   * — four characters and an ellipsis, which is not a truncation, it is a
+   * word that has been deleted. Nobody can make a month cell readable from ten
+   * feet AND hold a sentence; the grid is the glance and the agenda beside it
+   * is where the day is actually read.
+   */
+  font-size: var(--t-micro);
+  line-height: 1.25;
+  color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Stage 2.3 — the overflow counter. Low-profile, muted, hard right, and its
+ * own line: trimSwissCells pays for this height out of the same budget as the
+ * rows, so a cell that shows it shows one fewer event. */
+.horizon-swiss .hz-more {
+  margin-top: 0.22rem;
+  text-align: right;
+  font-size: var(--t-micro);
+  line-height: 1.1;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.horizon-swiss .hz-more:empty { display: none; }
+
+/* The week-number column follows the grid's own left alignment. */
+.horizon-swiss .hz-wk { justify-content: flex-start; align-items: flex-start; padding-top: 0.7rem; }
+
 /*
  * A calendar widget in a freeform box fills the box: its month rows (or week
  * columns) stretch to the box height instead of keeping the rem-based natural

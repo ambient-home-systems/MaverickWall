@@ -678,7 +678,23 @@ function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, confi
    * and would have turned `skyweek` into a month here.
    */
   if (mode === 'week' || mode === 'skyweek') return drawWeekBox(fb, model, box);
-  if (mode !== 'list') return drawMonthBox(fb, model, box, { pills: str(config, 'cellEvents') === 'pills' });
+  if (mode !== 'list') {
+    /*
+     * `swiss` draws names here exactly as `pills` does, and that is not a
+     * shortcut.
+     *
+     * What separates the two on the wall is a coloured ground versus a colour
+     * dot, and a panel has neither — it is one bit, so both resolve to the same
+     * question: does the cell show the event's name, or a mark that something
+     * is on? Reading `=== 'pills'` alone would have answered "no" for swiss and
+     * dropped a panel back to dots while the wall it follows drew names, which
+     * is one stored value giving two renderers two answers.
+     */
+    const cellEvents = str(config, 'cellEvents');
+    return drawMonthBox(fb, model, box, {
+      pills: cellEvents === 'pills' || cellEvents === 'swiss',
+    });
+  }
   const calendars = strings(config, 'calendars');
   const count = num(config, 'count');
   return drawUpcomingBox(fb, model, box, {

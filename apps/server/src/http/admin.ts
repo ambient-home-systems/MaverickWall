@@ -413,7 +413,7 @@ function blockOrder(
  * `if` statements down the handler, and the message stays the one a household
  * would want — a window of no length is the mistake people actually make.
  */
-const themeKeys = ['household', 'blueprint', 'panels', 'almanac'] as const;
+const themeKeys = ['household', 'blueprint', 'panels', 'almanac', 'swiss'] as const;
 
 const displayBody = z
   .object({
@@ -464,6 +464,7 @@ const THEMES = [
   { key: 'household', label: 'Household — warm daylight paper' },
   { key: 'blueprint', label: 'Blueprint — light technical wireframe' },
   { key: 'almanac', label: 'Paper Almanac — the month, as a ledger' },
+  { key: 'swiss', label: 'Swiss — near-black, typographic, no cards' },
 ] as const;
 
 /**
@@ -477,6 +478,7 @@ const THEME_SWATCHES: Readonly<Record<string, readonly [string, string, string]>
   household: ['#F4F0E8', '#B5651F', '#4C7FD1'],
   blueprint: ['#F2F2F3', '#5980A6', '#2F5D8C'],
   almanac: ['#FBF8F1', '#B3372B', '#2F5D8C'],
+  swiss: ['#09090B', '#FFB224', '#5C93E0'],
 };
 
 /**
