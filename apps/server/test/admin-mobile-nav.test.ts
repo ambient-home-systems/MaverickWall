@@ -16,9 +16,11 @@ import { createFetcher } from '../src/net/fetcher.js';
  *
  * Below 900px the admin drawer is a *modal* one: the same panel, off-canvas,
  * over a scrim, opened from the top app bar's leading icon. It used to be
- * recast in place as a wrapping field of pills — group headings hidden, pills
+ * recast in place as a wrapping field of pills — group headings hidden, rows
  * cut to 40px, the foot with sign-out and the theme toggle removed outright —
- * which cost the first screenful of every page on a phone.
+ * which cost the first screenful of every page on a phone. (The rows are 48px
+ * now rather than the 56px drawer pill they were when this was written; the
+ * assertion below pins the touch minimum, not the exact number.)
  *
  * Three properties here are load-bearing and none of them is visible to a
  * person reading the markup:
@@ -234,7 +236,12 @@ describe('the admin navigation at compact width', () => {
     expect(compact, 'the foot — sign-out and the theme toggle — must not be hidden')
       .not.toContain('.side-foot{display:none}');
     expect(compact, 'the drawer must not wrap into a field of pills').not.toContain('flex-wrap:wrap');
-    expect(compact, 'the pills must keep their 56px height').not.toContain('.nav-item{height:40px');
+    // The nav row is 48px — the touch minimum — since the design-system pass
+    // took it down from the 56px drawer pill. The old compact block cut it to
+    // 40, which is what this pins: not the exact height, but that compact
+    // never shrinks the row below what a finger can hit.
+    expect(compact, 'the nav rows must not drop below the 48px touch minimum')
+      .not.toMatch(/\.nav-item\{[^}]*height:(?:[0-9]|[0-3][0-9]|4[0-7])px/);
     expect(compact, 'the drawer must not return to the flow as a header')
       .not.toMatch(/\.side\{[^}]*position:static/);
   });

@@ -144,18 +144,21 @@ describe('controls that clear the filled button background', () => {
     ).toEqual([]);
   });
 
-  it('does not let the inspector tab take the filled button’s gold', async () => {
+  it('does not let the inspector tab take the filled button’s accent', async () => {
     // The reported symptom, pinned on its own: hovering Style made the word
-    // vanish because the only background in play was --md-sys-color-primary.
+    // vanish because the only background in play was the accent fill.
     const rules = rulesOf(await stylesheet());
     const tabHover = rules.filter(
       (rule) => rule.selectors.includes('.insp-tab:hover') && SETS_BACKGROUND.test(rule.body),
     );
     expect(tabHover.length).toBeGreaterThan(0);
     for (const rule of tabHover) {
-      expect(rule.body).not.toContain('--md-sys-color-primary');
-      // A state layer, not a fill: the on-surface role at the state opacity.
-      expect(rule.body).toContain('--md-sys-state-hover-state-layer-opacity');
+      // `--mw-accent-soft` would be fine — a tinted ground with its own text
+      // colour. `--mw-accent` is the filled button's ground, and the tab draws
+      // its label in the ink colour, so that pair is the bug.
+      expect(rule.body).not.toMatch(/background(-color)?:\s*var\(--mw-accent\)/);
+      // A tint over whatever the tab sits on, not a fill.
+      expect(rule.body).toContain('--mw-wash-hover');
     }
   });
 });
