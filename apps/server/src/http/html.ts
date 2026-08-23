@@ -642,6 +642,31 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--md-sys-shape-corn
   border-bottom:2px solid var(--md-sys-color-on-primary);
   transform:rotate(-45deg);transform-origin:center}
 
+/* A row of checkboxes that is one *selection* rather than seven settings —
+ * days of the week being the case that exists. Stacked, they are seven 48px
+ * rows: on a 390px phone the picker alone was taller than the viewport, and a
+ * list of chores stopped being a list. Wrapped, the 48px pointer targets are
+ * untouched; only the flow changes. */
+.checks-inline{display:flex;flex-wrap:wrap;gap:0 20px}
+.checks-inline legend{width:100%}
+.checks-inline label{min-width:4.5rem}
+
+/* A card's editor, folded away until asked for. A <details>, so it costs no
+ * script — the same reason the overflow menu is one. The point is that a list
+ * of things reads as a list: the summary carries the affordance and the card's
+ * own heading above it carries the facts, so nothing has to be opened to scan. */
+.disclose{margin-top:1rem;border-top:1px solid var(--md-sys-color-outline-variant);padding-top:.25rem}
+.disclose>summary{list-style:none;display:inline-flex;align-items:center;gap:8px;
+  min-height:48px;padding:0 4px;cursor:pointer;font-family:var(--sans);font-size:14px;
+  font-weight:500;color:var(--md-sys-color-primary)}
+.disclose>summary::-webkit-details-marker{display:none}
+.disclose>summary::marker{content:""}
+.disclose>summary::after{content:"";width:8px;height:8px;
+  border-right:2px solid currentColor;border-bottom:2px solid currentColor;
+  transform:rotate(45deg) translate(-2px,-2px)}
+.disclose[open]>summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+.disclose>summary:hover{text-decoration:underline}
+
 /* An M3 switch where one checkbox means one on/off setting. Still an
  * input[type=checkbox] with its original name, so form handling never knows;
  * the input itself is the 52x32 track and its ::before is the thumb, growing
@@ -2053,6 +2078,12 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   calendars: '<path d="M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Zm0-480h560v-80H200v80Zm0 0v-80 80Zm280 240q-17 0-28.5-11.5T440-440q0-17 11.5-28.5T480-480q17 0 28.5 11.5T520-440q0 17-11.5 28.5T480-400Zm-160 0q-17 0-28.5-11.5T280-440q0-17 11.5-28.5T320-480q17 0 28.5 11.5T360-440q0 17-11.5 28.5T320-400Zm320 0q-17 0-28.5-11.5T600-440q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440q0 17-11.5 28.5T640-400ZM480-240q-17 0-28.5-11.5T440-280q0-17 11.5-28.5T480-320q17 0 28.5 11.5T520-280q0 17-11.5 28.5T480-240Zm-160 0q-17 0-28.5-11.5T280-280q0-17 11.5-28.5T320-320q17 0 28.5 11.5T360-280q0 17-11.5 28.5T320-240Zm320 0q-17 0-28.5-11.5T600-280q0-17 11.5-28.5T640-320q17 0 28.5 11.5T680-280q0 17-11.5 28.5T640-240Z"/>',
   /* autorenew */
   shifts: '<path d="M204-318q-22-38-33-78t-11-82q0-134 93-228t227-94h7l-64-64 56-56 160 160-160 160-56-56 64-64h-7q-100 0-170 70.5T240-478q0 26 6 51t18 49l-60 60ZM481-40 321-200l160-160 56 56-64 64h7q100 0 170-70.5T720-482q0-26-6-51t-18-49l60-60q22 38 33 78t11 82q0 134-93 228t-227 94h-7l64 64-56 56Z"/>',
+  /* checklist — drawn rather than lifted, because it has to sit at 24px
+     beside Material Symbols outlines and read as one of them. One item
+     ticked, two still to do; the tick is two thick strokes as filled
+     quads, everything else axis-aligned. Sized by looking at it at 24px,
+     which is the only size that settles it. */
+  chores: '<path d="M138 -684 208 -614 172 -578 102 -648ZM212 -582 312 -746 268 -774 168 -610ZM380 -680h480v60H380ZM120 -502h120v44H120ZM380 -510h480v60H380ZM120 -332h120v44H120ZM380 -340h480v60H380Z"/>',
   /* cloud */
   alerts: '<path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H260Zm0-80h480q42 0 71-29t29-71q0-42-29-71t-71-29h-60v-80q0-83-58.5-141.5T480-720q-83 0-141.5 58.5T280-520h-20q-58 0-99 41t-41 99q0 58 41 99t99 41Zm220-240Z"/>',
   /* home */
@@ -2155,6 +2186,9 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
     items: [
       { key: 'calendars', label: 'Calendars', href: 'admin/calendars', icon: 'calendars' },
       { key: 'shifts', label: 'Work Schedule', href: 'admin/shifts', icon: 'shifts' },
+      // Defining a chore is admin work; ticking one off is the wall's, and
+      // deliberately not here (RFC 008).
+      { key: 'chores', label: 'Chores', href: 'admin/chores', icon: 'chores' },
       { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
       { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
       { key: 'modules', label: 'Store', href: 'admin/modules', icon: 'addons' },

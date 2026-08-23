@@ -259,6 +259,43 @@ mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
 
+**Chores are half built, and the split is the design (RFC 008, phase 1).** A
+chore has two lifecycles with nothing in common: *defining* one is rare and
+considered, *completing* one happens several times a day, by whoever is
+standing in the kitchen. The admin is right for the first and wrong for the
+second — so `/admin/chores` defines them and there is deliberately **no tick
+box on it**, with a test asserting that absence, because it is the thing
+somebody reading the screen as ordinary CRUD would helpfully add. Completion is
+the wall's, and it is the first time the wall would write anything: the
+template is `POST /d/interrupts/dismiss`, which is already household-wide,
+gated per screen and off by default, and treats the server rather than the
+button as the authority.
+
+The model is `packages/core/src/domain/chores/` — self-contained like
+`domain/shift/`, with its own five-case schedule vocabulary rather than an
+RRULE, for the same reason shift rotations declined one: a rule that parses,
+expands to nothing and leaves the wall silent cannot be explained standing at a
+fridge. `dueOn` is total and answers **not due** for a schedule it cannot read,
+because it runs inside manifest assembly and the loud fallback would put a
+broken chore on the wall every day. Completions are keyed on a **civil date**,
+never an instant — a chore ticked at 23:50 belongs to that day — and the unique
+index on `(chore_id, date)` is what makes the tick idempotent, which is why
+phase 3 needs no client-side queue. `monthlyDate` caps at 28 and refuses 31
+rather than clamping it to "the last day": one chore behaving differently in
+February with nothing on the form to say so is worse than a control that is
+honestly missing.
+
+Two faults came out of building the screen and both were found by *looking* at
+it. "Not due again" was shown for a chore anchored beyond the window that had
+actually been searched — a claim about never, from a function that checked 400
+days. And every chore rendered as a fully-expanded edit form: four of them made
+a 5,000px page whose real content was three lines each, and on a 390px phone
+one card did not fit in the viewport. That is the wall editor's "scroll with no
+landmarks" fault one screen along, and the cure is the same shape — the editor
+is folded behind a `<details>` (script-free, like the overflow menu), and a
+date field belonging to a kind the chore is not shows blank rather than today,
+because a monthly chore reading "Starting 23/08/2026" was true of nothing.
+
 **Not started:** ws push · a published docs site · the Android app · a second
 weather provider.
 

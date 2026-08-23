@@ -774,6 +774,101 @@ export const shiftOverrides = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// Chores
+// ---------------------------------------------------------------------------
+
+/**
+ * A chore: something somebody in the house does on a repeating day.
+ *
+ * Two tables rather than one, and the split is the whole model. A chore is a
+ * *definition* — a name, whose it is, and when it falls due — and it is edited
+ * rarely, in the admin. A completion is a *fact about one day*, recorded
+ * often, and (from RFC 008 phase 3) from the wall itself. Storing "done" as a
+ * boolean on the chore would work exactly until midnight, and would leave no
+ * way to answer "did the bins go out last Tuesday".
+ */
+export const chores = sqliteTable(
+  'chores',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+
+    /**
+     * Whose chore this is, or nobody's.
+     *
+     * `set null` rather than cascade: removing a person from the household
+     * should not silently delete the bins. The chore becomes unassigned, which
+     * is a state the wall and the admin both already have to draw.
+     *
+     * This is the third thing `people` owns, after a calendar source and a
+     * shift rotation — so a chore inherits the colour that person is already
+     * drawn in and there is no new identity model anywhere (RFC 008).
+     */
+    personId: text('person_id').references(() => people.id, { onDelete: 'set null' }),
+
+    /**
+     * The `ChoreSchedule` from `@maverick-wall/core`, as JSON.
+     *
+     * JSON because it is never queried by its contents — "is this due today"
+     * is a pure function over a civil date, evaluated in code, not a WHERE
+     * clause. Validated by Zod on the way in and read back defensively: `dueOn`
+     * is total and answers "not due" for anything it cannot read, because it
+     * runs inside manifest assembly.
+     */
+    schedule: text('schedule', { mode: 'json' }).$type<unknown>().notNull(),
+
+    /**
+     * `HH:MM` the chore is meant to happen by, or null for any time that day.
+     *
+     * Display only, and deliberately not part of `dueOn`. A chore's day is a
+     * civil date; the time is a note about that day, not a second boundary that
+     * could disagree with it.
+     */
+    dueTime: text('due_time'),
+
+    sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
+    ...timestamps,
+  },
+  (table) => ({
+    byPerson: index('chores_person_idx').on(table.personId),
+  }),
+);
+
+/**
+ * One chore, done, on one civil date.
+ *
+ * **Keyed on a civil date, never an instant**, which is the single most
+ * important thing in this table. "Bins out Tuesday" ticked at 23:50 on Monday
+ * belongs to Monday; the day rolls at the household's local midnight, not at
+ * UTC's. Writing this as a timestamp and deriving the day later is the same
+ * bug as rendering `DTEND` inclusive, and it would present as a chore that
+ * un-ticks itself in the evening.
+ *
+ * `completedAt` is kept beside it because the two answer different questions —
+ * the date is *which day it counts for*, the timestamp is *when somebody
+ * pressed it* — and only the first is unique.
+ *
+ * The unique index is what makes the tick idempotent: a wall that presses twice
+ * on a flaky network records one completion, so no client needs to be careful.
+ */
+export const choreCompletions = sqliteTable(
+  'chore_completions',
+  {
+    id: text('id').primaryKey(),
+    choreId: text('chore_id')
+      .notNull()
+      .references(() => chores.id, { onDelete: 'cascade' }),
+    /** Civil date, `YYYY-MM-DD`, in the household's zone. */
+    date: text('date').notNull(),
+    completedAt: integer('completed_at', { mode: 'number' }).notNull().$defaultFn(now),
+  },
+  (table) => ({
+    byChoreDate: uniqueIndex('chore_completions_chore_date_idx').on(table.choreId, table.date),
+    byDate: index('chore_completions_date_idx').on(table.date),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Interrupts and alerts
 // ---------------------------------------------------------------------------
 

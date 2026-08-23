@@ -1,9 +1,40 @@
 # RFC 008 — Chores
 
-Status: **proposed, nothing built** · Owner: — · First drafted 2026-08-22 ·
-Builds on `people`, the module registry (RFC 001), the free-form canvas
-(RFC 005), and the one existing write path from a wall
+Status: **phase 1 built; phases 2 and 3 not started** · Owner: — · First
+drafted 2026-08-22 · Builds on `people`, the module registry (RFC 001), the
+free-form canvas (RFC 005), and the one existing write path from a wall
 (`POST /d/interrupts/dismiss`)
+
+> **Update — phase 1 is implemented.** `packages/core/src/domain/chores/` holds
+> the schedule model (the five cases below, `dueOn`, `dueDatesBetween`,
+> `nextDueOn`, `describeSchedule` — pure, no clock, self-contained the way
+> `domain/shift/` is); migration `0032` adds `chores` and `chore_completions`
+> with the `(chore_id, date)` unique index; `api/chores.ts` is the storage
+> layer and `http/admin-chores.ts` is the screen, in the Modules group beside
+> Work Schedule. `packages/core/test/chores.test.ts` and
+> `apps/server/test/chores.test.ts` drive it against a temp SQLite file and the
+> real app — 46 assertions including the local-midnight case, the idempotent
+> tick, and the absence of any way to tick a chore off *here*.
+>
+> **Nothing is on the wall yet**, which is phase 2, and nothing can record a
+> completion from a screen, which is phase 3. `setChoreDone` and
+> `completionDates` exist and are tested because the unique index is
+> meaningless without something exercising it — the property they prove is what
+> lets phase 3 post a tick with no client-side queue.
+>
+> Two things were found by building it, both by looking rather than by a test.
+> The next-due readout said **"Not due again"** for a chore anchored beyond the
+> window it had actually searched — the one sentence on that screen a household
+> would act on, and a lie about a chore they had just created. And the first
+> cut rendered every chore as a fully-expanded edit form: four chores made a
+> 5,000px page whose real content was three lines each, and on a 390px phone a
+> single card did not fit in the viewport — the wall editor's "scroll with no
+> landmarks" fault, reintroduced one screen along. The editor is folded behind
+> a `<details>` now (script-free, like the overflow menu), the weekday picker
+> is one wrapped row rather than seven 48px rows, and a date field belonging to
+> a kind the chore is not shows **blank** rather than today, because seeding it
+> read as fact: a monthly chore displayed "Starting 23/08/2026", which was true
+> of nothing.
 
 ## Summary
 

@@ -243,6 +243,7 @@ import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
+import { registerChoreRoutes } from './admin-chores.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
@@ -577,6 +578,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerAlertRoutes(app, deps);
   registerModuleRoutes(app, deps);
   registerShiftTypeRoutes(app, deps);
+  registerChoreRoutes(app, deps);
   registerThemeRoutes(app, deps);
 
   /**
