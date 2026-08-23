@@ -12,7 +12,6 @@ import {
   readTitleObservations,
   readTitlesByDate,
   saveShiftPlan,
-  readPeople,
   readPeopleAdmin,
   updatePerson,
   updateSource,
@@ -27,6 +26,8 @@ import {
   createScreen,
   createEpaperScreen,
   readLayoutWidgets,
+  panelCanvasOwner,
+  setPanelSource,
   clearLayout,
   replaceLayout,
   revokeScreen,
@@ -54,6 +55,7 @@ import { join } from 'node:path';
 import { backupTo, databasePath, integrityCheck } from '../db/open.js';
 import { bytesOf, type WallAddress } from './app.js';
 import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
+import { INK_LANE, PANEL_IGNORES } from '../epaper/honours.js';
 import { encodePng1bit } from '../epaper/png.js';
 import type { Manifest, PlacedWidgetRow } from '../api/manifest.js';
 import { ingressPath } from './ingress.js';
@@ -177,6 +179,28 @@ const EPAPER_PRESETS: Record<string, { label: string; width: number; height: num
   'waveshare-4in2': { label: '4.2" · 400×300', width: 400, height: 300 },
   'waveshare-2in9': { label: '2.9" · 296×128', width: 296, height: 128 },
 };
+
+/**
+ * What a panel draws: its built-in layout, its own canvas, or a wall's.
+ *
+ * One field rather than two, because the three answers are one decision and a
+ * `<select>` is how a household makes it. `follow:` carries the wall it follows
+ * — `default` for the Default display, otherwise a screen id, checked against
+ * the screens that actually exist before anything is written (the regex only
+ * says it is *shaped* like an id, which is not the same as it being one).
+ */
+const epaperSourceBody = z.object({
+  source: z
+    .unknown()
+    .refine(
+      (value) =>
+        value === 'builtin' ||
+        value === 'own' ||
+        /^follow:(default|[A-Za-z0-9_-]{1,64})$/.test(String(value)),
+      { error: () => 'Choose what this panel draws.' },
+    )
+    .transform((value) => String(value)),
+});
 
 const newEpaperBody = z.object({
   name: text('A name for the screen', 80),
@@ -1846,6 +1870,47 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   });
 
+  /**
+   * What this panel draws: its built-in layout, its own canvas, or a wall's.
+   *
+   * Following is the state direction B needed to exist. Copying a wall's canvas
+   * onto a panel was always possible and gives two canvases that drift apart the
+   * first time somebody moves a box; following gives *one* canvas on two media,
+   * and each widget's `ink` override is how that one canvas says something
+   * different in black and white.
+   */
+  app.post('/admin/epaper/:id/source', async (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = findEpaper(id);
+    if (screen === undefined) return c.html(epaperPage('That screen is no longer there.'), 404);
+    const shaped = parse(epaperSourceBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+
+    const choice = shaped.value.source;
+    if (choice === 'builtin' || choice === 'own') {
+      setPanelSource(deps.db, id, choice, null);
+      return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+    }
+
+    // `follow:<id>` — the id has to name a wall that is actually there. The
+    // schema only proved it is *shaped* like one, and a panel following a
+    // screen that never existed would draw the built-in layout with no
+    // explanation anywhere.
+    const target = choice.slice('follow:'.length);
+    if (target === 'default') {
+      setPanelSource(deps.db, id, 'follow', null);
+      return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+    }
+    const wall = readAdminScreens(deps.db).find(
+      (candidate) => candidate.id === target && candidate.id !== id && candidate.revokedAt === null,
+    );
+    if (wall === undefined) {
+      return c.html(epaperPage('That display is no longer there.'), 400);
+    }
+    setPanelSource(deps.db, id, 'follow', wall.id);
+    return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+  });
+
   app.post('/admin/epaper/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
     return c.redirect('/admin/epaper', 302);
@@ -1854,8 +1919,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const findEpaper = (id: string): AdminScreenRow | undefined =>
     readAdminScreens(deps.db).find((s) => s.id === id && s.kind === 'epaper' && s.revokedAt === null);
 
-  const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] =>
-    screen.layoutMode === 'freeform' ? readLayoutWidgets(deps.db, id, epaperOrientation(screen)) : [];
+  /**
+   * The canvas a panel draws: its own, a wall's, or none (the built-in layout).
+   *
+   * `panelCanvasOwner` is the one resolver, shared with the device endpoint, so
+   * the preview on this page and the frame on the glass can never disagree
+   * about whose boxes they are — which is the failure this project keeps
+   * finding whenever two places answer one question.
+   */
+  const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] => {
+    const owner = panelCanvasOwner({ ...screen, id });
+    return owner === undefined ? [] : readLayoutWidgets(deps.db, owner, epaperOrientation(screen));
+  };
 
   /**
    * The saved layout, drawn exactly as the panel will — the one honest preview.
@@ -1900,13 +1975,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Nothing is stored. `POST` because a canvas does not belong in a URL, and
    * `no-store` because this frame is a keystroke old.
    *
-   * The posted boxes are the canvas *by definition* here, so the screen goes in
-   * as `freeform` whatever the row says. A panel that has never been saved has
-   * `layout_mode` NULL, and reading it would have drawn the built-in layout for
-   * every arrangement — a backdrop that never moves while you drag, which is
-   * the very fault this endpoint exists to fix. `renderScreenFrame` still ANDs
-   * with `widgets.length > 0`, so posting an empty canvas falls back to the
-   * built-in layout exactly as a saved empty one does.
+   * The posted boxes are the canvas *by definition* here, whatever the row says.
+   * A panel that has never been saved has `layout_mode` NULL, and reading it
+   * would have drawn the built-in layout for every arrangement — a backdrop
+   * that never moves while you drag, which is the very fault this endpoint
+   * exists to fix. That used to need an explicit `layoutMode: 'freeform'` on
+   * the way in; `renderScreenFrame` now takes the widgets as the answer, so
+   * there is nothing to override. Posting an empty canvas still falls back to
+   * the built-in layout exactly as a saved empty one does.
    */
   app.post('/admin/epaper/:id/preview.png', async (c: Context) => {
     const id = c.req.param('id') ?? '';
@@ -1930,11 +2006,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         z: widget.z,
         config: widget.config !== undefined ? (widget.config as Record<string, unknown>) : {},
       }));
-      const frame = renderScreenFrame(
-        deps.previewManifest(id) as Manifest,
-        { ...screen, layoutMode: 'freeform' },
-        widgets,
-      );
+      const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
       c.header('cache-control', 'no-store');
       return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
     } catch {
@@ -1998,11 +2070,53 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // whole), so those pickers start empty; the module picker is real.
       calendars: [],
       readings: [],
-      // The Chores picker is real on a panel: `drawChores` honours it exactly
-      // as the wall does.
-      people: readPeople(deps.db).map((person) => person.name),
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+      // The Shift widget's "whose rota" is real here: a panel filters by person
+      // exactly as the wall does, and draws a line each when several are on.
+      people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
     };
+
+    /*
+     * What this panel draws, and — when it follows a wall — where to change it.
+     *
+     * A following panel deliberately does *not* mount the editor. The editor
+     * saves under the screen it was opened for, and `replaceLayout` flips that
+     * screen to `freeform`, so arranging here would silently stop the panel
+     * following the wall it was told to follow. The wall's own editor is where
+     * the widgets live, and the ink lane there is where a panel says something
+     * different — so this page sends the household to it rather than growing a
+     * second place to arrange one canvas.
+     */
+    const followed = screen.layoutMode === 'follow' ? (screen.layoutFollows ?? null) : undefined;
+    const walls = readAdminScreens(deps.db).filter(
+      (candidate) => candidate.id !== id && candidate.revokedAt === null && candidate.kind !== 'epaper',
+    );
+    const followedName =
+      followed === undefined
+        ? ''
+        : followed === null
+          ? 'the Default display'
+          : (walls.find((w) => w.id === followed)?.name ?? 'a display that is no longer there');
+    const currentSource =
+      screen.layoutMode === 'freeform' ? 'own' : followed === undefined ? 'builtin' : `follow:${followed ?? 'default'}`;
+    const sourceOption = (value: string, label: string): string =>
+      `<option value="${escapeHtml(value)}"${value === currentSource ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    const sourceForm =
+      `<h2 class="add">What this panel draws</h2>` +
+      `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/source"><div class="row">` +
+      selectField({
+        label: 'Layout',
+        name: 'source',
+        optionsHtml:
+          sourceOption('builtin', 'Its built-in layout') +
+          sourceOption('own', "Its own arrangement") +
+          sourceOption('follow:default', "The Default display's arrangement") +
+          walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s arrangement`)).join(''),
+        hint:
+          'Following a display draws that arrangement in black &amp; white — move a box there ' +
+          'and this panel moves with it. Each widget can say less on ink without changing the wall.',
+      }) +
+      `<button class="secondary" type="submit">Use this</button></div></form>`;
 
     const preview =
       `<h2 class="add">Preview</h2>` +
@@ -2011,8 +2125,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<img id="ep-preview" class="ep-paper" alt="eInk preview of ${escapeHtml(screen.name)}" ` +
       `src="admin/epaper/${encodeURIComponent(id)}/preview.png">` +
       `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
-      `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>` +
-      `<h2 class="add">Arrange</h2>`;
+      `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>`;
+
+    const arrangeHeading = `<h2 class="add">Arrange</h2>`;
+    const followNote =
+      followed === undefined
+        ? ''
+        : `<h2 class="add">Arrange</h2>` +
+          `<p class="hint">This panel follows <b>${escapeHtml(followedName)}</b>. Arrange it there — ` +
+          `and use the <b>On ink</b> lane beside a widget to say less on this panel without changing ` +
+          `that wall.</p>` +
+          `<p><a class="btn" href="admin/displays/${
+            followed === null ? 'default' : encodeURIComponent(followed)
+          }#layout">Open ${escapeHtml(followedName)}</a></p>`;
 
     return c.html(
       page({
@@ -2022,8 +2147,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         heading: `${screen.name} — layout`,
         intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
         body:
+          sourceForm +
           preview +
-          layoutEditorMount(initial) +
+          followNote +
+          (followed !== undefined ? '' : arrangeHeading + layoutEditorMount(initial) +
           // The one save bar, same chrome as the display page minus its
           // settings form — with no form the chrome saves the canvas and
           // reloads. Chrome first, so its `mwEditorState` hook is registered
@@ -2035,7 +2162,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<button type="button" class="btn" data-action="save">Save this panel</button>` +
           `</div>` +
           `<script type="module" src="assets/display-editor.js"></script>` +
-          `<script type="module" src="assets/layout-editor.js"></script>`,
+          `<script type="module" src="assets/layout-editor.js"></script>`),
       }),
     );
   });
@@ -3438,6 +3565,29 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         config: widget.config,
       })),
     });
+    /*
+     * The e-paper panels drawing *this* canvas, for the ink lane's preview.
+     *
+     * `panelCanvasOwner` again, from the other side: a panel following this
+     * wall (or the Default display, when that is what is open) is a screen whose
+     * canvas owner is this one. The first is the lane's preview target, since
+     * its `preview.png` renders any posted canvas at that panel's geometry.
+     */
+    const inkPanels = readAdminScreens(deps.db)
+      .filter(
+        (candidate) =>
+          candidate.kind === 'epaper' &&
+          candidate.revokedAt === null &&
+          panelCanvasOwner(candidate) === ownerKey,
+      )
+      .map((panel) => ({
+        id: panel.id,
+        name: panel.name,
+        width: panel.panelWidth ?? 800,
+        height: panel.panelHeight ?? 480,
+        orientation: epaperOrientation(panel),
+      }));
+
     const initial = {
       screen: ownerKey,
       mode: mode === 'freeform' ? 'freeform' : 'auto',
@@ -3451,18 +3601,30 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // its pickers without a second round trip.
       calendars: readAdminSources(deps.db).map((s) => ({ id: s.id, name: s.name })),
       readings: haReadingLabels(),
-      // The household's people, by name, for the Chores widget's "whose chores"
-      // picker. By name because the manifest carries no person id on a chore —
-      // the same reason readings are picked by their label.
-      people: readPeople(deps.db).map((person) => person.name),
       // The registered modules, for the External widget's module picker.
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+      // The household, for the Shift widget's "whose rota" picker.
+      people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
       // The viewport this screen last reported, so the editor can offer "match
       // this screen's size" (RFC 005). Only a paired screen reports one — the
       // shared Default has no single size to match.
       ...(owner?.reportW != null && owner?.reportH != null
         ? { report: { w: owner.reportW, h: owner.reportH } }
         : {}),
+      /*
+       * The ink lane (RFC 005, direction B) — present only when a panel is
+       * actually looking at this canvas.
+       *
+       * That is the whole gate: an editor with no panel following it offers no
+       * ink lane, because there is nothing for an override to reach. A
+       * household with a panel gets the lane on the canvas that panel draws,
+       * and nowhere else. The tables travel with it rather than being
+       * transcribed into the display bundle — the ladder is written twice
+       * because both *renderers* need it; this is read by the editor alone.
+       */
+      ...(inkPanels.length === 0
+        ? {}
+        : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES } }),
     };
 
     // ---- the wall's own header ------------------------------------------

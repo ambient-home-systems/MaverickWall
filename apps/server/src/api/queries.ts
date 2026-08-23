@@ -155,13 +155,39 @@ export function clearLayout(db: SqliteDatabase, screenId: string): void {
   const at = Date.now();
   const tx = db.transaction(() => {
     db.prepare(
-      `UPDATE screens SET layout_mode = NULL, layout_aspect = NULL,
+      `UPDATE screens SET layout_mode = NULL, layout_follows = NULL, layout_aspect = NULL,
         layout_landscape_aspect = NULL, layout_background = NULL,
         layout_landscape_background = NULL, updated_at = ? WHERE id = ?`,
     ).run(at, screenId);
     db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ?').run(screenId);
   });
   tx();
+}
+
+/**
+ * Set what an e-paper panel draws (RFC 005, direction B).
+ *
+ * The three states of `panelCanvasOwner`, written: `null` mode is the built-in
+ * layout, `freeform` is the panel's own canvas, `follow` is a wall's — with
+ * `follows` naming it, or null for the Default display.
+ *
+ * The panel's own widgets are deliberately *left alone* when it starts
+ * following. A household who tries the wall's arrangement and goes back should
+ * find what they arranged still there; deleting it would make an experiment
+ * cost them their work, and the rows are simply not read while it follows.
+ */
+export function setPanelSource(
+  db: SqliteDatabase,
+  screenId: string,
+  mode: 'builtin' | 'own' | 'follow',
+  follows: string | null,
+): void {
+  db.prepare(`UPDATE screens SET layout_mode = ?, layout_follows = ?, updated_at = ? WHERE id = ?`).run(
+    mode === 'builtin' ? null : mode === 'own' ? 'freeform' : 'follow',
+    mode === 'follow' ? follows : null,
+    Date.now(),
+    screenId,
+  );
 }
 
 export function replaceLayout(
@@ -219,6 +245,42 @@ export function replaceLayout(
     });
   });
   tx();
+}
+
+/**
+ * Whose canvas an e-paper panel draws, and whether it is somebody else's.
+ *
+ * A panel is not a wall, and this is deliberately not `effectiveDisplay`. A wall
+ * with no canvas of its own follows the household; a panel with none draws its
+ * *built-in* fixed layout, because that layout was designed for the medium and
+ * a colour arrangement inherited by accident would be a worse panel, not a
+ * better one. So there are three states rather than two, and the third is the
+ * one direction B needed to exist:
+ *
+ * - `layout_mode` null (or anything else) — the built-in layout. `undefined`.
+ * - `freeform` — the panel's own canvas, arranged in its own designer.
+ * - `follow` — a wall's canvas, live: move a box on the wall and the panel
+ *   moves with it. `layout_follows` names the wall, or is null for the Default
+ *   display's canvas.
+ *
+ * Following is what makes `config.ink` worth having. Copying a wall's canvas
+ * onto a panel was always possible and gives two canvases that drift apart the
+ * first time somebody moves a box; following gives one canvas on two media, and
+ * the per-widget ink override is how the one canvas says something different in
+ * black and white.
+ *
+ * A `follow` pointing at a screen that has since been revoked or deleted reads
+ * as a canvas with no widgets, which falls back to the built-in layout rather
+ * than to a blank panel (rule nine).
+ */
+export function panelCanvasOwner(screen: {
+  readonly id?: string;
+  readonly layoutMode?: string | null;
+  readonly layoutFollows?: string | null;
+}): string | null | undefined {
+  if (screen.layoutMode === 'freeform') return screen.id ?? null;
+  if (screen.layoutMode === 'follow') return screen.layoutFollows ?? null;
+  return undefined;
 }
 
 /**
@@ -798,7 +860,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
               clock_24 AS clock24,
-              layout_mode AS layoutMode, layout_aspect AS layoutAspect,
+              layout_mode AS layoutMode, layout_follows AS layoutFollows,
+              layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
@@ -1343,6 +1406,8 @@ export interface ScreenRow {
   readonly displayBlocks: string | null;
   readonly clock24: number | null;
   readonly layoutMode: string | null;
+  /** Whose canvas to draw when `layoutMode` is `follow`; null is the Default. */
+  readonly layoutFollows: string | null;
   readonly layoutAspect: number | null;
   readonly layoutLandscapeAspect: number | null;
   readonly layoutBackground: string | null;
@@ -1363,7 +1428,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               display_horizon_weeks AS displayHorizonWeeks,
               display_blocks AS displayBlocks,
               clock_24 AS clock24,
-              layout_mode AS layoutMode, layout_aspect AS layoutAspect,
+              layout_mode AS layoutMode, layout_follows AS layoutFollows,
+              layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground

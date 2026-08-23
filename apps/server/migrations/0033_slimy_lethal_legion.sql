@@ -14,10 +14,12 @@ CREATE TABLE `chores` (
 	`person_id` text,
 	`schedule` text NOT NULL,
 	`due_time` text,
+	`paused` integer DEFAULT false NOT NULL,
 	`sort_order` integer DEFAULT 0 NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`person_id`) REFERENCES `people`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
-CREATE INDEX `chores_person_idx` ON `chores` (`person_id`);
+CREATE INDEX `chores_person_idx` ON `chores` (`person_id`);--> statement-breakpoint
+ALTER TABLE `screens` ADD `allow_chores` integer DEFAULT false NOT NULL;

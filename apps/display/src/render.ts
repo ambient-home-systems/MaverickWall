@@ -5,12 +5,32 @@ import type {
   EventModel,
   HorizonCell,
   InterruptModel,
+  TodayShiftModel,
 } from './viewmodel.js';
-import { localDate } from './viewmodel.js';
+import { localDate, localTime } from './viewmodel.js';
 import { agendaTimeFitsBeside, MIN_CHORE_SCALE, weekColumnsFit } from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
+import {
+  HOUSE_ROLES,
+  SHIFT_ROLES,
+  WEATHER_ROLES,
+  ladderRows,
+  houseLadder,
+  pairsTemperatures,
+  weatherLadder,
+  type HouseField,
+  type ShiftField,
+  type WeatherField,
+} from './ladder.js';
+import {
+  clockWidgetView,
+  panelRowLimit,
+  shiftWidgetView,
+  weatherWidgetView,
+  type ShiftWidgetView,
+} from './widget-options.js';
 
 /**
  * The DOM, and no decisions.
@@ -68,39 +88,108 @@ function shiftWindow(shift: { readonly startTime?: string; readonly endTime?: st
 }
 
 /**
- * The shift badge, shared by the today block and the free-form shift widget.
+ * One person's shift badge.
  *
- * Absent when nobody is on a rota — the same statement in both places, so a
- * household with no shift worker never sees a hole where a feature would be.
+ * Built per entry rather than per model, because a household can have more than
+ * one person on a rota and the wall used to draw only whoever sorted first.
+ * What it is allowed to say is decided in `shiftWidgetView`, not here.
  */
-function shiftBadge(model: DisplayModel): HTMLElement | undefined {
-  const shift = model.todayShift;
-  if (shift === undefined) return undefined;
-
+function shiftBadge(
+  entry: TodayShiftModel,
+  options: ShiftWidgetView,
+  ladder: readonly ShiftField[] = options.ladder,
+): HTMLElement {
+  const shift = entry.shift;
   const badge = el('div', 'shift-badge');
   paintShift(badge, shift.colorToken, shift.color);
-  /*
-   * The picture, where the person already is. Same-origin and behind the
-   * display token — rule three, and the wall works with no internet.
-   */
-  const who = el('div', 'who');
-  const avatar = shift.personAvatarUrl;
-  if (avatar !== undefined && avatar !== null && avatar !== '') {
-    const image = document.createElement('img');
-    image.className = 'who-face';
-    image.src = avatar;
-    // Decorative: the name is right beside it, so a reader gains nothing from
-    // hearing the filename.
-    image.alt = '';
-    who.appendChild(image);
+
+  for (const row of ladderRows(ladder, shiftValues(entry, options), SHIFT_ROLES)) {
+    if (row.field === 'person') {
+      /*
+       * The picture, where the person already is. Same-origin and behind the
+       * display token — rule three, and the wall works with no internet.
+       */
+      const who = el('div', 'who');
+      const avatar = shift.personAvatarUrl;
+      if (options.face && avatar !== undefined && avatar !== null && avatar !== '') {
+        const image = document.createElement('img');
+        image.className = 'who-face';
+        image.src = avatar;
+        // Decorative: the name is right beside it, so a reader gains nothing
+        // from hearing the filename.
+        image.alt = '';
+        who.appendChild(image);
+      }
+      who.appendChild(document.createTextNode(row.text));
+      badge.appendChild(who);
+      continue;
+    }
+    badge.appendChild(el('div', SHIFT_ROW_CLASS[row.field], row.text));
   }
-  who.appendChild(document.createTextNode(shift.personName));
-  badge.appendChild(who);
-  badge.appendChild(el('div', 'what', shift.label));
-  const window = shiftWindow(shift);
-  if (window !== undefined) badge.appendChild(el('div', 'shift-when', window));
-  if (model.shiftRun !== undefined) badge.appendChild(el('div', 'until', model.shiftRun));
   return badge;
+}
+
+/**
+ * The badge as one line, when the box has room for exactly one row.
+ *
+ * Dropping to a single rung would spend the same room on strictly less: "Amy"
+ * where "Amy · Days · 07:00–19:00" fits. The panel renderer has always
+ * collapsed rather than truncated in this case, and this is the wall saying the
+ * same thing — the two renderers agreeing about a small box is the whole point
+ * of there being one ladder.
+ *
+ * The person keeps a colon when they lead, because "Amy: Days" reads as an
+ * attribution and "Amy Days" reads as a mistake; anywhere else they are just
+ * another part, since "Days: Amy" attributes the wrong way round.
+ */
+function shiftLineBadge(
+  entry: TodayShiftModel,
+  options: ShiftWidgetView,
+  ladder: readonly ShiftField[],
+): HTMLElement {
+  const rows = ladderRows(ladder, shiftValues(entry, options), SHIFT_ROLES);
+  const parts = rows.map((row) => row.text);
+  const head = rows[0];
+  const text =
+    head !== undefined && head.field === 'person' && parts.length > 1
+      ? `${parts[0]}: ${parts.slice(1).join(' · ')}`
+      : parts.join(' · ');
+
+  const badge = el('div', 'shift-badge is-line');
+  paintShift(badge, entry.shift.colorToken, entry.shift.color);
+  badge.appendChild(el('div', 'what', text));
+  return badge;
+}
+
+/** The class each ladder row keeps, so the stylesheet is unchanged by ordering. */
+const SHIFT_ROW_CLASS: Readonly<Record<ShiftField, string>> = {
+  person: 'who',
+  shift: 'what',
+  hours: 'shift-when',
+  run: 'until',
+};
+
+/**
+ * What each row would say, or nothing when the day has nothing for it.
+ *
+ * Absent is different from switched off: an untimed shift has no hours and a
+ * run the server could not establish has no position, and neither is the
+ * household asking for a gap. `ladderRows` drops those.
+ */
+function shiftValues(
+  entry: TodayShiftModel,
+  options: ShiftWidgetView,
+): Partial<Record<ShiftField, string>> {
+  const shift = entry.shift;
+  const name = options.name === 'code' ? shift.shortCode : shift.label;
+  const values: Partial<Record<ShiftField, string>> = {
+    person: shift.personName,
+    shift: name,
+  };
+  const window = shiftWindow(shift);
+  if (window !== undefined) values.hours = window;
+  if (entry.run !== undefined) values.run = entry.run;
+  return values;
 }
 
 /**
@@ -145,19 +234,72 @@ function ownerMark(event: EventModel, className: string): HTMLElement {
  * URL and rule three forbids the wall from fetching one, so the server maps
  * the forecast wording to a glyph the device already has.
  */
-function renderWeather(model: DisplayModel): HTMLElement | undefined {
-  if (model.weather.length === 0) return undefined;
+/** The class each forecast row keeps, so the stylesheet is unchanged by order. */
+const WEATHER_ROW_CLASS: Readonly<Record<WeatherField, string>> = {
+  name: 'wx-name',
+  icon: 'wx-ico',
+  high: 'wx-temp',
+  low: 'wx-temp',
+};
 
+/**
+ * One day of the strip, from the ladder.
+ *
+ * The high and the low share a row when the household left them next to each
+ * other, because a temperature range reads as one thing and that is how this
+ * strip has always drawn it. `pairsTemperatures` is where that rule lives; here
+ * it only decides whether the second of the pair is skipped as its own row.
+ *
+ * A column down to its last row is *not* collapsed onto one line the way a
+ * shift badge is, and that is deliberate rather than an omission. A badge is
+ * one wide card, so joining its rows spends the same room on more; a forecast
+ * column is narrow by construction — a fifth of the box — so "Today 24° 13°C"
+ * in one would truncate rather than inform. The panel makes the same call by
+ * column width in `drawWeather`, not by row count.
+ */
+function weatherColumn(
+  rows: readonly { readonly field: WeatherField; readonly text: string }[],
+  paired: boolean,
+): HTMLElement {
+  const cell = el('div', 'wx-day');
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]!;
+    const next = rows[index + 1];
+    if (paired && (row.field === 'high' || row.field === 'low') && next !== undefined &&
+        (next.field === 'high' || next.field === 'low')) {
+      const temp = el('div', 'wx-temp');
+      temp.appendChild(document.createTextNode(`${row.text} `));
+      temp.appendChild(el('span', 'lo', next.text));
+      cell.appendChild(temp);
+      index++;
+      continue;
+    }
+    // A low on its own row keeps the quieter treatment it has when it rides
+    // beside the high: its emphasis is a property of the field, not of whether
+    // the household happened to put it next to something.
+    const cls = row.field === 'low' ? `${WEATHER_ROW_CLASS[row.field]} lo` : WEATHER_ROW_CLASS[row.field];
+    cell.appendChild(el('div', cls, row.text));
+  }
+  return cell;
+}
+
+function renderWeather(
+  model: DisplayModel,
+  config?: unknown,
+  ladder: readonly WeatherField[] = weatherLadder(config),
+): HTMLElement | undefined {
+  const view = weatherWidgetView(model.weather, config);
+  if (view.days.length === 0) return undefined;
+
+  const paired = pairsTemperatures(ladder);
   const strip = el('section', 'wx');
-  for (const day of model.weather) {
-    const cell = el('div', 'wx-day');
-    cell.appendChild(el('div', 'wx-name', day.name));
-    cell.appendChild(el('div', 'wx-ico', day.icon));
-    const temp = el('div', 'wx-temp');
-    temp.appendChild(document.createTextNode(`${day.high} `));
-    temp.appendChild(el('span', 'lo', day.low));
-    cell.appendChild(temp);
-    strip.appendChild(cell);
+  for (const day of view.days) {
+    const rows = ladderRows(
+      ladder,
+      { name: day.name, icon: day.icon, high: day.high, low: day.low },
+      WEATHER_ROLES,
+    );
+    strip.appendChild(weatherColumn(rows, paired));
   }
 
   if (model.weatherNote !== undefined) {
@@ -191,14 +333,18 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
   const strip = el('section', 'house');
   for (const reading of readings) {
     const cell = el('div', `hs-item hs-${reading.mode}${reading.stale ? ' hs-stale' : ''}`);
-
-    if (reading.mode === 'icon_state' || reading.mode === 'presence') {
-      cell.appendChild(el('span', 'hs-ico', reading.icon));
-    }
-    if (reading.mode !== 'value') {
-      cell.appendChild(el('span', 'hs-label', reading.label));
-    }
-    cell.appendChild(el('span', 'hs-value', reading.value));
+    /*
+     * Which parts this reading shows, from the widget's own list when it has
+     * one and otherwise from the entity's `display_mode`. The two `if`
+     * statements this replaces *were* the mode's meaning, written down nowhere
+     * else — which is how the panel came to ignore it entirely.
+     */
+    const rows = ladderRows(
+      houseLadder(config, reading.mode),
+      { icon: reading.icon, label: reading.label, value: reading.value },
+      HOUSE_ROLES,
+    );
+    for (const row of rows) cell.appendChild(el('span', HOUSE_ROW_CLASS[row.field], row.text));
     strip.appendChild(cell);
   }
 
@@ -207,6 +353,13 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
   }
   return strip;
 }
+
+/** The class each reading's row keeps, so the stylesheet is unchanged by order. */
+const HOUSE_ROW_CLASS: Readonly<Record<HouseField, string>> = {
+  icon: 'hs-ico',
+  label: 'hs-label',
+  value: 'hs-value',
+};
 
 /* --------------------------------------------------------------- NEXT ---- */
 
@@ -549,26 +702,44 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 /* ----------------------------------------------------------- FREEFORM --- */
 
 /** The clock, as a widget: the time the today block already shows, on its own. */
-function renderClockWidget(model: DisplayModel): HTMLElement {
+function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
+  const view = clockWidgetView(config);
   const box = el('div', 'fw-clock');
-  box.appendChild(el('div', 'clock', model.clock));
-  box.appendChild(el('div', 'today-date', model.todayLabel));
+  /*
+   * `model.clock` is already in the household's own format, so following it
+   * costs nothing; an override re-reads the same corrected wall time through
+   * the same formatter, rather than trying to reformat a rendered string.
+   */
+  const time =
+    view.format === 'follow'
+      ? model.clock
+      : localTime(model.now, model.timezone, view.format === '12');
+  const face = el('div', 'clock', time);
+  // The type is sized per character (see `.fw-clock .clock`): "08:26 pm" is
+  // eight of them and "20:26" is five, and one constant cannot serve both.
+  face.style.setProperty('--clock-chars', String(Math.max(1, time.length)));
+  box.appendChild(face);
+  if (view.date) box.appendChild(el('div', 'today-date', model.todayLabel));
   return box;
 }
 
 /**
- * The shift, as a widget: the badge alone.
+ * The shift, as a widget: a badge for each person the household asked for.
  *
- * Undefined on a day with no rota, exactly like weather and house on a day with
- * no data — so `renderFreeform` draws the one box-relative "nothing yet" note
- * for all three, rather than this one scaling a note that is already sized to
- * its box and ending up drawn twice as small.
+ * Undefined when nobody the widget is watching is on a rota today, exactly like
+ * weather and house on a day with no data — so `renderFreeform` draws the one
+ * box-relative "nothing yet" note for all three, rather than this one scaling a
+ * note that is already sized to its box and ending up drawn twice as small.
+ *
+ * "Nobody the widget is watching" is the honest empty here: a household who
+ * pointed this box at one person should see that box say nothing on the days
+ * they are off, not quietly promote somebody else's nights into it.
  */
-function renderShiftWidget(model: DisplayModel): HTMLElement | undefined {
-  const badge = shiftBadge(model);
-  if (badge === undefined) return undefined;
-  const box = el('div', 'fw-shift');
-  box.appendChild(badge);
+function renderShiftWidget(model: DisplayModel, config?: unknown): HTMLElement | undefined {
+  const view = shiftWidgetView(model.todayShifts, config);
+  if (view.entries.length === 0) return undefined;
+  const box = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
+  for (const entry of view.entries) box.appendChild(shiftBadge(entry, view));
   return box;
 }
 
@@ -588,15 +759,15 @@ export function renderWidget(
 ): HTMLElement | undefined {
   switch (type) {
     case 'clock':
-      return renderClockWidget(model);
+      return renderClockWidget(model, config);
     case 'calendar':
       return renderCalendarWidget(model, config);
     case 'weather':
-      return renderWeather(model);
+      return renderWeather(model, config);
     case 'homeassistant':
       return renderHouse(model, config);
     case 'shift':
-      return renderShiftWidget(model);
+      return renderShiftWidget(model, config);
     case 'countdown':
       return renderCountdownWidget(model, config);
     case 'external':
@@ -688,7 +859,7 @@ function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement
   const id = widgetConfig(config)['module'];
   const panel = typeof id === 'string' ? model.externalPanels[`ext:${id}`] : undefined;
   if (panel === undefined) return el('div', 'cd-empty', 'Pick a module in this widget’s options.');
-  return renderGenericPanel(panel);
+  return renderGenericPanel(panel, panelRowLimit(config));
 }
 
 /**
@@ -830,14 +1001,14 @@ function renderChoresWidget(model: DisplayModel, config?: unknown): HTMLElement 
    * same flag, because the display token is on the wall.
    */
   const tickable = model.allowChores;
-  // Whose chores to show, by the name the household sees — the panel carries no
-  // person id, exactly as the Home Assistant widget filters by reading label.
-  // None chosen shows everybody, which is what a bare widget draws.
+  // Whose chores to show, by person id — the same key and the same meaning the
+  // Shift widget's picker uses. None chosen shows everybody, including the
+  // chores nobody owns, which is what a bare widget draws.
   const wanted = configStrings(cfg['people']);
   const keep = (items: readonly ChoreItemModel[]): ChoreItemModel[] =>
     wanted.length === 0
       ? [...items]
-      : items.filter((item) => item.person !== undefined && wanted.includes(item.person));
+      : items.filter((item) => item.personId !== undefined && wanted.includes(item.personId));
 
   const today = board.days[0];
 
@@ -1064,13 +1235,24 @@ function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
  * never inject markup, an origin, or a script. The shape is already validated
  * and sanitised (`panelFrom`); this only lays it out.
  */
-export function renderGenericPanel(data: PanelData): HTMLElement {
+export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement {
   const section = el('section', `gp gp-${data.kind}`);
   if (data.title !== undefined) section.appendChild(el('div', 'gp-title', data.title));
 
+  /*
+   * How many of the module's rows to draw.
+   *
+   * The module decides its panel's shape and may send twelve readings; the
+   * household decides how many of them fit the box they dragged. Applies only
+   * to the two list kinds — a stat has one value and text is one paragraph, so
+   * there is nothing there to take the first three of.
+   */
+  const take = <T,>(items: readonly T[]): readonly T[] =>
+    rows === undefined ? items : items.slice(0, rows);
+
   if (data.kind === 'readings') {
     const list = el('div', 'gp-readings');
-    for (const reading of data.items) {
+    for (const reading of take(data.items)) {
       const row = el('div', 'gp-reading');
       if (reading.icon !== undefined) row.appendChild(el('span', 'gp-ico', reading.icon));
       row.appendChild(el('span', 'gp-label', reading.label));
@@ -1083,7 +1265,7 @@ export function renderGenericPanel(data: PanelData): HTMLElement {
     if (data.caption !== undefined) section.appendChild(el('div', 'gp-stat-caption', data.caption));
   } else if (data.kind === 'tiles') {
     const strip = el('div', 'gp-tiles');
-    for (const tile of data.items) {
+    for (const tile of take(data.items)) {
       const cell = el('div', 'gp-tile');
       cell.appendChild(el('div', 'gp-tile-value', tile.value));
       cell.appendChild(el('div', 'gp-tile-label', tile.label));
@@ -1183,8 +1365,20 @@ export function renderFreeform(
   // column. Includes the ones the week fallback below produces.
   const agendas: HTMLElement[] = [];
 
+  // Widgets with a field ladder, to be re-checked once they have a real size.
+  // The ladder's bottom rungs are given up one at a time when the box cannot
+  // hold them — measured after layout for the same reason the week columns are,
+  // and by the same rule: a drawing decision, never a saved one.
+  const ladderBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
+
   for (const widget of layout.widgets) {
     const box = el('div', `fw fw-${widget.type}`);
+    /*
+     * Which widget this box is, for anything that has to find it again after
+     * layout. The editor reads it to show how much of a ladder actually
+     * survived in the real preview; nothing on a wall reads it.
+     */
+    box.dataset['widgetId'] = widget.id;
     // Percentages of the canvas, so the same layout fills any resolution of
     // the authored aspect.
     box.style.left = `${widget.x * 100}%`;
@@ -1242,6 +1436,9 @@ export function renderFreeform(
       box.appendChild(scale);
       toFit.push({ box, scale, min: minScaleFor(widget.type) });
       if (widget.type === 'calendar' && body.classList.contains('next')) agendas.push(body);
+      if (widget.type === 'shift' || widget.type === 'weather') {
+        ladderBoxes.push({ box, widget });
+      }
     }
     canvas.appendChild(box);
   }
@@ -1306,6 +1503,69 @@ export function renderFreeform(
      * each way: fewer days, drawn larger.
      */
     if (trimmed) fitToBox(box, scale, { min });
+  }
+
+  /*
+   * A badge with no room for its whole ladder gives up its bottom rung.
+   *
+   * The wall has no fixed line heights to do this arithmetic against — a badge
+   * is `rem`-sized against a canvas that is itself letterboxed into the frame —
+   * so it is measured rather than predicted: fit, and if the section still
+   * overflows at its floor, drop the last row and fit again. `fitToBox` clamps
+   * at `minScaleFor('shift')` and clips below it, which is exactly the state
+   * this replaces with something readable.
+   *
+   * The same shape as the week-columns fallback below, and the same rule: a
+   * *drawing* decision, not a saved one. The ladder still says four rows, the
+   * editor still shows four rows, and widening the box brings them straight
+   * back. The head of the ladder always survives — a household who dragged a
+   * box too small should see the thing they put first, clipped if it comes to
+   * that, rather than an empty rectangle (rule nine).
+   */
+  for (const { box, widget } of ladderBoxes) {
+    const shift = widget.type === 'shift';
+    const view = shift ? shiftWidgetView(model.todayShifts, widget.config) : undefined;
+    /*
+     * The house widget is not in the drop loop's own list: its ladder is per
+     * *reading* — each one resolves from its own `display_mode` — so there is
+     * no single list here to take a rung off. It scales like everything else
+     * and clips at the floor, which is what it has always done.
+     */
+    let ladder: readonly string[] = shift
+      ? (view?.ladder ?? [])
+      : weatherLadder(widget.config);
+    const full = ladder.length;
+    let scale = box.querySelector('.fw-scale');
+    while (
+      ladder.length > 1 &&
+      scale instanceof HTMLElement &&
+      fitToBox(box, scale, { min: minScaleFor(widget.type) })
+    ) {
+      ladder = ladder.slice(0, -1);
+      let body: HTMLElement | undefined;
+      if (shift && view !== undefined) {
+        const rebuilt = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
+        // Down to one row where the ladder asked for more: a line, not a word.
+        const line = ladder.length === 1 && full > 1;
+        for (const entry of view.entries) {
+          rebuilt.appendChild(
+            line
+              ? shiftLineBadge(entry, view, view.ladder)
+              : shiftBadge(entry, view, ladder as readonly ShiftField[]),
+          );
+        }
+        body = rebuilt;
+      } else {
+        body = renderWeather(model, widget.config, ladder as readonly WeatherField[]);
+      }
+      if (body === undefined) break;
+      const next = el('div', 'fw-scale');
+      next.appendChild(contentWithTitle(body, widget.config));
+      box.textContent = '';
+      box.appendChild(next);
+      fitToBox(box, next, { min: minScaleFor(widget.type) });
+      scale = next;
+    }
   }
 
   /*
@@ -1501,11 +1761,23 @@ function minScaleFor(type: string): number {
  * `min` is a readable floor: below it the section clips at the box edge rather
  * than shrinking to an illegible size (rule nine — degrade, never smear).
  */
+/**
+ * Scale a section to its box, and say whether it still did not fit.
+ *
+ * The return value is what lets a caller do something better than clipping —
+ * the shift ladder gives up its bottom rung and asks again. Everything else
+ * ignores it, because clipping at the floor is the right answer when there is
+ * nothing to give up.
+ *
+ * Idempotent: it re-measures from layout (`scrollWidth`/`scrollHeight`), which
+ * a transform does not affect, so calling it twice on the same nodes is the
+ * same as calling it once.
+ */
 export function fitToBox(
   box: HTMLElement,
   scale: HTMLElement,
   opts: { readonly min?: number; readonly max?: number } = {},
-): void {
+): boolean {
   const min = opts.min ?? 0.25;
   // A ceiling so a one-word note in a huge box grows to fill without becoming a
   // caricature of itself; well above any sane fill factor, so it rarely bites.
@@ -1516,13 +1788,13 @@ export function fitToBox(
   const padT = parseFloat(style.paddingTop);
   const availW = box.clientWidth - padL - parseFloat(style.paddingRight);
   const availH = box.clientHeight - padT - parseFloat(style.paddingBottom);
-  if (availW <= 0 || availH <= 0) return;
+  if (availW <= 0 || availH <= 0) return false;
 
   // Baseline: lay the section out at the full box width and measure it.
   scale.style.width = `${availW}px`;
   let contentW = scale.scrollWidth;
   let contentH = scale.scrollHeight;
-  if (contentH <= 0) return;
+  if (contentH <= 0) return false;
 
   if (contentW <= availW && contentH <= availH) {
     // Room to grow: re-flow at an aspect-matched width and re-measure.
@@ -1544,6 +1816,10 @@ export function fitToBox(
   scale.style.left = `${padL + Math.max(0, (availW - scaledW) / 2)}px`;
   scale.style.top = `${padT + Math.max(0, (availH - scaledH) / 2)}px`;
   scale.style.transform = `scale(${factor})`;
+
+  // Rounded by a pixel: a section one subpixel over its box is a rounding
+  // artefact, not a badge that needs a row taken off it.
+  return scaledW > availW + 1 || scaledH > availH + 1;
 }
 
 /**

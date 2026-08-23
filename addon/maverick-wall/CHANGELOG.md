@@ -48,6 +48,146 @@ instead.
 eInk panels draw the same three views. They show chores; they cannot tick them
 off, because a panel that has been asleep for an hour cannot answer a press.
 
+## 0.50.1
+
+**A setting you could not read.** In the widget settings, a choice with a long
+name — "Follow the household", on a clock's time format — was cut off at both
+ends and drew as "ollow the househ". Long labels now wrap onto two lines and
+read in full.
+
+## 0.50.0
+
+**An eInk panel can now show your wall, in black and white.**
+
+Until now a panel had two choices: the layout it came with, or an arrangement
+you built for it from scratch. Building a second one meant every change you made
+to your wall had to be made again on the panel, by hand, for ever.
+
+A panel can now **follow a display**. Pick it under *What this panel draws* on
+the panel's own page — one of your walls, or the Default display — and it draws
+that arrangement. Move a box on the wall and the panel moves with it. Nothing
+is copied, so nothing drifts apart.
+
+**And each widget can say less on ink.** A panel is smaller, has no colour and
+no photographs, so open the wall's editor, tap a widget, and there is a new
+**On ink** switch beside its settings. What you change there changes the panel
+and nothing else — your wall keeps exactly what it had. A forecast can show
+three days on the panel and seven on the wall; a shift badge can drop to a name
+and a time; a clock can read differently.
+
+The panel's real frame is drawn right there beside the settings, in black and
+white, as the device would actually print it — not a browser's impression of
+one. And where a setting simply cannot survive the trip, it says so in plain
+words rather than quietly dropping it: *"Drop shadow — a shadow needs a grey the
+panel does not have."*
+
+Two smaller fixes on panels, both found by looking at a real frame: "No shift
+today" no longer reads "No shift t" in a narrow box, and "Nothing coming up" no
+longer runs out of its box and across the calendar beside it.
+
+## 0.49.0
+
+**Home Assistant readings on an eInk panel ignored how you set them up.**
+
+Each entity has a shape you choose on the Home Assistant screen — just the
+reading, the name and the reading, or an icon with both. A wall has always
+drawn what you chose. A panel drew every one of them as "Front door: Locked",
+whichever shape you picked. It draws what you chose now, on both.
+
+The Home Assistant widget also gets the **What it says** list the Shift badge
+and the Weather strip have: tick and drag the icon, the name and the reading
+into the order you want. Leave it alone and each reading keeps the shape you
+gave it. Change it and every reading in that widget follows the list instead —
+one shape for all of them, which the editor says underneath.
+
+## 0.48.0
+
+The Weather widget gets the same **What it says** list the Shift badge has.
+
+Tick what a day in the forecast shows — the day, the symbol, the high, the
+overnight low — and drag them into the order you care about. As with the shift
+badge, that order is also the order things are given up in when the box is too
+small: a short strip keeps the top of your list.
+
+Two details worth knowing. The high and the low sit on one line while they are
+next to each other in the list, because a temperature range reads as one thing
+— separate them and they separate on the wall. And a row's size follows what it
+*is*, not where you put it: moving the temperatures above the day name does not
+make the day name enormous.
+
+"Show the weather symbol" and "Show the overnight low" are rows on that list
+now. A widget you have already set up is unchanged.
+
+## 0.47.0
+
+The Shift widget says what matters, in the order you choose.
+
+Its Content tab now has **What it says** — a list of the four things a shift
+badge can show: who it is, the shift, the hours, and how far through. Tick what
+you want, and drag to put them in the order you care about.
+
+**The order does two jobs.** It is the order they are drawn in, and it is the
+order they are given up in. When a box is too small to hold everything, the
+bottom of the list goes first — so a small badge with the hours at the top
+keeps the hours. Nothing needs to be set per screen size: the same list answers
+a kitchen tablet, a hall television and an eInk panel, each against the room it
+actually has.
+
+The list marks the rows a box is currently too small for, read from the live
+preview rather than guessed, so you can see the effect of dragging a box
+smaller while you do it. And a box with room for only one row now draws
+everything on that one line rather than a single word — the same on a wall as
+on a panel.
+
+The two old switches, "Show the hours" and "Show how far through", are part of
+that list now. A widget you have already set up is unchanged.
+
+## 0.46.0
+
+The Clock and Weather widgets have settings, and a panel draws a real forecast.
+
+Every widget's Content tab now does something. The two that had nothing under
+it were the Clock and the Weather strip:
+
+- **Clock** — 12-hour or 24-hour for this one clock (or follow the household,
+  which is what it did before), and whether to show the date underneath.
+- **Weather** — how many days to show, whether to show the overnight low, and
+  whether to show the little weather symbol.
+- **A module's panel** also gained "how many rows", for a module that sends
+  more readings than fit the box you dragged.
+
+**Weather on an eInk panel was broken and is fixed.** It drew two lines of
+internals — the provider's name and a raw timestamp — and not one temperature.
+It draws the forecast now: the day, the high, and the low, in columns when
+there is room and a line each when there is not.
+
+A 12-hour clock also no longer wraps onto two lines in a box sized for a
+24-hour one.
+
+## 0.45.0
+
+The Shift widget shows everybody on a rota, and it has options.
+
+If two people in the house work shifts, the wall only ever showed one of them.
+It picked whoever came first in your list of people and there was no setting
+anywhere that could change it — while an eInk panel, from the same arrangement,
+showed both. Now both screens show both, each with their own colour and their
+own "Day 2 of 4 · 2 more".
+
+The widget also has its own settings for the first time, under Content:
+
+- **Whose rota** — leave it alone to show everyone who is on today, or tick
+  one person to give them a box of their own. A box pointed at one person says
+  nothing on the days they are off, rather than quietly showing somebody else.
+- **Shift name** — the full name ("Nights"), or the short code ("N") for a
+  small box.
+- **Show their photo**, **Show the hours**, **Show how far through** — each on
+  unless you turn it off, so a wall you have already arranged looks exactly as
+  it did.
+
+A panel draws all of these except "how far through", which it has never had a
+line for.
+
 ## 0.44.0
 
 Every widget's settings now read the same way.

@@ -1,0 +1,1 @@
+ALTER TABLE `screens` ADD `layout_follows` text;

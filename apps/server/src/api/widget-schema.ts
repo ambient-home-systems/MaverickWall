@@ -34,7 +34,7 @@ export const storedImageName = z
  * manifest: calendar `source id`s and Home Assistant reading `label`s, never an
  * entity id, which the manifest deliberately does not carry.
  */
-export const widgetConfigBody = z
+const widgetConfigFields = z
   .object({
     // Calendar
     calendars: z.array(z.string().max(64)).max(50).optional(),
@@ -70,6 +70,85 @@ export const widgetConfigBody = z
     showShifts: z.boolean().optional(),
     showTimes: z.boolean().optional(),
     showLocations: z.boolean().optional(),
+    /*
+     * Shift — whose rota the badge draws, and which of its lines.
+     *
+     * `people` is a list of person ids, shared with the Chores widget's "whose
+     * chores" picker — one key, one meaning. Chores first filtered by *name*,
+     * which collided here on a merge: two declarations of one key, the later
+     * silently winning. Ids are also simply better, since renaming somebody no
+     * longer empties the widget that was filtering on them.
+     *
+     * None chosen means everyone on a rota,
+     * the same "empty selection means all" the calendar and reading pickers
+     * use. It is what makes a two-worker household expressible: before it, the
+     * wall drew the first person sorted and nothing could say otherwise.
+     *
+     * The three `show…` keys follow `showShifts` above — *absence means on*,
+     * because the face, the hours and the run have been drawn since the badge
+     * existed and a household who arranged a canvas around them must not lose
+     * them to a schema change. The only value ever stored is `false`.
+     */
+    people: z.array(z.string().max(64)).max(20).optional(),
+    /*
+     * The field ladder: which rows the badge draws, in the order they matter.
+     *
+     * The order is the drop order too — when the box cannot hold them all the
+     * renderer gives them up from the bottom — so one list carries both what is
+     * shown and what is sacrificed. An *ordered allowlist*, deliberately, and
+     * not a template: there is no expression here and no household-authored
+     * string that reaches a renderer, which is the same argument the recipe
+     * engine's transform makes.
+     *
+     * Absent means the ladder the widget always drew, minus whatever its own
+     * switches turned off (`showHours`/`showRun` for a shift badge,
+     * `showIcon`/`showLow` for a forecast strip, and each entity's own
+     * `display_mode` for a Home Assistant reading) — so a widget saved before
+     * this existed is untouched. Present, it is the complete list and those switches
+     * no longer apply to it; the editor clears them when it writes this.
+     *
+     * One enum for every widget with a ladder, because the config is one strict
+     * object for every type: each resolver filters to its own allowlist, so a
+     * Weather widget carrying a shift field reads as "not for me" rather than as
+     * a row nothing can render. The alternative — a key per widget — would be
+     * four names for one idea.
+     */
+    fields: z
+      .array(
+        z.enum([
+          'person', 'shift', 'hours', 'run',
+          'name', 'icon', 'high', 'low',
+          'label', 'value',
+        ]),
+      )
+      .max(10)
+      .optional(),
+    shiftName: z.enum(['label', 'code']).optional(),
+    showFace: z.boolean().optional(),
+    showHours: z.boolean().optional(),
+    showRun: z.boolean().optional(),
+    /*
+     * Clock.
+     *
+     * `clockFormat` absent means "follow the household", which is what every
+     * clock on every wall has drawn until now — so it is an absence and not a
+     * third enum member that would have to be stored to mean the default.
+     * `showDate` is absence-means-on like the shift switches above.
+     *
+     * There is deliberately no "show seconds": the wall redraws every fifteen
+     * seconds, so a seconds field would be wrong far more often than right.
+     */
+    clockFormat: z.enum(['12', '24']).optional(),
+    showDate: z.boolean().optional(),
+    /*
+     * Weather. `count` is shared with the calendar's agenda above — one strict
+     * object for every type, and a key a type does not read is simply not read.
+     *
+     * `showIcon` is the wall's: the panel's bitmap font is 0x20–0x7E and a
+     * forecast glyph is not in it, so a 1-bit frame has no icon to hide.
+     */
+    showLow: z.boolean().optional(),
+    showIcon: z.boolean().optional(),
     // Home Assistant
     readings: z.array(z.string().max(80)).max(50).optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
@@ -84,10 +163,6 @@ export const widgetConfigBody = z
     image: storedImageName.optional(),
     // Notes — free text the household typed, drawn as written (line breaks kept).
     text: z.string().max(2000).optional(),
-    // Chores — whose to show, by person name (the manifest carries no person id
-    // on a chore, so a selection can only be by the name the household sees).
-    // None ticked shows everybody, which is what a bare widget draws.
-    people: z.array(z.string().max(60)).max(20).optional(),
     // To-do — a static checklist. Each item is a line the household typed; the
     // wall is read-only, so items are shown, not ticked (edited in the admin).
     items: z.array(z.string().max(200)).max(40).optional(),
@@ -104,7 +179,46 @@ export const widgetConfigBody = z
     opacity: z.number().int().min(0).max(100).optional(),
     corners: z.enum(['square', 'rounded']).optional(),
     shadow: z.boolean().optional(),
+  });
+
+/**
+ * The ink lane: what this widget does differently on a black-and-white panel
+ * (RFC 005, direction B).
+ *
+ * *Picked* from the fields above rather than declared again, so an ink override
+ * is validated by exactly the rule its wall twin is — a `count` that is out of
+ * range on the wall is out of range here, with the same message, for ever,
+ * without anybody remembering to change two places.
+ *
+ * The pick is what makes "one level deep" a fact about the shape rather than a
+ * promise in a comment: `ink` is not among the picked keys, so `ink.ink` is a
+ * rejected key and not a recursion anybody has to bound. It is also why the
+ * lane cannot carry a title, a note's text, an image or a module — a panel says
+ * *less* than the wall it follows, never something else. `INK_KEYS` in
+ * `epaper/honours.ts` is the same list from the renderer's side, and
+ * `epaper-ink.test.ts` holds the two to each other.
+ *
+ * Strict, like everything else: an unknown key here is a 400 and never a
+ * silently dropped option (rule five).
+ */
+export const inkOverrideBody = widgetConfigFields
+  .pick({
+    align: true,
+    calendars: true,
+    cellEvents: true,
+    clockFormat: true,
+    count: true,
+    fields: true,
+    mode: true,
+    people: true,
+    readings: true,
+    shiftName: true,
+    showDate: true,
   })
+  .strict();
+
+export const widgetConfigBody = widgetConfigFields
+  .extend({ ink: inkOverrideBody.optional() })
   .strict();
 
 /**

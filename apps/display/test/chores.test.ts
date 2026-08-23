@@ -24,8 +24,8 @@ const BOARD = {
     {
       date: '2026-08-25',
       items: [
-        { id: 'c1', name: 'Put the bins out', person: 'Sam', color: '#4C7FD1', dueTime: '19:00', done: false },
-        { id: 'c2', name: 'Feed the cat', person: null, color: null, dueTime: null, done: true },
+        { id: 'c1', personId: 'p1', name: 'Put the bins out', person: 'Sam', color: '#4C7FD1', dueTime: '19:00', done: false },
+        { id: 'c2', personId: null, name: 'Feed the cat', person: null, color: null, dueTime: null, done: true },
       ],
     },
     { date: '2026-08-26', items: [] },
@@ -46,6 +46,7 @@ describe('choresFrom', () => {
     expect(board?.days[1]?.items).toEqual([]);
     expect(board?.days[0]?.items[0]).toEqual({
       id: 'c1',
+      personId: 'p1',
       name: 'Put the bins out',
       person: 'Sam',
       color: '#4C7FD1',
@@ -54,6 +55,8 @@ describe('choresFrom', () => {
     });
     expect(board?.days[0]?.items[1]?.done).toBe(true);
     expect(board?.days[0]?.items[1]?.person).toBeUndefined();
+    // The filter matches on the id, so an unowned chore carries none.
+    expect(board?.days[0]?.items[1]?.personId).toBeUndefined();
   });
 
   it('refuses a colour that is not a hex, rather than passing it to a style', () => {

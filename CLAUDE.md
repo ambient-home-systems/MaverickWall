@@ -880,6 +880,216 @@ the rota says nothing about plain. Before this the two were identical in the
 manifest, and a test named "treats an explicit rest day as not working, not as
 unknown" asserted the empty list that proved they were not.
 
+**A widget's options are resolved as data, and the Shift widget is where that
+started.** `widget-options.ts` in the display is pure: it takes today's rota and
+the widget's stored config and answers with who to draw and which of the
+badge's lines — so `render.ts` keeps building nodes and doing no thinking, and
+the options can be tested at all. There is no DOM in the display's test suite,
+so a widget whose options are resolved inside a `createElement` call is a widget
+nothing can check. `epaper/widgets.ts` makes the same decisions against the same
+keys, which is the point: **the wall drew `todayDay.shifts[0]` while the panel
+drew everybody**, so a household with two shift workers got different answers
+from two screens and no setting anywhere could reconcile them. Each person's run
+is walked against their own entry too — counted per *day* it took its length
+from whoever sorted first. `showRun` is deliberately the wall's alone: the panel
+has never had a row for it, and an option whose absence means "on" would
+otherwise grow one on every existing panel at upgrade. The eInk test pins that
+as byte-identical rather than leaving it to be discovered.
+
+**The file was renamed the moment a second widget needed it**, rather than
+growing a second home for the same job — `shift-widget.ts` became
+`widget-options.ts` when the Clock and Weather widgets got their own options,
+because two modules resolving widget config is the drift the seam exists to
+stop. The Clock has no "show seconds" and the absence is the decision: the wall
+redraws every fifteen seconds, so the control would promise a precision the
+widget cannot keep. Its 12/24-hour override re-reads the corrected wall time
+through the same formatter rather than reformatting a rendered string — and it
+uncovered a bug by being looked at, not measured: the clock's type was sized
+`--buw * 26`, right for the five characters of "20:26" and wrong for the eight
+of "08:26 pm", so a 12-hour clock in a box sized for a 24-hour one wrapped onto
+two lines. The width term is per character now, with `nowrap` as the belt.
+
+**The eInk Weather widget drew `provider: nws` and a raw timestamp.**
+`drawPanel`'s tolerant reader looks for an `items`/`readings` array and, failing
+that, prints every scalar field on the object — and the weather panel carries
+neither, it carries `days`. So a household who put Weather on a panel got two
+lines of internals and not one temperature, while every structural test passed
+over it: the widget drew inside its box, did not throw, and produced ink. Found
+by rendering one and *looking* at it. It has its own draw now — day, high, low,
+in columns when each has room and a line each when it has not, the same
+two-mode shape `drawShift` uses. The test that guards it asserts *content*
+rather than shape: the frame must change when a temperature changes and must
+not change when the fetch timestamp does, which is exactly the pair the old
+draw had backwards.
+
+**The field ladder is how a widget decides what to give up (RFC 005 / the
+module editor, direction C).** A widget's content is an ordered list of fields,
+and the order carries two meanings: it is the order they are drawn in *and* the
+order they are sacrificed in when the box cannot hold them all. `ladder.ts` in
+the display is the model — an ordered subset of a fixed allowlist, with a role
+per field — and it replaced two private opinions nobody outside the source
+could see: `box.h >= 44` in `epaper/widgets.ts`, which decided the whole shape
+of a shift card at a threshold nobody chose, and the badge's fixed four rows on
+the wall.
+
+**It is not a language, and the emphasis is a property of the field.** A ladder
+is names and order, the same shape as `display_blocks` one level down — no
+expression, no concatenation, nothing household-authored reaching a renderer.
+Size comes from the field rather than its position, deliberately: deriving it
+from position would re-typeset every badge already hanging in a kitchen the
+moment somebody reordered anything, and would make "put the hours first" mean
+"draw the hours enormous".
+
+**The two renderers drop differently and that is honest.** The panel predicts —
+it owns its line heights, so `dropToFit` is arithmetic. The wall measures: a
+badge is `rem`-sized against a letterboxed canvas, so `fitToBox` now *reports*
+whether it clipped and the drop loop takes a rung off and asks again. That is
+the week-columns fallback's shape and the same rule — a drawing decision, never
+a saved one, so widening the box brings the rows straight back. Both stop at
+one row, and both then draw a *line* rather than a word: a box with room for
+one row spending it on "Amy" when "Amy: Days · 07:00–19:00" fits is the same
+room spent on strictly less.
+
+**The table is written twice because it has to be.** The display bundle has no
+dependencies and no bundler — plain `tsc` output with `rootDir` pinned to its
+own `src` — so it cannot import `packages/core`, and a server test cannot
+import *from* it without failing `tsconfig.test.json`. So
+`epaper/ladder.ts` transcribes it and `epaper-ladder-parity.test.ts` reads both
+files and compares the tables in both directions, the way
+`migration-upgrade.test.ts` compares the migrations directory with its journal.
+Checked by drifting one role and watching it go red — and then again, because
+the first version only compared the tables it had been *told* about, so a third
+widget gaining a ladder on one side alone sailed through. It compares the two
+*sets* of tables now, each derived from its own file, and both directions were
+confirmed by adding a table to one side at a time.
+
+**A second widget has one, and its shape is different — which is the point.**
+A shift badge is one card of rows; a forecast is a strip of days whose ladder
+applies *inside each column*, so reordering moves the same row in every column
+and dropping gives up the same row in every column. How many days is `count`, a
+different axis. Two rules are specific to it and both exist to keep an arranged
+wall identical: the high and the low share a line while they are **adjacent**
+(`pairsTemperatures`), because a range reads as one thing and splitting it by
+default would re-typeset every strip already hanging in a kitchen; and an
+unpaired low keeps the `.lo` treatment, because its emphasis is a property of
+the field and not of what the household put next to it.
+
+**Sizing by row index broke the ladder's own rule, and only a reordered strip
+showed it.** The panel's first cut sized row 0 small and the rest large — fine
+for the default, and it drew enormous day names the moment somebody put the
+temperatures first. Size comes from the role now. The same render also had each
+column choosing its own scale from its own string, so `20  9C` fitted a size
+`24  13C` did not and the strip came out as five unrelated widgets; one scale
+per row across every column is what keeps a strip a strip. Both found by
+rendering a frame and looking at it.
+
+**A third widget has one, and it found a live divergence rather than adding a
+setting.** `display_mode` is a *per-entity* column with four named shapes
+(`value`, `label_value`, `icon_state`, `presence`), and what each one drew lived
+in two `if` statements inside `renderHouse` and nowhere else — so
+`epaper/widgets.ts` never read it at all. Every reading went through
+`drawPanel`'s tolerant reader as "label: value", and a reading set to `value`
+said `Locked` on the wall and `Front door: Locked` on a panel. One stored value,
+two renderers, two answers: `shifts[0]` again, in a different widget. Found by
+rendering one and looking at it.
+
+So the mode is not duplicated by the ladder — it *is* a ladder, and
+`HOUSE_MODE_LADDERS` is that meaning written down where both renderers read it.
+A stored `fields` list is the override, and the trade it makes is real and
+stated in the editor: a per-widget list cannot express per-entity shapes, so
+writing one flattens them. The house widget is deliberately *not* in the wall's
+drop loop — its ladder is per reading, so there is no single list to take a rung
+off — and the icon rung resolves to nothing on a panel, the same way a forecast
+glyph does.
+
+**The editor marks the cut from the preview, not from a prediction.** The
+inspector's list strikes through the rows the box is currently too small for,
+counted out of the real `renderFreeform` output in the shadow-root preview —
+because two opinions about what fits is the whole class of bug this project
+keeps finding. It also checks for the collapsed badge rather than inferring
+from the child count, which gets it exactly backwards: a one-line badge has cut
+nothing.
+
+**A panel can follow a wall, and that is what made the ink lane worth
+building (RFC 005, direction B).** The lane is one optional `ink: {}` on a
+widget's config, one level deep, read by the panel renderer and by nothing else
+— but an override needs a canvas drawn on *two* media, and there wasn't one.
+Every screen is seeded with its own canvas at creation, and an e-paper panel
+starts on the built-in fixed layout; the only way to get a wall's arrangement
+onto a panel was `copy-from`, which forks it, and two canvases drift apart the
+first time somebody moves a box. So `screens.layout_mode` gained a third state:
+`follow`, with `layout_follows` naming the wall (migration `0032`, additive).
+`panelCanvasOwner` is the one resolver — its own canvas, a wall's, or none —
+and it is deliberately *not* `effectiveDisplay`: a wall with no canvas follows
+the household, a panel with none draws the layout designed for its medium, and
+inheriting a colour arrangement by accident would be a worse panel rather than a
+better one. Following is a choice a household makes, on the panel's page.
+
+**The one-way property is the whole of it.** An override changes the panel and
+never the wall, and the mistake that would break it is one character wide —
+writing into `config` instead of `config.ink`. So the lane's arithmetic is a
+pure module (`apps/display/src/ink.ts`) rather than something resolved inside a
+click handler, for the same reason `widget-options.ts` exists: there is no DOM
+in the display's test suite, so a rule that lives in a handler is a rule nothing
+can check. The place it nearly leaked is the ladder: writing one clears the
+switches it supersedes, and clearing the *wall's* copy of them from the ink lane
+would have been a panel's settings rewriting a kitchen wall.
+
+**`renderScreenFrame` stopped having a second opinion.** It used to AND
+`widgets.length > 0` with `screen.layoutMode === 'freeform'` — so the admin
+preview had to pass a screen it had edited to say `freeform`, and a *following*
+panel has no freeform of its own. Handing over widgets is now what asks for a
+canvas, and the caller (which is the only thing that knows about `follow`)
+decides. An empty list is still the built-in layout, which is what a reset panel
+relies on.
+
+**What a panel honours is a fact about the renderer, so it is derived from the
+renderer.** `epaper/honours.ts` holds three tables and `epaper-ink.test.ts`
+checks them by *rendering*: set a key, decode the frame, see whether the ink
+moved. `PANEL_HONOURS` must move ink for every key it names — a key that changes
+nothing is a control that does nothing, which is the `options.json` bug — and
+`PANEL_IGNORES` must move none, on any widget, or the sentence beside it in the
+editor is a lie. Both directions were confirmed by breaking the table each way
+and watching it go red. The set is closed against `widgetConfigBody` itself, so
+a key in neither table fails rather than falling quietly between them.
+
+**`INK_LANE` is a smaller list than that on purpose.** What the renderer
+honours is not what the editor should offer: the lane carries how much a widget
+*says* — the ladder, the count, the pickers, the clock's format — and never its
+title, its note, its picture, its module or its countdown date. A household
+looking at a wall and a panel has to be able to believe they are showing the
+same canvas. `showHours` and `showLow` are honoured and deliberately absent too:
+the ladder replaced both switches, so offering them again would be two controls
+for one decision. The schema's `ink` object is *picked* from the wall's own
+fields, which makes "one level deep" a fact about the shape rather than a
+promise — `ink` is not among the picked keys, so `ink.ink` is a rejected key and
+not a recursion anybody has to bound.
+
+**An un-annotated control is hidden on the ink lane, not shown.** The builders
+are one implementation for both lanes; `cfgField`/`switchRow`/`segControl` take
+an optional key and `pruneToLane` drops every child it was not told about. The
+default is what matters: a control added later by somebody who never read this
+disappears from the lane instead of appearing there and doing nothing.
+
+**The lane's preview is in the inspector, not behind the boxes.** The panel's
+*own* designer draws the real frame as the backdrop, which works because there
+the canvas is the panel's ratio; a wall's canvas is not, so the same trick would
+put every box somewhere it is not — the exact fault the Arrange fix was for.
+It sits beside the controls instead, which is the side-by-side this lane was
+always for. And because a widget row belongs to one orientation, the lane picks
+its panel by orientation and *says so* when the only follower draws the other
+canvas, rather than quietly disappearing or quietly writing overrides nothing
+reads.
+
+**Two panel bugs surfaced the moment a panel drew a wall's canvas, and only by
+looking at the frame.** `drawUpcomingBox` drew "Nothing coming up" at a fixed
+scale with no width bound at all, so in a narrow column it ran clean out of its
+box and lay across the month grid; `drawShift` drew "No shift today" at a fixed
+scale too, which in the same column read "No shift t" — not a smaller message
+but a broken one. Neither was reachable before, because a panel's boxes were
+always halves of the built-in layout. Both are sized to their box now, and
+`EPAPER_RENDERER_VERSION` is 2 because that is a pixel change.
+
 **Panels are modules, and weather is the first.** `src/modules/` holds a
 registry: a module owns a block key, a slice of the manifest, usually a job,
 and a corner of the settings. `collectPanels` catches per module, so a provider
@@ -1404,6 +1614,21 @@ scroll it *to*, so it sat behind the sheet exactly as before. The fix is a class
 that opens up 70vh of page below it, and the assertion is
 `canvas.bottom <= sheet.top && canvas.top >= appbar.bottom` at 390, 430 and 768.
 "The sheet opened" would have passed over both.
+
+**`text-overflow: ellipsis` does nothing on a flex container, and says nothing
+about it.** The widget inspector's segmented control was `white-space:nowrap`
+plus `overflow:hidden` plus `text-overflow:ellipsis` — which reads as a graceful
+degradation and had never been one: a segment is `display:inline-flex` with
+`justify-content:center`, so its label is an anonymous *flex item* and the
+ellipsis has no inline content to act on. "Follow the household" was 142px of
+label centred in a 111px segment and came out clipped at **both** ends as
+"ollow the househ". Reported from a real screen, and the measurement is the only
+way to see it: the declaration looks like the fix for exactly the bug it was
+failing to prevent. The labels wrap now, because they *are* the choices — "Follow
+the hou…" is a choice a household cannot make — and the same scope had quietly
+reintroduced the `overflow:hidden` the global rule avoids on purpose, which
+clips the focus ring. `test/admin-seg-labels.test.ts` pins the absence of all
+three, the way the mobile-nav test pins the absences its redesign created.
 
 **A control that opts out of the filled button must opt out of its states.**
 `button,.btn` is the filled variant — primary ground, on-primary label — and its

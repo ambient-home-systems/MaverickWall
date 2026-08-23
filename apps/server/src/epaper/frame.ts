@@ -27,8 +27,12 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * ETag preimage, so forgetting to bump it means every paired panel silently
  * keeps drawing the previous version until its manifest content happens to
  * change.
+ *
+ * 2: the ink lane, and the empty-state notes sized to their box rather than to
+ * their own sentence — which is a pixel change on any panel whose canvas has a
+ * narrow column.
  */
-export const EPAPER_RENDERER_VERSION = 1;
+export const EPAPER_RENDERER_VERSION = 2;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;
@@ -40,8 +44,6 @@ export interface FrameScreen {
   readonly panelHeight: number | null;
   readonly panelColour: string | null;
   readonly rotation: number;
-  /** `freeform` draws the household's canvas; anything else is the fixed layout. */
-  readonly layoutMode?: string | null;
 }
 
 export interface ScreenFrame {
@@ -75,6 +77,15 @@ export function epaperOrientation(screen: FrameScreen): 'portrait' | 'landscape'
  * them, keeping this function free of the database). They join the ETag preimage
  * so re-arranging the layout changes the frame — without that, an edit would not
  * reach the panel until its calendar happened to change.
+ *
+ * **Handing over widgets is what asks for a canvas**, and the caller is the only
+ * one who can answer: since direction B a panel may draw its own canvas, or a
+ * wall's, or the built-in layout, and only `panelCanvasOwner` knows which. This
+ * used to AND with `screen.layoutMode === 'freeform'` as well, which read as a
+ * second opinion and was one — a following panel has no `freeform` of its own,
+ * and the admin preview already had to lie about the column to draw a canvas at
+ * all. An empty list is still the built-in layout, which is what a reset panel
+ * and a saved-but-empty canvas both rely on (rule nine).
  */
 export function renderScreenFrame(
   manifest: Manifest,
@@ -86,7 +97,7 @@ export function renderScreenFrame(
   const rotation = screen.rotation ?? 0;
   const swap = rotation === 90 || rotation === 270;
   const visual = { width: swap ? panelHeight : panelWidth, height: swap ? panelWidth : panelHeight };
-  const freeform = screen.layoutMode === 'freeform' && widgets.length > 0;
+  const freeform = widgets.length > 0;
 
   // Draw in the orientation a viewer sees; the panel's native buffer is
   // whatever `panelWidth × panelHeight` says, reached by turning the raster.

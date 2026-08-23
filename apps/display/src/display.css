@@ -442,7 +442,17 @@ body {
 }
 .wx-ico { font-size: 2.1rem; line-height: 1.5; }
 .wx-temp { font-size: 1.7rem; font-weight: 600; }
-.wx-temp .lo { color: var(--muted); font-weight: 400; }
+/*
+ * The low is quieter than the high, whether it sits beside it or on its own.
+ *
+ * It rides in a `.lo` span while the two are paired, and gets the class itself
+ * when the household separated them on the ladder — without that it drew as
+ * loudly as the high, which is the field's emphasis changing because of where
+ * it was put. That is the one thing the ladder promises never happens.
+ */
+.wx-temp .lo,
+.wx-temp.lo { color: var(--muted); font-weight: 400; }
+.wx-temp.lo { font-size: 1.3rem; }
 /* Spans the strip, because it is about the forecast rather than about a day. */
 .wx-note {
   grid-column: 1 / -1;
@@ -1185,11 +1195,27 @@ body {
 
 /* The clock widget scales to its own box, not the canvas. */
 .fw-clock { justify-content: center; }
+/*
+ * The width term is per *character*, not a constant.
+ *
+ * It was `--buw * 26`, which is right for the five characters of "20:26" and
+ * wrong for the eight of "08:26 pm" — a 12-hour clock in a box sized for a
+ * 24-hour one wrapped onto two lines, which is how it was found: by looking at
+ * one. `--clock-chars` is set by the renderer from the string it is about to
+ * draw, so the box shrinks the type rather than the type breaking the line.
+ * 130 over five characters is the 26 this always was.
+ */
 .fw-clock .clock {
   font-family: var(--f-cond, var(--f-sans));
-  font-size: min(calc(var(--buw) * 26), calc(var(--buh) * 52));
+  font-size: min(
+    calc(var(--buw) * 130 / var(--clock-chars, 5)),
+    calc(var(--buh) * 52)
+  );
   line-height: 1;
   color: var(--ink);
+  /* A belt: if anything is still too wide it clips at the box edge rather than
+     wrapping, because a clock on two lines does not read as a clock. */
+  white-space: nowrap;
 }
 .fw-clock .today-date {
   font-family: var(--f-sans);
@@ -1199,6 +1225,39 @@ body {
 }
 
 .fw-shift { justify-content: center; }
+/*
+ * The one-line badge, for a box with room for a single row. It is the wall's
+ * version of the panel's compact line: the same parts, in the household's own
+ * order, on one line instead of a stack.
+ */
+.shift-badge.is-line .what {
+  font-size: calc(var(--u) * 3.6);
+  line-height: 1.25;
+  /*
+   * One line, and it *ends* rather than spilling.
+   *
+   * `nowrap` alone let the text run out past the badge's own tinted background
+   * and get chopped mid-word at the box edge — found by looking at one, not by
+   * measuring, because the box did not overflow: the badge did. The ellipsis is
+   * the wall's version of the truncation `fit()` already does on the panel, so
+   * a line too long for its box says so the same way on both.
+   */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+/*
+ * More than one person on a rota today: their badges stack, with a gap that
+ * reads as a gap at ten feet. Not a grid — the badges are different heights
+ * (an untimed shift has no hours row) and a grid would pad the short one to
+ * match the tall one, which reads as a missing line rather than a shorter card.
+ */
+.fw-shift.is-several {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 4);
+}
 
 /*
  * The reused sections (weather, house, shift, notes…) are laid out at the box

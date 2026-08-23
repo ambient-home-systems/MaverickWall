@@ -1316,6 +1316,36 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   letter-spacing:var(--md-sys-typescale-label-large-tracking);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/*
+ * The field ladder: what a widget says, in the order it matters.
+ *
+ * One list whether a row is on or off, so there is nowhere else to look and no
+ * add/remove mode to be in. "is-off" is a row not on the ladder; "is-cut" is a
+ * row the box is currently too small to draw, read back out of the real
+ * preview rather than predicted — the editor and the wall must not hold two
+ * opinions about what fits. (No backticks in here: this stylesheet lives in a
+ * template literal, and one would end it.)
+ */
+.le-ladder{display:flex;flex-direction:column;gap:2px;
+  border:1px solid var(--md-sys-color-outline-variant);
+  border-radius:var(--md-sys-shape-corner-small);padding:4px}
+.le-ladder-row{display:flex;align-items:center;gap:8px;padding:6px 8px;
+  border-radius:var(--md-sys-shape-corner-extra-small);min-height:40px}
+.le-ladder-row.is-off{opacity:.55}
+.le-ladder-row.is-off .le-ladder-eg{visibility:hidden}
+/* Dashed, not hidden: the row is still on the ladder and comes back the moment
+   the box grows. Struck through says "not drawn here" without saying "gone". */
+.le-ladder-row.is-cut{opacity:.6;
+  border:1px dashed var(--md-sys-color-outline);padding:5px 7px}
+.le-ladder-row.is-cut .le-ladder-name{text-decoration:line-through}
+.le-ladder-name{flex:0 0 auto;
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking)}
+.le-ladder-eg{flex:1;min-width:0;text-align:right;color:var(--faint);
+  font-size:var(--md-sys-typescale-body-small-size);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 /* Per-widget options — the body of the contextual inspector, which is itself
  * the card. On the e-paper design page there is no inspector column, so the
  * same panel is built into .le-inspect-card under the stage instead. */
@@ -1327,10 +1357,26 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   border-radius:var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0}
 .le-inspect-card .insp-empty{padding:16px 18px}
 /* A segmented control inside the inspector fills the column rather than
- * hugging its labels — the boxes are the target, and the column is narrow. */
+ * hugging its labels — the boxes are the target, and the column is narrow.
+ *
+ * Its labels *wrap*, and that is the fix for a real fault rather than a
+ * preference. This rule used to say nowrap plus overflow:hidden plus
+ * text-overflow:ellipsis, which reads like a graceful degradation and is not
+ * one: a segment is display:inline-flex with justify-content:center, so the
+ * label is an anonymous flex item and text-overflow has nothing to act on.
+ * The label was simply clipped at *both* ends, centred — "Follow the household"
+ * came out as "ollow the househ" in a 111px segment measuring 142px of text.
+ * An ellipsis would not have been much better: these labels are the choices
+ * themselves, and a choice you cannot read is a choice you cannot make.
+ *
+ * So: two lines when it needs them, every segment growing together because the
+ * row stretches, and overflow-wrap for a single long word that cannot break at
+ * a space. overflow:hidden is gone with it — the global rule above avoids it
+ * deliberately so a focus ring is not clipped, and this scope had quietly put
+ * it back. */
 .le-cfg-field .seg{display:flex;width:100%;max-width:100%}
-.le-cfg-field .seg button{padding:0 10px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
+.le-cfg-field .seg button{padding:0 8px;white-space:normal;overflow-wrap:anywhere;
+  height:auto;min-height:38px;line-height:1.15;text-align:center;overflow:visible}
 .le-config .switch{margin:.5rem 0}
 .le-cfg-field{display:block;margin:12px 0 0}
 .le-cfg-field>span{display:block;
@@ -1539,6 +1585,46 @@ pre.code{background:var(--md-sys-color-surface-container-high);
   color:var(--md-sys-color-on-surface)}
 .insp-close svg{width:20px;height:20px}
 .insp-body{padding:4px 18px 18px}
+/* The two lanes: the wall's settings, and what the widget says on ink.
+ *
+ * Above the tabs rather than beside them, because it does not choose a tab —
+ * it chooses which of the widget's two sets of settings the tabs are showing.
+ * A pill pair rather than an underline, so it cannot be mistaken for one.
+ *
+ * Both states are declared because the rule clears its background: see
+ * admin-button-states.test.ts, which derives that requirement from this
+ * stylesheet rather than from a list somebody remembers to update. */
+.insp-lanes[hidden]{display:none}
+.insp-lanes{display:flex;gap:6px;margin:8px 0 10px}
+.insp-lane{position:relative;margin:0;height:36px;padding:0 14px;background:none;border:0;
+  border-radius:18px;color:var(--md-sys-color-on-surface-variant);cursor:pointer;
+  font-family:var(--md-sys-typescale-label-large-font);
+  font-size:var(--md-sys-typescale-label-large-size);
+  font-weight:var(--md-sys-typescale-label-large-weight);
+  letter-spacing:var(--md-sys-typescale-label-large-tracking)}
+.insp-lane::after{content:none}
+.insp-lane:hover,.insp-lane:active{background:color-mix(in srgb,
+  var(--md-sys-color-on-surface-variant) var(--md-sys-state-hover-state-layer-opacity),transparent);
+  color:var(--md-sys-color-on-surface)}
+.insp-lane.is-on,.insp-lane.is-on:hover,.insp-lane.is-on:active{
+  background:var(--md-sys-color-secondary-container);
+  color:var(--md-sys-color-on-secondary-container)}
+/* A widget that says something different on ink says so on the chip, so the
+ * lane can be read without opening it. */
+.insp-lane.has-override::before{content:"";position:absolute;top:8px;right:7px;width:6px;
+  height:6px;border-radius:50%;background:var(--md-sys-color-primary)}
+.insp-ink-head{margin:0 0 8px}
+/* The real frame the panel would draw, from the server. A white plate on both
+ * schemes, on the same argument as the QR and the e-paper preview: a physically
+ * white medium drawn honestly. */
+.insp-ink-frame{display:block;width:100%;height:auto;margin:0 0 12px;background:#fff;
+  border:1px solid var(--md-sys-color-outline-variant);border-radius:8px;
+  image-rendering:pixelated}
+.insp-ink-note{margin:14px 0 4px}
+.insp-ink-list{margin:0 0 4px;padding-left:18px;
+  color:var(--md-sys-color-on-surface-variant);
+  font-size:var(--md-sys-typescale-body-small-size);line-height:1.45}
+.insp-ink-reset{margin-top:12px;width:100%}
 /* Content | Style, inside the inspector. Only drawn when both apply. */
 .insp-tabs[hidden]{display:none}
 .insp-tabs{display:flex;gap:0;border-bottom:1px solid var(--md-sys-color-outline-variant);

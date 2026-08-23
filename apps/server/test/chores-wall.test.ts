@@ -467,7 +467,8 @@ describe('the chore board on an e-paper panel', () => {
 
     const h2 = await harness();
     seed(h2);
-    h2.placeWidget('chores', { people: ['Sam'] });
+    // By person *id*, the same key and meaning the Shift widget's picker uses.
+    h2.placeWidget('chores', { people: ['p1'] });
     const one = ink(await frame(h2));
 
     // Two chores drawn against one: strictly less ink, and still some.

@@ -47,6 +47,14 @@ const HORIZON_DAYS = 7;
 export interface ChorePanelItem {
   readonly id: string;
   readonly name: string;
+  /**
+   * Whose chore it is, for the widget's "whose chores" filter.
+   *
+   * An id rather than the name it draws, because that is the key the Shift
+   * widget's identical picker already uses and one meaning per config key is
+   * the rule. It also survives a rename, which filtering by name does not.
+   */
+  readonly personId: string | null;
   /** Null when the chore belongs to the household rather than one person. */
   readonly person: string | null;
   /** That person's own colour — the one the wall already draws them in. */
@@ -92,6 +100,7 @@ export function buildChoreBoard(db: SqliteDatabase, today: CivilDate): ChorePane
       items.push({
         id: chore.id,
         name: chore.name,
+        personId: chore.personId,
         person: chore.personName,
         color: chore.personColor,
         dueTime: chore.dueTime,

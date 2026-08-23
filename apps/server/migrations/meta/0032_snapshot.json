@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ad50633a-0f09-4162-bc0c-75b9805543fa",
+  "id": "43006593-fa37-4b09-a0c5-8a08f76db7da",
   "prevId": "c62a7a85-6fe1-432f-af22-b3983571eed1",
   "tables": {
     "account": {
@@ -803,163 +803,6 @@
         "calendar_sources_person_id_people_id_fk": {
           "name": "calendar_sources_person_id_people_id_fk",
           "tableFrom": "calendar_sources",
-          "tableTo": "people",
-          "columnsFrom": [
-            "person_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "chore_completions": {
-      "name": "chore_completions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "chore_id": {
-          "name": "chore_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "date": {
-          "name": "date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "chore_completions_chore_date_idx": {
-          "name": "chore_completions_chore_date_idx",
-          "columns": [
-            "chore_id",
-            "date"
-          ],
-          "isUnique": true
-        },
-        "chore_completions_date_idx": {
-          "name": "chore_completions_date_idx",
-          "columns": [
-            "date"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "chore_completions_chore_id_chores_id_fk": {
-          "name": "chore_completions_chore_id_chores_id_fk",
-          "tableFrom": "chore_completions",
-          "tableTo": "chores",
-          "columnsFrom": [
-            "chore_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "chores": {
-      "name": "chores",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "person_id": {
-          "name": "person_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "schedule": {
-          "name": "schedule",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "due_time": {
-          "name": "due_time",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "chores_person_idx": {
-          "name": "chores_person_idx",
-          "columns": [
-            "person_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "chores_person_id_people_id_fk": {
-          "name": "chores_person_id_people_id_fk",
-          "tableFrom": "chores",
           "tableTo": "people",
           "columnsFrom": [
             "person_id"
@@ -2197,6 +2040,13 @@
         },
         "layout_mode": {
           "name": "layout_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "layout_follows": {
+          "name": "layout_follows",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

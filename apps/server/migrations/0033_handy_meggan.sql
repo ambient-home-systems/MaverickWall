@@ -1,1 +1,0 @@
-ALTER TABLE `screens` ADD `allow_chores` integer DEFAULT false NOT NULL;
