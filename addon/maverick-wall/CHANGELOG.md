@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.52.0
 
 **The settings look different.** They were built on Google's Material Design,
 and the trouble with it here was that it made a wall calendar's settings look
