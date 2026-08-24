@@ -17,6 +17,19 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      # RFC 009 Phase 0's five tests drive a real browser. `playwright-core`
+      # ships no binaries and nothing here downloads one — a `playwright
+      # install` is a hundred-odd megabytes and a minute of wall clock on a job
+      # that finishes in under two. The runner image already carries Chrome; if
+      # a future image stops doing so, this line says which browsers it looked
+      # for, and the harness's own message says what to set.
+      - name: Find the browser those tests drive
+        run: |
+          found="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          echo "browser: ${found:-none found (google-chrome, chromium, chromium-browser)}"
+          if [ -n "$found" ]; then echo "MW_BROWSER_EXECUTABLE=$found" >> "$GITHUB_ENV"; fi
+
       # Builds first, then tests. `vitest` only transpiles — it never resolves
       # a dependency's declarations, and packages/calendar passed 153 tests for
       # days over imports that `tsc` rejects outright.
