@@ -326,7 +326,7 @@ becomes readable; the wall is still 60% empty.
 1. **A widget with no data and no configuration yields its space.** Have
    `buildManifest` omit it rather than emit a placeholder. An unconfigured
    Weather widget should not be a sentence on a wall; it should be absent, and
-   the Displays screen is where a household finds out why. The placeholder stays
+   the Walls screen is where a household finds out why. The placeholder stays
    for a widget that *is* configured and has no data right now — "the feed is
    empty today" is information, "you never set this up" is not.
 2. **The Overview must not claim to be working.** `admin.ts:632` reports zero
@@ -334,14 +334,19 @@ becomes readable; the wall is still 60% empty.
    nothing ever will be. Read the location and say "On — needs your location",
    linked. This is a two-line change and it is the difference between a status
    line and a lie.
-3. **The wizard gains a fourth step, skippable: where and who.** A location for
-   weather, and the household's first person. Both are prerequisites for widgets
-   the default wall already contains, and today the product ships them armed and
-   silent. Skipping is fine — the wall then omits those widgets per (1) rather
-   than showing placeholders.
+3. **The wizard gains a fourth step, skippable: where and who — decided.** A
+   location for weather, and the household's first person. Both are
+   prerequisites for widgets the default wall already contains, and today the
+   product ships them armed and silent. Skipping is fine — the wall then omits
+   those widgets per (1) rather than showing placeholders. Four steps is more
+   than three, and the alternative considered was defaulting weather and alerts
+   to off until a location exists; that was rejected because it leaves a US
+   household to discover a screen nothing points them at, for the one feature
+   with a life-safety disclaimer attached to it.
 
-**Do not ship weather alerts armed with no zones.** Either ask for the location
-or default `alerts_enabled` to off until there is one. Five interrupt rules
+**Do not ship weather alerts armed with no zones.** The fourth step is how that
+is answered; a household who skips it gets no armed rules until a location
+exists. Five interrupt rules
 enabled against zero zones is a safety-adjacent feature reporting itself as
 working while inert, and that is worse than off.
 
@@ -437,23 +442,45 @@ registers Calendars, Chores, Weather and Home Assistant as `PanelModule`s) and i
 exactly why it fails: it is an engineering word used as a nav label, with a Store
 nested inside it that installs things also called modules.
 
-**Proposed vocabulary, three words:**
+**The vocabulary, three words — decided:**
 
-- A **Display** is the physical thing you hang up. Browser or e-paper, **one
-  list, one nav item**, with a kind chip on each row. Two top-level nav entries
-  for one object with two kinds is the split that started this.
-- A **Layout** is the arrangement a display draws.
+- A **Wall** is the physical thing you hang up. **One list, one nav item**, with
+  a kind chip on each row. Two top-level nav entries for one object with two
+  kinds is the split that started this.
+- A **Layout** is the arrangement a wall draws.
 - A **Widget** is a thing on a layout.
 
-Retire *wall*, *canvas*, *screen* and *block* from user-facing text entirely.
-Keep `screens` as the table name — nobody reads that, and renaming it is a
-migration for no benefit.
+Retire *display*, *canvas*, *screen* and *block* from user-facing text entirely.
+
+**Wall rather than Display, and the reason is the product's own name.** The
+first draft of this RFC proposed *Display*, because it matches the current nav
+item and every route. That is an argument about the code. *Wall* is the word the
+README, the docs and the product's own name already use with households, and the
+admin's group label is already `WALLS` — so the household-facing half of the
+split is the half that is already right, and it was the code's word that was
+losing.
+
+**The e-paper wrinkle, stated rather than glossed.** A tag stuck to a fridge is
+a stretch as a "wall", and that is the one real cost of this choice. The kind
+chip carries it: each row in the list says **Browser** or **E-paper**, and the
+e-paper pages can say "e-paper wall" where a sentence needs the distinction.
+This is better than the status quo, where the same object is a *Display* in one
+nav row and an *eInk Display* in the one below it, and no chip explains either.
+
+**Routes.** `/admin/walls` becomes canonical and `/admin/displays`,
+`/admin/display`, `/admin/screens` and `/admin/layout` all keep working as
+redirects, which they already do. Slightly more route churn than *Display* would
+have cost, and it is only aliases.
+
+**`screens` stays as the table name.** Nobody reads it, and renaming it is a
+migration with no user-visible benefit — the one thing this repository's own
+history says never to do casually.
 
 **And regroup the nav**, since it is the same sweep:
 
 ```
 CALENDAR     Overview · Calendars · People · Work Schedule · Chores
-DISPLAYS     Displays · Themes
+WALLS        Walls · Themes
 EXTRAS       Weather · Home Assistant · Store
 SYSTEM       System
 ```
@@ -464,8 +491,11 @@ move next to the thing they theme. "Extras" is honest about what those three are
 **Two smaller things belong in this sweep** because they are the same act:
 `/admin/screens/approve` is reachable from nothing (`admin.ts:1397`, with two
 docstrings describing a manual entry point nobody built) — give it a form on the
-Displays page. And "Over SSH instead: `add-screen "Kitchen"`" is a CLI
-instruction on a household settings page, for a shell the add-on does not have.
+Walls page. And "Over SSH instead: `add-screen "Kitchen"`" is a CLI instruction
+on a household settings page, for a shell the add-on does not have; the pairing
+form added in that same fix is the replacement. Keep `add-screen` working and
+add `add-wall` beside it — a tool name is not user-facing copy, but somebody
+reading the docs should not have to translate.
 
 **Risk:** touches many files, changes no behaviour. Keep every old route as a
 redirect — they all already are, and that is why this is safe.
@@ -675,6 +705,28 @@ along with a phase above.
   that was deliberately retired.
 - **Keep `screens` as the table name.** The vocabulary sweep is user-facing text
   and routes only.
+- **A settings page may carry script.** Decided rather than assumed: the
+  no-script fence covers the wizard and sign-in — the screens that must work
+  before anything else does, and the two `wizard-noscript.test.ts` already
+  guards — and nothing else. Everything past them may carry progressive
+  enhancement. This was never really a product-wide promise: the Home Assistant,
+  Themes and wall pages all ship script today (`admin-ha.ts:719`,
+  `admin-themes.ts:311`, `admin.ts:2166`). It unblocks the dirty-state work in
+  3.2 and the conditional fields in Phase 7, and both should still degrade to
+  today's behaviour with script off, because a household who blocks it is not a
+  household who should lose a form.
+- **The wall is a Wall.** Not a Display. The reasoning is in Phase 4; the short
+  version is that the product's own name and its documentation already agree
+  with households, and it was the code's word that was out of step.
+- **The first-run wizard gains a fourth step.** Skippable. See Phase 2.
+- **Phase 1.3 and Phase 2 apply to walls that are already hanging.** This
+  repository is careful about not re-typesetting a kitchen wall under somebody —
+  the pills, the ladder and the temperature pairing all carry that reasoning —
+  and the exception is deliberate. A wall rendering a 4.7px agenda, or a
+  permanent "Nothing to show yet." where a widget will never have anything to
+  say, is not an arrangement somebody chose; it is a defect that happens to be
+  on their wall too. Both ship everywhere, and the release notes say so in the
+  household's terms: what will look different, and why.
 
 ## Non-goals
 
@@ -691,18 +743,9 @@ along with a phase above.
 
 ## Open questions
 
-- **May a settings page carry script?** Phase 3.2 (dirty state) and Phase 7
-  (conditional fields) both want ~30 lines of it. The wizard and sign-in must
-  stay script-free and are already fenced by a test. Extending that fence to
-  *every* admin page is a stronger promise than the product has ever actually
-  made — the Home Assistant, Themes and Display pages all ship script
-  today (`admin-ha.ts:719`, `admin-themes.ts:311`, `admin.ts:2166`). Leaning toward: the fence covers the wizard and sign-in
-  explicitly, everything else may carry progressive enhancement that degrades to
-  the current behaviour with script off. Needs a decision before Phase 3 starts.
-- **Does the first-run wizard ask for a location, or does weather default to
-  off?** Asking makes the wizard four steps for a feature not every household
-  wants. Defaulting to off means a US household has to find the screen. Leaning
-  toward asking, skippable, because the wall already contains the widget.
+These are the ones left. Nothing here blocks a phase; each can be settled by
+whoever implements the phase it belongs to.
+
 - **Is "Extras" the right group name?** It is honest and slightly dismissive of
   work that is not slight. "Add-ons" collides with Home Assistant's own word.
   "More" says nothing.
