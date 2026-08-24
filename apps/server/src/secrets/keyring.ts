@@ -140,13 +140,27 @@ export function loadOrCreateMasterKey(dataDir: string, now: () => number = Date.
      * throw here is an endless restart loop and a wall with no message
      * anywhere a household can read. The old file is kept, renamed aside,
      * in case its bytes are ever wanted; a fresh key falls through below.
+     *
+     * The rename itself is allowed to fail — a read-only file in an
+     * otherwise writable directory, say — without taking boot down with it.
+     * A fresh key still gets written below, onto the same path, by the
+     * write-then-rename that already has to handle a losing race; that
+     * replaces the corrupted file in place rather than moving it aside.
      */
     const brokenPath = `${path}.unusable.${now()}`;
-    renameSync(path, brokenPath);
+    let movedAside = true;
+    try {
+      renameSync(path, brokenPath);
+    } catch {
+      movedAside = false;
+    }
     unusableKeyWarning =
       `The encryption key at ${path} was ${existing.length} bytes; expected ` +
-      `${MASTER_KEY_BYTES}. It has been moved to ${brokenPath} and a new key ` +
-      'was generated. Calendar feed addresses will need re-entering.';
+      `${MASTER_KEY_BYTES}. ` +
+      (movedAside
+        ? `It has been moved to ${brokenPath} and a new key was generated. `
+        : `It could not be moved aside, so a new key was written over it. `) +
+      'Calendar feed addresses will need re-entering.';
   } catch (error) {
     if (!isNotFound(error)) throw error;
   }
@@ -162,8 +176,15 @@ export function loadOrCreateMasterKey(dataDir: string, now: () => number = Date.
     renameSync(temporary, path);
   } catch (error) {
     if (isExists(error)) {
-      // Another process won the race. Read what it wrote.
-      return { key: readFileSync(path), created: false };
+      // Another process won the race. Read what it wrote — but if this
+      // process just discovered and moved aside a corrupted key, that is
+      // still true and still worth the household reading, whoever wrote the
+      // replacement.
+      return {
+        key: readFileSync(path),
+        created: false,
+        ...(unusableKeyWarning === undefined ? {} : { unusableKeyWarning }),
+      };
     }
     throw error;
   }

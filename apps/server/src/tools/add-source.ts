@@ -52,7 +52,14 @@ if (migration.status === 'failed') {
 // going to behave the way you expect either.
 console.log(`Using ${resolved}`);
 
-const keyring = createKeyring(loadOrCreateMasterKey(dataDir).key);
+const master = loadOrCreateMasterKey(dataDir);
+if (master.unusableKeyWarning) {
+  // A silent regeneration here is worse than the crash this used to be: the
+  // operator would add a source under a brand-new key with no idea every
+  // source already stored is now permanently undecryptable.
+  console.error(`Warning: ${master.unusableKeyWarning}`);
+}
+const keyring = createKeyring(master.key);
 
 const added = addCalendarSource(db, keyring, {
   name,
