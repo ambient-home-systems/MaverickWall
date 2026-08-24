@@ -179,10 +179,10 @@ export function readRuleRows(db: SqliteDatabase): RuleRow[] {
 /**
  * Has the household told us where this wall is? (RFC 009 Phase 2.)
  *
- * The alert zones are derived from the location and nothing else, so with no
- * location there are no zones, no poll and no signal a weather rule could ever
- * match. Exported so the Weather screen and the Overview read the same fact
- * they are reporting on.
+ * Reported rather than armed on: this is what the Weather screen and the
+ * Overview say is missing, and it is the commonest reason a wall watches
+ * nowhere. What actually decides whether a weather rule can fire is
+ * `watchesAlertZones` below.
  */
 export function hasWeatherLocation(db: SqliteDatabase): boolean {
   const row = db
@@ -192,20 +192,38 @@ export function hasWeatherLocation(db: SqliteDatabase): boolean {
 }
 
 /**
+ * Is there anywhere for a weather rule to watch? (RFC 009 Phase 2.)
+ *
+ * The zones, not the location — because they are not the same question and the
+ * difference is a whole country. A location outside National Weather Service
+ * coverage resolves to no zones at all: the job says so once and gives up, and
+ * a household in France who filled in their coordinates would otherwise have
+ * four rules armed against nothing, which is the exact state this gate exists
+ * to end. A location is only the commonest reason there are no zones.
+ */
+export function watchesAlertZones(db: SqliteDatabase): boolean {
+  const row = db
+    .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
+    .get() as { n: number } | undefined;
+  return (row?.n ?? 0) > 0;
+}
+
+/**
  * The rules the evaluator sees: parseable, whatever their enabled state.
  *
  * With one gate on top of the stored flag. **A weather rule is armed only when
- * a location exists** (RFC 009 Phase 2): a fresh install ships the National
- * Weather Service ladder switched on, and until somebody says where the wall
- * is, that is five rules reporting themselves as working against zero zones —
- * a safety-adjacent feature that is inert and does not say so, which is worse
- * than off. It is derived rather than stored deliberately: nothing rewrites the
- * household's own on/off choices behind their back, and setting a location
- * hands them back exactly the ladder they had.
+ * there is a zone being watched** (RFC 009 Phase 2): a fresh install ships the
+ * National Weather Service ladder switched on, and until somebody says where
+ * the wall is — or if they say somewhere the service does not cover — that is
+ * five rules reporting themselves as working against nothing, a safety-adjacent
+ * feature that is inert and does not say so, which is worse than off. It is
+ * derived rather than stored deliberately: nothing rewrites the household's own
+ * on/off choices behind their back, and the first successful zone lookup hands
+ * them back exactly the ladder they had.
  */
 export function readRules(db: SqliteDatabase): InterruptRule[] {
   const rules: InterruptRule[] = [];
-  const located = hasWeatherLocation(db);
+  const watching = watchesAlertZones(db);
 
   for (const row of readRuleRows(db)) {
     const source = readSource(row.trigger);
@@ -224,7 +242,7 @@ export function readRules(db: SqliteDatabase): InterruptRule[] {
       name: row.name,
       // `nws` and not "a shipped default": a rule the household wrote against
       // the same source has exactly the same nothing to watch.
-      enabled: row.enabled === 1 && (source !== 'nws' || located),
+      enabled: row.enabled === 1 && (source !== 'nws' || watching),
       match: parsed.match,
       action,
       piercesNightMode: row.piercesNightMode === 1,

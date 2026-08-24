@@ -826,9 +826,16 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       title: 'Set up Maverick Wall',
       step: 'Step 4 of 4',
       heading: 'Your location, and who lives here',
+      /*
+       * The forecast and the person are not the same promise, and saying they
+       * are would be a wizard that lies about its own next screen. Two numbers
+       * genuinely turn the forecast strip on. A name does not turn the rota
+       * badge on — that waits on a rotation, which is a job for the Shifts
+       * screen and too much to ask on the last step of a first run.
+       */
       intro:
-        'The wall already has a forecast and a rota on it. Neither has anything ' +
-        'to show until it knows this. You can skip both and fill them in later.',
+        'Two numbers put a forecast on the wall. A name is who the wall is for ' +
+        '— their colour marks their events. Both can be skipped and added later.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="setup/place">` +
@@ -851,15 +858,15 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         `<p class="hint">Press and hold your house in a phone map app and both ` +
         `numbers are there. They are used for the forecast strip and, in the ` +
         `United States, to work out which National Weather Service zones to ` +
-        `watch — until then no alert rule is armed.</p>` +
+        `watch. No alert rule is armed until there is a zone being watched.</p>` +
         textField({
           label: 'Who lives here?',
           name: 'person',
           placeholder: 'Sam',
           value: values.person ?? '',
           hint:
-            'Their colour marks their events on the wall. Add the rest, and ' +
-            'their shift rotation, on the People and Shifts screens.',
+            'Add anyone else on the People screen. A shift rotation is set up ' +
+            'separately, on Shifts — a name on its own does not start one.',
         }) +
         `<button type="submit">Save and finish</button></form>` +
         `<form method="get" action="setup/done">` +

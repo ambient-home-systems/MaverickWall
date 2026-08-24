@@ -1228,6 +1228,15 @@ function boot(): void {
     canvas.style.height = `${Math.round(h)}px`;
   }
 
+  /**
+   * What this editor is arranging, in the household's word for it.
+   *
+   * The same editor draws a wall's canvas and an e-paper panel's, and the two
+   * are different objects on two different pages. One noun for both would be
+   * wrong on one of them every time.
+   */
+  const surfaceWord = (): string => (epaperHost ? 'panel' : 'wall');
+
   /** Rebuild the overlay boxes from state. Cheap — a box is a div and a label. */
   function drawOverlay(): void {
     overlay.textContent = '';
@@ -1278,9 +1287,15 @@ function boot(): void {
       box.classList.add('is-not-drawn');
       const flag = document.createElement('span');
       flag.className = 'le-widget-flag';
-      flag.textContent = 'Not on the wall';
+      // The noun follows the host. This editor draws a panel's canvas as well
+      // as a wall's, and "not on the wall" beside a 1-bit frame is the wrong
+      // object — the same page carries the word "panel" everywhere else.
+      flag.textContent = `Not on the ${surfaceWord()}`;
       box.appendChild(flag);
-      box.setAttribute('aria-label', `${labelFor(widget.type)} widget — not on the wall. ${why}`);
+      box.setAttribute(
+        'aria-label',
+        `${labelFor(widget.type)} widget — not on the ${surfaceWord()}. ${why}`,
+      );
     }
 
     const handle = document.createElement('span');
@@ -1780,7 +1795,7 @@ function boot(): void {
     if (why !== undefined) {
       const note = document.createElement('p');
       note.className = 'le-not-drawn';
-      note.textContent = `Not on the wall yet. ${why}`;
+      note.textContent = `Not on the ${surfaceWord()} yet. ${why}`;
       configPanel.appendChild(note);
     }
 

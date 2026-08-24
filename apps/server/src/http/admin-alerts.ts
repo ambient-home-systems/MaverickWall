@@ -1,7 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { escapeHtml, errorBlock, page, selectField, switchRow, textField } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
-import { hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
+import { hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled, watchesAlertZones } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
@@ -339,7 +339,20 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
         `<h2 class="add">Zones being watched</h2>` +
         (zones.length === 0
-          ? `<p>${enabled && located ? 'Working them out on the next check.' : 'None yet.'}</p>`
+          ? `<p>` +
+            (enabled && located
+              ? /*
+                 * Not "working them out on the next check", which was said for
+                 * every zero-zone case and is only true of one of them. A
+                 * location outside the service resolves to nothing at all, and
+                 * from here the two are indistinguishable — so both are named
+                 * rather than the hopeful one asserted (RFC 009 Phase 2).
+                 */
+                'None yet — either the first check has not run, or this location ' +
+                'is outside National Weather Service coverage. Until there is one, ' +
+                'no alert rule below is armed.'
+              : 'None yet.') +
+            `</p>`
           : zones
               .map(
                 (zone) =>
@@ -371,7 +384,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         `than any one row: the loudest thing the wall can do is reserved for the ` +
         `rarest. Moderate alerts are weekly in some counties, and a takeover for one ` +
         `would be meaningless within a month.</p>` +
-        rules(located) +
+        rules(watchesAlertZones(deps.db)) +
         `<p class="hint">Turning one off means the wall says nothing at that level.</p>`,
     });
   }
@@ -379,13 +392,13 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   /**
    * The ladder, and whether each rung is actually armed.
    *
-   * `located` is not decoration: with no latitude and longitude there are no
-   * zones and no signal any of these could match, so `readRules` refuses to arm
-   * them (RFC 009 Phase 2). A card that said "on" here while the evaluator
-   * treated it as off would be the screen disagreeing with the wall, which is
-   * exactly the fault this phase is about — so the card says the same thing.
+   * `watching` is not decoration: with no zone being watched there is no signal
+   * any of these could match, so `readRules` refuses to arm them (RFC 009 Phase
+   * 2). A card that said "on" here while the evaluator treated it as off would
+   * be the screen disagreeing with the wall, which is exactly the fault this
+   * phase is about — so the card reads the same fact the evaluator does.
    */
-  function rules(located: boolean): string {
+  function rules(watching: boolean): string {
     return readRuleRows(deps.db)
       .filter((row) => row.trigger === 'nws')
       .map((row) => {
@@ -393,7 +406,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         const severity = parsed?.match.minSeverity ?? 'Any';
         const urgency = parsed?.match.minUrgency;
         const state =
-          row.enabled !== 1 ? ' (off)' : located ? '' : ' (not armed — no location yet)';
+          row.enabled !== 1 ? ' (off)' : watching ? '' : ' (not armed — no zones yet)';
         return (
           `<article class="card">` +
           `<h2>${escapeHtml(row.name)}${state}</h2>` +

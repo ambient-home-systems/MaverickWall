@@ -40,6 +40,7 @@ import {
   type PersonRecord,
 } from '../api/queries.js';
 import { hasWeatherLocation } from '../api/rules.js';
+import { readWeatherSettings } from '../api/queries.js';
 import { randomBytes } from 'node:crypto';
 import {
   formatShortCode,
@@ -619,11 +620,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * What the overview says about weather alerts.
    *
    * "On, working out your zones" was printed for zero zones whatever the
-   * reason, and with no location nothing is being worked out and nothing ever
-   * will be — a status line that is a lie, on the one feature with a
-   * life-safety disclaimer attached to it (RFC 009 Phase 2). The two cases are
-   * separated now: no location is a thing to go and do, and the pill is a link
-   * to the screen where it is done.
+   * reason, and it is only true of one of them: for the minute after a US
+   * household saves a location. With no location nothing is being worked out,
+   * and outside National Weather Service coverage nothing ever will be — a
+   * status line that is a lie, on the one feature with a life-safety disclaimer
+   * attached to it (RFC 009 Phase 2).
+   *
+   * Three states now, and none of them promises progress that may not come.
+   * "No zones yet" is deliberately not "working them out": from here the two
+   * causes — the first check has not run, and this place is outside the
+   * service — are genuinely indistinguishable, and the Weather screen is where
+   * both are named. The pill links there.
    */
   const alertSummary = (): string => {
     const row = deps.db
@@ -634,7 +641,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const zones = deps.db
       .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
       .get() as { n: number } | undefined;
-    return (zones?.n ?? 0) === 0 ? 'on, working out your zones' : `watching ${zones?.n} zones`;
+    return (zones?.n ?? 0) === 0 ? 'on — no zones yet' : `watching ${zones?.n} zones`;
   };
 
   const haSummary = (): string => {
@@ -652,11 +659,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const tagFor = (summary: string): string => {
     const low = summary.toLowerCase();
     const cls =
-      // "needs" joins the bad set rather than the neutral one: something is
-      // switched on and not working, which is the same shape as "not
-      // connected" and not the same shape as "off".
+      // "needs" and "no zones" join the bad set rather than the neutral one:
+      // something is switched on and not working, which is the same shape as
+      // "not connected" and not the same shape as "off".
       low.includes('not connected') || low.includes('problem') || low.includes('error') ||
-      low.includes('needs')
+      low.includes('needs') || low.includes('no zones')
         ? 'tag-bad'
         : low === 'off' || low.startsWith('on,')
           ? 'tag'
@@ -3532,21 +3539,39 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * claim one thing while the wall does another; the copy lives here with the
    * rest of the admin's writing rather than in the display bundle.
    */
-  const WHY_NOT_DRAWN: Readonly<Record<string, string>> = {
-    weather: 'Set a latitude and longitude on Weather and this appears.',
-    homeassistant: 'Choose some entities on Home Assistant and this appears.',
-    chores: 'Add a chore on Chores and this appears.',
-    shift: 'Set up a rotation on Shifts and this appears.',
-  };
+  function whyNotDrawn(type: string): string {
+    switch (type) {
+      case 'weather': {
+        /*
+         * Two reasons, and telling a household to set coordinates they already
+         * typed is worse than saying nothing. `weatherModule.ready` is the
+         * switch *and* the location, so the sentence has to read the same pair.
+         */
+        const weather = readWeatherSettings(deps.db);
+        if (!weather.enabled) return 'Turn “Show the forecast” on under Weather and this appears.';
+        return 'Set a latitude and longitude on Weather and this appears.';
+      }
+      case 'homeassistant':
+        return 'Choose some entities on Home Assistant and this appears.';
+      case 'chores':
+        // `ready` wants an *active* chore, so a household who paused all of
+        // theirs over the holidays needs the other half of this sentence.
+        return 'Add a chore on Chores — or un-pause one — and this appears.';
+      case 'shift':
+        // A rotation, not a person: `shift_enabled` is set by creating a plan
+        // on Shifts and by nothing else, so naming People here would send
+        // somebody to a screen that cannot fix it.
+        return 'Set up a rotation on Shifts and this appears.';
+      default:
+        return 'Nothing is set up for this yet, so it is left out.';
+    }
+  }
 
   function widgetsNotDrawn(): { type: string; why: string }[] {
     const setUp = householdSetUp(deps.db);
     return (WIDGET_TYPES as readonly string[])
       .filter((type) => !widgetIsSetUp(type, setUp))
-      .map((type) => ({
-        type,
-        why: WHY_NOT_DRAWN[type] ?? 'Nothing is set up for this yet, so the wall leaves it out.',
-      }));
+      .map((type) => ({ type, why: whyNotDrawn(type) }));
   }
 
   /**

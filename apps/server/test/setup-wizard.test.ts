@@ -596,17 +596,57 @@ describe('step 4 — where and who', () => {
     expect(stored).toEqual({ n: 4 });
   });
 
-  it('arms the shipped weather ladder the moment a location exists', async () => {
+  it('arms the shipped weather ladder once a zone is being watched', async () => {
     const h = harness();
     await completeThroughTimezone(h);
     seedDefaultRules(h.db);
 
     await h.form('/setup/place', { latitude: '38.8894', longitude: '-97.7431' });
 
+    /*
+     * A location on its own is not enough, and that is the point: the zones are
+     * what a rule matches against, and the job resolves them on its next run.
+     * Nothing is armed in between — which is correct, because nothing could
+     * fire in between either.
+     */
+    expect(readRules(h.db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
+
+    // The job's own answer, written the way `replaceZones` writes it.
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO alert_zones (id, code, label, provider, enabled, kind, created_at, updated_at)
+         VALUES ('zone-KSZ091', 'KSZ091', 'KSZ091', 'nws', 1, 'forecast', ?, ?)`,
+      )
+      .run(at, at);
+
     const armed = readRules(h.db).filter((rule) => rule.source === 'nws' && rule.enabled);
     expect(armed.map((rule) => rule.id).sort()).toEqual(
       DEFAULT_ALERT_RULES.filter((rule) => rule.enabled).map((rule) => rule.id).sort(),
     );
+  });
+
+  it('leaves a household outside the service unarmed, location and all', async () => {
+    /*
+     * The other half, and the one a location gate would have missed entirely.
+     * `/points` answers nothing for a place outside National Weather Service
+     * coverage — the job says so once and gives up — so a household in France
+     * who filled this step in perfectly still has nowhere to watch. Four rules
+     * armed against that is the same lie as four armed against no location.
+     */
+    const h = harness();
+    await completeThroughTimezone(h);
+    seedDefaultRules(h.db);
+
+    const saved = await h.form('/setup/place', { latitude: '48.8566', longitude: '2.3522' });
+    expect(saved.status).toBe(302);
+    expect(
+      h.db
+        .prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`)
+        .get(),
+    ).toEqual({ latitude: 48.8566 });
+
+    expect(readRules(h.db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
   });
 
   it('cannot be driven by somebody who is not signed in', async () => {

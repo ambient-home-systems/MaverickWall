@@ -33,19 +33,29 @@ expires — restart the container if you missed it.
 3. **A calendar.** Optional, and skippable — a feed can fail for reasons you do
    not control, and a wizard you cannot finish because Google is having a bad
    morning would leave a wall blank on the evening you installed it.
-4. **Where it is, and who it is for.** Also optional. A latitude and longitude
-   for the forecast strip — and, in the United States, for working out which
-   National Weather Service zones to watch — and the name of one person, whose
-   colour marks their events.
+4. **Your location, and who lives here.** Also optional. A latitude and
+   longitude for the forecast strip — and, in the United States, for working
+   out which National Weather Service zones to watch — and the name of one
+   person, whose colour marks their events.
 
 Setup is complete after the timezone.
 
-Skipping the fourth step costs nothing and hides nothing. The wall simply
-leaves out the widgets it has nothing to put in, rather than drawing a box that
-says "Nothing to show yet." for ever, and **no weather alert rule is armed
-until a location exists** — there are no zones to watch without one, so a rule
-that reported itself as on would be reporting something that could not happen.
-Fill either in later on **Weather** and **People**, and both come back.
+Skipping the fourth step costs nothing and hides nothing. The wall leaves out
+the widgets it has nothing to put in, rather than drawing a box that says
+"Nothing to show yet." for ever. Add a location on **Weather** and the forecast
+strip appears where it always was; **Walls → Layout** marks any widget the wall
+is leaving out and names the screen that fixes it.
+
+The rota badge is the one that needs more than a name. It appears once a
+rotation exists on **Shifts**, which adding a person does not create — so the
+wizard's person is who the wall is *for*, and the rota is a separate job
+whenever you want one.
+
+**No weather alert rule is armed until a zone is being watched.** The zones are
+worked out from the location, so there are none without one — and none at all
+outside National Weather Service coverage, wherever the coordinates point. A
+rule that reported itself as on in either case would be reporting something
+that could not happen. **Weather** shows the zones as soon as there are any.
 
 ## Adding a calendar
 

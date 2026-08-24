@@ -74,12 +74,17 @@ calendar step, first run now asks for a latitude and longitude and for the name
 of one person. A phone map app gives you both numbers if you press and hold on
 your house. Skip it and nothing is worse off than before.
 
-**Weather alerts are no longer described as working when they cannot be.** They
-are worked out from your location, so with no location there is nothing to
-watch — and until now the overview said "on, working out your zones" anyway,
-which was never going to finish. It says **"On — needs your location"** now,
-and links to where you set it. Until it is set, no alert rule is armed. Setting
-a location arms exactly the ladder that was always there; none of your own
+**Weather alerts are no longer described as working when they cannot be.** The
+zones they watch are worked out from your location, and until now the overview
+said "on, working out your zones" whether that was going to finish or not — for
+a house with no location set, and for anywhere outside the United States, where
+there are no National Weather Service zones to find at all.
+
+It now says **"On — needs your location"**, or **"On — no zones yet"**, and
+links to where you set one. **No alert rule is armed until a zone is actually
+being watched**, and the Weather screen says which state you are in rather than
+promising a check that will never come back with anything. When a zone does
+arrive you get exactly the ladder that was always there — none of your own
 on/off choices are touched.
 
 ## 0.53.0
