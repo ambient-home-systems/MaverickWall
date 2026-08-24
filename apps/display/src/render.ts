@@ -1484,7 +1484,21 @@ function dayGroups(scale: HTMLElement): readonly HTMLElement[] {
     scale.querySelector('.ch-week') ?? scale.querySelector('section.next');
   if (stack === null) return [];
   const selector = stack.classList.contains('ch-week') ? '.ch-day' : '.day-row';
-  return [...stack.querySelectorAll(selector)] as HTMLElement[];
+  /*
+   * Only the days actually drawn.
+   *
+   * `display.css` hides `.day-row:nth-child(n + 6)` on a short landscape
+   * screen, so on a 1024x600 tablet the last rows of an agenda are in the DOM
+   * with a zero rect. Left in this list they are worse than useless: the trim
+   * walks up from the bottom and stops at the first day that fits, and a
+   * zero-height row "fits" trivially — so the whole pass stopped on its first
+   * iteration and nothing was ever trimmed, on exactly the screens that needed
+   * it most. Filtering here also restores what the loop assumes, that each day
+   * ends below the one before it.
+   */
+  return ([...stack.querySelectorAll(selector)] as HTMLElement[]).filter(
+    (group) => group.getBoundingClientRect().height > 0,
+  );
 }
 
 /**
@@ -1531,7 +1545,21 @@ function fitAndTrimToDays(box: HTMLElement, scale: HTMLElement, min: number): vo
   for (let index = groups.length - 1; index >= 1; index--) {
     const group = groups[index] as HTMLElement;
     if (group.getBoundingClientRect().bottom <= limit + 1) break;
-    group.remove();
+    /*
+     * Hidden, not removed, which `trimSwissCells` also does and which is
+     * load-bearing here for a reason nothing in this function can see.
+     * `display.css` hides `.day-row:nth-child(n + 6)` on a short landscape
+     * screen — a *positional* rule — so taking a row out of the document
+     * renumbers the rest and hands the hidden ones back. Measured on a
+     * 1024x600 tablet: removing the two days that did not fit promoted the two
+     * the stylesheet had hidden, which then did not fit either, and the trim
+     * had undone itself while looking like it had worked.
+     *
+     * The cost is the closing hairline: `.day-row:last-child` matches a hidden
+     * row, so the last day drawn has no rule under it. A missing 1px line is
+     * the better half of that trade.
+     */
+    group.style.display = 'none';
     trimmed = true;
   }
 
@@ -1582,8 +1610,14 @@ export function renderFreeform(
   const weekBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
 
   // Agenda sections, to be re-checked for whether they kept room for a time
-  // column. Includes the ones the week fallback below produces.
-  const agendas: HTMLElement[] = [];
+  // column. Includes the ones the week fallback below produces. Each carries
+  // the box and the scaled node it lives in, because that check can change the
+  // layout and the fit then has to be taken again.
+  const agendas: {
+    readonly section: HTMLElement;
+    readonly box: HTMLElement;
+    readonly scale: HTMLElement;
+  }[] = [];
 
   // Widgets with a field ladder, to be re-checked once they have a real size.
   // The ladder's bottom rungs are given up one at a time when the box cannot
@@ -1655,7 +1689,9 @@ export function renderFreeform(
       scale.appendChild(contentWithTitle(body, widget.config));
       box.appendChild(scale);
       toFit.push({ box, scale, min: minScaleFor(widget.type) });
-      if (widget.type === 'calendar' && body.classList.contains('next')) agendas.push(body);
+      if (widget.type === 'calendar' && body.classList.contains('next')) {
+        agendas.push({ section: body, box, scale });
+      }
       if (widget.type === 'shift' || widget.type === 'weather') {
         ladderBoxes.push({ box, widget });
       }
@@ -1779,14 +1815,27 @@ export function renderFreeform(
     // Trimmed to whole days like any other agenda: this one is here *because*
     // its box is narrow, which is exactly where the days do not all fit.
     fitAndTrimToDays(box, scale, minScaleFor('calendar'));
-    agendas.push(agenda);
+    agendas.push({ section: agenda, box, scale });
   }
 
   // Finally: any agenda with no room for a time column stacks it above the
   // title. Last, so the sections the fallback just produced are included and
   // are measured at the width they actually ended up.
-  for (const agenda of agendas) {
-    if (!agendaTimeFitsBeside(agenda.clientWidth, rem)) agenda.classList.add('narrow');
+  for (const { section, box, scale } of agendas) {
+    if (agendaTimeFitsBeside(section.clientWidth, rem)) continue;
+    section.classList.add('narrow');
+    /*
+     * And then fit again, because this is a layout change and not a restyling:
+     * the time moves from beside the title to above it, so every event row
+     * gains a line. The fit this section was given — and the days that were
+     * trimmed to it — were measured against an arrangement that no longer
+     * exists, which at the calendar's floor means a day sliced through rather
+     * than a section that shrinks a little further.
+     *
+     * One pass, like the week fallback that feeds it: `agendaTimeFitsBeside`
+     * is asked once, of the layout the household's box actually produced.
+     */
+    fitAndTrimToDays(box, scale, minScaleFor('calendar'));
   }
 }
 

@@ -877,10 +877,17 @@ export async function measureDayStacks(page: Page): Promise<readonly DayStack[]>
           box.tagName.toLowerCase() +
           `.${String(box.className).trim().split(/\s+/).join('.')}`,
         contentBottom: frame.bottom - parseFloat(getComputedStyle(box).paddingBottom || '0'),
-        days: [...rows].map((row) => {
-          const rect = row.getBoundingClientRect();
-          return { top: rect.top, bottom: rect.bottom };
-        }),
+        /*
+         * The days actually drawn, which is what `dayGroups` trims and what a
+         * household can see. `display.css` hides `.day-row:nth-child(n + 6)`
+         * on a short landscape screen; those rows are in the DOM with a zero
+         * rect, and counting them would report a stack of days at the top-left
+         * corner of the viewport that nobody is looking at.
+         */
+        days: [...rows]
+          .map((row) => row.getBoundingClientRect())
+          .filter((rect) => rect.height > 0)
+          .map((rect) => ({ top: rect.top, bottom: rect.bottom })),
       });
     }
     return stacks;
