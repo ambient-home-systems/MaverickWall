@@ -8,7 +8,12 @@ import type {
   TodayShiftModel,
 } from './viewmodel.js';
 import { localDate, localTime } from './viewmodel.js';
-import { agendaTimeFitsBeside, MIN_CHORE_SCALE, weekColumnsFit } from './density.js';
+import {
+  agendaTimeFitsBeside,
+  MIN_CALENDAR_SCALE,
+  MIN_CHORE_SCALE,
+  weekColumnsFit,
+} from './density.js';
 import type { PanelData } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
@@ -1460,6 +1465,79 @@ export function trimSwissCells(root: HTMLElement): void {
   }
 }
 
+/**
+ * The day-sized groups a section can be cut on, or nothing if it has none.
+ *
+ * Two sections are a stack of days: a chore week (`.ch-day` under `.ch-week`)
+ * and an agenda (`.day-row` under `.next`). They are listed here together
+ * rather than trimmed in two places because the rule is one rule — a section
+ * too tall for its box gives up whole days from the bottom — and the two
+ * renderers of a chore board are already the project's example of what happens
+ * when one decision lives in two spots.
+ *
+ * Anything else answers with an empty list and is left to clip at the floor,
+ * which is the right answer for a section with no boundary to cut on: a
+ * weather strip or a shift badge is one thing, not a list of things.
+ */
+function dayGroups(scale: HTMLElement): readonly HTMLElement[] {
+  const stack =
+    scale.querySelector('.ch-week') ?? scale.querySelector('section.next');
+  if (stack === null) return [];
+  const selector = stack.classList.contains('ch-week') ? '.ch-day' : '.day-row';
+  return [...stack.querySelectorAll(selector)] as HTMLElement[];
+}
+
+/**
+ * Fit a reused section to its box, then cut it to whole days and fit again.
+ *
+ * Cut on a day, never through one. A section holds a legible floor and clips
+ * below it, which is right — but `overflow: hidden` cuts wherever the pixel
+ * falls, and a row sliced across the middle reads as a broken renderer rather
+ * than as a list that ran out of room. Same fault as the month grid losing its
+ * last week, and visible only by measuring.
+ *
+ * Then fit again, because what is left is smaller than what was measured. The
+ * first fit scaled every day down to the floor and clipped; with the days that
+ * did not fit now gone, that scale is a section drawn at its floor in a box
+ * with room to spare — the exact "cramped, just in a bigger box" fault
+ * `fitToBox` was rewritten to stop. Trimming and re-fitting is one pass each
+ * way: **fewer days, drawn larger**, which is the whole argument (RFC 009 1.3).
+ *
+ * The head always survives, clipped if it comes to that, the same rule the
+ * shift ladder keeps: a household who dragged a box too small should see the
+ * thing at the top of it — today — rather than an empty rectangle (rule nine).
+ * That is new for the chore week, which trimmed from the last group to the
+ * first and so could take itself away entirely in a box too small for one day.
+ *
+ * A drawing decision, never a saved one. Nothing here writes to the model, so
+ * widening the box brings the days straight back on the next draw.
+ */
+function fitAndTrimToDays(box: HTMLElement, scale: HTMLElement, min: number): void {
+  fitToBox(box, scale, { min });
+
+  const groups = dayGroups(scale);
+  if (groups.length === 0) return;
+
+  /*
+   * Measured against the **box**, which is the element that clips. The first
+   * attempt measured `.fw-content`, which sits *inside* the transform and is
+   * sized to its own content — so its bottom is always past the last row and
+   * nothing was ever trimmed. The frame looked identical, which is exactly how
+   * that kind of mistake survives.
+   */
+  const style = getComputedStyle(box);
+  const limit = box.getBoundingClientRect().bottom - parseFloat(style.paddingBottom || '0');
+  let trimmed = false;
+  for (let index = groups.length - 1; index >= 1; index--) {
+    const group = groups[index] as HTMLElement;
+    if (group.getBoundingClientRect().bottom <= limit + 1) break;
+    group.remove();
+    trimmed = true;
+  }
+
+  if (trimmed) fitToBox(box, scale, { min });
+}
+
 export function renderFreeform(
   root: HTMLElement,
   model: DisplayModel,
@@ -1611,45 +1689,7 @@ export function renderFreeform(
 
   // Now that everything has a size, fit each reused section to its box.
   for (const { box, scale, min } of toFit) {
-    fitToBox(box, scale, { min });
-
-    /*
-     * Cut a chore week on a whole day, never through one.
-     *
-     * The board holds a legible floor and clips below it, which is right — but
-     * `overflow: hidden` cuts wherever the pixel falls, and a row sliced across
-     * the middle reads as a broken renderer rather than as a list that ran out
-     * of room. Same fault as the month grid losing its last week, one widget
-     * along, and visible only by measuring.
-     *
-     * Measured against the **box**, which is the element that clips. The first
-     * attempt measured `.fw-content`, which sits *inside* the transform and is
-     * sized to its own content — so its bottom is always past the last row and
-     * nothing was ever trimmed. The frame looked identical, which is exactly
-     * how that kind of mistake survives.
-     */
-    const week = scale.querySelector('.ch-week');
-    if (week === null) continue;
-    const style = getComputedStyle(box);
-    const limit = box.getBoundingClientRect().bottom - parseFloat(style.paddingBottom || '0');
-    const groups = week.querySelectorAll('.ch-day');
-    let trimmed = false;
-    for (let index = groups.length - 1; index >= 0; index--) {
-      const group = groups[index] as HTMLElement;
-      if (group.getBoundingClientRect().bottom <= limit + 1) break;
-      group.remove();
-      trimmed = true;
-    }
-    /*
-     * Then fit again, because what is left is smaller than what was measured.
-     *
-     * The first fit scaled seven days down to the floor and clipped; with the
-     * days that did not fit now gone, that scale is a board drawn at 62% in a
-     * box with room to spare — the exact "cramped, just in a bigger box" fault
-     * `fitToBox` was rewritten to stop. Trimming and re-fitting is one pass
-     * each way: fewer days, drawn larger.
-     */
-    if (trimmed) fitToBox(box, scale, { min });
+    fitAndTrimToDays(box, scale, min);
   }
 
   /*
@@ -1736,7 +1776,9 @@ export function renderFreeform(
     const scale = el('div', 'fw-scale');
     scale.appendChild(contentWithTitle(agenda, widget.config));
     box.appendChild(scale);
-    fitToBox(box, scale, { min: minScaleFor('calendar') });
+    // Trimmed to whole days like any other agenda: this one is here *because*
+    // its box is narrow, which is exactly where the days do not all fit.
+    fitAndTrimToDays(box, scale, minScaleFor('calendar'));
     agendas.push(agenda);
   }
 
@@ -1883,6 +1925,15 @@ function minScaleFor(type: string): number {
      */
     case 'chores':
       return MIN_CHORE_SCALE;
+    /*
+     * And the calendar holds its type as hard as the chore board does — see
+     * `MIN_CALENDAR_SCALE`, which lands on the same number by its own
+     * measurement. It used to fall through to the `default` below, which is how
+     * the one thing the product exists to show came to be drawn at a quarter
+     * size on a wall where nothing else was (RFC 009 1.3).
+     */
+    case 'calendar':
+      return MIN_CALENDAR_SCALE;
     default:
       return 0.2;
   }

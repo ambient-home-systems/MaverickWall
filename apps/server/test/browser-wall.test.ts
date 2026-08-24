@@ -6,16 +6,22 @@
  * timezone from West Africa, an editor whose guard stands down on the event it
  * exists for, and a phone whose first screenful is navigation.
  *
- * **Five of the eight assertions are red today, deliberately.** Four of them are
- * the regression tests for RFC 009 items that Phase 1 fixes — 1.1, 1.2, 1.3 and
- * 1.7 — and the RFC says two of those fixes need their test in front of them. A
+ * **Five of these assertions were written red, deliberately**, and every one of
+ * them has since been turned by the fix it was waiting for. Four were the
+ * regression tests for RFC 009 items that Phase 1 fixes — 1.1, 1.2, 1.3 and 1.7
+ * — and the RFC says two of those fixes need their test in front of them. A
  * test that goes green the day the bug is fixed is worth more than one written
  * afterwards to agree with the fix; each was checked by simulating the fix and
- * watching it turn.
+ * watching it turn, and then by the fix itself.
  *
- * The fifth is a fault **nobody had filed**, found by this file on its first
- * clean run: in landscape the free-form canvas is drawn 23px off the left edge
+ * The fifth was a fault **nobody had filed**, found by this file on its first
+ * clean run: in landscape the free-form canvas was drawn 23px off the left edge
  * of the glass. See the overflow test for the mechanism.
+ *
+ * The count has grown twice since — the offline banner, with the landscape
+ * canvas fix, and the agenda's day boundary, with 1.3 — because both are things
+ * only this harness can see. Where a test says "red until", read it as the fault
+ * it was written against rather than as the state of `main`.
  *
  * Everything that makes these honest lives in `browser-harness.ts`: a real
  * server that can be killed, a real feed, a real browser, and a measurement of
@@ -27,11 +33,13 @@ import {
   browser,
   install,
   LEGIBILITY_FLOOR_REM,
+  measureDayStacks,
   measureWall,
   settleWall,
   shellCache,
   shutDownBrowser,
   wallState,
+  type DayStack,
   type Installation,
   type TextRun,
 } from './browser-harness.js';
@@ -289,26 +297,36 @@ describe('2 · the first-run wall', () => {
     { width: 1280, height: 720, name: 'landscape 1280x720' },
   ] as const;
 
-  let measured: Promise<Map<string, Awaited<ReturnType<typeof measureWall>>>> | undefined;
+  interface Measured {
+    readonly walls: Map<string, Awaited<ReturnType<typeof measureWall>>>;
+    readonly stacks: Map<string, readonly DayStack[]>;
+  }
+
+  let measured: Promise<Measured> | undefined;
 
   /**
-   * One wall, measured at three sizes, once for both assertions.
+   * One wall, measured at three sizes, once for every assertion in this block.
    *
    * The promise is memoised rather than the result, so a run that fails
    * part-way through — a `settleWall` that times out on a slow box — is not
-   * repeated by the second test with a whole second installation behind it.
-   * Both tests then fail on the same measurement, which is also the truer
-   * report.
+   * repeated by the next test with a whole second installation behind it. The
+   * tests then fail on the same measurement, which is also the truer report.
    */
-  async function measureEverySize(): Promise<Map<string, Awaited<ReturnType<typeof measureWall>>>> {
+  async function measureEverySize(): Promise<Measured['walls']> {
     if (measured === undefined) measured = measureOnce();
-    return measured;
+    return (await measured).walls;
   }
 
-  async function measureOnce(): Promise<Map<string, Awaited<ReturnType<typeof measureWall>>>> {
+  async function measureEveryDayStack(): Promise<Measured['stacks']> {
+    if (measured === undefined) measured = measureOnce();
+    return (await measured).stacks;
+  }
+
+  async function measureOnce(): Promise<Measured> {
     const wall = await fresh({ feed: true });
     const link = await wall.pairLink();
-    const out = new Map<string, Awaited<ReturnType<typeof measureWall>>>();
+    const walls: Measured['walls'] = new Map();
+    const stacks: Measured['stacks'] = new Map();
     for (const size of SIZES) {
       const context = await (await browser()).newContext({
         viewport: { width: size.width, height: size.height },
@@ -317,12 +335,13 @@ describe('2 · the first-run wall', () => {
         const page = await context.newPage();
         await page.goto(link, { waitUntil: 'load' });
         await settleWall(page);
-        out.set(size.name, await measureWall(page));
+        walls.set(size.name, await measureWall(page));
+        stacks.set(size.name, await measureDayStacks(page));
       } finally {
         await context.close();
       }
     }
-    return out;
+    return { walls, stacks };
   }
 
   /**
@@ -406,13 +425,15 @@ describe('2 · the first-run wall', () => {
   );
 
   /**
-   * No word smaller than the floor — **red until RFC 009 1.3**.
+   * No word smaller than the floor — **red until RFC 009 1.3, green since**.
    *
-   * `minScaleFor` protects a note at 0.3, a weather reading at 0.4 and a chore
-   * board at 0.62, and drops the calendar through to `default: 0.2` — the
+   * `minScaleFor` protected a note at 0.3, a weather reading at 0.4 and a chore
+   * board at 0.62, and dropped the calendar through to `default: 0.2` — the
    * lowest floor in the system, on the one thing the product exists to show.
-   * The Classic wall's agenda therefore draws at roughly a quarter size, which
-   * is 7.1px on a 1080p wall and 4.4px on a 720p one.
+   * The Classic wall's agenda therefore drew at roughly a quarter size, which
+   * was 7.1px on a 1080p wall and 4.4px on a 720p one. `MIN_CALENDAR_SCALE`
+   * is the measured bound that replaced it, and this is what proves it: 29 of
+   * 92 words under the floor in portrait before, none after.
    *
    * The floor is in rem because the fault is: the *same* wall draws the *same*
    * 0.34rem on both those screens. See `LEGIBILITY_FLOOR_REM` for where 0.713
@@ -438,6 +459,74 @@ describe('2 · the first-run wall', () => {
         `text is drawn below ${LEGIBILITY_FLOOR_REM}rem — the design's own --t-micro ` +
           `(1.15rem) at the deepest scale this project has measured and accepted ` +
           `(MIN_CHORE_SCALE, 0.62). Smallest first:\n${detail.join('\n')}`,
+      ).toEqual([]);
+    },
+    SLOW,
+  );
+
+  /**
+   * And the cut lands between two days, never through one.
+   *
+   * The other half of RFC 009 1.3, and it needs its own assertion because the
+   * one above cannot see it: a row sliced across the middle is drawn at exactly
+   * the same size as one that fits, so a floor with no trimming behind it
+   * passes the legibility test while the wall shows half a Tuesday. Raising the
+   * floor is what *creates* this: at 0.62 the agenda no longer shrinks to fit,
+   * so something has to give, and `fitAndTrimToDays` makes it whole days.
+   *
+   * Two things, both measured against the box that clips:
+   *
+   *  - no day is half in and half out of its box. `overflow: hidden` cuts
+   *    wherever the pixel falls, and a household reading a row with its
+   *    descenders shaved off sees a broken renderer rather than a list that ran
+   *    out of room — the month-grid fault, one widget along;
+   *  - at least one day survives. Trimming until nothing is left would answer a
+   *    box that is merely small with an empty rectangle, which rule nine
+   *    forbids and which the shift ladder already refuses in the same words:
+   *    the head survives, clipped if it comes to that.
+   */
+  it(
+    'cuts the agenda between days, not through one',
+    async () => {
+      const stacks = await measureEveryDayStack();
+      const sliced: string[] = [];
+      const empty: string[] = [];
+      for (const size of SIZES) {
+        for (const stack of stacks.get(size.name)!) {
+          if (stack.days.length === 0) {
+            empty.push(`${size.name}: ${stack.where} drew no day at all`);
+            continue;
+          }
+          /*
+           * From the second day on. The head is *allowed* to clip — it is the
+           * one day trimming may not take, so a box too small for even one is
+           * answered with today, cut off, rather than with nothing. Holding it
+           * to the boundary too would make these two assertions contradict each
+           * other on exactly that box, and the empty rectangle is the worse of
+           * the two failures (rule nine).
+           */
+          for (const day of stack.days.slice(1)) {
+            // Started inside the box and finished outside it: cut through.
+            if (day.top < stack.contentBottom && day.bottom > stack.contentBottom + 1) {
+              sliced.push(
+                `${size.name}: ${stack.where} — a day runs ${Math.round(day.top)}..` +
+                  `${Math.round(day.bottom)} in a box that stops at ` +
+                  `${Math.round(stack.contentBottom)}`,
+              );
+            }
+          }
+        }
+      }
+      expect(
+        empty,
+        'a stack of days trimmed itself away to nothing. Fewer days drawn larger ' +
+          'is the trade; no days at all is a blank rectangle nobody can explain ' +
+          'from the kitchen.',
+      ).toEqual([]);
+      expect(
+        sliced,
+        'a day is drawn half in and half out of the box that clips it. The wall ' +
+          'gives up whole days, so the cut has to land between two of them.',
       ).toEqual([]);
     },
     SLOW,

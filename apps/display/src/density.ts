@@ -86,3 +86,47 @@ export function agendaTimeFitsBeside(sectionWidthPx: number, remPx: number): boo
  * to whole days so the clip lands between rows rather than through one.
  */
 export const MIN_CHORE_SCALE = 0.62;
+
+/**
+ * The least a calendar may be scaled to before it stops being the calendar.
+ *
+ * Measured, not picked, and it exists because the calendar had no floor at all:
+ * `minScaleFor` protected a note at 0.3, a weather reading at 0.4 and a chore
+ * board at 0.62, and dropped the calendar through to `default: 0.2` — the
+ * lowest bound in the system, on the one thing the product exists to show.
+ *
+ * This is **not** a `--t-micro` violation, and arguing it that way is wrong:
+ * `display.css` exempts "the compact widget renderings that `fitToBox` already
+ * scales" by name, so the type floor never claimed to survive the transform.
+ * What this constant is, is the thing that *bounds* that exemption.
+ *
+ * Measured on the first-run wall — the Classic template, one feed, nothing
+ * configured — whose agenda box is 333x216 on a 1280x720 television. Each row
+ * is the floor, the scale the fit then settles at, and what is on the glass:
+ *
+ * | floor | settles at | event time | days | what it looks like                 |
+ * |-------|------------|------------|------|------------------------------------|
+ * | 0.20  | 0.27       | 4.4px      | 6    | six days of grey; no word is a word |
+ * | 0.30  | 0.31       | 5.1px      | 5    | still gone — the note floor is not this widget's |
+ * | 0.40  | 0.46       | 7.4px      | 3    | small: legible leaning in, not from the doorway |
+ * | 0.50  | 0.60       | 9.8px      | 2    | readable here, and 0.642rem in portrait — under the bar |
+ * | 0.62  | 0.62       | 10.0px     | 2    | today and tomorrow, read across a room |
+ * | 0.80  | 1.00       | —          | 1    | today alone, reading "Nothing on": an Upcoming widget with nothing upcoming |
+ *
+ * So 0.62 — the same number the chore board landed on, arrived at separately
+ * and worth stating why. 0.5 is where the *landscape* walls become readable and
+ * it is not enough: in portrait the box is wider, the fit lands on the floor
+ * rather than above it, and the section label draws at 0.642rem — under the
+ * 0.713rem the browser harness derives from `--t-micro` x `MIN_CHORE_SCALE`. At
+ * 0.62 the worst word on any of the three sizes is 0.775rem, which clears it.
+ * The top of the range is bounded by the widget's own question: by 0.8 only one
+ * day survives and on the seeded wall that day is today, which is the only day
+ * an agenda draws when it is empty.
+ *
+ * The cost is real and deliberate: a wall that drew six days now draws two. A
+ * calendar nobody can read from the doorway has stopped being the thing it was
+ * put on the wall for, and the answer to a box this small is fewer days drawn
+ * larger — which is why the floor ships with the agenda trimming to whole days
+ * and fitting again, exactly as the chore week board does.
+ */
+export const MIN_CALENDAR_SCALE = 0.62;
