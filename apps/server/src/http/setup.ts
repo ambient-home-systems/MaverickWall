@@ -584,14 +584,19 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       const lat = parse(coordinate('Latitude', 90), values.latitude);
       const lon = parse(coordinate('Longitude', 180), values.longitude);
       if (!lat.ok || !lon.ok) {
-        // One number wrong gets its own reason; both wrong (which includes one
-        // left empty) gets the sentence about the pair, because "Longitude has
-        // to be a number" is a confusing thing to read about a box you never
-        // filled in.
+        /*
+         * A box left empty is a different mistake from a box filled in wrongly,
+         * and only the second has a reason worth printing. "Longitude has to be
+         * a number" is a confusing thing to read about a field you never
+         * touched — the household typed one number and did not know the other
+         * was needed, which is what the pair sentence says.
+         */
         let message =
           'A location is both numbers — latitude between -90 and 90, longitude between -180 and 180.';
-        if (lat.ok && !lon.ok) message = lon.message;
-        else if (!lat.ok && lon.ok) message = lat.message;
+        if (values.latitude !== '' && values.longitude !== '') {
+          if (!lat.ok) message = lat.message;
+          else if (!lon.ok) message = lon.message;
+        }
         return c.html(placeForm(values, message), 400);
       }
       const current = readWeatherSettings(deps.db);

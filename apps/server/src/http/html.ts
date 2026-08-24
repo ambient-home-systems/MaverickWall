@@ -1231,6 +1231,24 @@ pre.code{background:var(--mw-surface-2);
 .le-overlay.is-epaper .le-widget-label{opacity:.45}
 .le-overlay.is-epaper .le-widget:hover .le-widget-label,
 .le-overlay.is-epaper .le-widget.is-selected .le-widget-label{opacity:1}
+/* A widget the wall will not draw (RFC 009 Phase 2): the household has nothing
+ * set up behind it, so the manifest omits it. The box stays here — it has to be
+ * grabbable, and this is the screen where they find out why — but it says so.
+ * A dashed edge and a flag rather than a colour: this is not an error, and the
+ * status hues are spoken for. */
+.le-widget.is-not-drawn{border-style:dashed;
+  border-color:color-mix(in srgb,var(--mw-ink-2) 90%,transparent)}
+.le-widget-flag{position:absolute;right:0;top:0;
+  font:var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans);
+  letter-spacing:var(--mw-t-label-xs-tracking);
+  color:var(--mw-bg);background:var(--mw-ink-2);opacity:.85;
+  padding:2px 6px;border-radius:0 0 0 var(--mw-r-2);
+  pointer-events:none;user-select:none}
+/* The reason, at the head of the inspector — read before any of its options,
+ * because none of them matter while nothing draws the widget. */
+.le-not-drawn{margin:0 0 12px;padding:10px 12px;border-radius:var(--mw-r-2);
+  background:var(--mw-surface-2);border:1px solid var(--mw-line);
+  font:var(--mw-t-body-sm);color:var(--mw-ink-2)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
 /* The canvas background control — none / solid / gradient, per canvas. */

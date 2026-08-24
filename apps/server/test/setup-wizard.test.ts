@@ -531,7 +531,9 @@ describe('step 4 — where and who', () => {
     const response = await h.form('/setup/place', { latitude: '38.8894', person: 'Sam' });
     expect(response.status).toBe(400);
     const body = await response.text();
-    expect(body).toContain('both numbers');
+    // The whole sentence, not the phrase: the form's own hint says "both
+    // numbers are there", so a looser match would pass on the hint alone.
+    expect(body).toContain('A location is both numbers');
     // Echoed back, the way every other step in this wizard does it.
     expect(body).toContain('38.8894');
     expect(body).toContain('Sam');
@@ -541,6 +543,20 @@ describe('step 4 — where and who', () => {
     expect(
       h.db.prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`).get(),
     ).toEqual({ latitude: null });
+  });
+
+  it('names the field when a number is wrong rather than merely missing', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+
+    // Both boxes filled in, one of them nonsense: the pair sentence would be
+    // the wrong answer here — the household knows a location is two numbers,
+    // they got one of them wrong.
+    const response = await h.form('/setup/place', { latitude: '38.8894', longitude: '900' });
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain('Longitude has to be between -180 and 180');
+    expect(body).not.toContain('A location is both numbers');
   });
 
   it('takes a person on their own, with no location', async () => {

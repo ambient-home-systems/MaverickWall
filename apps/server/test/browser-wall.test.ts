@@ -1010,6 +1010,59 @@ describe('4 · the editor, driven', () => {
     },
     SLOW,
   );
+
+  /**
+   * And it says which boxes the wall is leaving out — RFC 009 Phase 2.
+   *
+   * The manifest omits a widget the household has nothing set up for. The
+   * editor keeps it, because a box you cannot see is a box you cannot move —
+   * so the editor is where "why is my Weather box not on the wall" has to be
+   * answered, and this is that answer. Without it the two screens disagree by
+   * two widgets and nothing anywhere connects them.
+   *
+   * Measured rather than asserted from the markup: the flag is drawn by the
+   * editor from what the server sent, and either half being wrong shows up
+   * only here.
+   */
+  it(
+    'flags the widgets the wall is leaving out, and says what to do',
+    async () => {
+      const wall = await fresh({ feed: true });
+      const context = await (await browser()).newContext({
+        viewport: { width: 1400, height: 1000 },
+      });
+      try {
+        const page = await context.newPage();
+        await editorPage(wall, page);
+
+        const flagged = await page.evaluate(() =>
+          [...document.querySelectorAll('.le-overlay .le-widget.is-not-drawn')].map((box) => ({
+            label: (box.querySelector('.le-widget-label')?.textContent ?? '').trim(),
+            flag: (box.querySelector('.le-widget-flag')?.textContent ?? '').trim(),
+          })),
+        );
+        expect(
+          flagged.map((one) => one.label).sort(),
+          'the editor did not mark the boxes the wall omits. A household who put ' +
+            'a Weather widget on a wall with no location has to be able to find ' +
+            'out here why it is not there.',
+        ).toEqual(['Shift', 'Weather']);
+        expect(new Set(flagged.map((one) => one.flag))).toEqual(new Set(['Not on the wall']));
+
+        // And the reason, in the inspector, when one is selected.
+        await page.click('.le-overlay .le-widget.is-not-drawn');
+        await page.waitForSelector('.le-not-drawn', { timeout: 10_000 });
+        const reason = await page.evaluate(
+          () => document.querySelector('.le-not-drawn')?.textContent ?? '',
+        );
+        expect(reason, 'the inspector said nothing about why').toContain('Not on the wall yet.');
+        expect(reason, 'the reason names no screen to go to').toMatch(/Weather|Shifts/);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
 });
 
 // ===========================================================================

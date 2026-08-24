@@ -65,6 +65,10 @@ nothing has been removed and no arrangement has changed. The message stays
 where it still means something: a forecast you have set up that has not arrived
 yet, or a rota that says nothing about today, still say so.
 
+**Walls → Layout is where you find out.** A widget the wall is leaving out is
+still there in the editor, marked **Not on the wall**, and selecting it says
+which screen to go to — so a box missing from the glass is never a mystery.
+
 **Setting up asks two more questions, and both can be skipped.** After the
 calendar step, first run now asks for a latitude and longitude and for the name
 of one person. A phone map app gives you both numbers if you press and hold on

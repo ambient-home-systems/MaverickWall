@@ -31,13 +31,9 @@ import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
-import { collectPanels, collectSignals, readyModuleKeys } from '../modules/registry.js';
+import { collectPanels, collectSignals } from '../modules/registry.js';
+import { allModules, householdSetUp, MODULES } from '../modules/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
-import { choresModule } from '../modules/chores/index.js';
-import { weatherModule } from '../modules/weather/index.js';
-import { haModule } from '../modules/homeassistant/index.js';
-import { externalPanelModules } from '../modules/external/index.js';
-import { calendarModule } from '../modules/calendar/index.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
@@ -254,13 +250,12 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
 }
 
 /**
- * Every panel module, in one list.
- *
- * The manifest asks each for its slice, boot registers their jobs from the
- * same list, and the Display screen offers their blocks from it too — so
- * adding a module is one entry rather than three edits in three files.
+ * Every panel module, in one list — re-exported from `modules/index.ts`, which
+ * is where it now lives so that anything outside the request path (`main.ts`'s
+ * job registration, the admin's panel preview) can reach it without importing
+ * the whole application.
  */
-export const MODULES = [weatherModule, haModule, calendarModule, choresModule];
+export { MODULES };
 
 /**
  * The wall clock in a zone, as `HH:MM`.
@@ -776,7 +771,7 @@ export function createApp(deps: AppDeps): Hono {
     // the household has set up at all. The second is what decides whether a
     // widget with nothing behind it is drawn as a note or not drawn (RFC 009
     // Phase 2), and it has to be the same list or the two answers can disagree.
-    const modules = [...MODULES, ...externalPanelModules(deps.db)];
+    const modules = allModules(deps.db);
 
     return buildManifest({
       household: effective,
@@ -810,7 +805,7 @@ export function createApp(deps: AppDeps): Hono {
        * behind it yields its space instead of drawing a permanent note nobody
        * standing at the wall can act on (RFC 009 Phase 2).
        */
-      readyModules: readyModuleKeys(modules, deps.db),
+      readyModules: householdSetUp(deps.db).modules,
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.
@@ -1053,10 +1048,7 @@ export function createApp(deps: AppDeps): Hono {
       canvasOwner !== undefined
         ? keepWidgetsWithSomethingToSay(
             readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)),
-            {
-              modules: readyModuleKeys([...MODULES, ...externalPanelModules(deps.db)], deps.db),
-              shift: readHousehold(deps.db).shiftEnabled === 1,
-            },
+            householdSetUp(deps.db),
           ).map((row) => ({
             type: row.type,
             x: row.x,

@@ -241,6 +241,8 @@ function boot(): void {
   }
   let ink: InkTables | undefined;
   let lane: 'wall' | 'ink' = 'wall';
+  /** Widget type → why the wall leaves it out. Empty when everything is set up. */
+  const notDrawn = new Map<string, string>();
 
   let state: LayoutState;
   try {
@@ -258,6 +260,7 @@ function boot(): void {
       readonly orientation?: unknown;
       readonly panel?: { readonly width?: unknown; readonly height?: unknown };
       readonly ink?: unknown;
+      readonly notDrawn?: unknown;
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
@@ -274,6 +277,27 @@ function boot(): void {
     // Read defensively and drop the whole block on anything unexpected: a lane
     // built from half a table would offer controls with no meaning, which is
     // worse than no lane at all.
+    /*
+     * Which widget types the wall will leave out, and why (RFC 009 Phase 2).
+     *
+     * The manifest omits a widget the household has nothing set up for. The
+     * editor cannot: a box you cannot see is a box you cannot move, and the
+     * preview here is the one place a household can find out *why* something is
+     * missing from their wall. So the box stays and carries the reason.
+     *
+     * The server decides — the same `widgetIsSetUp` the manifest uses — because
+     * a second opinion here is how the wall and the screen that describes it
+     * come to disagree.
+     */
+    const rawNotDrawn = parsed.notDrawn;
+    if (Array.isArray(rawNotDrawn)) {
+      for (const entry of rawNotDrawn) {
+        const row = entry as { type?: unknown; why?: unknown };
+        if (typeof row.type === 'string' && typeof row.why === 'string') {
+          notDrawn.set(row.type, row.why);
+        }
+      }
+    }
     const rawInk = parsed.ink as InkTables | undefined;
     if (
       rawInk !== undefined &&
@@ -1241,6 +1265,24 @@ function boot(): void {
     label.textContent = labelFor(widget.type);
     box.appendChild(label);
 
+    /*
+     * A box the wall will not draw, said on the box.
+     *
+     * Without this the editor shows five widgets and the wall shows three, with
+     * nothing anywhere connecting the two — which is the shape of every fault
+     * in this project where one thing is stored and two things read it. The
+     * reason is in the inspector; this is the flag that sends you there.
+     */
+    const why = notDrawn.get(widget.type);
+    if (why !== undefined) {
+      box.classList.add('is-not-drawn');
+      const flag = document.createElement('span');
+      flag.className = 'le-widget-flag';
+      flag.textContent = 'Not on the wall';
+      box.appendChild(flag);
+      box.setAttribute('aria-label', `${labelFor(widget.type)} widget — not on the wall. ${why}`);
+    }
+
     const handle = document.createElement('span');
     handle.className = 'le-handle';
     box.appendChild(handle);
@@ -1723,6 +1765,23 @@ function boot(): void {
       renderInkPanel(widget);
       openInspector();
       return;
+    }
+
+    /*
+     * Why this one is not on the wall, above everything else in the panel.
+     *
+     * There is no point reading a widget's options while nothing draws it, and
+     * this is the answer to "I put a Weather box on and my wall has not got
+     * one" — the question the omission would otherwise leave a household with.
+     * On the wall lane only: the ink lane is about what a panel says
+     * differently, and it rebuilds this panel for itself.
+     */
+    const why = notDrawn.get(widget.type);
+    if (why !== undefined) {
+      const note = document.createElement('p');
+      note.className = 'le-not-drawn';
+      note.textContent = `Not on the wall yet. ${why}`;
+      configPanel.appendChild(note);
     }
 
     // Both tabs, always: every widget has a view to state, so neither tab is

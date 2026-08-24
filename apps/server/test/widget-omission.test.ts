@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { MODULES } from '../src/http/app.js';
+import { MODULES } from '../src/modules/index.js';
 import {
   WIDGET_MODULE,
   WIDGET_TYPES,

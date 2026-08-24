@@ -64,7 +64,8 @@ import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import type { LogBuffer } from '../logbuffer.js';
-import { parseBackground } from '../api/manifest.js';
+import { keepWidgetsWithSomethingToSay, parseBackground, widgetIsSetUp, WIDGET_TYPES } from '../api/manifest.js';
+import { householdSetUp } from '../modules/index.js';
 import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
 import { applyTemplate, copyLayout, findTemplate } from '../api/templates.js';
 import { CLASSIC_TEMPLATE } from '../templates/index.js';
@@ -2040,13 +2041,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * 1-bit panel does not; this renders the real frame through the same path the
    * device fetches, so what the household arranges is what they will see. Behind
    * the session, and never cached — it changes every time the layout is saved.
+   *
+   * "Exactly as the panel will" includes the omission (RFC 009 Phase 2): the
+   * device endpoint drops the widgets the household has nothing set up for, so
+   * this drops them too. A page captioned "what the panel actually draws" that
+   * draws "No weather yet" where the glass shows nothing is the two-renderers
+   * disagreement in its most misleading form — the disagreement is with the
+   * caption rather than between two files, and it is no less wrong.
    */
   app.get('/admin/epaper/:id/preview.png', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = findEpaper(id);
     if (screen === undefined || deps.previewManifest === undefined) return c.body(null, 404);
     try {
-      const widgets = epaperWidgetsFor(id, screen).map((row) => ({
+      const widgets = keepWidgetsWithSomethingToSay(
+        epaperWidgetsFor(id, screen),
+        householdSetUp(deps.db),
+      ).map((row) => ({
         type: row.type,
         x: row.x,
         y: row.y,
@@ -2075,6 +2086,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    *
    * Nothing is stored. `POST` because a canvas does not belong in a URL, and
    * `no-store` because this frame is a keystroke old.
+   *
+   * Deliberately **not** filtered the way the saved preview above is: this
+   * draws the canvas as it is being arranged, and a box that vanished from
+   * under the pointer because the household has not set a location yet would
+   * make the editor unusable for the widget they are placing. The saved
+   * preview is the claim about the glass; this one is the claim about the
+   * canvas.
    *
    * The posted boxes are the canvas *by definition* here, whatever the row says.
    * A panel that has never been saved has `layout_mode` NULL, and reading it
@@ -2175,6 +2193,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // The Shift widget's "whose rota" is real here: a panel filters by person
       // exactly as the wall does, and draws a line each when several are on.
       people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
+      // The panel omits the same widgets the wall does, so it says the same
+      // thing about them.
+      notDrawn: widgetsNotDrawn(),
     };
 
     /*
@@ -3497,6 +3518,37 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+
+  /**
+   * The widget types this wall will not draw, and why (RFC 009 Phase 2).
+   *
+   * The manifest omits a widget the household has nothing set up for — a
+   * Weather box with no location, a Shift badge with no rotation — rather than
+   * drawing "Nothing to show yet." on a kitchen wall for ever. That is right on
+   * the glass and wrong in the editor, where the box has to stay grabbable, so
+   * the editor keeps it and says so instead. This is the sentence it says.
+   *
+   * Derived from the same `widgetIsSetUp` the manifest uses, so the flag cannot
+   * claim one thing while the wall does another; the copy lives here with the
+   * rest of the admin's writing rather than in the display bundle.
+   */
+  const WHY_NOT_DRAWN: Readonly<Record<string, string>> = {
+    weather: 'Set a latitude and longitude on Weather and this appears.',
+    homeassistant: 'Choose some entities on Home Assistant and this appears.',
+    chores: 'Add a chore on Chores and this appears.',
+    shift: 'Set up a rotation on Shifts and this appears.',
+  };
+
+  function widgetsNotDrawn(): { type: string; why: string }[] {
+    const setUp = householdSetUp(deps.db);
+    return (WIDGET_TYPES as readonly string[])
+      .filter((type) => !widgetIsSetUp(type, setUp))
+      .map((type) => ({
+        type,
+        why: WHY_NOT_DRAWN[type] ?? 'Nothing is set up for this yet, so the wall leaves it out.',
+      }));
+  }
+
   /**
    * The layout editor mount: the shell and the current layout as JSON; a
    * first-party module makes it interactive. Same-origin, ships in the image
@@ -3733,6 +3785,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ...(inkPanels.length === 0
         ? {}
         : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES } }),
+      // Which widgets the wall will leave out, and what to do about it. The
+      // editor keeps the box — it has to be grabbable — and flags it.
+      notDrawn: widgetsNotDrawn(),
     };
 
     // ---- the wall's own header ------------------------------------------
