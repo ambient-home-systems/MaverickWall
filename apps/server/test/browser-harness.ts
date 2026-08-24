@@ -193,13 +193,22 @@ export interface InstallOptions {
 export interface Installation {
   readonly base: string;
   readonly db: SqliteDatabase;
-  readonly account: { readonly email: string; readonly password: string };
+  /**
+   * The household account — **present only when the wizard ran here.**
+   *
+   * `wizard: false` hands the wizard to the browser, which creates whatever
+   * account the test types; a field naming credentials nobody signed up with
+   * would be a sign-in that fails against a harness insisting it is right.
+   */
+  readonly account: { readonly email: string; readonly password: string } | undefined;
   /** The bootstrap code, for a wizard driven through the browser. */
   readonly setupToken: string;
   call(path: string, init?: RequestInit): Promise<Response>;
   post(path: string, fields: Record<string, string>): Promise<Response>;
   /** A new screen and the pairing link the admin prints for it. */
   pairLink(name?: string): Promise<string>;
+  /** Sign this browser in the way a household does: the form, not a cookie. */
+  signIn(page: Page): Promise<void>;
   /** A power cut: the port closes and connections are refused, not stubbed. */
   kill(): Promise<void>;
   dispose(): Promise<void>;
@@ -232,11 +241,16 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
   });
 
   let server: ServerType | undefined = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
-  const port = await new Promise<number>((resolve) => {
-    server?.on('listening', () => {
-      const bound = server?.address();
+  const listening = server;
+  // `error` as well as `listening`: a bind that fails emits one and never the
+  // other, and a promise that only waits for the good news turns "this box
+  // would not give me a port" into a bare sixty-second timeout.
+  const port = await new Promise<number>((resolve, reject) => {
+    listening.on('listening', () => {
+      const bound = listening.address();
       resolve(typeof bound === 'object' && bound !== null ? bound.port : 0);
     });
+    listening.on('error', (reason: Error) => reject(new Error(`could not listen: ${reason.message}`)));
   });
   const base = `http://127.0.0.1:${port}`;
 
@@ -264,7 +278,24 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
 
   const account = { email: `family${clientNumber}@home.local`, password: 'correct-horse-battery' };
 
-  if (wizard) {
+  try {
+    if (wizard) await runWizard();
+  } catch (reason) {
+    /*
+     * Both servers go before the throw.
+     *
+     * They are listening by here, and `install` is what registers an
+     * installation for disposal — so an exception on the way out leaves a
+     * bound socket keeping the worker's event loop alive. A refused feed would
+     * then be a clear assertion failure *and* a run that never exits.
+     */
+    await kill();
+    feedServer?.stop();
+    rmSync(dataDir, { recursive: true, force: true });
+    throw reason;
+  }
+
+  async function runWizard(): Promise<void> {
     await call(`/setup?token=${setupToken.current().token}`);
     await post('/setup/account', {
       name: 'Household',
@@ -274,27 +305,41 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     });
     await post('/setup/household', { timezone });
 
-    if (feedServer !== undefined) {
-      const added = await post('/setup/calendar', {
-        name: 'Family',
-        url: feedServer.url,
-        allow_loopback: '1',
-        allow_http: '1',
-      });
-      if (added.status !== 302) {
-        throw new Error(`the wizard refused the feed (${added.status}): ${await added.text()}`);
-      }
-      await syncEveryFeed(db, keyring);
+    if (feedServer === undefined) return;
+    const added = await post('/setup/calendar', {
+      name: 'Family',
+      url: feedServer.url,
+      allow_loopback: '1',
+      allow_http: '1',
+    });
+    if (added.status !== 302) {
+      throw new Error(`the wizard refused the feed (${added.status}): ${await added.text()}`);
     }
+    await syncEveryFeed(db, keyring);
   }
 
   return {
     base,
     db,
-    account,
+    account: wizard ? account : undefined,
     setupToken: setupToken.current().token,
     call,
     post,
+    async signIn(page: Page): Promise<void> {
+      if (!wizard) {
+        throw new Error(
+          'this installation ran no wizard, so there is no account to sign in with. ' +
+            'Drive the wizard in the browser first, or create it with install({ wizard: true }).',
+        );
+      }
+      await page.goto(`${base}/admin/sign-in`, { waitUntil: 'load' });
+      await page.fill('input[name="email"]', account.email);
+      await page.fill('input[name="password"]', account.password);
+      await Promise.all([
+        page.waitForURL((url) => !url.pathname.endsWith('/sign-in'), { timeout: 20_000 }),
+        page.click('button[type="submit"]'),
+      ]);
+    },
     async pairLink(name = 'Kitchen'): Promise<string> {
       const html = await (await post('/admin/screens', { name })).text();
       const link = /(https?:\/\/[^<\s"]*\/pair\?token=[^<\s"]+)/.exec(html)?.[1];
@@ -528,6 +573,24 @@ export async function measureWall(page: Page): Promise<WallMeasurement> {
       return scale;
     };
 
+    /** Whether every clipping ancestor has cut this rect out of view entirely. */
+    const clippedAway = (element: Element, rect: DOMRect): boolean => {
+      for (
+        let node: Element | null = element.parentElement;
+        node !== null && node !== document.documentElement;
+        node = node.parentElement
+      ) {
+        const style = getComputedStyle(node);
+        if (style.overflow === 'visible' && style.overflowX === 'visible' && style.overflowY === 'visible') {
+          continue;
+        }
+        const frame = node.getBoundingClientRect();
+        if (rect.right <= frame.left || rect.left >= frame.right) return true;
+        if (rect.bottom <= frame.top || rect.top >= frame.bottom) return true;
+      }
+      return false;
+    };
+
     const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
     const runs: {
       text: string; where: string; declaredPx: number;
@@ -547,7 +610,19 @@ export async function measureWall(page: Page): Promise<WallMeasurement> {
       // Not drawn at all is not drawn too small.
       if (style.display === 'none' || style.visibility === 'hidden') continue;
       if (parseFloat(style.opacity) < 0.05) continue;
-      if (element.getClientRects().length === 0) continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      /*
+       * And neither is text an ancestor has clipped away.
+       *
+       * The wall degrades by clipping on purpose: `fitToBox` clamps at
+       * `minScaleFor` and lets the box's `overflow: hidden` cut what is left,
+       * which is rule nine working. Counting the cut tail would report ink
+       * nobody can see and turn a correct degradation into a failure — so a
+       * run wholly outside every clipping ancestor is not measured. Partly
+       * visible still counts: half a word on the glass is a word on the glass.
+       */
+      if (clippedAway(element, rect)) continue;
 
       const declaredPx = parseFloat(style.fontSize);
       const scale = scaleOf(element);
@@ -641,6 +716,27 @@ export async function settleWall(page: Page, timeout = 20_000): Promise<void> {
   await page.waitForSelector('#wall .canvas', { timeout });
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await page.waitForTimeout(250);
+}
+
+/**
+ * What the service worker has actually stored, whichever cache it is using.
+ *
+ * Enumerated rather than named. `sw.ts` documents bumping `CACHE` as the way to
+ * retire an old one, and `caches.open('…-v1')` *creates* a cache that is not
+ * there — so a hard-coded name would survive the next bump by silently reading
+ * an empty cache nothing writes, and the failure message for the offline test
+ * would lose the eleven-versus-fifteen entry count that is its whole diagnosis.
+ */
+export async function shellCache(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const names = await caches.keys();
+    const paths: string[] = [];
+    for (const name of names) {
+      const cache = await caches.open(name);
+      for (const request of await cache.keys()) paths.push(new URL(request.url).pathname);
+    }
+    return paths.sort();
+  });
 }
 
 /** What is on the wall at all: enough to tell a drawn calendar from a black screen. */

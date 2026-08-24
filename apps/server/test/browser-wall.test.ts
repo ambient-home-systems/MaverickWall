@@ -29,6 +29,7 @@ import {
   LEGIBILITY_FLOOR_REM,
   measureWall,
   settleWall,
+  shellCache,
   shutDownBrowser,
   wallState,
   type Installation,
@@ -88,6 +89,7 @@ describe('1 · the offline wall', () => {
    */
   async function reloadWithNothingBehindIt(onlineLoads: 1 | 2): Promise<{
     state: Awaited<ReturnType<typeof wallState>>;
+    online: Awaited<ReturnType<typeof wallState>>;
     cached: string[];
     controlled: boolean;
     error?: string;
@@ -115,7 +117,18 @@ describe('1 · the offline wall', () => {
         await settleWall(page);
       }
 
-      const cached = await cacheKeys(page);
+      const cached = await shellCache(page);
+      /*
+       * What the wall looks like with the server *up*, so the offline check
+       * can be a comparison rather than a literal.
+       *
+       * Pinning "five widget boxes" would pin this test to the Classic
+       * template's widget count: RFC 009 Phase 2.1 omits a widget that has no
+       * data and no configuration, which takes the unconfigured Weather and
+       * Shift boxes off the first-run wall and would turn this red for a
+       * reason that has nothing to do with reloads.
+       */
+      const online = await wallState(page);
       await wall.kill();
 
       let error: string | undefined;
@@ -126,23 +139,17 @@ describe('1 · the offline wall', () => {
       await page.waitForTimeout(1500);
       const state = await wallState(page);
       return error === undefined
-        ? { state, cached, controlled }
-        : { state, cached, controlled, error };
+        ? { state, online, cached, controlled }
+        : { state, online, cached, controlled, error };
     } finally {
       await context.close();
     }
   }
 
-  const cacheKeys = (page: Page): Promise<string[]> =>
-    page.evaluate(async () => {
-      const cache = await caches.open('maverick-wall-shell-v1');
-      return (await cache.keys()).map((request) => new URL(request.url).pathname).sort();
-    });
-
   it(
     'draws the calendar with the server dead, after a reload the worker controlled',
     async () => {
-      const { state, cached, controlled, error } = await reloadWithNothingBehindIt(2);
+      const { state, online, cached, controlled, error } = await reloadWithNothingBehindIt(2);
       expect(
         controlled,
         'the service worker never took control, so nothing can be served from the ' +
@@ -150,10 +157,11 @@ describe('1 · the offline wall', () => {
           'its clients on activate.',
       ).toBe(true);
       expect(error, 'the reload itself failed, so nothing was served from the device').toBeUndefined();
+      expect(online.widgets, 'the wall drew nothing even with the server up').toBeGreaterThan(0);
       expect(
         { children: state.children, canvases: state.canvases, widgets: state.widgets },
         `#wall after an offline reload. Cached: ${cached.join(' ')}\n  on screen: “${state.text}”`,
-      ).toEqual({ children: 1, canvases: 1, widgets: 5 });
+      ).toEqual({ children: online.children, canvases: online.canvases, widgets: online.widgets });
     },
     SLOW,
   );
@@ -174,7 +182,7 @@ describe('1 · the offline wall', () => {
   it(
     'draws the calendar with the server dead, after only one online load',
     async () => {
-      const { state, cached, controlled, error } = await reloadWithNothingBehindIt(1);
+      const { state, online, cached, controlled, error } = await reloadWithNothingBehindIt(1);
       expect(
         controlled,
         'the service worker never took control, so nothing can be served from the ' +
@@ -182,11 +190,12 @@ describe('1 · the offline wall', () => {
           'its clients on activate.',
       ).toBe(true);
       expect(error, 'the reload itself failed, so nothing was served from the device').toBeUndefined();
+      expect(online.widgets, 'the wall drew nothing even with the server up').toBeGreaterThan(0);
       expect(
         { children: state.children, canvases: state.canvases, widgets: state.widgets },
         `#wall after an offline reload following ONE online load. ` +
           `Cached: ${cached.join(' ')}\n  on screen: “${state.text}”`,
-      ).toEqual({ children: 1, canvases: 1, widgets: 5 });
+      ).toEqual({ children: online.children, canvases: online.canvases, widgets: online.widgets });
     },
     SLOW,
   );
@@ -208,10 +217,23 @@ describe('2 · the first-run wall', () => {
     { width: 1280, height: 720, name: 'landscape 1280x720' },
   ] as const;
 
-  let measured: Map<string, Awaited<ReturnType<typeof measureWall>>> | undefined;
+  let measured: Promise<Map<string, Awaited<ReturnType<typeof measureWall>>>> | undefined;
 
+  /**
+   * One wall, measured at three sizes, once for both assertions.
+   *
+   * The promise is memoised rather than the result, so a run that fails
+   * part-way through — a `settleWall` that times out on a slow box — is not
+   * repeated by the second test with a whole second installation behind it.
+   * Both tests then fail on the same measurement, which is also the truer
+   * report.
+   */
   async function measureEverySize(): Promise<Map<string, Awaited<ReturnType<typeof measureWall>>>> {
-    if (measured !== undefined) return measured;
+    if (measured === undefined) measured = measureOnce();
+    return measured;
+  }
+
+  async function measureOnce(): Promise<Map<string, Awaited<ReturnType<typeof measureWall>>>> {
     const wall = await fresh({ feed: true });
     const link = await wall.pairLink();
     const out = new Map<string, Awaited<ReturnType<typeof measureWall>>>();
@@ -219,13 +241,15 @@ describe('2 · the first-run wall', () => {
       const context = await (await browser()).newContext({
         viewport: { width: size.width, height: size.height },
       });
-      const page = await context.newPage();
-      await page.goto(link, { waitUntil: 'load' });
-      await settleWall(page);
-      out.set(size.name, await measureWall(page));
-      await context.close();
+      try {
+        const page = await context.newPage();
+        await page.goto(link, { waitUntil: 'load' });
+        await settleWall(page);
+        out.set(size.name, await measureWall(page));
+      } finally {
+        await context.close();
+      }
     }
-    measured = out;
     return out;
   }
 
@@ -416,13 +440,7 @@ describe('3 · the wizard, clicked through', () => {
 describe('4 · the editor, driven', () => {
   /** Sign in the way a household does, then open the default display's editor. */
   async function editorPage(wall: Installation, page: Page): Promise<void> {
-    await page.goto(`${wall.base}/admin/sign-in`, { waitUntil: 'load' });
-    await page.fill('input[name="email"]', wall.account.email);
-    await page.fill('input[name="password"]', wall.account.password);
-    await Promise.all([
-      page.waitForURL((url) => !url.pathname.endsWith('/sign-in'), { timeout: 20_000 }),
-      page.click('button[type="submit"]'),
-    ]);
+    await wall.signIn(page);
     await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
     await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
   }
@@ -560,13 +578,7 @@ describe('5 · a phone', () => {
       });
       try {
         const page = await context.newPage();
-        await page.goto(`${wall.base}/admin/sign-in`, { waitUntil: 'load' });
-        await page.fill('input[name="email"]', wall.account.email);
-        await page.fill('input[name="password"]', wall.account.password);
-        await Promise.all([
-          page.waitForURL((url) => !url.pathname.endsWith('/sign-in'), { timeout: 20_000 }),
-          page.click('button[type="submit"]'),
-        ]);
+        await wall.signIn(page);
         await page.goto(`${wall.base}/admin/calendars`, { waitUntil: 'load' });
 
         /*
@@ -578,19 +590,36 @@ describe('5 · a phone', () => {
          */
         const firstControl = await page.evaluate(() => {
           const main = document.querySelector('main');
-          const control = main?.querySelector<HTMLElement>(
+          const candidates = main?.querySelectorAll<HTMLElement>(
             'a[href], button, input:not([type="hidden"]), select, textarea',
           );
-          if (control === undefined || control === null) return null;
-          const rect = control.getBoundingClientRect();
-          return {
-            label: (control.textContent ?? control.getAttribute('name') ?? control.tagName).trim().slice(0, 40),
-            top: rect.top,
-            bottom: rect.bottom,
-            fold: window.innerHeight,
-          };
+          for (const control of Array.from(candidates ?? [])) {
+            /*
+             * The first control somebody can actually see.
+             *
+             * A `hidden` control — `admin.ts` already emits one, the wall
+             * editor's Discard button — is `display:none`, and
+             * `getBoundingClientRect()` on that is all zeros. Taking the first
+             * *match* would read `top: 0, bottom: 0` and pass the fold check
+             * however far down the first real control sits, which is a test
+             * agreeing with the page it exists to catch.
+             */
+            const style = getComputedStyle(control);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            const rect = control.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) continue;
+            return {
+              label: (control.textContent ?? control.getAttribute('name') ?? control.tagName)
+                .trim()
+                .slice(0, 40),
+              top: rect.top,
+              bottom: rect.bottom,
+              fold: window.innerHeight,
+            };
+          }
+          return null;
         });
-        expect(firstControl, 'the page has no control in <main> at all').not.toBeNull();
+        expect(firstControl, 'the page has no visible control in <main> at all').not.toBeNull();
         const control = firstControl!;
         expect(
           control.top >= 0 && control.bottom <= control.fold,
