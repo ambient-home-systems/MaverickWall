@@ -1749,6 +1749,46 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   };
 
+  /**
+   * The read-only view of a screen that already exists — reached by GET, so
+   * looking at a panel's recipes is never itself the thing that breaks it
+   * (RFC 009, 1.8).
+   *
+   * The frame URL is never stored in the clear — it lives only in the
+   * response that showed it, exactly like a wall's pairing link — so this
+   * page cannot show the URL a household already flashed into a panel.
+   * Regenerating is still one click away, but it is named for what it does
+   * and asks first, rather than being the only way to see anything about the
+   * screen at all.
+   */
+  const epaperViewPage = (
+    id: string,
+    name: string,
+    geometry: { width: number; height: number; rotation: number },
+  ): string => {
+    const placeholder = "<this screen's frame URL>";
+    return page({
+      modules: navModules(deps.db),
+      title: 'eInk display — Maverick Wall',
+      nav: 'epaper',
+      heading: name,
+      intro: `${geometry.width}×${geometry.height}, black & white${geometry.rotation === 0 ? '' : `, rotated ${geometry.rotation}°`}.`,
+      body:
+        `<p>The frame URL is shown only once — when this screen is added, or its ` +
+        `URL is regenerated — and is never stored anywhere it could be shown again. ` +
+        `If the panel or Home Assistant already has it configured, there is nothing ` +
+        `to do here.</p>` +
+        codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe(placeholder)) +
+        codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(placeholder)) +
+        `<div style="display:flex;gap:10px;margin-top:18px">` +
+        `<a class="btn" href="admin/epaper">Done</a>` +
+        `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/regenerate" ` +
+        `onsubmit="return confirm('Regenerate the URL for ${escapeHtml(name)}? The old one stops working and the panel will need re-flashing.')">` +
+        `<button class="btn ghost" type="submit">Regenerate URL (the panel will need re-flashing)</button></form>` +
+        `</div>`,
+    });
+  };
+
   /** The eInk Displays list and the add form. */
   const epaperPage = (error?: string): string => {
     const screens = readAdminScreens(deps.db).filter(
@@ -1768,8 +1808,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // One filled action per card; the rest are outlined ("btn ghost" here
       // never matched the .btn-ghost rule, so all three used to render filled).
       `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
-      `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/regenerate">` +
-      `<button class="btn-ghost" type="submit">Show URL &amp; recipes</button></form>` +
+      `<a class="btn-ghost" href="admin/epaper/${encodeURIComponent(screen.id)}">URL &amp; recipes</a>` +
       `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/revoke" ` +
       `onsubmit="return confirm('Remove ${escapeHtml(screen.name)}? Its URL stops working.')">` +
       `<button class="btn-danger" type="submit">Remove</button></form>` +
@@ -1832,6 +1871,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   };
 
   app.get('/admin/epaper', (c: Context) => c.html(epaperPage()));
+
+  /**
+   * A screen's recipes, read-only (RFC 009, 1.8).
+   *
+   * Reaching this by GET is the whole fix: before it existed, the only page
+   * that could show anything about a screen was the one that minted — and
+   * invalidated — a new token, so looking was indistinguishable from
+   * breaking it.
+   */
+  app.get('/admin/epaper/:id', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = readAdminScreens(deps.db).find(
+      (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
+    );
+    if (screen === undefined) return c.html(epaperPage('That screen is no longer there.'), 404);
+    return c.html(
+      epaperViewPage(id, screen.name, {
+        width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation,
+      }),
+    );
+  });
 
   app.post('/admin/epaper', async (c: Context) => {
     const shaped = parse(newEpaperBody, (await c.req.parseBody()) as Record<string, unknown>);
