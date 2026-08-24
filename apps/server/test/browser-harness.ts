@@ -92,10 +92,11 @@ const DISPLAY_DIR = join(HERE, '..', '..', 'display', 'dist');
  * case draws its 2rem names at 1.24rem, still 1.7x clear of this.
  *
  * Measured against the shipped wall, this is a real bar rather than a mirror.
- * Today the Classic agenda draws its smallest word at 0.31rem — 2.3x under.
- * With `minScaleFor('calendar')` at RFC 009 1.3's likely 0.62 it draws at
- * 0.775rem, which clears this by 9%; at 0.55 it would not, and the test would
- * be right to say so.
+ * Before RFC 009 1.3 the Classic agenda drew its smallest word at 0.31rem —
+ * 2.3x under. With `minScaleFor('calendar')` at `MIN_CALENDAR_SCALE` it draws
+ * at 0.775rem, which clears this by 9%; at a floor of 0.5 it draws 0.642rem in
+ * portrait and would not, which is one of the two things that settled the
+ * constant (see its table in `density.ts`).
  */
 export const LEGIBILITY_FLOOR_REM = 0.713;
 
@@ -830,5 +831,65 @@ export async function wallState(page: Page): Promise<{
       canvas: rectOf('#wall .canvas'),
       banner: rectOf('#wall .banners'),
     };
+  });
+}
+
+/** One stack of days — an agenda or a chore week — and where its days ended up. */
+export interface DayStack {
+  /** The widget box, as `describe` names it: `div.fw.fw-calendar`. */
+  readonly where: string;
+  /** The box's content bottom — its own bottom, less its padding. */
+  readonly contentBottom: number;
+  /** Every day the wall drew, in order, top and bottom. */
+  readonly days: readonly { readonly top: number; readonly bottom: number }[];
+}
+
+/**
+ * Every stack of days on the wall, measured against the box that clips it.
+ *
+ * `fitAndTrimToDays` (`render.ts`) is the second half of RFC 009 1.3: a section
+ * too tall for its box gives up whole days from the bottom and fits again,
+ * rather than being scaled until it fits or clipped wherever the pixel falls.
+ * Which of those happened is not visible in the text sizes — a row sliced
+ * across the middle is drawn at exactly the same size as one that fits — so it
+ * needs its own measurement, and the measurement is the *boundary*: does the
+ * cut land between two days or through one.
+ *
+ * Reported rather than judged, so a failure can print where the cut fell.
+ */
+export async function measureDayStacks(page: Page): Promise<readonly DayStack[]> {
+  return page.evaluate(() => {
+    const stacks: {
+      where: string;
+      contentBottom: number;
+      days: { top: number; bottom: number }[];
+    }[] = [];
+    for (const box of document.querySelectorAll('#wall .canvas > .fw')) {
+      if (!(box instanceof HTMLElement)) continue;
+      const week = box.querySelector('.ch-week');
+      const agenda = box.querySelector('section.next');
+      const stack = week ?? agenda;
+      if (stack === null) continue;
+      const rows = stack.querySelectorAll(week !== null ? '.ch-day' : '.day-row');
+      const frame = box.getBoundingClientRect();
+      stacks.push({
+        where:
+          box.tagName.toLowerCase() +
+          `.${String(box.className).trim().split(/\s+/).join('.')}`,
+        contentBottom: frame.bottom - parseFloat(getComputedStyle(box).paddingBottom || '0'),
+        /*
+         * The days actually drawn, which is what `dayGroups` trims and what a
+         * household can see. `display.css` hides `.day-row:nth-child(n + 6)`
+         * on a short landscape screen; those rows are in the DOM with a zero
+         * rect, and counting them would report a stack of days at the top-left
+         * corner of the viewport that nobody is looking at.
+         */
+        days: [...rows]
+          .map((row) => row.getBoundingClientRect())
+          .filter((rect) => rect.height > 0)
+          .map((rect) => ({ top: rect.top, bottom: rect.bottom })),
+      });
+    }
+    return stacks;
   });
 }

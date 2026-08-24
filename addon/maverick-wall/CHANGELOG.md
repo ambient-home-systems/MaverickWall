@@ -14,6 +14,28 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**The calendar on your wall is readable again.**
+
+An Upcoming list has always shrunk itself to whatever size it took to fit every
+day into its box. On a 1280x720 television that came out at about four pixels a
+line — on the screen, taking up the room, and not readable from anywhere in the
+kitchen. Every other widget on that wall already had a limit on how small it was
+allowed to go. The calendar, of all things, did not; it now has one, measured
+the same way the rest were: drawn at each size and looked at.
+
+**So a calendar with too much to say now shows fewer days, larger.** When the
+whole list will not fit at a readable size, it drops days from the bottom — whole
+days, so nothing is left sliced in half across the bottom edge — and then uses
+the room that frees up. Today is always kept.
+
+**You will see this on walls you have already hung**, and it is the change here
+worth knowing about before you look: a box that was listing six days may now
+list two or three. Nothing has been deleted and no setting has changed — making
+that widget taller on Walls → Layout brings the rest straight back. It is only
+ever a question of what fits.
+
 ## 0.53.0
 
 **A new way for the month to look, and a new theme to go with it.**
