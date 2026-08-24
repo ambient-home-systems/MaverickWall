@@ -1230,8 +1230,11 @@ body {
  * The worse half only appears with a banner, which is why it stayed quiet: a
  * banner exists when the server does not. In the two-column grid it took
  * `grid-column: 1 / -1` in row one and the canvas kept its full height in row
- * two, so on a 1920x1080 wall the banner drew *across* the calendar at y 42-99
- * and 46px of the wall fell off the bottom. Portrait was right all along —
+ * two, so on a 1920x1080 wall the banner drew at y 42-99 with the canvas
+ * starting at 46 — **painted over, and not readable**. Screenshot it and there
+ * is no banner on the wall at all: the household got stale data with nothing
+ * saying so, which is rule nine failing at the one moment it exists for. And
+ * 46px of the wall fell off the bottom besides. Portrait was right all along —
  * `.screen` is a flex column, so the banner takes its own row under the canvas
  * and the canvas gives up the height. This makes landscape do the same.
  *

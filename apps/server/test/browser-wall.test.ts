@@ -220,7 +220,13 @@ describe('1 · the offline wall', () => {
    * on a 1920x1080 wall before the fix:
    *
    *     canvas  left -23  top  46  right 1897  bottom 1126   (46px off the glass)
-   *     banner  left -23  top  42  right 1942  bottom   99   (across the calendar)
+   *     banner  left -23  top  42  right 1942  bottom   99   (behind the canvas)
+   *
+   * Which is worse than an overlap: the canvas is painted after it, so a
+   * screenshot of that wall has no banner on it at all. The household got
+   * stale data with nothing saying so — rule nine failing at the one moment it
+   * exists for. So the assertion is that they do not intersect, not merely
+   * that both are on screen.
    *
    * Portrait was correct throughout, which is what kept it quiet: the base
    * `.screen` rule is a flex *column*, so the banner takes its own row under
