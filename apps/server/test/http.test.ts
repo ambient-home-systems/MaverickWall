@@ -191,6 +191,18 @@ describe('/d/manifest', () => {
     const response = await call('/d/manifest');
     expect(response.status).toBe(401);
   });
+
+  it('still refuses a token nothing recognises when the schema cannot be fully read', async () => {
+    // The degraded path is the benefit of the doubt for a *real* screen's
+    // token, not an open door: a bearer value that matches no screen must
+    // still be refused, even though the query that would normally prove
+    // that is exactly the one that is failing.
+    const { call, db } = harness();
+    db.exec('ALTER TABLE screens DROP COLUMN layout_landscape_background');
+
+    const response = await call('/d/manifest', { authorization: 'Bearer nonsense' });
+    expect(response.status).toBe(401);
+  });
 });
 
 describe('/pair', () => {

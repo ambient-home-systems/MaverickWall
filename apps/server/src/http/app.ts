@@ -913,10 +913,31 @@ export function createApp(deps: AppDeps): Hono {
     try {
       screen = authenticateScreen(c, readScreens(deps.db));
     } catch (error) {
-      // A token was presented but cannot be checked against a schema that
-      // will not read — the household gets the benefit of the doubt rather
-      // than a real screen going dark because of a problem on this side.
       console.error('[manifest] screen lookup failed:', error instanceof Error ? error.message : error);
+      /*
+       * The full row no longer reads, but a token was presented and still
+       * has to earn a degraded manifest rather than being waved through —
+       * an unrecognised bearer must get 401 whether the schema is healthy
+       * or not. Falls back to the columns migration 0001 already created:
+       * a database missing a *newer* addition (the realistic shape of a
+       * partial upgrade) still has these, so a genuine screen's token is
+       * still recognised even when the full row cannot be built.
+       */
+      let recognised = false;
+      try {
+        const minimal = deps.db
+          .prepare(`SELECT token_hash AS tokenHash FROM screens WHERE revoked_at IS NULL`)
+          .all() as { tokenHash: string }[];
+        recognised = minimal.some((row) => verifyDisplayToken(presented, row.tokenHash));
+      } catch (innerError) {
+        console.error(
+          '[manifest] minimal screen lookup also failed:',
+          innerError instanceof Error ? innerError.message : innerError,
+        );
+      }
+      if (!recognised) {
+        return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+      }
       return c.json(degradedManifest(schemaNotice), 200);
     }
     if (!screen) {
