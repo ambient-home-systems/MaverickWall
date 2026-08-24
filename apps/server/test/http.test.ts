@@ -154,6 +154,43 @@ describe('/d/manifest', () => {
     };
     expect(screen.last_seen_at).toBeGreaterThan(0);
   });
+
+  /*
+   * Rule nine, for the poll a wall makes every thirty seconds (RFC 009, 1.9).
+   *
+   * Boot already continues past a failed or partial migration and pushes a
+   * `ManifestNotice` explaining it — but `readScreens` is written against the
+   * newest schema with no tolerance, so a database boot could not fully
+   * upgrade threw before that notice ever reached a wall: `requireScreen`'s
+   * unguarded read turned into an unhandled exception, and `app.onError` sent
+   * back a bare JSON 500. Simulated here by dropping a column the query
+   * needs, which is what a database stuck one migration behind actually
+   * looks like.
+   */
+  it('degrades to a 200 carrying notices when the schema cannot be fully read', async () => {
+    const { call, token, db } = harness();
+    db.exec('ALTER TABLE screens DROP COLUMN layout_landscape_background');
+
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+    expect(response.status).toBe(200);
+
+    const manifest = (await response.json()) as Record<string, unknown>;
+    expect(manifest['manifestVersion']).toBe(1);
+    expect(Array.isArray(manifest['days'])).toBe(true);
+    const notices = manifest['notices'] as { level: string; code: string; message: string }[];
+    expect(notices.some((n) => n.code === 'schema-degraded' && n.level === 'error')).toBe(true);
+  });
+
+  it('still refuses a request with no credential at all when the schema cannot be read', async () => {
+    // The degrade path must not turn into an open door for the ordinary
+    // case — an unpaired browser polling with nothing to present — which
+    // needs no database read to refuse and so is never at the mercy of one.
+    const { call, db } = harness();
+    db.exec('ALTER TABLE screens DROP COLUMN layout_landscape_background');
+
+    const response = await call('/d/manifest');
+    expect(response.status).toBe(401);
+  });
 });
 
 describe('/pair', () => {
