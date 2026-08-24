@@ -5,7 +5,21 @@
     "noEmit": true,
     "rootDir": ".",
     /* A test may hold a value it only asserts on, which is not a defect. */
-    "noUnusedLocals": false
+    "noUnusedLocals": false,
+    /*
+     * DOM, for the *browser* half of `browser-harness.ts`.
+     *
+     * The bodies passed to `page.evaluate` run inside Chromium, not here, so
+     * they are DOM code living in a server file — and without these libs they
+     * are `any` at every step, which is exactly how a measurement quietly
+     * starts agreeing with a broken wall.
+     *
+     * This does not open the door for `src`: the build is `tsc -p
+     * tsconfig.json`, which has no DOM in its `lib`, so a server module that
+     * reached for `document` would still fail there. This config only ever
+     * runs with `--noEmit`.
+     */
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }
