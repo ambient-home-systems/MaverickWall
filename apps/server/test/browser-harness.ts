@@ -521,11 +521,26 @@ export interface OutsideViewport {
   readonly viewport: { readonly width: number; readonly height: number };
 }
 
+/**
+ * The canvas measured against the letterbox it is supposed to be.
+ *
+ * `expected` is `display.css`'s own arithmetic — the largest box of the
+ * canvas's aspect that fits the frame — recomputed here from the viewport and
+ * the `--aspect` the renderer wrote, so it is a second opinion rather than a
+ * reading of the same number twice.
+ */
+export interface CanvasFit {
+  readonly aspect: number;
+  readonly actual: { readonly width: number; readonly height: number };
+  readonly expected: { readonly width: number; readonly height: number };
+}
+
 export interface WallMeasurement {
   readonly remPx: number;
   readonly viewport: { readonly width: number; readonly height: number };
   readonly overflowing: readonly Overflowing[];
   readonly outsideViewport: readonly OutsideViewport[];
+  readonly canvasFit: CanvasFit | undefined;
   readonly runs: readonly TextRun[];
 }
 
@@ -697,7 +712,41 @@ export async function measureWall(page: Page): Promise<WallMeasurement> {
       });
     }
 
-    return { remPx, viewport: glass, overflowing, outsideViewport, runs };
+    /*
+     * And whether the canvas is the letterbox it claims to be.
+     *
+     * Inside the glass is not the same as filling it. A canvas squeezed by a
+     * padding box is wholly on screen and wholly wrong — measured, a
+     * half-applied landscape fix drew 1920x1002 on a 1920x1080 television,
+     * with a 42px band of ground above the wall and 36px below, and every rect
+     * check above passed it. So the size is compared against the arithmetic
+     * `.canvas` is written from: the largest box of this aspect that fits.
+     *
+     * The frame is the viewport here because nothing rotates in these tests; a
+     * quarter turn swaps it, and `orientation.ts` is where that lives.
+     */
+    let canvasFit: {
+      aspect: number;
+      actual: { width: number; height: number };
+      expected: { width: number; height: number };
+    } | undefined;
+    const canvas = document.querySelector('#wall .canvas');
+    if (canvas instanceof HTMLElement) {
+      const aspect = parseFloat(getComputedStyle(canvas).getPropertyValue('--aspect'));
+      if (aspect > 0) {
+        const box = canvas.getBoundingClientRect();
+        canvasFit = {
+          aspect,
+          actual: { width: box.width, height: box.height },
+          expected: {
+            width: Math.min(glass.width, glass.height * aspect),
+            height: Math.min(glass.height, glass.width / aspect),
+          },
+        };
+      }
+    }
+
+    return { remPx, viewport: glass, overflowing, outsideViewport, canvasFit, runs };
   });
 }
 
@@ -739,20 +788,47 @@ export async function shellCache(page: Page): Promise<string[]> {
   });
 }
 
-/** What is on the wall at all: enough to tell a drawn calendar from a black screen. */
+/** A rect, rounded, in the shape a failure message can print. */
+export interface Rect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+/**
+ * What is on the wall at all: enough to tell a drawn calendar from a black
+ * screen, and enough to tell a banner *beside* the wall from one *across* it.
+ */
 export async function wallState(page: Page): Promise<{
   readonly children: number;
   readonly canvases: number;
   readonly widgets: number;
   readonly text: string;
+  readonly viewport: { readonly width: number; readonly height: number };
+  readonly canvas: Rect | undefined;
+  readonly banner: Rect | undefined;
 }> {
   return page.evaluate(() => {
+    const round = (value: number): number => Math.round(value);
+    const rectOf = (selector: string): Rect | undefined => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return undefined;
+      const box = element.getBoundingClientRect();
+      return {
+        left: round(box.left), top: round(box.top),
+        right: round(box.right), bottom: round(box.bottom),
+      };
+    };
     const wall = document.getElementById('wall');
     return {
       children: wall?.childElementCount ?? 0,
       canvases: document.querySelectorAll('#wall .canvas').length,
       widgets: document.querySelectorAll('#wall .canvas > .fw').length,
       text: (wall?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      canvas: rectOf('#wall .canvas'),
+      banner: rectOf('#wall .banners'),
     };
   });
 }
