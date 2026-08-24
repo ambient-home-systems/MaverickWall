@@ -84,6 +84,8 @@ import { testFeed, type TestFeedResult } from '../api/test-feed.js';
 import { currentUser } from '../auth/session.js';
 import type { Fetcher, ShiftPlan } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
+import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
+import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, icon, page, selectField, selectRow, switchRow, textField,
   type NavModule } from './html.js';
@@ -1064,8 +1066,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
 
-    const staged = join(deps.dataDir, 'restore.db');
-    writeFileSync(staged, bytes);
+    /*
+     * The key, alongside the database and staged identically — optional,
+     * because a household restoring onto a machine that already has the
+     * right key does not need to touch it. Validated the same way the key is
+     * validated at boot (RFC 009, 1.5): a trailing newline is tolerated, but
+     * anything else the wrong length is refused outright rather than staged
+     * and left to fail silently at the next boot.
+     */
+    const keyFile = body['key'];
+    let keyBytes: Buffer | undefined;
+    if (keyFile instanceof File && keyFile.size > 0) {
+      const usable = normaliseMasterKeyBytes(Buffer.from(await keyFile.arrayBuffer()));
+      if (usable === undefined) {
+        return c.html(systemPage('That is not a Maverick Wall key file.'), 400);
+      }
+      keyBytes = usable;
+    }
+
+    writeFileSync(stagedPath(deps.dataDir), bytes);
+    if (keyBytes !== undefined) writeFileSync(stagedKeyPath(deps.dataDir), keyBytes, { mode: 0o600 });
+
     return c.html(
       page({
       modules: navModules(deps.db),
@@ -1077,9 +1098,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'apply it — the current database is kept alongside it, so a restore ' +
           'that turns out to be the wrong file is not the end.',
         body:
-          `<p>If your calendars come back but show no events, the encryption key ` +
-          `does not match this database. Restore the key file too.</p>` +
-          `<p><a class="link" href="admin/system">← Back</a></p>`,
+          keyBytes !== undefined
+            ? `<p>The key was staged with it, so your calendar addresses will read ` +
+              `back correctly.</p>` +
+              `<p><a class="link" href="admin/system">← Back</a></p>`
+            : `<p>No key was uploaded with it. If your calendars come back but show ` +
+              `no events, the encryption key does not match this database — restore ` +
+              `again with the key file included.</p>` +
+              `<p><a class="link" href="admin/system">← Back</a></p>`,
       }),
     );
   });
@@ -2671,10 +2697,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ) +
 
         `<h2 class="add">Restore</h2>` +
-        `<p class="hint">Upload a database backup. It is checked and put aside, ` +
-        `then applied when Maverick Wall next starts.</p>` +
+        `<p class="hint">Upload a database backup, and the key if you have it — ` +
+        `without it your calendar addresses stay encrypted and unreadable. Both ` +
+        `are checked and put aside, then applied when Maverick Wall next starts.</p>` +
         `<form method="post" action="admin/system/restore" enctype="multipart/form-data">` +
         textField({ label: 'Backup file', name: 'backup', type: 'file', required: true }) +
+        textField({
+          label: 'Key file',
+          name: 'key',
+          type: 'file',
+          hint: 'Optional. The file System → Backup downloads as maverick-wall.key.',
+        }) +
         `<button type="submit">Stage restore</button></form>` +
 
         `<h2 class="add">Diagnostics</h2>` +

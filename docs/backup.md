@@ -25,16 +25,26 @@ addresses.
 
 ## Restore
 
-**System → Restore**, upload the database, restart.
+**System → Restore**, upload the database and — if you have it — the key,
+then restart.
 
-The upload is checked for the SQLite magic bytes and written aside as
-`restore.db`; the swap happens at boot, before anything opens the database, and
-the old one is renamed rather than deleted. Swapping a file under a running
-process, mid-sync, with WAL readers attached is how a restore becomes a
-corruption.
+The database is checked for the SQLite magic bytes and written aside as
+`restore.db`; the key, if you upload one, is checked for length and written
+aside as `restore.secret`. Both swaps happen at boot, before anything opens the
+database, and whatever they replace is renamed rather than deleted. Swapping a
+file under a running process, mid-sync, with WAL readers attached is how a
+restore becomes a corruption.
 
-Put `.secret` back in the data directory too, or the calendars will be there
-and unreadable. The wall will say so rather than failing quietly.
+Restoring the database without the key leaves your calendar addresses there
+and unreadable — the wall will say so rather than failing quietly — so upload
+both if you have both. On the Home Assistant add-on this is the only way to
+restore the key at all: there is no shell and no way to place `.secret` in the
+data directory by hand.
+
+If you ever need to place the key file directly instead — copying the data
+directory to a fresh machine, say — the download is named `maverick-wall.key`
+and needs renaming to `.secret` once it is in the data directory. The keyring
+only ever reads the file named `.secret`.
 
 ## Diagnostics
 
