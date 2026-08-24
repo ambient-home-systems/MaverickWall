@@ -346,17 +346,6 @@ function boot(): void {
     });
   }
 
-  // A real navigation (a link, a submitted form such as Reset) is deliberate.
-  document.addEventListener('submit', () => { navigating = true; }, true);
-  document.addEventListener(
-    'click',
-    (event) => {
-      const el = event.target as Element | null;
-      if (el?.closest('a[href]') !== null) navigating = true;
-    },
-    true,
-  );
-
   window.addEventListener('beforeunload', (event) => {
     if (!isDirty() || navigating) return;
     event.preventDefault();
