@@ -204,6 +204,10 @@ async function main(): Promise<void> {
     console.warn(`[boot] ${master.permissionWarning}`);
     notices.push({ level: 'warn', code: 'key-permissions', message: master.permissionWarning });
   }
+  if (master.unusableKeyWarning) {
+    console.error(`[boot] ${master.unusableKeyWarning}`);
+    notices.push({ level: 'error', code: 'key-unusable', message: master.unusableKeyWarning });
+  }
   const keyring = createKeyring(master.key);
 
   seedDefaults(db);

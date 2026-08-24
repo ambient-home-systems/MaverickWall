@@ -69,10 +69,44 @@ export interface MasterKeyResult {
    * display for a condition the user cannot fix.
    */
   readonly permissionWarning?: string;
+  /**
+   * Set when the key file on disk was unusable — the wrong length even after
+   * trimming trailing whitespace — and a fresh key was generated in its
+   * place. The old file is renamed aside rather than overwritten, but
+   * anything already encrypted with it (every calendar feed address) will
+   * need re-entering, because that ciphertext cannot be read with the new key.
+   */
+  readonly unusableKeyWarning?: string;
 }
 
 function keyPath(dataDir: string): string {
   return join(dataDir, '.secret');
+}
+
+const TRAILING_WHITESPACE = new Set([0x09, 0x0a, 0x0d, 0x20]);
+
+/** Trailing tab, newline, carriage return or space bytes, stripped. */
+function trimTrailingWhitespace(buffer: Buffer): Buffer {
+  let end = buffer.length;
+  while (end > 0 && TRAILING_WHITESPACE.has(buffer[end - 1] as number)) end--;
+  return buffer.subarray(0, end);
+}
+
+/**
+ * Whether a buffer is a usable master key, after allowing for a trailing
+ * newline — the ordinary outcome of a text editor, `echo`, a copy-paste or a
+ * sync tool touching the raw binary key. Never trims a buffer that is already
+ * the right length, so a genuine key whose last byte happens to be a
+ * whitespace byte is never shortened.
+ *
+ * Shared between loading the key at boot and validating a re-uploaded one on
+ * the restore screen — a key good enough to boot with should be good enough
+ * to restore, and the reverse.
+ */
+export function normaliseMasterKeyBytes(buffer: Buffer): Buffer | undefined {
+  if (buffer.length === MASTER_KEY_BYTES) return buffer;
+  const trimmed = trimTrailingWhitespace(buffer);
+  return trimmed.length === MASTER_KEY_BYTES ? trimmed : undefined;
 }
 
 /**
@@ -82,19 +116,37 @@ function keyPath(dataDir: string): string {
  * processes start together exactly one writes the key and the other reads it.
  * Nothing here logs the key, and nothing returns it in an error message.
  */
-export function loadOrCreateMasterKey(dataDir: string): MasterKeyResult {
+export function loadOrCreateMasterKey(dataDir: string, now: () => number = Date.now): MasterKeyResult {
   const path = keyPath(dataDir);
 
+  let unusableKeyWarning: string | undefined;
   try {
     const existing = readFileSync(path);
-    if (existing.length !== MASTER_KEY_BYTES) {
-      throw new Error(
-        `The key file at ${path} is ${existing.length} bytes; expected ${MASTER_KEY_BYTES}. ` +
-          'Move it aside to generate a new one, but note that anything already ' +
-          'encrypted with the old key will need re-entering.',
-      );
+    /*
+     * Allows for a trailing newline — the common case: System → Backup hands
+     * over a raw binary blob, and a text editor, `echo`, a copy-paste or a
+     * sync tool routinely adds one. 33 bytes is the ordinary outcome of
+     * following the restore instructions slightly imperfectly, and the key
+     * underneath it is still the right one.
+     */
+    const usable = normaliseMasterKeyBytes(existing);
+    if (usable !== undefined) {
+      return { key: usable, created: false };
     }
-    return { key: existing, created: false };
+
+    /*
+     * Still wrong. Rule nine: this must degrade rather than stop the process
+     * — under `restart: unless-stopped`, or the supervisor, an unguarded
+     * throw here is an endless restart loop and a wall with no message
+     * anywhere a household can read. The old file is kept, renamed aside,
+     * in case its bytes are ever wanted; a fresh key falls through below.
+     */
+    const brokenPath = `${path}.unusable.${now()}`;
+    renameSync(path, brokenPath);
+    unusableKeyWarning =
+      `The encryption key at ${path} was ${existing.length} bytes; expected ` +
+      `${MASTER_KEY_BYTES}. It has been moved to ${brokenPath} and a new key ` +
+      'was generated. Calendar feed addresses will need re-entering.';
   } catch (error) {
     if (!isNotFound(error)) throw error;
   }
@@ -126,9 +178,12 @@ export function loadOrCreateMasterKey(dataDir: string): MasterKeyResult {
       'the encryption key.';
   }
 
-  return permissionWarning === undefined
-    ? { key, created: true }
-    : { key, created: true, permissionWarning };
+  return {
+    key,
+    created: true,
+    ...(permissionWarning === undefined ? {} : { permissionWarning }),
+    ...(unusableKeyWarning === undefined ? {} : { unusableKeyWarning }),
+  };
 }
 
 function isNotFound(error: unknown): boolean {
