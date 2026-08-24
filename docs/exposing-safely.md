@@ -38,16 +38,27 @@ Then set `BASE_URL=https://wall.example.com` so the session cookie is issued
 for the address the browser actually uses. Without it, sign-in fails with
 "Missing or null Origin", or succeeds and then silently forgets you.
 
-Behind any reverse proxy, forward the client address so rate limiting counts
-callers separately rather than putting every request in one bucket:
+Caddy terminates HTTPS and forwards plain http inward, so on its own the
+container sees http on every request and issues the session cookie without
+`Secure` — on a site you deliberately put behind TLS. Tell it what scheme the
+browser actually used, and tell Maverick Wall to trust that from Caddy's own
+address:
 
 ```caddyfile
 wall.example.com {
 	reverse_proxy 127.0.0.1:8080 {
-		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
 	}
 }
 ```
+
+```bash
+docker run -e TRUSTED_PROXY_SOURCE=127.0.0.1 ...
+```
+
+`X-Forwarded-Proto` is trusted only when the request's real socket address is
+in `TRUSTED_PROXY_SOURCE` — never from the header alone, which anything on the
+network could send. See `docs/environment.md`.
 
 ### Home Assistant ingress
 
