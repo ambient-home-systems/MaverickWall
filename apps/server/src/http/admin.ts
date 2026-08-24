@@ -39,6 +39,7 @@ import {
   type PairingSecret,
   type PersonRecord,
 } from '../api/queries.js';
+import { hasWeatherLocation } from '../api/rules.js';
 import { randomBytes } from 'node:crypto';
 import {
   formatShortCode,
@@ -613,11 +614,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Resolved rather than read from the settings row, so an add-on installation
    * says "connected" on the index without anybody having configured anything.
    */
+  /**
+   * What the overview says about weather alerts.
+   *
+   * "On, working out your zones" was printed for zero zones whatever the
+   * reason, and with no location nothing is being worked out and nothing ever
+   * will be — a status line that is a lie, on the one feature with a
+   * life-safety disclaimer attached to it (RFC 009 Phase 2). The two cases are
+   * separated now: no location is a thing to go and do, and the pill is a link
+   * to the screen where it is done.
+   */
   const alertSummary = (): string => {
     const row = deps.db
       .prepare(`SELECT alerts_enabled AS enabled FROM household_settings WHERE id = 'singleton'`)
       .get() as { enabled: number } | undefined;
     if (row?.enabled !== 1) return 'off';
+    if (!hasWeatherLocation(deps.db)) return 'on — needs your location';
     const zones = deps.db
       .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
       .get() as { n: number } | undefined;
@@ -639,7 +651,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const tagFor = (summary: string): string => {
     const low = summary.toLowerCase();
     const cls =
-      low.includes('not connected') || low.includes('problem') || low.includes('error')
+      // "needs" joins the bad set rather than the neutral one: something is
+      // switched on and not working, which is the same shape as "not
+      // connected" and not the same shape as "off".
+      low.includes('not connected') || low.includes('problem') || low.includes('error') ||
+      low.includes('needs')
         ? 'tag-bad'
         : low === 'off' || low.startsWith('on,')
           ? 'tag'
@@ -738,7 +754,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<span class="kick">Household · ${escapeHtml(household.timezone)}</span></div>` +
           `<div class="grid g2">` +
           `<div class="card status-card">` +
-          statusRow('alerts', 'Weather alerts', '', tagFor(alertSummary())) +
+          // Linked, because the summary can name something to go and do and a
+          // pill that says "needs your location" with no way to it is a nag.
+          statusRow(
+            'alerts',
+            'Weather alerts',
+            '',
+            `<a class="link" href="admin/alerts">${tagFor(alertSummary())}</a>`,
+          ) +
           statusRow('homeassistant', 'Home Assistant', '', tagFor(haSummary())) +
           statusRow('system', 'System', `${escapeHtml(deps.appVersion)} · up ${uptimeText}`, `<a class="link" href="admin/system">Open ${icon('arrow')}</a>`) +
           `</div>` +

@@ -36,8 +36,26 @@ async function harness() {
   runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
   const stamp = Date.now();
   db.prepare(
-    `INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`,
+    /*
+     * With a location. These tests place Weather widgets and assert what
+     * reaches the manifest, and a widget the household has nothing set up for
+     * is omitted on the way out (RFC 009 Phase 2) — so a bare household would
+     * make every one of those assertions about a box that is not there rather
+     * than about the config it carries.
+     */
+    `INSERT INTO household_settings (id, latitude, longitude, created_at, updated_at)
+     VALUES ('singleton', 51.5, -0.12, ?, ?)`,
   ).run(stamp, stamp);
+  /*
+   * And one watched Home Assistant entity, for the same reason as the location
+   * above: this file asserts what a widget's config carries into the manifest,
+   * and a household with no entities has no Home Assistant widget on the wall
+   * to carry anything.
+   */
+  db.prepare(
+    `INSERT INTO ha_entity_cache (entity_id, state, friendly_name, fetched_at, watched)
+     VALUES ('binary_sensor.front_door', 'off', 'Front door', ?, 1)`,
+  ).run(stamp);
 
   const address = `10.7.0.${++n}`;
   const setupToken = createSetupTokenHolder(() => {});

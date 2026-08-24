@@ -893,3 +893,121 @@ export async function measureDayStacks(page: Page): Promise<readonly DayStack[]>
     return stacks;
   });
 }
+
+/**
+ * What the wall drew, and what it left bare (RFC 009 Phase 2).
+ *
+ * Two questions the size measurements cannot answer. Which widgets are on the
+ * glass at all — because Phase 2 makes a widget the household has nothing set
+ * up for *absent* rather than a sentence saying so, and "absent" is only
+ * correct if the rest are still there. And how much of the canvas is left with
+ * nothing on it, because yielding space is only an improvement if the space is
+ * not then a hole.
+ *
+ * `notes` is deliberately the two "nothing yet" notes and not the third. A
+ * `.cd-empty` — "Add a note in this widget's options" — is a prompt naming a
+ * control one click away and is allowed to stay; `.fw-empty` and
+ * `.canvas-empty` are the ones that can only ever say nothing.
+ */
+export interface CanvasInk {
+  readonly canvas: Rect;
+  /** Widget boxes as drawn, in canvas coordinates. */
+  readonly boxes: readonly Rect[];
+  /** The widget types on the glass, e.g. `clock`, `calendar`. */
+  readonly drawn: readonly string[];
+  readonly notes: readonly { readonly where: string; readonly text: string }[];
+}
+
+export async function measureCanvasInk(page: Page): Promise<CanvasInk | undefined> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('#wall .canvas');
+    if (!(canvas instanceof HTMLElement)) return undefined;
+    const frame = canvas.getBoundingClientRect();
+    const relative = (box: DOMRect): Rect => ({
+      left: Math.round(box.left - frame.left),
+      top: Math.round(box.top - frame.top),
+      right: Math.round(box.right - frame.left),
+      bottom: Math.round(box.bottom - frame.top),
+    });
+    const boxes: Rect[] = [];
+    const drawn: string[] = [];
+    for (const box of canvas.querySelectorAll(':scope > .fw')) {
+      if (!(box instanceof HTMLElement)) continue;
+      const rect = box.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      boxes.push(relative(rect));
+      const type = [...box.classList].find((name) => name.startsWith('fw-') && name !== 'fw-fill');
+      drawn.push(type === undefined ? 'unknown' : type.slice(3));
+    }
+    const notes: { where: string; text: string }[] = [];
+    for (const note of document.querySelectorAll('#wall .fw-empty, #wall .canvas-empty')) {
+      const parent = note.parentElement;
+      notes.push({
+        where:
+          parent === null
+            ? 'unknown'
+            : parent.tagName.toLowerCase() +
+              (String(parent.className).trim() === ''
+                ? ''
+                : `.${String(parent.className).trim().split(/\s+/).join('.')}`),
+        text: (note.textContent ?? '').trim(),
+      });
+    }
+    return {
+      canvas: { left: 0, top: 0, right: Math.round(frame.width), bottom: Math.round(frame.height) },
+      boxes,
+      drawn,
+      notes,
+    };
+  });
+}
+
+/**
+ * The largest rectangle inside the canvas that no widget box covers, as a
+ * fraction of the canvas.
+ *
+ * Measured against the *boxes*, not the words in them. A widget box is where a
+ * household's eye goes — it carries the card ground, the padding and whatever
+ * the renderer chose to fill it with — so treating one as inked is the generous
+ * reading and the right one: measuring text rects instead would report the
+ * gutter between two agenda rows as a hole in the wall.
+ *
+ * Computed here rather than in the page, and by enumeration rather than
+ * cleverly: every candidate edge is a box edge or a canvas edge, so with a
+ * handful of widgets the exhaustive answer is exact and instant. An
+ * approximation would be the wrong trade in a check whose whole job is to be
+ * believed.
+ */
+export function largestBareRegion(ink: CanvasInk): { rect: Rect; fraction: number } {
+  const width = ink.canvas.right;
+  const height = ink.canvas.bottom;
+  const area = width * height;
+  const xs = [...new Set([0, width, ...ink.boxes.flatMap((b) => [b.left, b.right])])]
+    .filter((x) => x >= 0 && x <= width)
+    .sort((a, b) => a - b);
+  const ys = [...new Set([0, height, ...ink.boxes.flatMap((b) => [b.top, b.bottom])])]
+    .filter((y) => y >= 0 && y <= height)
+    .sort((a, b) => a - b);
+
+  let best = { rect: { left: 0, top: 0, right: 0, bottom: 0 }, fraction: 0 };
+  for (let i = 0; i < xs.length - 1; i++) {
+    for (let j = i + 1; j < xs.length; j++) {
+      for (let k = 0; k < ys.length - 1; k++) {
+        for (let l = k + 1; l < ys.length; l++) {
+          const rect = { left: xs[i]!, right: xs[j]!, top: ys[k]!, bottom: ys[l]! };
+          const size = (rect.right - rect.left) * (rect.bottom - rect.top);
+          if (area === 0 || size / area <= best.fraction) continue;
+          const covered = ink.boxes.some(
+            (box) =>
+              box.left < rect.right &&
+              box.right > rect.left &&
+              box.top < rect.bottom &&
+              box.bottom > rect.top,
+          );
+          if (!covered) best = { rect, fraction: size / area };
+        }
+      }
+    }
+  }
+  return best;
+}

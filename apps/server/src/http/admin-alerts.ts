@@ -1,7 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { escapeHtml, errorBlock, page, selectField, switchRow, textField } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
-import { readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
+import { hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
@@ -292,7 +292,14 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       .all(now()) as { event: string; severity: string | null; areaDesc: string | null }[];
 
     const enabled = household?.enabled === 1;
-    const located = household?.latitude !== null && household?.longitude !== null;
+    /*
+     * The one reader of this fact, shared with the evaluator and the overview.
+     * Written out here it was `household?.latitude !== null && …`, which is
+     * `true` when there is no settings row at all — optional chaining yields
+     * `undefined`, and `undefined !== null`. It said "located" on a database
+     * with nothing in it.
+     */
+    const located = hasWeatherLocation(deps.db);
 
     return page({
       modules: navModules(deps.db),
@@ -364,21 +371,32 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         `than any one row: the loudest thing the wall can do is reserved for the ` +
         `rarest. Moderate alerts are weekly in some counties, and a takeover for one ` +
         `would be meaningless within a month.</p>` +
-        rules() +
+        rules(located) +
         `<p class="hint">Turning one off means the wall says nothing at that level.</p>`,
     });
   }
 
-  function rules(): string {
+  /**
+   * The ladder, and whether each rung is actually armed.
+   *
+   * `located` is not decoration: with no latitude and longitude there are no
+   * zones and no signal any of these could match, so `readRules` refuses to arm
+   * them (RFC 009 Phase 2). A card that said "on" here while the evaluator
+   * treated it as off would be the screen disagreeing with the wall, which is
+   * exactly the fault this phase is about — so the card says the same thing.
+   */
+  function rules(located: boolean): string {
     return readRuleRows(deps.db)
       .filter((row) => row.trigger === 'nws')
       .map((row) => {
         const parsed = readMatch(safeJson(row.conditions));
         const severity = parsed?.match.minSeverity ?? 'Any';
         const urgency = parsed?.match.minUrgency;
+        const state =
+          row.enabled !== 1 ? ' (off)' : located ? '' : ' (not armed — no location yet)';
         return (
           `<article class="card">` +
-          `<h2>${escapeHtml(row.name)}${row.enabled === 1 ? '' : ' (off)'}</h2>` +
+          `<h2>${escapeHtml(row.name)}${state}</h2>` +
           `<p class="host">${escapeHtml(severity)} or worse` +
           `${urgency === undefined ? '' : `, and ${escapeHtml(urgency)}`}</p>` +
           `<p>${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +

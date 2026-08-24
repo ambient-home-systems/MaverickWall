@@ -24,7 +24,7 @@ this. Before the code existed, the first sign-up was open to anybody who could
 reach the port. It lasts thirty minutes and a new one is printed when it
 expires — restart the container if you missed it.
 
-## Three steps
+## Four steps
 
 1. **Your account.** Email and a password. This is stored on your machine and
    sent nowhere.
@@ -33,8 +33,19 @@ expires — restart the container if you missed it.
 3. **A calendar.** Optional, and skippable — a feed can fail for reasons you do
    not control, and a wizard you cannot finish because Google is having a bad
    morning would leave a wall blank on the evening you installed it.
+4. **Where it is, and who it is for.** Also optional. A latitude and longitude
+   for the forecast strip — and, in the United States, for working out which
+   National Weather Service zones to watch — and the name of one person, whose
+   colour marks their events.
 
 Setup is complete after the timezone.
+
+Skipping the fourth step costs nothing and hides nothing. The wall simply
+leaves out the widgets it has nothing to put in, rather than drawing a box that
+says "Nothing to show yet." for ever, and **no weather alert rule is armed
+until a location exists** — there are no zones to watch without one, so a rule
+that reported itself as on would be reporting something that could not happen.
+Fill either in later on **Weather** and **People**, and both come back.
 
 ## Adding a calendar
 

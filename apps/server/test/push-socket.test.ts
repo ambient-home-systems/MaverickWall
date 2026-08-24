@@ -77,8 +77,15 @@ async function harness() {
   runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
 
   const stamp = Date.now();
+  /*
+   * With a location, because a weather rule with nowhere to watch is not armed
+   * (RFC 009 Phase 2) — and a household with a tornado warning in force
+   * demonstrably has one. Without it the shipped ladder is inert, which is the
+   * point of that change and would make every assertion below vacuous.
+   */
   db.prepare(
-    `INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`,
+    `INSERT INTO household_settings (id, latitude, longitude, created_at, updated_at)
+     VALUES ('singleton', 39.2, -76.8, ?, ?)`,
   ).run(stamp, stamp);
   seedDefaultRules(db);
 

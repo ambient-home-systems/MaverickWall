@@ -176,9 +176,36 @@ export function readRuleRows(db: SqliteDatabase): RuleRow[] {
   return db.prepare(SELECT_RULES).all() as RuleRow[];
 }
 
-/** The rules the evaluator sees: parseable, whatever their enabled state. */
+/**
+ * Has the household told us where this wall is? (RFC 009 Phase 2.)
+ *
+ * The alert zones are derived from the location and nothing else, so with no
+ * location there are no zones, no poll and no signal a weather rule could ever
+ * match. Exported so the Weather screen and the Overview read the same fact
+ * they are reporting on.
+ */
+export function hasWeatherLocation(db: SqliteDatabase): boolean {
+  const row = db
+    .prepare(`SELECT latitude, longitude FROM household_settings WHERE id = 'singleton'`)
+    .get() as { latitude: number | null; longitude: number | null } | undefined;
+  return row !== undefined && row.latitude !== null && row.longitude !== null;
+}
+
+/**
+ * The rules the evaluator sees: parseable, whatever their enabled state.
+ *
+ * With one gate on top of the stored flag. **A weather rule is armed only when
+ * a location exists** (RFC 009 Phase 2): a fresh install ships the National
+ * Weather Service ladder switched on, and until somebody says where the wall
+ * is, that is five rules reporting themselves as working against zero zones —
+ * a safety-adjacent feature that is inert and does not say so, which is worse
+ * than off. It is derived rather than stored deliberately: nothing rewrites the
+ * household's own on/off choices behind their back, and setting a location
+ * hands them back exactly the ladder they had.
+ */
 export function readRules(db: SqliteDatabase): InterruptRule[] {
   const rules: InterruptRule[] = [];
+  const located = hasWeatherLocation(db);
 
   for (const row of readRuleRows(db)) {
     const source = readSource(row.trigger);
@@ -195,7 +222,9 @@ export function readRules(db: SqliteDatabase): InterruptRule[] {
       id: row.id,
       source,
       name: row.name,
-      enabled: row.enabled === 1,
+      // `nws` and not "a shipped default": a rule the household wrote against
+      // the same source has exactly the same nothing to watch.
+      enabled: row.enabled === 1 && (source !== 'nws' || located),
       match: parsed.match,
       action,
       piercesNightMode: row.piercesNightMode === 1,

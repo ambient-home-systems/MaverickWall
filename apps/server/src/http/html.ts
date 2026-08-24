@@ -2323,7 +2323,7 @@ function navBar(active: string, modules: readonly NavModule[]): string {
 
 export interface PageOptions {
   readonly title: string;
-  /** Rendered above the heading in the wizard, e.g. "Step 2 of 3". */
+  /** Rendered above the heading in the wizard, e.g. "Step 2 of 4". */
   readonly step?: string;
   readonly heading: string;
   readonly intro?: string;
@@ -2358,17 +2358,18 @@ export interface PageOptions {
 }
 
 /**
- * The wizard's three-step progress bar, derived from a "Step N of 3" string.
+ * The wizard's four-step progress bar, derived from a "Step N of 4" string.
  *
- * The wizard is always Account → Timezone → Calendar, so the labels are fixed;
- * a total other than three just draws unlabelled bars rather than guessing.
+ * The wizard is always Account → Timezone → Calendar → Where & who, so the
+ * labels are fixed; a total other than four just draws unlabelled bars rather
+ * than guessing.
  */
 function stepProgress(step: string): string {
   const match = /Step\s+(\d+)\s+of\s+(\d+)/i.exec(step);
   if (match === null) return `<p class="kick" style="margin-bottom:22px">${escapeHtml(step)}</p>`;
   const current = Number(match[1]);
   const total = Number(match[2]);
-  const labels = total === 3 ? ['Account', 'Timezone', 'Calendar'] : [];
+  const labels = total === 4 ? ['Account', 'Timezone', 'Calendar', 'Where & who'] : [];
   let out = '<ol class="steps">';
   for (let n = 1; n <= total; n++) {
     const state = n < current ? ' done' : n === current ? ' on' : '';
