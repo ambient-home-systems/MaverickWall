@@ -426,4 +426,63 @@ describe('the eInk Displays page', () => {
     expect((await h.call(url)).status).toBe(404); // token no longer resolves
     expect(await (await h.call(`${B}/admin/epaper`)).text()).not.toContain('Gone');
   });
+
+  /*
+   * A read must not perform a write (RFC 009, 1.8).
+   *
+   * "Show URL & recipes" used to POST straight to `/regenerate`, so looking at
+   * a panel's recipes minted a fresh token and invalidated the one already
+   * flashed into the household's ESP32. The fix is a GET the list links to
+   * instead — this proves that GET exists, is idempotent, and does not
+   * disturb the token a device is already using.
+   */
+  it('looking at a screen never rotates its token', async () => {
+    const h = await harness();
+    const created = await (
+      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
+    ).text();
+    const url = frameUrl(created)!;
+    const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
+
+    // The list no longer offers a form that POSTs straight to /regenerate —
+    // it is a plain link to the read-only page.
+    const list = await (await h.call(`${B}/admin/epaper`)).text();
+    expect(list).not.toContain(`action="admin/epaper/${id}/regenerate"`);
+    expect(list).toContain(`href="admin/epaper/${id}"`);
+
+    // Visiting it — twice, since a GET has to be safe to repeat — leaves the
+    // original URL working and shows no token of its own.
+    for (let i = 0; i < 2; i++) {
+      const view = await h.call(`${B}/admin/epaper/${id}`);
+      expect(view.status).toBe(200);
+      const html = await view.text();
+      expect(frameUrl(html)).toBeUndefined();
+      expect(html).toContain('shown only once');
+    }
+
+    const stillWorks = await h.call(url);
+    expect(stillWorks.status).toBe(200);
+    expect(stillWorks.headers.get('content-type')).toBe('image/png');
+  });
+
+  it('still offers regeneration from the read-only page, behind its own confirmation', async () => {
+    const h = await harness();
+    const created = await (
+      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
+    ).text();
+    const originalUrl = frameUrl(created)!;
+    const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
+
+    const view = await (await h.call(`${B}/admin/epaper/${id}`)).text();
+    expect(view).toContain(`action="admin/epaper/${id}/regenerate"`);
+    expect(view).toContain('onsubmit=');
+    expect(view).toContain('confirm(');
+    expect(view).toContain('re-flashing');
+
+    const regenerated = await (await h.post(`${B}/admin/epaper/${id}/regenerate`, {})).text();
+    const newUrl = frameUrl(regenerated)!;
+    expect(newUrl).not.toBe(originalUrl);
+    expect((await h.call(originalUrl)).status).toBe(404);
+    expect((await h.call(newUrl)).status).toBe(200);
+  });
 });

@@ -9,6 +9,7 @@ import {
   DISPLAY_COOKIE,
   DISPLAY_COOKIE_ATTRS,
   authenticateScreenToken,
+  presentedDisplayToken,
 } from '../auth/screen-token.js';
 import { createDeviceFlowStore, type DeviceFlowStore } from '../auth/device-flow.js';
 import { getConnInfo } from '@hono/node-server/conninfo';
@@ -545,6 +546,18 @@ export function createApp(deps: AppDeps): Hono {
     // `/pair`, rather than through the cookie gate here.
     if (c.req.path.startsWith('/d/epaper/')) return next();
 
+    /*
+     * The manifest is the one response rule nine cannot let a schema problem
+     * take down (RFC 009, 1.9). Boot already continues past a failed or
+     * partial migration and pushes a `ManifestNotice` explaining it — but
+     * this middleware's own `readScreens` below is written against the
+     * newest schema with no tolerance, so on a database boot could not fully
+     * upgrade it throws before that notice ever reaches a wall. The manifest
+     * handler does its own screen lookup, wrapped, so it can degrade to a
+     * 200 carrying only notices instead.
+     */
+    if (c.req.path === '/d/manifest') return next();
+
     const screens = readScreens(deps.db);
     const screen = authenticateScreen(c, screens);
     if (!screen) {
@@ -616,7 +629,7 @@ export function createApp(deps: AppDeps): Hono {
      * several rules match one warning. Storing per rule meant pressing OK
      * promoted the next rule down and the wall carried on regardless.
      */
-    dismissInterrupt(deps.db, key.slice(key.indexOf(':') + 1), now());
+    dismissInterrupt(deps.db, rule.source, key.slice(key.indexOf(':') + 1), now());
     return c.json({ ok: true });
   });
 
@@ -849,9 +862,95 @@ export function createApp(deps: AppDeps): Hono {
   // The push server, if boot wired one, builds from exactly this — see the dep.
   deps.onManifestBuilder?.(manifestForScreen);
 
+  /**
+   * The manifest a wall gets when its own database could not be read.
+   *
+   * Built through the same pure `buildManifest` every other wall gets, with
+   * safe, fixed inputs standing in for whatever could not be read — not a
+   * hand-shaped partial object, so it is exactly as renderable as an empty
+   * fresh install already is. `notices` is the only thing that matters here:
+   * it is what lets the household read the reason instead of a black screen
+   * or "not reaching the server", which is the wrong sentence for a database
+   * that failed to upgrade rather than a network that is down.
+   */
+  const degradedManifest = (extra: ManifestNotice): Manifest =>
+    buildManifest({
+      household: {
+        timezone: 'UTC', theme: 'board', daytimeTheme: null, daytimeStartsAt: null,
+        daytimeEndsAt: null, shiftEnabled: 0, displayTodayEvents: 8, displayNextDays: 6,
+        displayHorizonWeeks: 5, displayBlocks: 'now,next,horizon', clock24: 1,
+        weekStart: 'sunday', layoutMode: 'auto', layoutAspect: 0.5625,
+        layoutLandscapeAspect: 1.7778, layoutBackground: null, layoutLandscapeBackground: null,
+      },
+      events: [], sources: [], people: [], shiftTypes: [], shiftPlans: [], shiftOverrides: [],
+      today: localDateOf(now(), 'UTC'),
+      daysBefore: DEFAULT_DAYS_BEFORE,
+      daysAfter: DEFAULT_DAYS_AFTER,
+      now: now(),
+      appVersion: deps.appVersion,
+      notices: [...deps.bootNotices, extra],
+    });
+
   app.get('/d/manifest', (c: Context) => {
-    const screen = c.get('screen') as ScreenRow;
-    const manifest = manifestForScreen(screen);
+    // No credential presented at all is the ordinary shape of an unpaired
+    // browser polling — refused outright, with no database read, so a
+    // degraded schema never has to stand in for authentication it cannot
+    // actually perform.
+    const presented = presentedDisplayToken(c.req.header('authorization'), c.req.header('cookie'));
+    if (presented === undefined || presented === '') {
+      return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+    }
+
+    const schemaNotice: ManifestNotice = {
+      level: 'error',
+      code: 'schema-degraded',
+      message:
+        'The database could not be fully read. Calendar feed addresses may need ' +
+        're-entering once this is fixed — see System for details.',
+    };
+
+    let screen: ScreenRow | undefined;
+    try {
+      screen = authenticateScreen(c, readScreens(deps.db));
+    } catch (error) {
+      console.error('[manifest] screen lookup failed:', error instanceof Error ? error.message : error);
+      /*
+       * The full row no longer reads, but a token was presented and still
+       * has to earn a degraded manifest rather than being waved through —
+       * an unrecognised bearer must get 401 whether the schema is healthy
+       * or not. Falls back to the columns migration 0001 already created:
+       * a database missing a *newer* addition (the realistic shape of a
+       * partial upgrade) still has these, so a genuine screen's token is
+       * still recognised even when the full row cannot be built.
+       */
+      let recognised = false;
+      try {
+        const minimal = deps.db
+          .prepare(`SELECT token_hash AS tokenHash FROM screens WHERE revoked_at IS NULL`)
+          .all() as { tokenHash: string }[];
+        recognised = minimal.some((row) => verifyDisplayToken(presented, row.tokenHash));
+      } catch (innerError) {
+        console.error(
+          '[manifest] minimal screen lookup also failed:',
+          innerError instanceof Error ? innerError.message : innerError,
+        );
+      }
+      if (!recognised) {
+        return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+      }
+      return c.json(degradedManifest(schemaNotice), 200);
+    }
+    if (!screen) {
+      return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+    }
+
+    let manifest: Manifest;
+    try {
+      manifest = manifestForScreen(screen);
+    } catch (error) {
+      console.error('[manifest] build failed:', error instanceof Error ? error.message : error);
+      return c.json(degradedManifest(schemaNotice), 200);
+    }
 
     // Recorded after building, so a screen that is failing to render still
     // shows as last seen. Failing to update this would make a broken display

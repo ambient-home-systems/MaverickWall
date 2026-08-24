@@ -47,10 +47,49 @@ describe('master key', () => {
     expect(readdirSync(dir).filter((name) => name.includes('tmp'))).toHaveLength(0);
   });
 
-  it('refuses a key file of the wrong size rather than using it', () => {
+  it('recovers a key file with a trailing newline, rather than treating it as broken', () => {
+    // System → Backup hands over a raw 32-byte binary blob, and a text
+    // editor, `echo`, a copy-paste or a sync tool routinely appends one. 33
+    // bytes is the ordinary outcome of following the restore instructions
+    // slightly imperfectly, and it must not cost the household their key.
+    const dir = scratch();
+    const original = loadOrCreateMasterKey(dir).key;
+    writeFileSync(join(dir, '.secret'), Buffer.concat([original, Buffer.from('\n')]));
+
+    const recovered = loadOrCreateMasterKey(dir);
+    expect(recovered.created).toBe(false);
+    expect(recovered.unusableKeyWarning).toBeUndefined();
+    expect(recovered.key.equals(original)).toBe(true);
+  });
+
+  it('never trims a key that is already the right size', () => {
+    // A genuine 32-byte key whose last byte happens to be a whitespace byte
+    // must not be shortened underneath a household that never touched it.
+    const dir = scratch();
+    const key = Buffer.alloc(32, 0x20);
+    writeFileSync(join(dir, '.secret'), key);
+
+    const loaded = loadOrCreateMasterKey(dir);
+    expect(loaded.key.equals(key)).toBe(true);
+    expect(loaded.unusableKeyWarning).toBeUndefined();
+  });
+
+  it('boots on a key file of the wrong size rather than refusing to start', () => {
+    // Rule nine: a bad key file must degrade to "the feed addresses need
+    // re-entering", never to an exit code the supervisor turns into a
+    // restart loop and a permanently black wall.
     const dir = scratch();
     writeFileSync(join(dir, '.secret'), Buffer.alloc(7));
-    expect(() => loadOrCreateMasterKey(dir)).toThrow();
+
+    const recovered = loadOrCreateMasterKey(dir);
+    expect(recovered.created).toBe(true);
+    expect(recovered.key.length).toBe(32);
+    expect(recovered.unusableKeyWarning).toContain('re-entering');
+
+    // The bad file is kept, not overwritten, in case its bytes are ever
+    // wanted — it is simply out of the way of the name the code opens.
+    const leftBehind = readdirSync(dir).filter((name) => name.startsWith('.secret.unusable.'));
+    expect(leftBehind).toHaveLength(1);
   });
 });
 

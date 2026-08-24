@@ -1011,11 +1011,21 @@ export const interruptRules = sqliteTable(
  *
  * Household-wide rather than per screen, and that is the whole design: a
  * kitchen tablet and a hall television must not disagree about whether the
- * garage is still worth mentioning. Keyed `ruleId:signalKey`, so dismissing one
- * warning does not silence the next one a different county gets.
+ * garage is still worth mentioning. Keyed on the signal, not the rule that
+ * matched it — several rules can match one warning, and clearing the loudest
+ * must not silence the next one down.
+ *
+ * `source` names which job's reaping this belongs to — the NWS alerts job
+ * runs every sixty seconds and only ever knows its own CAP keys, and without
+ * this it deleted every dismissal it did not recognise, undoing an
+ * acknowledged garage door or calendar reminder within the minute. Nullable
+ * for rows written before this column existed: a dismissal already sitting
+ * there has no source to reap by, and leaving it alone is safer than
+ * guessing one.
  */
 export const interruptDismissals = sqliteTable('interrupt_dismissals', {
   key: text('key').primaryKey(),
+  source: text('source'),
   dismissedAt: integer('dismissed_at', { mode: 'number' }).notNull().$defaultFn(now),
 });
 

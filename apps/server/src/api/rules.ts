@@ -383,11 +383,16 @@ export function readDismissals(db: SqliteDatabase): Record<string, number> {
   return dismissals;
 }
 
-export function dismissInterrupt(db: SqliteDatabase, key: string, at = Date.now()): void {
+export function dismissInterrupt(
+  db: SqliteDatabase,
+  source: string,
+  key: string,
+  at = Date.now(),
+): void {
   db.prepare(
-    `INSERT INTO interrupt_dismissals (key, dismissed_at) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET dismissed_at = excluded.dismissed_at`,
-  ).run(key, at);
+    `INSERT INTO interrupt_dismissals (key, source, dismissed_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET source = excluded.source, dismissed_at = excluded.dismissed_at`,
+  ).run(key, source, at);
 }
 
 /**
@@ -397,9 +402,18 @@ export function dismissInterrupt(db: SqliteDatabase, key: string, at = Date.now(
  * dismissal would still be sitting there if the same CAP identifier ever came
  * back. Run from the same job that reconciles the alerts, because that is the
  * moment the live set is known.
+ *
+ * Scoped to `source`: this is called from the NWS alerts job, which knows
+ * only its own CAP keys, every sixty seconds. Reaping every row not in that
+ * list — regardless of where it came from — undid a Home Assistant, calendar
+ * or module dismissal within the minute of it being acknowledged. A row with
+ * no source (written before this column existed) is left alone rather than
+ * guessed at, the same as a row from a different source.
  */
-export function pruneDismissals(db: SqliteDatabase, liveKeys: readonly string[]): void {
-  const rows = db.prepare('SELECT key FROM interrupt_dismissals').all() as { key: string }[];
+export function pruneDismissals(db: SqliteDatabase, source: string, liveKeys: readonly string[]): void {
+  const rows = db
+    .prepare('SELECT key FROM interrupt_dismissals WHERE source = ?')
+    .all(source) as { key: string }[];
   const live = new Set(liveKeys);
   const remove = db.prepare('DELETE FROM interrupt_dismissals WHERE key = ?');
   const prune = db.transaction(() => {

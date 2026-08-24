@@ -42,15 +42,21 @@ const CACHE = 'maverick-wall-shell-v1';
 /**
  * Everything needed to draw without a network.
  *
- * Listed rather than discovered: a worker that caches whatever it happens to
- * see would also cache a half-built page from a bad deploy and serve it for
- * ever.
+ * Listed rather than discovered at runtime: a worker that caches whatever it
+ * happens to see would also cache a half-built page from a bad deploy and
+ * serve it for ever. The list itself, though, is generated rather than
+ * hand-maintained — `scripts/generate-shell.mjs` rewrites it after the build
+ * by walking `main.js`'s own `import` graph, and `test/sw-shell.test.ts`
+ * pins the two in parity from source. It has drifted three times by hand
+ * already; nothing here should require editing it by hand again.
  */
 const SHELL = [
   '/',
   '/assets/display.css',
   '/assets/main.js',
   '/assets/clock.js',
+  '/assets/density.js',
+  '/assets/ladder.js',
   '/assets/manifest.js',
   '/assets/orientation.js',
   '/assets/render.js',
@@ -58,6 +64,7 @@ const SHELL = [
   '/assets/theme.js',
   '/assets/viewmodel.js',
   '/assets/watchdog.js',
+  '/assets/widget-options.js',
 ];
 
 worker.addEventListener('install', (event) => {

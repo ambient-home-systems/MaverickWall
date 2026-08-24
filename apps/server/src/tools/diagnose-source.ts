@@ -48,7 +48,16 @@ if (sources.length === 0) {
   process.exit(1);
 }
 
-const keyring = createKeyring(loadOrCreateMasterKey(dataDir).key);
+const master = loadOrCreateMasterKey(dataDir);
+if (master.unusableKeyWarning) {
+  // This tool's whole purpose is surfacing the real cause of a feed
+  // failure; a silently regenerated key would hide exactly this one — every
+  // source above would decrypt to garbage and report as unreadable for a
+  // reason the operator was never told.
+  console.error(`Warning: ${master.unusableKeyWarning}`);
+  console.error('');
+}
+const keyring = createKeyring(master.key);
 const fetcher = createFetcher();
 
 for (const source of sources) {

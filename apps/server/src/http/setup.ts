@@ -178,6 +178,59 @@ function serverTimezone(): string {
   }
 }
 
+/**
+ * The fallback offered on the form, and the one value that is always accepted.
+ *
+ * `Intl.supportedValuesOf('timeZone')` carries neither `'UTC'` nor `'Etc/UTC'`
+ * on the ICU data this project has seen — so a container with no `TZ` set (as
+ * `docker run` leaves it) detects `'UTC'` and finds it nowhere in the list. A
+ * zone the platform genuinely resolves has to be offered rather than silently
+ * dropped.
+ */
+const UTC_FALLBACK = 'Etc/UTC';
+
+/**
+ * The zones offered, always including a zone the platform always accepts.
+ *
+ * Exported so the admin's own timezone forms (household default, per-screen
+ * override) read the identical list — a zone the wizard can store but the
+ * admin's own dropdown cannot offer would render exactly this bug again the
+ * first time a household reopened Settings.
+ */
+export function offeredTimezones(): string[] {
+  const zones = supportedTimezones();
+  return zones.includes(UTC_FALLBACK) ? zones : [...zones, UTC_FALLBACK];
+}
+
+/**
+ * Canonicalise before comparing against the offered list.
+ *
+ * `Intl` resolves aliases (`Asia/Calcutta` → `Asia/Kolkata`) to the name
+ * `supportedValuesOf` actually returns, so a detected alias still matches an
+ * offered option instead of falling through to the UTC fallback for no reason.
+ */
+function normaliseTimezone(zone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone;
+  } catch {
+    return zone;
+  }
+}
+
+/**
+ * Which offered zone a detected zone should preselect.
+ *
+ * Never "nothing" — an unmatched detection is treated as a bug rather than a
+ * default, so it falls back to a zone that is always in the offered list
+ * rather than leaving the `<select>` to preselect whatever sorts first.
+ */
+function detectedTimezoneOption(zones: string[], detected: string): string {
+  const canonical = normaliseTimezone(detected);
+  if (zones.includes(canonical)) return canonical;
+  if (zones.includes(detected)) return detected;
+  return UTC_FALLBACK;
+}
+
 export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
@@ -336,7 +389,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
      * connect back to this form.
      */
     const shapedZone = parse(
-      z.string().refine((value) => supportedTimezones().includes(value), {
+      z.string().refine((value) => offeredTimezones().includes(value), {
         error: () => 'Choose a timezone from the list.',
       }),
       body['timezone'],
@@ -523,11 +576,13 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     });
   }
 
-  function timezoneForm(selected: string, error?: string): string {
-    const options = supportedTimezones()
+  function timezoneForm(detected: string, error?: string): string {
+    const zones = offeredTimezones();
+    const effective = detectedTimezoneOption(zones, detected);
+    const options = zones
       .map(
         (zone) =>
-          `<option value="${escapeHtml(zone)}"${zone === selected ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
+          `<option value="${escapeHtml(zone)}"${zone === effective ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
       )
       .join('');
     return page({
@@ -540,7 +595,14 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="setup/household">` +
-        selectField({ label: 'Timezone', name: 'timezone', optionsHtml: options, attrs: 'required' }) +
+        selectField({
+          label: 'Timezone',
+          name: 'timezone',
+          optionsHtml: options,
+          attrs: 'required',
+          // A preselected value with no explanation is a value nobody checks.
+          hint: `Detected: ${detected}. Change it if this wall is somewhere else.`,
+        }) +
         `<button type="submit">Save and continue</button></form>` +
 
         /*

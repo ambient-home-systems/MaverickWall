@@ -285,8 +285,16 @@ function boot(): void {
 
   let settingsDirty = false;
   let editorDirty = false;
-  // True while we are intentionally leaving (a save, a discard, a link, a form
-  // submit) so the beforeunload guard does not second-guess a deliberate action.
+  /*
+   * True while we are intentionally leaving, so the beforeunload guard does
+   * not second-guess a deliberate action. Set only by the Save and Discard
+   * handlers below — deliberately not by a document-level link or submit
+   * listener (RFC 009, 1.7): that used to arm on any click inside an
+   * a[href], which meant one stray click on a nav link disarmed the guard
+   * for good. A new control that leaves the page on purpose needs to set
+   * this itself; an unset one is refused by the guard, which is the safe
+   * direction to fail in.
+   */
   let navigating = false;
 
   const isDirty = (): boolean => settingsDirty || editorDirty;
@@ -345,17 +353,6 @@ function boot(): void {
       window.location.reload();
     });
   }
-
-  // A real navigation (a link, a submitted form such as Reset) is deliberate.
-  document.addEventListener('submit', () => { navigating = true; }, true);
-  document.addEventListener(
-    'click',
-    (event) => {
-      const el = event.target as Element | null;
-      if (el?.closest('a[href]') !== null) navigating = true;
-    },
-    true,
-  );
 
   window.addEventListener('beforeunload', (event) => {
     if (!isDirty() || navigating) return;

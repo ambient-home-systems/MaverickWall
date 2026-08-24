@@ -84,6 +84,8 @@ import { testFeed, type TestFeedResult } from '../api/test-feed.js';
 import { currentUser } from '../auth/session.js';
 import type { Fetcher, ShiftPlan } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
+import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
+import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, icon, page, selectField, selectRow, switchRow, textField,
   type NavModule } from './html.js';
@@ -271,6 +273,7 @@ import { registerModuleRoutes } from './admin-modules.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerThemeRoutes } from './admin-themes.js';
+import { offeredTimezones } from './setup.js';
 import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
@@ -544,17 +547,6 @@ function themeCards(selected: string, custom: readonly ThemeRow[] = []): string 
 }
 
 /** A six-digit hex colour, which is what `<input type="color">` submits. */
-/**
- * The zones offered, from the runtime rather than a bundled list.
- *
- * The same source the wizard uses, so the two screens can never disagree about
- * what a valid zone is.
- */
-function supportedTimezones(): string[] {
-  const values = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf;
-  if (typeof values === 'function') return values('timeZone');
-  return ['UTC', 'America/New_York', 'Europe/London', 'Australia/Sydney'];
-}
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return 'unknown size';
@@ -974,7 +966,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/system/timezone', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(
-      z.string().refine((value) => supportedTimezones().includes(value), {
+      z.string().refine((value) => offeredTimezones().includes(value), {
         error: () => 'Choose a timezone from the list.',
       }),
       body['timezone'],
@@ -1074,8 +1066,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
 
-    const staged = join(deps.dataDir, 'restore.db');
-    writeFileSync(staged, bytes);
+    /*
+     * The key, alongside the database and staged identically — optional,
+     * because a household restoring onto a machine that already has the
+     * right key does not need to touch it. Validated the same way the key is
+     * validated at boot (RFC 009, 1.5): a trailing newline is tolerated, but
+     * anything else the wrong length is refused outright rather than staged
+     * and left to fail silently at the next boot.
+     */
+    const keyFile = body['key'];
+    let keyBytes: Buffer | undefined;
+    if (keyFile instanceof File && keyFile.size > 0) {
+      const usable = normaliseMasterKeyBytes(Buffer.from(await keyFile.arrayBuffer()));
+      if (usable === undefined) {
+        return c.html(systemPage('That is not a Maverick Wall key file.'), 400);
+      }
+      keyBytes = usable;
+    }
+
+    writeFileSync(stagedPath(deps.dataDir), bytes);
+    if (keyBytes !== undefined) writeFileSync(stagedKeyPath(deps.dataDir), keyBytes, { mode: 0o600 });
+
     return c.html(
       page({
       modules: navModules(deps.db),
@@ -1087,9 +1098,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'apply it — the current database is kept alongside it, so a restore ' +
           'that turns out to be the wrong file is not the end.',
         body:
-          `<p>If your calendars come back but show no events, the encryption key ` +
-          `does not match this database. Restore the key file too.</p>` +
-          `<p><a class="link" href="admin/system">← Back</a></p>`,
+          keyBytes !== undefined
+            ? `<p>The key was staged with it, so your calendar addresses will read ` +
+              `back correctly.</p>` +
+              `<p><a class="link" href="admin/system">← Back</a></p>`
+            : `<p>No key was uploaded with it. If your calendars come back but show ` +
+              `no events, the encryption key does not match this database — restore ` +
+              `again with the key file included.</p>` +
+              `<p><a class="link" href="admin/system">← Back</a></p>`,
       }),
     );
   });
@@ -1493,7 +1509,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (scheduled && startsAt === endsAt) {
       return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.'), 400);
     }
-    if (timezone !== '' && !supportedTimezones().includes(timezone)) {
+    if (timezone !== '' && !offeredTimezones().includes(timezone)) {
       return c.html(displayDetailPage(id, 'Choose a timezone from the list.'), 400);
     }
 
@@ -1733,6 +1749,46 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   };
 
+  /**
+   * The read-only view of a screen that already exists — reached by GET, so
+   * looking at a panel's recipes is never itself the thing that breaks it
+   * (RFC 009, 1.8).
+   *
+   * The frame URL is never stored in the clear — it lives only in the
+   * response that showed it, exactly like a wall's pairing link — so this
+   * page cannot show the URL a household already flashed into a panel.
+   * Regenerating is still one click away, but it is named for what it does
+   * and asks first, rather than being the only way to see anything about the
+   * screen at all.
+   */
+  const epaperViewPage = (
+    id: string,
+    name: string,
+    geometry: { width: number; height: number; rotation: number },
+  ): string => {
+    const placeholder = "<this screen's frame URL>";
+    return page({
+      modules: navModules(deps.db),
+      title: 'eInk display — Maverick Wall',
+      nav: 'epaper',
+      heading: name,
+      intro: `${geometry.width}×${geometry.height}, black & white${geometry.rotation === 0 ? '' : `, rotated ${geometry.rotation}°`}.`,
+      body:
+        `<p>The frame URL is shown only once — when this screen is added, or its ` +
+        `URL is regenerated — and is never stored anywhere it could be shown again. ` +
+        `If the panel or Home Assistant already has it configured, there is nothing ` +
+        `to do here.</p>` +
+        codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe(placeholder)) +
+        codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(placeholder)) +
+        `<div style="display:flex;gap:10px;margin-top:18px">` +
+        `<a class="btn" href="admin/epaper">Done</a>` +
+        `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/regenerate" ` +
+        `onsubmit="return confirm('Regenerate the URL for ${escapeHtml(name)}? The old one stops working and the panel will need re-flashing.')">` +
+        `<button class="btn ghost" type="submit">Regenerate URL (the panel will need re-flashing)</button></form>` +
+        `</div>`,
+    });
+  };
+
   /** The eInk Displays list and the add form. */
   const epaperPage = (error?: string): string => {
     const screens = readAdminScreens(deps.db).filter(
@@ -1752,8 +1808,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // One filled action per card; the rest are outlined ("btn ghost" here
       // never matched the .btn-ghost rule, so all three used to render filled).
       `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
-      `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/regenerate">` +
-      `<button class="btn-ghost" type="submit">Show URL &amp; recipes</button></form>` +
+      `<a class="btn-ghost" href="admin/epaper/${encodeURIComponent(screen.id)}">URL &amp; recipes</a>` +
       `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/revoke" ` +
       `onsubmit="return confirm('Remove ${escapeHtml(screen.name)}? Its URL stops working.')">` +
       `<button class="btn-danger" type="submit">Remove</button></form>` +
@@ -1816,6 +1871,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   };
 
   app.get('/admin/epaper', (c: Context) => c.html(epaperPage()));
+
+  /**
+   * A screen's recipes, read-only (RFC 009, 1.8).
+   *
+   * Reaching this by GET is the whole fix: before it existed, the only page
+   * that could show anything about a screen was the one that minted — and
+   * invalidated — a new token, so looking was indistinguishable from
+   * breaking it.
+   */
+  app.get('/admin/epaper/:id', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = readAdminScreens(deps.db).find(
+      (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
+    );
+    if (screen === undefined) return c.html(epaperPage('That screen is no longer there.'), 404);
+    return c.html(
+      epaperViewPage(id, screen.name, {
+        width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation,
+      }),
+    );
+  });
 
   app.post('/admin/epaper', async (c: Context) => {
     const shaped = parse(newEpaperBody, (await c.req.parseBody()) as Record<string, unknown>);
@@ -2651,7 +2727,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         selectField({
           label: 'Household timezone',
           name: 'timezone',
-          optionsHtml: supportedTimezones()
+          optionsHtml: offeredTimezones()
             .map(
               (zone) =>
                 `<option value="${escapeHtml(zone)}"` +
@@ -2681,10 +2757,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ) +
 
         `<h2 class="add">Restore</h2>` +
-        `<p class="hint">Upload a database backup. It is checked and put aside, ` +
-        `then applied when Maverick Wall next starts.</p>` +
+        `<p class="hint">Upload a database backup, and the key if you have it — ` +
+        `without it your calendar addresses stay encrypted and unreadable. Both ` +
+        `are checked and put aside, then applied when Maverick Wall next starts.</p>` +
         `<form method="post" action="admin/system/restore" enctype="multipart/form-data">` +
         textField({ label: 'Backup file', name: 'backup', type: 'file', required: true }) +
+        textField({
+          label: 'Key file',
+          name: 'key',
+          type: 'file',
+          hint: 'Optional. The file System → Backup downloads as maverick-wall.key.',
+        }) +
         `<button type="submit">Stage restore</button></form>` +
 
         `<h2 class="add">Diagnostics</h2>` +
@@ -3258,7 +3341,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             wide: true,
             optionsHtml:
               option('', `Household default — ${household.timezone}`, screen.timezone === null) +
-              supportedTimezones()
+              offeredTimezones()
                 .map((zone) => option(zone, zone, screen.timezone === zone))
                 .join(''),
           }) +

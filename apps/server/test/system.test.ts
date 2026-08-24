@@ -1,21 +1,24 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDatabase, databasePath } from '../src/db/open.js';
+import { openDatabase, databasePath, backupTo } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
-import { createKeyring } from '../src/secrets/keyring.js';
+import { createKeyring, loadOrCreateMasterKey } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { createLogBuffer } from '../src/logbuffer.js';
 import { buildDiagnostics } from '../src/api/diagnostics.js';
-import { applyStagedRestore, stagedPath } from '../src/db/restore.js';
+import { applyStagedRestore, stagedKeyPath, stagedPath } from '../src/db/restore.js';
+import { addCalendarSource } from '../src/api/sources.js';
+import { createIcsSyncHandler } from '../src/jobs/ics-sync.js';
 import { checkForUpdate, isNewer } from '../src/api/update-check.js';
 import { readUpdateState, recordUpdateCheck, setUpdateCheckEnabled } from '../src/api/queries.js';
-import type { FetchOutcome, Fetcher } from '@maverick-wall/core';
+import type { FetchOutcome, Fetcher, JobRecord } from '@maverick-wall/core';
 
 /** A fetcher that answers once with whatever the test wants, and never leaves. */
 function stubFetcher(outcome: FetchOutcome): Fetcher {
@@ -24,8 +27,42 @@ function stubFetcher(outcome: FetchOutcome): Fetcher {
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
+const servers: Server[] = [];
 let nextAddress = 0;
-afterAll(() => { for (const root of roots) rmSync(root, { recursive: true, force: true }); });
+afterAll(async () => {
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  await Promise.all(
+    servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+  );
+});
+
+const FEED = [
+  'BEGIN:VCALENDAR',
+  'VERSION:2.0',
+  'PRODID:-//Maverick Wall//test//EN',
+  'BEGIN:VEVENT',
+  'UID:restore-1@example.com',
+  'DTSTAMP:20260101T000000Z',
+  'DTSTART:20260715T140000Z',
+  'DTEND:20260715T150000Z',
+  'SUMMARY:Dentist',
+  'END:VEVENT',
+  'END:VCALENDAR',
+  '',
+].join('\r\n');
+
+/** A real feed on a real socket, the one thing a stub cannot exercise. */
+async function icsServer(): Promise<string> {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'text/calendar' });
+    response.end(FEED);
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : 0;
+  return `http://127.0.0.1:${port}/feed.ics`;
+}
 
 /** A household with things in it that must never leave the house. */
 function harness() {
@@ -250,6 +287,87 @@ describe('restore', () => {
     writeFileSync(stagedPath(h.dataDir), '');
     expect(applyStagedRestore(h.dataDir).status).toBe('failed');
     expect(statSync(databasePath(h.dataDir)).size).toBeGreaterThan(0);
+  });
+
+  /*
+   * End to end (RFC 009, 1.6): back up, wipe, restore both files, and a feed
+   * still syncs.
+   *
+   * The database alone is not a backup — the feed address is encrypted, and
+   * without the matching key it comes back as ciphertext nothing can read.
+   * Before this fix there was nowhere to upload the key at all, so this is
+   * the scenario that was previously impossible.
+   */
+  it('restores the key alongside the database, and a feed decrypts and syncs again', async () => {
+    const original = mkdtempSync(join(tmpdir(), 'mw-restore-orig-'));
+    roots.push(original);
+    const { db: originalDb } = openDatabase({ dataDir: original });
+    runMigrations(originalDb, { dataDir: original, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
+
+    // A real master key, persisted to disk exactly as boot creates one — not
+    // the harness's disk-detached random keyring above, because this test is
+    // about whether the *file* System → Backup hands over is the one that
+    // decrypts what System → Backup also hands over.
+    const originalKeyring = createKeyring(loadOrCreateMasterKey(original).key);
+
+    const feedUrl = await icsServer();
+    const added = addCalendarSource(originalDb, originalKeyring, {
+      name: 'Family', url: feedUrl, allowLoopback: true, allowHttp: true,
+    });
+    if (!added.ok) throw new Error(added.message);
+
+    // Proves the source is real and reachable before anything is backed up —
+    // otherwise a restore that "does nothing" and a restore of a feed that
+    // never worked look identical.
+    const firstSync = createIcsSyncHandler({
+      db: originalDb, fetcher: createFetcher(), keyring: originalKeyring, timezone: () => 'UTC',
+    });
+    const job: JobRecord = {
+      key: `ics-sync:${added.id}`, kind: 'ics-sync', nextRunAt: 0, consecutiveFailures: 0,
+    };
+    expect(await firstSync(job)).toMatchObject({ status: 'ok' });
+    expect(
+      originalDb.prepare('SELECT COUNT(*) AS n FROM calendar_events_cache').get(),
+    ).toEqual({ n: 1 });
+
+    // The two downloads System → Backup offers, captured the same way the
+    // real endpoints produce them.
+    const backupPath = join(original, 'snapshot.db');
+    backupTo(originalDb, backupPath);
+    const backupBytes = readFileSync(backupPath);
+    const keyBytes = readFileSync(join(original, '.secret'));
+    originalDb.close();
+
+    // The wipe: a household onto a fresh install, or a fresh volume — not the
+    // same directory, so there is no question of anything surviving by
+    // accident.
+    const fresh = mkdtempSync(join(tmpdir(), 'mw-restore-fresh-'));
+    roots.push(fresh);
+    writeFileSync(stagedPath(fresh), backupBytes);
+    writeFileSync(stagedKeyPath(fresh), keyBytes, { mode: 0o600 });
+
+    const outcome = applyStagedRestore(fresh);
+    expect(outcome.status).toBe('restored');
+    expect(existsSync(stagedPath(fresh))).toBe(false);
+    expect(existsSync(stagedKeyPath(fresh))).toBe(false);
+
+    const restoredMaster = loadOrCreateMasterKey(fresh);
+    expect(restoredMaster.key.equals(keyBytes)).toBe(true);
+    const restoredKeyring = createKeyring(restoredMaster.key);
+
+    const { db: restoredDb } = openDatabase({ dataDir: fresh });
+    // A fresh sync, on the restored database with the restored keyring —
+    // this is the assertion that matters: the feed address decrypted, and
+    // the feed synced, not merely that a file exists on disk.
+    const secondSync = createIcsSyncHandler({
+      db: restoredDb, fetcher: createFetcher(), keyring: restoredKeyring, timezone: () => 'UTC',
+    });
+    const result = await secondSync({ ...job, nextRunAt: 0, consecutiveFailures: 0 });
+    expect(result).toMatchObject({ status: 'ok' });
+    expect(
+      restoredDb.prepare('SELECT COUNT(*) AS n FROM calendar_events_cache').get(),
+    ).toEqual({ n: 1 });
+    restoredDb.close();
   });
 });
 

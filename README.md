@@ -177,8 +177,6 @@ weather radio depends on none of them.
 
 - **Weather and alerts are United States only.** NWS is the only provider and a
   second one has not been built. Everything else works anywhere.
-- **The wall needs a browser.** Any tablet, television or Pi that runs a
-  reasonably modern one. There is no native app yet.
 - **One household per container.** There is no multi-tenancy and there will not
   be. If you need a second wall, run a second container.
 - **eInk panels are unproven on hardware.** The whole path is built and tested
@@ -186,10 +184,13 @@ weather radio depends on none of them.
   frame has been photographed on a real panel yet. Treat it as a glance
   display and not an alert one: a sleeping battery panel cannot show you a
   tornado warning.
-- **No push yet.** The display polls. A WebSocket channel is specified and not
-  built, so an alert appears within a poll interval rather than instantly.
+- **The browser wall polls; it does not push yet.** The server has a real
+  WebSocket hub, and the Android app connects to it, but `apps/display` — the
+  browser wall — still polls every sixty seconds, so an alert there appears
+  within a poll interval rather than instantly.
 - **Alerts wake a screen only where the platform allows it.** A browser cannot
-  turn a screen on; that needs the Android app, which does not exist yet.
+  turn a screen on. The Android app can, over the same push channel; a browser
+  wall cannot until it connects to it too.
 - **Backups are yours.** There is an export on the System screen and the data
   is one directory, but nothing is uploaded anywhere, by design.
 - **Nobody can reach your machine to fix it**, including us. That constraint
