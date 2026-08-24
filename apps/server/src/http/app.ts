@@ -616,7 +616,7 @@ export function createApp(deps: AppDeps): Hono {
      * several rules match one warning. Storing per rule meant pressing OK
      * promoted the next rule down and the wall carried on regardless.
      */
-    dismissInterrupt(deps.db, key.slice(key.indexOf(':') + 1), now());
+    dismissInterrupt(deps.db, rule.source, key.slice(key.indexOf(':') + 1), now());
     return c.json({ ok: true });
   });
 

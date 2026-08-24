@@ -141,7 +141,7 @@ export function createAlertJobHandler(deps: AlertJobDeps): JobHandler {
 
     // The live set is known exactly here, which is the moment to forget
     // dismissals for warnings that are over.
-    pruneDismissals(deps.db, liveAlertKeys(deps.db, at));
+    pruneDismissals(deps.db, 'nws', liveAlertKeys(deps.db, at));
 
     if (hardBackOff) {
       /*

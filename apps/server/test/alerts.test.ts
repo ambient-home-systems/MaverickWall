@@ -10,7 +10,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import { clean, parseAlerts, parseZones, reconcile } from '../src/modules/weather/alerts.js';
 import { alertSignals, applyAlerts, expireAlerts, knownAlerts } from '../src/modules/weather/alert-store.js';
 import { createAlertJobHandler } from '../src/modules/weather/alert-job.js';
-import { readRules, seedDefaultRules } from '../src/api/rules.js';
+import { dismissInterrupt, readDismissals, readRules, seedDefaultRules } from '../src/api/rules.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import type { SqliteDatabase } from '../src/db/open.js';
 import type { JobRecord } from '@maverick-wall/core';
@@ -510,6 +510,51 @@ describe('the polling job, against a real server', () => {
     const result = await job(db, nws)(record);
     expect(result.status).toBe('skipped');
     expect(nws.paths).toEqual([]);
+    db.close();
+  });
+
+  /*
+   * Pruning dismissals is scoped to the job's own source (RFC 009, 1.4).
+   *
+   * This job knows only its own CAP keys, and it runs every sixty seconds —
+   * so before dismissals were scoped by source, acknowledging a garage door,
+   * a calendar reminder or a module signal was undone within the minute, the
+   * next time this job happened to run. The garage-open rule is the flagship
+   * example in the project's own documentation, and it is exactly what this
+   * broke.
+   */
+  it('never reaps a dismissal that belongs to a different source', async () => {
+    const db = database();
+    const nws = await fakeNws();
+
+    // A Home Assistant interrupt, acknowledged from the wall. The job below
+    // knows nothing about it — it only ever sees NWS CAP identifiers.
+    dismissInterrupt(db, 'homeassistant', 'binary_sensor.garage_door', Date.now());
+    expect(readDismissals(db)).toHaveProperty('binary_sensor.garage_door');
+
+    await job(db, nws)(record);
+
+    expect(readDismissals(db)).toHaveProperty('binary_sensor.garage_door');
+    db.close();
+  });
+
+  it('still reaps its own dismissal once the alert it named is no longer live', async () => {
+    const db = database();
+    const nws = await fakeNws();
+    await job(db, nws)(record);
+
+    // The one CAP id `fakeNws` serves, acknowledged from the wall.
+    dismissInterrupt(db, 'nws', 'urn:oid:2.49.0.1.840.0.aaa', Date.now());
+    expect(readDismissals(db)).toHaveProperty('urn:oid:2.49.0.1.840.0.aaa');
+
+    // The zone stops listing it — the same withdrawal `reconcile` already
+    // treats as a cancellation. The etag has to move too, or the server
+    // answers 304 and nothing is reconciled at all.
+    nws.etag = '"v2"';
+    nws.body = () => collection([]);
+    await job(db, nws)(record);
+
+    expect(readDismissals(db)).not.toHaveProperty('urn:oid:2.49.0.1.840.0.aaa');
     db.close();
   });
 });

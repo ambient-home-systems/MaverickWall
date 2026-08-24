@@ -239,6 +239,13 @@
       "when": 1787451139540,
       "tag": "0033_slimy_lethal_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1787594842446,
+      "tag": "0034_short_firelord",
+      "breakpoints": true
     }
   ]
 }
