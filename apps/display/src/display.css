@@ -1207,7 +1207,7 @@ body {
 }
 
 /*
- * The two screens that are one thing, not a calendar.
+ * The three screens that are one thing, not a stack of blocks.
  *
  * A takeover and the pre-pairing message both want the whole screen with
  * something centred in it, and the rule above turns every `.screen` into a
@@ -1216,14 +1216,45 @@ body {
  * empty. Found by measuring rather than by looking: the message screen reads
  * as merely "left aligned" until the numbers say it stops at 980 of 1920.
  *
+ * **A free-form canvas is the third, and it was missing from this list for as
+ * long as free-form has existed.** It is one letterboxed child that sizes
+ * itself off the frame, so a grid track and a padding box are both wrong for
+ * it: measured, the canvas came out at left −23, top −11 on a 1920x1080 wall
+ * and −15, −8 on a 1280x720 one — a strip of the wall off the left edge and a
+ * strip of bare ground down the right, scaling with the padding rather than
+ * being a constant. Every wall is free-form now, so that was every landscape
+ * wall. `padding: 0` is part of the fix and not tidying: the rule above sets
+ * 2.6rem/2.8rem/2.2rem, and a canvas sized to the *frame* inside a box inset
+ * from it overflows by exactly that inset however it is centred.
+ *
+ * The worse half only appears with a banner, which is why it stayed quiet: a
+ * banner exists when the server does not. In the two-column grid it took
+ * `grid-column: 1 / -1` in row one and the canvas kept its full height in row
+ * two, so on a 1920x1080 wall the banner drew *across* the calendar at y 42-99
+ * and 46px of the wall fell off the bottom. Portrait was right all along —
+ * `.screen` is a flex column, so the banner takes its own row under the canvas
+ * and the canvas gives up the height. This makes landscape do the same.
+ *
  * Written as a separate rule rather than by scoping the one above, because
  * `:has()` is out under rule two and this is what says the intent.
  */
+:root[data-layout="landscape"] .screen.freeform,
 :root[data-layout="landscape"] .screen.screen-alert,
 :root[data-layout="landscape"] .screen.screen-message {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/*
+ * The canvas is letterboxed against the frame, so the frame is what holds it.
+ *
+ * Only the free-form screen: a takeover and a message are content laid out
+ * *inside* the screen and keep the breathing room the rule above gives them.
+ */
+:root[data-layout="landscape"] .screen.freeform {
+  padding: 0;
+  gap: 0;
 }
 
 /*

@@ -87,7 +87,10 @@ describe('1 · the offline wall', () => {
    * are when somebody reboots the router, which is the only version of this
    * that has ever found anything.
    */
-  async function reloadWithNothingBehindIt(onlineLoads: 1 | 2): Promise<{
+  async function reloadWithNothingBehindIt(
+    onlineLoads: 1 | 2,
+    viewport: { width: number; height: number } = { width: 1080, height: 1920 },
+  ): Promise<{
     state: Awaited<ReturnType<typeof wallState>>;
     online: Awaited<ReturnType<typeof wallState>>;
     cached: string[];
@@ -95,7 +98,7 @@ describe('1 · the offline wall', () => {
     error?: string;
   }> {
     const wall = await fresh({ feed: true });
-    const context = await (await browser()).newContext({ viewport: { width: 1080, height: 1920 } });
+    const context = await (await browser()).newContext({ viewport });
     try {
       const page = await context.newPage();
       await page.goto(await wall.pairLink(), { waitUntil: 'load' });
@@ -199,6 +202,69 @@ describe('1 · the offline wall', () => {
     },
     SLOW,
   );
+
+  /**
+   * And the banner sits beside the wall rather than across it.
+   *
+   * The sixth assertion in a file that was meant to hold five, and it arrived
+   * with the landscape canvas fix rather than with Phase 0 — because until the
+   * canvas was letterboxed against the frame, this was broken and nothing
+   * said so.
+   *
+   * A banner is the only thing here that cannot be arranged: it exists when
+   * the server does not, so the offline dance above is the only way to get
+   * one, which is exactly how `CLAUDE.md` records finding this fault the first
+   * time — *"A banner in landscape drew the month on top of itself | Killing
+   * the server, which is the only way to get a banner."* It came back in the
+   * free-form era, in the same orientation, for a different reason. Measured
+   * on a 1920x1080 wall before the fix:
+   *
+   *     canvas  left -23  top  46  right 1897  bottom 1126   (46px off the glass)
+   *     banner  left -23  top  42  right 1942  bottom   99   (across the calendar)
+   *
+   * Portrait was correct throughout, which is what kept it quiet: the base
+   * `.screen` rule is a flex *column*, so the banner takes its own row under
+   * the canvas — and in landscape the two-column grid was overriding that.
+   */
+  it(
+    'draws the offline banner under the wall, not across it',
+    async () => {
+      const { state, controlled, error } = await reloadWithNothingBehindIt(2, {
+        width: 1920,
+        height: 1080,
+      });
+      expect(controlled, 'the service worker never took control').toBe(true);
+      expect(error, 'the reload itself failed').toBeUndefined();
+
+      const { canvas, banner, viewport } = state;
+      expect(canvas, 'no canvas was drawn offline').toBeDefined();
+      expect(
+        banner,
+        'no banner, so there is nothing to check — a wall with the server dead ' +
+          'must say so (rule nine), and this test cannot do its job without one',
+      ).toBeDefined();
+
+      const where = `canvas ${JSON.stringify(canvas)} banner ${JSON.stringify(banner)} in ${viewport.width}x${viewport.height}`;
+      for (const [name, rect] of [['canvas', canvas!], ['banner', banner!]] as const) {
+        expect(
+          rect.left >= -1 && rect.top >= -1 &&
+            rect.right <= viewport.width + 1 && rect.bottom <= viewport.height + 1,
+          `the ${name} is drawn partly off the glass. ${where}`,
+        ).toBe(true);
+      }
+
+      const overlaps =
+        canvas!.left < banner!.right && banner!.left < canvas!.right &&
+        canvas!.top < banner!.bottom && banner!.top < canvas!.bottom;
+      expect(
+        overlaps,
+        `the banner is drawn on top of the wall. It is the one thing on screen ` +
+          `that has to be read, and the calendar underneath it is the one thing ` +
+          `somebody walked over for. ${where}`,
+      ).toBe(false);
+    },
+    SLOW,
+  );
 });
 
 // ===========================================================================
@@ -254,31 +320,27 @@ describe('2 · the first-run wall', () => {
   }
 
   /**
-   * Nothing past the edge — **red today, and this one is a new finding.**
+   * The canvas is the letterbox it claims to be, and nothing spills past it.
    *
-   * Two measurements, because they catch different things. `scrollHeight`
-   * against `clientHeight` is how this project has learned to see content that
-   * `overflow: hidden` has silently eaten. But a frame drawn *off to one side*
-   * has no scrollable overflow at all, so the canvas's own rect is checked
-   * against the glass as well — which is how "the takeover drew in the left
+   * Three measurements, because each catches something the others cannot.
+   *
+   * `scrollHeight` against `clientHeight` is how this project has learned to
+   * see content that `overflow: hidden` has silently eaten. A frame drawn *off
+   * to one side* has no scrollable overflow at all, so the canvas's own rect is
+   * checked against the glass — which is how "the takeover drew in the left
    * half of a television" was found, after the layout looked merely
-   * left-aligned.
+   * left-aligned. And a canvas wholly *inside* the glass can still be the wrong
+   * size, which neither of those sees at all.
    *
-   * The rect half is what is red. `:root[data-layout="landscape"] .screen`
-   * (`display.css:1192`) turns every `.screen` into a padded two-column grid,
-   * and its specificity (0,2,1) beats `.screen.freeform`'s (0,2,0) — so in
-   * landscape the free-form canvas is laid out as a grid item in a padded box
-   * and lands at left −23, top −11 on a 1920x1080 wall: a strip of the wall off
-   * the left edge and a strip of bare ground down the right.
-   *
-   * This is the same fault, in the same rule, that the exemption two rules
-   * below it was written for. `.screen-alert` and `.screen-message` were added
-   * to that list when it was found for them; `.screen.freeform` never was, and
-   * every wall is free-form now. Adding it there is the fix — confirmed by
-   * making the change and watching this go green.
+   * That third one is not hypothetical. It is what the half-done version of
+   * this fix looked like: adding `.screen.freeform` to the landscape exemption
+   * moved the canvas back on screen and left it **1920x1002 on a 1920x1080
+   * television** — squeezed by the padding box, a band of bare ground above the
+   * wall and another below, and both rect checks green. `padding: 0` is the
+   * other half, and this assertion is what says so.
    */
   it(
-    'never draws past the edge of the screen',
+    'letterboxes the canvas into the screen, with nothing past the edge',
     async () => {
       const all = await measureEverySize();
 
@@ -301,6 +363,37 @@ describe('2 · the first-run wall', () => {
         offGlass,
         'the wall is drawn partly off the glass. The canvas is letterboxed into ' +
           'the frame, so its own rect has to be inside it.',
+      ).toEqual([]);
+
+      /*
+       * A pixel of slack, because the letterbox rarely divides evenly: a 16:9
+       * canvas in a 1366x768 frame is 1365.34 wide by arithmetic and by
+       * measurement, and that third of a pixel is the letterbox working.
+       *
+       * This holds because the canvas has the screen to itself. A banner is a
+       * second row and the canvas correctly gives up its height for one — so
+       * do not extend this assertion to a wall with the server down; the
+       * banner test in describe 1 is where that case is measured.
+       */
+      const misfitted = SIZES.flatMap((size) => {
+        const fit = all.get(size.name)!.canvasFit;
+        if (fit === undefined) return [`${size.name}: no canvas to measure`];
+        const wrong =
+          Math.abs(fit.actual.width - fit.expected.width) > 1 ||
+          Math.abs(fit.actual.height - fit.expected.height) > 1;
+        return wrong
+          ? [
+              `${size.name}: drew ${Math.round(fit.actual.width)}x${Math.round(fit.actual.height)} ` +
+                `where aspect ${fit.aspect} in this frame is ` +
+                `${Math.round(fit.expected.width)}x${Math.round(fit.expected.height)}`,
+            ]
+          : [];
+      });
+      expect(
+        misfitted,
+        'the canvas is not the largest box of its aspect that fits the frame. ' +
+          'Inside the glass is not the same as filling it — a canvas squeezed by ' +
+          'a padding box is wholly on screen and wholly wrong.',
       ).toEqual([]);
     },
     SLOW,
