@@ -271,6 +271,7 @@ import { registerModuleRoutes } from './admin-modules.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerThemeRoutes } from './admin-themes.js';
+import { offeredTimezones } from './setup.js';
 import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
@@ -544,17 +545,6 @@ function themeCards(selected: string, custom: readonly ThemeRow[] = []): string 
 }
 
 /** A six-digit hex colour, which is what `<input type="color">` submits. */
-/**
- * The zones offered, from the runtime rather than a bundled list.
- *
- * The same source the wizard uses, so the two screens can never disagree about
- * what a valid zone is.
- */
-function supportedTimezones(): string[] {
-  const values = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf;
-  if (typeof values === 'function') return values('timeZone');
-  return ['UTC', 'America/New_York', 'Europe/London', 'Australia/Sydney'];
-}
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return 'unknown size';
@@ -974,7 +964,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/system/timezone', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(
-      z.string().refine((value) => supportedTimezones().includes(value), {
+      z.string().refine((value) => offeredTimezones().includes(value), {
         error: () => 'Choose a timezone from the list.',
       }),
       body['timezone'],
@@ -1493,7 +1483,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (scheduled && startsAt === endsAt) {
       return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.'), 400);
     }
-    if (timezone !== '' && !supportedTimezones().includes(timezone)) {
+    if (timezone !== '' && !offeredTimezones().includes(timezone)) {
       return c.html(displayDetailPage(id, 'Choose a timezone from the list.'), 400);
     }
 
@@ -2651,7 +2641,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         selectField({
           label: 'Household timezone',
           name: 'timezone',
-          optionsHtml: supportedTimezones()
+          optionsHtml: offeredTimezones()
             .map(
               (zone) =>
                 `<option value="${escapeHtml(zone)}"` +
@@ -3258,7 +3248,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             wide: true,
             optionsHtml:
               option('', `Household default — ${household.timezone}`, screen.timezone === null) +
-              supportedTimezones()
+              offeredTimezones()
                 .map((zone) => option(zone, zone, screen.timezone === zone))
                 .join(''),
           }) +

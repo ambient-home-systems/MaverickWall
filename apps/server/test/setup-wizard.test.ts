@@ -380,6 +380,40 @@ describe('step 2 — the timezone', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/sign-in');
   });
+
+  it('never renders with nothing selected, even when detection lands on UTC', async () => {
+    // `docker run` with no TZ set is exactly this: `resolvedOptions().timeZone`
+    // returns 'UTC', and neither 'UTC' nor 'Etc/UTC' is among the 418 zones
+    // `Intl.supportedValuesOf('timeZone')` offers — so a browser with nothing
+    // marked `selected` picks the first option alphabetically instead.
+    const h = harness();
+    const token = h.setupToken.current();
+    await h.call(`/setup?token=${token.token}`);
+    await h.form('/setup/account', {
+      name: 'Household', email: 'family@home.local',
+      password: 'correct-horse-battery', confirm: 'correct-horse-battery',
+    });
+
+    const originalTz = process.env.TZ;
+    process.env.TZ = '';
+    let html: string;
+    try {
+      const response = await h.call('/setup');
+      expect(response.status).toBe(200);
+      html = await response.text();
+    } finally {
+      process.env.TZ = originalTz;
+    }
+
+    const selectedOptions = [...html.matchAll(/<option value="([^"]*)" selected>/g)];
+    expect(selectedOptions).toHaveLength(1);
+    const value = selectedOptions[0]?.[1];
+
+    // A preselected value the form's own schema then refuses is the same bug
+    // read from the other side.
+    const submit = await h.form('/setup/household', { timezone: value ?? '' });
+    expect(submit.status).toBe(302);
+  });
 });
 
 describe('step 3 — the calendar', () => {
