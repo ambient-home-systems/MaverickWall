@@ -1137,7 +1137,7 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
    * a delete would take the household's real zones *and any warning in force*
    * with it before anything knows a replacement is obtainable. Disabling them
    * costs the same thing where it should (they are not polled and, per
-   * `watchesAlertZones`, they arm nothing) and costs nothing where it should
+   * `countWatchedZones`, they arm nothing) and costs nothing where it should
    * not: `/points` resolving the corrected location swaps them back, alerts
    * intact, and `replaceZones` deletes the ones that are genuinely wrong along
    * with their alerts — which it already did, atomically, on an answer it had.

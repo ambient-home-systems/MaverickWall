@@ -182,7 +182,7 @@ export function readRuleRows(db: SqliteDatabase): RuleRow[] {
  * Reported rather than armed on: this is what the Weather screen and the
  * Overview say is missing, and it is the commonest reason a wall watches
  * nowhere. What actually decides whether a weather rule can fire is
- * `watchesAlertZones` below.
+ * `hasSomethingToWatch` below.
  */
 export function hasWeatherLocation(db: SqliteDatabase): boolean {
   const row = db
@@ -192,31 +192,63 @@ export function hasWeatherLocation(db: SqliteDatabase): boolean {
 }
 
 /**
- * Is there anywhere for a weather rule to watch? (RFC 009 Phase 2.)
+ * How many zones are actually being watched.
  *
- * The zones, not the location — because they are not the same question and the
- * difference is a whole country. A location outside National Weather Service
- * coverage resolves to no zones at all: the job says so once and gives up, and
- * a household in France who filled in their coordinates would otherwise have
- * four rules armed against nothing, which is the exact state this gate exists
- * to end. A location is only the commonest reason there are no zones.
+ * `enabled = 1`, exactly as the poller's own `readZones` selects: a zone retired
+ * because the household moved is not polled, so counting it would report the
+ * wall as watching a code nothing is asking about. Exported because the Overview
+ * and the Weather screen both report this number and every reader of this table
+ * has to use one predicate — the whole point of the gate below is removing
+ * disagreements of that shape, and it had introduced two of its own.
  */
-export function watchesAlertZones(db: SqliteDatabase): boolean {
-  // `enabled = 1`, exactly as the poller's own `readZones` selects: a zone
-  // retired because the household moved is not polled, so a rule armed against
-  // it would be armed against a code nothing is asking about. Two readers of
-  // one table inside the change whose whole point is removing those.
+export function countWatchedZones(db: SqliteDatabase): number {
   const row = db
     .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws' AND enabled = 1`)
     .get() as { n: number } | undefined;
-  return (row?.n ?? 0) > 0;
+  return row?.n ?? 0;
+}
+
+/**
+ * Is there anything for a weather rule to act on? (RFC 009 Phase 2.)
+ *
+ * A zone being watched, **or an alert already in force**. Two clauses, and the
+ * second is not belt and braces — it is the difference between a household
+ * losing a tornado warning and not.
+ *
+ * The first clause is the zones rather than the location, because they are not
+ * the same question and the difference is a whole country: a place outside
+ * National Weather Service coverage resolves to no zones at all, so a household
+ * in France who filled in their coordinates would otherwise have four rules
+ * armed against nothing.
+ *
+ * The second is about the moment a household edits those coordinates. That
+ * retires the zones until `/points` answers again (see `writeWeatherSettings`),
+ * and with the first clause alone a warning already on the wall would be
+ * withdrawn for as long as that took — for ever if the network is down, which
+ * is exactly when it is least affordable. So an alert already in force keeps
+ * its rules armed until something knows better. `replaceZones` is what knows
+ * better: when the new zones resolve it deletes the alerts belonging to zones
+ * it did not keep, so a warning for somewhere the household no longer is
+ * disappears at the moment that becomes a fact rather than on a guess.
+ *
+ * Expiry is not re-checked here. `expireAlerts` runs at the head of every alert
+ * poll and clears anything past its time, so a row in this table is live within
+ * the minute — and erring towards armed is the right direction for the one
+ * feature with a life-safety disclaimer on it.
+ */
+export function hasSomethingToWatch(db: SqliteDatabase): boolean {
+  if (countWatchedZones(db) > 0) return true;
+  const live = db.prepare('SELECT count(*) AS n FROM active_alerts').get() as
+    | { n: number }
+    | undefined;
+  return (live?.n ?? 0) > 0;
 }
 
 /**
  * The rules the evaluator sees: parseable, whatever their enabled state.
  *
  * With one gate on top of the stored flag. **A weather rule is armed only when
- * there is a zone being watched** (RFC 009 Phase 2): a fresh install ships the
+ * there is something to watch** (RFC 009 Phase 2): a fresh install ships the
  * National Weather Service ladder switched on, and until somebody says where
  * the wall is — or if they say somewhere the service does not cover — that is
  * five rules reporting themselves as working against nothing, a safety-adjacent
@@ -227,7 +259,7 @@ export function watchesAlertZones(db: SqliteDatabase): boolean {
  */
 export function readRules(db: SqliteDatabase): InterruptRule[] {
   const rules: InterruptRule[] = [];
-  const watching = watchesAlertZones(db);
+  const watching = hasSomethingToWatch(db);
 
   for (const row of readRuleRows(db)) {
     const source = readSource(row.trigger);

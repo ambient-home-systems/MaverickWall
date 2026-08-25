@@ -39,7 +39,7 @@ import {
   type PairingSecret,
   type PersonRecord,
 } from '../api/queries.js';
-import { hasWeatherLocation } from '../api/rules.js';
+import { countWatchedZones, hasWeatherLocation } from '../api/rules.js';
 import { readWeatherSettings } from '../api/queries.js';
 import { randomBytes } from 'node:crypto';
 import {
@@ -638,10 +638,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       .get() as { enabled: number } | undefined;
     if (row?.enabled !== 1) return 'off';
     if (!hasWeatherLocation(deps.db)) return 'on — needs your location';
-    const zones = deps.db
-      .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
-      .get() as { n: number } | undefined;
-    return (zones?.n ?? 0) === 0 ? 'on — no zones yet' : `watching ${zones?.n} zones`;
+    // Through the shared count, which excludes a zone retired because the
+    // household moved. Counting every row reported a green "watching 2 zones"
+    // while the evaluator treated every rule as off — permanently, if the new
+    // location turns out to be outside the service.
+    const zones = countWatchedZones(deps.db);
+    return zones === 0 ? 'on — no zones yet' : `watching ${zones} zones`;
   };
 
   const haSummary = (): string => {

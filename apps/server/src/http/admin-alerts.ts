@@ -1,7 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { escapeHtml, errorBlock, page, selectField, switchRow, textField } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
-import { hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled, watchesAlertZones } from '../api/rules.js';
+import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
@@ -279,8 +279,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
     const zones = deps.db
       .prepare(
+        /*
+         * `enabled = 1`, the same predicate the poller and the arming gate use.
+         * A zone retired because the household moved is not polled and arms
+         * nothing, so listing it under "Zones being watched" on the same page
+         * whose rule cards read "not armed — no zones yet" is this screen
+         * disagreeing with itself.
+         */
         `SELECT code, kind, last_polled_at AS lastPolledAt, last_error AS lastError
-           FROM alert_zones WHERE provider = 'nws' ORDER BY kind`,
+           FROM alert_zones WHERE provider = 'nws' AND enabled = 1 ORDER BY kind`,
       )
       .all() as { code: string; kind: string; lastPolledAt: number | null; lastError: string | null }[];
 
@@ -384,7 +391,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         `than any one row: the loudest thing the wall can do is reserved for the ` +
         `rarest. Moderate alerts are weekly in some counties, and a takeover for one ` +
         `would be meaningless within a month.</p>` +
-        rules(watchesAlertZones(deps.db)) +
+        rules(hasSomethingToWatch(deps.db)) +
         `<p class="hint">Turning one off means the wall says nothing at that level.</p>`,
     });
   }

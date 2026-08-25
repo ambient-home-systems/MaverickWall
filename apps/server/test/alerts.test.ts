@@ -251,6 +251,8 @@ interface FakeNws {
   status: number;
   etag: string;
   body: () => string;
+  /** What `/points` resolves to. Settable, so a test can move the household. */
+  zones: { forecast: string; county: string };
 }
 
 /**
@@ -268,6 +270,7 @@ async function fakeNws(): Promise<FakeNws> {
     status: 200,
     etag: '"v1"',
     body: () => collection([feature()]),
+    zones: { forecast: 'MDZ011', county: 'MDC027' },
   };
 
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
@@ -287,8 +290,8 @@ async function fakeNws(): Promise<FakeNws> {
       response.end(
         JSON.stringify({
           properties: {
-            forecastZone: 'https://api.weather.gov/zones/forecast/MDZ011',
-            county: 'https://api.weather.gov/zones/county/MDC027',
+            forecastZone: `https://api.weather.gov/zones/forecast/${state.zones.forecast}`,
+            county: `https://api.weather.gov/zones/county/${state.zones.county}`,
           },
         }),
       );
@@ -571,18 +574,21 @@ describe('the polling job, against a real server', () => {
     const before = readWeatherSettings(db);
     writeWeatherSettings(db, { ...before, latitude: 47.6, longitude: -122.3 });
 
-    // Nothing to poll and nothing armed…
+    // Nothing left to poll…
     expect(readZones(db)).toEqual([]);
-    expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
     /*
-     * …but the warning is still on disk, and that is deliberate. "Use my Home
-     * Assistant home location" on a box whose zone.home is still the shipped
-     * default fills in Amsterdam; deleting would take a live tornado warning
-     * with it before anything knew a replacement was obtainable. The rows are
-     * retired, so they cost what they should — no poll, no armed rule — and
-     * nothing more.
+     * …but the warning is still on disk and still armed, and both halves are
+     * deliberate. "Use my Home Assistant home location" on a box whose
+     * zone.home is still the shipped default fills in Amsterdam; deleting the
+     * rows would take a live tornado warning off the wall before anything knew
+     * a replacement was obtainable, and disarming would take it off the wall
+     * just as thoroughly. An alert already in force keeps its rules armed until
+     * something knows better — see the test below for what does.
      */
     expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+    expect(
+      readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled).length,
+    ).toBeGreaterThan(0);
     /*
      * Which is why the poll is brought forward rather than left to its
      * schedule: the un-armed gap is a gap in the one feature with a life-safety
@@ -614,6 +620,35 @@ describe('the polling job, against a real server', () => {
     writeWeatherSettings(db, readWeatherSettings(db));
     expect(readZones(db).map((zone) => zone.code).sort()).toEqual(settled);
 
+    db.close();
+  });
+
+  it('disarms once the move settles and the warning turns out to be elsewhere', async () => {
+    /*
+     * The other side of keeping a live alert armed across a coordinate edit: it
+     * has to stop. `replaceZones` is what settles it — the new answer keeps the
+     * codes it resolved and deletes the alerts belonging to the ones it did
+     * not, so the warning leaves the wall at the moment "this is for somewhere
+     * else" becomes a fact rather than a guess.
+     */
+    const db = database();
+    const nws = await fakeNws();
+    await job(db, nws)(record);
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+
+    // A genuine move, to somewhere the service resolves different zones for.
+    nws.zones = { forecast: 'WAZ558', county: 'WAC033' };
+    const before = readWeatherSettings(db);
+    writeWeatherSettings(db, { ...before, latitude: 47.6, longitude: -122.3 });
+    // The new zones list nothing; the etag has to move or the poll is a 304.
+    nws.etag = '"v2"';
+    nws.body = () => collection([]);
+    await job(db, nws)(record);
+
+    expect(readZones(db).map((zone) => zone.code).sort()).toEqual(['WAC033', 'WAZ558']);
+    expect(knownAlerts(db, 'MDC027')).toEqual([]);
+    expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled).length)
+      .toBeGreaterThan(0);
     db.close();
   });
 
