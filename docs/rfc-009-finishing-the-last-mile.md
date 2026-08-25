@@ -281,7 +281,14 @@ and 1.1's black screen. Anything else answers 503, which the display's `failed`
 branch already handles by keeping the last manifest and saying how old it is.
 The class is read off the error's SQLite `code` rather than its message, so
 corruption and `SQLITE_NOTADB` are inside it and `SQLITE_BUSY`/`SQLITE_LOCKED`
-— the two that clear on their own — are outside. And `degradedManifest` itself
+— the two that clear on their own — are outside, matched as prefixes because
+better-sqlite3 reports SQLite's extended code (`SQLITE_BUSY_SNAPSHOT` is what a
+CLI tool holding a lock actually raises). One further correction belongs to this
+section rather than to the narrowing: the fallback token lookup answered **401**
+when it too could not read, and a display reads 401 as `unpaired` and draws the
+code-entry form — so a corrupt database put a pairing form on every screen in
+the house. A check that could not run may not say "not paired"; it says "not
+now". And `degradedManifest` itself
 is wrapped: it calls `now()`, so a failure systemic enough to reach it took the
 safety net down too and produced the bare 500 this section exists to remove.
 

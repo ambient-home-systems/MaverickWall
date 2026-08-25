@@ -1579,7 +1579,21 @@ there the wall's own copy is worth more than an empty document: a 5xx keeps it
 here carries a `SQLITE_` one, where a "no such column" *message* match silently
 excluded corruption and `SQLITE_NOTADB`, which are the cases that matter most.
 `SQLITE_BUSY` and `SQLITE_LOCKED` are excluded the other way, being the only two
-that clear on their own.
+that clear on their own — **as prefixes**, because better-sqlite3 reports
+SQLite's *extended* code and a WAL reader whose snapshot moved raises
+`SQLITE_BUSY_SNAPSHOT`, which an exact set misses. That is the commonest lock on
+a box where somebody has just run a CLI tool, so an exact match reintroduced the
+whole fault through the door left open behind it.
+
+**And a 401 is not a refusal as far as a wall is concerned.** The display reads
+it as `unpaired`, drops the manifest it is holding and draws the code-entry
+form — so a database damaged badly enough that even the one-column fallback
+lookup throws would put a pairing form on every screen in the house, which is
+louder than a blank wall and nothing a household can act on. "Not paired" is a
+claim: only a check that *ran* may make it, and one that could not complete says
+"not now" instead. It costs a genuinely unrecognised token its 401 while the
+database is unreadable, which is the right side to be wrong on — neither answer
+serves any household data.
 
 Three things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough

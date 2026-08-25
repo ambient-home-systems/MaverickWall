@@ -104,6 +104,39 @@ function realCorruptionError(): unknown {
 }
 
 /**
+ * A real `SqliteError` from a real lock.
+ *
+ * Two connections over one WAL file, the second holding a read snapshot that
+ * the first then moves — which is what a CLI tool run against a household's
+ * `DATA_DIR` does to a server mid-request. Taken from the real thing because
+ * the *code* is the point: SQLite's extended one, which is not the primary
+ * name anybody would write down from memory.
+ */
+function realBusyError(): unknown {
+  const dir = mkdtempSync(join(tmpdir(), 'mw-busy-'));
+  roots.push(dir);
+  const file = join(dir, 'wall.db');
+  const writer = new Database(file);
+  writer.pragma('journal_mode = WAL');
+  writer.exec('CREATE TABLE t (v INTEGER); INSERT INTO t VALUES (1)');
+
+  const reader = new Database(file);
+  reader.pragma('busy_timeout = 0');
+  reader.exec('BEGIN');
+  reader.prepare('SELECT v FROM t').all();
+  writer.exec('UPDATE t SET v = 2');
+  try {
+    reader.prepare('UPDATE t SET v = 3').run();
+  } catch (error) {
+    return error;
+  } finally {
+    reader.close();
+    writer.close();
+  }
+  throw new Error('the contended write succeeded — this helper is not doing its job');
+}
+
+/**
  * The same database, with one query made to throw.
  *
  * The route has two catches and they cover different reads, so reaching either
@@ -413,6 +446,55 @@ describe('/d/manifest', () => {
 
     const body = (await response.json()) as Record<string, unknown>;
     expect(body['manifestVersion'], 'nothing here may pass isRenderableManifest').toBeUndefined();
+    expect(body['error']).toBe('unavailable');
+  });
+
+  /*
+   * And a lock is not damage, however SQLite spells it.
+   *
+   * `better-sqlite3` reports SQLite's *extended* code, so the family a lock
+   * arrives as is wider than the primary name suggests: a WAL reader whose
+   * snapshot moved under it — which is what a CLI tool run against the same
+   * `DATA_DIR` looks like — raises `SQLITE_BUSY_SNAPSHOT`, saying "database is
+   * locked". Treating that as damage would blank a wall and overwrite its
+   * cached copy for something that clears itself in a second, which is the
+   * whole fault this route was just narrowed against, arriving by the door
+   * left open behind it. The error here is a real one, taken from two real
+   * connections contending over a real WAL file.
+   */
+  it('keeps a wall drawing through a lock, which is not a database it cannot read', async () => {
+    const busy = realBusyError();
+    expect((busy as { code?: string }).code, 'the premise of this test').toMatch(/^SQLITE_BUSY/);
+    expect((busy as { code?: string }).code, 'and it is an extended code, not the bare one').not.toBe(
+      'SQLITE_BUSY',
+    );
+
+    const { call, token } = harness((db) => dbWithFailingQuery(db, /calendar_sources/, busy));
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+
+    expect(response.status, 'a lock is temporary — the wall keeps what it has').toBe(503);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body['manifestVersion'], 'nothing here may pass isRenderableManifest').toBeUndefined();
+  });
+
+  /*
+   * And a database this damaged must never tell a wall it is not paired.
+   *
+   * 401 is not a refusal as far as a display is concerned: it reads it as
+   * `unpaired`, drops the manifest it is holding and draws the code-entry
+   * form. So damage that reaches even the one-column fallback lookup — which
+   * is what corruption looks like, rather than the partial damage the test
+   * above arranges — would put a pairing form on every screen in the house.
+   * The check did not run, so it may not say no.
+   */
+  it('says "not now" rather than "not paired" when the token check cannot run at all', async () => {
+    const corrupt = realCorruptionError();
+    const { call, token } = harness((db) => dbWithFailingQuery(db, /FROM screens/, corrupt));
+
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+    expect(response.status, 'a 401 here draws a pairing form over a working wall').toBe(503);
+
+    const body = (await response.json()) as Record<string, unknown>;
     expect(body['error']).toBe('unavailable');
   });
 

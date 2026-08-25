@@ -880,8 +880,15 @@ export function createApp(deps: AppDeps): Hono {
    * looks like. A wall that keeps its own calendar for a few seconds is the
    * right answer to those, so they are deliberately not database failures
    * below.
+   *
+   * Matched as **prefixes**, because `better-sqlite3` reports SQLite's
+   * *extended* code and an exact set silently misses most of the family. A
+   * WAL reader whose snapshot moved under it raises `SQLITE_BUSY_SNAPSHOT`
+   * with the message "database is locked" — measured — which an exact
+   * `SQLITE_BUSY` does not match, and it is the commonest of the lot on a box
+   * where somebody has just run a CLI tool.
    */
-  const TRANSIENT_SQLITE_CODES = new Set(['SQLITE_BUSY', 'SQLITE_LOCKED']);
+  const TRANSIENT_SQLITE_PREFIXES = ['SQLITE_BUSY', 'SQLITE_LOCKED'];
 
   /**
    * Could the database not be read, or is this a bug in this process?
@@ -911,7 +918,7 @@ export function createApp(deps: AppDeps): Hono {
   const isDatabaseFailure = (error: unknown): boolean => {
     const code = (error as { code?: unknown } | null | undefined)?.code;
     if (typeof code !== 'string' || !code.startsWith('SQLITE_')) return false;
-    return !TRANSIENT_SQLITE_CODES.has(code);
+    return !TRANSIENT_SQLITE_PREFIXES.some((prefix) => code.startsWith(prefix));
   };
 
   /**
@@ -1016,6 +1023,7 @@ export function createApp(deps: AppDeps): Hono {
        * still recognised even when the full row cannot be built.
        */
       let recognised = false;
+      let undecidable = false;
       try {
         const minimal = deps.db
           .prepare(`SELECT token_hash AS tokenHash FROM screens WHERE revoked_at IS NULL`)
@@ -1026,7 +1034,24 @@ export function createApp(deps: AppDeps): Hono {
           '[manifest] minimal screen lookup also failed:',
           innerError instanceof Error ? innerError.message : innerError,
         );
+        undecidable = true;
       }
+      /*
+       * "Not paired" is a claim, and this is the one place it cannot be made.
+       *
+       * A 401 is not a refusal as far as a wall is concerned — the display
+       * reads it as `unpaired`, drops the manifest it is holding and draws the
+       * code-entry form. So a database damaged badly enough that even this
+       * one-column read throws would put a pairing form on every screen in the
+       * house, which is a far louder wrong answer than a 503 and one nobody
+       * standing in a kitchen can act on. When the check could not be
+       * completed, say so; only a check that *ran* may say no.
+       *
+       * It costs a genuinely unrecognised token its 401 for as long as the
+       * database is unreadable, which is the right side to be wrong on: a 503
+       * discloses nothing, and neither answer serves any household data.
+       */
+      if (undecidable) return unavailable(c);
       if (!recognised) {
         return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
       }
