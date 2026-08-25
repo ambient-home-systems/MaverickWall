@@ -112,6 +112,45 @@ describe('the Weather screen', () => {
   );
 
   /**
+   * Enter in Latitude must save, not fill.
+   *
+   * The Home Assistant button is a submit inside this form, and a browser's
+   * implicit submission activates the *first* submit button in tree order —
+   * so with the visible Save at the bottom, Enter after typing a latitude
+   * posted to `use-ha-location`, which overwrites the coordinates with
+   * `zone.home` and reports it as saved. That is the screen's own bug back in
+   * a new place. `defaultSubmit()` is a clipped submit rendered first, and
+   * this is the only thing that proves it works.
+   */
+  it(
+    'saves when Enter is pressed in a coordinate field, even beside a second submit',
+    async () => {
+      const { page, home } = await signedIn();
+      await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+
+      await page.fill('input[name="latitude"]', '51.5074');
+      await page.fill('input[name="longitude"]', '-0.1278');
+      await Promise.all([
+        page.waitForNavigation({ timeout: 20_000 }),
+        page.locator('input[name="longitude"]').press('Enter'),
+      ]);
+
+      const stored = readWeatherSettings(home.db);
+      expect(
+        { latitude: stored.latitude, longitude: stored.longitude },
+        'Enter went somewhere other than Save',
+      ).toEqual({ latitude: 51.5074, longitude: -0.1278 });
+      // And the clipped default is not a control anybody can find: no tab stop,
+      // and nothing in the accessibility tree.
+      const ghost = page.locator('.formdefault');
+      expect(await ghost.getAttribute('tabindex')).toBe('-1');
+      expect(await ghost.getAttribute('aria-hidden')).toBe('true');
+      expect(await ghost.boundingBox()).toMatchObject({ width: 1, height: 1 });
+    },
+    SLOW,
+  );
+
+  /**
    * A refused number must not cost everything else on the form.
    *
    * The screen re-rendered from the stored row on a 400, so a mistyped latitude
@@ -143,6 +182,17 @@ describe('the Weather screen', () => {
 
       // And nothing was written: a refused form changes nothing.
       expect(readWeatherSettings(home.db).provider).toBe('nws');
+
+      /*
+       * The re-rendered form is *already* dirty, and only the server knows it.
+       * A script that booted clean would disable Save on the one page where
+       * pressing it again is the whole point, hide Cancel, and disarm the
+       * leave guard over the household's unsaved edits.
+       */
+      const save = page.locator('[data-dirty-save]');
+      await expect.poll(() => save.isEnabled(), { timeout: 10_000 }).toBe(true);
+      expect(await page.locator('[data-dirty-cancel]').isVisible()).toBe(true);
+      expect(await page.locator('[data-dirty-flag]').isVisible()).toBe(true);
     },
     SLOW,
   );

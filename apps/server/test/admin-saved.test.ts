@@ -97,6 +97,45 @@ function stripOf(html: string): string | undefined {
   return /<div class="saved" [^>]*>[\s\S]*?<\/div>/.exec(html)?.[0];
 }
 
+describe('the Weather form marker', () => {
+  /**
+   * An unticked checkbox is not sent, so an empty body and a form with every
+   * switch off are byte-identical — and once the alerts switch joined the
+   * forecast's form, that stopped being harmless. The case that matters is a
+   * page cached from before the switch moved: it posts a body with no
+   * `alerts_enabled` field, which the handler would read as "turn the tornado
+   * warnings off".
+   */
+  it('refuses a body that is not the screen’s own form, and changes nothing', async () => {
+    const h = await harness();
+    h.db.prepare(`UPDATE household_settings SET alerts_enabled = 1 WHERE id = 'singleton'`).run();
+
+    // Exactly the body the *old* two-form page posted: no marker, no alerts field.
+    const stale = await h.form('/admin/weather', {
+      weather_enabled: '1', latitude: '51.5', longitude: '-0.1',
+      weather_provider: 'nws', weather_units: 'imperial',
+    });
+    expect(stale.status).toBe(400);
+    expect(await stale.text()).toContain('out of date');
+
+    const row = h.db
+      .prepare(`SELECT alerts_enabled AS alerts, latitude FROM household_settings WHERE id = 'singleton'`)
+      .get() as { alerts: number; latitude: number | null };
+    expect(row.alerts, 'a stale page must not turn weather alerts off').toBe(1);
+    expect(row.latitude, 'and must not half-apply either').toBe(null);
+  });
+
+  it('accepts the same body once it carries the marker', async () => {
+    const h = await harness();
+    const saved = await h.form('/admin/weather', {
+      weather_form: '1', weather_enabled: '1', latitude: '51.5', longitude: '-0.1',
+      weather_provider: 'nws', weather_units: 'imperial',
+    });
+    expect(saved.status).toBe(302);
+    expect(saved.headers.get('location')).toBe('/admin/alerts?saved=weather');
+  });
+});
+
 describe('the confirmation strip', () => {
   it('is what a save redirects to, and it names the thing that was saved', async () => {
     const h = await harness();
@@ -139,6 +178,28 @@ describe('the confirmation strip', () => {
     // The one thing that would break the add-on: a leading slash resolves past
     // the ingress prefix and out of the application entirely.
     expect(strip).not.toMatch(/href="\//);
+  });
+
+  it('only ships the dirty-state script where there is a form to wire', async () => {
+    const h = await harness();
+    // The settings screens: a `<form data-dirty>` and therefore the script.
+    for (const path of ['/admin/system', '/admin/alerts']) {
+      const html = await (await h.call(path)).text();
+      expect(html, path).toContain('assets/settings-form.js');
+      expect(html, path).toMatch(/<form\b[^>]*data-dirty[\s=>]/);
+    }
+    /*
+     * The wall editor: it has a `data-dirty-flag` span of its own and no
+     * `form[data-dirty]` at all, so a plain `includes('data-dirty')` would
+     * fetch and run the module on the two heaviest pages in the admin for
+     * nothing.
+     */
+    const editor = await (await h.call('/admin/displays/default')).text();
+    expect(editor).toContain('data-dirty-flag');
+    expect(editor, 'nothing here for it to wire').not.toContain('assets/settings-form.js');
+    // A page with neither, for the other direction.
+    const people = await (await h.call('/admin/people')).text();
+    expect(people).not.toContain('assets/settings-form.js');
   });
 
   it('has a sentence for every token, and every sentence reads as one', () => {

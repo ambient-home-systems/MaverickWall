@@ -1,5 +1,7 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page, saveRow, selectField, switchRow, textField } from './html.js';
+import {
+  defaultSubmit, dirtyForm, escapeHtml, errorBlock, page, saveRow, selectField, switchRow, textField,
+} from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
@@ -36,6 +38,17 @@ const weatherBody = z.object({
   weather_provider: optionalText(20),
   weather_units: optionalText(20),
 });
+
+/**
+ * The hidden field the one form carries, and the only way to tell it apart
+ * from an empty body. See where it is rendered for why that matters.
+ */
+const FORM_MARKER = 'weather_form';
+
+/** Did this body come from the screen's own form, or is it something else? */
+function fromTheForm(body: Record<string, unknown>): boolean {
+  return typeof body[FORM_MARKER] === 'string';
+}
 
 /**
  * What the household had on screen, for a form that comes back at 400.
@@ -136,6 +149,22 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/weather', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
+    /*
+     * Only this screen's own form may write these settings.
+     *
+     * Every switch on it is a checkbox, and an unticked checkbox is not sent —
+     * so a body missing `alerts_enabled` is indistinguishable from a household
+     * turning alerts off. That is fine for the form, which always carries the
+     * marker; it is not fine for anything else, and the case that matters is a
+     * page cached from before the alerts switch moved into this form. Refusing
+     * is louder than silently turning off somebody's tornado warnings.
+     */
+    if (!fromTheForm(body)) {
+      return c.html(
+        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this screen and try again.'),
+        400,
+      );
+    }
     const shaped = parse(weatherBody, body);
     // Echoed back on every failure below, so a rejected number never also costs
     // the switch they flipped or the provider they chose.
@@ -184,8 +213,8 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/weather/use-ha-location', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const shaped = parse(weatherBody, body);
-    const echo = echoOf(body);
+    const posted = fromTheForm(body) ? parse(weatherBody, body) : undefined;
+    const echo = posted === undefined ? undefined : echoOf(body);
     const resolved = resolveConnection(deps.db, deps.keyring);
     if (!resolved.ok) {
       return c.html(
@@ -225,18 +254,21 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     /*
      * The posted form wins over the stored row, and falls back to it.
      *
-     * The button lives inside the one form, so the body is what is on screen —
-     * including a switch the household just flipped. A `parse` that failed (an
-     * older bookmarked form, a hand-made POST) reverts to what is stored, which
-     * is the same answer this handler always gave.
+     * The button lives inside the one form, so the body is normally what is on
+     * screen — including a switch the household just flipped. Anything that is
+     * *not* that form (a bodyless POST, a page cached from before this release)
+     * falls back to what is stored, which is the answer this handler always
+     * gave: fill the location in, change nothing else. The marker is what makes
+     * the two distinguishable — an unticked checkbox is not sent, so without it
+     * an empty body reads as "turn everything off" (see `POST /admin/weather`).
      */
     const stored = readWeatherSettings(deps.db);
-    const rest = shaped.ok
+    const rest = posted?.ok === true
       ? {
-          weatherEnabled: shaped.value.weather_enabled,
-          alertsEnabled: shaped.value.alerts_enabled,
-          provider: shaped.value.weather_provider === 'openmeteo' ? ('openmeteo' as const) : ('nws' as const),
-          units: shaped.value.weather_units === 'metric' ? ('metric' as const) : ('imperial' as const),
+          weatherEnabled: posted.value.weather_enabled,
+          alertsEnabled: posted.value.alerts_enabled,
+          provider: posted.value.weather_provider === 'openmeteo' ? ('openmeteo' as const) : ('nws' as const),
+          units: posted.value.weather_units === 'metric' ? ('metric' as const) : ('imperial' as const),
         }
       : {
           weatherEnabled: stored.enabled,
@@ -348,7 +380,19 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const alertsOn = echo?.alertsEnabled ?? readAlertsEnabled();
 
     return (
-      `<form method="post" action="admin/weather" data-dirty>` +
+      `<form method="post" action="admin/weather"${dirtyForm(echo !== undefined)}>` +
+      /*
+       * Which form this is, and it is load-bearing rather than tidy.
+       *
+       * A checkbox that is not ticked is not sent, so an *empty* body and a
+       * form with every switch off are byte-identical. Once the alerts switch
+       * joined this form that stopped being harmless: a page cached from before
+       * this release posts the old form, which has no alerts field and never
+       * did, and the household's weather alerts go quietly off. The marker is
+       * how a form says "this is me, and everything I do not mention is off".
+       */
+      `<input type="hidden" name="${FORM_MARKER}" value="1">` +
+      defaultSubmit() +
       switchRow({
         label: 'Show the forecast',
         name: 'weather_enabled',

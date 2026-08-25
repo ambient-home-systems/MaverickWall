@@ -90,8 +90,8 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, icon, page, saveRow, selectField, selectRow, switchRow, textField,
-  type NavModule } from './html.js';
+import { dirtyForm, errorBlock, escapeHtml, icon, page, saveRow, selectField, selectRow, switchRow,
+  textField, type NavModule } from './html.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
@@ -2779,7 +2779,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add">Timezone</h2>` +
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
         `anchored to this. A screen somewhere else can override it on its own card.</p>` +
-        `<form method="post" action="admin/system/timezone" data-dirty>` +
+        `<form method="post" action="admin/system/timezone"${dirtyForm()}>` +
         selectField({
           label: 'Household timezone',
           name: 'timezone',
@@ -2884,7 +2884,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">The exact address it asks: ` +
       `<span class="code">${escapeHtml(RELEASE_URL)}</span></p>` +
 
-      `<form method="post" action="admin/system/updates" data-dirty>` +
+      `<form method="post" action="admin/system/updates"${dirtyForm()}>` +
       switchRow({
         label: 'Check for updates once a day',
         name: 'update_check_enabled',
@@ -4241,7 +4241,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               `style="--swatch:${escapeHtml(owner.color)}"></span>Uses ${escapeHtml(owner.name)}’s colour</span>` +
               `<input type="hidden" name="color" value="${escapeHtml(source.color)}"></span>`;
         return (
-          `<form method="post" action="admin/calendars/${id}/settings" data-dirty>` +
+          `<form method="post" action="admin/calendars/${id}/settings"${dirtyForm()}>` +
           `<div class="row-fields">` +
           textField({ label: 'Name', name: 'name', required: true, value: source.name }) +
           colourField +

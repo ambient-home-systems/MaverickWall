@@ -815,6 +815,14 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * [hidden]{display:none} outright — so a Cancel marked hidden would sit there
  * in plain sight on every form that has nothing to cancel. (0,2,0) over
  * (0,0,1), the same reason the editor's panels each carry their own rule. */
+/* The clipped default submit (see defaultSubmit): out of sight, out of the
+ * accessibility tree, and still the first submit in tree order — which is the
+ * only thing that decides what Enter does. Clipped rather than display:none or
+ * [hidden], because what a non-rendered submit does on implicit submission
+ * varies by browser, and the whole point of this element is that it is not in
+ * any doubt. Proven by pressing Enter in a real one (browser-admin.test.ts). */
+.formdefault{position:absolute;width:1px;height:1px;min-height:0;padding:0;margin:-1px;
+  border:0;overflow:hidden;clip-path:inset(50%)}
 .saverow{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
 .saverow>button{margin-top:0}
 .saverow [hidden]{display:none}
@@ -2443,6 +2451,19 @@ export interface PageOptions {
 }
 
 /**
+ * Does this page hold a form the dirty-state script should wire?
+ *
+ * A `<form>` tag carrying `data-dirty` — and specifically not a plain
+ * `includes('data-dirty')`, which the wall editor's `data-dirty-flag` span
+ * satisfies too. That match would fetch and run `settings-form.js` on the
+ * editor pages, where `form[data-dirty]` selects nothing: a module downloaded
+ * and executed for no reason, on the two heaviest pages in the admin. The
+ * lookahead is what keeps `data-dirty-flag` out — a hyphen is neither a space,
+ * an `=`, nor a `>`.
+ */
+const WANTS_DIRTY_SCRIPT = /<form\b[^>]*\bdata-dirty(?=[\s=>])/;
+
+/**
  * The strip itself: one sentence and a way to be rid of it.
  *
  * The sentence is a literal from `SAVED_MESSAGES`, never anything the request
@@ -2631,7 +2652,7 @@ export function page(options: PageOptions): string {
      * and the wizard branch above never reaches this line at all, which is
      * what keeps the no-script fence where `wizard-noscript.test.ts` put it.
      */
-    (options.body.includes('data-dirty')
+    (WANTS_DIRTY_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/settings-form.js"></script>`
       : '') +
     `</main></body></html>`
@@ -2818,6 +2839,47 @@ export function switchRow(options: SwitchRowOptions): string {
  * `location.pathname`" would ask for a route that only answers POST. The page
  * knows where its own settings live; it says so.
  */
+/**
+ * The `data-dirty` attribute for a form tag: `dirtyForm()` for one rendered
+ * fresh, `dirtyForm(true)` for one handed back at 400 with what the household
+ * typed still in it.
+ *
+ * The second case matters more than it looks. A re-render carries *unsaved*
+ * values, so a script that boots clean disables Save, hides Cancel and disarms
+ * the leave guard — on the one page where all three are most needed. Worse, an
+ * error the household cannot fix by editing a field ("Home Assistant is not
+ * connected") leaves them looking at a disabled Save with no way to retry.
+ * The server is the only thing that knows a body was posted, so the server
+ * says so.
+ */
+export function dirtyForm(alreadyDirty = false): string {
+  return alreadyDirty ? ' data-dirty="dirty"' : ' data-dirty';
+}
+
+/**
+ * The form's default button, drawn nowhere.
+ *
+ * Pressing Enter in a text field activates the **first submit button in tree
+ * order**, and a form that holds a second submit posting somewhere else — the
+ * Weather screen's "Use my Home Assistant home location", which carries a
+ * `formaction` so it can travel with the unsaved fields — would answer Enter
+ * with *that*. On Weather that meant typing a latitude, pressing Enter, and
+ * having the number replaced by `zone.home` and reported as saved: the same
+ * silent loss this phase exists to end, in a new place.
+ *
+ * The spec's own answer is tree order, so this is a real submit button placed
+ * first and clipped out of sight. It has no accessible name and no tab stop —
+ * a keyboard user reaches the visible Save, and a screen reader never meets
+ * this at all. It is not a second Save the household can find; it is what
+ * "press Enter" means.
+ *
+ * Only needed on a form with a `formaction` button in it. A form whose only
+ * submit is Save already behaves correctly.
+ */
+export function defaultSubmit(): string {
+  return `<button type="submit" class="formdefault" tabindex="-1" aria-hidden="true"></button>`;
+}
+
 export function saveRow(cancelHref: string, label = 'Save'): string {
   return (
     `<div class="saverow">` +

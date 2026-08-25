@@ -59,7 +59,15 @@ function wire(form: HTMLFormElement): void {
   // mistake, and disabling nothing quietly would hide it rather than fix it.
   if (parts.save === null) return;
 
-  let dirty = false;
+  /*
+   * A form re-rendered at 400 arrives already dirty, and only the server knows
+   * it: the markup carries the household's echoed, *unsaved* values, so booting
+   * clean would disable Save, hide Cancel and disarm the leave guard on exactly
+   * the page where all three matter most — and would leave an error they cannot
+   * fix by editing a field ("Home Assistant is not connected") staring at a
+   * Save they cannot press.
+   */
+  let dirty = form.dataset['dirty'] === 'dirty';
   /*
    * True while we are intentionally leaving, so the beforeunload guard does not
    * second-guess a deliberate action. Set only by the submit and the Cancel

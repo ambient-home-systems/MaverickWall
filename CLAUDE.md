@@ -1767,6 +1767,21 @@ mistyped latitude came back as an empty field and would now have taken the
 alerts switch with it; every failure echoes the raw body back, the way
 `calendarsPage` already did.
 
+**Merging the two forms produced three more faults, all the same shape: a
+property the *browser* has that neither handler can see.** Implicit submission
+activates the **first submit button in tree order**, and the Home Assistant
+button is a submit now — so Enter in Latitude replaced the number being typed
+with `zone.home` and called it saved; `defaultSubmit()` is a clipped,
+untabbable, `aria-hidden` submit rendered first, which is what "press Enter"
+means. **An unticked checkbox is not sent**, so an empty body and a form with
+every switch off are byte-identical — harmless while alerts had its own
+endpoint, and not harmless once a page cached from before the merge posts a
+body with no `alerts_enabled` in it; a hidden `weather_form` marker is how the
+form says "this is me, and everything I do not mention is off". And **a form
+re-rendered at 400 is already dirty**: booting the script clean disabled Save
+on the one page where pressing it again is the point, so the form tag carries
+`data-dirty="dirty"` when it is handed back with an echo.
+
 **Save is off until dirty on a settings form, and a settings page may carry
 script — decided, not assumed.** The no-script fence covers the wizard and
 sign-in and nothing else, which `wizard-noscript.test.ts` already pins.
@@ -1778,7 +1793,9 @@ and Cancel and the flag `hidden`, so a household who blocks script keeps today's
 form exactly. `page()` ships the script keyed on the body carrying `data-dirty`,
 so marking a form is the whole of adopting it; a screen emitting its own
 `<script src>` beside its own markup is how the e-paper editor silently lost its
-editor once. Cancel's destination is *stated* rather than derived, because a
+editor once — matched on a `<form>` tag rather than by `includes('data-dirty')`,
+which the editor's own `data-dirty-flag` span satisfies too. Cancel's
+destination is *stated* rather than derived, because a
 form re-rendered at 400 leaves the browser on the POST URL — `reload()` would
 re-submit the edits Cancel exists to throw away.
 

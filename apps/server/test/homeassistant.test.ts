@@ -569,14 +569,25 @@ describe('readings on the wall', () => {
     const display = await (await h.call('/admin/alerts')).text();
     expect(display).toContain('admin/weather/use-ha-location');
 
+    // Deliberately bodyless — a POST that is *not* the screen's own form. It
+    // must still fill the location in and must change nothing else: every
+    // switch on that form is a checkbox, so an empty body reads as "everything
+    // off" unless the handler can tell the two apart.
+    h.db
+      .prepare(`UPDATE household_settings SET alerts_enabled = 1 WHERE id = 'singleton'`)
+      .run();
     const response = await h.call('/admin/weather/use-ha-location', { method: 'POST' });
     expect(response.status).toBe(302);
 
     const saved = h.db
-      .prepare(`SELECT latitude, longitude FROM household_settings WHERE id = 'singleton'`)
-      .get() as { latitude: number; longitude: number };
+      .prepare(
+        `SELECT latitude, longitude, alerts_enabled AS alerts
+           FROM household_settings WHERE id = 'singleton'`,
+      )
+      .get() as { latitude: number; longitude: number; alerts: number };
     expect(saved.latitude).toBeCloseTo(38.8894);
     expect(saved.longitude).toBeCloseTo(-77.0352);
+    expect(saved.alerts, 'filling in a location must not turn the alerts off').toBe(1);
   });
 
   it('refuses an empty batch from the picker', async () => {

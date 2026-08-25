@@ -685,6 +685,11 @@ describe('weather provider', () => {
   it('saves the forecast provider and units, and shows both in the settings', async () => {
     const h = await harness();
     const response = await h.form('/admin/weather', {
+      // The marker the screen's own form carries. Without it the handler
+      // refuses the body outright: an unticked checkbox is not sent, so an
+      // empty body and "everything off" are the same bytes, and a page cached
+      // from before the alerts switch joined this form would turn alerts off.
+      weather_form: '1',
       weather_enabled: '1', latitude: '51.5074', longitude: '-0.1278',
       weather_provider: 'openmeteo', weather_units: 'metric',
     });

@@ -419,6 +419,30 @@ with it. Every failure now echoes the raw body back (`WeatherEcho`), the way
 `calendarsPage` already did, so the only thing a refusal costs is the number
 that was wrong.
 
+Three faults came out of merging the two forms, and all three are the same
+shape — a property the *browser* has that neither handler can see:
+
+- **Enter in Latitude filled the location instead of saving it.** Implicit
+  submission activates the first submit button in tree order, and the Home
+  Assistant button is a submit now — so pressing Enter after typing a number
+  replaced it with `zone.home` and reported it as saved. `defaultSubmit()` is a
+  clipped, untabbable, `aria-hidden` submit rendered first: it is what "press
+  Enter" means, and it is the spec's own answer rather than a workaround.
+- **An unticked checkbox is not sent**, so an empty body and a form with every
+  switch off are byte-identical. Harmless while the alerts switch had its own
+  endpoint; not harmless once it shares this one, because a page cached from
+  before the merge posts a body with no `alerts_enabled` in it. A hidden
+  `weather_form` marker is how the form says "this is me, and everything I do
+  not mention is off"; `POST /admin/weather` refuses a body without it, and
+  `use-ha-location` falls back to the stored row — which is the answer it
+  always gave.
+- **A form re-rendered at 400 is already dirty**, and only the server knows.
+  Booting the script clean disabled Save on the one page where pressing it
+  again is the point, hid Cancel, and disarmed the leave guard over unsaved
+  edits — worst on an error the household cannot fix by editing a field. The
+  form tag carries `data-dirty="dirty"` (`dirtyForm(true)`) when it is handed
+  back with an echo.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
@@ -441,10 +465,13 @@ document-level click listener.
 
 Five things it does not share with the editor's bar, each for a reason:
 
-- **`page()` ships the script**, keyed on the body carrying `data-dirty`, so
-  marking a form is the whole of adopting it. A screen emitting its own
+- **`page()` ships the script**, keyed on a `<form>` tag carrying `data-dirty`,
+  so marking a form is the whole of adopting it. A screen emitting its own
   `<script src>` beside its own markup is how the e-paper editor silently lost
-  its editor once — the mount stayed and the tag moved.
+  its editor once — the mount stayed and the tag moved. The match is a regex
+  and not `includes('data-dirty')`, which the wall editor's own
+  `data-dirty-flag` span satisfies too: that would download and run the module
+  on the two heaviest pages in the admin, where it selects nothing.
 - **Save's state is set on boot, never in the HTML.** The server renders Save
   enabled and Cancel and the flag `hidden`, so a household who blocks script
   gets exactly today's form. That is the degradation promise, and it is a
