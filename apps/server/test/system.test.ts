@@ -495,6 +495,28 @@ describe('the update check setting', () => {
     expect(readUpdateState(h.db).lastCheckedAt).toBeNull();
   });
 
+  it('lists a stored zone this build’s Intl has never heard of', async () => {
+    /*
+     * A database restored from an image with different tzdata — or one running
+     * the ten-zone fallback used when `Intl.supportedValuesOf` is missing — can
+     * hold a zone the offered list does not contain. Listing only the offered
+     * ones leaves *nothing* selected; the browser picks whatever sorts first
+     * (`Africa/Abidjan`), `looksEdited` correctly reports a form that differs
+     * from its markup, and one press of the now-live Save re-anchors every
+     * all-day event and the whole shift rotation to west Africa.
+     */
+    const h = await signedIn(harness());
+    h.db
+      .prepare(`UPDATE household_settings SET timezone = 'Mars/Olympus_Mons' WHERE id = 'singleton'`)
+      .run();
+    const html = await (await h.call('/admin/system')).text();
+
+    const selected = [...html.matchAll(/<option value="([^"]+)" selected>/g)].map((m) => m[1]);
+    expect(selected, 'exactly one, and it is the household’s own zone').toEqual([
+      'Mars/Olympus_Mons',
+    ]);
+  });
+
   it('keeps the stored zone selected when it refuses a choice', async () => {
     /*
      * A closed list is not a text field, and echoing a rejected value back into

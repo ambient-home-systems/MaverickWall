@@ -2876,7 +2876,29 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         selectField({
           label: 'Household timezone',
           name: 'timezone',
-          optionsHtml: offeredTimezones()
+          /*
+           * The stored zone is always one of the options, even when `Intl` has
+           * never heard of it.
+           *
+           * `offeredTimezones()` is whatever this build's `Intl` knows, plus a
+           * UTC fallback — and a database restored from an image with different
+           * tzdata, or one running the ten-zone list used when
+           * `supportedValuesOf` is missing, can hold a zone that is not in it.
+           * Listing only the offered ones then leaves *nothing* selected, the
+           * browser picks whatever sorts first (`Africa/Abidjan`), `looksEdited`
+           * correctly reports a form that differs from its markup, and one
+           * press of the now-live Save re-anchors every all-day event and the
+           * whole shift rotation to west Africa.
+           *
+           * So the household's own zone is added rather than replaced: it is a
+           * fact about them, not a suggestion. `setup.ts`'s
+           * `detectedTimezoneOption` falls back to UTC instead, which is right
+           * there — nothing is stored yet and it is guessing.
+           */
+          optionsHtml: (offeredTimezones().includes(household.timezone)
+            ? offeredTimezones()
+            : [household.timezone, ...offeredTimezones()]
+          )
             .map(
               (zone) =>
                 `<option value="${escapeHtml(zone)}"` +

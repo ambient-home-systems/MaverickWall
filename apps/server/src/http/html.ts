@@ -2819,27 +2819,6 @@ export function switchRow(options: SwitchRowOptions): string {
 }
 
 /**
- * The foot of a settings form: Save, Cancel, and the flag that says why they
- * are there (RFC 009 Phase 3.2).
- *
- * The pattern is lifted from the wall editor's save bar rather than invented
- * beside it — Save disabled until dirty, Discard hidden until there is
- * something to discard, and a flag that says so. `display-editor.ts` had it
- * right and every other settings form in the product had neither.
- *
- * **What this renders is the no-script state**, and that is the whole of the
- * degradation promise: Save is a plain enabled submit, exactly as it has always
- * been, and the two controls that only mean something once there is a *diff* to
- * talk about are `hidden`. `settings-form.js` disables Save on boot and reveals
- * the rest on the first edit; a household who blocks script keeps today's form.
- *
- * `cancelHref` is stated rather than derived, because the obvious derivation is
- * wrong in the one case that matters: a form re-rendered at 400 leaves the
- * browser sitting on the POST URL, so "reload" would re-submit and "go to
- * `location.pathname`" would ask for a route that only answers POST. The page
- * knows where its own settings live; it says so.
- */
-/**
  * The `data-dirty` attribute for a form tag: `dirtyForm()` for one rendered
  * fresh, `dirtyForm(true)` for one handed back at 400 with what the household
  * typed still in it.
@@ -2888,6 +2867,27 @@ export function defaultSubmit(): string {
   );
 }
 
+/**
+ * The foot of a settings form: Save, Cancel, and the flag that says why they
+ * are there (RFC 009 Phase 3.2).
+ *
+ * The pattern is lifted from the wall editor's save bar rather than invented
+ * beside it — Save disabled until dirty, Discard hidden until there is
+ * something to discard, and a flag that says so. `display-editor.ts` had it
+ * right and every other settings form in the product had neither.
+ *
+ * **What this renders is the no-script state**, and that is the whole of the
+ * degradation promise: Save is a plain enabled submit, exactly as it has always
+ * been, and the two controls that only mean something once there is a *diff* to
+ * talk about are `hidden`. `settings-form.js` disables Save on boot and reveals
+ * the rest on the first edit; a household who blocks script keeps today's form.
+ *
+ * `cancelHref` is stated rather than derived, because the obvious derivation is
+ * wrong in the one case that matters: a form re-rendered at 400 leaves the
+ * browser sitting on the POST URL, so "reload" would re-submit and "go to
+ * `location.pathname`" would ask for a route that only answers POST. The page
+ * knows where its own settings live; it says so.
+ */
 export function saveRow(cancelHref: string, label = 'Save'): string {
   return (
     `<div class="saverow">` +

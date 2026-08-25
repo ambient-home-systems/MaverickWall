@@ -606,6 +606,18 @@ no coordinates there is nothing to draw and the wall omits the widget anyway
 that leaves the household's order alone. The test pins both directions, because
 each wrong answer looks right from one side.
 
+A **thirteenth** found where measuring the DOM turns a cosmetic fault into a
+dangerous one. The System page listed only `offeredTimezones()`, so a stored
+zone this build's `Intl` has never heard of — a database restored from an image
+with different tzdata, or the ten-zone fallback used when `supportedValuesOf` is
+missing — left *nothing* selected. Before `looksEdited` that was a wrong-looking
+select; after it, the form boots dirty with a live Save, and one press
+re-anchors every all-day event and the whole shift rotation to `Africa/Abidjan`.
+The household's own zone is **added** to the list rather than replaced, because
+it is a fact about them and not a suggestion — which is where this differs from
+`setup.ts`'s `detectedTimezoneOption`, right to fall back to UTC because nothing
+is stored yet and it is guessing.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
