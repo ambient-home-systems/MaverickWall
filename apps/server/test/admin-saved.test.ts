@@ -28,6 +28,7 @@ import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { SAVED_MESSAGES } from '../src/http/saved.js';
+import { seedDefaultRules } from '../src/api/rules.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
@@ -133,6 +134,38 @@ describe('the Weather form marker', () => {
     });
     expect(saved.status).toBe(302);
     expect(saved.headers.get('location')).toBe('/admin/alerts?saved=weather');
+  });
+});
+
+describe('an alert rule', () => {
+  /**
+   * "Turn off" turned the rule back on, and had since it was written.
+   *
+   * The card sends a *hidden* input rather than a checkbox — `1` to turn on,
+   * the empty string to turn off — and the handler read presence-of-key, which
+   * is the right reading for a checkbox and the wrong one here: the empty
+   * string is still a string. So every "Turn off" in the ladder answered 302
+   * and re-enabled the rule, and the card came back saying "Turn off" again.
+   * Found by a review running it against the real app; nothing tested it.
+   */
+  it('turns off when the card says Turn off, and back on when it says Turn on', async () => {
+    const h = await harness();
+    // The shipped ladder, seeded the way boot seeds it.
+    seedDefaultRules(h.db);
+    const id = (h.db
+      .prepare(`SELECT id FROM interrupt_rules WHERE trigger = 'nws' AND enabled = 1 LIMIT 1`)
+      .get() as { id: string } | undefined)?.id;
+    expect(id, 'the shipped ladder seeds at least one enabled NWS rule').toBeDefined();
+    const enabled = (): number =>
+      (h.db.prepare('SELECT enabled FROM interrupt_rules WHERE id = ?').get(id) as { enabled: number })
+        .enabled;
+
+    // Exactly what the card posts when it reads "Turn off".
+    expect((await h.form(`/admin/alerts/rules/${id}`, { enabled: '' })).status).toBe(302);
+    expect(enabled(), 'pressing Turn off must turn it off').toBe(0);
+
+    expect((await h.form(`/admin/alerts/rules/${id}`, { enabled: '1' })).status).toBe(302);
+    expect(enabled()).toBe(1);
   });
 });
 

@@ -110,6 +110,12 @@ editor has worked this way for a while — this is the same behaviour on the
 other screens. If you browse with JavaScript turned off, these forms behave
 exactly as they always have.
 
+**"Turn off" on a weather alert level turned it back on.** The five cards under
+"What each level does" on the Weather screen each have a button, and pressing
+"Turn off" reported success and left the level exactly as it was — so a
+household who did not want a takeover for every severe thunderstorm had no way
+to say so. It has been like that since the screen was written. It works now.
+
 ## 0.53.0
 
 **A new way for the month to look, and a new theme to go with it.**

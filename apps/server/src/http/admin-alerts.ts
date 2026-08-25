@@ -138,9 +138,22 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     ),
   );
 
+  /**
+   * One rung of the ladder, on or off.
+   *
+   * The value, not the presence of the key — and that distinction is the whole
+   * of a bug that shipped: this is a *hidden* input rather than a checkbox, so
+   * the card always sends `enabled`, carrying `1` to turn on and the empty
+   * string to turn off. Read as `typeof body['enabled'] === 'string'` (the
+   * right reading for a checkbox, which is simply absent when unticked) the
+   * empty string is still a string, so **every "Turn off" in the alert ladder
+   * re-enabled the rule it was pressed on** — 302, no error, and the card came
+   * back saying "Turn off" again. Nothing tested it.
+   */
   app.post('/admin/alerts/rules/:id', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    setRuleEnabled(deps.db, c.req.param('id') ?? '', typeof body['enabled'] === 'string');
+    const shaped = parse(z.object({ enabled: optionalText(4) }), body);
+    setRuleEnabled(deps.db, c.req.param('id') ?? '', shaped.ok && shaped.value.enabled === '1');
     return c.redirect('/admin/alerts', 302);
   });
 

@@ -136,7 +136,21 @@ function wire(form: HTMLFormElement): void {
   }
 
   window.addEventListener('beforeunload', (event) => {
-    if (!dirty || navigating) return;
+    if (!dirty || navigating) {
+      /*
+       * Disarmed for one navigation, not for good.
+       *
+       * `navigating` used to latch: a page can carry two of these forms (the
+       * System screen carries two), and saving one sets *its* flag while the
+       * other's guard still prompts. Answer "Stay" and the navigation is
+       * cancelled — leaving the first form dirty on screen with its guard dead
+       * for the rest of the page's life. Clearing it here is the natural place:
+       * if the navigation goes ahead the document is gone and the flag never
+       * mattered, and if anything cancels it the guard is armed again.
+       */
+      navigating = false;
+      return;
+    }
     event.preventDefault();
     event.returnValue = '';
   });
