@@ -2877,7 +2877,15 @@ export function dirtyForm(alreadyDirty = false): string {
  * submit is Save already behaves correctly.
  */
 export function defaultSubmit(): string {
-  return `<button type="submit" class="formdefault" tabindex="-1" aria-hidden="true"></button>`;
+  // Marked `data-dirty-save` like the visible one, so the script disables both
+  // together. Without it, Enter on an untouched form saves and announces
+  // "Weather settings saved." while the Save button sits greyed out beside it
+  // — the two controls that mean the same thing disagreeing about whether
+  // there is anything to do.
+  return (
+    `<button type="submit" class="formdefault" data-dirty-save tabindex="-1" aria-hidden="true">` +
+    `</button>`
+  );
 }
 
 export function saveRow(cancelHref: string, label = 'Save'): string {

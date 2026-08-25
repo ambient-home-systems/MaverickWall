@@ -40,6 +40,22 @@ const weatherBody = z.object({
 });
 
 /**
+ * What "Use my Home Assistant home location" reads off the same form.
+ *
+ * Deliberately *not* `weatherBody`: this endpoint replaces the coordinates, so
+ * a coordinate it cannot parse must not be able to fail it. Reading a narrower
+ * shape is what makes that true by construction rather than by an ordering the
+ * next edit could undo — and `parse` is non-strict, so the fields it ignores
+ * simply travel past.
+ */
+const haLocationBody = z.object({
+  weather_enabled: checkbox(),
+  alerts_enabled: checkbox(),
+  weather_provider: optionalText(20),
+  weather_units: optionalText(20),
+});
+
+/**
  * The hidden field the one form carries, and the only way to tell it apart
  * from an empty body. See where it is rendered for why that matters.
  */
@@ -102,6 +118,25 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
   app.get('/admin/alerts', (c: Context) => c.html(alertsPage(c)));
+
+  /**
+   * The alerts switch's old endpoint, kept only to say it has moved.
+   *
+   * It used to back the second of this screen's two forms and it writes
+   * nothing now — but deleting it outright left a page cached from before the
+   * merge answering its own Save with a bare 404, while the *other* Save on
+   * that same page got the considered "out of date, reload" below. One stale
+   * page, two different answers, one of them a stack of nothing.
+   *
+   * It is not re-honoured, because honouring half a stale page is how a
+   * household comes to believe the stale page works. One rule: reload.
+   */
+  app.post('/admin/alerts', (c: Context) =>
+    c.html(
+      alertsPage(c, 'That page was out of date, so nothing was changed. Reload this screen and try again.'),
+      400,
+    ),
+  );
 
   app.post('/admin/alerts/rules/:id', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
@@ -171,16 +206,33 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const echo = echoOf(body);
     if (!shaped.ok) return c.html(alertsPage(c, shaped.message, echo), 400);
 
-    // A location is only required when the panel is on: turning weather off must
-    // not demand two numbers first.
+    /*
+     * Blank is "not set yet"; wrong is an error. The difference is the whole
+     * rule, and getting it wrong deadlocked the screen.
+     *
+     * The first version refused any save with the forecast on and no location —
+     * which is the *default state of a fresh install*, because
+     * `weather_enabled` defaults to 1 and there are no coordinates. Every
+     * submission came back 400, so the alerts switch that now shares this form
+     * could not be turned off, or on, at all. A household could not have got
+     * out of it from this screen.
+     *
+     * So a location the household has not filled in is stored as absent and the
+     * page says so where it matters (the alerts section names it, and the
+     * forecast panel is simply not drawn). A *typed* coordinate that is not one
+     * — "999", or one of a pair — is still refused, because that is a mistake
+     * they can only fix by being told.
+     */
+    const blank = shaped.value.latitude === undefined && shaped.value.longitude === undefined;
     const lat = parse(coordinate('Latitude', 90), shaped.value.latitude);
     const lon = parse(coordinate('Longitude', 180), shaped.value.longitude);
-    if (shaped.value.weather_enabled && (!lat.ok || !lon.ok)) {
+    if (!blank && (!lat.ok || !lon.ok)) {
       return c.html(
         alertsPage(
           c,
-          'Weather needs a location — latitude between -90 and 90, longitude between -180 and 180. ' +
-            'Your phone’s map app shows both if you press and hold on your house.',
+          'A location is both numbers together — latitude between -90 and 90, longitude ' +
+            'between -180 and 180. Your phone’s map app shows both if you press and hold ' +
+            'on your house, or leave them empty for now.',
           echo,
         ),
         400,
@@ -213,8 +265,20 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/weather/use-ha-location', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const posted = fromTheForm(body) ? parse(weatherBody, body) : undefined;
+    const posted = fromTheForm(body) ? parse(haLocationBody, body) : undefined;
     const echo = posted === undefined ? undefined : echoOf(body);
+    /*
+     * A refusal, not a quiet fallback.
+     *
+     * Reverting to the stored row here would throw away the edits the button
+     * was pressed to keep — and then redirect saying "Location filled in from
+     * Home Assistant, and saved.", which is the dishonest half of the problem
+     * this phase is about. The fallback below is for a body that is *not* this
+     * form at all.
+     */
+    if (posted !== undefined && !posted.ok) {
+      return c.html(alertsPage(c, posted.message, echo), 400);
+    }
     const resolved = resolveConnection(deps.db, deps.keyring);
     if (!resolved.ok) {
       return c.html(

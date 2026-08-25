@@ -24,8 +24,8 @@ import { readWeatherSettings } from '../src/api/queries.js';
 const SLOW = 60_000;
 
 const installations: Installation[] = [];
-async function fresh(): Promise<Installation> {
-  const made = await install();
+async function fresh(options?: Parameters<typeof install>[0]): Promise<Installation> {
+  const made = await install(options);
   installations.push(made);
   return made;
 }
@@ -146,6 +146,15 @@ describe('the Weather screen', () => {
       expect(await ghost.getAttribute('tabindex')).toBe('-1');
       expect(await ghost.getAttribute('aria-hidden')).toBe('true');
       expect(await ghost.boundingBox()).toMatchObject({ width: 1, height: 1 });
+      /*
+       * And it is disabled with the visible Save, not instead of it. Enter on
+       * an untouched form otherwise saved and announced "Weather settings
+       * saved." while the Save button sat greyed out beside it — two controls
+       * meaning the same thing, disagreeing about whether there is anything to
+       * do.
+       */
+      expect(await ghost.isDisabled(), 'nothing has been edited since the reload').toBe(true);
+      expect(await page.locator('.saverow [data-dirty-save]').isDisabled()).toBe(true);
     },
     SLOW,
   );
@@ -169,11 +178,11 @@ describe('the Weather screen', () => {
       await page.selectOption('select[name="weather_provider"]', 'openmeteo');
       await Promise.all([
         page.waitForNavigation({ timeout: 20_000 }),
-        page.locator('[data-dirty-save]').click(),
+        page.locator('.saverow [data-dirty-save]').click(),
       ]);
 
       expect(await page.locator('.error strong').first().textContent()).toContain(
-        'Weather needs a location',
+        'A location is both numbers together',
       );
       expect(await page.inputValue('input[name="latitude"]'), 'the number to correct').toBe('999');
       expect(await page.inputValue('input[name="longitude"]')).toBe('-0.1278');
@@ -189,10 +198,63 @@ describe('the Weather screen', () => {
        * pressing it again is the whole point, hide Cancel, and disarm the
        * leave guard over the household's unsaved edits.
        */
-      const save = page.locator('[data-dirty-save]');
+      const save = page.locator('.saverow [data-dirty-save]');
       await expect.poll(() => save.isEnabled(), { timeout: 10_000 }).toBe(true);
       expect(await page.locator('[data-dirty-cancel]').isVisible()).toBe(true);
       expect(await page.locator('[data-dirty-flag]').isVisible()).toBe(true);
+    },
+    SLOW,
+  );
+
+  /**
+   * The deadlock the merge introduced, and it was on the default install.
+   *
+   * `weather_enabled` defaults to 1 and a fresh household has no coordinates,
+   * so the first version's "the forecast is on, so demand a location" refused
+   * *every* submission with a 400 — and the alerts switch now shares the form,
+   * so it could not be turned off, or on, from this screen at all. Blank is
+   * "not set yet"; only a typed coordinate that is not one is an error.
+   */
+  it(
+    'lets a fresh household change the alerts switch before it has a location',
+    async () => {
+      const { page, home } = await signedIn();
+      const alertsOf = (): number =>
+        (home.db
+          .prepare(`SELECT alerts_enabled AS enabled FROM household_settings WHERE id = 'singleton'`)
+          .get() as { enabled: number }).enabled;
+      expect(alertsOf(), 'alerts ship on, which is what made this a deadlock').toBe(1);
+
+      await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+      expect(await page.inputValue('input[name="latitude"]'), 'and no location').toBe('');
+
+      await page.uncheck('input[name="alerts_enabled"]');
+      await Promise.all([
+        page.waitForNavigation({ timeout: 20_000 }),
+        page.locator('.saverow [data-dirty-save]').click(),
+      ]);
+
+      expect(await page.locator('.saved-text').textContent()).toBe('Weather settings saved.');
+      expect(alertsOf(), 'the switch could not be moved at all before this').toBe(0);
+    },
+    SLOW,
+  );
+
+  /**
+   * The old alerts endpoint answers rather than 404s.
+   *
+   * A page cached from before the merge posts its own alerts Save to
+   * `/admin/alerts`. Deleting that route left it answering with a bare 404
+   * while the *other* Save on that same page got a considered "out of date,
+   * reload" — one stale page, two different answers.
+   */
+  it(
+    'tells a page cached from before the merge to reload, rather than 404ing',
+    async () => {
+      const home = await fresh();
+      const stale = await home.post('/admin/alerts', { alerts_enabled: '1' });
+      expect(stale.status).toBe(400);
+      expect(await stale.text()).toContain('out of date');
     },
     SLOW,
   );
@@ -218,7 +280,7 @@ describe('the confirmation strip', () => {
       await page.fill('input[name="longitude"]', '-0.1278');
       await Promise.all([
         page.waitForNavigation({ timeout: 20_000 }),
-        page.locator('button[data-dirty-save]').click(),
+        page.locator('.saverow [data-dirty-save]').click(),
       ]);
 
       const strip = page.locator('.saved');

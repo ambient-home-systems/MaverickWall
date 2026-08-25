@@ -443,6 +443,37 @@ shape — a property the *browser* has that neither handler can see:
   form tag carries `data-dirty="dirty"` (`dirtyForm(true)`) when it is handed
   back with an echo.
 
+A second review found five more, and the first is the sharpest thing in this
+phase because it was on the *default install*:
+
+- **A fresh household could not touch its alerts switch at all.**
+  `weather_enabled` defaults to 1 and a new install has no coordinates, so
+  "the forecast is on, therefore demand a location" refused every submission
+  with a 400 — and the alerts switch now shares that form. Blank is "not set
+  yet" and saves; only a *typed* coordinate that is not one, or one of a pair,
+  is refused. Merging two forms merges their validation, and that is the thing
+  to check before merging any others in 3b.
+- **`use-ha-location` reads a narrower schema than Save.** It replaces the
+  coordinates, so a coordinate it cannot parse must not be able to fail it — a
+  pasted "51.5074, -0.1278 London" is longer than the field allows, and falling
+  back to the stored row would have discarded the edits the button was pressed
+  to carry, then redirected saying it had saved them.
+- **`POST /admin/alerts` still answers.** Deleting it left a stale page's alerts
+  Save getting a bare 404 while the other Save on the same page got the
+  considered "out of date, reload". It is not re-honoured — honouring half a
+  stale page is how a household comes to believe the stale page works — but it
+  says the same thing the other one does.
+- **Calendars had the Weather screen's 400 loss too**, and the dirty state made
+  it worse: a row redrawn from the database has nothing unsaved and correctly
+  greys Save, so an error came with a dead button. `SourceEcho` is the same
+  shape as `WeatherEcho`, keyed on the source because one page draws every
+  calendar. Driven as a POST rather than in a browser, because `name` is
+  `required` and a browser will not submit it empty — the handler is reachable
+  from a stale page and the person-is-gone race, not from the form.
+- **The clipped default submit is marked `data-dirty-save` too**, so it is
+  disabled with the visible Save. Otherwise Enter on an untouched form saved
+  and announced it while the Save button sat greyed out beside it.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

@@ -670,6 +670,48 @@ describe('testing a feed before saving it', () => {
     expect(await response.text()).toContain('.ics');
   });
 
+  /**
+   * A refused field must not cost the rest of the row (RFC 009 Phase 3.1).
+   *
+   * The page re-rendered every row from the database on a 400, so an error in
+   * one field silently threw away every other change made in the same row — the
+   * Weather screen's loss, one screen along. Worse since Save is disabled until
+   * dirty: a row redrawn from the database has nothing unsaved and correctly
+   * says so, which leaves an error above a dead button.
+   *
+   * Driven as a POST rather than in a browser on purpose: `name` is `required`,
+   * so a browser refuses to submit the empty field at all and the handler is
+   * unreachable from the form. It is reachable from a stale page, a second tab,
+   * and the person-is-gone race — and this is what it must do when it is.
+   */
+  it('hands a calendar row back as it was left when it refuses a field', async () => {
+    const h = await harness();
+    await h.addFeed('Family');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+
+    const refused = await h.form(`/admin/calendars/${id}/settings`, {
+      name: '', color: '#123456', person_id: '',
+      // `enabled` and `allow_lan` deliberately absent: unticked switches.
+    });
+    expect(refused.status).toBe(400);
+    const html = await refused.text();
+
+    expect(html, 'the colour they changed in the same breath').toContain('#123456');
+    expect(html, 'and the switch they turned off').not.toMatch(
+      /name="enabled"[^>]*\schecked/,
+    );
+    // And the row comes back already dirty, so Save is live rather than greyed
+    // out over changes that have not been saved.
+    expect(html).toContain('data-dirty="dirty"');
+
+    // Nothing was written.
+    const row = h.db
+      .prepare('SELECT name, color, enabled FROM calendar_sources')
+      .get() as { name: string; color: string; enabled: number };
+    expect(row).toMatchObject({ name: 'Family', enabled: 1 });
+    expect(row.color).not.toBe('#123456');
+  });
+
   it('still saves when the save button is the one pressed', async () => {
     const h = await harness();
     const url = await icsServer();

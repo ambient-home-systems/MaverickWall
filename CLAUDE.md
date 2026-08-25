@@ -1782,6 +1782,23 @@ re-rendered at 400 is already dirty**: booting the script clean disabled Save
 on the one page where pressing it again is the point, so the form tag carries
 `data-dirty="dirty"` when it is handed back with an echo.
 
+**And merging two forms merges their validation, which deadlocked the default
+install.** `weather_enabled` defaults to 1 and a fresh household has no
+coordinates, so "the forecast is on, therefore demand a location" refused every
+submission with a 400 — and the alerts switch now shares that form, so it could
+not be turned off, or on, from the screen at all. Blank is "not set yet" and
+saves; only a *typed* coordinate that is not one, or one of a pair, is refused.
+That is the thing to check before merging any other pair of forms. Three
+smaller ones came with it: `use-ha-location` reads a *narrower* schema than
+Save, because it replaces the coordinates and so must not be able to fail on
+one (a pasted "51.5074, -0.1278 London" is longer than the field allows, and
+the fallback would have discarded the edits the button exists to carry while
+claiming to have saved them); `POST /admin/alerts` still answers, with the same
+"out of date, reload" rather than a bare 404, since one stale page giving two
+different answers is worse than either; and Calendars had the same 400 loss,
+made worse by the dirty state, so `SourceEcho` is `WeatherEcho` keyed on the
+source.
+
 **Save is off until dirty on a settings form, and a settings page may carry
 script — decided, not assumed.** The no-script fence covers the wizard and
 sign-in and nothing else, which `wizard-noscript.test.ts` already pins.

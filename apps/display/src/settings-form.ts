@@ -30,24 +30,35 @@
 /** Every control this manages, resolved once per form. */
 interface Parts {
   readonly form: HTMLFormElement;
-  readonly save: HTMLButtonElement | null;
+  readonly saves: readonly HTMLButtonElement[];
   readonly cancel: HTMLElement | null;
   readonly flag: HTMLElement | null;
 }
 
 function partsOf(form: HTMLFormElement): Parts {
+  /*
+   * Every control marked `data-dirty-save`, and there can be two.
+   *
+   * A form with a second submit posting elsewhere — the Weather screen's "Use
+   * my Home Assistant home location", which carries a `formaction` so it
+   * travels with the unsaved fields — also carries a clipped first submit, so
+   * that pressing Enter means Save rather than that button. Both are marked,
+   * and they have to enable and disable together or the form has two answers
+   * to "is there anything to save".
+   *
+   * What is *not* marked is that Home Assistant button itself: disabling it
+   * would be a control whose whole job is to fill a field in refusing to work
+   * until a field has been filled in.
+   */
+  const saves: HTMLButtonElement[] = [];
+  const found = form.querySelectorAll<HTMLButtonElement>('[data-dirty-save]');
+  for (let index = 0; index < found.length; index++) {
+    const one = found[index];
+    if (one !== undefined) saves.push(one);
+  }
   return {
     form,
-    /*
-     * Scoped to this form, and to the one control that carries the marker.
-     *
-     * A settings form can hold more than one submit — the Weather screen's
-     * "Use my Home Assistant home location" is a second one, posting elsewhere
-     * with `formaction` so it carries the unsaved fields with it. Disabling
-     * that would be a control whose whole job is to fill a field in refusing
-     * to work until a field has been filled in.
-     */
-    save: form.querySelector<HTMLButtonElement>('[data-dirty-save]'),
+    saves,
     cancel: form.querySelector<HTMLElement>('[data-dirty-cancel]'),
     flag: form.querySelector<HTMLElement>('[data-dirty-flag]'),
   };
@@ -57,7 +68,7 @@ function wire(form: HTMLFormElement): void {
   const parts = partsOf(form);
   // Nothing to enhance: a form marked dirty-aware with no Save is a markup
   // mistake, and disabling nothing quietly would hide it rather than fix it.
-  if (parts.save === null) return;
+  if (parts.saves.length === 0) return;
 
   /*
    * A form re-rendered at 400 arrives already dirty, and only the server knows
@@ -79,7 +90,7 @@ function wire(form: HTMLFormElement): void {
   let navigating = false;
 
   const refresh = (): void => {
-    if (parts.save !== null) parts.save.disabled = !dirty;
+    for (const save of parts.saves) save.disabled = !dirty;
     if (parts.cancel !== null) parts.cancel.hidden = !dirty;
     if (parts.flag !== null) parts.flag.hidden = !dirty;
   };

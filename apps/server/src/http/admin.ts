@@ -121,6 +121,42 @@ const sourceSettingsBody = z.object({
 });
 
 /**
+ * One calendar's settings as the household left them, for a page that comes
+ * back at 400 (RFC 009 Phase 3.1).
+ *
+ * The screen re-rendered every row from the database, so clearing the name and
+ * pressing Save handed back an error *and* threw away the colour, the owner and
+ * the switches they had changed in the same row. Same silent loss the Weather
+ * screen had, one screen along — and worse now that Save is disabled until
+ * something is dirty, because a row redrawn from the database has nothing to
+ * save and correctly says so.
+ *
+ * Keyed on the source, because one page draws every calendar and only one of
+ * them was being edited.
+ */
+interface SourceEcho {
+  readonly sourceId: string;
+  readonly name: string;
+  readonly color: string;
+  readonly personId: string;
+  readonly enabled: boolean;
+  readonly allowLan: boolean;
+}
+
+/** The echo, read off the raw body — before any schema has had an opinion. */
+function sourceEchoOf(sourceId: string, body: Record<string, unknown>): SourceEcho {
+  const str = (key: string): string => (typeof body[key] === 'string' ? (body[key] as string) : '');
+  return {
+    sourceId,
+    name: str('name'),
+    color: str('color'),
+    personId: str('person_id'),
+    enabled: typeof body['enabled'] === 'string',
+    allowLan: typeof body['allow_lan'] === 'string',
+  };
+}
+
+/**
  * The shift builder's form, which is a draft rather than a submission.
  *
  * It round-trips: the page renders a draft, the household changes one thing,
@@ -903,13 +939,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/calendars/:id/settings', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(sourceSettingsBody, body);
-    if (!shaped.ok) return c.html(calendarsPage(c, {}, { message: shaped.message }), 400);
+    // Echoed back on both failures below, so a cleared name never also costs
+    // the colour and the owner changed in the same row.
+    const echo = sourceEchoOf(c.req.param('id') ?? '', body);
+    if (!shaped.ok) {
+      return c.html(calendarsPage(c, {}, { message: shaped.message }, undefined, [], echo), 400);
+    }
 
     // Membership, and it cannot live in the schema: who exists is a question
     // for the database rather than for the shape of the request.
     const personId = shaped.value.person_id;
     if (personId !== undefined && !readPeopleAdmin(deps.db).some((p) => p.id === personId)) {
-      return c.html(calendarsPage(c, {}, { message: 'That person is no longer there.' }), 400);
+      return c.html(
+        calendarsPage(c, {}, { message: 'That person is no longer there.' }, undefined, [], echo),
+        400,
+      );
     }
 
     updateSource(deps.db, c.req.param('id') ?? '', {
@@ -4188,7 +4232,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function sourceRow(source: AdminSourceRow, at: number, people: readonly PersonRecord[]): string {
+  function sourceRow(
+    source: AdminSourceRow,
+    at: number,
+    people: readonly PersonRecord[],
+    /**
+     * What the household had in this row's fields, when a save of it came back
+     * at 400 — so the error costs only the thing that was wrong. Absent is the
+     * ordinary case and the row draws from the database.
+     */
+    echo?: SourceEcho,
+  ): string {
     const status =
       source.lastError !== null
         ? errorBlock(
@@ -4201,13 +4255,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `synced ${escapeHtml(ago(source.lastSuccessAt, at))}</p>`;
 
     const id = encodeURIComponent(source.id);
+    // The echo wins wherever there is one; with none, the stored row is the form.
+    const shown = {
+      name: echo?.name ?? source.name,
+      color: echo?.color ?? source.color,
+      personId: echo === undefined ? source.personId : echo.personId === '' ? null : echo.personId,
+      enabled: echo?.enabled ?? source.enabled === 1,
+      allowLan: echo?.allowLan ?? source.allowPrivateNetwork === 1,
+    };
     const personOptions =
-      `<option value=""${source.personId === null ? ' selected' : ''}>Everyone</option>` +
+      `<option value=""${shown.personId === null ? ' selected' : ''}>Everyone</option>` +
       people
         .map(
           (person) =>
             `<option value="${escapeHtml(person.id)}"` +
-            `${person.id === source.personId ? ' selected' : ''}>` +
+            `${person.id === shown.personId ? ' selected' : ''}>` +
             `${escapeHtml(person.name)}</option>`,
         )
         .join('');
@@ -4232,18 +4294,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // keeps the stored colour so it returns intact if they pick "Everyone".
       (() => {
         const owner =
-          source.personId === null ? null : (people.find((p) => p.id === source.personId) ?? null);
+          shown.personId === null ? null : (people.find((p) => p.id === shown.personId) ?? null);
         const colourField =
           owner === null
-            ? textField({ label: 'Colour', name: 'color', type: 'color', value: source.color })
+            ? textField({ label: 'Colour', name: 'color', type: 'color', value: shown.color })
             : `<span><label>Colour</label>` +
               `<span class="owned-colour"><span class="swatch" ` +
               `style="--swatch:${escapeHtml(owner.color)}"></span>Uses ${escapeHtml(owner.name)}’s colour</span>` +
-              `<input type="hidden" name="color" value="${escapeHtml(source.color)}"></span>`;
+              `<input type="hidden" name="color" value="${escapeHtml(shown.color)}"></span>`;
         return (
-          `<form method="post" action="admin/calendars/${id}/settings"${dirtyForm()}>` +
+          `<form method="post" action="admin/calendars/${id}/settings"${dirtyForm(echo !== undefined)}>` +
           `<div class="row-fields">` +
-          textField({ label: 'Name', name: 'name', required: true, value: source.name }) +
+          textField({ label: 'Name', name: 'name', required: true, value: shown.name }) +
           colourField +
           selectField({ label: 'Belongs to', name: 'person_id', optionsHtml: personOptions }) +
           `</div>`
@@ -4253,7 +4315,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       switchRow({
         label: 'Sync this calendar',
         name: 'enabled',
-        checked: source.enabled === 1,
+        checked: shown.enabled,
       }) +
       // Named as a risk rather than as a feature, because it is one — and not
       // drawn at all for a Home Assistant calendar, which is not fetched from
@@ -4265,7 +4327,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         : switchRow({
             label: 'Allow a local network address',
             name: 'allow_lan',
-            checked: source.allowPrivateNetwork === 1,
+            checked: shown.allowLan,
             hint:
               'Local network access lets this feed reach devices inside your home. ' +
               'Only turn it on for a calendar you host yourself.',
@@ -4382,6 +4444,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * empty section explaining itself.
      */
     haCalendars: readonly { readonly entityId: string; readonly name: string }[] = [],
+    /** One row's unsaved values, when a save of that row came back at 400. */
+    echo?: SourceEcho,
   ): string {
     const at = now();
     const sources = readAdminSources(deps.db);
@@ -4400,7 +4464,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }
         : {}),
       body:
-        sources.map((source) => sourceRow(source, at, people)).join('') +
+        sources
+          .map((source) => sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined))
+          .join('') +
         haCalendarSection(haCalendars, sources) +
         `<h2 class="add" id="add">Add a calendar</h2>` +
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
