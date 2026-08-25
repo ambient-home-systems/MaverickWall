@@ -96,10 +96,16 @@ function isSavedKey(value: string): value is SavedKey {
  * on the way out, and only recognises a `Location` that starts with one.
  */
 export function savedRedirect(c: Context, path: string, key: SavedKey): Response {
-  const [base, query] = splitQuery(path);
+  // The fragment comes off first and goes back on last. Splitting on `?` alone
+  // turns `…#frag` into `…#frag?saved=key`, where the token is part of the
+  // anchor, never reaches the server, and breaks the anchor on the way — and
+  // the wall editor's `layoutUrl()` already redirects to fragment paths, which
+  // is exactly the set Phase 3b converts.
+  const [withoutHash, hash] = splitOn(path, '#');
+  const [base, query] = splitOn(withoutHash, '?');
   const params = new URLSearchParams(query);
   params.set('saved', key);
-  return c.redirect(`${base}?${params.toString()}`, 302);
+  return c.redirect(`${base}?${params.toString()}${hash === '' ? '' : `#${hash}`}`, 302);
 }
 
 /**
@@ -127,7 +133,13 @@ export function readSaved(c: Context): Saved | undefined {
  * all" and would make the control do nothing.
  */
 function withoutSaved(c: Context): string {
-  const params = new URLSearchParams(c.req.query() as Record<string, string>);
+  // `queries()`, not `query()`: the latter keeps only the first value of a
+  // repeated parameter, so dismissing would quietly drop the rest — which is
+  // the opposite of what this function is for.
+  const params = new URLSearchParams();
+  for (const [name, values] of Object.entries(c.req.queries())) {
+    for (const value of values) params.append(name, value);
+  }
   params.delete('saved');
   const rest = params.toString();
   const relative = c.req.path.replace(/^\/+/, '');
@@ -135,7 +147,7 @@ function withoutSaved(c: Context): string {
   return rest === '' ? relative : `${relative}?${rest}`;
 }
 
-function splitQuery(path: string): readonly [string, string] {
-  const mark = path.indexOf('?');
-  return mark < 0 ? [path, ''] : [path.slice(0, mark), path.slice(mark + 1)];
+function splitOn(value: string, mark: string): readonly [string, string] {
+  const at = value.indexOf(mark);
+  return at < 0 ? [value, ''] : [value.slice(0, at), value.slice(at + mark.length)];
 }

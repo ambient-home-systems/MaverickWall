@@ -1145,6 +1145,15 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
   const moved =
     previous.latitude !== settings.latitude || previous.longitude !== settings.longitude;
 
+  /*
+   * "Usable" is on *and* located: with no coordinates there is nothing to draw
+   * and the wall omits the widget entirely (RFC 009 Phase 2). Two things key
+   * off the transition into it — putting the strip on the wall, and asking the
+   * provider now rather than on the next tick.
+   */
+  const wasUsable = previous.enabled && previous.latitude !== null && previous.longitude !== null;
+  const isUsable = settings.enabled && settings.latitude !== null && settings.longitude !== null;
+
   const write = db.transaction(() => {
     db.prepare(
       `UPDATE household_settings
@@ -1206,8 +1215,6 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
      * screen, or through "Use my Home Assistant home location" — is the moment
      * they asked for it, and every save after that leaves their order alone.
      */
-    const wasUsable = previous.enabled && previous.latitude !== null && previous.longitude !== null;
-    const isUsable = settings.enabled && settings.latitude !== null && settings.longitude !== null;
     if (isUsable && !wasUsable) {
       const row = db
         .prepare(`SELECT display_blocks AS blocks FROM household_settings WHERE id = 'singleton'`)
@@ -1222,8 +1229,25 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
         ).run(blocks.join(','), Date.now());
       }
     }
-    // Bring the refresh forward so the panel fills in without a wait.
-    db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'weather-sync'`).run();
+    /*
+     * Bring the refresh forward so the panel fills in without a wait — when
+     * there is something new to fetch.
+     *
+     * Unconditional, this reset the job's backoff on *any* save through here,
+     * and since the alerts switch joined the forecast's form (RFC 009 Phase
+     * 3.1) that includes toggling alerts, or pressing Enter on an untouched
+     * page. A household fiddling with the Weather screen would then hammer the
+     * provider while it was having a bad morning — the same hazard the
+     * `alerts-sync` bring-forward above is careful about, on the job right
+     * beside it.
+     *
+     * `invalidated` is the cache being wrong (a move, a provider swap, a units
+     * change) and the usable transition is the household asking to see it at
+     * all. Anything else already has the answer it needs.
+     */
+    if (invalidated || (isUsable && !wasUsable)) {
+      db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'weather-sync'`).run();
+    }
   });
   write();
 }

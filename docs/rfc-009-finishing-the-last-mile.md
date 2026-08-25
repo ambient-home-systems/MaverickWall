@@ -655,6 +655,18 @@ value back rather than only reading the markup, which is exactly how the
 asymmetry survived twice. **A list and the handler that reads it are one
 decision**; asserting only the render checks half of it.
 
+An **eighteenth** found three that matter to 3b more than to this phase.
+`writeWeatherSettings` brought the *forecast* job forward on any save through
+it, which now includes an alerts toggle — the same backoff hazard the
+`alerts-sync` bring-forward beside it is careful about; it is the cache being
+wrong or the household asking to see it at all. `savedRedirect` split on `?`
+alone, so a path with a `#fragment` produced `…#frag?saved=key`, where the token
+is inside the anchor and never reaches the server — latent here and not for
+long, since the wall editor's `layoutUrl()` already redirects to fragment paths.
+And `withoutSaved` rebuilt the query from `c.req.query()`, which keeps only the
+first value of a repeated parameter, so dismissing quietly dropped the rest —
+against the docstring's own promise. `queries()` is the reader that keeps them.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

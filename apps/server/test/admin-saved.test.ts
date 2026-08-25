@@ -171,6 +171,61 @@ describe('the Weather form marker', () => {
   });
 
   /**
+   * The forecast job's backoff, for the same reason.
+   *
+   * `writeWeatherSettings` brings `weather-sync` forward so the panel fills in
+   * without a wait — and did so on *any* save through it, which since the
+   * alerts switch joined this form includes toggling alerts, or pressing Enter
+   * on an untouched page. It is the cache being wrong (a move, a provider swap,
+   * a units change) or the household asking to see it at all; anything else
+   * already has the answer it needs.
+   */
+  it('brings the forecast refresh forward only when there is something to fetch', async () => {
+    const h = await harness();
+    const stamp = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO job_state (key, kind, next_run_at, consecutive_failures, created_at, updated_at)
+         VALUES ('weather-sync', 'weather-sync', ?, 0, ?, ?)`,
+      )
+      .run(stamp, stamp, stamp);
+    const nextRun = (): number =>
+      (h.db.prepare(`SELECT next_run_at AS at FROM job_state WHERE kind = 'weather-sync'`).get() as
+        { at: number }).at;
+    const backOff = (): void => {
+      h.db.prepare(`UPDATE job_state SET next_run_at = 9999999999 WHERE kind = 'weather-sync'`).run();
+    };
+    // `weather_enabled` is deliberately not in the base: it is a checkbox, so
+    // "off" is its absence, and a base that always sent it would mean this test
+    // never turned weather off at all.
+    const save = (fields: Record<string, string>): Promise<Response> =>
+      h.form('/admin/weather', {
+        weather_form: '1', latitude: '51.5', longitude: '-0.1',
+        weather_provider: 'nws', weather_units: 'imperial', ...fields,
+      });
+
+    // The coordinates land first, so the later saves change nothing the
+    // provider would answer differently.
+    await save({});
+    backOff();
+    await save({});
+    expect(nextRun(), 'the same settings again is not a reason to ask').toBe(9999999999);
+
+    // Asking to see it at all.
+    await save({ weather_enabled: '1' });
+    expect(nextRun(), 'a location arriving is the household asking').toBe(0);
+
+    // An alerts toggle changes nothing the provider would answer differently.
+    backOff();
+    await save({ weather_enabled: '1', alerts_enabled: '1' });
+    expect(nextRun(), 'an alerts toggle must not reset the forecast’s backoff').toBe(9999999999);
+
+    // A units change makes the cached answer wrong.
+    await save({ weather_enabled: '1', alerts_enabled: '1', weather_units: 'metric' });
+    expect(nextRun(), 'the cache is for the old scale').toBe(0);
+  });
+
+  /**
    * Blank is "not set yet", not a way to delete a location by accident.
    *
    * `writeWeatherSettings` treats a move as a move: clearing the coordinates
@@ -343,6 +398,43 @@ describe('the confirmation strip', () => {
     const crafted = await (await h.call('/admin/system?saved=%3Cscript%3Ealert(1)%3C%2Fscript%3E')).text();
     expect(stripOf(crafted)).toBeUndefined();
     expect(crafted, 'the token is a key, never text — nothing of it reaches the page').not.toContain('alert(1)');
+  });
+
+  it('keeps a fragment, and puts the token where the server can read it', async () => {
+    /*
+     * Splitting on `?` alone turns `…#frag` into `…#frag?saved=key`: the token
+     * lands inside the anchor, never reaches the server, and breaks the anchor
+     * on the way. Latent today and not for long — the wall editor's
+     * `layoutUrl()` already redirects to fragment paths, which is exactly the
+     * set Phase 3b converts.
+     */
+    const { savedRedirect } = await import('../src/http/saved.js');
+    const seen: string[] = [];
+    const fake = {
+      redirect: (url: string): Response => {
+        seen.push(url);
+        return new Response(null, { status: 302 });
+      },
+    } as unknown as Parameters<typeof savedRedirect>[0];
+
+    savedRedirect(fake, '/admin/displays/s1#widgets', 'timezone');
+    savedRedirect(fake, '/admin/displays/s1?tab=look#widgets', 'timezone');
+    savedRedirect(fake, '/admin/system', 'timezone');
+    expect(seen).toEqual([
+      '/admin/displays/s1?saved=timezone#widgets',
+      '/admin/displays/s1?tab=look&saved=timezone#widgets',
+      '/admin/system?saved=timezone',
+    ]);
+  });
+
+  it('keeps every value of a repeated parameter when it is dismissed', async () => {
+    // `c.req.query()` keeps only the first, which would quietly drop the rest —
+    // the opposite of what the dismiss link is for.
+    const h = await harness();
+    const page = await (
+      await h.call('/admin/calendars?tag=a&saved=calendar-added&tag=b')
+    ).text();
+    expect(stripOf(page) ?? '').toContain('href="admin/calendars?tag=a&amp;tag=b"');
   });
 
   it('keeps the rest of the query when it is dismissed', async () => {
