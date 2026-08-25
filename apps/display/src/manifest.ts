@@ -366,6 +366,17 @@ export type FetchOutcome =
       readonly status: 'failed';
       readonly reason: string;
       /**
+       * Whether the server answered at all.
+       *
+       * A refusal and an unreachable server are not the same event, and the
+       * display was treating them as one: it drew "Not reaching the server"
+       * over a wall whose server had just replied, stopped advancing
+       * `lastContactAt`, and so tripped a watchdog limit `watchdog.ts` says is
+       * for the case where *we* are broken. True for any HTTP reply, including
+       * one this bundle cannot use.
+       */
+      readonly answered: boolean;
+      /**
        * What the server said, when it said anything.
        *
        * A refusal is not the same event as a wall that cannot reach anything,
@@ -423,7 +434,11 @@ export function createManifestClient(
           headers: etag === undefined ? {} : { 'if-none-match': etag },
         });
       } catch (error) {
-        return { status: 'failed', reason: error instanceof Error ? error.message : 'offline' };
+        return {
+          status: 'failed',
+          answered: false,
+          reason: error instanceof Error ? error.message : 'offline',
+        };
       }
 
       const headerTime = Number(response.headers.get('x-server-time'));
@@ -433,7 +448,11 @@ export function createManifestClient(
       if (response.status === 401) return { status: 'unpaired' };
       if (response.status < 200 || response.status >= 300) {
         const said = await sentenceFrom(response);
-        const failed = { status: 'failed', reason: `server answered ${response.status}` } as const;
+        const failed = {
+          status: 'failed',
+          answered: true,
+          reason: `server answered ${response.status}`,
+        } as const;
         return said === undefined ? failed : { ...failed, serverSaid: said };
       }
 
@@ -441,9 +460,11 @@ export function createManifestClient(
       try {
         body = await response.json();
       } catch {
-        return { status: 'failed', reason: 'reply was not readable' };
+        return { status: 'failed', answered: true, reason: 'reply was not readable' };
       }
-      if (!isRenderableManifest(body)) return { status: 'failed', reason: 'reply was not a manifest' };
+      if (!isRenderableManifest(body)) {
+        return { status: 'failed', answered: true, reason: 'reply was not a manifest' };
+      }
 
       // Only stored once the body has been accepted. Keeping an ETag for a
       // document that was rejected would make the server answer 304 forever

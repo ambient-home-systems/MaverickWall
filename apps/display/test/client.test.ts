@@ -107,7 +107,7 @@ describe('polling', () => {
    * real server returning the route's real body.
    */
   it("keeps the sentence a refusal came with, and none of a body that has none", async () => {
-    const said = 'This wall could not be built just now. The screen keeps showing its last one.';
+    const said = 'This wall could not be built just now. The screen will try again shortly.';
     let behaviour: Behaviour = { status: 503, body: { error: 'unavailable', message: said } };
     const url = await serverWith(() => behaviour);
     const client = createManifestClient((input, init) => fetch(input, init), url);
@@ -115,6 +115,9 @@ describe('polling', () => {
     const refused = await client.poll();
     expect(refused.status).toBe('failed');
     expect(refused).toHaveProperty('serverSaid', said);
+    // A refusal is not an unreachable server, and the wall behaves differently
+    // for each: this is what tells them apart.
+    expect(refused).toHaveProperty('answered', true);
     // And the diagnostic stays diagnostic — it is never the thing drawn.
     expect(refused).toHaveProperty('reason', 'server answered 503');
 
@@ -127,6 +130,22 @@ describe('polling', () => {
     // front of a stopped container answers with.
     behaviour = { status: 502, raw: '<html>a proxy said no</html>' };
     expect(await client.poll()).not.toHaveProperty('serverSaid');
+  });
+
+  it('knows an unreachable server from one that refused', async () => {
+    // Nothing listening at all: the port is closed the moment the server is.
+    const url = await serverWith(() => ({}));
+    const client = createManifestClient((input, init) => fetch(input, init), url);
+    // Only the one this test just made — `servers` is the suite's whole list,
+    // and closing all of them would take other tests' servers with it.
+    await new Promise<void>((resolve) => servers[servers.length - 1]?.close(() => resolve()));
+
+    const unreachable = await client.poll();
+    expect(unreachable.status).toBe('failed');
+    expect(
+      unreachable,
+      'this is the one that means "not reaching the server", and the other is not',
+    ).toHaveProperty('answered', false);
   });
 
   it('carries server time on a 304 as well as a 200', async () => {

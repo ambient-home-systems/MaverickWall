@@ -972,12 +972,18 @@ export function createApp(deps: AppDeps): Hono {
    * one it drew, leaves the stored copy alone, and says how old it is; that is
    * a far better wall than an empty document, and rule nine's "reduced
    * function with a clear on-screen message" is already what it produces.
+   *
+   * The sentence promises nothing about what is on the screen, though an
+   * earlier one did — "the screen keeps showing its last one" is read out loud
+   * only by a screen that has no last one, since the display draws this text
+   * exactly when it has nothing else to put up. A message shown solely where
+   * it is false is worse than a plainer one.
    */
   const unavailable = (c: Context): Response =>
     c.json(
       {
         error: 'unavailable',
-        message: 'This wall could not be built just now. The screen keeps showing its last one.',
+        message: 'This wall could not be built just now. The screen will try again shortly.',
       },
       503,
     );

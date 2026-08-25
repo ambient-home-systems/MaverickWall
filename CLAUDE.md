@@ -1687,8 +1687,20 @@ setting a flag is not the same as clearing it**, which took a second pass: a
 it left the wall saying "not reaching the server" for ever once the server came
 back answering only its stand-in. Every branch that knows owns the flag.
 
-**A refusal and an unreachable server both arrive as `failed`, and only one of
-them can explain itself.** Every non-2xx body was thrown away unread, so the 503
+**A refusal and an unreachable server both arrive as `failed`, and treating
+them as one event was three faults at once.** A wall holding a calendar drew
+"Not reaching the server" while the server was up and answering — the same false
+sentence the keep-held branch exists to avoid, one branch along. `lastContactAt`
+stopped advancing, so a persistent refusal tripped the *two-hour*
+contact-silence limit and reloaded a wall that was talking to its server every
+sixty seconds, which is precisely the case `watchdog.ts` says that limit is not
+for. And `offline` was set rather than owned, so a wall that had been offline
+stayed labelled that way once the server came back refusing. The outcome carries
+`answered` now, and it decides all three; `lastConfirmedAt` is what stays frozen
+either way, so the banner says "Last updated N ago" without claiming a cause it
+cannot know.
+
+**And only one of them can explain itself.** Every non-2xx body was thrown away unread, so the 503
 this route now answers with reached the wall as a bare status and a screen with
 nothing cached could only say it was not reaching a server that was up. The
 body's `message` is written for somebody standing in a kitchen, so a `failed`
@@ -1696,7 +1708,14 @@ outcome carries it as `serverSaid` and the empty-wall message draws it in place
 of the generic line. `reason` stays diagnostic and is still never drawn. Read
 defensively — not JSON, no `message`, not a string, all yield nothing and the
 display falls back to its own wording — and capped and stripped, because a wall
-with one line to say something cannot afford it to be unreadable.
+with one line to say something cannot afford it to be unreadable. The sentence
+itself had to change too: "the screen keeps showing its last one" is read out
+loud *only* by a screen that has no last one, because that text is drawn exactly
+when there is nothing else to put up. A message shown solely where it is false
+is worse than a plainer one. What is still missing — stated rather than fixed —
+is any explanation on a wall that *does* hold a calendar: it goes stale
+honestly, but the reason travels in the manifest's `notices`, and a 503 carries
+no manifest.
 
 Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough

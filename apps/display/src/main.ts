@@ -279,7 +279,24 @@ function start(): void {
       case 'failed':
         // Deliberately keeps the last manifest. The banner will say how old it
         // is; the calendar is still the most useful thing on the wall.
-        offline = true;
+        /*
+         * But a refusal is not an unreachable server, and saying so was three
+         * faults at once. A wall holding a calendar drew "Not reaching the
+         * server" while the server was up and answering — the same false
+         * sentence the keep-held branch above exists to avoid. `lastContactAt`
+         * stopped advancing, so a persistent refusal tripped the two-hour
+         * contact-silence limit and reloaded a wall that was talking to its
+         * server every sixty seconds, which is the case `watchdog.ts` says
+         * that limit is *not* for. And the flag is owned rather than merely
+         * set: a wall that was offline and is now being refused is no longer
+         * offline.
+         *
+         * What stays frozen either way is `lastConfirmedAt`, so the banner
+         * tells the truth on its own — "Last updated N ago" — without claiming
+         * a cause it cannot know.
+         */
+        offline = !outcome.answered;
+        if (outcome.answered) lastContactAt = Date.now();
         /*
          * Except that a wall with no manifest at all has no banner either —
          * `draw` returns at its first line — so it would sit on the boot

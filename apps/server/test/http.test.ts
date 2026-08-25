@@ -589,7 +589,7 @@ describe('/d/manifest', () => {
     expect(
       body['message'],
       'and it says what the screen will do, not what the server could not',
-    ).toContain('keeps showing its last one');
+    ).toContain('will try again shortly');
   });
 
   it('still refuses a request with no credential at all when the schema cannot be read', async () => {
