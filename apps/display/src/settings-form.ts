@@ -225,27 +225,26 @@ function boot(): void {
   }, true);
 
   /*
-   * And re-armed by the next thing the household does, whatever the engine.
+   * There is deliberately no second way to re-arm the guard.
    *
-   * A submit disarms the guard and `beforeunload` re-arms it — which is enough
-   * *measured*: Chromium fires `beforeunload` when the navigation starts,
-   * before the response headers can say `Content-Disposition`, so a submit that
-   * turns out to be a download (System carries three, beside two of these
-   * forms) re-arms on the way past. That reasoning is about when an engine
-   * cannot yet know, so it should hold everywhere, and one engine is not
+   * One was tried: any pointer or key on the page means the household is still
+   * here, so the last submit took them nowhere. It was a belt for engines this
+   * box cannot drive — the concern being that a submit whose response is an
+   * attachment might not fire `beforeunload` (System carries three downloads
+   * beside two of these forms). Measured, Chromium fires it when the navigation
+   * *starts*, before the headers can say `Content-Disposition`, and that
+   * reasoning is about what an engine cannot yet know, so it should hold
    * everywhere.
    *
-   * This is the belt: any pointer or key on the page means the household is
-   * still here, which means the last submit did not take them anywhere. Three
-   * lines, no timers, and the failure it closes — an unguarded departure after
-   * a download — is silent. It cannot fire between a submit and its own
-   * unload, because the interaction that caused the submit precedes it.
+   * The belt's own cost turned out to be worse than the fault it guarded, and
+   * it is not hypothetical: `POST /admin/weather/use-ha-location` waits on a
+   * request to Home Assistant, so a household who clicks anything while it is
+   * in flight would re-arm the guard and be asked "Changes you made may not be
+   * saved" about a save they had just made — and answering Stay cancels the
+   * navigation after the write has already committed. There is no way to tell
+   * "this navigation is pending" from "this navigation was abandoned" without
+   * a timer, and a timer on a Raspberry Pi is the same bug wearing a delay.
    */
-  const rearm = (): void => {
-    navigating = false;
-  };
-  document.addEventListener('pointerdown', rearm, true);
-  document.addEventListener('keydown', rearm, true);
 
   /*
    * One guard for the document, asking every form.

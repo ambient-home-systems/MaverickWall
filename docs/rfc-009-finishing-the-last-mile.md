@@ -667,6 +667,18 @@ And `withoutSaved` rebuilt the query from `c.req.query()`, which keeps only the
 first value of a repeated parameter, so dismissing quietly dropped the rest —
 against the docstring's own promise. `queries()` is the reader that keeps them.
 
+A **nineteenth** took the belt back out, and the pair is worth keeping as a
+worked example of the RFC's own bar. It guarded a download latch this box cannot
+demonstrate and the reasoning says should not exist; its cost is demonstrable
+and on a real path — `POST /admin/weather/use-ha-location` waits on a request to
+Home Assistant, so a household clicking anything while it is in flight re-armed
+the guard and was asked "Changes you made may not be saved" about a save they
+had just made, with Stay cancelling the navigation after the write had
+committed. There is no way to tell a pending navigation from an abandoned one
+without a timer, and a timer on a Raspberry Pi is the same bug wearing a delay.
+**Machinery for an unmeasured fault has to be cheaper than the fault**, and this
+was not.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
