@@ -92,20 +92,26 @@ function partsOf(form: HTMLFormElement): Parts {
 let leaving: HTMLFormElement | null = null;
 
 /**
- * A submit that takes nothing with it: a response served as an attachment.
+ * A download is a departure the page comes back from, and `data-download` is
+ * the only way to know at the moment it matters.
  *
  * The browser fires `beforeunload` when the navigation *starts*, before the
- * headers can say `Content-Disposition`, so a download is indistinguishable
- * from a departure at the moment the guard has to decide — and System carries
- * three of them (database, key, diagnostics) beside two of these forms. Without
- * this, pressing Download diagnostics with an unsaved timezone asks whether you
- * mean to abandon it, about a navigation that abandons nothing.
+ * response headers can say `Content-Disposition` — so when the guard has to
+ * decide, a download looks exactly like leaving. System carries three of them
+ * (database, key, diagnostics) beside two settings forms, and unmarked they ask
+ * whether you mean to abandon an unsaved timezone, about a navigation that
+ * abandons nothing. `downloadForm()` in `html.ts` writes the marker so nobody
+ * has to remember it.
  *
- * A form says so with `data-download`, which `downloadForm()` in `html.ts`
- * writes so nobody has to remember it. Cleared in the guard, so it cannot latch
- * even on an engine that does not fire `beforeunload` here at all.
+ * The bound on getting this wrong is worth stating rather than glossing.
+ * `leaving` holds one pending navigation and the guard consumes it, so on an
+ * engine that does not fire `beforeunload` for an attachment at all, the *next*
+ * departure sees a stale value and one warning is swallowed — after which it is
+ * armed again. Bounded, and it costs a warning rather than the data: nothing
+ * has been discarded by then. The alternative is a timer deciding when a
+ * navigation was abandoned, and a timer on a Raspberry Pi is a bug wearing a
+ * delay.
  */
-let downloading = false;
 
 /** Every wired form, for the one guard below to ask. */
 const wired: { form: HTMLFormElement; isDirty(): boolean }[] = [];
@@ -244,9 +250,7 @@ function boot(): void {
   document.addEventListener(
     'submit',
     (event) => {
-      const form = event.target as HTMLFormElement | null;
-      if (form !== null && form.hasAttribute('data-download')) downloading = true;
-      else leaving = form;
+      leaving = event.target as HTMLFormElement | null;
     },
     true,
   );
@@ -260,17 +264,16 @@ function boot(): void {
    * managed to be wrong in both directions before — silent on a sibling's
    * submit, or asking about a save the household had just deliberately made.
    *
-   * Both flags are cleared here rather than by whoever set them. If the
-   * navigation goes ahead the document is gone and they never mattered; if
-   * anything cancels it — another form's prompt, answered "Stay" — the guard is
-   * armed again rather than dead for the life of the page.
+   * `leaving` is cleared here rather than by whoever set it. If the navigation
+   * goes ahead the document is gone and it never mattered; if anything cancels
+   * it — another form's prompt, answered "Stay" — the guard is armed again
+   * rather than dead for the life of the page.
    */
   window.addEventListener('beforeunload', (event) => {
     const departing = leaving;
-    const wasDownload = downloading;
     leaving = null;
-    downloading = false;
-    if (wasDownload) return;
+    // A download comes back to this page, so nothing is being abandoned.
+    if (departing !== null && departing.hasAttribute('data-download')) return;
     // Everything dirty that is *not* the form being submitted. Saving a form is
     // not losing it; submitting anything else on the page loses every other.
     if (!wired.some((one) => one.isDirty() && one.form !== departing)) return;

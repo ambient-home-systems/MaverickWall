@@ -744,22 +744,19 @@ describe('a settings form', () => {
   );
 
   /**
-   * A download must not disarm the guard for good — and it does not, for a
-   * reason worth writing down rather than defending against.
+   * A download asks nothing, and does not spend the guard on the way past.
    *
-   * A review read the guard as latching here: a response served as an
-   * attachment navigates but never *unloads* the document, so `beforeunload`
-   * would never fire and a flag disarmed on submit would stay disarmed for the
-   * rest of the page's life. System carries three downloads beside two settings
-   * forms, so it is exactly the shape that would matter.
+   * `beforeunload` fires when the navigation *starts* — the browser cannot know
+   * a response is an attachment until its headers arrive — so at the moment the
+   * guard has to decide, a download looks exactly like leaving. Unmarked, it
+   * asks whether you mean to abandon an unsaved timezone, about a navigation
+   * that abandons nothing; System carries three of them beside two settings
+   * forms. `data-download` is what tells the two apart.
    *
-   * Measured, it is not what happens. `beforeunload` fires when the navigation
-   * *starts* — the browser cannot know it is a download until the response
-   * headers arrive — so the guard re-arms on the way past, and the download
-   * also stops prompting, which it did before the submit listener existed. A
-   * `data-download` marker was built for this and then deleted: machinery for a
-   * fault the browser does not have. This is the test that settled it, kept
-   * because the property is real and nothing else pins it.
+   * Both halves are measured here, and the counting order is the measurement:
+   * the dialog listener goes on *before* the download, because a first version
+   * of this test attached it afterwards and could not see the spurious prompt
+   * at all.
    */
   it(
     'still guards an unsaved edit after a download',
