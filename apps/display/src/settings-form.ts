@@ -65,27 +65,50 @@ function partsOf(form: HTMLFormElement): Parts {
 }
 
 /**
- * Whether the page is leaving on purpose — one flag for the whole document, not
- * one per form.
+ * The form whose submit is taking the page away, if one is.
  *
- * The System screen carries two of these forms, and a per-form flag made
- * pressing Save on one raise the *other* one's "Changes you made may not be
- * saved" prompt: the household presses Save, is asked whether they meant it,
- * and answering "Stay" cancels the save. Pressing Save is not leaving without
- * saving, so it must not be second-guessed by a sibling form. The cost is
- * honest and is what HTML does anyway — two forms on a page are two
- * submissions, and saving one has always discarded edits typed into the other
- * (with script off it still does, silently). The strip then says which one
- * saved.
+ * Not a boolean, and that is the whole of a judgement this went round twice on.
+ * A settings form rarely has a page to itself: Weather carries five "Turn off"
+ * rule cards beside it, Calendars a Sync now and a Remove per row, System a
+ * "Check for updates now", and every admin page the sidebar's Sign out.
  *
- * Set only by a submit and by Cancel — deliberately not by a document-level
- * link or click listener, which is the shape that let one stray click on a nav
- * link disarm the editor's guard for good (RFC 009, 1.7).
+ * Armed only by a form's *own* submit, pressing any of those raised that form's
+ * "Changes you made may not be saved" — read as a question about the button
+ * just pressed, which it is not. Armed by *any* submit it never asked, and the
+ * edits went silently, which is the loss this whole phase exists to remove.
+ * Neither is the answer: what matters is not which button was pressed but
+ * **whose work is about to go**. Saving this form is not leaving without
+ * saving; submitting anything else on the page is, for every other dirty form
+ * — including a sibling settings form, where the warning is exactly right and
+ * lets the household save that one first.
+ *
+ * Set only by a submit — deliberately not by a document-level link or click
+ * listener, which is the shape that let one stray click on a nav link disarm
+ * the editor's guard for good (RFC 009, 1.7). A submit is unambiguous where a
+ * click is not, and native constraint validation blocks the event outright, so
+ * a submission the browser refuses never reaches it. Captured, so a handler
+ * that stops propagation cannot hide one.
  */
-let navigating = false;
+let leaving: HTMLFormElement | null = null;
+
+/**
+ * A submit that takes nothing with it: a response served as an attachment.
+ *
+ * The browser fires `beforeunload` when the navigation *starts*, before the
+ * headers can say `Content-Disposition`, so a download is indistinguishable
+ * from a departure at the moment the guard has to decide — and System carries
+ * three of them (database, key, diagnostics) beside two of these forms. Without
+ * this, pressing Download diagnostics with an unsaved timezone asks whether you
+ * mean to abandon it, about a navigation that abandons nothing.
+ *
+ * A form says so with `data-download`, which `downloadForm()` in `html.ts`
+ * writes so nobody has to remember it. Cleared in the guard, so it cannot latch
+ * even on an engine that does not fire `beforeunload` here at all.
+ */
+let downloading = false;
 
 /** Every wired form, for the one guard below to ask. */
-const wired: { isDirty(): boolean }[] = [];
+const wired: { form: HTMLFormElement; isDirty(): boolean }[] = [];
 
 /**
  * Does this form already hold something different from what the server sent?
@@ -152,7 +175,18 @@ function wire(form: HTMLFormElement): void {
    *
    * The second source is the browser itself — see `looksEdited`.
    */
-  let dirty = form.dataset['dirty'] === 'dirty' || looksEdited(form);
+  /*
+   * The server's word is sticky; the DOM's is live.
+   *
+   * `data-dirty="dirty"` means the markup itself is an echo of something not
+   * saved, so it holds for the life of the page — editing back to what is on
+   * screen does not make it saved. Everything else is measured on every edit,
+   * both ways: typing "Paris" and then "London" again leaves a form with
+   * nothing to save, and a Save that stays live over it is the flag meaning
+   * nothing.
+   */
+  const echoed = form.dataset['dirty'] === 'dirty';
+  let dirty = echoed || looksEdited(form);
 
   const refresh = (): void => {
     for (const save of parts.saves) save.disabled = !dirty;
@@ -160,19 +194,21 @@ function wire(form: HTMLFormElement): void {
     if (parts.flag !== null) parts.flag.hidden = !dirty;
   };
 
-  const mark = (): void => {
-    if (dirty) return;
-    dirty = true;
+  const sync = (): void => {
+    const now = echoed || looksEdited(form);
+    if (now === dirty) return;
+    dirty = now;
     refresh();
   };
   // Both events: `input` covers typing, `change` covers a checkbox, a select
   // and a file input, which fire no `input` in every browser this has to run on.
-  form.addEventListener('input', mark);
-  form.addEventListener('change', mark);
+  form.addEventListener('input', sync);
+  form.addEventListener('change', sync);
 
   if (parts.cancel !== null) {
     parts.cancel.addEventListener('click', () => {
-      navigating = true;
+      // Discarding this form's own work, which is not "leaving without saving".
+      leaving = form;
       /*
        * Where the page says, not where the browser happens to be.
        *
@@ -188,7 +224,7 @@ function wire(form: HTMLFormElement): void {
     });
   }
 
-  wired.push({ isDirty: () => dirty });
+  wired.push({ form, isDirty: () => dirty });
   refresh();
 }
 
@@ -201,74 +237,43 @@ function boot(): void {
   if (wired.length === 0) return;
 
   /*
-   * Any submit on the page is a deliberate departure — not just this form's.
+   * Which form is leaving, so the guard can ask whose work goes with it.
    *
-   * A settings form rarely has a page to itself. Weather carries five
-   * "Turn off" rule cards beside it, Calendars a Sync now, a Remove and an Add
-   * per row, System a "Check for updates now", and every admin page carries the
-   * sidebar's Sign out. Armed only by the wired forms' own submits, the guard
-   * asked "Changes you made may not be saved" when a household changed Units
-   * and then pressed Turn off on a rule — and answering Stay cancelled the
-   * POST, so the rule stayed on with nothing said. That is the fault the shared
-   * flag fixed between sibling settings forms, left open for everything else
-   * beside them.
-   *
-   * A *submit* is the right signal and a click is not: RFC 009 1.7's lesson was
-   * a document-level listener on `a[href]` clicks, which armed on any stray
-   * click in a link and disarmed the guard for good. A form being submitted is
-   * unambiguous, and native constraint validation blocks the event entirely, so
-   * a submission the browser refuses never reaches this. In the capture phase,
-   * so a handler that stops propagation cannot hide one.
+   * A download is marked and takes nothing with it — see `downloading`.
    */
-  document.addEventListener('submit', () => {
-    navigating = true;
-  }, true);
-
-  /*
-   * There is deliberately no second way to re-arm the guard.
-   *
-   * One was tried: any pointer or key on the page means the household is still
-   * here, so the last submit took them nowhere. It was a belt for engines this
-   * box cannot drive — the concern being that a submit whose response is an
-   * attachment might not fire `beforeunload` (System carries three downloads
-   * beside two of these forms). Measured, Chromium fires it when the navigation
-   * *starts*, before the headers can say `Content-Disposition`, and that
-   * reasoning is about what an engine cannot yet know, so it should hold
-   * everywhere.
-   *
-   * The belt's own cost turned out to be worse than the fault it guarded, and
-   * it is not hypothetical: `POST /admin/weather/use-ha-location` waits on a
-   * request to Home Assistant, so a household who clicks anything while it is
-   * in flight would re-arm the guard and be asked "Changes you made may not be
-   * saved" about a save they had just made — and answering Stay cancels the
-   * navigation after the write has already committed. There is no way to tell
-   * "this navigation is pending" from "this navigation was abandoned" without
-   * a timer, and a timer on a Raspberry Pi is the same bug wearing a delay.
-   */
+  document.addEventListener(
+    'submit',
+    (event) => {
+      const form = event.target as HTMLFormElement | null;
+      if (form !== null && form.hasAttribute('data-download')) downloading = true;
+      else leaving = form;
+    },
+    true,
+  );
 
   /*
    * One guard for the document, asking every form.
    *
-   * Registered once rather than per form, which is what makes the shared
-   * `navigating` flag work: with a listener each, the first to run would clear
-   * the flag and the second would then see a false one and prompt on a
-   * deliberate save.
+   * Registered once rather than per form, and that is what lets it answer the
+   * only question worth asking: is anybody's unsaved work about to go? A
+   * listener each could only ever answer for its own form, which is how this
+   * managed to be wrong in both directions before — silent on a sibling's
+   * submit, or asking about a save the household had just deliberately made.
+   *
+   * Both flags are cleared here rather than by whoever set them. If the
+   * navigation goes ahead the document is gone and they never mattered; if
+   * anything cancels it — another form's prompt, answered "Stay" — the guard is
+   * armed again rather than dead for the life of the page.
    */
   window.addEventListener('beforeunload', (event) => {
-    if (navigating) {
-      /*
-       * Disarmed for one navigation, not for good.
-       *
-       * `navigating` used to latch — set by a submit and cleared by nothing —
-       * so a navigation that was cancelled left the guard dead for the rest of
-       * the page's life. Clearing it here is the natural place: if the
-       * navigation goes ahead the document is gone and the flag never mattered,
-       * and if anything cancels it the guard is armed again.
-       */
-      navigating = false;
-      return;
-    }
-    if (!wired.some((form) => form.isDirty())) return;
+    const departing = leaving;
+    const wasDownload = downloading;
+    leaving = null;
+    downloading = false;
+    if (wasDownload) return;
+    // Everything dirty that is *not* the form being submitted. Saving a form is
+    // not losing it; submitting anything else on the page loses every other.
+    if (!wired.some((one) => one.isDirty() && one.form !== departing)) return;
     event.preventDefault();
     event.returnValue = '';
   });

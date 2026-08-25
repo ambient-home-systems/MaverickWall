@@ -528,6 +528,28 @@ describe('the update check setting', () => {
     expect(kept.headers.get('location')).toBe('/admin/system?saved=timezone');
   });
 
+  it('marks every download form, so the leave guard says nothing about one', async () => {
+    /*
+     * A browser fires `beforeunload` when the navigation *starts*, before the
+     * headers can say `Content-Disposition` — so at the moment the guard has to
+     * decide, a download is indistinguishable from a departure. Without the
+     * marker, pressing Download diagnostics with an unsaved timezone asks
+     * whether you mean to abandon it, about a navigation that abandons nothing.
+     * `downloadForm()` keeps the marker from being forgotten; this keeps the
+     * three that exist honest, and would fail on a fourth written by hand.
+     */
+    const h = await signedIn(harness());
+    const html = await (await h.call('/admin/system')).text();
+    const forms = [...html.matchAll(/<form\b[^>]*>/g)].map((m) => m[0]);
+    const downloads = forms.filter((tag) =>
+      /action="admin\/system\/(backup|key|diagnostics)"/.test(tag),
+    );
+    expect(downloads.length, 'the three downloads System offers').toBe(3);
+    for (const tag of downloads) expect(tag, tag).toContain('data-download');
+    // And nothing else claims to be one — the marker means exactly this.
+    expect(forms.filter((tag) => tag.includes('data-download')).length).toBe(3);
+  });
+
   it('keeps the stored zone selected when it refuses a choice', async () => {
     /*
      * A closed list is not a text field, and echoing a rejected value back into

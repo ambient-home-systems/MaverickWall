@@ -90,8 +90,8 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { dirtyForm, errorBlock, escapeHtml, icon, page, saveRow, selectField, selectRow, switchRow,
-  textField, type NavModule } from './html.js';
+import { dirtyForm, downloadForm, errorBlock, escapeHtml, icon, page, saveRow, selectField,
+  selectRow, switchRow, textField, type NavModule } from './html.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
@@ -2945,10 +2945,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `database holds your calendars and settings; the key is what decrypts the ` +
         `calendar addresses inside it.</p>` +
         `<div class="row">` +
-        `<form method="get" action="admin/system/backup">` +
-        `<button type="submit">Download database</button></form>` +
-        `<form method="get" action="admin/system/key">` +
-        `<button class="secondary" type="submit">Download key</button></form>` +
+        downloadForm('admin/system/backup', 'Download database') +
+        downloadForm('admin/system/key', 'Download key', 'secondary') +
         `</div>` +
         errorBlock(
           'The key file is a credential.',
@@ -2974,8 +2972,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Safe to attach to a bug report: it carries no calendar ` +
         `addresses, no event titles and no email addresses — only hostnames, ` +
         `counts and the log below.</p>` +
-        `<form method="get" action="admin/system/diagnostics">` +
-        `<button type="submit">Download diagnostics</button></form>` +
+        downloadForm('admin/system/diagnostics', 'Download diagnostics') +
 
         `<h2 class="add">Recent log</h2>` +
         (lines.length === 0

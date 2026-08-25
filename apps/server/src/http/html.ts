@@ -2899,6 +2899,29 @@ export function defaultSubmit(): string {
  * `location.pathname`" would ask for a route that only answers POST. The page
  * knows where its own settings live; it says so.
  */
+/**
+ * A form whose response is a file, not a page.
+ *
+ * It matters to exactly one thing and it is not visible in the markup. A
+ * browser fires `beforeunload` when the navigation *starts*, before the
+ * response headers can say `Content-Disposition` — so at the moment the leave
+ * guard has to decide, a download is indistinguishable from a departure. System
+ * carries three of them (database, key, diagnostics) beside two settings forms,
+ * and without this, pressing Download diagnostics with an unsaved timezone asks
+ * whether you mean to abandon it, about a navigation that abandons nothing.
+ *
+ * A helper rather than an attribute to remember, for the reason `pruneToLane`
+ * exists: somebody adding the fourth download form should not have to have read
+ * this. `test/system.test.ts` pins the three that exist.
+ */
+export function downloadForm(action: string, label: string, className = ''): string {
+  return (
+    `<form method="get" action="${escapeHtml(action)}" data-download>` +
+    `<button${className === '' ? '' : ` class="${escapeHtml(className)}"`} type="submit">` +
+    `${escapeHtml(label)}</button></form>`
+  );
+}
+
 export function saveRow(cancelHref: string, label = 'Save'): string {
   return (
     `<div class="saverow">` +

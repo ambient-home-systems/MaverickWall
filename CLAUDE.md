@@ -1840,8 +1840,19 @@ is pressing *any* submit on the page: a settings form rarely has one to itself
 (Weather carries five rule cards, Calendars a Sync now and a Remove per row,
 every page the sidebar's Sign out), and armed only by its own submits the guard
 asked about a rule card's "Turn off" and cancelled the POST when answered.
-Armed by a document-level **submit**, never a click — RFC 009 1.7's lesson was a
-listener on `a[href]` clicks, and a submit is unambiguous where a click is not.
+**The guard asks about work, not about buttons**, which took three attempts:
+armed by a form's own submit it asked about a rule card's "Turn off" as though
+that were the question; armed by *any* submit it went silent while the edits
+went with it. `leaving` names the form being submitted, and the guard prompts
+when anything dirty is not that form — so saving one settings form warns about
+the other, which is right, and the household can save that one first. Set by a
+document-level **submit**, never a click: RFC 009 1.7's lesson was a listener on
+`a[href]` clicks, and a submit is unambiguous where a click is not. `data-download`
+marks the three System downloads, because `beforeunload` fires when the
+navigation *starts* — before the headers can say `Content-Disposition` — so a
+download is indistinguishable from a departure exactly when the guard has to
+decide. And the flag is **two-way**: `looksEdited` runs on every edit, so an
+edit taken back is not an edit.
 
 **And an echo belongs on a text field, not on a closed list.** Handing a
 rejected timezone back into the `<select>` selects *nothing* — it is refused

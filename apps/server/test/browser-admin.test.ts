@@ -487,22 +487,21 @@ describe('a settings form', () => {
   );
 
   /**
-   * Pressing Save is not "leaving without saving".
+   * Saving a form is not leaving it, and the guard asks about *work*, not
+   * about which button was pressed.
    *
-   * The System screen carries two of these forms, and a per-form guard made
-   * saving one raise the *other* one's prompt: the household presses Save, is
-   * asked whether they meant it, and answering "Stay" cancels the save. One
-   * guard for the document, asking every form, is what fixes it — and the cost
-   * is what HTML does anyway, since saving one form has always discarded edits
-   * typed into the other.
+   * This went round twice. Armed by a form's own submit only, pressing "Turn
+   * off" on a rule card beside a dirty Weather form raised that form's prompt —
+   * read as a question about the button just pressed, which it is not. Armed by
+   * any submit, it never asked and the edits went silently, which is the loss
+   * this phase exists to remove. What matters is neither: it is whose unsaved
+   * work the navigation takes with it.
    */
   it(
-    'does not ask about the other form on the page when one is deliberately saved',
+    'says nothing when the form being saved is the only one with anything to lose',
     async () => {
       const { page, home } = await signedIn();
       await page.goto(`${home.base}/admin/system`, { waitUntil: 'load' });
-
-      await page.selectOption('select[name="timezone"]', 'Europe/Paris');
       await page.check('input[name="update_check_enabled"]');
 
       let prompts = 0;
@@ -515,31 +514,19 @@ describe('a settings form', () => {
         page.locator('form[action="admin/system/updates"] [data-dirty-save]').click(),
       ]);
 
-      expect(prompts, 'a deliberate Save was second-guessed by a sibling form').toBe(0);
+      expect(prompts, 'a deliberate Save was second-guessed').toBe(0);
       expect(new URL(page.url()).search).toBe('?saved=update-check');
-      expect(await page.locator('.saved-text').textContent()).toBe('Update check setting saved.');
     },
     SLOW,
   );
 
-  /**
-   * Nor about a button that is not this form's at all.
-   *
-   * A settings form rarely has a page to itself: Weather carries five
-   * "Turn off" rule cards beside it, and every admin page carries the sidebar's
-   * Sign out. Armed only by the wired form's own submits, the guard asked
-   * "Changes you made may not be saved" when a household changed Units and then
-   * pressed Turn off on a rule — and answering Stay cancelled the POST, so the
-   * rule stayed on with nothing said.
-   */
   it(
-    'does not ask when a button beside the form is the one pressed',
+    'asks when a button beside the form would throw the form’s work away',
     async () => {
       const { page, home } = await signedIn();
       seedDefaultRules(home.db);
       await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
 
-      // An unsaved edit in the settings form...
       await page.selectOption('select[name="weather_units"]', 'metric');
       await expect
         .poll(() => page.locator('.saverow [data-dirty-save]').isEnabled(), { timeout: 10_000 })
@@ -551,19 +538,91 @@ describe('a settings form', () => {
         void dialog.dismiss();
       });
 
-      // The ladder ships with one rung already off, so count the change.
       const off = (): number =>
         (home.db
           .prepare(`SELECT COUNT(*) AS n FROM interrupt_rules WHERE trigger = 'nws' AND enabled = 0`)
           .get() as { n: number }).n;
       const before = off();
 
-      // ...and then a rule card's own button, which is a different form.
-      const turnOff = page.locator('form[action*="/alerts/rules/"] button').first();
-      await Promise.all([page.waitForNavigation({ timeout: 20_000 }), turnOff.click()]);
+      // A rule card is its own form: submitting it navigates, and the unsaved
+      // units change goes with it.
+      await page.locator('form[action*="/alerts/rules/"] button').first().click();
+      await page.waitForTimeout(1500);
 
-      expect(prompts, 'pressing a button beside the form is not leaving without saving').toBe(0);
-      expect(off(), 'the POST was cancelled by the guard, so the rule stayed on').toBe(before + 1);
+      expect(prompts, 'the units change was about to go, and nothing said so').toBe(1);
+      expect(off(), 'and "Stay" means stay').toBe(before);
+      expect(await page.inputValue('select[name="weather_units"]'), 'the edit is still here').toBe(
+        'metric',
+      );
+    },
+    SLOW,
+  );
+
+  /**
+   * And saving one settings form warns about the other, which is right.
+   *
+   * The System screen carries two. Saving one navigates, so the other's unsaved
+   * edit goes with it — the household can Stay, save that one first, and lose
+   * nothing. The prompt is the whole reason the guard exists.
+   */
+  it(
+    'asks when saving one settings form would take the other’s edit with it',
+    async () => {
+      const { page, home } = await signedIn();
+      await page.goto(`${home.base}/admin/system`, { waitUntil: 'load' });
+      await page.selectOption('select[name="timezone"]', 'Europe/Paris');
+      await page.check('input[name="update_check_enabled"]');
+
+      let prompts = 0;
+      page.on('dialog', (dialog) => {
+        prompts++;
+        void dialog.dismiss();
+      });
+      await page.locator('form[action="admin/system/updates"] [data-dirty-save]').click();
+      await page.waitForTimeout(1500);
+
+      expect(prompts).toBe(1);
+      expect(new URL(page.url()).pathname, '"Stay" means stay').toBe('/admin/system');
+      expect(await page.locator('select[name="timezone"]').inputValue()).toBe('Europe/Paris');
+    },
+    SLOW,
+  );
+
+  /**
+   * An edit taken back is not an edit.
+   *
+   * The flag was one-way: type "Paris", type "London" again, and Save stayed
+   * live, "Not saved yet" stayed showing, and leaving still prompted about
+   * changes that no longer existed. `looksEdited` answers this the same way it
+   * answers a browser-restored value — by measuring, both ways.
+   */
+  it(
+    'goes clean again when the household undoes the edit',
+    async () => {
+      const { page, home } = await signedIn();
+      await page.goto(`${home.base}/admin/system`, { waitUntil: 'load' });
+      const save = page.locator('form[action="admin/system/timezone"] [data-dirty-save]');
+
+      await page.selectOption('select[name="timezone"]', 'Europe/Paris');
+      await expect.poll(() => save.isEnabled(), { timeout: 10_000 }).toBe(true);
+
+      await page.selectOption('select[name="timezone"]', 'Europe/London');
+      await expect.poll(() => save.isDisabled(), { timeout: 10_000 }).toBe(true);
+      expect(
+        await page.locator('form[action="admin/system/timezone"] [data-dirty-flag]').isVisible(),
+      ).toBe(false);
+
+      // And leaving says nothing, because there is nothing to say.
+      let prompts = 0;
+      page.on('dialog', (dialog) => {
+        prompts++;
+        void dialog.dismiss();
+      });
+      await Promise.all([
+        page.waitForNavigation({ timeout: 20_000 }),
+        page.click('a[href*="admin/calendars"]'),
+      ]);
+      expect(prompts, 'prompted about a change that no longer exists').toBe(0);
     },
     SLOW,
   );
@@ -709,15 +768,25 @@ describe('a settings form', () => {
       await page.goto(`${home.base}/admin/system`, { waitUntil: 'load' });
       await page.selectOption('select[name="timezone"]', 'Europe/Paris');
 
-      const download = page.waitForEvent('download', { timeout: 20_000 });
-      await page.locator('form[action="admin/system/diagnostics"] button').click();
-      await (await download).cancel().catch(() => undefined);
-
+      /*
+       * Counting from before the download, not after: `beforeunload` fires when
+       * the navigation *starts*, so an unmarked download form asks whether you
+       * mean to abandon the edit — about a navigation that abandons nothing.
+       * The first version of this test attached the listener afterwards and
+       * could not see that at all.
+       */
       let prompts = 0;
       page.on('dialog', (dialog) => {
         prompts++;
         void dialog.dismiss();
       });
+
+      const download = page.waitForEvent('download', { timeout: 20_000 });
+      await page.locator('form[action="admin/system/diagnostics"] button').click();
+      await (await download).cancel().catch(() => undefined);
+      expect(prompts, 'a download takes nothing with it, so it asks nothing').toBe(0);
+
+      // And the guard is still armed for a departure that does take it.
       await page.click('a[href*="admin/calendars"]');
       await page.waitForTimeout(1500);
 

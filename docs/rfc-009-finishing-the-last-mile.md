@@ -679,6 +679,33 @@ without a timer, and a timer on a Raspberry Pi is the same bug wearing a delay.
 **Machinery for an unmeasured fault has to be cheaper than the fault**, and this
 was not.
 
+A **twentieth** settled the question the two previous rounds had been circling
+from opposite sides, and the answer is neither of them. **The guard asks about
+work, not about buttons.** Armed by a form's own submit only, pressing "Turn
+off" on a rule card beside a dirty Weather form raised that form's prompt, read
+as a question about the button just pressed. Armed by *any* submit it never
+asked and the edits went silently — the loss this phase exists to remove. What
+matters is whose unsaved work the navigation takes with it: saving *this* form
+is not leaving without saving; submitting anything else on the page is, for
+every other dirty form — including a sibling settings form, where the warning is
+exactly right and lets the household save that one first. So `navigating`
+became `leaving: HTMLFormElement | null`, and the guard prompts when anything
+dirty is not the form being submitted.
+
+`data-download` came back with that, and with a justification it did not have
+the first time: a browser fires `beforeunload` when the navigation *starts*, so
+at the moment the guard decides, a download is indistinguishable from a
+departure — and pressing Download diagnostics with an unsaved timezone would ask
+about a navigation that abandons nothing. Measured, not assumed: the browser
+test counts prompts from *before* the download, which the first version did not
+and so could not see it at all.
+
+The same round found the flag was **one-way**: type "Paris", type "London"
+again, and Save stayed live over a form with nothing to save. `looksEdited`
+already answered that; it is called on every edit now, both ways. The server's
+`data-dirty="dirty"` stays sticky, because there the markup itself is the
+unsaved thing.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
