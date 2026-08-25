@@ -8,10 +8,11 @@ import { evaluateInterrupts, type Signal } from '@maverick-wall/core';
 import { openDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { clean, parseAlerts, parseZones, reconcile } from '../src/modules/weather/alerts.js';
-import { alertSignals, applyAlerts, expireAlerts, knownAlerts } from '../src/modules/weather/alert-store.js';
+import { alertSignals, applyAlerts, expireAlerts, knownAlerts, readZones } from '../src/modules/weather/alert-store.js';
 import { createAlertJobHandler } from '../src/modules/weather/alert-job.js';
 import { dismissInterrupt, readDismissals, readRules, seedDefaultRules } from '../src/api/rules.js';
 import { createFetcher } from '../src/net/fetcher.js';
+import { readWeatherSettings, writeWeatherSettings } from '../src/api/queries.js';
 import type { SqliteDatabase } from '../src/db/open.js';
 import type { JobRecord } from '@maverick-wall/core';
 
@@ -535,6 +536,43 @@ describe('the polling job, against a real server', () => {
     await job(db, nws)(record);
 
     expect(readDismissals(db)).toHaveProperty('binary_sensor.garage_door');
+    db.close();
+  });
+
+  it('re-resolves its zones when the household corrects the location', async () => {
+    /*
+     * `resolveZones` only runs when there are none, so nothing would ever ask
+     * again — a household who typed one digit of a longitude wrong and fixed
+     * it went on watching the county they typed by mistake for ever. Since a
+     * watched zone is what arms the alert ladder (RFC 009 Phase 2), every
+     * screen reported that as working.
+     *
+     * Writing the location is the moment it becomes wrong, so writing the
+     * location is what clears it — and the alerts in it go too, because an
+     * alert for somewhere else is worse than no alert.
+     */
+    const db = database();
+    const nws = await fakeNws();
+    await job(db, nws)(record);
+    expect(readZones(db).length).toBeGreaterThan(0);
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+
+    const before = readWeatherSettings(db);
+    writeWeatherSettings(db, { ...before, latitude: 47.6, longitude: -122.3 });
+
+    expect(readZones(db)).toEqual([]);
+    expect(knownAlerts(db, 'MDC027')).toEqual([]);
+    // And the ladder is not armed against nowhere while the next poll runs.
+    expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
+
+    // Saving the same coordinates again is not a move, so a household who
+    // presses Save on an unchanged form does not lose the zones they have.
+    await job(db, nws)(record);
+    const settled = readZones(db).map((zone) => zone.code).sort();
+    expect(settled.length).toBeGreaterThan(0);
+    writeWeatherSettings(db, readWeatherSettings(db));
+    expect(readZones(db).map((zone) => zone.code).sort()).toEqual(settled);
+
     db.close();
   });
 

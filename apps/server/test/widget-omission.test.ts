@@ -196,6 +196,17 @@ describe('the canvas', () => {
     expect(layout.portrait.widgets).toEqual([]);
   });
 
+  it('keeps a canvas of nothing-but-unconfigured widgets whole', () => {
+    /*
+     * The guard is per canvas, which is why the editor's flag has to be per
+     * widget rather than per type: on this canvas the wall draws both boxes,
+     * so labelling either "not on the wall" would be the screen contradicting
+     * the wall it describes.
+     */
+    const layout = buildLayout(HOUSEHOLD(), [widget('b', 'weather'), widget('c', 'chores')], [], []);
+    expect(layout.portrait.widgets.map((w) => w.type)).toEqual(['weather', 'chores']);
+  });
+
   it('is the same filter the e-paper panel applies', () => {
     // One function, both renderers — so a panel following a wall cannot draw
     // "No weather yet" where the wall draws nothing.

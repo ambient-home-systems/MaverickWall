@@ -274,9 +274,6 @@ function boot(): void {
     if (pnl !== undefined && typeof pnl.width === 'number' && typeof pnl.height === 'number') {
       panelSize = { w: pnl.width, h: pnl.height };
     }
-    // Read defensively and drop the whole block on anything unexpected: a lane
-    // built from half a table would offer controls with no meaning, which is
-    // worse than no lane at all.
     /*
      * Which widget types the wall will leave out, and why (RFC 009 Phase 2).
      *
@@ -298,6 +295,9 @@ function boot(): void {
         }
       }
     }
+    // Read defensively and drop the whole block on anything unexpected: a lane
+    // built from half a table would offer controls with no meaning, which is
+    // worse than no lane at all.
     const rawInk = parsed.ink as InkTables | undefined;
     if (
       rawInk !== undefined &&
@@ -1257,6 +1257,26 @@ function boot(): void {
   }
 
   /**
+   * Why *this* box is not drawn, or nothing.
+   *
+   * The type is not enough. Omission is per canvas, not per widget: a canvas
+   * that filtered away to nothing keeps everything (rule nine — a wall somebody
+   * arranged must not read as "nothing on this display yet"), so on a canvas of
+   * only unconfigured widgets every one of them *is* drawn. Flagging by type
+   * alone would then label a box "not on the wall" while the wall and the
+   * preview beside it both drew it — the same contradiction the preview filter
+   * fixed in the other direction.
+   *
+   * `notDrawn.has` first because it short-circuits: the scan below only runs
+   * for the handful of types that could be flagged at all.
+   */
+  function omittedReason(widget: Widget): string | undefined {
+    if (!notDrawn.has(widget.type)) return undefined;
+    if (drawnWidgets().some((one) => one.id === widget.id)) return undefined;
+    return notDrawn.get(widget.type);
+  }
+
+  /**
    * What this editor is arranging, in the household's word for it.
    *
    * The same editor draws a wall's canvas and an e-paper panel's, and the two
@@ -1310,7 +1330,7 @@ function boot(): void {
      * in this project where one thing is stored and two things read it. The
      * reason is in the inspector; this is the flag that sends you there.
      */
-    const why = notDrawn.get(widget.type);
+    const why = omittedReason(widget);
     if (why !== undefined) {
       box.classList.add('is-not-drawn');
       const flag = document.createElement('span');
@@ -1819,7 +1839,7 @@ function boot(): void {
      * On the wall lane only: the ink lane is about what a panel says
      * differently, and it rebuilds this panel for itself.
      */
-    const why = notDrawn.get(widget.type);
+    const why = omittedReason(widget);
     if (why !== undefined) {
       const note = document.createElement('p');
       note.className = 'le-not-drawn';

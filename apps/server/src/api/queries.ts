@@ -1123,6 +1123,21 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
     previous.longitude !== settings.longitude ||
     previous.provider !== settings.provider ||
     previous.units !== settings.units;
+  /*
+   * A move is more than a stale forecast: the alert zones are derived from the
+   * coordinates and then never re-derived, because `resolveZones` only runs
+   * when there are none. So a household who corrects a longitude they typed
+   * wrong went on watching the county they typed by mistake for ever — and
+   * since a watched zone is now what arms the ladder (RFC 009 Phase 2), every
+   * screen would have reported that as working.
+   *
+   * `replaceZones` already says this about the rows *it* replaces; the case it
+   * cannot reach is the one where nothing re-resolves at all. Dropping them
+   * here is what makes the next poll ask again, and the alerts go with the
+   * zones because an alert for somewhere else is worse than no alert.
+   */
+  const moved =
+    previous.latitude !== settings.latitude || previous.longitude !== settings.longitude;
 
   const write = db.transaction(() => {
     db.prepare(
@@ -1140,6 +1155,10 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
     );
 
     if (invalidated) db.prepare('DELETE FROM weather_cache').run();
+    if (moved) {
+      db.prepare(`DELETE FROM alert_zones WHERE provider = 'nws'`).run();
+      db.prepare('DELETE FROM active_alerts').run();
+    }
 
     /*
      * Switching a module on puts its block on the wall.
