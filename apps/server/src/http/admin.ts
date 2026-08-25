@@ -90,8 +90,9 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, icon, page, selectField, selectRow, switchRow, textField,
+import { errorBlock, escapeHtml, icon, page, saveRow, selectField, selectRow, switchRow, textField,
   type NavModule } from './html.js';
+import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
 /**
@@ -811,7 +812,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // One small request to Home Assistant, for the calendars it could offer.
     // It answers with none when there is no connection or the box is down, so
     // this page never waits on Home Assistant to be well (rule nine).
-    c.html(calendarsPage({}, undefined, undefined, await fetchCalendarEntities(
+    c.html(calendarsPage(c, {}, undefined, undefined, await fetchCalendarEntities(
       deps.db, deps.keyring, deps.fetcher,
     ))),
   );
@@ -837,13 +838,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowLoopback: typeof body['allow_loopback'] === 'string',
       allowHttp: typeof body['allow_http'] === 'string',
     };
-    if (!shaped.ok) return c.html(calendarsPage(echo, { message: shaped.message }), 400);
+    if (!shaped.ok) return c.html(calendarsPage(c, echo, { message: shaped.message }), 400);
 
     const testOnly = shaped.value.action === 'test';
     // A name is only required to *store* one. Testing an address is a
     // question, and asking it should not need the answer named first.
     if (!testOnly && shaped.value.name === undefined) {
-      return c.html(calendarsPage(echo, { message: 'Enter a name and an address.' }), 400);
+      return c.html(calendarsPage(c, echo, { message: 'Enter a name and an address.' }), 400);
     }
 
     const name = shaped.value.name ?? '';
@@ -865,7 +866,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (!tested.ok) {
       return c.html(
-        calendarsPage(values, {
+        calendarsPage(c, values, {
           message: tested.message,
           ...(tested.suggestion !== undefined ? { suggestion: tested.suggestion } : {}),
         }),
@@ -874,7 +875,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     // Nothing stored yet: this is the person checking their own work.
-    if (testOnly) return c.html(calendarsPage(values, undefined, tested));
+    if (testOnly) return c.html(calendarsPage(c, values, undefined, tested));
 
     // Membership is a question for the database, not the schema. An owner who
     // has since gone is treated as "Everyone" rather than rejected — losing the
@@ -892,23 +893,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowHttp,
     });
     if (!added.ok) {
-      return c.html(calendarsPage(values, { message: added.message }), 400);
+      return c.html(calendarsPage(c, values, { message: added.message }), 400);
     }
 
-    return c.redirect('/admin/calendars', 302);
+    return savedRedirect(c, '/admin/calendars', 'calendar-added');
   });
 
   /** Editing what a stored source is, as opposed to where it points. */
   app.post('/admin/calendars/:id/settings', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(sourceSettingsBody, body);
-    if (!shaped.ok) return c.html(calendarsPage({}, { message: shaped.message }), 400);
+    if (!shaped.ok) return c.html(calendarsPage(c, {}, { message: shaped.message }), 400);
 
     // Membership, and it cannot live in the schema: who exists is a question
     // for the database rather than for the shape of the request.
     const personId = shaped.value.person_id;
     if (personId !== undefined && !readPeopleAdmin(deps.db).some((p) => p.id === personId)) {
-      return c.html(calendarsPage({}, { message: 'That person is no longer there.' }), 400);
+      return c.html(calendarsPage(c, {}, { message: 'That person is no longer there.' }), 400);
     }
 
     updateSource(deps.db, c.req.param('id') ?? '', {
@@ -918,13 +919,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       enabled: shaped.value.enabled,
       allowPrivateNetwork: shaped.value.allow_lan,
     });
-    return c.redirect('/admin/calendars', 302);
+    return savedRedirect(c, '/admin/calendars', 'calendar-settings');
   });
 
   app.post('/admin/calendars/:id/sync', (c: Context) => {
     // Automates the SQL that was previously the documented way to do this.
     requestSyncNow(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/calendars', 302);
+    return savedRedirect(c, '/admin/calendars', 'calendar-sync');
   });
 
   /**
@@ -958,14 +959,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/calendars/:id/delete', (c: Context) => {
     deleteSource(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/calendars', 302);
+    return savedRedirect(c, '/admin/calendars', 'calendar-removed');
   });
 
   // -------------------------------------------------------------------------
   // System
   // -------------------------------------------------------------------------
 
-  app.get('/admin/system', (c: Context) => c.html(systemPage()));
+  app.get('/admin/system', (c: Context) => c.html(systemPage(c)));
 
   /**
    * Turning the check on or off.
@@ -978,13 +979,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(z.object({ update_check_enabled: checkbox() }), body);
     setUpdateCheckEnabled(deps.db, shaped.ok && shaped.value.update_check_enabled);
-    return c.redirect('/admin/system', 302);
+    return savedRedirect(c, '/admin/system', 'update-check');
   });
 
   /** An explicit ask, which is the only thing that checks immediately. */
   app.post('/admin/system/check-now', async (c: Context) => {
     if (!readUpdateState(deps.db).enabled) {
-      return c.html(systemPage('Turn update checking on first.'), 400);
+      return c.html(systemPage(c, 'Turn update checking on first.'), 400);
     }
     const result = await checkForUpdate(deps.fetcher, deps.appVersion);
     recordUpdateCheck(
@@ -993,7 +994,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       result.status === 'ok' ? result.latest : null,
       result.status === 'ok' ? null : result.message,
     );
-    return c.redirect('/admin/system', 302);
+    return savedRedirect(c, '/admin/system', 'update-checked');
   });
 
   app.post('/admin/system/timezone', async (c: Context) => {
@@ -1004,11 +1005,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       }),
       body['timezone'],
     );
-    if (!shaped.ok) return c.html(systemPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(systemPage(c, shaped.message), 400);
     deps.db
       .prepare(`UPDATE household_settings SET timezone = ?, updated_at = ? WHERE id = 'singleton'`)
       .run(shaped.value, now());
-    return c.redirect('/admin/system', 302);
+    return savedRedirect(c, '/admin/system', 'timezone');
   });
 
   /**
@@ -1049,7 +1050,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       c.header('content-disposition', 'attachment; filename="maverick-wall.key"');
       return c.body(bytesOf(bytes));
     } catch {
-      return c.html(systemPage('The encryption key could not be read.'), 500);
+      return c.html(systemPage(c, 'The encryption key could not be read.'), 500);
     }
   });
 
@@ -1086,7 +1087,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = await c.req.parseBody();
     const file = body['backup'];
     if (!(file instanceof File) || file.size === 0) {
-      return c.html(systemPage('Choose a backup file to restore.'), 400);
+      return c.html(systemPage(c, 'Choose a backup file to restore.'), 400);
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
@@ -1094,7 +1095,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // cannot be armed with a photograph.
     if (bytes.subarray(0, 15).toString('latin1') !== 'SQLite format 3') {
       return c.html(
-        systemPage('That file is not a Maverick Wall backup.'),
+        systemPage(c, 'That file is not a Maverick Wall backup.'),
         400,
       );
     }
@@ -1112,7 +1113,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (keyFile instanceof File && keyFile.size > 0) {
       const usable = normaliseMasterKeyBytes(Buffer.from(await keyFile.arrayBuffer()));
       if (usable === undefined) {
-        return c.html(systemPage('That is not a Maverick Wall key file.'), 400);
+        return c.html(systemPage(c, 'That is not a Maverick Wall key file.'), 400);
       }
       keyBytes = usable;
     }
@@ -2724,7 +2725,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
-  function systemPage(error?: string): string {
+  function systemPage(c: Context, error?: string): string {
     const household = readHousehold(deps.db);
     const at = now();
     const integrity = integrityCheck(deps.db);
@@ -2764,6 +2765,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'System — Maverick Wall',
       nav: 'system',
       heading: 'System',
+      saved: readSaved(c),
       body:
         (error === undefined ? '' : errorBlock(error)) +
 
@@ -2777,7 +2779,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add">Timezone</h2>` +
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
         `anchored to this. A screen somewhere else can override it on its own card.</p>` +
-        `<form method="post" action="admin/system/timezone">` +
+        `<form method="post" action="admin/system/timezone" data-dirty>` +
         selectField({
           label: 'Household timezone',
           name: 'timezone',
@@ -2789,7 +2791,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             )
             .join(''),
         }) +
-        `<button type="submit">Save</button></form>` +
+        saveRow('admin/system') +
+        `</form>` +
 
         `<h2 class="add">Update check</h2>` +
         updateSection() +
@@ -2881,14 +2884,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">The exact address it asks: ` +
       `<span class="code">${escapeHtml(RELEASE_URL)}</span></p>` +
 
-      `<form method="post" action="admin/system/updates">` +
+      `<form method="post" action="admin/system/updates" data-dirty>` +
       switchRow({
         label: 'Check for updates once a day',
         name: 'update_check_enabled',
         checked: state.enabled,
         hint: 'Turning this off also forgets anything it had already found.',
       }) +
-      `<button type="submit">Save</button></form>` +
+      saveRow('admin/system') +
+      `</form>` +
 
       status +
       (state.enabled
@@ -4237,7 +4241,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               `style="--swatch:${escapeHtml(owner.color)}"></span>Uses ${escapeHtml(owner.name)}’s colour</span>` +
               `<input type="hidden" name="color" value="${escapeHtml(source.color)}"></span>`;
         return (
-          `<form method="post" action="admin/calendars/${id}/settings">` +
+          `<form method="post" action="admin/calendars/${id}/settings" data-dirty>` +
           `<div class="row-fields">` +
           textField({ label: 'Name', name: 'name', required: true, value: source.name }) +
           colourField +
@@ -4266,7 +4270,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               'Local network access lets this feed reach devices inside your home. ' +
               'Only turn it on for a calendar you host yourself.',
           })) +
-      `<button type="submit">Save</button></form>` +
+      saveRow('admin/calendars') +
+      `</form>` +
 
       `<div class="row">` +
       `<form method="post" action="admin/calendars/${id}/sync">` +
@@ -4358,6 +4363,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   function calendarsPage(
+    c: Context,
     values: {
       name?: string;
       url?: string;
@@ -4388,6 +4394,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Calendars — Maverick Wall',
       nav: 'calendars',
       heading: 'Calendars',
+      saved: readSaved(c),
       action: { label: 'Add a calendar', href: 'admin/calendars#add' },
       ...(sources.length === 0
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }

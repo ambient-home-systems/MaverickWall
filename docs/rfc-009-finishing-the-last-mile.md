@@ -1,6 +1,6 @@
 # RFC 009 — Finishing the last mile
 
-Status: **Phases 0, 1 and 2 built; 3 to 6 proposed** · Owner: — ·
+Status: **Phases 0, 1, 2 and 3.1–3.2 built; 3.3 and 4 to 6 proposed** · Owner: — ·
 First drafted 2026-08-24 ·
 Arises from a full audit of the running application (built from a checkout,
 paired to a real screen, measured in a browser at six widths) rather than from
@@ -368,7 +368,7 @@ Three primitives. Together they answer the three questions this admin cannot
 currently answer: *did that save?*, *can I undo this?*, *is this button
 dangerous?*
 
-### 3.1 One confirmation strip
+### 3.1 One confirmation strip — **built**
 
 There are 79 `c.redirect(...)` calls across the admin and no flash mechanism
 anywhere. Every successful POST redirects and says nothing, so the only evidence
@@ -384,7 +384,46 @@ script. While in there: **the Weather screen becomes one form with one Save.**
 Two forms on one page is an implementation detail the household is being asked
 to model.
 
-### 3.2 Dirty state on settings forms
+**Built.** `http/saved.ts` holds the mechanism: `savedRedirect(c, path, key)` is
+the drop-in for `c.redirect(path, 302)`, `readSaved(c)` reads it back, and
+`page()` gained a `saved` option that draws the strip. Three properties are what
+make it a one-token change at the remaining call sites, and worth keeping:
+
+- **The token is a key, never a message.** Nothing a caller passes is echoed —
+  the strip draws a literal out of `SAVED_MESSAGES` — so there is no escaping
+  question to get wrong and a crafted `?saved=` can say one of those sentences
+  and nothing else. Rule five is satisfied by the shape rather than by a
+  validator.
+- **The key is a TypeScript union**, so a typo is a compile error rather than a
+  302 that silently confirms nothing, which is the failure mode this exists to
+  end.
+- **Dismissing is a link** back to the same URL without the parameter, keeping
+  whatever else the query held. It is relative, like everything else the admin
+  emits, because the single `<base>` is what carries it through ingress — an
+  absolute `/…` would land a sidebar household in Home Assistant's own UI.
+
+The Weather screen is one form. The data loss was reproduced first, in a real
+browser (`browser-admin.test.ts`), because it is a *browser* fault and not a
+handler one: every handler did exactly what it was asked, and what lost the
+coordinates was that a browser sends the fields of the form whose button was
+pressed and no others. `app.fetch` with a hand-built body cannot see that,
+because the body is the thing under test. **"Use my Home Assistant home
+location" is now a second submit inside the one form** (`formaction`) rather
+than a form of its own, so it carries the unsaved fields and puts them back —
+a separate form there would have been the same bug in a quieter costume.
+
+**And the 400 path was the same loss one error message along.** The screen
+re-rendered from the stored row, so a mistyped latitude came back as an empty
+field — and once the alerts switch shares the form, it would have taken that
+with it. Every failure now echoes the raw body back (`WeatherEcho`), the way
+`calendarsPage` already did, so the only thing a refusal costs is the number
+that was wrong.
+
+Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
+are 3b's mechanical work: add a token to the table, swap `c.redirect` for
+`savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
+
+### 3.2 Dirty state on settings forms — **built**
 
 Save is always enabled and there is no Cancel, on every settings form in the
 product — except the wall editor, which gets it exactly right: Save disabled
@@ -393,7 +432,42 @@ says so. Lift that to the other forms. It is the same three lines of script the
 editor already ships, on pages that currently have none, so it needs a decision
 about whether those pages may carry script at all (see Open questions).
 
-### 3.3 One convention for destroying things
+**Built**, and the decision was already taken above: a settings page may carry
+script. `apps/display/src/settings-form.ts` is the lift — `form[data-dirty]`,
+one `[data-dirty-save]`, one `[data-dirty-cancel]`, one `[data-dirty-flag]`, and
+the editor's own leave guard including the part that made it a bug: `navigating`
+is set by the submit and by Cancel and by nothing else, never by a
+document-level click listener.
+
+Five things it does not share with the editor's bar, each for a reason:
+
+- **`page()` ships the script**, keyed on the body carrying `data-dirty`, so
+  marking a form is the whole of adopting it. A screen emitting its own
+  `<script src>` beside its own markup is how the e-paper editor silently lost
+  its editor once — the mount stayed and the tag moved.
+- **Save's state is set on boot, never in the HTML.** The server renders Save
+  enabled and Cancel and the flag `hidden`, so a household who blocks script
+  gets exactly today's form. That is the degradation promise, and it is a
+  property of the markup rather than of any care taken in the script.
+- **Cancel's destination is stated in the attribute**, not derived. A form
+  re-rendered at 400 leaves the browser on the POST URL, so `reload()` would
+  re-submit the very edits Cancel is meant to discard and `location.pathname`
+  would ask for a route that only answers POST.
+- **The guard hangs off `submit`, not the Save button's click** — Enter in a
+  text field and the `formaction` button both leave without pressing Save.
+- **Only the control marked `data-dirty-save` is disabled.** Weather's Home
+  Assistant button is a second submit in the same form, and disabling it would
+  be a control whose whole job is to fill a field in refusing to work until a
+  field has been filled in.
+
+One fault came out of it and only by looking: `.saverow` shipped with no
+disabled treatment, so a disabled Save was pixel-identical to an enabled one —
+"Save is off until you change something" reading as a button that silently does
+nothing, which is strictly worse than the always-enabled Save it replaced. The
+editor's `.savebar button:disabled` rule is shared now, and the assertion is on
+the **computed background**, never on the `disabled` property.
+
+### 3.3 One convention for destroying things — proposed
 
 Today there are four mechanisms and three visual weights, decided by which file
 the button lives in:

@@ -1734,6 +1734,62 @@ in for, and the one this project counts. What has not happened is the sidebar of
 a real supervisor, where two hamburgers now stack: Home Assistant's and this
 one. That is a different screen from a phone browser and still unproven.
 
+**The admin answers back now, and the Weather screen is why (RFC 009 Phase
+3.1/3.2).** There were seventy-nine `c.redirect(...)` calls and no flash
+mechanism anywhere, so every successful POST redirected and said nothing — and
+"the fields show the new value" is also exactly what a *discarded* save looks
+like. `http/saved.ts` is the whole mechanism: `savedRedirect(c, path, key)`
+replaces `c.redirect(path, 302)`, `readSaved(c)` reads it back, and `page()`
+draws a dismissible strip in an `aria-live="polite"` region. **The token is a
+key, never a message** — the strip renders a literal out of `SAVED_MESSAGES`, so
+a crafted `?saved=` can say one of those sentences and nothing else, and rule
+five is satisfied by the shape rather than by a validator. The key is a
+TypeScript union, so a typo is a compile error rather than a 302 that
+confirms nothing. Dismissing is a *link* back to the same URL without the
+parameter — no script, the rest of the query kept, and relative, because the
+single `<base>` is what carries it through ingress and an absolute `/…` would
+land a sidebar household in Home Assistant's own UI. Calendars, System and
+Weather have it; the other ~70 redirects are the mechanical half.
+
+**The Weather screen lost a typed location every time somebody pressed the
+wrong Save, and that was two forms rather than a bad handler.** The forecast's
+fields sat in one form and the alerts switch in another, with a button labelled
+"Save" on each 350px apart — and the lower one directly beneath the hint telling
+you to fill in the location above. A browser sends the fields of the form whose
+button was pressed and no others. It is one form and one Save now, and **"Use my
+Home Assistant home location" is a second submit inside it** (`formaction`)
+rather than a form of its own, so it carries the unsaved fields and writes them
+back; a separate form there is the same bug in a quieter costume. Reproduced
+first, in a real browser, because `app.fetch` with a hand-built body cannot see
+it: the body is the thing under test. **The 400 path was the same loss one
+error message along** — the screen re-rendered from the stored row, so a
+mistyped latitude came back as an empty field and would now have taken the
+alerts switch with it; every failure echoes the raw body back, the way
+`calendarsPage` already did.
+
+**Save is off until dirty on a settings form, and a settings page may carry
+script — decided, not assumed.** The no-script fence covers the wizard and
+sign-in and nothing else, which `wizard-noscript.test.ts` already pins.
+`apps/display/src/settings-form.ts` lifts the wall editor's pattern rather than
+writing a second one, including the part that was a bug: `navigating` is set by
+the submit and by Cancel and by nothing else. **The degradation promise is a
+property of the markup**, not of the script — the server renders Save enabled
+and Cancel and the flag `hidden`, so a household who blocks script keeps today's
+form exactly. `page()` ships the script keyed on the body carrying `data-dirty`,
+so marking a form is the whole of adopting it; a screen emitting its own
+`<script src>` beside its own markup is how the e-paper editor silently lost its
+editor once. Cancel's destination is *stated* rather than derived, because a
+form re-rendered at 400 leaves the browser on the POST URL — `reload()` would
+re-submit the edits Cancel exists to throw away.
+
+**Its one fault was only ever going to be found by looking.** `.saverow`
+shipped with no disabled treatment, so a disabled Save was pixel-identical to an
+enabled one: "Save is off until you change something" reading as a button that
+silently does nothing, which is strictly worse than the always-enabled Save it
+replaced. The editor's `.savebar button:disabled` rule is shared now, and the
+assertion is on the **computed background** rather than on the `disabled`
+property — the chore-tick lesson one screen along.
+
 **The wall editor is three contexts, and it used to be one column.** A display's
 page carried its status and pairing buttons, the canvas, whichever widget was
 selected, the Look/Content/Device tabs and the save bar, all at one visual

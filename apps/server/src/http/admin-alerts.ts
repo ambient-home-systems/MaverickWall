@@ -1,20 +1,33 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page, selectField, switchRow, textField } from './html.js';
+import { escapeHtml, errorBlock, page, saveRow, selectField, switchRow, textField } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
+import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
 
 /**
- * The forecast form's body. The coordinates are optional here and checked
- * against the switch in the handler: turning the forecast *off* must not
- * demand two numbers first. `checkbox()`, not `z.unknown().transform`, because
- * an unticked box is not sent at all and the latter would make the key required.
+ * The screen's one form (RFC 009 Phase 3.1).
+ *
+ * It used to be two, and that was the fault: the forecast's fields sat in the
+ * first and the alerts switch in the second, with a button labelled "Save" on
+ * each, 350px apart, and the lower one directly beneath the hint telling you to
+ * fill in the location above. A browser sends the fields of the form whose
+ * button was pressed and no others — so typing a location and pressing the
+ * Save you could see stored the switch and threw the numbers away without a
+ * word. One form and one Save is the fix; two forms on one page was an
+ * implementation detail the household was being asked to model.
+ *
+ * The coordinates are optional here and checked against the switch in the
+ * handler: turning the forecast *off* must not demand two numbers first.
+ * `checkbox()`, not `z.unknown().transform`, because an unticked box is not
+ * sent at all and the latter would make the key required.
  */
 const weatherBody = z.object({
   weather_enabled: checkbox(),
+  alerts_enabled: checkbox(),
   latitude: optionalText(20),
   longitude: optionalText(20),
   // A select always sends its value, so these are plain optional text with a
@@ -23,6 +36,37 @@ const weatherBody = z.object({
   weather_provider: optionalText(20),
   weather_units: optionalText(20),
 });
+
+/**
+ * What the household had on screen, for a form that comes back at 400.
+ *
+ * Every field as they left it, so a rejected latitude does not also cost the
+ * switch they flipped and the provider they chose. Raw strings on purpose: the
+ * whole point is to hand back the thing that failed to parse, and re-rendering
+ * from the stored row instead is the same silent loss this phase is about, one
+ * error message along.
+ */
+interface WeatherEcho {
+  readonly weatherEnabled: boolean;
+  readonly alertsEnabled: boolean;
+  readonly latitude: string;
+  readonly longitude: string;
+  readonly provider: string;
+  readonly units: string;
+}
+
+/** The echo, read off the raw body — before any schema has had an opinion. */
+function echoOf(body: Record<string, unknown>): WeatherEcho {
+  const str = (key: string): string => (typeof body[key] === 'string' ? (body[key] as string) : '');
+  return {
+    weatherEnabled: typeof body['weather_enabled'] === 'string',
+    alertsEnabled: typeof body['alerts_enabled'] === 'string',
+    latitude: str('latitude'),
+    longitude: str('longitude'),
+    provider: str('weather_provider'),
+    units: str('weather_units'),
+  };
+}
 
 /**
  * The alerts screen.
@@ -44,21 +88,7 @@ const ACTION_WORDS: Readonly<Record<string, string>> = {
 export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
-  app.get('/admin/alerts', (c: Context) => c.html(alertsPage()));
-
-  app.post('/admin/alerts', async (c: Context) => {
-    const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const enabled = typeof body['alerts_enabled'] === 'string';
-    deps.db
-      .prepare(`UPDATE household_settings SET alerts_enabled = ?, updated_at = ? WHERE id = 'singleton'`)
-      .run(enabled ? 1 : 0, now());
-    if (enabled) {
-      // Bring the poll forward so the household sees the zones fill in rather
-      // than staring at "working it out" for a minute.
-      deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'alerts-sync'`).run();
-    }
-    return c.redirect('/admin/alerts', 302);
-  });
+  app.get('/admin/alerts', (c: Context) => c.html(alertsPage(c)));
 
   app.post('/admin/alerts/rules/:id', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
@@ -67,14 +97,50 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
-   * The forecast panel's settings, on the Weather page beside the alerts —
-   * everything weather in one place. A household answering "do I want weather on
-   * the wall, and where does it look" should not hunt across two screens for it.
+   * Both settings, written together.
+   *
+   * `alerts_enabled` used to have a POST of its own. It has none now, because
+   * a second endpoint is a second form, and a second form on this page is the
+   * bug (see `weatherBody`). Turning alerts on still brings the zone poll
+   * forward, which is the only reason this is not a plain two-table write.
+   */
+  function writeAll(value: {
+    weatherEnabled: boolean;
+    alertsEnabled: boolean;
+    latitude: number | null;
+    longitude: number | null;
+    provider: 'nws' | 'openmeteo';
+    units: 'imperial' | 'metric';
+  }): void {
+    writeWeatherSettings(deps.db, {
+      enabled: value.weatherEnabled,
+      latitude: value.latitude,
+      longitude: value.longitude,
+      provider: value.provider,
+      units: value.units,
+    });
+    deps.db
+      .prepare(`UPDATE household_settings SET alerts_enabled = ?, updated_at = ? WHERE id = 'singleton'`)
+      .run(value.alertsEnabled ? 1 : 0, now());
+    if (value.alertsEnabled) {
+      // Bring the poll forward so the household sees the zones fill in rather
+      // than staring at "working it out" for a minute.
+      deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'alerts-sync'`).run();
+    }
+  }
+
+  /**
+   * The whole screen's settings, on the Weather page — everything weather in
+   * one place. A household answering "do I want weather on the wall, where does
+   * it look, and do I want warnings" should not hunt across two forms for it.
    */
   app.post('/admin/weather', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(weatherBody, body);
-    if (!shaped.ok) return c.html(alertsPage(shaped.message), 400);
+    // Echoed back on every failure below, so a rejected number never also costs
+    // the switch they flipped or the provider they chose.
+    const echo = echoOf(body);
+    if (!shaped.ok) return c.html(alertsPage(c, shaped.message, echo), 400);
 
     // A location is only required when the panel is on: turning weather off must
     // not demand two numbers first.
@@ -83,21 +149,24 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     if (shaped.value.weather_enabled && (!lat.ok || !lon.ok)) {
       return c.html(
         alertsPage(
+          c,
           'Weather needs a location — latitude between -90 and 90, longitude between -180 and 180. ' +
             'Your phone’s map app shows both if you press and hold on your house.',
+          echo,
         ),
         400,
       );
     }
 
-    writeWeatherSettings(deps.db, {
-      enabled: shaped.value.weather_enabled,
+    writeAll({
+      weatherEnabled: shaped.value.weather_enabled,
+      alertsEnabled: shaped.value.alerts_enabled,
       latitude: lat.ok ? lat.value : null,
       longitude: lon.ok ? lon.value : null,
       provider: shaped.value.weather_provider === 'openmeteo' ? 'openmeteo' : 'nws',
       units: shaped.value.weather_units === 'metric' ? 'metric' : 'imperial',
     });
-    return c.redirect('/admin/alerts', 302);
+    return savedRedirect(c, '/admin/alerts', 'weather');
   });
 
   /**
@@ -106,18 +175,31 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    * The commonest install is an add-on, and the box already knows where home is
    * — `zone.home` carries a latitude and longitude. Read-only, like everything
    * else here: this only ever reads the zone's coordinates.
+   *
+   * It is a second submit button *inside* the one form rather than a form of
+   * its own (`formaction`), so it carries whatever the household has typed but
+   * not yet saved and this handler can put it back. A separate form would be
+   * the two-forms bug again in a quieter costume: press it after changing the
+   * provider and the provider change would be gone.
    */
   app.post('/admin/weather/use-ha-location', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(weatherBody, body);
+    const echo = echoOf(body);
     const resolved = resolveConnection(deps.db, deps.keyring);
     if (!resolved.ok) {
       return c.html(
-        alertsPage('Home Assistant is not connected. Connect it on the Home Assistant screen, then try this again.'),
+        alertsPage(
+          c,
+          'Home Assistant is not connected. Connect it on the Home Assistant screen, then try this again.',
+          echo,
+        ),
         400,
       );
     }
     const home = await call(deps.fetcher, resolved.connection, '/states/zone.home');
     if (!home.ok) {
-      return c.html(alertsPage('Could not read your Home Assistant home location.'), 400);
+      return c.html(alertsPage(c, 'Could not read your Home Assistant home location.', echo), 400);
     }
     let raw: unknown;
     try {
@@ -132,34 +214,67 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     if (!located.ok) {
       return c.html(
         alertsPage(
+          c,
           'Home Assistant did not return a home location. Set your home zone in Home Assistant ' +
             '(Settings → Areas, labels & zones), then try again.',
+          echo,
         ),
         400,
       );
     }
-    const current = readWeatherSettings(deps.db);
-    writeWeatherSettings(deps.db, {
-      enabled: current.enabled,
+    /*
+     * The posted form wins over the stored row, and falls back to it.
+     *
+     * The button lives inside the one form, so the body is what is on screen —
+     * including a switch the household just flipped. A `parse` that failed (an
+     * older bookmarked form, a hand-made POST) reverts to what is stored, which
+     * is the same answer this handler always gave.
+     */
+    const stored = readWeatherSettings(deps.db);
+    const rest = shaped.ok
+      ? {
+          weatherEnabled: shaped.value.weather_enabled,
+          alertsEnabled: shaped.value.alerts_enabled,
+          provider: shaped.value.weather_provider === 'openmeteo' ? ('openmeteo' as const) : ('nws' as const),
+          units: shaped.value.weather_units === 'metric' ? ('metric' as const) : ('imperial' as const),
+        }
+      : {
+          weatherEnabled: stored.enabled,
+          alertsEnabled: readAlertsEnabled(),
+          provider: stored.provider,
+          units: stored.units,
+        };
+    writeAll({
+      ...rest,
       latitude: located.value.attributes.latitude,
       longitude: located.value.attributes.longitude,
-      provider: current.provider,
-      units: current.units,
     });
-    return c.redirect('/admin/alerts', 302);
+    return savedRedirect(c, '/admin/alerts', 'weather-location');
   });
 
-  /** The forecast panel's own settings block: switch, location, and a live preview. */
-  function weatherSection(): string {
+  /** Whether National Weather Service alerts are on, as one reader. */
+  function readAlertsEnabled(): boolean {
+    const row = deps.db
+      .prepare(`SELECT alerts_enabled AS enabled FROM household_settings WHERE id = 'singleton'`)
+      .get() as { enabled: number } | undefined;
+    return row?.enabled === 1;
+  }
+
+  /**
+   * The Forecast section's head: what it is, and what it is doing right now.
+   *
+   * Outside the form because none of it is a field, and above it because "is
+   * this working" is the question somebody arrives with — a household who can
+   * see five real days on the wall has no reason to touch anything below.
+   *
+   * Reads the *active* provider's own cache, so switching provider shows the
+   * new one filling in rather than the old one's last answer.
+   */
+  function forecastPreview(): string {
     const weather = readWeatherSettings(deps.db);
-    const value = (n: number | null): string => (n === null ? '' : String(n));
-    const haConnected = resolveConnection(deps.db, deps.keyring).ok;
     const located = weather.latitude !== null && weather.longitude !== null;
     const providerName = weather.provider === 'openmeteo' ? 'Open-Meteo' : 'National Weather Service';
 
-    // What the forecast is doing right now, so it is visibly working rather than
-    // a switch that may or may not have taken. Reads the active provider's own
-    // cache, so switching provider shows the new one filling in.
     let forecastBlock = '';
     const row = deps.db
       .prepare(`SELECT payload, fetched_at AS fetchedAt FROM weather_cache WHERE cache_key = ?`)
@@ -191,17 +306,49 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       }
     }
 
-    const status =
-      weather.enabled && located && forecastBlock === ''
-        ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
-        : '';
-
     return (
+      `<h2 class="add" style="margin-top:0;padding-top:0;border-top:0">Forecast</h2>` +
       `<p class="hint">A five-day forecast strip. It is a block like any other — ` +
       `choose where it sits on the <a class="link" href="admin/displays/default">Default display</a>.</p>` +
       forecastBlock +
-      status +
-      `<form method="post" action="admin/weather">` +
+      (weather.enabled && located && forecastBlock === ''
+        ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
+        : '')
+    );
+  }
+
+  /**
+   * The screen's one form: the forecast, then the alerts, then one Save.
+   *
+   * Everything a household can *set* about weather is in here, in the order
+   * they would think about it — is it on, where is home, whose forecast, which
+   * units, and do I want warnings. The alert rules below are not settings in
+   * this sense: each is an action on one rule with its own verb ("Turn off"),
+   * and HTML has no nested forms anyway, so the form closes before them.
+   *
+   * The Home Assistant button is a second *submit* rather than a second form
+   * (`formaction`), which is what lets it carry the unsaved fields — see the
+   * handler. It deliberately carries no dirty-state marker: `settings-form.js`
+   * manages the one control marked `data-dirty-save`, and a button whose whole
+   * job is to fill a field in must work before anything has been edited.
+   */
+  function weatherForm(echo?: WeatherEcho): string {
+    const stored = readWeatherSettings(deps.db);
+    const haConnected = resolveConnection(deps.db, deps.keyring).ok;
+    // The echo wins wherever there is one, so a 400 hands the form back exactly
+    // as it was left; with none, the stored row is the form.
+    const number = (n: number | null): string => (n === null ? '' : String(n));
+    const weather = {
+      enabled: echo?.weatherEnabled ?? stored.enabled,
+      latitude: echo === undefined ? number(stored.latitude) : echo.latitude,
+      longitude: echo === undefined ? number(stored.longitude) : echo.longitude,
+      provider: echo === undefined ? stored.provider : echo.provider,
+      units: echo === undefined ? stored.units : echo.units,
+    };
+    const alertsOn = echo?.alertsEnabled ?? readAlertsEnabled();
+
+    return (
+      `<form method="post" action="admin/weather" data-dirty>` +
       switchRow({
         label: 'Show the forecast',
         name: 'weather_enabled',
@@ -212,19 +359,31 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         label: 'Latitude',
         name: 'latitude',
         placeholder: '38.8894',
-        value: value(weather.latitude),
+        value: weather.latitude,
         attrs: 'inputmode="decimal"',
       }) +
       textField({
         label: 'Longitude',
         name: 'longitude',
         placeholder: '-97.7431',
-        value: value(weather.longitude),
+        value: weather.longitude,
         attrs: 'inputmode="decimal"',
       }) +
       `</div>` +
       `<p class="hint">Press and hold your house in a phone map app to get both numbers. ` +
       `The alert zones below are worked out from the same location.</p>` +
+
+      // The easy way, for the common install: read the location Home Assistant
+      // already knows. Only offered when there is a connection to read it from.
+      (haConnected
+        ? `<div class="row"><button class="secondary" type="submit" ` +
+          `formaction="admin/weather/use-ha-location">Use my Home Assistant home location` +
+          `</button></div>` +
+          `<p class="hint">Fills the latitude and longitude from Home Assistant’s ` +
+          `home zone, so there are no numbers to look up. It saves the rest of this ` +
+          `form at the same time.</p>`
+        : '') +
+
       `<div class="row-fields">` +
       selectField({
         label: 'Forecast from',
@@ -245,17 +404,6 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       `</div>` +
       `<p class="hint">The National Weather Service always reports in Fahrenheit; ` +
       `the units choice applies to Open-Meteo.</p>` +
-      `<button type="submit">Save</button></form>` +
-
-      // The easy way, for the common install: read the location Home Assistant
-      // already knows. Only offered when there is a connection to read it from.
-      (haConnected
-        ? `<form method="post" action="admin/weather/use-ha-location">` +
-          `<button class="secondary" type="submit">Use my Home Assistant home location</button>` +
-          `</form>` +
-          `<p class="hint">Fills the latitude and longitude from Home Assistant’s ` +
-          `home zone, so there are no numbers to look up.</p>`
-        : '') +
 
       (weather.provider === 'openmeteo'
         ? `<p class="hint">Open-Meteo covers the whole world and needs no account ` +
@@ -265,18 +413,33 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             'The forecast comes from the US National Weather Service.',
             'It covers the United States only. Outside the US, switch “Forecast from” ' +
               'to Open-Meteo above.',
-          ))
+          )) +
+
+      `<h2 class="add">Alerts</h2>` +
+      // Before the switch. Somebody deciding whether to rely on this should
+      // read it before they decide, not after.
+      `<div class="error"><strong>Not a life-safety system.</strong>` +
+      `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
+      switchRow({
+        label: 'Show National Weather Service alerts on the wall',
+        name: 'alerts_enabled',
+        checked: alertsOn,
+        hint:
+          'The United States only. There is no account and no key — alerts are ' +
+          'a public service. Nothing about your household is sent; the request ' +
+          'asks about a public zone code.',
+      }) +
+      (hasWeatherLocation(deps.db)
+        ? ''
+        : `<p class="hint">Fill in the latitude and longitude above — the alert ` +
+          `zones are worked out from them.</p>`) +
+
+      saveRow('admin/alerts') +
+      `</form>`
     );
   }
 
-  function alertsPage(error?: string): string {
-    const household = deps.db
-      .prepare(
-        `SELECT alerts_enabled AS enabled, latitude, longitude
-           FROM household_settings WHERE id = 'singleton'`,
-      )
-      .get() as { enabled: number; latitude: number | null; longitude: number | null } | undefined;
-
+  function alertsPage(c: Context, error?: string, echo?: WeatherEcho): string {
     const zones = deps.db
       .prepare(
         /*
@@ -298,7 +461,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       )
       .all(now()) as { event: string; severity: string | null; areaDesc: string | null }[];
 
-    const enabled = household?.enabled === 1;
+    const enabled = readAlertsEnabled();
     /*
      * The one reader of this fact, shared with the evaluator and the overview.
      * Written out here it was `household?.latitude !== null && …`, which is
@@ -313,36 +476,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Weather — Maverick Wall',
       nav: 'alerts',
       heading: 'Weather',
+      saved: readSaved(c),
       intro: 'The forecast strip on the wall, and the National Weather Service alerts — both here, both fed from one location.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
 
-        // The everyday panel first: the forecast the wall draws day to day.
-        `<h2 class="add" style="margin-top:0;padding-top:0;border-top:0">Forecast</h2>` +
-        weatherSection() +
-
-        `<h2 class="add">Alerts</h2>` +
-        // Before the switch. Somebody deciding whether to rely on this should
-        // read it before they decide, not after.
-        `<div class="error"><strong>Not a life-safety system.</strong>` +
-        `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
-
-        `<form method="post" action="admin/alerts">` +
-        switchRow({
-          label: 'Show National Weather Service alerts on the wall',
-          name: 'alerts_enabled',
-          checked: enabled,
-          hint:
-            'The United States only. There is no account and no key — alerts are ' +
-            'a public service. Nothing about your household is sent; the request ' +
-            'asks about a public zone code.',
-        }) +
-        `<button type="submit">Save</button></form>` +
-
-        (located
-          ? ''
-          : `<p class="hint">Set your latitude and longitude in the Forecast section ` +
-            `above first — the alert zones are worked out from them.</p>`) +
+        // Status first, then the one form, then the things that are not
+        // settings: the zones, what is in force, and the ladder.
+        forecastPreview() +
+        weatherForm(echo) +
 
         `<h2 class="add">Zones being watched</h2>` +
         (zones.length === 0

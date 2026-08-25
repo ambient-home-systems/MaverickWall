@@ -68,6 +68,9 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
   ['night', 'night-soft'],
   // Status text set directly on a card, which is what a .frow does.
   ...['danger', 'ok', 'warn', 'night'].map((hue) => [hue, 'surface'] as const),
+  // And directly on the page ground: the settings form's "Not saved yet" flag
+  // sits in `.content`, which is `bg` rather than a card (RFC 009 Phase 3.2).
+  ['warn', 'bg'],
 ];
 
 /**
