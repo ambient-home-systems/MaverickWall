@@ -1,9 +1,10 @@
-import { afterAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDatabase } from '../src/db/open.js';
+import { openDatabase, type SqliteDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
 import { createApp } from '../src/http/app.js';
@@ -25,7 +26,13 @@ afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
-function harness() {
+/**
+ * `wrapDb` is how a test reaches the two catches on `/d/manifest`, and it is
+ * deliberately the *app's* handle that is wrapped rather than the one the
+ * harness seeds through: the fixture is written with a healthy database and
+ * only the request meets the fault.
+ */
+function harness(wrapDb: (db: SqliteDatabase) => SqliteDatabase = (db) => db) {
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-http-'));
   roots.push(dataDir);
   const { db } = openDatabase({ dataDir });
@@ -49,7 +56,7 @@ function harness() {
   // Auth is required rather than defaulted: a fallback signing secret would be
   // a default credential, and rule ten says to assume this port is reachable.
   const app = createApp({
-    db,
+    db: wrapDb(db),
     appVersion: '0.1.0-test',
     bootNotices: [],
     auth: { secret: 'h'.repeat(32), baseUrl: 'http://localhost' },
@@ -64,26 +71,89 @@ function harness() {
 }
 
 /**
- * The same installation, with a clock that throws once the manifest build has
- * started.
+ * A real `SqliteError`, produced by really scrambling a database.
  *
- * A stand-in for "something in the build threw that is not the schema", which
- * is a class rather than a specific bug: every `JSON.parse` on this path is
- * already guarded and an unknown timezone already falls back, so there is no
- * *current* way to induce one — and that is exactly why the catch-all around
- * the build is worth narrowing before there is. `now` is injected because it is
- * the one seam `createApp` already offers into that code; what is under test is
- * what the route does with the exception, not where it came from.
- *
- * `recover` is which of two failures this is. A healthy request makes exactly
- * two `now()` calls and the first is before the build starts, so throwing on
- * the second alone breaks the build and leaves the route's own fallback a
- * working clock — the ordinary case. Throwing from the second call *onwards*
- * breaks the fallback as well, which is the systemic case: the safety net has
- * to answer rather than take the request down with it.
+ * Corruption is the case the degraded manifest matters most for — an SD card
+ * that came out of a power cut is persistent, unfixable from the wall, and
+ * leaves no better data anywhere — and it is also the one that cannot be
+ * induced through an open connection: SQLite serves the pages it already has.
+ * So the *error* is genuine, written by better-sqlite3 reading a genuinely
+ * malformed file, and only its delivery into the route is arranged. Inventing
+ * an object with a `code` on it would be testing the test's idea of what
+ * SQLite says.
  */
-function harnessWithBrokenBuild(options: { recover?: boolean } = {}) {
-  const { recover = true } = options;
+function realCorruptionError(): unknown {
+  const dir = mkdtempSync(join(tmpdir(), 'mw-corrupt-'));
+  roots.push(dir);
+  const file = join(dir, 'wall.db');
+  const seed = new Database(file);
+  // Not WAL: the point is to scramble the pages the next reader will read.
+  seed.pragma('journal_mode = DELETE');
+  seed.exec("CREATE TABLE t (a TEXT); INSERT INTO t VALUES ('x')");
+  seed.close();
+  const bytes = readFileSync(file);
+  // Past the 100-byte header, so the file still opens and fails on its pages.
+  bytes.fill(0xab, 100);
+  writeFileSync(file, bytes);
+  try {
+    new Database(file).prepare('SELECT a FROM t').all();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('the scrambled database read cleanly — this helper is not doing its job');
+}
+
+/**
+ * The same database, with one query made to throw.
+ *
+ * The route has two catches and they cover different reads, so reaching either
+ * one deliberately means choosing a statement rather than breaking the whole
+ * connection. Everything else is delegated untouched, so the request is the
+ * real one right up to the read under test.
+ */
+function dbWithFailingQuery(db: SqliteDatabase, matches: RegExp, error: unknown): SqliteDatabase {
+  return new Proxy(db, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property !== 'prepare' || typeof value !== 'function') {
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+      return (sql: string, ...rest: unknown[]) => {
+        if (matches.test(sql)) throw error;
+        return (value as (...args: unknown[]) => unknown).call(target, sql, ...rest);
+      };
+    },
+  }) as SqliteDatabase;
+}
+
+/**
+ * The same installation, with a clock that throws from a chosen call onwards.
+ *
+ * A stand-in for "something in the build threw that is not the database",
+ * which is a class rather than a specific bug: every `JSON.parse` on this path
+ * is already guarded and an unknown timezone already falls back, so there is
+ * no *current* way to induce one — and that is exactly why the catch-all
+ * around the build is worth narrowing before there is. `now` is injected
+ * because it is the one seam `createApp` already offers into that code; what
+ * is under test is what the route does with the exception, not where it came
+ * from. A plain `Error` is the point of it: it carries no SQLite code, so the
+ * route must read it as ours.
+ *
+ * `failOnCall` picks which failure this is, and the numbers are measured
+ * rather than guessed. A healthy request makes exactly two `now()` calls and
+ * the first is before the build starts, so **2** breaks the build and leaves
+ * the route's own fallback a working clock — which is the whole point of
+ * throwing on that one call and no others. A clock that stays broken would
+ * take the fallback down too, and then a 5xx proves nothing about the
+ * narrowing: it is what a *wrongly* degraded request would answer as well.
+ *
+ * With `breakSchema` the build gets as far as that second call and *then*
+ * fails on the missing column, and `degradedManifest` makes calls three and
+ * four — so **3** is a database failure whose fallback is broken too, which is
+ * the only way to reach the safety net's own catch.
+ */
+function harnessWithBrokenBuild(options: { failOnCall: number; breakSchema?: boolean }) {
+  const { failOnCall, breakSchema = false } = options;
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-http-'));
   roots.push(dataDir);
   const { db } = openDatabase({ dataDir });
@@ -100,6 +170,10 @@ function harnessWithBrokenBuild(options: { recover?: boolean } = {}) {
      VALUES ('screen1', 'Kitchen', ?, ?, ?, ?)`,
   ).run(issued.tokenHash, at, at, at);
 
+  if (breakSchema) {
+    db.exec('ALTER TABLE household_settings DROP COLUMN layout_landscape_background');
+  }
+
   let calls = 0;
   const app = createApp({
     db,
@@ -111,13 +185,7 @@ function harnessWithBrokenBuild(options: { recover?: boolean } = {}) {
     dataDir,
     now: () => {
       calls += 1;
-      // The second call is inside the build: a healthy request makes exactly
-      // two, and the first is before it. Only that one throws, so the route's
-      // own fallback still has a working clock — otherwise the *fallback*
-      // fails too and Hono's bare 500 hides what is being tested.
-      if (recover ? calls === 2 : calls > 1) {
-        throw new Error('something in the build went wrong');
-      }
+      if (calls === failOnCall) throw new Error('something in the build went wrong');
       return at;
     },
   });
@@ -259,7 +327,7 @@ describe('/d/manifest', () => {
    * manifest and never touches the store, and the banner says how old it is.
    */
   it('does not hand a wall an empty manifest when the build fails for another reason', async () => {
-    const { call, token } = harnessWithBrokenBuild();
+    const { call, token } = harnessWithBrokenBuild({ failOnCall: 2 });
     const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
 
     expect(
@@ -295,17 +363,94 @@ describe('/d/manifest', () => {
   });
 
   /*
+   * And a database that is not merely behind — one that is scrambled.
+   *
+   * This is the case the degraded manifest matters most for and the one a
+   * "missing column" reading of it silently excluded. An SD card that came out
+   * of a power cut corrupt is exactly as persistent as a half-finished
+   * migration, there is no better data anywhere, and a wall that has never
+   * cached a manifest has nothing at all to fall back on — so answering 503
+   * for ever would leave a freshly loaded screen on "waiting", with no cause
+   * on it, reloading every ninety seconds until somebody unplugs it. That is
+   * RFC 009 1.1's black screen wearing a different hat.
+   */
+  it('degrades for a database that is corrupt, not only for one that is behind', async () => {
+    const corrupt = realCorruptionError();
+    expect((corrupt as { code?: string }).code, 'the premise of this test').toBe('SQLITE_CORRUPT');
+
+    // The screens read still works — that is the shape of a file whose damage
+    // lands on some pages and not others, and it is what carries the request
+    // as far as the build.
+    const { call, token } = harness((db) => dbWithFailingQuery(db, /calendar_sources/, corrupt));
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+
+    expect(response.status).toBe(200);
+    const manifest = (await response.json()) as Record<string, unknown>;
+    const notices = manifest['notices'] as { level: string; code: string }[];
+    expect(notices.some((n) => n.code === 'schema-degraded' && n.level === 'error')).toBe(true);
+  });
+
+  /*
+   * And the screen-lookup catch is narrowed the same way the build's is.
+   *
+   * It covers `authenticateScreen` as well as the read, so it is not only a
+   * database that can throw inside it — and a token the minimal lookup still
+   * recognises would otherwise be answered with the same 200 empty manifest
+   * that destroys a wall's cached copy. The asymmetry was an accident of
+   * fixing one catch: the argument for narrowing is identical on both.
+   */
+  it('does not hand a wall an empty manifest when the screen read fails for a reason of ours', async () => {
+    const ours = new Error('the screen row could not be assembled');
+    // The full `readScreens` query and nothing else — the minimal fallback
+    // lookup names only `token_hash`, so this screen is still recognised and
+    // the request reaches the degrade decision rather than a 401.
+    const { call, token } = harness((db) =>
+      dbWithFailingQuery(db, /layout_landscape_background/, ours),
+    );
+
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+    expect(response.status).toBe(503);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body['manifestVersion'], 'nothing here may pass isRenderableManifest').toBeUndefined();
+    expect(body['error']).toBe('unavailable');
+  });
+
+  /*
    * And a safety net that can throw is not one.
    *
    * `degradedManifest` calls `now()` and `buildManifest`, so a failure systemic
    * enough to reach either takes the fallback down too — and the household then
    * gets Hono's bare JSON 500, which is the exact unhandled-exception shape
-   * RFC 009 1.9 set out to remove, one layer further in. Simulated with a clock
-   * that never recovers, so both the build *and* its fallback fail.
+   * RFC 009 1.9 set out to remove, one layer further in. So this needs *both*
+   * halves: a database failure, which is the only thing that reaches the
+   * fallback at all, and a clock that is still broken when it gets there.
+   *
+   * The first version of this test had only the second half, and passed
+   * without ever calling `degradedManifest` — the route answered 503 one
+   * branch earlier and the assertions could not tell the difference. So the
+   * log line is asserted too: it is the only evidence from outside that the
+   * safety net was entered and caught, and without it this test goes on
+   * passing if the call counts above ever drift.
    */
   it('answers "not now" rather than an unhandled 500 when the fallback fails too', async () => {
-    const { call, token } = harnessWithBrokenBuild({ recover: false });
-    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+    const { call, token } = harnessWithBrokenBuild({ failOnCall: 3, breakSchema: true });
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+
+    let response: Response;
+    try {
+      response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(
+      logged.some((line) => line.includes('degraded manifest failed too')),
+      'the fallback itself has to have been reached and caught, not skipped',
+    ).toBe(true);
 
     expect(response.status).toBe(503);
     const body = (await response.json()) as Record<string, unknown>;

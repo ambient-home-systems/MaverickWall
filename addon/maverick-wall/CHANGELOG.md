@@ -16,6 +16,17 @@
 
 ## Unreleased
 
+**A wall no longer goes blank, and stays blank, because the server had a bad
+moment.**
+
+When the server could not build a wall, it sent an empty one — and a screen
+that receives an empty wall draws it *and* forgets the calendar it had saved,
+so the display stayed blank until the server recovered, even across a reload.
+It now says "not just now" instead, and a screen that hears that keeps showing
+its last calendar with a note of how old it is. The empty wall is still sent for
+the one case it was written for: a database this version genuinely cannot read,
+where it carries the message explaining why.
+
 **A restored encryption key is no longer thrown away about one time in sixty.**
 
 Restoring from System → Backup hands you a key file, and it has always allowed

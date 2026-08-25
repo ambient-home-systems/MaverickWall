@@ -872,25 +872,46 @@ export function createApp(deps: AppDeps): Hono {
   deps.onManifestBuilder?.(manifestForScreen);
 
   /**
-   * Is this the database failing to be read, or is it anything else?
+   * The two SQLite codes that clear on their own.
+   *
+   * Everything else SQLite reports is a fact about the file that waiting does
+   * not change; these two are a fact about *this moment* — another connection
+   * holding a lock, which is what a CLI tool run against the same `DATA_DIR`
+   * looks like. A wall that keeps its own calendar for a few seconds is the
+   * right answer to those, so they are deliberately not database failures
+   * below.
+   */
+  const TRANSIENT_SQLITE_CODES = new Set(['SQLITE_BUSY', 'SQLITE_LOCKED']);
+
+  /**
+   * Could the database not be read, or is this a bug in this process?
    *
    * The difference decides what a wall is told, and the two answers are not
-   * interchangeable. A schema a migration left half-upgraded is *persistent*
-   * and there is no better data anywhere, so the degraded manifest below —
-   * empty, with a notice naming the cause — is genuinely the best thing to
-   * send. Anything else is a bug in this process, the household's data is
-   * intact, and the wall's own cached copy is worth more than an empty
-   * document; a 5xx keeps it, a 200 destroys it (see the route).
+   * interchangeable. A database that cannot be read is *persistent* and there
+   * is no better data anywhere — a schema a migration left half-upgraded, an
+   * SD card that came out of a power cut corrupt, a file that is no longer a
+   * database at all — so the degraded manifest below, empty with a notice
+   * naming the cause, is genuinely the best thing to send, and on a freshly
+   * loaded wall it is the only thing standing between the household and RFC
+   * 009 1.1's black screen. Anything else is a bug in this process with the
+   * household's data intact, and the wall's own cached copy is worth more than
+   * an empty document; a 5xx keeps it, a 200 destroys it (see the route).
    *
-   * Matched on the message rather than on an error class, because
-   * `better-sqlite3` reports both as `SqliteError` with `SQLITE_ERROR` — the
-   * code cannot tell "no such column" from a typo in our own SQL. These two
-   * phrases are SQLite's own, and they are what a database behind its
-   * migrations actually says.
+   * Asked of the error's `code` rather than of its message, because that is
+   * the fact: `better-sqlite3` stamps every one it raises with SQLite's own
+   * code and nothing else in this process carries a `SQLITE_` one. Measured —
+   * a missing column and a missing table are `SQLITE_ERROR`, a scrambled file
+   * is `SQLITE_CORRUPT`, one that never was a database is `SQLITE_NOTADB`,
+   * and a `TypeError` from our own assembly has no `code` at all. A typo in
+   * our own SQL is `SQLITE_ERROR` too and so degrades: that is deliberate, and
+   * it is the right side to err on — it is every bit as persistent as a
+   * missing column, and a household reading "the database could not be fully
+   * read" is better served than one watching a wall reload for ever.
    */
-  const isSchemaFailure = (error: unknown): boolean => {
-    const message = error instanceof Error ? error.message : String(error);
-    return /no such (column|table)\b/i.test(message);
+  const isDatabaseFailure = (error: unknown): boolean => {
+    const code = (error as { code?: unknown } | null | undefined)?.code;
+    if (typeof code !== 'string' || !code.startsWith('SQLITE_')) return false;
+    return !TRANSIENT_SQLITE_CODES.has(code);
   };
 
   /**
@@ -1009,6 +1030,16 @@ export function createApp(deps: AppDeps): Hono {
       if (!recognised) {
         return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
       }
+      /*
+       * Narrowed exactly as the build's catch below is, and for the same
+       * reason. A token this database still recognises has earned an answer,
+       * but only a database that could not be *read* has earned the empty one:
+       * this block also covers `authenticateScreen`, so anything that is a bug
+       * in this process rather than a fact about the file would otherwise come
+       * back as a 200 a wall draws over its own calendar. The asymmetry was
+       * the accident, not the narrowing.
+       */
+      if (!isDatabaseFailure(error)) return unavailable(c);
       return degraded(c, schemaNotice);
     }
     if (!screen) {
@@ -1033,7 +1064,7 @@ export function createApp(deps: AppDeps): Hono {
        * back. A 503 costs nothing — the display's `failed` branch keeps the
        * last manifest, never touches the store, and says how old it is.
        */
-      if (!isSchemaFailure(error)) return unavailable(c);
+      if (!isDatabaseFailure(error)) return unavailable(c);
       return degraded(c, schemaNotice);
     }
 

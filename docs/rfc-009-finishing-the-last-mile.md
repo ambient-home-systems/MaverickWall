@@ -269,6 +269,22 @@ freshly loaded one gets 1.1's black screen.
 Wrap the screen read and the manifest build, and on failure return a **200
 carrying only `notices`**. The wall already knows how to draw one.
 
+**Built, and then corrected — the 200 is for one cause, not for every
+exception.** As first written both catches answered the degraded manifest for
+*anything* that threw. That body passes `isRenderableManifest`, so the display
+takes it as `fresh`, draws it, and then `await store.save(...)` overwrites the
+IndexedDB last-good copy: one bug in manifest assembly blanked the wall and
+destroyed its cache, and a reload could not get the calendar back. The 200 is
+correct only when the **database could not be read** — persistent, no better
+data anywhere, and on a never-cached wall the only thing between the household
+and 1.1's black screen. Anything else answers 503, which the display's `failed`
+branch already handles by keeping the last manifest and saying how old it is.
+The class is read off the error's SQLite `code` rather than its message, so
+corruption and `SQLITE_NOTADB` are inside it and `SQLITE_BUSY`/`SQLITE_LOCKED`
+— the two that clear on their own — are outside. And `degradedManifest` itself
+is wrapped: it calls `now()`, so a failure systemic enough to reach it took the
+safety net down too and produced the bare 500 this section exists to remove.
+
 ### 1.10 Documentation that is false
 
 Three, all small, all corrosive because they sit in the places written to be

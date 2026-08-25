@@ -1559,6 +1559,39 @@ plain http**, because a service worker needs a secure context and a LAN address
 is not one. On http the stored manifest still covers the commoner case: a wall
 that stays loaded for months while the server comes and goes underneath it.
 
+**And what the wall remembers, the safety net was destroying.** `/d/manifest`
+answered `degradedManifest(...)` with a **200** from its build catch for *any*
+exception. That body is structurally valid, so `isRenderableManifest` passes it,
+`fetchManifest` reports `fresh`, and `main.ts` does the two things it does for a
+good manifest: draws it, and `await store.save(...)`. So one transient bug in
+manifest assembly blanked the wall *and* overwrote the IndexedDB last-good copy
+underneath it, after which even a reload had nothing to draw. Rule nine
+inverted: the thing written to stop a black screen was the thing causing one.
+
+The degraded manifest is right for exactly one class — **a database that could
+not be read**, which is persistent, has no better data anywhere, and on a wall
+that has never cached anything is the only thing between the household and 1.1's
+black screen. Everything else is a bug in this process with the data intact, and
+there the wall's own copy is worth more than an empty document: a 5xx keeps it
+(the display's `failed` branch never touches the store and says how old it is), a
+200 destroys it. The predicate asks the error's `code`, not its message —
+`better-sqlite3` stamps SQLite's own on every error it raises and nothing else
+here carries a `SQLITE_` one, where a "no such column" *message* match silently
+excluded corruption and `SQLITE_NOTADB`, which are the cases that matter most.
+`SQLITE_BUSY` and `SQLITE_LOCKED` are excluded the other way, being the only two
+that clear on their own.
+
+Three things came out of it and two are about the tests. **A safety net that can
+throw is not one**: `degradedManifest` calls `now()`, so a systemic enough
+failure took the fallback down too and the household got Hono's bare 500 — the
+exact shape 1.9 exists to remove, one layer further in. The test written for
+*that* then passed without ever reaching the fallback, because the route answered
+one branch earlier and a 503 is what both paths produce; it asserts the log line
+now, which is the only evidence from outside that the net was entered. And a
+harness that breaks the clock for the whole request cannot prove a narrowing at
+all — the wrongly-degraded case answers 503 too. It throws on one measured call
+and no others.
+
 **A migration file the journal does not list never runs, and looks like it
 did.** `migration-upgrade.test.ts` asserts the two agree in both directions,
 and it earned that assertion: a file-sync collision left nine `… 2.sql`
