@@ -1578,12 +1578,15 @@ there the wall's own copy is worth more than an empty document: a 5xx keeps it
 `better-sqlite3` stamps SQLite's own on every error it raises and nothing else
 here carries a `SQLITE_` one, where a "no such column" *message* match silently
 excluded corruption and `SQLITE_NOTADB`, which are the cases that matter most.
-`SQLITE_BUSY` and `SQLITE_LOCKED` are excluded the other way, being the only two
-that clear on their own — **as prefixes**, because better-sqlite3 reports
-SQLite's *extended* code and a WAL reader whose snapshot moved raises
-`SQLITE_BUSY_SNAPSHOT`, which an exact set misses. That is the commonest lock on
-a box where somebody has just run a CLI tool, so an exact match reintroduced the
-whole fault through the door left open behind it.
+It is an **allowlist** — `SQLITE_ERROR`, `SQLITE_CORRUPT`, `SQLITE_NOTADB`,
+`SQLITE_CANTOPEN` — because the two answers are not equally cheap: degrading
+blanks a wall for that poll and a 503 costs it nothing, so a code has to be
+*known* persistent to buy the expensive one, and everything unrecognised takes
+the cheap one. Written the other way round, as "everything degrades unless it is
+a lock", the next transient class SQLite grows blanks every wall in the house
+until somebody notices — and the first version was written that way round, with
+`SQLITE_BUSY` exact, which missed `SQLITE_BUSY_SNAPSHOT`: better-sqlite3 reports
+SQLite's *extended* code, so every match here is a prefix.
 
 **And a 401 is not a refusal as far as a wall is concerned.** The display reads
 it as `unpaired`, drops the manifest it is holding and draws the code-entry
@@ -1595,7 +1598,18 @@ claim: only a check that *ran* may make it, and one that could not complete says
 database is unreadable, which is the right side to be wrong on — neither answer
 serves any household data.
 
-Three things came out of it and two are about the tests. **A safety net that can
+**And the wall was still doing it to itself for the one case the 200 is
+kept for.** `main.ts` saved every `fresh` manifest, the stand-in included — so
+the document that exists to explain a database this server cannot read was
+overwriting the calendar the wall could still have drawn, and a reload had
+nothing to fall back to. Drawing it is right; remembering it is not. The rule is
+`isStandInManifest` in the display's `manifest.ts` rather than in the poll loop,
+because there is no DOM in that package's tests and a rule living in `main.ts`
+is a rule nothing can check — and it is keyed on the `schema-degraded` notice
+rather than on "any error notice", since a real manifest complaining that one
+calendar failed to sync is still the household's data and is still worth keeping.
+
+Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough
 failure took the fallback down too and the household got Hono's bare 500 — the
 exact shape 1.9 exists to remove, one layer further in. The test written for

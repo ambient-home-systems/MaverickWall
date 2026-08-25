@@ -1,5 +1,11 @@
 import { createClock } from './clock.js';
-import { createManifestClient, type Manifest, type ManifestWidget, type CanvasBackground } from './manifest.js';
+import {
+  createManifestClient,
+  isStandInManifest,
+  type Manifest,
+  type ManifestWidget,
+  type CanvasBackground,
+} from './manifest.js';
 import { renderFreeform, renderMessage, renderPairing } from './render.js';
 import { applyTheme, daytimeActive } from './theme.js';
 import {
@@ -192,9 +198,20 @@ function start(): void {
         lastConfirmedAt = clock.now();
         lastContactAt = Date.now();
         offline = false;
-        // Kept for the next reload. Awaited so a save that is going to fail
-        // does so before the wall is told everything is fine.
-        await store.save({ manifest: outcome.manifest, confirmedAt: lastConfirmedAt });
+        /*
+         * Kept for the next reload — unless it is the server's stand-in.
+         *
+         * That document is empty by design and carries the reason as a notice,
+         * so drawing it is right; remembering it is not. Saving it overwrote
+         * the last calendar this wall had, and a reload then had nothing to
+         * fall back to — the whole point of the store, spent on the one poll
+         * that proves the server cannot supply the real thing. Awaited so a
+         * save that is going to fail does so before the wall is told
+         * everything is fine.
+         */
+        if (!isStandInManifest(outcome.manifest)) {
+          await store.save({ manifest: outcome.manifest, confirmedAt: lastConfirmedAt });
+        }
         break;
       case 'unchanged':
         clock.sync(outcome.serverTime);

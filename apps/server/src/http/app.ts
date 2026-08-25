@@ -872,23 +872,41 @@ export function createApp(deps: AppDeps): Hono {
   deps.onManifestBuilder?.(manifestForScreen);
 
   /**
-   * The two SQLite codes that clear on their own.
+   * The SQLite codes that mean "this file cannot be read, and waiting will not
+   * change that".
    *
-   * Everything else SQLite reports is a fact about the file that waiting does
-   * not change; these two are a fact about *this moment* — another connection
-   * holding a lock, which is what a CLI tool run against the same `DATA_DIR`
-   * looks like. A wall that keeps its own calendar for a few seconds is the
-   * right answer to those, so they are deliberately not database failures
-   * below.
+   * An allowlist rather than a list of exclusions, because the two answers are
+   * not equally cheap. Degrading blanks a wall for that poll; a 503 costs it
+   * nothing, since the display keeps drawing what it has. So an unrecognised
+   * code takes the cheap answer, and a code has to be *known* persistent to
+   * buy the expensive one. Written the other way round — everything degrades
+   * unless it is a lock — the next transient class SQLite grows blanks every
+   * wall in the house until somebody notices.
    *
-   * Matched as **prefixes**, because `better-sqlite3` reports SQLite's
-   * *extended* code and an exact set silently misses most of the family. A
-   * WAL reader whose snapshot moved under it raises `SQLITE_BUSY_SNAPSHOT`
-   * with the message "database is locked" — measured — which an exact
-   * `SQLITE_BUSY` does not match, and it is the commonest of the lot on a box
-   * where somebody has just run a CLI tool.
+   * Prefixes, because `better-sqlite3` reports SQLite's *extended* code:
+   * `SQLITE_CORRUPT_VTAB` and `SQLITE_CANTOPEN_ISDIR` are real, and a WAL
+   * reader whose snapshot moved raises `SQLITE_BUSY_SNAPSHOT` — measured, and
+   * the reason an exact-match set was wrong here before.
+   *
+   * - `SQLITE_ERROR` is what a half-finished migration leaves: "no such
+   *   column", "no such table". A typo in our own SQL is the same code and so
+   *   degrades too; that is deliberate and it is the right side to err on,
+   *   being every bit as persistent as a missing column.
+   * - `SQLITE_CORRUPT` is the SD card that came out of a power cut.
+   * - `SQLITE_NOTADB` is a file that never was one — a half-finished restore.
+   * - `SQLITE_CANTOPEN` is the file or its directory being gone.
+   *
+   * Deliberately absent: `SQLITE_BUSY` and `SQLITE_LOCKED` (a CLI tool holding
+   * a lock), `SQLITE_IOERR` (a disk that may well answer next time),
+   * `SQLITE_PROTOCOL` (documented as retryable under WAL contention) and
+   * `SQLITE_NOMEM`. All of those are a bad moment rather than a bad file.
    */
-  const TRANSIENT_SQLITE_PREFIXES = ['SQLITE_BUSY', 'SQLITE_LOCKED'];
+  const UNREADABLE_SQLITE_PREFIXES = [
+    'SQLITE_ERROR',
+    'SQLITE_CORRUPT',
+    'SQLITE_NOTADB',
+    'SQLITE_CANTOPEN',
+  ];
 
   /**
    * Could the database not be read, or is this a bug in this process?
@@ -902,23 +920,19 @@ export function createApp(deps: AppDeps): Hono {
    * loaded wall it is the only thing standing between the household and RFC
    * 009 1.1's black screen. Anything else is a bug in this process with the
    * household's data intact, and the wall's own cached copy is worth more than
-   * an empty document; a 5xx keeps it, a 200 destroys it (see the route).
+   * an empty document; a 5xx keeps it, a 200 replaces it (see the route).
    *
    * Asked of the error's `code` rather than of its message, because that is
    * the fact: `better-sqlite3` stamps every one it raises with SQLite's own
-   * code and nothing else in this process carries a `SQLITE_` one. Measured —
-   * a missing column and a missing table are `SQLITE_ERROR`, a scrambled file
-   * is `SQLITE_CORRUPT`, one that never was a database is `SQLITE_NOTADB`,
-   * and a `TypeError` from our own assembly has no `code` at all. A typo in
-   * our own SQL is `SQLITE_ERROR` too and so degrades: that is deliberate, and
-   * it is the right side to err on — it is every bit as persistent as a
-   * missing column, and a household reading "the database could not be fully
-   * read" is better served than one watching a wall reload for ever.
+   * code and nothing else in this process carries a `SQLITE_` one — a
+   * `TypeError` from our own assembly has no `code` at all, which is exactly
+   * the class that must not degrade. A message match was tried first and
+   * silently excluded corruption, which is the case this matters most for.
    */
   const isDatabaseFailure = (error: unknown): boolean => {
     const code = (error as { code?: unknown } | null | undefined)?.code;
-    if (typeof code !== 'string' || !code.startsWith('SQLITE_')) return false;
-    return !TRANSIENT_SQLITE_PREFIXES.some((prefix) => code.startsWith(prefix));
+    if (typeof code !== 'string') return false;
+    return UNREADABLE_SQLITE_PREFIXES.some((prefix) => code.startsWith(prefix));
   };
 
   /**

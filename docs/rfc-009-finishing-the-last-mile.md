@@ -281,9 +281,16 @@ and 1.1's black screen. Anything else answers 503, which the display's `failed`
 branch already handles by keeping the last manifest and saying how old it is.
 The class is read off the error's SQLite `code` rather than its message, so
 corruption and `SQLITE_NOTADB` are inside it and `SQLITE_BUSY`/`SQLITE_LOCKED`
-— the two that clear on their own — are outside, matched as prefixes because
+— the two that clear on their own — are outside. It is an allowlist, not a list
+of exclusions: the degraded answer blanks a wall and the 503 costs it nothing,
+so an unrecognised code takes the cheap one. Every match is a prefix, because
 better-sqlite3 reports SQLite's extended code (`SQLITE_BUSY_SNAPSHOT` is what a
-CLI tool holding a lock actually raises). One further correction belongs to this
+CLI tool holding a lock actually raises).
+
+The display owns the other half: it now declines to *store* the stand-in, having
+previously saved it like any other `fresh` manifest and so spent the wall's last
+good calendar on the one poll that proves the server cannot supply a real one.
+Drawing it is the point of this section; remembering it never was. One further correction belongs to this
 section rather than to the narrowing: the fallback token lookup answered **401**
 when it too could not read, and a display reads 401 as `unpaired` and draws the
 code-entry form — so a corrupt database put a pairing form on every screen in

@@ -137,6 +137,32 @@ function realBusyError(): unknown {
 }
 
 /**
+ * A real `SqliteError` that is neither damage nor a lock.
+ *
+ * A write to a connection opened read-only. It stands for the whole open set
+ * of codes SQLite can raise that this route has never been told about: what is
+ * under test is the *default*, which has to be the answer that costs a wall
+ * nothing.
+ */
+function realUnclassifiedError(): unknown {
+  const dir = mkdtempSync(join(tmpdir(), 'mw-ro-'));
+  roots.push(dir);
+  const file = join(dir, 'wall.db');
+  const seed = new Database(file);
+  seed.exec('CREATE TABLE t (v INTEGER)');
+  seed.close();
+  const readonly = new Database(file, { readonly: true });
+  try {
+    readonly.prepare('INSERT INTO t VALUES (1)').run();
+  } catch (error) {
+    return error;
+  } finally {
+    readonly.close();
+  }
+  throw new Error('the read-only write succeeded — this helper is not doing its job');
+}
+
+/**
  * The same database, with one query made to throw.
  *
  * The route has two catches and they cover different reads, so reaching either
@@ -496,6 +522,28 @@ describe('/d/manifest', () => {
 
     const body = (await response.json()) as Record<string, unknown>;
     expect(body['error']).toBe('unavailable');
+  });
+
+  /*
+   * And a code this route has never heard of takes the cheap answer.
+   *
+   * The two answers are not equally cheap: degrading blanks a wall for that
+   * poll, a 503 costs it nothing. So the classification is an allowlist — a
+   * code has to be *known* persistent to buy the expensive answer — and this
+   * is the assertion that keeps it one. Written the other way round, as
+   * "everything degrades unless it is a lock", the next transient class
+   * SQLite grows blanks every wall in the house until somebody notices.
+   */
+  it('keeps a wall drawing for a database error it has never been told about', async () => {
+    const unclassified = realUnclassifiedError();
+    expect((unclassified as { code?: string }).code).toBe('SQLITE_READONLY');
+
+    const { call, token } = harness((db) => dbWithFailingQuery(db, /calendar_sources/, unclassified));
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body['manifestVersion'], 'nothing here may pass isRenderableManifest').toBeUndefined();
   });
 
   /*

@@ -217,6 +217,32 @@ export function isRenderableManifest(value: unknown): value is Manifest {
   );
 }
 
+/**
+ * The code the server stamps on the stand-in it sends when it could not read
+ * its own database. Named here because the display has to recognise it.
+ */
+const STAND_IN_NOTICE = 'schema-degraded';
+
+/**
+ * Is this the household's calendar, or the stand-in for one?
+ *
+ * The server answers `/d/manifest` with an *empty but valid* manifest when it
+ * could not read its own database, carrying a notice that says so — the whole
+ * point of which is that the wall draws the reason instead of a black screen.
+ * It is a renderable manifest by construction, so nothing else can tell it
+ * apart, and that is how it came to be written over the wall's own memory: a
+ * screen drew it, then saved it, and a reload had nothing left to fall back
+ * to. Drawing it is right. Remembering it is not — it is the one document the
+ * server sends that is explicitly not the household's data.
+ *
+ * Kept here rather than in the poll loop because there is no DOM in this
+ * package's tests, so a rule that lives in `main.ts` is a rule nothing can
+ * check.
+ */
+export function isStandInManifest(manifest: Manifest): boolean {
+  return manifest.notices.some((notice) => notice.code === STAND_IN_NOTICE);
+}
+
 export type FetchOutcome =
   /** New document. */
   | { readonly status: 'fresh'; readonly manifest: Manifest; readonly serverTime: number }

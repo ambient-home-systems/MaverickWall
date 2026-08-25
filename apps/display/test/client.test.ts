@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { createManifestClient, isRenderableManifest } from '../src/manifest.js';
+import { createManifestClient, isRenderableManifest, isStandInManifest } from '../src/manifest.js';
 import { createClock } from '../src/clock.js';
 import { mix, themeAt, themeTokens } from '../src/theme.js';
 
@@ -173,6 +173,39 @@ describe('polling', () => {
     expect(isRenderableManifest(MANIFEST)).toBe(true);
     expect(isRenderableManifest(null)).toBe(false);
     expect(isRenderableManifest('<html>')).toBe(false);
+  });
+
+  /*
+   * The stand-in is drawable and must never be remembered.
+   *
+   * `/d/manifest` answers with an empty but valid manifest when the server
+   * could not read its own database, carrying the reason as a notice so the
+   * wall draws that instead of a black screen. It passes every check above by
+   * construction — which is how it came to be written over the wall's own
+   * memory, leaving a reload with nothing at all to fall back to. `main.ts`
+   * skips the store for exactly this answer, and this is the rule it asks.
+   */
+  it("tells the stand-in manifest apart from a household's own", () => {
+    const standIn = {
+      ...MANIFEST,
+      days: [],
+      notices: [
+        { level: 'error', code: 'schema-degraded', message: 'The database could not be fully read.' },
+      ],
+    };
+    expect(isStandInManifest(standIn)).toBe(true);
+    // Still renderable — drawing it is the point; keeping it is not.
+    expect(isRenderableManifest(standIn)).toBe(true);
+
+    expect(isStandInManifest(MANIFEST)).toBe(false);
+    // And a real manifest that happens to carry some other complaint is the
+    // household's data and is kept: this is not "any error notice".
+    expect(
+      isStandInManifest({
+        ...MANIFEST,
+        notices: [{ level: 'error', code: 'source-failed', message: 'A calendar did not sync.' }],
+      }),
+    ).toBe(false);
   });
 });
 
