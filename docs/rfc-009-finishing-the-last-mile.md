@@ -290,7 +290,14 @@ CLI tool holding a lock actually raises).
 The display owns the other half: it now declines to *store* the stand-in, having
 previously saved it like any other `fresh` manifest and so spent the wall's last
 good calendar on the one poll that proves the server cannot supply a real one.
-Drawing it is the point of this section; remembering it never was. One further correction belongs to this
+Drawing it is the point of this section; remembering it never was. Nor does it
+*replace* a calendar already on screen — a wall that has one keeps it under the
+offline banner, and only a wall booted during the outage draws the empty
+document, which is the freshly-loaded screen this section is about. That screen
+is also why a failed poll with no manifest now renders a message rather than
+leaving the boot text up: `draw()` returns at its first line with no manifest,
+so "Waiting for the first update…" was all a household saw for as long as the
+fault lasted. One further correction belongs to this
 section rather than to the narrowing: the fallback token lookup answered **401**
 when it too could not read, and a display reads 401 as `unpaired` and draws the
 code-entry form — so a corrupt database put a pairing form on every screen in

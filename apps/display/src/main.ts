@@ -2,6 +2,7 @@ import { createClock } from './clock.js';
 import {
   createManifestClient,
   isStandInManifest,
+  shouldKeepHeld,
   type Manifest,
   type ManifestWidget,
   type CanvasBackground,
@@ -194,6 +195,17 @@ function start(): void {
     switch (outcome.status) {
       case 'fresh':
         clock.sync(outcome.serverTime);
+        if (shouldKeepHeld(manifest, outcome.manifest)) {
+          /*
+           * The server is answering, and answering with its stand-in. Keep the
+           * calendar rather than trading it for an empty document, and let the
+           * banner say the wall is not being kept up to date — `lastConfirmedAt`
+           * deliberately does not advance, so the age it reports keeps growing.
+           */
+          lastContactAt = Date.now();
+          offline = true;
+          break;
+        }
         manifest = outcome.manifest;
         lastConfirmedAt = clock.now();
         lastContactAt = Date.now();
@@ -232,6 +244,24 @@ function start(): void {
         // Deliberately keeps the last manifest. The banner will say how old it
         // is; the calendar is still the most useful thing on the wall.
         offline = true;
+        /*
+         * Except that a wall with no manifest at all has no banner either —
+         * `draw` returns at its first line — so it would sit on the boot
+         * message, "Waiting for the first update…", for as long as the fault
+         * lasted. That sentence is true for the first minute and a lie by the
+         * tenth, on the one screen with nothing else on it: a household
+         * looking at a wall that has never worked is owed the reason rule nine
+         * promises rather than a hopeful ellipsis. This is the shape of a
+         * screen booted during an outage — a server that is down, or one
+         * answering "not just now" because it cannot read its own database.
+         */
+        if (manifest === undefined) {
+          renderMessage(
+            root,
+            'Maverick Wall',
+            'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.',
+          );
+        }
         break;
     }
     // Through `safely`, like the tick does: a poll-driven draw gets the same

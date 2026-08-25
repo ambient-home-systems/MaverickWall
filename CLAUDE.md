@@ -1609,6 +1609,19 @@ is a rule nothing can check — and it is keyed on the `schema-degraded` notice
 rather than on "any error notice", since a real manifest complaining that one
 calendar failed to sync is still the household's data and is still worth keeping.
 
+**And not saving it was only half of that.** Nothing could reach the saved copy
+while the stand-in kept arriving and replacing what was on the glass, so a
+reload flashed the real calendar and dropped straight back to the empty one.
+The stand-in is a fallback rather than a replacement: a wall that has a calendar
+keeps it and lets the offline banner say it is not being kept up to date —
+`lastConfirmedAt` deliberately does not advance, so the age it reports keeps
+growing — and a wall booted *during* the outage has nothing better and draws the
+reason, which is the case 1.9 wrote it for. And that wall is why the `failed`
+branch now says something: with no manifest at all `draw` returns at its first
+line, so a screen sat on the boot message, "Waiting for the first update…", for
+as long as the fault lasted. True for the first minute, a lie by the tenth, on
+the one screen with nothing else on it.
+
 Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough
 failure took the fallback down too and the household got Hono's bare 500 — the

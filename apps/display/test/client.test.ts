@@ -1,6 +1,11 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { createManifestClient, isRenderableManifest, isStandInManifest } from '../src/manifest.js';
+import {
+  createManifestClient,
+  isRenderableManifest,
+  isStandInManifest,
+  shouldKeepHeld,
+} from '../src/manifest.js';
 import { createClock } from '../src/clock.js';
 import { mix, themeAt, themeTokens } from '../src/theme.js';
 
@@ -206,6 +211,33 @@ describe('polling', () => {
         notices: [{ level: 'error', code: 'source-failed', message: 'A calendar did not sync.' }],
       }),
     ).toBe(false);
+  });
+
+  /*
+   * And the stand-in is a fallback, not a replacement.
+   *
+   * Declining to *store* it was only half the fix: nothing could reach the
+   * stored copy while the stand-in kept arriving and replacing what was on the
+   * glass, so a reload flashed the real calendar and dropped straight back to
+   * the empty one. A wall that has a calendar keeps it; a wall booted during
+   * the outage has nothing better and draws the reason, which is the case RFC
+   * 009 1.9 wrote it for.
+   */
+  it('keeps a calendar it already has rather than trading it for the stand-in', () => {
+    const standIn = {
+      ...MANIFEST,
+      days: [],
+      notices: [
+        { level: 'error', code: 'schema-degraded', message: 'The database could not be fully read.' },
+      ],
+    };
+
+    expect(shouldKeepHeld(MANIFEST, standIn), 'a wall with a calendar keeps it').toBe(true);
+    expect(shouldKeepHeld(undefined, standIn), 'a wall with nothing draws the reason').toBe(false);
+    expect(shouldKeepHeld(MANIFEST, MANIFEST), 'an ordinary update is never held off').toBe(false);
+    // And a wall already showing the stand-in takes the next one, or it would
+    // pin the very first empty document it saw for the life of the page.
+    expect(shouldKeepHeld(standIn, standIn)).toBe(false);
   });
 });
 

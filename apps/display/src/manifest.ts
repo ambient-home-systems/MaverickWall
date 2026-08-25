@@ -243,6 +243,26 @@ export function isStandInManifest(manifest: Manifest): boolean {
   return manifest.notices.some((notice) => notice.code === STAND_IN_NOTICE);
 }
 
+/**
+ * A stand-in is a fallback, not a replacement.
+ *
+ * The server sends it when it cannot read its own database, and the wall's
+ * answer should depend on what it already has. With nothing — a screen booted
+ * during the outage — drawing it is the entire point of RFC 009 1.9: an empty
+ * calendar with the reason on it beats a black screen. With a real calendar
+ * already on the glass, replacing it with an empty one throws away the more
+ * useful half of the wall to gain a sentence; the offline banner already says
+ * the wall is not being kept up to date, and yesterday's calendar is still
+ * mostly true. Not saving the stand-in was only half of that — nothing could
+ * reach the saved copy while the stand-in kept arriving and overwriting what
+ * was on screen, so a reload flashed the real calendar and dropped straight
+ * back to the empty one.
+ */
+export function shouldKeepHeld(held: Manifest | undefined, incoming: Manifest): boolean {
+  if (held === undefined) return false;
+  return isStandInManifest(incoming) && !isStandInManifest(held);
+}
+
 export type FetchOutcome =
   /** New document. */
   | { readonly status: 'fresh'; readonly manifest: Manifest; readonly serverTime: number }
