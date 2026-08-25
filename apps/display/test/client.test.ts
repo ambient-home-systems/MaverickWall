@@ -263,6 +263,25 @@ describe('polling', () => {
     expect(shouldAdoptStored(standIn), 'the race this exists for').toBe(true);
     expect(shouldAdoptStored(MANIFEST), 'never over a real one the server just sent').toBe(false);
   });
+
+  /*
+   * And one of these reads a document nothing has shape-checked.
+   *
+   * `store.load()` hands back whatever IndexedDB holds, which on a wall that
+   * has been hanging for months may have been written by an older bundle.
+   * Reading `.some` off a missing `notices` would throw *inside the poll* —
+   * and a poll, unlike a draw, is not wrapped in `safely`, so the wall would
+   * stop updating for good over a field that is merely absent.
+   */
+  it('does not throw on a stored document that predates the notices field', () => {
+    const legacy = { ...MANIFEST } as Record<string, unknown>;
+    delete legacy['notices'];
+
+    expect(() => isStandInManifest(legacy as never)).not.toThrow();
+    expect(isStandInManifest(legacy as never)).toBe(false);
+    expect(shouldKeepHeld(legacy as never, MANIFEST)).toBe(false);
+    expect(shouldAdoptStored(legacy as never)).toBe(false);
+  });
 });
 
 describe('the clock', () => {

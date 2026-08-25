@@ -1633,7 +1633,21 @@ slow tablet an empty document beat the household's real cached calendar to the
 screen and then stuck, because the held manifest was itself a stand-in and
 nothing would displace it. Both are one predicate each, and both are the same
 lesson as the rest of this paragraph: the state a rule reads is rarely only the
-one it names.
+one it names — which the *stored* read then proved a third time, drawing a
+cached calendar over the pairing form when the first 401 won that race.
+
+**And a rule that reads the store reads a document nothing has shape-checked.**
+`store.load()` hands back whatever IndexedDB holds, which on a wall that has
+been hanging for months may have been written by an older bundle — so
+`isStandInManifest` is tolerant of a missing `notices`, because reading `.some`
+off it would throw *inside the poll*. A draw is wrapped in `safely` and a poll
+is not, so the wall would have stopped updating for good over a field that is
+merely absent. The message on an empty wall also sets `lastDrawAt`, since it is
+a draw: without it the watchdog read that screen as a stopped renderer and
+reloaded it every ninety seconds for as long as the fault lasted, where the
+renderer was fine and the two-hour contact-silence limit is the one meant for a
+server that is not — a distinction `watchdog.ts` states and the no-manifest path
+was quietly ignoring.
 
 Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough

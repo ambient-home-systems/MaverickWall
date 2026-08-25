@@ -270,6 +270,17 @@ function start(): void {
             'Maverick Wall',
             'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.',
           );
+          /*
+           * That was a draw, and saying so is what keeps the watchdog off it.
+           * `lastDrawAt` only advances inside `draw`, which returns at its
+           * first line with no manifest — so a wall in this state read as a
+           * stopped renderer and reloaded every ninety seconds for as long as
+           * the fault lasted (`reloads` is per page load, so `maxReloads`
+           * never bites). The renderer is fine; it is the server that is not,
+           * and that is what the two-hour contact-silence limit is for — which
+           * is exactly the distinction `watchdog.ts` says it draws.
+           */
+          lastDrawAt = Date.now();
         }
         break;
     }
@@ -508,7 +519,10 @@ function start(): void {
     // `shouldAdoptStored` rather than "nothing yet": the poll is not waited for,
     // so on a slow tablet the server can answer first — and an empty stand-in
     // must not beat the household's real calendar to the screen.
-    if (stored !== undefined && shouldAdoptStored(manifest)) {
+    // `!pairingShown` for the same reason the message below the poll has it:
+    // the 401 can win this race, and drawing a calendar over the code-entry
+    // form would take the form away for good.
+    if (stored !== undefined && !pairingShown && shouldAdoptStored(manifest)) {
       manifest = stored.manifest;
       lastConfirmedAt = stored.confirmedAt;
       offline = true;

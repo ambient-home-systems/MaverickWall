@@ -240,7 +240,18 @@ const STAND_IN_NOTICE = 'schema-degraded';
  * check.
  */
 export function isStandInManifest(manifest: Manifest): boolean {
-  return manifest.notices.some((notice) => notice.code === STAND_IN_NOTICE);
+  /*
+   * Tolerant of a document with no `notices` at all, because one caller passes
+   * the copy read out of IndexedDB, which `store.load()` deliberately does not
+   * shape-check — a manifest written by an older bundle is a real possibility
+   * on a wall that has been hanging for months. Reading `.some` off `undefined`
+   * there would throw *inside the poll*, which is a far worse failure than the
+   * one this whole file is about: `draw` is wrapped in `safely` and a poll is
+   * not, so the wall would stop updating for good.
+   */
+  const notices = manifest.notices as readonly ManifestNotice[] | undefined;
+  if (!Array.isArray(notices)) return false;
+  return notices.some((notice) => notice?.code === STAND_IN_NOTICE);
 }
 
 /**

@@ -189,14 +189,15 @@ function dbWithFailingQuery(db: SqliteDatabase, matches: RegExp, error: unknown)
  * The same installation, with a clock that throws from a chosen call onwards.
  *
  * A stand-in for "something in the build threw that is not the database",
- * which is a class rather than a specific bug: every `JSON.parse` on this path
- * is already guarded and an unknown timezone already falls back, so there is
- * no *current* way to induce one — and that is exactly why the catch-all
- * around the build is worth narrowing before there is. `now` is injected
- * because it is the one seam `createApp` already offers into that code; what
- * is under test is what the route does with the exception, not where it came
- * from. A plain `Error` is the point of it: it carries no SQLite code, so the
- * route must read it as ours.
+ * which is a class rather than a specific bug — and it is a *reachable* class,
+ * so the clock here stands in for something real rather than for a
+ * hypothetical. `formatterFor` in `packages/calendar` has no try/catch and
+ * `readHousehold` returns the stored zone unvalidated, so a backup restored
+ * onto a host with older ICU throws a code-less `RangeError` from inside the
+ * build. `now` is injected because it is the one seam `createApp` already
+ * offers into that code; what is under test is what the route does with the
+ * exception, not where it came from. A plain `Error` is the point of it: it
+ * carries no SQLite code, so the route must read it as ours.
  *
  * `failOnCall` picks which failure this is, and the numbers are measured
  * rather than guessed. A healthy request makes exactly two `now()` calls and
