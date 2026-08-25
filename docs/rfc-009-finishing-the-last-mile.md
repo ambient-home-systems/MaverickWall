@@ -534,6 +534,15 @@ and retire every NWS alert zone, un-arming every weather rule — so an empty
 pair saves only while nothing depends on it (the fresh install the deadlock fix
 is for) and otherwise says what it would cost.
 
+And a seventh caught the echo being applied where it does not belong. **An echo
+is the right answer for a text field and the wrong one for a closed list**: a
+rejected timezone reaches that branch *because* it is not in
+`offeredTimezones()`, so echoing it selects nothing and the browser preselects
+whatever sorts first — `Africa/Abidjan`, with a live Save over it, one press
+from silently moving the household to west Africa. That is `setup.ts`'s
+`detectedTimezoneOption` rule ("never 'nothing'") on a second screen. The
+select keeps the stored zone, and the form is then honestly clean.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

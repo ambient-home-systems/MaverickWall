@@ -1084,13 +1084,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       }),
       body['timezone'],
     );
-    if (!shaped.ok) {
-      const typed = body['timezone'];
-      return c.html(
-        systemPage(c, shaped.message, typeof typed === 'string' ? typed : ''),
-        400,
-      );
-    }
+    if (!shaped.ok) return c.html(systemPage(c, shaped.message), 400);
     deps.db
       .prepare(`UPDATE household_settings SET timezone = ?, updated_at = ? WHERE id = 'singleton'`)
       .run(shaped.value, now());
@@ -2810,20 +2804,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
-  function systemPage(
-    c: Context,
-    error?: string,
-    /**
-     * The timezone the household chose, when a save of it came back at 400.
-     *
-     * Rebuilding the select from the stored row would discard their choice and
-     * boot the form clean — Save disabled and Cancel hidden on the one page
-     * where pressing Save again is the point. Same class as the Weather and
-     * Calendars echoes; unreachable from the form itself, since the select can
-     * only send an option it was given, and reachable from a stale page.
-     */
-    echoTimezone?: string,
-  ): string {
+  function systemPage(c: Context, error?: string): string {
     const household = readHousehold(deps.db);
     const at = now();
     const integrity = integrityCheck(deps.db);
@@ -2877,7 +2858,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add">Timezone</h2>` +
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
         `anchored to this. A screen somewhere else can override it on its own card.</p>` +
-        `<form method="post" action="admin/system/timezone"${dirtyForm(echoTimezone !== undefined)}>` +
+        /*
+         * No echo here, deliberately — unlike Weather and Calendars.
+         *
+         * A rejected timezone reaches that branch *because* it is not in
+         * `offeredTimezones()`, so echoing it selects nothing and the browser
+         * preselects whatever sorts first: `Africa/Abidjan`, with Save live
+         * over it. That is `setup.ts`'s `detectedTimezoneOption` rule
+         * ("never 'nothing' … rather than leaving the select to preselect
+         * whatever sorts first") and it is worth restating, because an echo is
+         * the right answer for a text field and the wrong one for a closed
+         * list: there is nothing to hand back that the control can show. The
+         * stored zone stays selected, so the form is honestly clean and the
+         * message says to choose from the list.
+         */
+        `<form method="post" action="admin/system/timezone"${dirtyForm()}>` +
         selectField({
           label: 'Household timezone',
           name: 'timezone',
@@ -2885,8 +2880,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             .map(
               (zone) =>
                 `<option value="${escapeHtml(zone)}"` +
-                `${zone === (echoTimezone ?? household.timezone) ? ' selected' : ''}>` +
-                `${escapeHtml(zone)}</option>`,
+                `${zone === household.timezone ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
             )
             .join(''),
         }) +

@@ -495,12 +495,15 @@ describe('the update check setting', () => {
     expect(readUpdateState(h.db).lastCheckedAt).toBeNull();
   });
 
-  it('hands the timezone form back live when it refuses a choice', async () => {
+  it('keeps the stored zone selected when it refuses a choice', async () => {
     /*
-     * Rebuilding the select from the stored row would discard the choice *and*
-     * boot the form clean — Save disabled, Cancel hidden — on the one page
-     * where pressing Save again is the point. Same class as the Weather and
-     * Calendars echoes.
+     * A closed list is not a text field, and echoing a rejected value back into
+     * one is worse than not echoing at all: the value reaches that branch
+     * *because* it is not offered, so nothing is `selected` and the browser
+     * preselects whatever sorts first — `Africa/Abidjan` — with a live Save
+     * over it. One press and the household's timezone is silently somewhere in
+     * west Africa. `setup.ts`'s `detectedTimezoneOption` already says never
+     * "nothing"; this is the same rule on the other screen.
      */
     const h = await signedIn(harness());
     const refused = await h.call('/admin/system/timezone', {
@@ -511,9 +514,14 @@ describe('the update check setting', () => {
     expect(refused.status).toBe(400);
     const html = await refused.text();
     expect(html).toContain('Choose a timezone from the list');
-    expect(html, 'and the form knows it is holding something unsaved').toContain(
-      'data-dirty="dirty"',
-    );
+
+    const selected = [...html.matchAll(/<option value="([^"]+)" selected>/g)].map((m) => m[1]);
+    expect(selected, 'exactly one zone selected, and it is the stored one').toEqual([
+      'Europe/London',
+    ]);
+    // And the form is honestly clean: the select shows what is stored, so there
+    // is nothing unsaved and Save says so.
+    expect(html).not.toContain('data-dirty="dirty"');
   });
 
   it('does not draw a green "checked" strip over a red "check failed"', async () => {
