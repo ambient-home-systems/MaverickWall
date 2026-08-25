@@ -170,6 +170,40 @@ describe('the Weather form marker', () => {
     expect(nextRun(), 'changing the units must not reset the job’s backoff').toBe(9999999999);
   });
 
+  /**
+   * Blank is "not set yet", not a way to delete a location by accident.
+   *
+   * `writeWeatherSettings` treats a move as a move: clearing the coordinates
+   * retires every NWS alert zone, which un-arms every weather rule. "Weather
+   * settings saved." would be the strip's word for a household's tornado
+   * warnings going quiet.
+   */
+  it('refuses to clear a stored location while anything still depends on it', async () => {
+    const h = await harness();
+    const save = (fields: Record<string, string>): Promise<Response> =>
+      h.form('/admin/weather', {
+        weather_form: '1', weather_provider: 'nws', weather_units: 'imperial', ...fields,
+      });
+
+    expect((await save({ weather_enabled: '1', latitude: '51.5', longitude: '-0.1' })).status).toBe(302);
+
+    const cleared = await save({ weather_enabled: '1' });
+    expect(cleared.status).toBe(400);
+    expect(await cleared.text()).toContain('That would clear the location');
+    expect(
+      (h.db.prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`).get() as
+        { latitude: number | null }).latitude,
+      'the location is still there',
+    ).toBe(51.5);
+
+    // With both switches off there is nothing left to depend on it, so it goes.
+    expect((await save({})).status).toBe(302);
+    expect(
+      (h.db.prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`).get() as
+        { latitude: number | null }).latitude,
+    ).toBe(null);
+  });
+
   it('accepts the same body once it carries the marker', async () => {
     const h = await harness();
     const saved = await h.form('/admin/weather', {

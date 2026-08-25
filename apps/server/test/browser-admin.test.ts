@@ -438,17 +438,17 @@ describe('a settings form', () => {
   );
 
   /**
-   * The guard is disarmed for one navigation, not for good.
+   * Pressing Save is not "leaving without saving".
    *
-   * The System screen carries two of these forms. Saving one used to latch its
-   * own `navigating` flag; the other's guard then prompted, and answering
-   * "Stay" cancelled the navigation — leaving the first form dirty on screen
-   * with its guard dead for the rest of the page's life. So: dirty both, save
-   * one, stay, then try to leave, and the first form's edit must still be
-   * defended.
+   * The System screen carries two of these forms, and a per-form guard made
+   * saving one raise the *other* one's prompt: the household presses Save, is
+   * asked whether they meant it, and answering "Stay" cancels the save. One
+   * guard for the document, asking every form, is what fixes it — and the cost
+   * is what HTML does anyway, since saving one form has always discarded edits
+   * typed into the other.
    */
   it(
-    'still guards a form whose save was cancelled by the other form on the page',
+    'does not ask about the other form on the page when one is deliberately saved',
     async () => {
       const { page, home } = await signedIn();
       await page.goto(`${home.base}/admin/system`, { waitUntil: 'load' });
@@ -456,31 +456,51 @@ describe('a settings form', () => {
       await page.selectOption('select[name="timezone"]', 'Europe/Paris');
       await page.check('input[name="update_check_enabled"]');
 
-      // Save the update-check form. The timezone form's guard prompts; stay.
       let prompts = 0;
       page.on('dialog', (dialog) => {
         prompts++;
         void dialog.dismiss();
       });
-      await page.locator('form[action="admin/system/updates"] [data-dirty-save]').click();
-      await page.waitForTimeout(1500);
-      expect(prompts, 'the timezone form had an unsaved edit to defend').toBe(1);
-      expect(new URL(page.url()).pathname, 'and we stayed').toBe('/admin/system');
+      await Promise.all([
+        page.waitForNavigation({ timeout: 20_000 }),
+        page.locator('form[action="admin/system/updates"] [data-dirty-save]').click(),
+      ]);
 
-      /*
-       * Now save the *other* one. The update-check form is still dirty and was
-       * never saved, so it is its turn to object — and it cannot, if its flag
-       * latched on the attempt that was cancelled. Asserted on the URL rather
-       * than on the count, because a prompt count cannot tell the two forms
-       * apart: without the reset the save simply goes through.
-       */
-      await page.locator('form[action="admin/system/timezone"] [data-dirty-save]').click();
+      expect(prompts, 'a deliberate Save was second-guessed by a sibling form').toBe(0);
+      expect(new URL(page.url()).search).toBe('?saved=update-check');
+      expect(await page.locator('.saved-text').textContent()).toBe('Update check setting saved.');
+    },
+    SLOW,
+  );
+
+  /**
+   * And the guard is disarmed for one navigation, not for good.
+   *
+   * `navigating` was set by a submit and cleared by nothing, so any navigation
+   * that did not go ahead left the guard dead for the rest of the page's life.
+   * Answering "Stay" to a link must leave it armed for the next one.
+   */
+  it(
+    'asks again after a leave that was refused',
+    async () => {
+      const { page, home } = await signedIn();
+      await page.goto(`${home.base}/admin/system`, { waitUntil: 'load' });
+      await page.selectOption('select[name="timezone"]', 'Europe/Paris');
+
+      let prompts = 0;
+      page.on('dialog', (dialog) => {
+        prompts++;
+        void dialog.dismiss();
+      });
+
+      await page.click('a[href*="admin/calendars"]');
       await page.waitForTimeout(1500);
-      expect(prompts, 'the cancelled save left the update-check guard dead').toBe(2);
-      expect(
-        new URL(page.url()).search,
-        'the timezone save went through over an unsaved update-check edit',
-      ).toBe('');
+      expect(prompts).toBe(1);
+
+      await page.click('a[href*="admin/calendars"]');
+      await page.waitForTimeout(1500);
+      expect(prompts, 'the guard was disarmed for good by a refused leave').toBe(2);
+      expect(new URL(page.url()).pathname).toBe('/admin/system');
     },
     SLOW,
   );

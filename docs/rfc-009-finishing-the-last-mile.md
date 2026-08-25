@@ -523,6 +523,17 @@ on the transition to on, which throws away the job's failure backoff — so
 changing the units would hammer `api.weather.gov` while it was having a bad
 morning.
 
+A sixth found the last two, and both are about a guard or a claim being too
+narrow. **The leave guard is one listener for the document**, asking every
+form, rather than one each: with a listener each, pressing Save on one of the
+System screen's two forms raised the other one's "Changes you made may not be
+saved", and answering "Stay" cancelled the save. Pressing Save is not leaving
+without saving. And **blank coordinates are "not set yet", not a delete**:
+clearing a *stored* location makes `writeWeatherSettings` treat it as a move
+and retire every NWS alert zone, un-arming every weather rule — so an empty
+pair saves only while nothing depends on it (the fresh install the deadlock fix
+is for) and otherwise says what it would cost.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

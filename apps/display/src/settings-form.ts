@@ -64,6 +64,29 @@ function partsOf(form: HTMLFormElement): Parts {
   };
 }
 
+/**
+ * Whether the page is leaving on purpose — one flag for the whole document, not
+ * one per form.
+ *
+ * The System screen carries two of these forms, and a per-form flag made
+ * pressing Save on one raise the *other* one's "Changes you made may not be
+ * saved" prompt: the household presses Save, is asked whether they meant it,
+ * and answering "Stay" cancels the save. Pressing Save is not leaving without
+ * saving, so it must not be second-guessed by a sibling form. The cost is
+ * honest and is what HTML does anyway — two forms on a page are two
+ * submissions, and saving one has always discarded edits typed into the other
+ * (with script off it still does, silently). The strip then says which one
+ * saved.
+ *
+ * Set only by a submit and by Cancel — deliberately not by a document-level
+ * link or click listener, which is the shape that let one stray click on a nav
+ * link disarm the editor's guard for good (RFC 009, 1.7).
+ */
+let navigating = false;
+
+/** Every wired form, for the one guard below to ask. */
+const wired: { isDirty(): boolean }[] = [];
+
 function wire(form: HTMLFormElement): void {
   const parts = partsOf(form);
   // Nothing to enhance: a form marked dirty-aware with no Save is a markup
@@ -79,15 +102,6 @@ function wire(form: HTMLFormElement): void {
    * Save they cannot press.
    */
   let dirty = form.dataset['dirty'] === 'dirty';
-  /*
-   * True while we are intentionally leaving, so the beforeunload guard does not
-   * second-guess a deliberate action. Set only by the submit and the Cancel
-   * below — deliberately not by a document-level link or click listener, which
-   * is the shape that let one stray click on a nav link disarm the editor's
-   * guard for good (RFC 009, 1.7). A control that leaves on purpose sets this
-   * itself; an unset one is refused by the guard, which is the safe direction.
-   */
-  let navigating = false;
 
   const refresh = (): void => {
     for (const save of parts.saves) save.disabled = !dirty;
@@ -135,26 +149,7 @@ function wire(form: HTMLFormElement): void {
     });
   }
 
-  window.addEventListener('beforeunload', (event) => {
-    if (!dirty || navigating) {
-      /*
-       * Disarmed for one navigation, not for good.
-       *
-       * `navigating` used to latch: a page can carry two of these forms (the
-       * System screen carries two), and saving one sets *its* flag while the
-       * other's guard still prompts. Answer "Stay" and the navigation is
-       * cancelled — leaving the first form dirty on screen with its guard dead
-       * for the rest of the page's life. Clearing it here is the natural place:
-       * if the navigation goes ahead the document is gone and the flag never
-       * mattered, and if anything cancels it the guard is armed again.
-       */
-      navigating = false;
-      return;
-    }
-    event.preventDefault();
-    event.returnValue = '';
-  });
-
+  wired.push({ isDirty: () => dirty });
   refresh();
 }
 
@@ -164,6 +159,34 @@ function boot(): void {
     const form = forms[index];
     if (form !== undefined) wire(form);
   }
+  if (wired.length === 0) return;
+
+  /*
+   * One guard for the document, asking every form.
+   *
+   * Registered once rather than per form, which is what makes the shared
+   * `navigating` flag work: with a listener each, the first to run would clear
+   * the flag and the second would then see a false one and prompt on a
+   * deliberate save.
+   */
+  window.addEventListener('beforeunload', (event) => {
+    if (navigating) {
+      /*
+       * Disarmed for one navigation, not for good.
+       *
+       * `navigating` used to latch — set by a submit and cleared by nothing —
+       * so a navigation that was cancelled left the guard dead for the rest of
+       * the page's life. Clearing it here is the natural place: if the
+       * navigation goes ahead the document is gone and the flag never mattered,
+       * and if anything cancels it the guard is armed again.
+       */
+      navigating = false;
+      return;
+    }
+    if (!wired.some((form) => form.isDirty())) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 }
 
 if (document.readyState === 'loading') {

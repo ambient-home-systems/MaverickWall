@@ -261,6 +261,29 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         400,
       );
     }
+    /*
+     * Blank is "not set yet" — it is not a way to delete one by accident.
+     *
+     * Clearing a stored location is not a small edit: `writeWeatherSettings`
+     * treats a move as a move and retires every NWS alert zone, which un-arms
+     * every weather rule. "Weather settings saved." would be the strip's word
+     * for the household's tornado warnings going quiet. So an empty pair is
+     * saved only while nothing depends on it — which is exactly the fresh
+     * install the deadlock fix above is for — and otherwise says what it would
+     * cost and how to mean it.
+     */
+    if (blank && hasWeatherLocation(deps.db) && (shaped.value.weather_enabled || shaped.value.alerts_enabled)) {
+      return c.html(
+        alertsPage(
+          c,
+          'That would clear the location this household already has, and both the forecast ' +
+            'and the weather alerts are worked out from it. Type a new location, or turn ' +
+            'both of them off first.',
+          echo,
+        ),
+        400,
+      );
+    }
 
     writeAll({
       weatherEnabled: shaped.value.weather_enabled,

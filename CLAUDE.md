@@ -1827,7 +1827,12 @@ also latched**, and only a page with two settings forms shows it: on System
 answering "Stay" cancelled the navigation and left the first form's guard dead
 for the life of the page. It is cleared inside `beforeunload` — disarmed for
 one navigation rather than for good — and its test asserts on the **URL**
-rather than on a prompt count, because a count cannot tell two forms apart.
+rather than on a prompt count, because a count cannot tell two forms apart. And
+the guard itself is **one listener for the document, asking every form**, not
+one each: with a listener each, pressing Save on the timezone form raised the
+update-check form's "Changes you made may not be saved" — the household presses
+Save, is asked whether they meant it, and "Stay" cancels the save. Pressing Save
+is not leaving without saving.
 
 **And a fourth review found three places where the strip simply lied**, which
 is the failure this phase is about rather than a detail of it: "Syncing now"
