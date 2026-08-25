@@ -4308,7 +4308,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const shown = {
       name: echo?.name ?? source.name,
       color: echo?.color ?? source.color,
-      personId: echo === undefined ? source.personId : echo.personId === '' ? null : echo.personId,
+      /*
+       * Only a person who exists, so the closed list always has one option
+       * selected. The 400 this echo is for is "That person is no longer
+       * there." — the very case where the posted id matches no option, which
+       * would leave the browser to preselect the first ("Everyone") on a row
+       * with a live Save. Falling back to `null` selects Everyone *deliberately*,
+       * which is also what the next Save would store. Same rule as the timezone
+       * and the two weather selects.
+       */
+      personId:
+        echo === undefined
+          ? source.personId
+          : people.some((person) => person.id === echo.personId)
+            ? echo.personId
+            : null,
       enabled: echo?.enabled ?? source.enabled === 1,
       allowLan: echo?.allowLan ?? source.allowPrivateNetwork === 1,
     };

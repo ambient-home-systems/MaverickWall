@@ -521,6 +521,49 @@ describe('a settings form', () => {
   );
 
   /**
+   * A download must not disarm the guard for good — and it does not, for a
+   * reason worth writing down rather than defending against.
+   *
+   * A review read the guard as latching here: a response served as an
+   * attachment navigates but never *unloads* the document, so `beforeunload`
+   * would never fire and a flag disarmed on submit would stay disarmed for the
+   * rest of the page's life. System carries three downloads beside two settings
+   * forms, so it is exactly the shape that would matter.
+   *
+   * Measured, it is not what happens. `beforeunload` fires when the navigation
+   * *starts* — the browser cannot know it is a download until the response
+   * headers arrive — so the guard re-arms on the way past, and the download
+   * also stops prompting, which it did before the submit listener existed. A
+   * `data-download` marker was built for this and then deleted: machinery for a
+   * fault the browser does not have. This is the test that settled it, kept
+   * because the property is real and nothing else pins it.
+   */
+  it(
+    'still guards an unsaved edit after a download',
+    async () => {
+      const { page, home } = await signedIn();
+      await page.goto(`${home.base}/admin/system`, { waitUntil: 'load' });
+      await page.selectOption('select[name="timezone"]', 'Europe/Paris');
+
+      const download = page.waitForEvent('download', { timeout: 20_000 });
+      await page.locator('form[action="admin/system/diagnostics"] button').click();
+      await (await download).cancel().catch(() => undefined);
+
+      let prompts = 0;
+      page.on('dialog', (dialog) => {
+        prompts++;
+        void dialog.dismiss();
+      });
+      await page.click('a[href*="admin/calendars"]');
+      await page.waitForTimeout(1500);
+
+      expect(prompts, 'the download left the guard disarmed').toBe(1);
+      expect(new URL(page.url()).pathname).toBe('/admin/system');
+    },
+    SLOW,
+  );
+
+  /**
    * And the guard is disarmed for one navigation, not for good.
    *
    * `navigating` was set by a submit and cleared by nothing, so any navigation

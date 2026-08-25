@@ -723,6 +723,33 @@ describe('testing a feed before saving it', () => {
     expect(row.color).not.toBe('#123456');
   });
 
+  it('never hands a row back with nobody selected in "Belongs to"', async () => {
+    /*
+     * The 400 this echo is for is "That person is no longer there." — the very
+     * case where the posted id matches no option. Echoed raw, the select comes
+     * back with nothing selected and the browser preselects the first
+     * ("Everyone") on a row whose Save is live. Same closed-list rule as the
+     * timezone and the two weather selects.
+     */
+    const h = await harness();
+    await h.addFeed('Family');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+
+    const refused = await h.form(`/admin/calendars/${id}/settings`, {
+      name: 'Family', color: '#123456', person_id: 'person-who-left', enabled: '1',
+    });
+    expect(refused.status).toBe(400);
+    const html = await refused.text();
+    expect(html).toContain('no longer there');
+
+    const row = /<select[^>]*name="person_id"[\s\S]*?<\/select>/.exec(html)?.[0] ?? '';
+    expect(row, 'the picker is on the page').not.toBe('');
+    expect(
+      [...row.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1]),
+      'exactly one selected, and it is what the next Save would store',
+    ).toEqual(['']);
+  });
+
   it('does not offer Sync now on a calendar whose sync is off', async () => {
     /*
      * `ics-sync` skips a source whose switch is off, so the button would report

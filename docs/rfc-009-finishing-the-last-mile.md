@@ -557,6 +557,15 @@ lists — the timezone defect above, latent, since only a body that is not this
 form can carry a value that is not an option. Both selects now show what a save
 would store.
 
+A ninth reported a third: the submit listener would latch on a *download*,
+since a response served as an attachment navigates without unloading. **It does
+not**, and the reason is worth more than the fix would have been: `beforeunload`
+fires when the navigation *starts*, before the response headers can say
+`Content-Disposition`, so the guard re-arms on the way past — and the download
+also stops prompting, which it did before the listener existed. A
+`data-download` marker was built and then deleted. `browser-admin.test.ts` keeps
+the measurement, because the property is real and nothing else pinned it.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
