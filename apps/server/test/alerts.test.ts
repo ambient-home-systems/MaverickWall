@@ -571,10 +571,18 @@ describe('the polling job, against a real server', () => {
     const before = readWeatherSettings(db);
     writeWeatherSettings(db, { ...before, latitude: 47.6, longitude: -122.3 });
 
+    // Nothing to poll and nothing armed…
     expect(readZones(db)).toEqual([]);
-    expect(knownAlerts(db, 'MDC027')).toEqual([]);
-    // And the ladder is not armed against nowhere while the next poll runs.
     expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
+    /*
+     * …but the warning is still on disk, and that is deliberate. "Use my Home
+     * Assistant home location" on a box whose zone.home is still the shipped
+     * default fills in Amsterdam; deleting would take a live tornado warning
+     * with it before anything knew a replacement was obtainable. The rows are
+     * retired, so they cost what they should — no poll, no armed rule — and
+     * nothing more.
+     */
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
     /*
      * Which is why the poll is brought forward rather than left to its
      * schedule: the un-armed gap is a gap in the one feature with a life-safety
@@ -586,11 +594,23 @@ describe('the polling job, against a real server', () => {
       db.prepare(`SELECT next_run_at AS at FROM job_state WHERE kind = 'alerts-sync'`).get(),
     ).toEqual({ at: 0 });
 
-    // Saving the same coordinates again is not a move, so a household who
-    // presses Save on an unchanged form does not lose the zones they have.
+    /*
+     * And the misclick, corrected. The same codes resolve again, so this is the
+     * upsert path rather than the insert one — the row is already there and
+     * disabled, and it has to come back enabled or the household would be left
+     * with zones nothing ever polls and a ladder that never arms again.
+     */
+    writeWeatherSettings(db, { ...before, latitude: 39.2, longitude: -76.8 });
     await job(db, nws)(record);
     const settled = readZones(db).map((zone) => zone.code).sort();
     expect(settled.length).toBeGreaterThan(0);
+    expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled).length)
+      .toBeGreaterThan(0);
+    // And the warning that was never deleted is still there.
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+
+    // Saving the same coordinates again is not a move, so a household who
+    // presses Save on an unchanged form does not lose the zones they have.
     writeWeatherSettings(db, readWeatherSettings(db));
     expect(readZones(db).map((zone) => zone.code).sort()).toEqual(settled);
 

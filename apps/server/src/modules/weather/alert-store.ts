@@ -24,6 +24,13 @@ export function replaceZones(db: SqliteDatabase, zones: Zones): void {
      * row would keep polling it for ever, and an alert for somewhere else is
      * worse than no alert: it is wrong and looks right.
      */
+    /*
+     * `enabled = 1` on the upsert too, not just on the insert. A move retires
+     * the rows rather than deleting them (see `writeWeatherSettings`), so a
+     * household who corrects a coordinate back to where they started resolves
+     * the *same* codes — and without this they would be upserted still
+     * disabled, never polled again, and no rule armed for ever.
+     */
     const keep: string[] = [];
     for (const [code, kind] of [
       [zones.forecast, 'forecast'],
@@ -34,7 +41,8 @@ export function replaceZones(db: SqliteDatabase, zones: Zones): void {
       db.prepare(
         `INSERT INTO alert_zones (id, code, label, provider, enabled, kind, created_at, updated_at)
          VALUES (?, ?, ?, 'nws', 1, ?, ?, ?)
-         ON CONFLICT(code) DO UPDATE SET kind = excluded.kind, updated_at = excluded.updated_at`,
+         ON CONFLICT(code) DO UPDATE SET kind = excluded.kind, enabled = 1,
+           updated_at = excluded.updated_at`,
       ).run(`zone-${code}`, code, code, kind, at, at);
     }
 

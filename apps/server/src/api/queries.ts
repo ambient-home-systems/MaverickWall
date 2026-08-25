@@ -1131,10 +1131,16 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
    * since a watched zone is now what arms the ladder (RFC 009 Phase 2), every
    * screen would have reported that as working.
    *
-   * `replaceZones` already says this about the rows *it* replaces; the case it
-   * cannot reach is the one where nothing re-resolves at all. Dropping them
-   * here is what makes the next poll ask again, and the alerts go with the
-   * zones because an alert for somewhere else is worse than no alert.
+   * Retired, not deleted, and the difference is the whole care here. "Use my
+   * Home Assistant home location" on a box whose `zone.home` is still Home
+   * Assistant's shipped default fills in Amsterdam — an ordinary misclick, and
+   * a delete would take the household's real zones *and any warning in force*
+   * with it before anything knows a replacement is obtainable. Disabling them
+   * costs the same thing where it should (they are not polled and, per
+   * `watchesAlertZones`, they arm nothing) and costs nothing where it should
+   * not: `/points` resolving the corrected location swaps them back, alerts
+   * intact, and `replaceZones` deletes the ones that are genuinely wrong along
+   * with their alerts — which it already did, atomically, on an answer it had.
    */
   const moved =
     previous.latitude !== settings.latitude || previous.longitude !== settings.longitude;
@@ -1156,12 +1162,13 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
 
     if (invalidated) db.prepare('DELETE FROM weather_cache').run();
     if (moved) {
-      db.prepare(`DELETE FROM alert_zones WHERE provider = 'nws'`).run();
-      db.prepare('DELETE FROM active_alerts').run();
+      db.prepare(
+        `UPDATE alert_zones SET enabled = 0, updated_at = ? WHERE provider = 'nws'`,
+      ).run(Date.now());
       /*
        * And asked for again at once, not at the next scheduled poll.
        *
-       * Clearing the zones un-arms every weather rule until one comes back, so
+       * Retiring the zones un-arms every weather rule until one comes back, so
        * the gap between the two is a gap in the one feature with a life-safety
        * disclaimer on it — and under the job's backoff that gap can be half an
        * hour. A household correcting a coordinate, or pressing "Use my Home

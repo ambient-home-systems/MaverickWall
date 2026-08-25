@@ -202,8 +202,12 @@ export function hasWeatherLocation(db: SqliteDatabase): boolean {
  * to end. A location is only the commonest reason there are no zones.
  */
 export function watchesAlertZones(db: SqliteDatabase): boolean {
+  // `enabled = 1`, exactly as the poller's own `readZones` selects: a zone
+  // retired because the household moved is not polled, so a rule armed against
+  // it would be armed against a code nothing is asking about. Two readers of
+  // one table inside the change whose whole point is removing those.
   const row = db
-    .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
+    .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws' AND enabled = 1`)
     .get() as { n: number } | undefined;
   return (row?.n ?? 0) > 0;
 }
