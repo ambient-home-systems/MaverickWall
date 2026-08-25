@@ -148,14 +148,52 @@ describe('the Weather screen', () => {
       expect(await ghost.getAttribute('aria-hidden')).toBe('true');
       expect(await ghost.boundingBox()).toMatchObject({ width: 1, height: 1 });
       /*
-       * And it is disabled with the visible Save, not instead of it. Enter on
-       * an untouched form otherwise saved and announced "Weather settings
-       * saved." while the Save button sat greyed out beside it — two controls
-       * meaning the same thing, disagreeing about whether there is anything to
-       * do.
+       * And it is never disabled, which is the point rather than an oversight.
+       * The spec says implicit submission does nothing when the first submit
+       * is disabled; engines have not always agreed, and one that walks on to
+       * the first *enabled* submit would reach "Use my Home Assistant home
+       * location" and overwrite the coordinates being typed. Enter must mean
+       * Save on every engine, so the ghost stays live even while the visible
+       * Save is greyed.
        */
-      expect(await ghost.isDisabled(), 'nothing has been edited since the reload').toBe(true);
+      expect(await ghost.isDisabled(), 'a disabled default makes Enter engine-dependent').toBe(
+        false,
+      );
+    },
+    SLOW,
+  );
+
+  /**
+   * And Enter on a *clean* form saves rather than filling.
+   *
+   * The case the ghost's enabled state is about: with nothing edited, the
+   * visible Save is greyed, so an engine that resolves implicit submission to
+   * the first *enabled* submit would reach the Home Assistant button and
+   * replace a stored location with `zone.home`. Chromium follows the spec and
+   * does nothing for a disabled default, which is why this has to be asserted
+   * on what was *stored* rather than on which button fired.
+   */
+  it(
+    'saves rather than fills when Enter is pressed on an untouched form',
+    async () => {
+      const { page, home } = await signedIn();
+      await home.post('/admin/weather', {
+        weather_form: '1', weather_enabled: '1', latitude: '51.5074', longitude: '-0.1278',
+        weather_provider: 'nws', weather_units: 'imperial',
+      });
+      await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
       expect(await page.locator('.saverow [data-dirty-save]').isDisabled()).toBe(true);
+
+      await Promise.all([
+        page.waitForNavigation({ timeout: 20_000 }),
+        page.locator('input[name="latitude"]').press('Enter'),
+      ]);
+
+      const stored = readWeatherSettings(home.db);
+      expect(
+        { latitude: stored.latitude, longitude: stored.longitude },
+        'Enter reached a button that fills the location instead of saving it',
+      ).toEqual({ latitude: 51.5074, longitude: -0.1278 });
     },
     SLOW,
   );

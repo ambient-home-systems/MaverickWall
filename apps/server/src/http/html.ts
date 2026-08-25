@@ -2856,15 +2856,26 @@ export function dirtyForm(alreadyDirty = false): string {
  * submit is Save already behaves correctly.
  */
 export function defaultSubmit(): string {
-  // Marked `data-dirty-save` like the visible one, so the script disables both
-  // together. Without it, Enter on an untouched form saves and announces
-  // "Weather settings saved." while the Save button sits greyed out beside it
-  // — the two controls that mean the same thing disagreeing about whether
-  // there is anything to do.
-  return (
-    `<button type="submit" class="formdefault" data-dirty-save tabindex="-1" aria-hidden="true">` +
-    `</button>`
-  );
+  /*
+   * Never disabled, and that is the point rather than an oversight.
+   *
+   * It carried `data-dirty-save` for a while, so the script greyed it out with
+   * the visible Save and Enter on an untouched form did nothing — tidier, and
+   * wrong. The spec says implicit submission uses the first submit button in
+   * tree order and does nothing when that button is disabled; engines have not
+   * always agreed, and WebKit has historically walked on to the first *enabled*
+   * one. On this form that is "Use my Home Assistant home location", so Enter
+   * in Latitude on a clean page would overwrite the stored coordinates with
+   * `zone.home` — the exact loss this element exists to prevent, on the exact
+   * page it exists for.
+   *
+   * So it stays enabled and Enter always means Save. On a clean form that saves
+   * unchanged values and says so, which is a shade talkative and is precisely
+   * what Enter does with script off. A talkative confirmation is a smaller
+   * fault than an engine-dependent one, and it is the same one the no-script
+   * baseline already has.
+   */
+  return `<button type="submit" class="formdefault" tabindex="-1" aria-hidden="true"></button>`;
 }
 
 /**

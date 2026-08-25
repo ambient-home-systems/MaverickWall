@@ -1773,7 +1773,12 @@ activates the **first submit button in tree order**, and the Home Assistant
 button is a submit now — so Enter in Latitude replaced the number being typed
 with `zone.home` and called it saved; `defaultSubmit()` is a clipped,
 untabbable, `aria-hidden` submit rendered first, which is what "press Enter"
-means. **An unticked checkbox is not sent**, so an empty body and a form with
+means — and **never disabled**, though it was for a while: the spec says
+implicit submission does nothing when the first submit is disabled, engines have
+not always agreed, and one that walks on to the first *enabled* submit reaches
+the Home Assistant button and overwrites the coordinates. Enter saving unchanged
+values on a clean form is a shade talkative and is what it does with script off;
+an engine-dependent Enter is a data loss. **An unticked checkbox is not sent**, so an empty body and a form with
 every switch off are byte-identical — harmless while alerts had its own
 endpoint, and not harmless once a page cached from before the merge posts a
 body with no `alerts_enabled` in it; a hidden `weather_form` marker is how the

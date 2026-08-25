@@ -622,6 +622,17 @@ drew an option the endpoint refused — "Choose a timezone from the list" about
 something that is on the list. It accepts the stored zone too, which is the same
 rule read from the other end.
 
+And a **fifteenth** the clipped default submit: it carried `data-dirty-save` for
+a while, so the script greyed it out with the visible Save and Enter on an
+untouched form did nothing. Tidier, and wrong — the spec says implicit
+submission does nothing when the first submit is disabled, engines have not
+always agreed, and one that walks on to the first *enabled* submit reaches "Use
+my Home Assistant home location" and overwrites the coordinates. **Enter must
+mean Save on every engine**, so it stays live: on a clean form that saves
+unchanged values and says so, which is a shade talkative and is exactly what
+Enter does with script off. A talkative confirmation is a smaller fault than an
+engine-dependent one.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
