@@ -1667,6 +1667,16 @@ export function createApp(deps: AppDeps): Hono {
     // Never leak internals to a display. The detail goes to the log.
     // eslint-disable-next-line no-console
     console.error('[http]', error.message);
+    /*
+     * Marked as ours, like every other answer. `/d/manifest` guards the screen
+     * read and the build, but not `manifestEtag` or the serialisation that
+     * follow — so a throw out there lands here, and an unmarked 500 is one a
+     * wall reads as a stranger: no offline banner cleared, no contact clock
+     * advanced, and a two-hour watchdog armed against a server it is talking to
+     * every minute. Harmless on the other routes, which is why it sits here
+     * rather than being threaded through the ones that can reach it.
+     */
+    stamped(c);
     return c.json({ error: 'internal', message: 'Something went wrong on the server.' }, 500);
   });
 

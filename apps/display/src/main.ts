@@ -1,6 +1,7 @@
 import { createClock } from './clock.js';
 import {
   createManifestClient,
+  isRenderableManifest,
   isStandInManifest,
   keepHeld,
   shouldAdoptStored,
@@ -269,6 +270,15 @@ function start(): void {
       case 'unpaired':
         manifest = undefined;
         heldIsReal = false;
+        /*
+         * A marked 401 is proof the server answered, so this is contact. Without
+         * it a screen sitting on the pairing form tripped the two-hour
+         * contact-silence limit and was reloaded for ever — the same cost as
+         * the ninety-second draw-silence one, and the same code being typed on
+         * a remote lost with it.
+         */
+        lastContactAt = Date.now();
+        offline = false;
         // Render the code-entry form once. Redrawing it every poll would clear
         // the field between keystrokes on a remote, which is slow enough already.
         if (!pairingShown) {
@@ -584,6 +594,15 @@ function start(): void {
        * dropping it here would blank the reason until the next poll a minute
        * later put it back.
        */
+      /*
+       * Shape-checked before it is drawn, not only before it is classified.
+       * `isStandInManifest` survives a stored document with no `notices`, but
+       * `buildModel` then does `manifest.notices.map(...)` and throws — inside
+       * `safely`, which swallows it, so the wall sits on the boot message and
+       * gets reloaded into the same failure for ever. A cache this bundle
+       * cannot draw is worth exactly as much as no cache.
+       */
+      if (!isRenderableManifest(stored.manifest)) return;
       manifest = manifest === undefined ? stored.manifest : keepHeld(stored.manifest, manifest);
       /*
        * Asked, not assumed. This bundle never saves the stand-in — but the

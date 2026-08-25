@@ -1734,6 +1734,18 @@ both stand-in faults with every test still green, each package being internally
 consistent. Same seam and same answer as `epaper-ladder-parity.test.ts`: read
 both files, compare what each one actually says.
 
+Three last ones, each a place the invariant leaked. `app.onError`'s 500 was
+unmarked, and `/d/manifest` guards the screen read and the build but not
+`manifestEtag` or the serialisation after them — so a throw out there came back
+as a stranger. The `unpaired` branch never advanced `lastContactAt`, though a
+marked 401 is proof the server answered, so a screen on the pairing form was
+reloaded every two hours for ever. And the stored copy was shape-checked before
+it was *classified* but not before it was *drawn*: `isStandInManifest` survives
+a document with no `notices`, and `buildModel` then does `notices.map(...)` and
+throws inside `safely`, so a wall restoring a pre-`notices` cache sat on the
+boot message and was reloaded into the same failure. **A cache this bundle
+cannot draw is worth exactly as much as no cache.**
+
 **And only one of them can explain itself.** Every non-2xx body was thrown away unread, so the 503
 this route now answers with reached the wall as a bare status and a screen with
 nothing cached could only say it was not reaching a server that was up. The
