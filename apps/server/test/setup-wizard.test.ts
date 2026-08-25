@@ -13,6 +13,8 @@ import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { INGRESS_HEADER } from '../src/http/ingress.js';
 import type { SetupToken } from '../src/auth/tokens.js';
+import { readRules, seedDefaultRules } from '../src/api/rules.js';
+import { DEFAULT_ALERT_RULES } from '@maverick-wall/core';
 
 /**
  * The first-run wizard, driven the way a household drives it.
@@ -429,7 +431,9 @@ describe('step 3 — the calendar', () => {
       allow_http: '1',
     });
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/setup/done');
+    // On to step 4 — a location and a first person — rather than straight to
+    // the last page (RFC 009 Phase 2).
+    expect(response.headers.get('location')).toBe('/setup/place');
 
     const source = h.db
       .prepare('SELECT name, url_encrypted, url_host FROM calendar_sources')
@@ -485,6 +489,181 @@ describe('step 3 — the calendar', () => {
     expect(done.status).toBe(200);
     expect(await done.text()).toContain('No calendars yet');
     expect((await h.call('/')).status).toBe(200);
+  });
+});
+
+/*
+ * Step 4 — where the wall is, and who lives there (RFC 009 Phase 2).
+ *
+ * The two prerequisites for the two widgets the default canvas already draws.
+ * Optional throughout, which is most of what is asserted here: what a household
+ * who skips it is left with has to be a coherent wall rather than a half-armed
+ * one.
+ */
+describe('step 4 — where and who', () => {
+  it('stores a location and the first person, and finishes', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+
+    const response = await h.form('/setup/place', {
+      latitude: '38.8894',
+      longitude: '-97.7431',
+      person: 'Sam',
+    });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/setup/done');
+
+    expect(
+      h.db
+        .prepare(`SELECT latitude, longitude FROM household_settings WHERE id = 'singleton'`)
+        .get(),
+    ).toEqual({ latitude: 38.8894, longitude: -97.7431 });
+    expect(h.db.prepare('SELECT name, color FROM people').all()).toEqual([
+      { name: 'Sam', color: '#4C7FD1' },
+    ]);
+  });
+
+  it('refuses half a location without losing the other half or the name', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+
+    // Half a location stores as none, so it is refused rather than dropped.
+    const response = await h.form('/setup/place', { latitude: '38.8894', person: 'Sam' });
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    // The whole sentence, not the phrase: the form's own hint says "both
+    // numbers are there", so a looser match would pass on the hint alone.
+    expect(body).toContain('A location is both numbers');
+    // Echoed back, the way every other step in this wizard does it.
+    expect(body).toContain('38.8894');
+    expect(body).toContain('Sam');
+    // And nothing written on a refusal — not the person either, or a retry
+    // would leave two of them.
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM people').get()).toEqual({ n: 0 });
+    expect(
+      h.db.prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`).get(),
+    ).toEqual({ latitude: null });
+  });
+
+  it('names the field when a number is wrong rather than merely missing', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+
+    // Both boxes filled in, one of them nonsense: the pair sentence would be
+    // the wrong answer here — the household knows a location is two numbers,
+    // they got one of them wrong.
+    const response = await h.form('/setup/place', { latitude: '38.8894', longitude: '900' });
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain('Longitude has to be between -180 and 180');
+    expect(body).not.toContain('A location is both numbers');
+  });
+
+  it('takes a person on their own, with no location', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+
+    const response = await h.form('/setup/place', { latitude: '', longitude: '', person: 'Sam' });
+    expect(response.status).toBe(302);
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM people').get()).toEqual({ n: 1 });
+    expect(
+      h.db.prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`).get(),
+    ).toEqual({ latitude: null });
+  });
+
+  it('is skippable, and a household who skips it has no armed weather rule', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+    seedDefaultRules(h.db);
+
+    // Skip is a plain link, like step 3's.
+    expect((await h.call('/setup/done')).status).toBe(200);
+
+    /*
+     * The whole point of the step existing. The shipped National Weather
+     * Service ladder is switched on in the database — that is deliberate, so a
+     * household who sets a location later inherits it — and it is *armed*
+     * only once there is somewhere to watch. Five rules reporting themselves
+     * as working against zero zones is a safety-adjacent feature that is inert
+     * and does not say so.
+     */
+    const armed = readRules(h.db).filter((rule) => rule.source === 'nws' && rule.enabled);
+    expect(armed).toEqual([]);
+    // Stored on, all the same: nothing rewrote the household's own switches.
+    const stored = h.db
+      .prepare(`SELECT COUNT(*) AS n FROM interrupt_rules WHERE trigger = 'nws' AND enabled = 1`)
+      .get();
+    expect(stored).toEqual({ n: 4 });
+  });
+
+  it('arms the shipped weather ladder once a zone is being watched', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+    seedDefaultRules(h.db);
+
+    await h.form('/setup/place', { latitude: '38.8894', longitude: '-97.7431' });
+
+    /*
+     * A location on its own is not enough, and that is the point: the zones are
+     * what a rule matches against, and the job resolves them on its next run.
+     * Nothing is armed in between — which is correct, because nothing could
+     * fire in between either.
+     */
+    expect(readRules(h.db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
+
+    // The job's own answer, written the way `replaceZones` writes it.
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO alert_zones (id, code, label, provider, enabled, kind, created_at, updated_at)
+         VALUES ('zone-KSZ091', 'KSZ091', 'KSZ091', 'nws', 1, 'forecast', ?, ?)`,
+      )
+      .run(at, at);
+
+    const armed = readRules(h.db).filter((rule) => rule.source === 'nws' && rule.enabled);
+    expect(armed.map((rule) => rule.id).sort()).toEqual(
+      DEFAULT_ALERT_RULES.filter((rule) => rule.enabled).map((rule) => rule.id).sort(),
+    );
+  });
+
+  it('leaves a household outside the service unarmed, location and all', async () => {
+    /*
+     * The other half, and the one a location gate would have missed entirely.
+     * `/points` answers nothing for a place outside National Weather Service
+     * coverage — the job says so once and gives up — so a household in France
+     * who filled this step in perfectly still has nowhere to watch. Four rules
+     * armed against that is the same lie as four armed against no location.
+     */
+    const h = harness();
+    await completeThroughTimezone(h);
+    seedDefaultRules(h.db);
+
+    const saved = await h.form('/setup/place', { latitude: '48.8566', longitude: '2.3522' });
+    expect(saved.status).toBe(302);
+    expect(
+      h.db
+        .prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`)
+        .get(),
+    ).toEqual({ latitude: 48.8566 });
+
+    expect(readRules(h.db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
+  });
+
+  it('cannot be driven by somebody who is not signed in', async () => {
+    const h = harness();
+    await completeThroughTimezone(h);
+    h.jar.clear();
+
+    const shown = await h.call('/setup/place');
+    expect(shown.status).toBe(302);
+    expect(shown.headers.get('location')).toBe('/admin/sign-in');
+
+    const posted = await h.form('/setup/place', { latitude: '1', longitude: '1' });
+    expect(posted.status).toBe(302);
+    expect(posted.headers.get('location')).toBe('/admin/sign-in');
+    expect(
+      h.db.prepare(`SELECT latitude FROM household_settings WHERE id = 'singleton'`).get(),
+    ).toEqual({ latitude: null });
   });
 });
 

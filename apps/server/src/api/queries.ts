@@ -1123,6 +1123,27 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
     previous.longitude !== settings.longitude ||
     previous.provider !== settings.provider ||
     previous.units !== settings.units;
+  /*
+   * A move is more than a stale forecast: the alert zones are derived from the
+   * coordinates and then never re-derived, because `resolveZones` only runs
+   * when there are none. So a household who corrects a longitude they typed
+   * wrong went on watching the county they typed by mistake for ever — and
+   * since a watched zone is now what arms the ladder (RFC 009 Phase 2), every
+   * screen would have reported that as working.
+   *
+   * Retired, not deleted, and the difference is the whole care here. "Use my
+   * Home Assistant home location" on a box whose `zone.home` is still Home
+   * Assistant's shipped default fills in Amsterdam — an ordinary misclick, and
+   * a delete would take the household's real zones *and any warning in force*
+   * with it before anything knows a replacement is obtainable. Disabling them
+   * costs the same thing where it should (they are not polled and, per
+   * `countWatchedZones`, they arm nothing) and costs nothing where it should
+   * not: `/points` resolving the corrected location swaps them back, alerts
+   * intact, and `replaceZones` deletes the ones that are genuinely wrong along
+   * with their alerts — which it already did, atomically, on an answer it had.
+   */
+  const moved =
+    previous.latitude !== settings.latitude || previous.longitude !== settings.longitude;
 
   const write = db.transaction(() => {
     db.prepare(
@@ -1140,6 +1161,24 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
     );
 
     if (invalidated) db.prepare('DELETE FROM weather_cache').run();
+    if (moved) {
+      db.prepare(
+        `UPDATE alert_zones SET enabled = 0, updated_at = ? WHERE provider = 'nws'`,
+      ).run(Date.now());
+      /*
+       * And asked for again at once, not at the next scheduled poll.
+       *
+       * Retiring the zones un-arms every weather rule until one comes back, so
+       * the gap between the two is a gap in the one feature with a life-safety
+       * disclaimer on it — and under the job's backoff that gap can be half an
+       * hour. A household correcting a coordinate, or pressing "Use my Home
+       * Assistant home location", may well be doing it *because* of a warning
+       * they can see. The alerts screen brings the poll forward for exactly
+       * this reason when the switch is turned on; a move deserves it more.
+       */
+      db.prepare(`UPDATE job_state SET next_run_at = 0, consecutive_failures = 0
+                   WHERE kind = 'alerts-sync'`).run();
+    }
 
     /*
      * Switching a module on puts its block on the wall.

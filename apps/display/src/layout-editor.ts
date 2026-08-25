@@ -241,6 +241,8 @@ function boot(): void {
   }
   let ink: InkTables | undefined;
   let lane: 'wall' | 'ink' = 'wall';
+  /** Widget type → why the wall leaves it out. Empty when everything is set up. */
+  const notDrawn = new Map<string, string>();
 
   let state: LayoutState;
   try {
@@ -258,6 +260,7 @@ function boot(): void {
       readonly orientation?: unknown;
       readonly panel?: { readonly width?: unknown; readonly height?: unknown };
       readonly ink?: unknown;
+      readonly notDrawn?: unknown;
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
@@ -270,6 +273,27 @@ function boot(): void {
     const pnl = parsed.panel;
     if (pnl !== undefined && typeof pnl.width === 'number' && typeof pnl.height === 'number') {
       panelSize = { w: pnl.width, h: pnl.height };
+    }
+    /*
+     * Which widget types the wall will leave out, and why (RFC 009 Phase 2).
+     *
+     * The manifest omits a widget the household has nothing set up for. The
+     * editor cannot: a box you cannot see is a box you cannot move, and the
+     * preview here is the one place a household can find out *why* something is
+     * missing from their wall. So the box stays and carries the reason.
+     *
+     * The server decides — the same `widgetIsSetUp` the manifest uses — because
+     * a second opinion here is how the wall and the screen that describes it
+     * come to disagree.
+     */
+    const rawNotDrawn = parsed.notDrawn;
+    if (Array.isArray(rawNotDrawn)) {
+      for (const entry of rawNotDrawn) {
+        const row = entry as { type?: unknown; why?: unknown };
+        if (typeof row.type === 'string' && typeof row.why === 'string') {
+          notDrawn.set(row.type, row.why);
+        }
+      }
     }
     // Read defensively and drop the whole block on anything unexpected: a lane
     // built from half a table would offer controls with no meaning, which is
@@ -1014,7 +1038,7 @@ function boot(): void {
     // font-size of its own.
     renderFreeform(previewWall, model, {
       aspect: state.aspect,
-      widgets: state.widgets.map((w) => ({ ...w })),
+      widgets: drawnWidgets().map((w) => ({ ...w })),
       ...(state.background !== undefined ? { background: state.background } : {}),
     }, EDITOR_MEDIA_BASE);
 
@@ -1091,7 +1115,7 @@ function boot(): void {
       const response = await fetch(`admin/epaper/${encodeURIComponent(panel.id)}/preview.png`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ widgets: widgetsForSave(state.widgets) }),
+        body: JSON.stringify({ widgets: widgetsForSave(drawnWidgets()) }),
       });
       if (!response.ok) return;
       const url = URL.createObjectURL(await response.blob());
@@ -1126,7 +1150,7 @@ function boot(): void {
       const response = await fetch(`admin/epaper/${detailSeg}/preview.png`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ widgets: widgetsForSave(state.widgets) }),
+        body: JSON.stringify({ widgets: widgetsForSave(drawnWidgets()) }),
       });
       if (!response.ok) return;
       const url = URL.createObjectURL(await response.blob());
@@ -1204,6 +1228,63 @@ function boot(): void {
     canvas.style.height = `${Math.round(h)}px`;
   }
 
+  /**
+   * What the wall will actually draw of this canvas.
+   *
+   * The overlay keeps every box — one you cannot see is one you cannot move —
+   * but the *preview* is a claim about the glass, and a preview drawing
+   * "Nothing to show yet." underneath a box flagged "Not on the wall" is two
+   * sentences on one screen contradicting each other. The manifest omits those
+   * widgets and so does this.
+   *
+   * `notDrawn` comes from the server, derived from the same `widgetIsSetUp` the
+   * manifest uses, so this is not a second opinion about *which* widgets. The
+   * one thing decided here is the never-empty guard, and it is the same rule
+   * for the same reason (rule nine): a canvas that filtered away to nothing
+   * would draw "Nothing on this display yet" — a lie about a canvas somebody is
+   * looking at while they arrange it.
+   */
+  function drawnWidgets(): Widget[] {
+    /*
+     * Used by every *preview* and by no save. The overlay boxes are always the
+     * whole canvas — they are what you drag, and one that vanished under the
+     * pointer would be unusable — so filtering here removes the ink beneath a
+     * flagged box and nothing else, which is exactly what the flag on it says.
+     */
+    if (notDrawn.size === 0) return state.widgets;
+    const kept = state.widgets.filter((widget) => !notDrawn.has(widget.type));
+    return kept.length === 0 ? state.widgets : kept;
+  }
+
+  /**
+   * Why *this* box is not drawn, or nothing.
+   *
+   * The type is not enough. Omission is per canvas, not per widget: a canvas
+   * that filtered away to nothing keeps everything (rule nine — a wall somebody
+   * arranged must not read as "nothing on this display yet"), so on a canvas of
+   * only unconfigured widgets every one of them *is* drawn. Flagging by type
+   * alone would then label a box "not on the wall" while the wall and the
+   * preview beside it both drew it — the same contradiction the preview filter
+   * fixed in the other direction.
+   *
+   * `notDrawn.has` first because it short-circuits: the scan below only runs
+   * for the handful of types that could be flagged at all.
+   */
+  function omittedReason(widget: Widget): string | undefined {
+    if (!notDrawn.has(widget.type)) return undefined;
+    if (drawnWidgets().some((one) => one.id === widget.id)) return undefined;
+    return notDrawn.get(widget.type);
+  }
+
+  /**
+   * What this editor is arranging, in the household's word for it.
+   *
+   * The same editor draws a wall's canvas and an e-paper panel's, and the two
+   * are different objects on two different pages. One noun for both would be
+   * wrong on one of them every time.
+   */
+  const surfaceWord = (): string => (epaperHost ? 'panel' : 'wall');
+
   /** Rebuild the overlay boxes from state. Cheap — a box is a div and a label. */
   function drawOverlay(): void {
     overlay.textContent = '';
@@ -1240,6 +1321,30 @@ function boot(): void {
     label.className = 'le-widget-label';
     label.textContent = labelFor(widget.type);
     box.appendChild(label);
+
+    /*
+     * A box the wall will not draw, said on the box.
+     *
+     * Without this the editor shows five widgets and the wall shows three, with
+     * nothing anywhere connecting the two — which is the shape of every fault
+     * in this project where one thing is stored and two things read it. The
+     * reason is in the inspector; this is the flag that sends you there.
+     */
+    const why = omittedReason(widget);
+    if (why !== undefined) {
+      box.classList.add('is-not-drawn');
+      const flag = document.createElement('span');
+      flag.className = 'le-widget-flag';
+      // The noun follows the host. This editor draws a panel's canvas as well
+      // as a wall's, and "not on the wall" beside a 1-bit frame is the wrong
+      // object — the same page carries the word "panel" everywhere else.
+      flag.textContent = `Not on the ${surfaceWord()}`;
+      box.appendChild(flag);
+      box.setAttribute(
+        'aria-label',
+        `${labelFor(widget.type)} widget — not on the ${surfaceWord()}. ${why}`,
+      );
+    }
 
     const handle = document.createElement('span');
     handle.className = 'le-handle';
@@ -1723,6 +1828,23 @@ function boot(): void {
       renderInkPanel(widget);
       openInspector();
       return;
+    }
+
+    /*
+     * Why this one is not on the wall, above everything else in the panel.
+     *
+     * There is no point reading a widget's options while nothing draws it, and
+     * this is the answer to "I put a Weather box on and my wall has not got
+     * one" — the question the omission would otherwise leave a household with.
+     * On the wall lane only: the ink lane is about what a panel says
+     * differently, and it rebuilds this panel for itself.
+     */
+    const why = omittedReason(widget);
+    if (why !== undefined) {
+      const note = document.createElement('p');
+      note.className = 'le-not-drawn';
+      note.textContent = `Not on the ${surfaceWord()} yet. ${why}`;
+      configPanel.appendChild(note);
     }
 
     // Both tabs, always: every widget has a view to state, so neither tab is

@@ -1,7 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { escapeHtml, errorBlock, page, selectField, switchRow, textField } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
-import { readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
+import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
@@ -279,8 +279,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
     const zones = deps.db
       .prepare(
+        /*
+         * `enabled = 1`, the same predicate the poller and the arming gate use.
+         * A zone retired because the household moved is not polled and arms
+         * nothing, so listing it under "Zones being watched" on the same page
+         * whose rule cards read "not armed — no zones yet" is this screen
+         * disagreeing with itself.
+         */
         `SELECT code, kind, last_polled_at AS lastPolledAt, last_error AS lastError
-           FROM alert_zones WHERE provider = 'nws' ORDER BY kind`,
+           FROM alert_zones WHERE provider = 'nws' AND enabled = 1 ORDER BY kind`,
       )
       .all() as { code: string; kind: string; lastPolledAt: number | null; lastError: string | null }[];
 
@@ -292,7 +299,14 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       .all(now()) as { event: string; severity: string | null; areaDesc: string | null }[];
 
     const enabled = household?.enabled === 1;
-    const located = household?.latitude !== null && household?.longitude !== null;
+    /*
+     * The one reader of this fact, shared with the evaluator and the overview.
+     * Written out here it was `household?.latitude !== null && …`, which is
+     * `true` when there is no settings row at all — optional chaining yields
+     * `undefined`, and `undefined !== null`. It said "located" on a database
+     * with nothing in it.
+     */
+    const located = hasWeatherLocation(deps.db);
 
     return page({
       modules: navModules(deps.db),
@@ -332,7 +346,20 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
         `<h2 class="add">Zones being watched</h2>` +
         (zones.length === 0
-          ? `<p>${enabled && located ? 'Working them out on the next check.' : 'None yet.'}</p>`
+          ? `<p>` +
+            (enabled && located
+              ? /*
+                 * Not "working them out on the next check", which was said for
+                 * every zero-zone case and is only true of one of them. A
+                 * location outside the service resolves to nothing at all, and
+                 * from here the two are indistinguishable — so both are named
+                 * rather than the hopeful one asserted (RFC 009 Phase 2).
+                 */
+                'None yet — either the first check has not run, or this location ' +
+                'is outside National Weather Service coverage. Until there is one, ' +
+                'no alert rule below is armed.'
+              : 'None yet.') +
+            `</p>`
           : zones
               .map(
                 (zone) =>
@@ -364,21 +391,32 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         `than any one row: the loudest thing the wall can do is reserved for the ` +
         `rarest. Moderate alerts are weekly in some counties, and a takeover for one ` +
         `would be meaningless within a month.</p>` +
-        rules() +
+        rules(hasSomethingToWatch(deps.db)) +
         `<p class="hint">Turning one off means the wall says nothing at that level.</p>`,
     });
   }
 
-  function rules(): string {
+  /**
+   * The ladder, and whether each rung is actually armed.
+   *
+   * `watching` is not decoration: with no zone being watched there is no signal
+   * any of these could match, so `readRules` refuses to arm them (RFC 009 Phase
+   * 2). A card that said "on" here while the evaluator treated it as off would
+   * be the screen disagreeing with the wall, which is exactly the fault this
+   * phase is about — so the card reads the same fact the evaluator does.
+   */
+  function rules(watching: boolean): string {
     return readRuleRows(deps.db)
       .filter((row) => row.trigger === 'nws')
       .map((row) => {
         const parsed = readMatch(safeJson(row.conditions));
         const severity = parsed?.match.minSeverity ?? 'Any';
         const urgency = parsed?.match.minUrgency;
+        const state =
+          row.enabled !== 1 ? ' (off)' : watching ? '' : ' (not armed — no zones yet)';
         return (
           `<article class="card">` +
-          `<h2>${escapeHtml(row.name)}${row.enabled === 1 ? '' : ' (off)'}</h2>` +
+          `<h2>${escapeHtml(row.name)}${state}</h2>` +
           `<p class="host">${escapeHtml(severity)} or worse` +
           `${urgency === undefined ? '' : `, and ${escapeHtml(urgency)}`}</p>` +
           `<p>${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +

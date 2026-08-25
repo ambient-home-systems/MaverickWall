@@ -65,6 +65,108 @@ export const WIDGET_TYPES = [
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 /**
+ * Which module backs each widget type, by the block key its data arrives under.
+ *
+ * Transcribed rather than imported. `manifest.ts` is the pure assembly layer and
+ * the module registry is the database-reading one, so pulling in the three
+ * `*_BLOCK` constants would drag the whole module tree into the file whose one
+ * property is that it has none. `test/widget-omission.test.ts` compares this
+ * table against the registry's own keys in both directions, the way
+ * `epaper-ladder-parity.test.ts` compares the two ladder tables.
+ *
+ * A type that is absent here is backed by no module — see `widgetIsSetUp` for
+ * what that means and which types are deliberately not in the list.
+ */
+export const WIDGET_MODULE: Readonly<Record<string, string>> = {
+  weather: 'weather',
+  homeassistant: 'home',
+  chores: 'chores',
+};
+
+/**
+ * What the household has actually set up (RFC 009 Phase 2).
+ *
+ * `modules` is the block key of every panel module that answered `ready` —
+ * which is already the seam meaning "the household has configured this":
+ * weather with a location, Home Assistant with at least one watched entity, a
+ * chore board with an active chore. It is collected outside assembly and passed
+ * in, exactly as `panels` is, because `ready` reads the database and nothing in
+ * this file does any I/O.
+ *
+ * Note what this is *not*: it is not whether a module has data right now. A
+ * module that is ready and whose cache is empty contributes no panel, and that
+ * widget keeps its "Nothing to show yet." — "the feed is empty today" is
+ * information. This answers the other question.
+ */
+export interface HouseholdSetUp {
+  readonly modules: readonly string[];
+  /** A shift rotation exists at all — `household_settings.shift_enabled`. */
+  readonly shift: boolean;
+}
+
+/**
+ * Can this widget ever have anything to say, given what the household has set
+ * up? (RFC 009 Phase 2.)
+ *
+ * A fresh install seeds the Classic canvas, whose Weather and Shift boxes are
+ * 24% of the portrait wall and say "Nothing to show yet." for ever — because
+ * nothing asked for a location or a rota, and nothing on the wall can. That is
+ * a sentence about the household's admin printed on their kitchen calendar, and
+ * absence is the honest answer to it.
+ *
+ * The line drawn here, and it is the whole design:
+ *
+ *  - **A widget whose prerequisite lives on another screen** — weather (a
+ *    location), Home Assistant (a watched entity), chores (an active chore),
+ *    shift (a rotation) — is omitted when that prerequisite does not exist.
+ *    Its placeholder can only ever say "nothing", it points at a control that
+ *    is not on the wall, and no amount of looking at the wall will change it.
+ *  - **A widget whose content is typed into the widget itself** — notes, to-do,
+ *    a picture, a countdown, and the external panel's choice of module — keeps
+ *    its own prompt ("Add a note in this widget's options"). That prompt names
+ *    a control one click away, and omitting the box would make it vanish out
+ *    from under somebody who dragged it on ten seconds ago and is filling it in.
+ *  - **Clock and calendar are never omitted.** A clock needs nothing, and a
+ *    month grid with no feeds still draws the dates — the calendar is the
+ *    product, and its grid is information before a single event arrives.
+ *
+ * "Configured but empty today" is deliberately on the *keep* side throughout:
+ * a rota that says nothing about a Tuesday, a forecast that has not been
+ * fetched yet, an entity whose reading is stale. Getting that backwards makes a
+ * working wall look broken, which is a worse fault than the one this fixes.
+ *
+ * The widget's own config is deliberately not an input. "Configuration" here
+ * means the household-level prerequisite, not the box's settings — a Weather
+ * widget with five days and a reordered ladder chosen is still a Weather widget
+ * with nowhere to be.
+ */
+export function widgetIsSetUp(type: string, setUp: HouseholdSetUp): boolean {
+  if (type === 'shift') return setUp.shift;
+  const block = WIDGET_MODULE[type];
+  return block === undefined || setUp.modules.includes(block);
+}
+
+/**
+ * Drop the widgets with nothing to say — unless that would leave nothing at all.
+ *
+ * The guard is rule nine and it is not theoretical: a canvas holding only a
+ * Weather box would otherwise draw "Nothing on this display yet.", which is a
+ * lie about a display somebody arranged, and worse than the per-widget note it
+ * replaced. A wall that has been arranged always draws something it was given.
+ *
+ * Shared by the wall's canvas and the e-paper panel's, so a panel following a
+ * wall cannot draw "No weather yet" where the wall draws nothing — one stored
+ * value read two ways is the fault this repository keeps paying for.
+ */
+export function keepWidgetsWithSomethingToSay<T extends { readonly type: string }>(
+  widgets: readonly T[],
+  setUp: HouseholdSetUp,
+): readonly T[] {
+  const kept = widgets.filter((widget) => widgetIsSetUp(widget.type, setUp));
+  return kept.length === 0 ? widgets : kept;
+}
+
+/**
  * Read the stored order, and never return nothing.
  *
  * Duplicates are dropped and unknown names ignored, so a hand-edited row
@@ -90,12 +192,22 @@ export function parseBlocks(stored: string | undefined): DisplayBlock[] {
 const unit = (value: number, fallback: number): number =>
   Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
 
-/** Clamp and type-check one canvas's stored rows into the shape the wall draws. */
+/**
+ * Clamp and type-check one canvas's stored rows into the shape the wall draws,
+ * and drop the ones the household has nothing set up for (RFC 009 Phase 2).
+ *
+ * The type check comes first, so a row of an unknown type cannot make it as far
+ * as the "would this leave nothing?" guard and keep a canvas the wall could not
+ * draw anyway.
+ */
 function placeCanvas(
   widgets: readonly PlacedWidgetRow[],
+  setUp: HouseholdSetUp,
 ): Manifest['layout']['portrait']['widgets'] {
-  return widgets
-    .filter((widget) => (WIDGET_TYPES as readonly string[]).includes(widget.type))
+  const drawable = widgets.filter((widget) =>
+    (WIDGET_TYPES as readonly string[]).includes(widget.type),
+  );
+  return keepWidgetsWithSomethingToSay(drawable, setUp)
     .map((widget) => ({
       id: widget.id,
       type: widget.type,
@@ -175,14 +287,27 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
  * is known. Every widget is clamped and its type checked here, the one place
  * between a stored row and the wall. `config` is carried through untouched: it
  * is the widget's own, validated where the editor writes it.
+ *
+ * `readyModules` is what the household has set up (see `HouseholdSetUp`), and
+ * a widget with nothing behind it is dropped rather than drawn as a permanent
+ * note. Absent means "nothing is set up" rather than "keep everything": a
+ * caller that forgets it would otherwise re-ship the fault silently, which is
+ * the `options.json` bug in a different coat. The editor does not come through
+ * here — it renders the rows it holds — so the widget is still visible, with
+ * its placeholder, on the screen where the household can act on it.
  */
 export function buildLayout(
   household: HouseholdRow,
   portraitWidgets: readonly PlacedWidgetRow[],
   landscapeWidgets: readonly PlacedWidgetRow[],
+  readyModules: readonly string[] = [],
 ): Manifest['layout'] {
-  const portrait = placeCanvas(portraitWidgets);
-  const landscape = placeCanvas(landscapeWidgets);
+  const setUp: HouseholdSetUp = {
+    modules: readyModules,
+    shift: household.shiftEnabled === 1,
+  };
+  const portrait = placeCanvas(portraitWidgets, setUp);
+  const landscape = placeCanvas(landscapeWidgets, setUp);
 
   // Always free-form: the responsive "auto" layout was retired in favour of a
   // single rendering path. Every wall carries the Classic template's widgets (a
@@ -566,6 +691,17 @@ export interface BuildManifestInput {
    * I/O — every module reads its own cache, which its own job fills.
    */
   readonly panels?: Readonly<Record<string, unknown>>;
+  /**
+   * The block key of every module that answered `ready` — what the household
+   * has actually set up (RFC 009 Phase 2).
+   *
+   * Collected by the caller for the same reason `panels` is: `ready` reads the
+   * database and assembly does no I/O. Distinct from `panels`, and that
+   * distinction is the whole point — a ready module whose cache is empty is in
+   * here and not in there, which is what keeps "the feed is empty today"
+   * showing its placeholder while "you never set this up" yields its space.
+   */
+  readonly readyModules?: readonly string[];
   /**
    * Interrupts already evaluated, for the same reason panels are already
    * collected: assembly is pure and reads no cache of its own.
@@ -1025,6 +1161,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       input.household,
       input.layoutWidgetsPortrait ?? [],
       input.layoutWidgetsLandscape ?? [],
+      input.readyModules ?? [],
     ),
     days,
     people: people.map((person) => ({

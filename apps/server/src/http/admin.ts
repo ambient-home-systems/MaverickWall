@@ -39,6 +39,8 @@ import {
   type PairingSecret,
   type PersonRecord,
 } from '../api/queries.js';
+import { countWatchedZones, hasWeatherLocation } from '../api/rules.js';
+import { readWeatherSettings } from '../api/queries.js';
 import { randomBytes } from 'node:crypto';
 import {
   formatShortCode,
@@ -63,7 +65,8 @@ import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import type { LogBuffer } from '../logbuffer.js';
-import { parseBackground } from '../api/manifest.js';
+import { keepWidgetsWithSomethingToSay, parseBackground, widgetIsSetUp, WIDGET_TYPES } from '../api/manifest.js';
+import { householdSetUp } from '../modules/index.js';
 import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
 import { applyTemplate, copyLayout, findTemplate } from '../api/templates.js';
 import { CLASSIC_TEMPLATE } from '../templates/index.js';
@@ -613,15 +616,34 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Resolved rather than read from the settings row, so an add-on installation
    * says "connected" on the index without anybody having configured anything.
    */
+  /**
+   * What the overview says about weather alerts.
+   *
+   * "On, working out your zones" was printed for zero zones whatever the
+   * reason, and it is only true of one of them: for the minute after a US
+   * household saves a location. With no location nothing is being worked out,
+   * and outside National Weather Service coverage nothing ever will be — a
+   * status line that is a lie, on the one feature with a life-safety disclaimer
+   * attached to it (RFC 009 Phase 2).
+   *
+   * Three states now, and none of them promises progress that may not come.
+   * "No zones yet" is deliberately not "working them out": from here the two
+   * causes — the first check has not run, and this place is outside the
+   * service — are genuinely indistinguishable, and the Weather screen is where
+   * both are named. The pill links there.
+   */
   const alertSummary = (): string => {
     const row = deps.db
       .prepare(`SELECT alerts_enabled AS enabled FROM household_settings WHERE id = 'singleton'`)
       .get() as { enabled: number } | undefined;
     if (row?.enabled !== 1) return 'off';
-    const zones = deps.db
-      .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws'`)
-      .get() as { n: number } | undefined;
-    return (zones?.n ?? 0) === 0 ? 'on, working out your zones' : `watching ${zones?.n} zones`;
+    if (!hasWeatherLocation(deps.db)) return 'on — needs your location';
+    // Through the shared count, which excludes a zone retired because the
+    // household moved. Counting every row reported a green "watching 2 zones"
+    // while the evaluator treated every rule as off — permanently, if the new
+    // location turns out to be outside the service.
+    const zones = countWatchedZones(deps.db);
+    return zones === 0 ? 'on — no zones yet' : `watching ${zones} zones`;
   };
 
   const haSummary = (): string => {
@@ -639,7 +661,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const tagFor = (summary: string): string => {
     const low = summary.toLowerCase();
     const cls =
-      low.includes('not connected') || low.includes('problem') || low.includes('error')
+      // "needs" and "no zones" join the bad set rather than the neutral one:
+      // something is switched on and not working, which is the same shape as
+      // "not connected" and not the same shape as "off".
+      low.includes('not connected') || low.includes('problem') || low.includes('error') ||
+      low.includes('needs') || low.includes('no zones')
         ? 'tag-bad'
         : low === 'off' || low.startsWith('on,')
           ? 'tag'
@@ -738,7 +764,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<span class="kick">Household · ${escapeHtml(household.timezone)}</span></div>` +
           `<div class="grid g2">` +
           `<div class="card status-card">` +
-          statusRow('alerts', 'Weather alerts', '', tagFor(alertSummary())) +
+          // Linked, because the summary can name something to go and do and a
+          // pill that says "needs your location" with no way to it is a nag.
+          statusRow(
+            'alerts',
+            'Weather alerts',
+            '',
+            `<a class="link" href="admin/alerts">${tagFor(alertSummary())}</a>`,
+          ) +
           statusRow('homeassistant', 'Home Assistant', '', tagFor(haSummary())) +
           statusRow('system', 'System', `${escapeHtml(deps.appVersion)} · up ${uptimeText}`, `<a class="link" href="admin/system">Open ${icon('arrow')}</a>`) +
           `</div>` +
@@ -2017,13 +2050,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * 1-bit panel does not; this renders the real frame through the same path the
    * device fetches, so what the household arranges is what they will see. Behind
    * the session, and never cached — it changes every time the layout is saved.
+   *
+   * "Exactly as the panel will" includes the omission (RFC 009 Phase 2): the
+   * device endpoint drops the widgets the household has nothing set up for, so
+   * this drops them too. A page captioned "what the panel actually draws" that
+   * draws "No weather yet" where the glass shows nothing is the two-renderers
+   * disagreement in its most misleading form — the disagreement is with the
+   * caption rather than between two files, and it is no less wrong.
    */
   app.get('/admin/epaper/:id/preview.png', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = findEpaper(id);
     if (screen === undefined || deps.previewManifest === undefined) return c.body(null, 404);
     try {
-      const widgets = epaperWidgetsFor(id, screen).map((row) => ({
+      const widgets = keepWidgetsWithSomethingToSay(
+        epaperWidgetsFor(id, screen),
+        householdSetUp(deps.db),
+      ).map((row) => ({
         type: row.type,
         x: row.x,
         y: row.y,
@@ -2052,6 +2095,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    *
    * Nothing is stored. `POST` because a canvas does not belong in a URL, and
    * `no-store` because this frame is a keystroke old.
+   *
+   * Renders exactly the canvas it is posted, and does not second-guess it: the
+   * caller decides what to draw. The editor posts what it draws — the same
+   * filtered set its own preview uses (RFC 009 Phase 2), so the arrange
+   * backdrop and the ink-lane frame agree with the saved preview above and with
+   * the device. Nothing is ungrabbable as a result: the draggable boxes are the
+   * editor's overlay and are always the whole canvas, so a flagged widget keeps
+   * its box and loses only the ink under it, which is what its flag says.
    *
    * The posted boxes are the canvas *by definition* here, whatever the row says.
    * A panel that has never been saved has `layout_mode` NULL, and reading it
@@ -2152,6 +2203,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // The Shift widget's "whose rota" is real here: a panel filters by person
       // exactly as the wall does, and draws a line each when several are on.
       people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
+      // The panel omits the same widgets the wall does, so it says the same
+      // thing about them.
+      notDrawn: widgetsNotDrawn(),
     };
 
     /*
@@ -3474,6 +3528,55 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+
+  /**
+   * The widget types this wall will not draw, and why (RFC 009 Phase 2).
+   *
+   * The manifest omits a widget the household has nothing set up for — a
+   * Weather box with no location, a Shift badge with no rotation — rather than
+   * drawing "Nothing to show yet." on a kitchen wall for ever. That is right on
+   * the glass and wrong in the editor, where the box has to stay grabbable, so
+   * the editor keeps it and says so instead. This is the sentence it says.
+   *
+   * Derived from the same `widgetIsSetUp` the manifest uses, so the flag cannot
+   * claim one thing while the wall does another; the copy lives here with the
+   * rest of the admin's writing rather than in the display bundle.
+   */
+  function whyNotDrawn(type: string): string {
+    switch (type) {
+      case 'weather': {
+        /*
+         * Two reasons, and telling a household to set coordinates they already
+         * typed is worse than saying nothing. `weatherModule.ready` is the
+         * switch *and* the location, so the sentence has to read the same pair.
+         */
+        const weather = readWeatherSettings(deps.db);
+        if (!weather.enabled) return 'Turn “Show the forecast” on under Weather and this appears.';
+        return 'Set a latitude and longitude on Weather and this appears.';
+      }
+      case 'homeassistant':
+        return 'Choose some entities on Home Assistant and this appears.';
+      case 'chores':
+        // `ready` wants an *active* chore, so a household who paused all of
+        // theirs over the holidays needs the other half of this sentence.
+        return 'Add a chore on Chores — or un-pause one — and this appears.';
+      case 'shift':
+        // A rotation, not a person: `shift_enabled` is set by creating a plan
+        // on Shifts and by nothing else, so naming People here would send
+        // somebody to a screen that cannot fix it.
+        return 'Set up a rotation on Shifts and this appears.';
+      default:
+        return 'Nothing is set up for this yet, so it is left out.';
+    }
+  }
+
+  function widgetsNotDrawn(): { type: string; why: string }[] {
+    const setUp = householdSetUp(deps.db);
+    return (WIDGET_TYPES as readonly string[])
+      .filter((type) => !widgetIsSetUp(type, setUp))
+      .map((type) => ({ type, why: whyNotDrawn(type) }));
+  }
+
   /**
    * The layout editor mount: the shell and the current layout as JSON; a
    * first-party module makes it interactive. Same-origin, ships in the image
@@ -3710,6 +3813,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ...(inkPanels.length === 0
         ? {}
         : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES } }),
+      // Which widgets the wall will leave out, and what to do about it. The
+      // editor keeps the box — it has to be grabbable — and flags it.
+      notDrawn: widgetsNotDrawn(),
     };
 
     // ---- the wall's own header ------------------------------------------

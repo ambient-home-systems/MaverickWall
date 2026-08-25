@@ -32,17 +32,21 @@ import type { Page } from 'playwright-core';
 import {
   browser,
   install,
+  largestBareRegion,
   LEGIBILITY_FLOOR_REM,
+  measureCanvasInk,
   measureDayStacks,
   measureWall,
   settleWall,
   shellCache,
   shutDownBrowser,
   wallState,
+  type CanvasInk,
   type DayStack,
   type Installation,
   type TextRun,
 } from './browser-harness.js';
+import { readRules } from '../src/api/rules.js';
 
 /*
  * A container started by `docker run` with no `TZ` resolves to `UTC`, which is
@@ -309,6 +313,7 @@ describe('2 · the first-run wall', () => {
   interface Measured {
     readonly walls: Map<string, Awaited<ReturnType<typeof measureWall>>>;
     readonly stacks: Map<string, readonly DayStack[]>;
+    readonly ink: Map<string, CanvasInk | undefined>;
   }
 
   let measured: Promise<Measured> | undefined;
@@ -331,11 +336,17 @@ describe('2 · the first-run wall', () => {
     return (await measured).stacks;
   }
 
+  async function measureEveryCanvas(): Promise<Measured['ink']> {
+    if (measured === undefined) measured = measureOnce();
+    return (await measured).ink;
+  }
+
   async function measureOnce(): Promise<Measured> {
     const wall = await fresh({ feed: true });
     const link = await wall.pairLink();
     const walls: Measured['walls'] = new Map();
     const stacks: Measured['stacks'] = new Map();
+    const ink: Measured['ink'] = new Map();
     for (const size of SIZES) {
       const context = await (await browser()).newContext({
         viewport: { width: size.width, height: size.height },
@@ -346,11 +357,12 @@ describe('2 · the first-run wall', () => {
         await settleWall(page);
         walls.set(size.name, await measureWall(page));
         stacks.set(size.name, await measureDayStacks(page));
+        ink.set(size.name, await measureCanvasInk(page));
       } finally {
         await context.close();
       }
     }
-    return { walls, stacks };
+    return { walls, stacks, ink };
   }
 
   /**
@@ -428,6 +440,109 @@ describe('2 · the first-run wall', () => {
         'the canvas is not the largest box of its aspect that fits the frame. ' +
           'Inside the glass is not the same as filling it — a canvas squeezed by ' +
           'a padding box is wholly on screen and wholly wrong.',
+      ).toEqual([]);
+    },
+    SLOW,
+  );
+
+  /**
+   * A first-run wall says nothing it cannot mean — **red until RFC 009 2.1**.
+   *
+   * A fresh install seeds the Classic canvas: clock, shift, weather and two
+   * calendars. `weather_enabled` and `alerts_enabled` default on,
+   * `latitude`/`longitude` default NULL, and until Phase 2 the wizard never
+   * asked for a location or a person — so two of those five boxes, 24% of the
+   * portrait canvas, drew "Nothing to show yet." for ever. Not on this
+   * installation's first afternoon: for ever, because nothing on the wall could
+   * change it and nothing pointed at what could.
+   *
+   * This is the household `install({ feed: true })` builds and the one the RFC
+   * names: one feed, no location, nobody, nothing arranged.
+   *
+   * Two assertions, and the second is the one that keeps the first honest.
+   * *No such note anywhere* — the placeholder that stays is the one on a widget
+   * that **is** set up and has nothing today, and this wall has none of those.
+   * And *the rest is still on the glass*: "no placeholders" is also true of a
+   * blank wall, so a filter with an off-by-one in it would pass the first check
+   * and fail the household completely.
+   */
+  it(
+    'draws no permanent “Nothing to show yet.” on a wall nobody has configured',
+    async () => {
+      const all = await measureEveryCanvas();
+      const notes: string[] = [];
+      const missing: string[] = [];
+      for (const size of SIZES) {
+        const ink = all.get(size.name);
+        expect(ink, `${size.name}: no canvas to read`).toBeDefined();
+        for (const note of ink!.notes) {
+          notes.push(`${size.name}: ${note.where} — “${note.text}”`);
+        }
+        /*
+         * What has to survive the omission. The clock needs nothing set up and
+         * the calendars are the product — a month grid draws the dates before a
+         * single event arrives — so all three are on every one of these sizes
+         * whatever else went. Named rather than counted, because "three boxes"
+         * would pass just as happily if the wrong three were kept.
+         */
+        for (const type of ['clock', 'calendar']) {
+          if (!ink!.drawn.includes(type)) {
+            missing.push(`${size.name}: no ${type} on the wall — drew [${ink!.drawn.join(', ')}]`);
+          }
+        }
+      }
+      expect(
+        missing,
+        'a widget that needs nothing set up was dropped with the ones that do. ' +
+          'Omitting a box the household can never fill is the fix; omitting the ' +
+          'calendar is the wall.',
+      ).toEqual([]);
+      expect(
+        notes,
+        'the first-run wall is telling a household about their own admin. A ' +
+          'widget with nothing behind it yields its space; the note is for a ' +
+          'widget that is set up and has nothing to say today.',
+      ).toEqual([]);
+    },
+    SLOW,
+  );
+
+  /**
+   * And the space it yielded is not a hole.
+   *
+   * The other half of the Phase 2 verification bar, and the half the RFC itself
+   * calls harder to write than it sounds. Yielding space is only an improvement
+   * if something is near it: a canvas is free-form, nothing reflows, so two
+   * boxes removed from the top of the Classic wall leave exactly the gap they
+   * occupied.
+   *
+   * Measured as the largest empty *rectangle* rather than the total empty area,
+   * because a wall can be 40% bare and read as composed while one contiguous
+   * third of it reads as broken. The bound is a quarter of the canvas, which is
+   * the RFC's number.
+   */
+  it(
+    'leaves no bare region larger than a quarter of the canvas',
+    async () => {
+      const all = await measureEveryCanvas();
+      const bare: string[] = [];
+      for (const size of SIZES) {
+        const ink = all.get(size.name);
+        expect(ink, `${size.name}: no canvas to read`).toBeDefined();
+        const gap = largestBareRegion(ink!);
+        if (gap.fraction > 0.25) {
+          bare.push(
+            `${size.name}: ${(gap.fraction * 100).toFixed(1)}% of the canvas is one bare ` +
+              `rectangle ${gap.rect.left},${gap.rect.top}..${gap.rect.right},${gap.rect.bottom} ` +
+              `in a ${ink!.canvas.right}x${ink!.canvas.bottom} canvas drawing ` +
+              `[${ink!.drawn.join(', ')}]`,
+          );
+        }
+      }
+      expect(
+        bare,
+        'a widget yielded its space and nothing is near it. A wall that has ' +
+          'dropped what it cannot show has to still look arranged.',
       ).toEqual([]);
     },
     SLOW,
@@ -700,6 +815,14 @@ describe('3 · the wizard, clicked through', () => {
         // Step 3, skipped — a feed can fail for reasons the household does not
         // control, and setup is already complete by here.
         await Promise.all([
+          page.waitForURL((url) => url.pathname === '/setup/place', { timeout: 20_000 }),
+          page.click('button.btn-text'),
+        ]);
+
+        // Step 4, skipped too. This is the household who clicks straight
+        // through, and what they end up with is asserted below: no location,
+        // nobody, and — the point of the step existing — no armed weather rule.
+        await Promise.all([
           page.waitForURL((url) => url.pathname === '/setup/done', { timeout: 20_000 }),
           page.click('button.btn-text'),
         ]);
@@ -735,6 +858,23 @@ describe('3 · the wizard, clicked through', () => {
         expect(stored, `stored a zone that is not the UTC this box detects. ${detail}`).toMatch(
           /^(Etc\/)?(UTC|GMT|UCT|Universal|Zulu|GMT[+-]0)$/,
         );
+
+        /*
+         * And what skipping step 4 leaves behind — RFC 009 Phase 2.
+         *
+         * The shipped National Weather Service ladder is on in the database
+         * and has nowhere to watch, and until this it was reported everywhere
+         * as working. `readRules` is what the evaluator actually sees, so it
+         * is the thing to assert on: a household who clicked straight through
+         * ends up with no armed weather rule at all.
+         */
+        const armed = readRules(wall.db).filter((rule) => rule.source === 'nws' && rule.enabled);
+        expect(
+          armed.map((rule) => rule.name),
+          'a household who skipped the location step still has armed weather rules. ' +
+            'Five rules against zero zones is a safety-adjacent feature reporting ' +
+            'itself as working while inert.',
+        ).toEqual([]);
       } finally {
         await context.close();
       }
@@ -864,6 +1004,108 @@ describe('4 · the editor, driven', () => {
           { asked, url: page.url() },
           'clicking a nav link with an unsaved drag navigated away without asking',
         ).toEqual({ asked: true, url: from });
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * And it says which boxes the wall is leaving out — RFC 009 Phase 2.
+   *
+   * The manifest omits a widget the household has nothing set up for. The
+   * editor keeps it, because a box you cannot see is a box you cannot move —
+   * so the editor is where "why is my Weather box not on the wall" has to be
+   * answered, and this is that answer. Without it the two screens disagree by
+   * two widgets and nothing anywhere connects them.
+   *
+   * Measured rather than asserted from the markup: the flag is drawn by the
+   * editor from what the server sent, and either half being wrong shows up
+   * only here.
+   */
+  it(
+    'flags the widgets the wall is leaving out, and says what to do',
+    async () => {
+      const wall = await fresh({ feed: true });
+      const context = await (await browser()).newContext({
+        viewport: { width: 900, height: 1000 },
+      });
+      try {
+        const page = await context.newPage();
+        await editorPage(wall, page);
+
+        const flagged = await page.evaluate(() =>
+          [...document.querySelectorAll('.le-overlay .le-widget.is-not-drawn')].map((box) => ({
+            label: (box.querySelector('.le-widget-label')?.textContent ?? '').trim(),
+            flag: (box.querySelector('.le-widget-flag')?.textContent ?? '').trim(),
+          })),
+        );
+        expect(
+          flagged.map((one) => one.label).sort(),
+          'the editor did not mark the boxes the wall omits. A household who put ' +
+            'a Weather widget on a wall with no location has to be able to find ' +
+            'out here why it is not there.',
+        ).toEqual(['Shift', 'Weather']);
+        expect(new Set(flagged.map((one) => one.flag))).toEqual(new Set(['Not on the wall']));
+
+        /*
+         * And the flag keeps out of the row the widget's own name is in.
+         *
+         * Measured, and asserted as *rows* rather than as rectangles that
+         * happen not to touch. On the default wall the two chips clear each
+         * other by 23px in a 154px box with the flag in the top-right corner —
+         * so a check for overlap passes today and would keep passing until a
+         * slightly longer name or a slightly narrower box closed that gap,
+         * which is the wrong moment to find out. The boxes that carry this flag
+         * are the narrow ones by construction (Classic's shift and weather), so
+         * the rule is the strong one: the flag has its own band.
+         */
+        const sharingARow = await page.evaluate(() =>
+          [...document.querySelectorAll('.le-overlay .le-widget.is-not-drawn')]
+            .map((box) => {
+              const name = box.querySelector('.le-widget-label')?.getBoundingClientRect();
+              const flag = box.querySelector('.le-widget-flag')?.getBoundingClientRect();
+              if (name === undefined || flag === undefined) return 'a flagged box lost a chip';
+              const clear = flag.top >= name.bottom - 0.5 || flag.bottom <= name.top + 0.5;
+              return clear
+                ? ''
+                : `name spans ${Math.round(name.top)}..${Math.round(name.bottom)} and the ` +
+                  `flag ${Math.round(flag.top)}..${Math.round(flag.bottom)}, in a ` +
+                  `${Math.round(box.getBoundingClientRect().width)}px box`;
+            })
+            .filter((one) => one !== ''),
+        );
+        expect(
+          sharingARow,
+          'the "not on the wall" flag shares a row with the widget’s own name. ' +
+            'They are both chips and the flag is the longer of the two, so on a ' +
+            'narrow box one paints over the other.',
+        ).toEqual([]);
+
+        /*
+         * And the preview underneath draws what the wall draws.
+         *
+         * It is captioned "Live preview" and it is a claim about the glass, so
+         * "Nothing to show yet." in it under a box flagged "Not on the wall" is
+         * two sentences on one screen contradicting each other. Read through
+         * the shadow root the preview lives in, which is the only way to see
+         * it at all.
+         */
+        const previewNotes = await page.evaluate(() => {
+          const host = document.querySelector('.le-preview');
+          const root = (host as HTMLElement | null)?.shadowRoot;
+          if (!root) return null;
+          return [...root.querySelectorAll('.fw-empty, .canvas-empty')].map((note) =>
+            (note.textContent ?? '').trim(),
+          );
+        });
+        expect(previewNotes, 'no shadow-root preview to read at all').not.toBeNull();
+        expect(
+          previewNotes,
+          'the editor preview still draws the note for a widget it has just ' +
+            'flagged as not being on the wall.',
+        ).toEqual([]);
       } finally {
         await context.close();
       }

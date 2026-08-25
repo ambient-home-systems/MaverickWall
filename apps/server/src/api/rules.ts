@@ -176,9 +176,90 @@ export function readRuleRows(db: SqliteDatabase): RuleRow[] {
   return db.prepare(SELECT_RULES).all() as RuleRow[];
 }
 
-/** The rules the evaluator sees: parseable, whatever their enabled state. */
+/**
+ * Has the household told us where this wall is? (RFC 009 Phase 2.)
+ *
+ * Reported rather than armed on: this is what the Weather screen and the
+ * Overview say is missing, and it is the commonest reason a wall watches
+ * nowhere. What actually decides whether a weather rule can fire is
+ * `hasSomethingToWatch` below.
+ */
+export function hasWeatherLocation(db: SqliteDatabase): boolean {
+  const row = db
+    .prepare(`SELECT latitude, longitude FROM household_settings WHERE id = 'singleton'`)
+    .get() as { latitude: number | null; longitude: number | null } | undefined;
+  return row !== undefined && row.latitude !== null && row.longitude !== null;
+}
+
+/**
+ * How many zones are actually being watched.
+ *
+ * `enabled = 1`, exactly as the poller's own `readZones` selects: a zone retired
+ * because the household moved is not polled, so counting it would report the
+ * wall as watching a code nothing is asking about. Exported because the Overview
+ * and the Weather screen both report this number and every reader of this table
+ * has to use one predicate — the whole point of the gate below is removing
+ * disagreements of that shape, and it had introduced two of its own.
+ */
+export function countWatchedZones(db: SqliteDatabase): number {
+  const row = db
+    .prepare(`SELECT count(*) AS n FROM alert_zones WHERE provider = 'nws' AND enabled = 1`)
+    .get() as { n: number } | undefined;
+  return row?.n ?? 0;
+}
+
+/**
+ * Is there anything for a weather rule to act on? (RFC 009 Phase 2.)
+ *
+ * A zone being watched, **or an alert already in force**. Two clauses, and the
+ * second is not belt and braces — it is the difference between a household
+ * losing a tornado warning and not.
+ *
+ * The first clause is the zones rather than the location, because they are not
+ * the same question and the difference is a whole country: a place outside
+ * National Weather Service coverage resolves to no zones at all, so a household
+ * in France who filled in their coordinates would otherwise have four rules
+ * armed against nothing.
+ *
+ * The second is about the moment a household edits those coordinates. That
+ * retires the zones until `/points` answers again (see `writeWeatherSettings`),
+ * and with the first clause alone a warning already on the wall would be
+ * withdrawn for as long as that took — for ever if the network is down, which
+ * is exactly when it is least affordable. So an alert already in force keeps
+ * its rules armed until something knows better. `replaceZones` is what knows
+ * better: when the new zones resolve it deletes the alerts belonging to zones
+ * it did not keep, so a warning for somewhere the household no longer is
+ * disappears at the moment that becomes a fact rather than on a guess.
+ *
+ * Expiry is not re-checked here. `expireAlerts` runs at the head of every alert
+ * poll and clears anything past its time, so a row in this table is live within
+ * the minute — and erring towards armed is the right direction for the one
+ * feature with a life-safety disclaimer on it.
+ */
+export function hasSomethingToWatch(db: SqliteDatabase): boolean {
+  if (countWatchedZones(db) > 0) return true;
+  const live = db.prepare('SELECT count(*) AS n FROM active_alerts').get() as
+    | { n: number }
+    | undefined;
+  return (live?.n ?? 0) > 0;
+}
+
+/**
+ * The rules the evaluator sees: parseable, whatever their enabled state.
+ *
+ * With one gate on top of the stored flag. **A weather rule is armed only when
+ * there is something to watch** (RFC 009 Phase 2): a fresh install ships the
+ * National Weather Service ladder switched on, and until somebody says where
+ * the wall is — or if they say somewhere the service does not cover — that is
+ * five rules reporting themselves as working against nothing, a safety-adjacent
+ * feature that is inert and does not say so, which is worse than off. It is
+ * derived rather than stored deliberately: nothing rewrites the household's own
+ * on/off choices behind their back, and the first successful zone lookup hands
+ * them back exactly the ladder they had.
+ */
 export function readRules(db: SqliteDatabase): InterruptRule[] {
   const rules: InterruptRule[] = [];
+  const watching = hasSomethingToWatch(db);
 
   for (const row of readRuleRows(db)) {
     const source = readSource(row.trigger);
@@ -195,7 +276,9 @@ export function readRules(db: SqliteDatabase): InterruptRule[] {
       id: row.id,
       source,
       name: row.name,
-      enabled: row.enabled === 1,
+      // `nws` and not "a shipped default": a rule the household wrote against
+      // the same source has exactly the same nothing to watch.
+      enabled: row.enabled === 1 && (source !== 'nws' || watching),
       match: parsed.match,
       action,
       piercesNightMode: row.piercesNightMode === 1,

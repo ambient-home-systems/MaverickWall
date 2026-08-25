@@ -1,18 +1,27 @@
 import type { Context, Hono } from 'hono';
+import { randomBytes } from 'node:crypto';
 import { issueSetupToken, setupTokenValid, shortCodeMatches, type SetupToken } from '../auth/tokens.js';
 import type { SessionResolver } from '../auth/session.js';
 import { addCalendarSource } from '../api/sources.js';
-import { countUsers, readHousehold, readSetupState } from '../api/queries.js';
+import {
+  countUsers,
+  createPerson,
+  readHousehold,
+  readSetupState,
+  readWeatherSettings,
+  writeWeatherSettings,
+} from '../api/queries.js';
 import { testFeed } from '../api/test-feed.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, page, selectField, textField } from './html.js';
 import { ingressPath } from './ingress.js';
-import { checkbox, optionalText, parse, text, z } from '../validation.js';
+import { checkbox, coordinate, optionalText, parse, text, z } from '../validation.js';
+import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 
 /**
- * The wizard's three forms, as schemas.
+ * The wizard's four forms, as schemas.
  *
  * Stated here rather than checked field by field in the handlers, so that the
  * rules a household has to satisfy are readable in one place — and so the
@@ -42,16 +51,56 @@ const calendarBody = z.object({
   allow_http: checkbox(),
   test: optionalText(20),
 });
-import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
+
+/**
+ * Step 4 — where the wall is, and who lives there.
+ *
+ * Every field is optional at the schema, because the whole step is: a household
+ * who has neither number to hand presses Skip and nothing here is wrong. What
+ * the schema cannot say and the handler does is the cross-field rule — a
+ * latitude without a longitude is half a location and would be stored as none,
+ * so it is refused rather than silently dropped.
+ *
+ * `optionalText`, not `.optional()`: an empty text input posts `""`, and
+ * `z.string().min(1).optional()` refuses that and fails the whole object — the
+ * same trap that dropped every Home Assistant event with an empty `location`.
+ */
+const placeBody = z.object({
+  latitude: optionalText(20),
+  longitude: optionalText(20),
+  person: optionalText(80),
+});
+
+/**
+ * The colour the first person gets.
+ *
+ * The same value the People screen's Add form pre-fills, so somebody who adds
+ * their first person here and their second there sees one product rather than
+ * two, and neither is a hue nobody chose.
+ */
+const FIRST_PERSON_COLOR = '#4C7FD1';
+
+/** What was typed, echoed back so a refusal costs nothing already right. */
+function valuesFrom(body: Record<string, unknown>): {
+  latitude: string;
+  longitude: string;
+  person: string;
+} {
+  const at = (key: string): string => (typeof body[key] === 'string' ? (body[key] as string) : '');
+  return { latitude: at('latitude'), longitude: at('longitude'), person: at('person') };
+}
 
 /**
  * The first-run wizard.
  *
- * Three steps, of which two are required: an account, a timezone, and then a
- * calendar that can be skipped. Setup is marked complete after the timezone,
- * deliberately — a feed can fail for reasons the household does not control,
- * and a wizard that cannot be finished because Google is having a bad morning
- * would leave a wall showing nothing on the evening it was installed.
+ * Four steps, of which two are required: an account, a timezone, then a
+ * calendar and finally a location and a first person, both of which can be
+ * skipped. Setup is marked complete after the timezone, deliberately — a feed
+ * can fail for reasons the household does not control, and a wizard that cannot
+ * be finished because Google is having a bad morning would leave a wall showing
+ * nothing on the evening it was installed. The same argument covers step 4:
+ * everything after the timezone is a wall getting better, never a wall
+ * refusing to exist.
  *
  * Everything under `/setup` is exempt from both gates, so this is reachable
  * with no account and no completed setup. That means each route does its own
@@ -489,6 +538,90 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       return c.html(calendarForm(values, { message: added.message }), 400);
     }
 
+    return c.redirect('/setup/place', 302);
+  });
+
+  // -------------------------------------------------------------------------
+  // Step 4 — where the wall is and who lives there. Optional, like step 3.
+  // -------------------------------------------------------------------------
+
+  /*
+   * Two prerequisites for two widgets the default wall already contains, asked
+   * for once at the only moment every household passes through (RFC 009 Phase
+   * 2). Before this the product shipped a Weather box and a Shift box with
+   * nothing behind either, and nothing anywhere asked.
+   *
+   * Skipping is a real answer and costs nothing: the wall omits both boxes
+   * rather than drawing "Nothing to show yet." where a widget will never have
+   * anything to say, and no weather rule is armed until a location exists.
+   */
+
+  app.get('/setup/place', async (c: Context) => {
+    if (!(await signedIn(c))) return c.redirect('/admin/sign-in', 302);
+    return c.html(placeForm());
+  });
+
+  app.post('/setup/place', async (c: Context) => {
+    if (!(await signedIn(c))) return c.redirect('/admin/sign-in', 302);
+
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(placeBody, body);
+    if (!shaped.ok) return c.html(placeForm(valuesFrom(body), shaped.message), 400);
+
+    const { latitude, longitude, person } = shaped.value;
+    const values = { latitude: latitude ?? '', longitude: longitude ?? '', person: person ?? '' };
+    const wantsLocation = values.latitude !== '' || values.longitude !== '';
+
+    if (wantsLocation) {
+      /*
+       * All or nothing, and said rather than silently dropped.
+       *
+       * Half a location stores as none — the weather module needs both — so a
+       * household who typed one number and moved on would come back to a wall
+       * with no forecast and a form that looks filled in. The Weather screen
+       * refuses the same pair for the same reason.
+       */
+      const lat = parse(coordinate('Latitude', 90), values.latitude);
+      const lon = parse(coordinate('Longitude', 180), values.longitude);
+      if (!lat.ok || !lon.ok) {
+        /*
+         * A box left empty is a different mistake from a box filled in wrongly,
+         * and only the second has a reason worth printing. "Longitude has to be
+         * a number" is a confusing thing to read about a field you never
+         * touched — the household typed one number and did not know the other
+         * was needed, which is what the pair sentence says.
+         */
+        let message =
+          'A location is both numbers — latitude between -90 and 90, longitude between -180 and 180.';
+        if (values.latitude !== '' && values.longitude !== '') {
+          if (!lat.ok) message = lat.message;
+          else if (!lon.ok) message = lon.message;
+        }
+        return c.html(placeForm(values, message), 400);
+      }
+      const current = readWeatherSettings(deps.db);
+      writeWeatherSettings(deps.db, {
+        // Whatever the switch already says. It ships on, and this step is about
+        // telling it where to look rather than about turning it on.
+        enabled: current.enabled,
+        latitude: lat.value,
+        longitude: lon.value,
+        provider: current.provider,
+        units: current.units,
+      });
+    }
+
+    if (values.person !== '') {
+      /*
+       * One person, with the colour the People screen offers first.
+       *
+       * No colour picker here: a wizard is not the place to choose a hue, the
+       * People screen is, and a default that can be changed in one click beats
+       * a fourth field on the last step somebody wants to be finished with.
+       */
+      createPerson(deps.db, randomBytes(8).toString('hex'), values.person, FIRST_PERSON_COLOR);
+    }
+
     return c.redirect('/setup/done', 302);
   });
 
@@ -511,7 +644,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     // are the person running the container.
     return page({
       title: 'Set up Maverick Wall',
-      step: 'Step 1 of 3',
+      step: 'Step 1 of 4',
       heading: 'Enter the setup code',
       intro:
         'Maverick Wall prints a setup code to its container log when it starts. ' +
@@ -536,7 +669,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
   ): string {
     return page({
       title: 'Set up Maverick Wall',
-      step: 'Step 1 of 3',
+      step: 'Step 1 of 4',
       heading: 'Create your account',
       intro: 'This is the only account. There is no public sign-up.',
       body:
@@ -587,7 +720,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       .join('');
     return page({
       title: 'Set up Maverick Wall',
-      step: 'Step 2 of 3',
+      step: 'Step 2 of 4',
       heading: 'Where is this wall?',
       intro:
         'Every all-day event and the whole shift rotation are anchored to this ' +
@@ -637,7 +770,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       `<label><input type="checkbox" name="${id}" value="1"${on ? ' checked' : ''}> ${escapeHtml(label)}</label>`;
     return page({
       title: 'Set up Maverick Wall',
-      step: 'Step 3 of 3',
+      step: 'Step 3 of 4',
       heading: 'Add a calendar',
       intro:
         'The address of an iCal feed. In Google Calendar this is the ' +
@@ -666,8 +799,78 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         box('allow_http', 'Allow plain http for this feed', values.allowHttp === true) +
         `</div>` +
         `<button type="submit">Test and add</button></form>` +
-        `<form method="get" action="setup/done">` +
+        `<form method="get" action="setup/place">` +
         // A text button: skipping is the lowest-emphasis choice on the page.
+        `<button class="btn-text" type="submit">Skip for now</button></form>`,
+    });
+  }
+
+  /**
+   * Step 4: where the wall is, and who lives there.
+   *
+   * Two questions on one screen because they are the same question from the
+   * wall's point of view — the two widgets the default canvas already draws and
+   * has never had anything to put in. Both may be left empty.
+   *
+   * A latitude and a longitude typed by hand is not a nice ask, and it is the
+   * same ask the Weather screen makes for the same reason: there is no
+   * geocoder, because a place name would have to be sent to somebody, and rule
+   * three is about the wall but the instinct is about the household. The hint
+   * names the way everybody actually gets the numbers.
+   */
+  function placeForm(
+    values: { latitude?: string; longitude?: string; person?: string } = {},
+    error?: string,
+  ): string {
+    return page({
+      title: 'Set up Maverick Wall',
+      step: 'Step 4 of 4',
+      heading: 'Your location, and who lives here',
+      /*
+       * The forecast and the person are not the same promise, and saying they
+       * are would be a wizard that lies about its own next screen. Two numbers
+       * genuinely turn the forecast strip on. A name does not turn the rota
+       * badge on — that waits on a rotation, which is a job for the Shifts
+       * screen and too much to ask on the last step of a first run.
+       */
+      intro:
+        'Two numbers put a forecast on the wall. A name is somebody for the wall ' +
+        'to know about. Both can be skipped and added later.',
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        `<form method="post" action="setup/place">` +
+        `<div class="row-fields">` +
+        textField({
+          label: 'Latitude',
+          name: 'latitude',
+          placeholder: '38.8894',
+          value: values.latitude ?? '',
+          attrs: 'inputmode="decimal"',
+        }) +
+        textField({
+          label: 'Longitude',
+          name: 'longitude',
+          placeholder: '-97.7431',
+          value: values.longitude ?? '',
+          attrs: 'inputmode="decimal"',
+        }) +
+        `</div>` +
+        `<p class="hint">Press and hold your house in a phone map app and both ` +
+        `numbers are there. They are used for the forecast strip and, in the ` +
+        `United States, to work out which National Weather Service zones to ` +
+        `watch. No alert rule is armed until there is a zone being watched.</p>` +
+        textField({
+          label: 'Who lives here?',
+          name: 'person',
+          placeholder: 'Sam',
+          value: values.person ?? '',
+          hint:
+            'Their colour marks their events once a calendar is assigned to ' +
+            'them on Calendars. A shift rotation is separate again, on Shifts ' +
+            '— a name on its own starts neither.',
+        }) +
+        `<button type="submit">Save and finish</button></form>` +
+        `<form method="get" action="setup/done">` +
         `<button class="btn-text" type="submit">Skip for now</button></form>`,
     });
   }

@@ -117,6 +117,34 @@ export function collectPanels(
 }
 
 /**
+ * Which modules the household has actually set up (RFC 009 Phase 2).
+ *
+ * The same `ready` gate `collectPanels` uses, asked separately and for a
+ * different question. `collectPanels` answers "is there anything to draw right
+ * now"; this answers "could there ever be" — and the two differ exactly when a
+ * module is configured and its cache is empty, which is the case that has to
+ * keep its placeholder rather than yield its space.
+ *
+ * Caught per module, the same posture as everything else here: a module that
+ * cannot answer costs its own widget, never the wall.
+ */
+export function readyModuleKeys(
+  modules: readonly PanelModule[],
+  db: SqliteDatabase,
+): string[] {
+  const keys: string[] = [];
+  for (const module of modules) {
+    try {
+      if (module.ready(db)) keys.push(module.key);
+    } catch {
+      // Treated as not set up. A module that throws when asked whether it is
+      // configured has not proved that it is.
+    }
+  }
+  return keys;
+}
+
+/**
  * Every signal every module can offer, for the interrupt rules to match on.
  *
  * Deliberately not gated on `ready`. A module can be switched off as a *panel*

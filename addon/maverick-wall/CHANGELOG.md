@@ -49,6 +49,44 @@ list two or three. Nothing has been deleted and no setting has changed — makin
 that widget taller on Walls → Layout brings the rest straight back. It is only
 ever a question of what fits.
 
+**A wall no longer says "Nothing to show yet." about something you never set
+up.**
+
+A new wall arrives with a clock, a rota, a forecast and two calendars on it.
+Nobody had ever been asked where the house is or who lives in it, so two of
+those five boxes — about a quarter of the screen — showed that one sentence,
+and would have shown it for ever. Those boxes are simply not drawn now. Set a
+location on **Weather**, or a rota on **Shifts**, and each comes back where it
+always was.
+
+**This applies to walls that are already hanging.** If your wall has been
+showing "Nothing to show yet." in a corner, that corner is now empty instead —
+nothing has been removed and no arrangement has changed. The message stays
+where it still means something: a forecast you have set up that has not arrived
+yet, or a rota that says nothing about today, still say so.
+
+**Walls → Layout is where you find out.** A widget the wall is leaving out is
+still there in the editor, marked **Not on the wall**, and selecting it says
+which screen to go to — so a box missing from the glass is never a mystery.
+
+**Setting up asks two more questions, and both can be skipped.** After the
+calendar step, first run now asks for a latitude and longitude and for the name
+of one person. A phone map app gives you both numbers if you press and hold on
+your house. Skip it and nothing is worse off than before.
+
+**Weather alerts are no longer described as working when they cannot be.** The
+zones they watch are worked out from your location, and until now the overview
+said "on, working out your zones" whether that was going to finish or not — for
+a house with no location set, and for anywhere outside the United States, where
+there are no National Weather Service zones to find at all.
+
+It now says **"On — needs your location"**, or **"On — no zones yet"**, and
+links to where you set one. **No alert rule is armed until a zone is actually
+being watched**, and the Weather screen says which state you are in rather than
+promising a check that will never come back with anything. When a zone does
+arrive you get exactly the ladder that was always there — none of your own
+on/off choices are touched.
+
 ## 0.53.0
 
 **A new way for the month to look, and a new theme to go with it.**

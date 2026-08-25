@@ -1231,6 +1231,32 @@ pre.code{background:var(--mw-surface-2);
 .le-overlay.is-epaper .le-widget-label{opacity:.45}
 .le-overlay.is-epaper .le-widget:hover .le-widget-label,
 .le-overlay.is-epaper .le-widget.is-selected .le-widget-label{opacity:1}
+/* A widget the wall will not draw (RFC 009 Phase 2): the household has nothing
+ * set up behind it, so the manifest omits it. The box stays here — it has to be
+ * grabbable, and this is the screen where they find out why — but it says so.
+ * A dashed edge and a flag rather than a colour: this is not an error, and the
+ * status hues are spoken for. */
+/* Style only, never colour. The .is-selected rule is the same specificity and
+ * declared above, so repainting the border here would quietly take the accent
+ * off a flagged widget the moment it was selected — and the rule three up
+ * still promises that selection keeps its accent regardless. A dash reads
+ * against either colour. */
+.le-widget.is-not-drawn{border-style:dashed}
+/* Bottom-left, not top-right: the top strip is the widget's own name, and the
+ * boxes that are actually flagged on a fresh install are the narrow ones —
+ * Classic's shift and weather — where a second chip on that row paints over it.
+ * Bottom-right is the resize handle, so the remaining corner is the free one. */
+.le-widget-flag{position:absolute;left:0;bottom:0;
+  font:var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans);
+  letter-spacing:var(--mw-t-label-xs-tracking);
+  color:var(--mw-bg);background:var(--mw-ink-2);opacity:.85;
+  padding:2px 6px;border-radius:0 var(--mw-r-2) 0 0;
+  pointer-events:none;user-select:none}
+/* The reason, at the head of the inspector — read before any of its options,
+ * because none of them matter while nothing draws the widget. */
+.le-not-drawn{margin:0 0 12px;padding:10px 12px;border-radius:var(--mw-r-2);
+  background:var(--mw-surface-2);border:1px solid var(--mw-line);
+  font:var(--mw-t-body-sm);color:var(--mw-ink-2)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
 /* The canvas background control — none / solid / gradient, per canvas. */
@@ -2323,7 +2349,7 @@ function navBar(active: string, modules: readonly NavModule[]): string {
 
 export interface PageOptions {
   readonly title: string;
-  /** Rendered above the heading in the wizard, e.g. "Step 2 of 3". */
+  /** Rendered above the heading in the wizard, e.g. "Step 2 of 4". */
   readonly step?: string;
   readonly heading: string;
   readonly intro?: string;
@@ -2358,17 +2384,18 @@ export interface PageOptions {
 }
 
 /**
- * The wizard's three-step progress bar, derived from a "Step N of 3" string.
+ * The wizard's four-step progress bar, derived from a "Step N of 4" string.
  *
- * The wizard is always Account → Timezone → Calendar, so the labels are fixed;
- * a total other than three just draws unlabelled bars rather than guessing.
+ * The wizard is always Account → Timezone → Calendar → Where & who, so the
+ * labels are fixed; a total other than four just draws unlabelled bars rather
+ * than guessing.
  */
 function stepProgress(step: string): string {
   const match = /Step\s+(\d+)\s+of\s+(\d+)/i.exec(step);
   if (match === null) return `<p class="kick" style="margin-bottom:22px">${escapeHtml(step)}</p>`;
   const current = Number(match[1]);
   const total = Number(match[2]);
-  const labels = total === 3 ? ['Account', 'Timezone', 'Calendar'] : [];
+  const labels = total === 4 ? ['Account', 'Timezone', 'Calendar', 'Where & who'] : [];
   let out = '<ol class="steps">';
   for (let n = 1; n <= total; n++) {
     const state = n < current ? ' done' : n === current ? ' on' : '';

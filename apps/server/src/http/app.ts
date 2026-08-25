@@ -32,12 +32,8 @@ import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
+import { allModules, householdSetUp, MODULES } from '../modules/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
-import { choresModule } from '../modules/chores/index.js';
-import { weatherModule } from '../modules/weather/index.js';
-import { haModule } from '../modules/homeassistant/index.js';
-import { externalPanelModules } from '../modules/external/index.js';
-import { calendarModule } from '../modules/calendar/index.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
@@ -47,6 +43,7 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import {
   buildManifest,
+  keepWidgetsWithSomethingToSay,
   manifestEtag,
   RUN_WINDOW_DAYS,
   type Manifest,
@@ -253,13 +250,12 @@ function authenticateScreen(c: Context, screens: readonly ScreenRow[]): ScreenRo
 }
 
 /**
- * Every panel module, in one list.
- *
- * The manifest asks each for its slice, boot registers their jobs from the
- * same list, and the Display screen offers their blocks from it too — so
- * adding a module is one entry rather than three edits in three files.
+ * Every panel module, in one list — re-exported from `modules/index.ts`, which
+ * is where it now lives so that anything outside the request path (`main.ts`'s
+ * job registration, the admin's panel preview) can reach it without importing
+ * the whole application.
  */
-export const MODULES = [weatherModule, haModule, calendarModule, choresModule];
+export { MODULES };
 
 /**
  * The wall clock in a zone, as `HH:MM`.
@@ -771,6 +767,12 @@ export function createApp(deps: AppDeps): Hono {
     // interrupt evaluated against another.
     const moduleContext = { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: at, timezone };
 
+    // One list, asked twice: what each module has to say now, and which of them
+    // the household has set up at all. The second is what decides whether a
+    // widget with nothing behind it is drawn as a note or not drawn (RFC 009
+    // Phase 2), and it has to be the same list or the two answers can disagree.
+    const modules = allModules(deps.db);
+
     return buildManifest({
       household: effective,
       // Resolve a theme reference to its tokens (custom) or just its shape
@@ -796,7 +798,14 @@ export function createApp(deps: AppDeps): Hono {
       // no I/O: every module reads its own cache, filled by its own job. The
       // registered third-party modules join the first-party ones, so they go
       // through the same isolation and ordering.
-      panels: collectPanels([...MODULES, ...externalPanelModules(deps.db)], moduleContext),
+      panels: collectPanels(modules, moduleContext),
+      /*
+       * Which of those modules the household has set up — a location for the
+       * forecast, a watched entity, an active chore. A widget with nothing
+       * behind it yields its space instead of drawing a permanent note nobody
+       * standing at the wall can act on (RFC 009 Phase 2).
+       */
+      readyModules: householdSetUp(deps.db, modules).modules,
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.
@@ -806,7 +815,7 @@ export function createApp(deps: AppDeps): Hono {
         // The same module list as the panels above: a third-party module's
         // signals go through the identical isolation, and core's source guard
         // keeps them matchable only by a rule the household armed for it.
-        signals: collectSignals([...MODULES, ...externalPanelModules(deps.db)], moduleContext),
+        signals: collectSignals(modules, moduleContext),
         now: at,
         // Worked out here because core may not reach for `Intl` — rule one.
         localHhmm: localClock(at, timezone),
@@ -1022,9 +1031,25 @@ export function createApp(deps: AppDeps): Hono {
      * skipped entirely.
      */
     const canvasOwner = panelCanvasOwner(screen);
+    /*
+     * The same omission the wall makes, on the same canvas (RFC 009 Phase 2).
+     *
+     * A panel can *follow* a wall, so an unconfigured Weather box on a Classic
+     * canvas reaches this renderer too — where it draws "No weather yet", the
+     * panel's spelling of the sentence the wall has stopped drawing. One stored
+     * value read two ways is the fault this repository keeps paying for, so both
+     * go through `keepWidgetsWithSomethingToSay`.
+     *
+     * Only here, on the frame a panel puts on glass. The admin's design preview
+     * deliberately keeps every box: that page is where the household arranges
+     * them, and a widget that vanished as it was dropped would be unusable.
+     */
     const widgets =
       canvasOwner !== undefined
-        ? readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)).map((row) => ({
+        ? keepWidgetsWithSomethingToSay(
+            readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)),
+            householdSetUp(deps.db),
+          ).map((row) => ({
             type: row.type,
             x: row.x,
             y: row.y,

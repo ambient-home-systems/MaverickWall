@@ -8,10 +8,11 @@ import { evaluateInterrupts, type Signal } from '@maverick-wall/core';
 import { openDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { clean, parseAlerts, parseZones, reconcile } from '../src/modules/weather/alerts.js';
-import { alertSignals, applyAlerts, expireAlerts, knownAlerts } from '../src/modules/weather/alert-store.js';
+import { alertSignals, applyAlerts, expireAlerts, knownAlerts, readZones } from '../src/modules/weather/alert-store.js';
 import { createAlertJobHandler } from '../src/modules/weather/alert-job.js';
 import { dismissInterrupt, readDismissals, readRules, seedDefaultRules } from '../src/api/rules.js';
 import { createFetcher } from '../src/net/fetcher.js';
+import { readWeatherSettings, writeWeatherSettings } from '../src/api/queries.js';
 import type { SqliteDatabase } from '../src/db/open.js';
 import type { JobRecord } from '@maverick-wall/core';
 
@@ -250,6 +251,8 @@ interface FakeNws {
   status: number;
   etag: string;
   body: () => string;
+  /** What `/points` resolves to. Settable, so a test can move the household. */
+  zones: { forecast: string; county: string };
 }
 
 /**
@@ -267,6 +270,7 @@ async function fakeNws(): Promise<FakeNws> {
     status: 200,
     etag: '"v1"',
     body: () => collection([feature()]),
+    zones: { forecast: 'MDZ011', county: 'MDC027' },
   };
 
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
@@ -286,8 +290,8 @@ async function fakeNws(): Promise<FakeNws> {
       response.end(
         JSON.stringify({
           properties: {
-            forecastZone: 'https://api.weather.gov/zones/forecast/MDZ011',
-            county: 'https://api.weather.gov/zones/county/MDC027',
+            forecastZone: `https://api.weather.gov/zones/forecast/${state.zones.forecast}`,
+            county: `https://api.weather.gov/zones/county/${state.zones.county}`,
           },
         }),
       );
@@ -535,6 +539,116 @@ describe('the polling job, against a real server', () => {
     await job(db, nws)(record);
 
     expect(readDismissals(db)).toHaveProperty('binary_sensor.garage_door');
+    db.close();
+  });
+
+  it('re-resolves its zones when the household corrects the location', async () => {
+    /*
+     * `resolveZones` only runs when there are none, so nothing would ever ask
+     * again — a household who typed one digit of a longitude wrong and fixed
+     * it went on watching the county they typed by mistake for ever. Since a
+     * watched zone is what arms the alert ladder (RFC 009 Phase 2), every
+     * screen reported that as working.
+     *
+     * Writing the location is the moment it becomes wrong, so writing the
+     * location is what clears it — and the alerts in it go too, because an
+     * alert for somewhere else is worse than no alert.
+     */
+    const db = database();
+    const nws = await fakeNws();
+    /*
+     * The scheduler's own row, as boot registers it — with a poll comfortably in
+     * the future, which is the state this is about. Without the row the UPDATE
+     * below matches nothing and the assertion passes on an absence.
+     */
+    const later = Date.now() + 1_800_000;
+    db.prepare(
+      `INSERT INTO job_state (key, kind, next_run_at, consecutive_failures, created_at, updated_at)
+       VALUES ('alerts-sync', 'alerts-sync', ?, 3, ?, ?)`,
+    ).run(later, Date.now(), Date.now());
+
+    await job(db, nws)(record);
+    expect(readZones(db).length).toBeGreaterThan(0);
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+
+    const before = readWeatherSettings(db);
+    writeWeatherSettings(db, { ...before, latitude: 47.6, longitude: -122.3 });
+
+    // Nothing left to poll…
+    expect(readZones(db)).toEqual([]);
+    /*
+     * …but the warning is still on disk and still armed, and both halves are
+     * deliberate. "Use my Home Assistant home location" on a box whose
+     * zone.home is still the shipped default fills in Amsterdam; deleting the
+     * rows would take a live tornado warning off the wall before anything knew
+     * a replacement was obtainable, and disarming would take it off the wall
+     * just as thoroughly. An alert already in force keeps its rules armed until
+     * something knows better — see the test below for what does.
+     */
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+    expect(
+      readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled).length,
+    ).toBeGreaterThan(0);
+    /*
+     * Which is why the poll is brought forward rather than left to its
+     * schedule: the un-armed gap is a gap in the one feature with a life-safety
+     * disclaimer on it, and under the job's backoff it can be half an hour —
+     * on somebody who may well be correcting the coordinate *because* of a
+     * warning they can see.
+     */
+    expect(
+      db.prepare(`SELECT next_run_at AS at FROM job_state WHERE kind = 'alerts-sync'`).get(),
+    ).toEqual({ at: 0 });
+
+    /*
+     * And the misclick, corrected. The same codes resolve again, so this is the
+     * upsert path rather than the insert one — the row is already there and
+     * disabled, and it has to come back enabled or the household would be left
+     * with zones nothing ever polls and a ladder that never arms again.
+     */
+    writeWeatherSettings(db, { ...before, latitude: 39.2, longitude: -76.8 });
+    await job(db, nws)(record);
+    const settled = readZones(db).map((zone) => zone.code).sort();
+    expect(settled.length).toBeGreaterThan(0);
+    expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled).length)
+      .toBeGreaterThan(0);
+    // And the warning that was never deleted is still there.
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+
+    // Saving the same coordinates again is not a move, so a household who
+    // presses Save on an unchanged form does not lose the zones they have.
+    writeWeatherSettings(db, readWeatherSettings(db));
+    expect(readZones(db).map((zone) => zone.code).sort()).toEqual(settled);
+
+    db.close();
+  });
+
+  it('disarms once the move settles and the warning turns out to be elsewhere', async () => {
+    /*
+     * The other side of keeping a live alert armed across a coordinate edit: it
+     * has to stop. `replaceZones` is what settles it — the new answer keeps the
+     * codes it resolved and deletes the alerts belonging to the ones it did
+     * not, so the warning leaves the wall at the moment "this is for somewhere
+     * else" becomes a fact rather than a guess.
+     */
+    const db = database();
+    const nws = await fakeNws();
+    await job(db, nws)(record);
+    expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
+
+    // A genuine move, to somewhere the service resolves different zones for.
+    nws.zones = { forecast: 'WAZ558', county: 'WAC033' };
+    const before = readWeatherSettings(db);
+    writeWeatherSettings(db, { ...before, latitude: 47.6, longitude: -122.3 });
+    // The new zones list nothing; the etag has to move or the poll is a 304.
+    nws.etag = '"v2"';
+    nws.body = () => collection([]);
+    await job(db, nws)(record);
+
+    expect(readZones(db).map((zone) => zone.code).sort()).toEqual(['WAC033', 'WAZ558']);
+    expect(knownAlerts(db, 'MDC027')).toEqual([]);
+    expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled).length)
+      .toBeGreaterThan(0);
     db.close();
   });
 

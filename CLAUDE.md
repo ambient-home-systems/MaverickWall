@@ -831,8 +831,10 @@ two bugs, which is where they usually are.
 
 **The wizard.** `/setup` is server-rendered HTML with no script and no build
 step, because it is the one screen that has to work before anything else does.
-Three steps: account, timezone, then a calendar that can be skipped. Setup is
-marked complete after the **timezone** — a feed can fail for reasons the
+Four steps: account, timezone, then a calendar that can be skipped, then a
+location and a first person that can be skipped too (RFC 009 Phase 2 — both are
+prerequisites for widgets the default wall already draws, and nothing had ever
+asked for either). Setup is marked complete after the **timezone** — a feed can fail for reasons the
 household does not control, and a wizard that cannot be finished because Google
 is having a bad morning would leave a wall blank on the evening it was
 installed. The bootstrap code is printed to stdout at boot, re-issued when it

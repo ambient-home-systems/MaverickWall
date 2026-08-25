@@ -121,6 +121,13 @@ describe('the wizard and sign-in stay script-free', () => {
     expect(calendar.status).toBe(200);
     expectOnlyThemeScript(await calendar.text(), '/setup/calendar');
 
+    // And step 4, which asks for a location and a first person. Two coordinate
+    // fields is exactly the shape somebody reaches for a map picker to fill in,
+    // so this is the step most likely to grow a script.
+    const place = await h.call('/setup/place');
+    expect(place.status).toBe(200);
+    expectOnlyThemeScript(await place.text(), '/setup/place');
+
     // Sign-in, signed out — served before any credential exists.
     h.jar.clear();
     const signIn = await h.call('/admin/sign-in');

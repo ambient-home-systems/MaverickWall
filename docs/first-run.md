@@ -24,7 +24,7 @@ this. Before the code existed, the first sign-up was open to anybody who could
 reach the port. It lasts thirty minutes and a new one is printed when it
 expires — restart the container if you missed it.
 
-## Three steps
+## Four steps
 
 1. **Your account.** Email and a password. This is stored on your machine and
    sent nowhere.
@@ -33,8 +33,32 @@ expires — restart the container if you missed it.
 3. **A calendar.** Optional, and skippable — a feed can fail for reasons you do
    not control, and a wizard you cannot finish because Google is having a bad
    morning would leave a wall blank on the evening you installed it.
+4. **Your location, and who lives here.** Also optional. A latitude and
+   longitude for the forecast strip — and, in the United States, for working
+   out which National Weather Service zones to watch — and the name of one
+   person. A person is somebody for the wall to know about: their colour marks
+   their events once a calendar is assigned to them, and a rota once one
+   exists.
 
 Setup is complete after the timezone.
+
+Skipping the fourth step costs nothing and hides nothing. The wall leaves out
+the widgets it has nothing to put in, rather than drawing a box that says
+"Nothing to show yet." for ever. Add a location on **Weather** and the forecast
+strip appears where it always was; **Walls → Layout** marks any widget the wall
+is leaving out and names the screen that fixes it.
+
+A name on its own changes nothing on the glass, and that is worth knowing
+before you look for it. A person's colour marks events on a calendar assigned
+to them, which is done on **Calendars**; the rota badge appears once a rotation
+exists on **Shifts**. Adding a person creates neither — it creates the person
+both of those then attach to.
+
+**No weather alert rule is armed until a zone is being watched.** The zones are
+worked out from the location, so there are none without one — and none at all
+outside National Weather Service coverage, wherever the coordinates point. A
+rule that reported itself as on in either case would be reporting something
+that could not happen. **Weather** shows the zones as soon as there are any.
 
 ## Adding a calendar
 

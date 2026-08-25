@@ -1,6 +1,6 @@
 # RFC 009 — Finishing the last mile
 
-Status: **Phases 0 and 1 built; 2 to 6 proposed** · Owner: — ·
+Status: **Phases 0, 1 and 2 built; 3 to 6 proposed** · Owner: — ·
 First drafted 2026-08-24 ·
 Arises from a full audit of the running application (built from a checkout,
 paired to a real screen, measured in a browser at six widths) rather than from
