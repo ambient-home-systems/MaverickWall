@@ -490,6 +490,27 @@ A third review found two more, one of which had shipped long before this phase:
   cannot tell two forms apart; the first version of it passed with the bug in
   place for exactly that reason.
 
+And a fourth found three places where the strip *lied*, which is the failure
+this phase is about rather than a detail of it. **A confirmation that is not
+true is worse than no confirmation**, because it is the thing a household will
+believe:
+
+- "Sync now" said "Syncing now" for a calendar whose sync switch is off, where
+  `ics-sync` skips it outright. It says why instead.
+- A failed update check drew the ok-coloured "Checked for a newer version."
+  directly above the danger box saying it had failed. It claims nothing now.
+- "Calendar removed." was drawn for an id that never existed — a stale tab, a
+  second press.
+- And a rejected *row* save rendered its reason at the foot of the page under
+  "Add a calendar", which was right when that was the only way to fail and
+  became a fault the moment the row was echoed back at the top with Save live:
+  edits, an enabled Save, and the reason 2,000px below under the wrong heading
+  reads as a save that worked.
+
+The generalisation for 3b is worth carrying: **a token is a claim, so check the
+branch it is on.** A handler with an early return, a skip, or a "nothing to do"
+path needs a different token or none.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

@@ -696,6 +696,17 @@ describe('testing a feed before saving it', () => {
     expect(refused.status).toBe(400);
     const html = await refused.text();
 
+    /*
+     * And the reason is above the rows, not two thousand pixels down under
+     * "Add a calendar". With the row echoed back and its Save live, a message
+     * under the wrong heading reads as a save that worked.
+     */
+    const firstError = html.indexOf('class="error"');
+    expect(firstError, 'the reason must be on the page at all').toBeGreaterThan(-1);
+    expect(firstError, 'above the row it is about').toBeLessThan(html.indexOf('/settings"'));
+    expect(firstError, 'and above "Add a calendar", which is a different form')
+      .toBeLessThan(html.indexOf('Add a calendar</h2>'));
+
     expect(html, 'the colour they changed in the same breath').toContain('#123456');
     expect(html, 'and the switch they turned off').not.toMatch(
       /name="enabled"[^>]*\schecked/,
@@ -710,6 +721,36 @@ describe('testing a feed before saving it', () => {
       .get() as { name: string; color: string; enabled: number };
     expect(row).toMatchObject({ name: 'Family', enabled: 1 });
     expect(row.color).not.toBe('#123456');
+  });
+
+  it('says why nothing was fetched when Sync now is pressed on a disabled calendar', async () => {
+    // `ics-sync` skips a source whose switch is off, and the button is drawn
+    // for those rows anyway — so "Syncing now" would be the strip promising a
+    // fetch that never happens.
+    const h = await harness();
+    await h.addFeed('Family');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+    h.db.prepare('UPDATE calendar_sources SET enabled = 0 WHERE id = ?').run(id);
+
+    const off = await h.form(`/admin/calendars/${id}/sync`, {});
+    expect(off.headers.get('location')).toBe('/admin/calendars?saved=calendar-sync-off');
+    expect(await (await h.call('/admin/calendars?saved=calendar-sync-off')).text()).toContain(
+      'Sync is off for that calendar',
+    );
+
+    h.db.prepare('UPDATE calendar_sources SET enabled = 1 WHERE id = ?').run(id);
+    const on = await h.form(`/admin/calendars/${id}/sync`, {});
+    expect(on.headers.get('location')).toBe('/admin/calendars?saved=calendar-sync');
+  });
+
+  it('claims nothing for a calendar that was already gone', async () => {
+    const h = await harness();
+    const gone = await h.form('/admin/calendars/nosuchsource/delete', {});
+    expect(gone.headers.get('location'), '"Calendar removed." for one that never was').toBe(
+      '/admin/calendars',
+    );
+    const stale = await h.form('/admin/calendars/nosuchsource/sync', {});
+    expect(stale.headers.get('location')).toBe('/admin/calendars');
   });
 
   it('still saves when the save button is the one pressed', async () => {

@@ -1827,7 +1827,20 @@ also latched**, and only a page with two settings forms shows it: on System
 answering "Stay" cancelled the navigation and left the first form's guard dead
 for the life of the page. It is cleared inside `beforeunload` — disarmed for
 one navigation rather than for good — and its test asserts on the **URL**
-rather than on a prompt count, because a count cannot tell two forms apart. Cancel's
+rather than on a prompt count, because a count cannot tell two forms apart.
+
+**And a fourth review found three places where the strip simply lied**, which
+is the failure this phase is about rather than a detail of it: "Syncing now"
+for a calendar whose sync switch is off, where `ics-sync` skips it outright; a
+green "Checked for a newer version." drawn directly above the red box saying
+the check had failed; and "Calendar removed." for an id that never existed. A
+rejected *row* save also drew its reason at the foot of the page under "Add a
+calendar" — right when that was the only way to fail, and a fault the moment
+the row is echoed back at the top with Save live, because edits plus an enabled
+Save plus a reason 2,000px below under the wrong heading reads as a save that
+worked. **A token is a claim, so check the branch it is on**: a handler with an
+early return, a skip or a nothing-to-do path needs a different token or none.
+That is the rule the remaining seventy adoptions have to be read against. Cancel's
 destination is *stated* rather than derived, because a
 form re-rendered at 400 leaves the browser on the POST URL — `reload()` would
 re-submit the edits Cancel exists to throw away.

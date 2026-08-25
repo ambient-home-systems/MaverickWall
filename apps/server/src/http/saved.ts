@@ -51,6 +51,10 @@ export const SAVED_MESSAGES = {
   'calendar-added': 'Calendar added.',
   'calendar-settings': 'Calendar settings saved.',
   'calendar-sync': 'Syncing now — it will show as synced within a minute.',
+  // Not a success and not an error: the button did what it says and the sync
+  // will decline it, so the strip says why rather than promising a fetch that
+  // `ics-sync` skips outright for a source whose switch is off.
+  'calendar-sync-off': 'Sync is off for that calendar, so nothing was fetched. Turn it on above first.',
   'calendar-removed': 'Calendar removed.',
   // System
   'timezone': 'Timezone saved.',

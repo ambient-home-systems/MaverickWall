@@ -967,8 +967,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   app.post('/admin/calendars/:id/sync', (c: Context) => {
+    /*
+     * Say what will actually happen, which is not always a sync.
+     *
+     * `ics-sync` skips a source whose switch is off ("source is disabled"), and
+     * the button is drawn for those rows anyway — so an unconditional "Syncing
+     * now" is the strip promising a fetch that never happens, which is the
+     * exact dishonesty this whole phase exists to remove. And an id that is not
+     * there (a stale tab, a double submit) claims nothing at all.
+     */
+    const id = c.req.param('id') ?? '';
+    const source = readAdminSources(deps.db).find((candidate) => candidate.id === id);
+    if (source === undefined) return c.redirect('/admin/calendars', 302);
+    if (source.enabled !== 1) return savedRedirect(c, '/admin/calendars', 'calendar-sync-off');
     // Automates the SQL that was previously the documented way to do this.
-    requestSyncNow(deps.db, c.req.param('id') ?? '');
+    requestSyncNow(deps.db, id);
     return savedRedirect(c, '/admin/calendars', 'calendar-sync');
   });
 
@@ -1002,8 +1015,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   app.post('/admin/calendars/:id/delete', (c: Context) => {
-    deleteSource(deps.db, c.req.param('id') ?? '');
-    return savedRedirect(c, '/admin/calendars', 'calendar-removed');
+    // "Calendar removed." only when there was one. A stale tab or a second
+    // press of Back-then-Remove otherwise gets a confirmation for something
+    // that had already gone.
+    const id = c.req.param('id') ?? '';
+    const existed = readAdminSources(deps.db).some((candidate) => candidate.id === id);
+    deleteSource(deps.db, id);
+    return existed
+      ? savedRedirect(c, '/admin/calendars', 'calendar-removed')
+      : c.redirect('/admin/calendars', 302);
   });
 
   // -------------------------------------------------------------------------
@@ -1038,7 +1058,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       result.status === 'ok' ? result.latest : null,
       result.status === 'ok' ? null : result.message,
     );
-    return savedRedirect(c, '/admin/system', 'update-checked');
+    /*
+     * A failed check gets no strip.
+     *
+     * `updateSection()` draws "Last check failed: …" in the danger box directly
+     * below, so the ok-coloured "Checked for a newer version." would sit on top
+     * of the red one contradicting it. The page already answers this case
+     * properly; the strip's job is to say a thing happened, and here it did not.
+     */
+    return result.status === 'ok'
+      ? savedRedirect(c, '/admin/system', 'update-checked')
+      : c.redirect('/admin/system', 302);
   });
 
   app.post('/admin/system/timezone', async (c: Context) => {
@@ -4464,12 +4494,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }
         : {}),
       body:
+        /*
+         * A row's error belongs above the rows, not under "Add a calendar".
+         *
+         * One page, two error sources: the add form at the foot, and a rejected
+         * save of one existing calendar. The block has always been drawn under
+         * the add form's heading, which was right when that was the only way to
+         * fail — and became a real fault once a rejected row is echoed back at
+         * the top with Save live: the household sees their edits, an enabled
+         * Save, and the reason 2,000px further down under the wrong heading,
+         * which reads as a save that worked. The echo is what tells the two
+         * apart, because it is only ever set by a row's own handler.
+         */
+        (echo === undefined || error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         sources
           .map((source) => sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined))
           .join('') +
         haCalendarSection(haCalendars, sources) +
         `<h2 class="add" id="add">Add a calendar</h2>` +
-        (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        (echo !== undefined || error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         (tested === undefined ? '' : previewPanel(tested)) +
         `<form method="post" action="admin/calendars">` +
         textField({

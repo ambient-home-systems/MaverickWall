@@ -495,6 +495,27 @@ describe('the update check setting', () => {
     expect(readUpdateState(h.db).lastCheckedAt).toBeNull();
   });
 
+  it('does not draw a green "checked" strip over a red "check failed"', async () => {
+    /*
+     * A check that could not reach the host is not a thing that happened. The
+     * page already answers that case properly — `updateSection()` draws
+     * "Last check failed: …" in the danger box — so an ok-coloured
+     * "Checked for a newer version." above it is the confirmation strip
+     * contradicting the page it sits on.
+     *
+     * The harness has no network, so the check genuinely fails here.
+     */
+    const h = await signedIn(harness());
+    setUpdateCheckEnabled(h.db, true);
+    const response = await h.call('/admin/system/check-now', { method: 'POST' });
+    expect(response.status).toBe(302);
+    expect(readUpdateState(h.db).lastError, 'the check has to have failed').not.toBeNull();
+    expect(
+      response.headers.get('location'),
+      'a failed check must claim nothing',
+    ).toBe('/admin/system');
+  });
+
   it('forgets what it found when it is switched off', async () => {
     const h = await signedIn(harness());
     setUpdateCheckEnabled(h.db, true);
