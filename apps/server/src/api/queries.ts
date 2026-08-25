@@ -1189,14 +1189,26 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
      * they asked for it, so that is the moment to add it. The order is still
      * theirs to change afterwards, and turning it off leaves the list alone.
      *
-     * On the *transition*, and that was written as `settings.enabled` — true of
-     * the intent, false of the code, and the difference is a household who took
-     * the forecast strip off their wall getting it put back by any later save
-     * with the switch still on. It became reachable from a second direction
-     * when the alerts switch joined this form (RFC 009 Phase 3.1): toggling
-     * alerts writes weather settings, so it re-inserted the block too.
+     * The moment is when weather becomes *usable*, which is not the same as
+     * when the switch moves — and getting that wrong is a fault in each
+     * direction. Written as `if (settings.enabled)` it fired on every save, so
+     * a household who took the strip off their wall got it put back by any
+     * later save with the switch on (and, once the alerts switch joined that
+     * form in RFC 009 Phase 3.1, by toggling alerts). Written as the switch's
+     * off→on transition it fires on almost no install at all: `weather_enabled`
+     * ships as 1 while `display_blocks` ships without `weather`, so `previous`
+     * is already enabled the first time anybody saves and the strip would never
+     * appear — and this is the only writer of `'weather'` into that list.
+     *
+     * Usable is on *and* located: with no coordinates there is nothing to draw
+     * and the wall omits the widget entirely (Phase 2). So the moment a
+     * household types a location — on the wizard's fourth step, on the Weather
+     * screen, or through "Use my Home Assistant home location" — is the moment
+     * they asked for it, and every save after that leaves their order alone.
      */
-    if (settings.enabled && !previous.enabled) {
+    const wasUsable = previous.enabled && previous.latitude !== null && previous.longitude !== null;
+    const isUsable = settings.enabled && settings.latitude !== null && settings.longitude !== null;
+    if (isUsable && !wasUsable) {
       const row = db
         .prepare(`SELECT display_blocks AS blocks FROM household_settings WHERE id = 'singleton'`)
         .get() as { blocks: string | null } | undefined;

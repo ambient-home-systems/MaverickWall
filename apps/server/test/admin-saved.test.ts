@@ -248,20 +248,34 @@ describe('the Weather form marker', () => {
         latitude: '51.5', longitude: '-0.1', ...fields,
       });
 
-    // Off, then on: the transition, which is what puts the strip on the wall.
-    await save({});
-    expect(blocks()).not.toContain('weather');
+    /*
+     * The default install, which is the path that matters: `weather_enabled`
+     * ships as 1 and `display_blocks` ships without `weather`, so the switch
+     * never *moves* — a gate on its off→on transition would leave the strip off
+     * every wall for ever, and this is the only writer of it. What the
+     * household actually does is type a location.
+     */
+    expect(blocks(), 'the shipped order has no forecast strip in it').not.toContain('weather');
     await save({ weather_enabled: '1' });
-    expect(blocks(), 'switching it on is what asks for the block').toContain('weather');
+    expect(blocks(), 'typing a location is what asks for the block').toContain('weather');
 
     // The household takes it off their wall, then comes back and saves again.
     h.db
       .prepare(`UPDATE household_settings SET display_blocks = 'now,next,horizon' WHERE id = 'singleton'`)
       .run();
     await save({ weather_enabled: '1', alerts_enabled: '1' });
-    expect(blocks(), 'a save that changed the alerts switch is not "switch weather on"').toBe(
+    expect(blocks(), 'a save that changed the alerts switch is not "ask for the strip"').toBe(
       'now,next,horizon',
     );
+
+    // And nor is re-saving the same location, or changing the units.
+    await save({ weather_enabled: '1', weather_units: 'metric' });
+    expect(blocks()).toBe('now,next,horizon');
+
+    // Turning it off and on again *is*, because it was not usable in between.
+    await save({});
+    await save({ weather_enabled: '1' });
+    expect(blocks(), 'switching weather back on asks for it again').toContain('weather');
   });
 
   it('accepts the same body once it carries the marker', async () => {

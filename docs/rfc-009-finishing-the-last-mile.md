@@ -592,9 +592,19 @@ found the merge had made a pre-existing bug reachable — `writeWeatherSettings`
 adds the forecast strip to `display_blocks` on `if (settings.enabled)` where the
 comment beside it says "enabling is the moment they asked for it", so any later
 save with the switch on put the block back on a wall the household had taken it
-off, and toggling alerts now routes through there. It is the transition now, as
-the comment always said. And the disabled-Save colour assertion was sampling
+off, and toggling alerts now routes through there. And the disabled-Save colour assertion was sampling
 mid-transition and failing about one run in three; it polls.
+
+A **twelfth** caught the fix for that being wrong in the other direction, and
+the pair is the lesson. Gated on the switch's off→on *transition*, the block
+would have been inserted on almost no install at all: `weather_enabled` ships
+as 1 while `display_blocks` ships without `weather`, so `previous` is already
+enabled the first time anybody saves and the strip would never have appeared.
+The moment is when weather becomes **usable** — on *and* located — because with
+no coordinates there is nothing to draw and the wall omits the widget anyway
+(Phase 2). So typing a location is what asks for the strip, and every save after
+that leaves the household's order alone. The test pins both directions, because
+each wrong answer looks right from one side.
 
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
