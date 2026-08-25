@@ -1826,13 +1826,19 @@ also latched**, and only a page with two settings forms shows it: on System
 (timezone and update-check) saving one while the other was dirty prompted, and
 answering "Stay" cancelled the navigation and left the first form's guard dead
 for the life of the page. It is cleared inside `beforeunload` — disarmed for
-one navigation rather than for good — and its test asserts on the **URL**
-rather than on a prompt count, because a count cannot tell two forms apart. And
-the guard itself is **one listener for the document, asking every form**, not
-one each: with a listener each, pressing Save on the timezone form raised the
-update-check form's "Changes you made may not be saved" — the household presses
-Save, is asked whether they meant it, and "Stay" cancels the save. Pressing Save
-is not leaving without saving.
+one navigation rather than for good. And the guard itself is **one listener for
+the document, asking every form**, not one each: with a listener each, pressing
+Save on the timezone form raised the update-check form's "Changes you made may
+not be saved" — the household presses Save, is asked whether they meant it, and
+"Stay" cancels the save. Pressing Save is not leaving without saving.
+
+**And an echo belongs on a text field, not on a closed list.** Handing a
+rejected timezone back into the `<select>` selects *nothing* — it is refused
+precisely because it is not one of the options — so the browser preselects
+whatever sorts first, `Africa/Abidjan`, with a live Save over it. That is
+`setup.ts`'s `detectedTimezoneOption` rule ("never 'nothing'") one screen along,
+and it is the limit on "always echo the body back": there has to be something
+the control can show.
 
 **And a fourth review found three places where the strip simply lied**, which
 is the failure this phase is about rather than a detail of it: "Syncing now"
