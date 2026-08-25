@@ -16,6 +16,19 @@
 
 ## Unreleased
 
+**A restored encryption key is no longer thrown away about one time in sixty.**
+
+Restoring from System → Backup hands you a key file, and it has always allowed
+for the extra blank line a text editor or a copy-paste puts on the end. It was
+trimming one byte too many when the key's own last byte happened to look like a
+blank — roughly one key in sixty-four — and a key one byte short reads as a
+broken key: it was set aside, a new one made, and every calendar address you
+had saved became unreadable at the very moment you were recovering.
+
+If a restore has ever left you re-entering your calendar addresses for no
+reason you could see, this is why. Nothing needs doing; keys already on disk
+are unaffected.
+
 **The calendar on your wall is readable again.**
 
 An Upcoming list has always shrunk itself to whatever size it took to fit every

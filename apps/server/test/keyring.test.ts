@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -54,6 +55,28 @@ describe('master key', () => {
     // slightly imperfectly, and it must not cost the household their key.
     const dir = scratch();
     const original = loadOrCreateMasterKey(dir).key;
+    writeFileSync(join(dir, '.secret'), Buffer.concat([original, Buffer.from('\n')]));
+
+    const recovered = loadOrCreateMasterKey(dir);
+    expect(recovered.created).toBe(false);
+    expect(recovered.unusableKeyWarning).toBeUndefined();
+    expect(recovered.key.equals(original)).toBe(true);
+  });
+
+  it('recovers a newline-suffixed key whose own last byte is whitespace', () => {
+    /*
+     * The 1.6% case, deterministically. A master key is 32 random bytes, so
+     * about one in sixty-four ends in a tab, newline, carriage return or
+     * space — and an unbounded strip run over the 33-byte file eats the
+     * appended newline *and* that byte, leaving 31, which reads as an
+     * unusable key: renamed aside, replaced, and every encrypted calendar
+     * address in the database gone with it.
+     *
+     * The test above uses a freshly generated key, so it was failing at
+     * exactly that rate and reading as flake.
+     */
+    const dir = scratch();
+    const original = Buffer.concat([randomBytes(31), Buffer.from([0x20])]);
     writeFileSync(join(dir, '.secret'), Buffer.concat([original, Buffer.from('\n')]));
 
     const recovered = loadOrCreateMasterKey(dir);
