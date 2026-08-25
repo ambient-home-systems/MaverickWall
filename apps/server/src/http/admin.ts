@@ -90,8 +90,8 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { dirtyForm, downloadForm, errorBlock, escapeHtml, icon, page, saveRow, selectField,
-  selectRow, switchRow, textField, type NavModule } from './html.js';
+import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, icon, page, saveRow,
+  selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
@@ -1511,17 +1511,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const plan = readShiftPlansAdmin(deps.db).find((candidate) => candidate.id === id);
     if (plan === undefined) return c.redirect('/admin/shifts', 302);
     return c.html(
-      page({
+      confirmDestroyPage({
         modules: navModules(deps.db),
         title: 'Remove rotation',
         nav: 'shifts',
-        heading: `Remove ${escapeHtml(plan.personName ?? 'this')}’s rotation?`,
+        heading: `Remove ${plan.personName ?? 'this'}’s rotation?`,
         intro: 'The wall stops colouring their days by it. This cannot be undone; you can set it up again from scratch.',
-        body:
-          `<form method="post" action="admin/shifts/${encodeURIComponent(id)}/delete">` +
-          `<button class="btn-danger" type="submit">Remove it</button></form>` +
-          `<form method="get" action="admin/shifts">` +
-          `<button class="secondary" type="submit">Keep it</button></form>`,
+        destroyAction: `admin/shifts/${encodeURIComponent(id)}/delete`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/shifts',
       }),
     );
   });
@@ -1909,7 +1907,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(url)) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/epaper">Done</a>` +
-        `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
+        `<form method="get" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
         `<button class="btn ghost" type="submit">Regenerate URL</button></form>` +
         `</div>`,
     });
@@ -2108,17 +2106,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (screen === undefined) return c.redirect('/admin/epaper', 302);
     return c.html(
-      page({
+      confirmDestroyPage({
         modules: navModules(deps.db),
         title: 'Regenerate URL',
         nav: 'epaper',
         heading: `Regenerate the URL for “${screen.name}”?`,
         intro: 'The old one stops working immediately, and the panel will need re-flashing with the new one.',
-        body:
-          `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
-          `<button class="btn-danger" type="submit">Regenerate it</button></form>` +
-          `<form method="get" action="admin/epaper/${encodeURIComponent(id)}">` +
-          `<button class="secondary" type="submit">Keep the current URL</button></form>`,
+        destroyAction: `admin/epaper/${encodeURIComponent(id)}/regenerate`,
+        destroyLabel: 'Regenerate it',
+        cancelAction: `admin/epaper/${encodeURIComponent(id)}`,
+        cancelLabel: 'Keep the current URL',
       }),
     );
   });
@@ -2195,17 +2192,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (screen === undefined) return c.redirect('/admin/epaper', 302);
     return c.html(
-      page({
+      confirmDestroyPage({
         modules: navModules(deps.db),
         title: 'Remove eInk screen',
         nav: 'epaper',
         heading: `Remove “${screen.name}”?`,
         intro: 'Its URL stops working immediately, and any device or automation using it will fail.',
-        body:
-          `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/revoke">` +
-          `<button class="btn-danger" type="submit">Remove it</button></form>` +
-          `<form method="get" action="admin/epaper">` +
-          `<button class="secondary" type="submit">Keep it</button></form>`,
+        destroyAction: `admin/epaper/${encodeURIComponent(id)}/revoke`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/epaper',
       }),
     );
   });
@@ -2543,7 +2538,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
 
     // Back to the Default display; the wall picks it up on its next poll.
-    return savedRedirect(c, '/admin/displays/default', 'display-settings-saved');
+    return savedRedirect(c, '/admin/displays/default', 'screen-settings');
   });
 
   // -------------------------------------------------------------------------

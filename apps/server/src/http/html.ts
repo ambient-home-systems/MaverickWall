@@ -2660,6 +2660,54 @@ export function page(options: PageOptions): string {
 }
 
 /**
+ * The one convention for destroying things (RFC 009, 3.3).
+ *
+ * A GET page that names exactly what is lost, a `btn-danger` form that does
+ * the actual destroying, an optional non-destructive alternative beside it
+ * (Pause, for a chore; nothing, for a rotation with no such thing), and a
+ * plain "Keep it" cancel. Every destructive control in this admin is one of
+ * these — sharing the shape is what stops the next one from being a fifth
+ * hand-rolled variant or, worse, a one-click POST with no page at all.
+ */
+export interface ConfirmDestroyOptions {
+  readonly modules: readonly NavModule[];
+  readonly nav: string;
+  readonly title: string;
+  readonly heading: string;
+  readonly intro: string;
+  /** Rendered between the intro and the buttons — e.g. a chore's own history. */
+  readonly body?: string;
+  readonly destroyAction: string;
+  readonly destroyLabel: string;
+  /** Extra markup inside the destroy `<form>` — e.g. a hidden id field. */
+  readonly destroyFields?: string;
+  readonly alternative?: { readonly action: string; readonly label: string };
+  readonly cancelAction: string;
+  readonly cancelLabel?: string;
+}
+
+export function confirmDestroyPage(options: ConfirmDestroyOptions): string {
+  return page({
+    modules: options.modules,
+    title: options.title,
+    nav: options.nav,
+    heading: options.heading,
+    intro: options.intro,
+    body:
+      (options.body ?? '') +
+      `<form method="post" action="${escapeHtml(options.destroyAction)}">` +
+      (options.destroyFields ?? '') +
+      `<button class="btn-danger" type="submit">${escapeHtml(options.destroyLabel)}</button></form>` +
+      (options.alternative === undefined
+        ? ''
+        : `<form method="post" action="${escapeHtml(options.alternative.action)}">` +
+          `<button class="secondary" type="submit">${escapeHtml(options.alternative.label)}</button></form>`) +
+      `<form method="get" action="${escapeHtml(options.cancelAction)}">` +
+      `<button class="secondary" type="submit">${escapeHtml(options.cancelLabel ?? 'Keep it')}</button></form>`,
+  });
+}
+
+/**
  * A failure the person can act on.
  *
  * Takes the suggestion as a separate field rather than folding it into the

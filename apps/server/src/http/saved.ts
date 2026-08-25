@@ -90,7 +90,6 @@ export const SAVED_MESSAGES = {
   // Displays / walls
   'screen-settings': 'Wall settings saved.',
   'screen-removed': 'Wall removed.',
-  'display-settings-saved': 'Display settings saved.',
   'layout-template-applied': 'Layout applied.',
   'layout-copied': 'Layout copied.',
   'layout-reset': 'Layout reset.',

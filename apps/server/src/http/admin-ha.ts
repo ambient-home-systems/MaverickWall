@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { errorBlock, escapeHtml, page, selectField, textField } from './html.js';
+import { confirmDestroyPage, errorBlock, escapeHtml, page, selectField, textField } from './html.js';
 import { call, resolveConnection, testConnection, type ConnectionMode } from '../modules/homeassistant/client.js';
 import {
   DISPLAY_MODES,
@@ -151,6 +151,17 @@ function option(value: string, label: string, selected?: string): string {
     `${escapeHtml(label)}</option>`
   );
 }
+
+/**
+ * What disconnecting costs — stated once, so the settings card's hint and the
+ * confirmation page can never drift into two different accounts of the same
+ * consequence.
+ */
+const HA_DISCONNECT_CONSEQUENCE =
+  'Disconnecting deletes the stored token, the readings on the wall, and any ' +
+  'rules about your house. Calendars you added stay, and stop updating. ' +
+  'Recovering means creating a new long-lived token and re-adding every entity ' +
+  'and rule by hand.';
 
 interface PageError {
   readonly message: string;
@@ -364,21 +375,16 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/home-assistant/disconnect', (c: Context) => {
     if (!readHaSettings(deps.db).hasToken) return c.redirect('/admin/home-assistant', 302);
     return c.html(
-      page({
+      confirmDestroyPage({
         modules: navModules(deps.db),
         title: 'Disconnect Home Assistant',
         nav: 'homeassistant',
         heading: 'Disconnect Home Assistant?',
-        intro:
-          'This deletes the stored token, the readings on the wall, and any rules ' +
-          'about your house. Calendars you added stay, and stop updating. Recovering ' +
-          'means creating a new long-lived token and re-adding every entity and rule ' +
-          'by hand.',
-        body:
-          `<form method="post" action="admin/home-assistant/disconnect">` +
-          `<button class="btn-danger" type="submit">Disconnect it</button></form>` +
-          `<form method="get" action="admin/home-assistant">` +
-          `<button class="secondary" type="submit">Keep it connected</button></form>`,
+        intro: HA_DISCONNECT_CONSEQUENCE,
+        destroyAction: 'admin/home-assistant/disconnect',
+        destroyLabel: 'Disconnect it',
+        cancelAction: 'admin/home-assistant',
+        cancelLabel: 'Keep it connected',
       }),
     );
   });
@@ -467,22 +473,24 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * used to post directly.
    */
   app.get('/admin/home-assistant/entities/remove', (c: Context) => {
-    const entityId = c.req.query('entity_id') ?? '';
+    const queried = parse(z.object({ entity_id: text('An entity', 255) }), {
+      entity_id: c.req.query('entity_id') ?? '',
+    });
+    if (!queried.ok) return c.redirect('/admin/home-assistant', 302);
+    const entityId = queried.value.entity_id;
     const watched = readWatched(deps.db).find((row) => row.entityId === entityId && row.watched === 1);
     if (watched === undefined) return c.redirect('/admin/home-assistant', 302);
     return c.html(
-      page({
+      confirmDestroyPage({
         modules: navModules(deps.db),
         title: 'Remove reading',
         nav: 'homeassistant',
         heading: `Remove “${watched.label ?? watched.friendlyName ?? watched.entityId}”?`,
         intro: 'It stops showing on the wall. Any rule that watches this entity is untouched.',
-        body:
-          `<form method="post" action="admin/home-assistant/entities/remove">` +
-          `<input type="hidden" name="entity_id" value="${escapeHtml(entityId)}">` +
-          `<button class="btn-danger" type="submit">Remove it</button></form>` +
-          `<form method="get" action="admin/home-assistant">` +
-          `<button class="secondary" type="submit">Keep it</button></form>`,
+        destroyAction: 'admin/home-assistant/entities/remove',
+        destroyFields: `<input type="hidden" name="entity_id" value="${escapeHtml(entityId)}">`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/home-assistant',
       }),
     );
   });
@@ -584,17 +592,15 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const row = readRuleRows(deps.db).find((candidate) => candidate.id === id);
     if (row === undefined) return c.redirect('/admin/home-assistant', 302);
     return c.html(
-      page({
+      confirmDestroyPage({
         modules: navModules(deps.db),
         title: 'Delete rule',
         nav: 'homeassistant',
         heading: `Delete “${row.name}”?`,
         intro: 'The wall stops watching for it. This cannot be undone; you can always add it again.',
-        body:
-          `<form method="post" action="admin/home-assistant/rules/${encodeURIComponent(id)}/delete">` +
-          `<button class="btn-danger" type="submit">Delete it</button></form>` +
-          `<form method="get" action="admin/home-assistant">` +
-          `<button class="secondary" type="submit">Keep it</button></form>`,
+        destroyAction: `admin/home-assistant/rules/${encodeURIComponent(id)}/delete`,
+        destroyLabel: 'Delete it',
+        cancelAction: 'admin/home-assistant',
       }),
     );
   });
@@ -683,9 +689,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         `${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(agoOf(lastSyncAt))}</p>` +
         `<form method="get" action="admin/home-assistant/disconnect">` +
         `<button class="btn-danger" type="submit">Disconnect</button></form>` +
-        `<p class="hint">Disconnecting deletes the stored token, the readings on the ` +
-        `wall, and any rules about your house. Calendars you added stay, and stop ` +
-        `updating.</p>` +
+        `<p class="hint">${escapeHtml(HA_DISCONNECT_CONSEQUENCE)}</p>` +
         `</div>`
       );
     }

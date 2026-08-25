@@ -89,7 +89,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/themes', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = shapeSubmission(body);
-    if (!shaped.ok) return c.html(builderPage(null, body, shaped.message), 400);
+    if (!shaped.ok) return c.html(builderPage(null, body, shaped.message, c), 400);
     createTheme(deps.db, shaped.value);
     return savedRedirect(c, '/admin/themes', 'theme-created');
   });
@@ -123,7 +123,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     if (existing === undefined) return c.redirect('/admin/themes', 302);
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = shapeSubmission(body);
-    if (!shaped.ok) return c.html(builderPage(existing, body, shaped.message), 400);
+    if (!shaped.ok) return c.html(builderPage(existing, body, shaped.message, c), 400);
     updateTheme(deps.db, id, shaped.value);
     return savedRedirect(c, '/admin/themes', 'theme-saved');
   });
