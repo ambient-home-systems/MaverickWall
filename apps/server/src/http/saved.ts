@@ -65,6 +65,56 @@ export const SAVED_MESSAGES = {
   // Weather
   'weather': 'Weather settings saved.',
   'weather-location': 'Location filled in from Home Assistant, and saved.',
+  // People
+  'person-added': 'Person added.',
+  'person-updated': 'Person saved.',
+  'person-removed': 'Person removed.',
+  'person-avatar-saved': 'Photo saved.',
+  'person-avatar-removed': 'Photo removed.',
+  // Reordering — shared across every screen with an Up/Down control, because
+  // the sentence is the same act wherever it happens.
+  'order-saved': 'Order saved.',
+  // Work Schedule (rotations)
+  'shift-rotation-saved': 'Rotation saved.',
+  'shift-rotation-removed': 'Rotation removed.',
+  // Shift types
+  'shift-type-added': 'Shift type added.',
+  'shift-type-saved': 'Shift type saved.',
+  'shift-type-removed': 'Shift type removed.',
+  // Chores
+  'chore-added': 'Chore added.',
+  'chore-updated': 'Chore saved.',
+  'chore-removed': 'Chore removed.',
+  'chore-paused': 'Chore paused.',
+  'chore-resumed': 'Chore resumed.',
+  // Displays / walls
+  'screen-settings': 'Wall settings saved.',
+  'screen-removed': 'Wall removed.',
+  'layout-template-applied': 'Layout applied.',
+  'layout-copied': 'Layout copied.',
+  'layout-reset': 'Layout reset.',
+  // eInk (e-paper)
+  'epaper-screen-removed': 'eInk screen removed.',
+  'epaper-source-saved': 'Panel layout source saved.',
+  // Home Assistant
+  'ha-connected': 'Connected to Home Assistant.',
+  'ha-disconnected': 'Disconnected from Home Assistant.',
+  'ha-entity-added': 'Reading added.',
+  'ha-entity-removed': 'Reading removed.',
+  'ha-calendar-added': 'Calendar added.',
+  'ha-rule-added': 'Rule added.',
+  'ha-rule-removed': 'Rule removed.',
+  'ha-rule-updated': 'Rule updated.',
+  // Store (modules)
+  'module-added': 'Module added.',
+  'module-removed': 'Module removed.',
+  'module-updated': 'Module updated.',
+  'module-alerts-saved': 'Alerts setting saved.',
+  // Themes
+  'theme-created': 'Theme created.',
+  'theme-generated': 'Theme generated.',
+  'theme-saved': 'Theme saved.',
+  'theme-removed': 'Theme removed.',
 } as const;
 
 /** Every token a redirect may carry. A typo here is a compile error. */

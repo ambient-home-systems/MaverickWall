@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { confirmDestroyPage, escapeHtml, errorBlock, page, selectField, textField } from './html.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
   COLOUR_TOKENS,
@@ -10,12 +10,14 @@ import {
   readTheme,
   readThemes,
   themeTokensSchema,
+  themeUsage,
   updateTheme,
   type ThemeRow,
   type ThemeTokens,
 } from '../api/themes.js';
 import { colour, oneOf, parse, text } from '../validation.js';
 import { generateThemeTokens } from '../api/theme-generator.js';
+import { readSaved, savedRedirect } from './saved.js';
 
 /**
  * The custom-theme builder (system settings).
@@ -75,22 +77,22 @@ function swatch(tokens: Readonly<Record<string, string | undefined>>): readonly 
 export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
   // ---- routes --------------------------------------------------------------
 
-  app.get('/admin/themes', (c: Context) => c.html(themesPage()));
+  app.get('/admin/themes', (c: Context) => c.html(themesPage(c)));
 
-  app.get('/admin/themes/new', (c: Context) => c.html(builderPage(null)));
+  app.get('/admin/themes/new', (c: Context) => c.html(builderPage(null, undefined, undefined, c)));
 
   app.get('/admin/themes/:id', (c: Context) => {
     const theme = readTheme(deps.db, c.req.param('id') ?? '');
     if (theme === undefined) return c.redirect('/admin/themes', 302);
-    return c.html(builderPage(theme));
+    return c.html(builderPage(theme, undefined, undefined, c));
   });
 
   app.post('/admin/themes', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = shapeSubmission(body);
-    if (!shaped.ok) return c.html(builderPage(null, body, shaped.message), 400);
+    if (!shaped.ok) return c.html(builderPage(null, body, shaped.message, c), 400);
     createTheme(deps.db, shaped.value);
-    return c.redirect('/admin/themes', 302);
+    return savedRedirect(c, '/admin/themes', 'theme-created');
   });
 
   /**
@@ -104,16 +106,16 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/themes/generate', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const name = parse(nameBody, body['name']);
-    if (!name.ok) return c.html(themesPage(name.message), 400);
+    if (!name.ok) return c.html(themesPage(c, name.message), 400);
     const seed = parse(colour(), body['seed']);
-    if (!seed.ok) return c.html(themesPage('Pick a seed colour.'), 400);
+    if (!seed.ok) return c.html(themesPage(c, 'Pick a seed colour.'), 400);
     const mode = parse(oneOf('Dark or light', ['dark', 'light'] as const), body['mode']);
-    if (!mode.ok) return c.html(themesPage('Choose dark or light.'), 400);
+    if (!mode.ok) return c.html(themesPage(c, 'Choose dark or light.'), 400);
 
     const tokens = themeTokensSchema.parse(generateThemeTokens(seed.value, mode.value));
     const created = createTheme(deps.db, { name: name.value, tokens });
     // Land in the builder so the result is immediately previewable and editable.
-    return c.redirect(`/admin/themes/${encodeURIComponent(created.id)}`, 302);
+    return savedRedirect(c, `/admin/themes/${encodeURIComponent(created.id)}`, 'theme-generated');
   });
 
   app.post('/admin/themes/:id', async (c: Context) => {
@@ -122,14 +124,52 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     if (existing === undefined) return c.redirect('/admin/themes', 302);
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = shapeSubmission(body);
-    if (!shaped.ok) return c.html(builderPage(existing, body, shaped.message), 400);
+    if (!shaped.ok) return c.html(builderPage(existing, body, shaped.message, c), 400);
     updateTheme(deps.db, id, shaped.value);
-    return c.redirect('/admin/themes', 302);
+    return savedRedirect(c, '/admin/themes', 'theme-saved');
+  });
+
+  /**
+   * Removing a theme asks first — the same GET-then-POST shape as every other
+   * destructive control, in place of the one-click "Delete" the card used to
+   * post directly. A theme in use never bricks a wall (`resolveTheme` falls
+   * back to Board), but naming which walls change is still the honest thing
+   * to put in front of the button.
+   */
+  app.get('/admin/themes/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const theme = readTheme(deps.db, id);
+    if (theme === undefined) return c.redirect('/admin/themes', 302);
+    const usage = themeUsage(deps.db, id);
+    const affected = [
+      ...(usage.household ? ['the household default'] : []),
+      ...usage.screens.map((name) => `“${name}”`),
+    ];
+    return c.html(
+      confirmDestroyPage({
+        modules: navModules(deps.db),
+        title: 'Remove theme',
+        nav: 'themes',
+        heading: `Remove “${theme.name}”?`,
+        intro:
+          affected.length === 0
+            ? 'Nothing is using it right now.'
+            : // A leading verb, not a bare list, so the sentence reads naturally
+              // whatever the list starts with — a lowercase "the household
+              // default" or a screen's own name — and Intl.ListFormat supplies
+              // the "and" a plain join() drops for two or more items.
+              `In use by ${new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(affected)} ` +
+              `— ${affected.length === 1 ? 'it switches' : 'they switch'} to Board.`,
+        destroyAction: `admin/themes/${encodeURIComponent(id)}/delete`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/themes',
+      }),
+    );
   });
 
   app.post('/admin/themes/:id/delete', (c: Context) => {
     deleteTheme(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/themes', 302);
+    return savedRedirect(c, '/admin/themes', 'theme-removed');
   });
 
   // ---- shaping -------------------------------------------------------------
@@ -160,7 +200,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   // ---- pages ---------------------------------------------------------------
 
-  function themesPage(error?: string): string {
+  function themesPage(c: Context, error?: string): string {
     const custom = readThemes(deps.db);
     const card = (theme: ThemeRow): string =>
       `<article class="card">` +
@@ -171,7 +211,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="rname" style="flex:1;font-size:16px">${escapeHtml(theme.name)}</div></div>` +
       `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
       `<a class="btn btn-sm" href="admin/themes/${encodeURIComponent(theme.id)}">Edit</a>` +
-      `<form method="post" action="admin/themes/${encodeURIComponent(theme.id)}/delete">` +
+      `<form method="get" action="admin/themes/${encodeURIComponent(theme.id)}/delete">` +
       `<button class="btn-danger btn-sm" type="submit" style="margin-left:auto">Delete</button></form>` +
       `</div></article>`;
 
@@ -180,6 +220,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Themes — Maverick Wall',
       nav: 'themes',
       heading: 'Themes',
+      saved: readSaved(c),
       action: { label: 'New theme', href: 'admin/themes/new' },
       intro:
         'Build your own colours for the wall. A theme you make here is selectable on ' +
@@ -217,6 +258,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     theme: ThemeRow | null,
     values?: Record<string, unknown>,
     error?: string,
+    c?: Context,
   ): string {
     const editing = theme !== null;
     // Prefer a rejected submission's own values, then the stored theme, then the
@@ -261,6 +303,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       title: `${editing ? 'Edit theme' : 'New theme'} — Maverick Wall`,
       nav: 'themes',
       heading: editing ? 'Edit theme' : 'New theme',
+      saved: c === undefined ? undefined : readSaved(c),
       intro:
         'Pick a colour for each part of the wall. The preview updates as you go; ' +
         'save when it looks right. Corners rounds the cards and badges.',

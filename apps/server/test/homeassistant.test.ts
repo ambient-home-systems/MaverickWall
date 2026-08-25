@@ -1137,7 +1137,8 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
       entity_id: 'calendar.family',
     });
     expect(added.status).toBe(302);
-    expect(added.headers.get('location')).toBe('/admin/calendars');
+    // A confirmation token rides the redirect (RFC 009 Phase 3.1/3.2).
+    expect(added.headers.get('location')).toBe('/admin/calendars?saved=ha-calendar-added');
 
     const row = h.db
       .prepare(`SELECT name, kind, ha_entity_id AS entityId, url_host AS host

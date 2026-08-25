@@ -26,6 +26,7 @@ import {
 } from '../modules/external/recipe.js';
 import { CATALOG, catalogEntry, previewFor, type CatalogEntry, type RecipeEntry, type ServiceEntry } from './catalog.js';
 import { parse, text, z } from '../validation.js';
+import { readSaved, savedRedirect } from './saved.js';
 
 /**
  * The module store (docs/rfc-002-module-catalog-and-recipes.md).
@@ -60,7 +61,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
   // The Store: what you've installed, and the catalogue to install from.
-  app.get('/admin/modules', (c: Context) => c.html(storePage()));
+  app.get('/admin/modules', (c: Context) => c.html(storePage(c)));
 
   // Old link, kept working.
   app.get('/admin/modules/browse', (c: Context) => c.redirect('/admin/modules', 302));
@@ -105,7 +106,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     });
     ensureDisplayBlock(deps.db, blockKey);
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
-    return c.redirect('/admin/modules', 302);
+    return savedRedirect(c, '/admin/modules', 'module-added');
   });
 
   /**
@@ -201,7 +202,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     });
     ensureDisplayBlock(deps.db, blockKey);
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
-    return c.redirect('/admin/modules', 302);
+    return savedRedirect(c, '/admin/modules', 'module-added');
   });
 
   app.post('/admin/modules', async (c: Context) => {
@@ -227,7 +228,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     ensureDisplayBlock(deps.db, blockKey);
     // Poll now, so its panel fills in without waiting for the interval.
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
-    return c.redirect('/admin/modules', 302);
+    return savedRedirect(c, '/admin/modules', 'module-added');
   });
 
   app.post('/admin/modules/:id/toggle', (c: Context) => {
@@ -239,7 +240,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       if (enable) ensureDisplayBlock(deps.db, module.blockKey);
       else removeDisplayBlock(deps.db, module.blockKey);
     }
-    return c.redirect('/admin/modules', 302);
+    return savedRedirect(c, '/admin/modules', 'module-updated');
   });
 
   app.post('/admin/modules/:id/alerts', async (c: Context) => {
@@ -248,7 +249,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     if (module === undefined) return c.redirect('/admin/modules', 302);
 
     const shaped = parse(alertsBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(storePage(shaped.message), 400);
+    if (!shaped.ok) return c.html(storePage(c, shaped.message), 400);
 
     const action = shaped.value.action;
     setExternalModuleAlertsAction(deps.db, id, action);
@@ -256,7 +257,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     // a module's signals reach the wall — and it can only ever match this
     // module (see syncModuleAlertRule).
     syncModuleAlertRule(deps.db, { moduleId: id, moduleName: module.name, action });
-    return c.redirect('/admin/modules', 302);
+    return savedRedirect(c, '/admin/modules', 'module-alerts-saved');
   });
 
   app.post('/admin/modules/:id/remove', (c: Context) => {
@@ -269,7 +270,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       // send again.
       deleteRule(deps.db, moduleAlertRuleId(id));
     }
-    return c.redirect('/admin/modules', 302);
+    return savedRedirect(c, '/admin/modules', 'module-removed');
   });
 
   /** Read a module's manifest name at add time, forgivingly. */
@@ -361,13 +362,14 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /** The Store: what you've installed, and the catalogue to install from. */
-  function storePage(error?: string): string {
+  function storePage(c: Context, error?: string): string {
     const modules = readExternalModules(deps.db);
     return page({
       modules: navModules(deps.db),
       title: 'Store — Maverick Wall',
       nav: 'modules',
       heading: 'Store',
+      saved: readSaved(c),
       action: { label: 'Advanced', href: 'admin/modules/advanced' },
       intro:
         'Modules add a panel to the wall — a countdown, a price, the weather, ' +

@@ -9,6 +9,7 @@ import {
   type ShiftTypeRow,
 } from '../api/queries.js';
 import { checkbox, colour, optionalText, parse, text, z } from '../validation.js';
+import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
 
 /**
@@ -62,11 +63,11 @@ function normaliseTime(value: string | undefined): string | null {
 }
 
 export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
-  app.get('/admin/shifts/types', (c: Context) => c.html(typesPage()));
+  app.get('/admin/shifts/types', (c: Context) => c.html(typesPage(c)));
 
   app.post('/admin/shifts/types', async (c: Context) => {
     const shaped = parse(addBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(typesPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(typesPage(c, shaped.message), 400);
     createShiftType(deps.db, {
       label: shaped.value.label,
       shortCode: shaped.value.short_code,
@@ -78,7 +79,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
       endTime: normaliseTime(shaped.value.end_time),
       isWorking: shaped.value.is_working,
     });
-    return c.redirect('/admin/shifts/types', 302);
+    return savedRedirect(c, '/admin/shifts/types', 'shift-type-added');
   });
 
   app.post('/admin/shifts/types/preset', async (c: Context) => {
@@ -95,7 +96,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
         isWorking: preset.isWorking,
       });
     }
-    return c.redirect('/admin/shifts/types', 302);
+    return savedRedirect(c, '/admin/shifts/types', 'shift-type-added');
   });
 
   app.post('/admin/shifts/types/:id', async (c: Context) => {
@@ -103,7 +104,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
     const existing = readShiftTypes(deps.db).find((t) => t.id === id);
     if (existing === undefined) return c.redirect('/admin/shifts/types', 302);
     const shaped = parse(editBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(typesPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(typesPage(c, shaped.message), 400);
     updateShiftType(deps.db, id, {
       label: shaped.value.label,
       shortCode: shaped.value.short_code,
@@ -114,19 +115,19 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
       endTime: normaliseTime(shaped.value.end_time),
       isWorking: shaped.value.is_working,
     });
-    return c.redirect('/admin/shifts/types', 302);
+    return savedRedirect(c, '/admin/shifts/types', 'shift-type-saved');
   });
 
   app.post('/admin/shifts/types/:id/delete', (c: Context) => {
     const result = deleteShiftType(deps.db, c.req.param('id') ?? '');
-    if (!result.ok) return c.html(typesPage(result.message), 400);
-    return c.redirect('/admin/shifts/types', 302);
+    if (!result.ok) return c.html(typesPage(c, result.message), 400);
+    return savedRedirect(c, '/admin/shifts/types', 'shift-type-removed');
   });
 
   app.post('/admin/shifts/types/:id/move', async (c: Context) => {
     const dir = String(((await c.req.parseBody()) as Record<string, unknown>)['dir'] ?? '');
     moveShiftType(deps.db, c.req.param('id') ?? '', dir === 'up' ? 'up' : 'down');
-    return c.redirect('/admin/shifts/types', 302);
+    return savedRedirect(c, '/admin/shifts/types', 'order-saved');
   });
 
   function typeCard(type: ShiftTypeRow, first: boolean, last: boolean): string {
@@ -170,13 +171,14 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function typesPage(error?: string): string {
+  function typesPage(c: Context, error?: string): string {
     const types = readShiftTypes(deps.db);
     return page({
       modules: navModules(deps.db),
       title: 'Shift types — Maverick Wall',
       nav: 'shifts',
       heading: 'Shift types',
+      saved: readSaved(c),
       intro:
         'The kinds of shift the wall knows about — their names, short codes and ' +
         'colours. Rename or recolour any of them, add your own, or add a time-off ' +

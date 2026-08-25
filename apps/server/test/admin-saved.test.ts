@@ -28,7 +28,10 @@ import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { SAVED_MESSAGES } from '../src/http/saved.js';
-import { seedDefaultRules } from '../src/api/rules.js';
+import { seedDefaultRules, writeRule } from '../src/api/rules.js';
+import { createPerson, saveShiftPlan } from '../src/api/queries.js';
+import { watchEntity, writeHaSettings } from '../src/modules/homeassistant/store.js';
+import { createTheme } from '../src/api/themes.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
@@ -51,12 +54,13 @@ async function harness() {
   ).run(stamp, stamp);
 
   const setupToken = createSetupTokenHolder(() => {});
+  const keyring = createKeyring(randomBytes(32));
   const app = createApp({
     db,
     appVersion: '0.1.0-test',
     bootNotices: [],
     auth: { secret: 's'.repeat(32), baseUrl: 'http://localhost' },
-    keyring: createKeyring(randomBytes(32)),
+    keyring,
     fetcher: createFetcher(),
     clientAddress: () => address,
     setupToken,
@@ -90,7 +94,7 @@ async function harness() {
   });
   await form('/setup/household', { timezone: 'Europe/London' });
 
-  return { db, call, form };
+  return { db, call, form, keyring };
 }
 
 /** The strip's markup, if the page carries one. */
@@ -488,5 +492,256 @@ describe('the confirmation strip', () => {
       expect(message, `${key} is not a sentence`).toMatch(/[.!?]$/);
     }
     expect(Object.keys(SAVED_MESSAGES).length).toBeGreaterThan(3);
+  });
+});
+
+/**
+ * The four destructive actions the RFC 009 3.3 audit found with no
+ * confirmation at all — a shift rotation, a Home Assistant reading, a Home
+ * Assistant rule, and disconnecting Home Assistant outright. Each now takes
+ * the GET-then-POST shape `admin-chores.ts` set: an interstitial names what is
+ * lost, the interstitial's own GET performs no mutation, and only the POST it
+ * renders actually does the deleting.
+ */
+describe('destructive actions ask first', () => {
+  it('removing a shift rotation names the person, changes nothing on GET, and only deletes on POST', async () => {
+    const h = await harness();
+    createPerson(h.db, 'p1', 'Alex', '#4C7FD1');
+    saveShiftPlan(h.db, {
+      id: 'plan1',
+      personId: 'p1',
+      name: "Alex's rotation",
+      kind: 'pattern',
+      anchorDate: '2026-01-01',
+      cycle: ['day', null],
+      calendarSourceId: null,
+      matchers: null,
+      effectiveFrom: '2000-01-01',
+    });
+
+    const interstitial = await (await h.call('/admin/shifts/plan1/delete')).text();
+    expect(interstitial).toContain('Alex');
+    expect(interstitial).toContain('action="admin/shifts/plan1/delete"');
+    expect(interstitial).toContain('method="post"');
+    expect(interstitial).toContain('btn-danger');
+
+    // Looking at the confirmation page must not itself delete anything.
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM shift_plans WHERE id = 'plan1'`).get()).toEqual({ n: 1 });
+
+    const removed = await h.form('/admin/shifts/plan1/delete', {});
+    expect(removed.status).toBe(302);
+    expect(removed.headers.get('location')).toBe('/admin/shifts?saved=shift-rotation-removed');
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM shift_plans WHERE id = 'plan1'`).get()).toEqual({ n: 0 });
+
+    const page = await (await h.call('/admin/shifts?saved=shift-rotation-removed')).text();
+    expect(page).toContain('Rotation removed.');
+  });
+
+  it('removing a Home Assistant reading names it, changes nothing on GET, and only removes on POST', async () => {
+    const h = await harness();
+    watchEntity(h.db, {
+      entityId: 'sensor.porch',
+      friendlyName: 'Porch temperature',
+      label: null,
+      displayMode: 'label_value',
+    });
+
+    const interstitial = await (
+      await h.call(`/admin/home-assistant/entities/remove?entity_id=${encodeURIComponent('sensor.porch')}`)
+    ).text();
+    expect(interstitial).toContain('Porch temperature');
+    expect(interstitial).toContain('action="admin/home-assistant/entities/remove"');
+    expect(interstitial).toContain('method="post"');
+    expect(interstitial).toContain('btn-danger');
+
+    expect(
+      h.db.prepare(`SELECT watched FROM ha_entity_cache WHERE entity_id = 'sensor.porch'`).get(),
+    ).toEqual({ watched: 1 });
+
+    const removed = await h.form('/admin/home-assistant/entities/remove', { entity_id: 'sensor.porch' });
+    expect(removed.status).toBe(302);
+    expect(removed.headers.get('location')).toBe('/admin/home-assistant?saved=ha-entity-removed');
+    // Nothing referenced it, so `unwatchEntity` drops the row outright rather
+    // than leaving a disabled one behind.
+    expect(
+      h.db.prepare(`SELECT COUNT(*) n FROM ha_entity_cache WHERE entity_id = 'sensor.porch'`).get(),
+    ).toEqual({ n: 0 });
+  });
+
+  it('deleting a Home Assistant rule names it, changes nothing on GET, and only deletes on POST', async () => {
+    const h = await harness();
+    writeRule(h.db, {
+      id: 'rule1',
+      source: 'homeassistant',
+      name: 'Garage left open',
+      enabled: true,
+      match: { entityId: 'binary_sensor.garage', condition: { kind: 'equals', value: 'on', between: null } },
+      action: 'banner',
+      piercesNightMode: false,
+      minDwellSec: 0,
+      dismissible: true,
+      priority: 40,
+    });
+
+    const interstitial = await (await h.call('/admin/home-assistant/rules/rule1/delete')).text();
+    expect(interstitial).toContain('Garage left open');
+    expect(interstitial).toContain('action="admin/home-assistant/rules/rule1/delete"');
+    expect(interstitial).toContain('method="post"');
+    expect(interstitial).toContain('btn-danger');
+
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM interrupt_rules WHERE id = 'rule1'`).get()).toEqual({ n: 1 });
+
+    const removed = await h.form('/admin/home-assistant/rules/rule1/delete', {});
+    expect(removed.status).toBe(302);
+    expect(removed.headers.get('location')).toBe('/admin/home-assistant?saved=ha-rule-removed');
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM interrupt_rules WHERE id = 'rule1'`).get()).toEqual({ n: 0 });
+  });
+
+  it('disconnecting Home Assistant restates what it destroys, changes nothing on GET, and only disconnects on POST', async () => {
+    const h = await harness();
+    writeHaSettings(h.db, h.keyring, {
+      baseUrl: 'http://192.168.1.10:8123',
+      token: 'a-token',
+      allowPrivateNetwork: true,
+    });
+    watchEntity(h.db, {
+      entityId: 'sensor.porch',
+      friendlyName: 'Porch temperature',
+      label: null,
+      displayMode: 'label_value',
+    });
+
+    const interstitial = await (await h.call('/admin/home-assistant/disconnect')).text();
+    // Restates the same consequence the status card's own helper text gives.
+    expect(interstitial).toContain('deletes the stored token');
+    expect(interstitial).toContain('readings on the wall');
+    expect(interstitial).toContain('rules about your house');
+    expect(interstitial).toContain('action="admin/home-assistant/disconnect"');
+    expect(interstitial).toContain('method="post"');
+    expect(interstitial).toContain('btn-danger');
+
+    // Looking must not itself disconnect anything.
+    expect(
+      h.db.prepare(`SELECT token_encrypted AS t FROM ha_settings WHERE id = 'singleton'`).get(),
+    ).not.toEqual({ t: null });
+
+    const disconnected = await h.form('/admin/home-assistant/disconnect', {});
+    expect(disconnected.status).toBe(302);
+    expect(disconnected.headers.get('location')).toBe('/admin/home-assistant?saved=ha-disconnected');
+    expect(
+      h.db.prepare(`SELECT token_encrypted AS t FROM ha_settings WHERE id = 'singleton'`).get(),
+    ).toEqual({ t: null });
+
+    const page = await (await h.call('/admin/home-assistant?saved=ha-disconnected')).text();
+    expect(page).toContain('Disconnected from Home Assistant.');
+  });
+
+  it('removing an unused theme says nothing is using it, changes nothing on GET, and only deletes on POST', async () => {
+    const h = await harness();
+    const theme = createTheme(h.db, {
+      name: 'Sea glass',
+      tokens: {
+        '--bg': '#0B0E11', '--panel': '#151A21', '--rule': '#242D38', '--ink': '#E9EEF4',
+        '--muted': '#7E8C9C', '--faint': '#4A5563', '--accent': '#E8A33D', '--s-day': '#E8A33D',
+        '--s-night': '#4C7FD1', '--s-break': '#35916A', '--s-straight': '#6B7684', '--radius': '0.2rem',
+      },
+    });
+
+    const interstitial = await (await h.call(`/admin/themes/${theme.id}/delete`)).text();
+    expect(interstitial).toContain('Sea glass');
+    expect(interstitial).toContain('Nothing is using it');
+    expect(interstitial).toContain(`action="admin/themes/${theme.id}/delete"`);
+    expect(interstitial).toContain('method="post"');
+    expect(interstitial).toContain('btn-danger');
+
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM themes WHERE id = ?`).get(theme.id)).toEqual({ n: 1 });
+
+    const removed = await h.form(`/admin/themes/${theme.id}/delete`, {});
+    expect(removed.status).toBe(302);
+    expect(removed.headers.get('location')).toBe('/admin/themes?saved=theme-removed');
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM themes WHERE id = ?`).get(theme.id)).toEqual({ n: 0 });
+  });
+
+  it('removing a theme in use names what switches to Board', async () => {
+    const h = await harness();
+    const theme = createTheme(h.db, {
+      name: 'Sea glass',
+      tokens: {
+        '--bg': '#0B0E11', '--panel': '#151A21', '--rule': '#242D38', '--ink': '#E9EEF4',
+        '--muted': '#7E8C9C', '--faint': '#4A5563', '--accent': '#E8A33D', '--s-day': '#E8A33D',
+        '--s-night': '#4C7FD1', '--s-break': '#35916A', '--s-straight': '#6B7684', '--radius': '0.2rem',
+      },
+    });
+    h.db.prepare(`UPDATE household_settings SET theme = ? WHERE id = 'singleton'`).run(`custom:${theme.id}`);
+    const stamp = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO screens (id, name, token_hash, token_issued_at, theme, created_at, updated_at)
+         VALUES ('screen1', 'Kitchen', 'x', ?, ?, ?, ?),
+                ('screen2', 'Lounge', 'y', ?, ?, ?, ?)`,
+      )
+      .run(stamp, `custom:${theme.id}`, stamp, stamp, stamp, `custom:${theme.id}`, stamp, stamp);
+
+    const interstitial = await (await h.call(`/admin/themes/${theme.id}/delete`)).text();
+    // A real sentence, not a bare comma-join — "and" before the last item,
+    // and no lowercase word opening a paragraph.
+    expect(interstitial).toContain(
+      'In use by the household default, “Kitchen”, and “Lounge” — they switch to Board.',
+    );
+  });
+
+  it('the Calendars list draws Remove and Sync now at different visual weights', async () => {
+    const h = await harness();
+    const added = await h.form('/admin/calendars', {
+      action: 'save',
+      name: 'Family',
+      url: 'https://example.invalid/calendar.ics',
+    });
+    // A bad address is fine here — this is only checking the two buttons'
+    // classes, and both are drawn whether or not the calendar tested well.
+    expect([200, 302, 400]).toContain(added.status);
+
+    const page = await (await h.call('/admin/calendars')).text();
+    if (page.includes('Sync now')) {
+      const syncButton = /<button class="([^"]*)"[^>]*>Sync now/.exec(page)?.[1] ?? '';
+      const removeButton = /<button class="([^"]*)"[^>]*>Remove/.exec(page)?.[1] ?? '';
+      expect(syncButton).not.toBe(removeButton);
+      expect(removeButton).toContain('btn-danger');
+    }
+  });
+});
+
+/**
+ * A representative sample of the mechanical sweep (RFC 009 Phase 3.2/3b):
+ * screens that previously redirected on a real mutation and said nothing now
+ * carry a confirmation token, on the real app rather than by reading the
+ * table back to itself.
+ */
+describe('the mechanical sweep of confirmations', () => {
+  it('confirms adding a person', async () => {
+    const h = await harness();
+    const added = await h.form('/admin/people', { name: 'Jamie', color: '#4C7FD1' });
+    expect(added.status).toBe(302);
+    expect(added.headers.get('location')).toBe('/admin/people?saved=person-added');
+    const page = await (await h.call('/admin/people?saved=person-added')).text();
+    expect(page).toContain('Person added.');
+  });
+
+  it('confirms adding a chore', async () => {
+    const h = await harness();
+    const added = await h.form('/admin/chores', { name: 'Bins', kind: 'daily' });
+    expect(added.status).toBe(302);
+    expect(added.headers.get('location')).toBe('/admin/chores?saved=chore-added');
+    const page = await (await h.call('/admin/chores?saved=chore-added')).text();
+    expect(page).toContain('Chore added.');
+  });
+
+  it('confirms adding a shift type', async () => {
+    const h = await harness();
+    const added = await h.form('/admin/shifts/types', {
+      label: 'Swing', short_code: 'Sw', color: '#6b7684',
+    });
+    expect(added.status).toBe(302);
+    expect(added.headers.get('location')).toBe('/admin/shifts/types?saved=shift-type-added');
   });
 });

@@ -90,8 +90,8 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { dirtyForm, downloadForm, errorBlock, escapeHtml, icon, page, saveRow, selectField,
-  selectRow, switchRow, textField, type NavModule } from './html.js';
+import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, icon, page, saveRow,
+  selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
@@ -1240,14 +1240,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // People
   // -------------------------------------------------------------------------
 
-  app.get('/admin/people', (c: Context) => c.html(peoplePage()));
+  app.get('/admin/people', (c: Context) => c.html(peoplePage(c)));
 
   app.post('/admin/people', async (c: Context) => {
     const shaped = parse(personBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(peoplePage(shaped.message), 400);
+    if (!shaped.ok) return c.html(peoplePage(c, shaped.message), 400);
 
     createPerson(deps.db, randomBytes(8).toString('hex'), shaped.value.name, shaped.value.color);
-    return c.redirect('/admin/people', 302);
+    return savedRedirect(c, '/admin/people', 'person-added');
   });
 
   /**
@@ -1291,7 +1291,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/people/:id/avatar', async (c: Context) => {
     const id = c.req.param('id') ?? '';
     if (!readPeopleAdmin(deps.db).some((person) => person.id === id)) {
-      return c.html(peoplePage('That person is no longer there.'), 404);
+      return c.html(peoplePage(c, 'That person is no longer there.'), 404);
     }
 
     const body = await c.req.parseBody();
@@ -1301,7 +1301,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // household will want and should not need a second button for.
     if (!(file instanceof File) || file.size === 0) {
       setPersonAvatar(deps.db, id, null);
-      return c.redirect('/admin/people', 302);
+      return savedRedirect(c, '/admin/people', 'person-avatar-removed');
     }
 
     const stored = storeImage(
@@ -1312,25 +1312,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       'avatar',
     );
     if (!stored.ok) {
-      return c.html(peoplePage(stored.message, stored.suggestion), 400);
+      return c.html(peoplePage(c, stored.message, stored.suggestion), 400);
     }
 
     setPersonAvatar(deps.db, id, stored.name);
-    return c.redirect('/admin/people', 302);
+    return savedRedirect(c, '/admin/people', 'person-avatar-saved');
   });
 
   app.post('/admin/people/:id', async (c: Context) => {
     const shaped = parse(personBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(peoplePage(shaped.message), 400);
+    if (!shaped.ok) return c.html(peoplePage(c, shaped.message), 400);
 
     updatePerson(deps.db, c.req.param('id') ?? '', shaped.value.name, shaped.value.color);
-    return c.redirect('/admin/people', 302);
+    return savedRedirect(c, '/admin/people', 'person-updated');
   });
 
   app.post('/admin/people/:id/move', async (c: Context) => {
     const dir = String(((await c.req.parseBody()) as Record<string, unknown>)['dir'] ?? '');
     movePerson(deps.db, c.req.param('id') ?? '', dir === 'up' ? 'up' : 'down');
-    return c.redirect('/admin/people', 302);
+    return savedRedirect(c, '/admin/people', 'order-saved');
   });
 
   app.get('/admin/people/:id/delete', (c: Context) => {
@@ -1361,7 +1361,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/people/:id/delete', (c: Context) => {
     deletePerson(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/people', 302);
+    return savedRedirect(c, '/admin/people', 'person-removed');
   });
 
   // -------------------------------------------------------------------------
@@ -1426,7 +1426,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return { personId, kind: 'calendar', sourceId, anchorDate: '', slots: empty, titleMap };
   };
 
-  app.get('/admin/shifts', (c: Context) => c.html(shiftsPage()));
+  app.get('/admin/shifts', (c: Context) => c.html(shiftsPage(c)));
 
   /** Edit a saved rotation: the same draft form, pre-filled from the plan. */
   app.get('/admin/shifts/:id/edit', (c: Context) => {
@@ -1443,17 +1443,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/shifts/new', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(draftBody, body);
-    if (!shaped.ok) return c.html(shiftsPage({ message: shaped.message }), 400);
+    if (!shaped.ok) return c.html(shiftsPage(c, { message: shaped.message }), 400);
 
     const personId = shaped.value.person_id ?? '';
     const kind: PlanKind = shaped.value.kind === 'pattern' ? 'pattern' : 'calendar';
     const sourceId = shaped.value.source_id ?? '';
 
     if (!readPeopleAdmin(deps.db).some((person) => person.id === personId)) {
-      return c.html(shiftsPage({ message: 'Choose who the rotation is for.' }), 400);
+      return c.html(shiftsPage(c, { message: 'Choose who the rotation is for.' }), 400);
     }
     if (kind === 'calendar' && sourceId === '') {
-      return c.html(shiftsPage({ message: 'Choose which calendar the shifts are in.' }), 400);
+      return c.html(shiftsPage(c, { message: 'Choose which calendar the shifts are in.' }), 400);
     }
 
     const draft: Draft = {
@@ -1498,12 +1498,35 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           : null,
       effectiveFrom: '2000-01-01',
     });
-    return c.redirect('/admin/shifts', 302);
+    return savedRedirect(c, '/admin/shifts', 'shift-rotation-saved');
+  });
+
+  /**
+   * Removing a rotation asks first — the same GET-then-POST shape as every
+   * other destructive control, in place of the one-click "Remove" the card
+   * used to post directly.
+   */
+  app.get('/admin/shifts/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const plan = readShiftPlansAdmin(deps.db).find((candidate) => candidate.id === id);
+    if (plan === undefined) return c.redirect('/admin/shifts', 302);
+    return c.html(
+      confirmDestroyPage({
+        modules: navModules(deps.db),
+        title: 'Remove rotation',
+        nav: 'shifts',
+        heading: `Remove ${plan.personName ?? 'this'}’s rotation?`,
+        intro: 'The wall stops colouring their days by it. This cannot be undone; you can set it up again from scratch.',
+        destroyAction: `admin/shifts/${encodeURIComponent(id)}/delete`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/shifts',
+      }),
+    );
   });
 
   app.post('/admin/shifts/:id/delete', (c: Context) => {
     deleteShiftPlan(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/shifts', 302);
+    return savedRedirect(c, '/admin/shifts', 'shift-rotation-removed');
   });
 
   // -------------------------------------------------------------------------
@@ -1512,10 +1535,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   // The unified section. Screens and Layout were two pages for one thing; a
   // display is now one place — its status, pairing, settings and layout.
-  app.get('/admin/displays', (c: Context) => c.html(displaysPage()));
+  app.get('/admin/displays', (c: Context) => c.html(displaysPage(c)));
   app.get('/admin/displays/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
-    if (id === 'default') return c.html(displayDetailPage(null));
+    if (id === 'default') return c.html(displayDetailPage(null, undefined, c));
     if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/displays', 302);
     // An e-paper panel's page is its design page — a panel landing here (an
     // old link, or the shared layout routes before they were kind-aware) gets
@@ -1523,7 +1546,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (activeScreens().some((s) => s.id === id && s.kind === 'epaper')) {
       return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
     }
-    return c.html(displayDetailPage(id));
+    return c.html(displayDetailPage(id, undefined, c));
   });
 
   // Old routes kept as redirects so bookmarks and any hand-typed links land in
@@ -1597,7 +1620,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
     const shaped = parse(screenBody, body);
-    if (!shaped.ok) return c.html(displaysPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(displaysPage(c, shaped.message), 400);
 
     /*
      * Empty means "follow the household" on every one of these.
@@ -1622,18 +1645,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const timezone = shaped.value.timezone ?? '';
 
     if (!isValidThemeRef(deps.db, theme, themeKeys)) {
-      return c.html(displayDetailPage(id, 'Choose a theme from the list.'), 400);
+      return c.html(displayDetailPage(id, 'Choose a theme from the list.', c), 400);
     }
     if (!isValidThemeRef(deps.db, daytimeTheme, themeKeys)) {
-      return c.html(displayDetailPage(id, 'Choose a daylight theme from the list.'), 400);
+      return c.html(displayDetailPage(id, 'Choose a daylight theme from the list.', c), 400);
     }
 
     const scheduled = daytimeTheme !== '';
     if (scheduled && (!HHMM_SHAPE.test(startsAt) || !HHMM_SHAPE.test(endsAt))) {
-      return c.html(displayDetailPage(id, 'Enter this wall’s daylight hours as HH:MM.'), 400);
+      return c.html(displayDetailPage(id, 'Enter this wall’s daylight hours as HH:MM.', c), 400);
     }
     if (scheduled && startsAt === endsAt) {
-      return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.'), 400);
+      return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.', c), 400);
     }
     /*
      * Whatever the panel offered, which is the offered zones *and* the one this
@@ -1651,7 +1674,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const screenZone =
       readAdminScreens(deps.db).find((candidate) => candidate.id === id)?.timezone ?? null;
     if (timezone !== '' && timezone !== screenZone && !offeredTimezones().includes(timezone)) {
-      return c.html(displayDetailPage(id, 'Choose a timezone from the list.'), 400);
+      return c.html(displayDetailPage(id, 'Choose a timezone from the list.', c), 400);
     }
 
     // Density overrides: empty follows the household default, a number is
@@ -1672,11 +1695,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return { ok: true, value: n };
     };
     const today = density(shaped.value.today_events, 1, 20, 'Events today');
-    if (!today.ok) return c.html(displayDetailPage(id, today.message), 400);
+    if (!today.ok) return c.html(displayDetailPage(id, today.message, c), 400);
     const nextDays = density(shaped.value.next_days, 0, 14, 'Days ahead');
-    if (!nextDays.ok) return c.html(displayDetailPage(id, nextDays.message), 400);
+    if (!nextDays.ok) return c.html(displayDetailPage(id, nextDays.message, c), 400);
     const weeks = density(shaped.value.horizon_weeks, 1, 8, 'Weeks of month');
-    if (!weeks.ok) return c.html(displayDetailPage(id, weeks.message), 400);
+    if (!weeks.ok) return c.html(displayDetailPage(id, weeks.message, c), 400);
 
     if (
       !writeScreenSettings(deps.db, id, {
@@ -1699,7 +1722,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.redirect('/admin/displays', 302);
     }
     // Back to the wall's own page; it picks the change up on its next poll.
-    return c.redirect(`/admin/displays/${encodeURIComponent(id)}`, 302);
+    return savedRedirect(c, `/admin/displays/${encodeURIComponent(id)}`, 'screen-settings');
   });
 
   /**
@@ -1725,7 +1748,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/screens', async (c: Context) => {
     const shaped = parse(newScreenBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(displaysPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(displaysPage(c, shaped.message), 400);
 
     const issued = issueDisplayToken();
     const id = randomBytes(6).toString('hex');
@@ -1746,7 +1769,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/screens/:id/regenerate', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = readAdminScreens(deps.db).find((candidate) => candidate.id === id);
-    if (screen === undefined) return c.html(displaysPage('That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(displaysPage(c, 'That screen is no longer there.'), 404);
 
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
@@ -1755,7 +1778,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/screens/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/displays', 302);
+    return savedRedirect(c, '/admin/displays', 'screen-removed');
   });
 
   // -------------------------------------------------------------------------
@@ -1884,7 +1907,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(url)) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/epaper">Done</a>` +
-        `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
+        `<form method="get" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
         `<button class="btn ghost" type="submit">Regenerate URL</button></form>` +
         `</div>`,
     });
@@ -1923,15 +1946,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(placeholder)) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/epaper">Done</a>` +
-        `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/regenerate" ` +
-        `onsubmit="return confirm('Regenerate the URL for ${escapeHtml(name)}? The old one stops working and the panel will need re-flashing.')">` +
+        `<form method="get" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
         `<button class="btn ghost" type="submit">Regenerate URL (the panel will need re-flashing)</button></form>` +
         `</div>`,
     });
   };
 
   /** The eInk Displays list and the add form. */
-  const epaperPage = (error?: string): string => {
+  const epaperPage = (c: Context, error?: string): string => {
     const screens = readAdminScreens(deps.db).filter(
       (screen) => screen.kind === 'epaper' && screen.revokedAt === null,
     );
@@ -1950,8 +1972,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // never matched the .btn-ghost rule, so all three used to render filled).
       `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
       `<a class="btn-ghost" href="admin/epaper/${encodeURIComponent(screen.id)}">URL &amp; recipes</a>` +
-      `<form method="post" action="admin/epaper/${encodeURIComponent(screen.id)}/revoke" ` +
-      `onsubmit="return confirm('Remove ${escapeHtml(screen.name)}? Its URL stops working.')">` +
+      `<form method="get" action="admin/epaper/${encodeURIComponent(screen.id)}/delete">` +
       `<button class="btn-danger" type="submit">Remove</button></form>` +
       `</div></div>`;
 
@@ -1964,6 +1985,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'eInk Displays — Maverick Wall',
       nav: 'epaper',
       heading: 'eInk Displays',
+      saved: readSaved(c),
       action: { label: 'Add an eInk screen', href: 'admin/epaper#add' },
       ...(screens.length === 0
         ? {
@@ -2011,7 +2033,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   };
 
-  app.get('/admin/epaper', (c: Context) => c.html(epaperPage()));
+  app.get('/admin/epaper', (c: Context) => c.html(epaperPage(c)));
 
   /**
    * A screen's recipes, read-only (RFC 009, 1.8).
@@ -2026,7 +2048,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const screen = readAdminScreens(deps.db).find(
       (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
     );
-    if (screen === undefined) return c.html(epaperPage('That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(epaperPage(c, 'That screen is no longer there.'), 404);
     return c.html(
       epaperViewPage(id, screen.name, {
         width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation,
@@ -2036,7 +2058,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/epaper', async (c: Context) => {
     const shaped = parse(newEpaperBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(epaperPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(epaperPage(c, shaped.message), 400);
 
     let width: number;
     let height: number;
@@ -2046,13 +2068,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       const sane = (n: number): boolean => Number.isInteger(n) && n >= 64 && n <= 2000;
       if (!sane(width) || !sane(height)) {
         return c.html(
-          epaperPage('Give the panel a width and height in pixels, each between 64 and 2000.'),
+          epaperPage(c, 'Give the panel a width and height in pixels, each between 64 and 2000.'),
           400,
         );
       }
     } else {
       const preset = EPAPER_PRESETS[shaped.value.preset];
-      if (preset === undefined) return c.html(epaperPage('Choose a panel.'), 400);
+      if (preset === undefined) return c.html(epaperPage(c, 'Choose a panel.'), 400);
       width = preset.width;
       height = preset.height;
     }
@@ -2070,12 +2092,40 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   });
 
+  /**
+   * Regenerating asks first — the old URL stops working immediately, and the
+   * panel needs re-flashing with the new one. This is the GET half of the
+   * GET-then-POST shape used everywhere else; it replaces the inline
+   * inline confirm script the read-only recipes page used to carry, which
+   * was the one bit of script in the server-rendered admin.
+   */
+  app.get('/admin/epaper/:id/regenerate', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = readAdminScreens(deps.db).find(
+      (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
+    );
+    if (screen === undefined) return c.redirect('/admin/epaper', 302);
+    return c.html(
+      confirmDestroyPage({
+        modules: navModules(deps.db),
+        title: 'Regenerate URL',
+        nav: 'epaper',
+        heading: `Regenerate the URL for “${screen.name}”?`,
+        intro: 'The old one stops working immediately, and the panel will need re-flashing with the new one.',
+        destroyAction: `admin/epaper/${encodeURIComponent(id)}/regenerate`,
+        destroyLabel: 'Regenerate it',
+        cancelAction: `admin/epaper/${encodeURIComponent(id)}`,
+        cancelLabel: 'Keep the current URL',
+      }),
+    );
+  });
+
   app.post('/admin/epaper/:id/regenerate', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = readAdminScreens(deps.db).find(
       (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
     );
-    if (screen === undefined) return c.html(epaperPage('That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(epaperPage(c, 'That screen is no longer there.'), 404);
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
     return c.html(
@@ -2101,14 +2151,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/epaper/:id/source', async (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = findEpaper(id);
-    if (screen === undefined) return c.html(epaperPage('That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(epaperPage(c, 'That screen is no longer there.'), 404);
     const shaped = parse(epaperSourceBody, (await c.req.parseBody()) as Record<string, unknown>);
     if (!shaped.ok) return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
 
     const choice = shaped.value.source;
     if (choice === 'builtin' || choice === 'own') {
       setPanelSource(deps.db, id, choice, null);
-      return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+      return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
     }
 
     // `follow:<id>` — the id has to name a wall that is actually there. The
@@ -2118,21 +2168,46 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const target = choice.slice('follow:'.length);
     if (target === 'default') {
       setPanelSource(deps.db, id, 'follow', null);
-      return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+      return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
     }
     const wall = readAdminScreens(deps.db).find(
       (candidate) => candidate.id === target && candidate.id !== id && candidate.revokedAt === null,
     );
     if (wall === undefined) {
-      return c.html(epaperPage('That display is no longer there.'), 400);
+      return c.html(epaperPage(c, 'That display is no longer there.'), 400);
     }
     setPanelSource(deps.db, id, 'follow', wall.id);
-    return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+    return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
+  });
+
+  /**
+   * Removing an eInk screen asks first — the GET half of the GET-then-POST
+   * shape used everywhere else, replacing the inline confirm script
+   * the list card used to carry.
+   */
+  app.get('/admin/epaper/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = readAdminScreens(deps.db).find(
+      (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
+    );
+    if (screen === undefined) return c.redirect('/admin/epaper', 302);
+    return c.html(
+      confirmDestroyPage({
+        modules: navModules(deps.db),
+        title: 'Remove eInk screen',
+        nav: 'epaper',
+        heading: `Remove “${screen.name}”?`,
+        intro: 'Its URL stops working immediately, and any device or automation using it will fail.',
+        destroyAction: `admin/epaper/${encodeURIComponent(id)}/revoke`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/epaper',
+      }),
+    );
   });
 
   app.post('/admin/epaper/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/epaper', 302);
+    return savedRedirect(c, '/admin/epaper', 'epaper-screen-removed');
   });
 
   const findEpaper = (id: string): AdminScreenRow | undefined =>
@@ -2385,6 +2460,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         title: `${screen.name} layout — Maverick Wall`,
         nav: 'epaper',
         heading: `${screen.name} — layout`,
+        saved: readSaved(c),
         intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
         body:
           sourceForm +
@@ -2421,12 +2497,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
     const shaped = parse(displayBody, body);
-    if (!shaped.ok) return c.html(displayDetailPage(null, shaped.message), 400);
+    if (!shaped.ok) return c.html(displayDetailPage(null, shaped.message, c), 400);
 
     // A built-in or a custom theme that still exists — the schema let any string
     // through so the check could see the database.
     if (!isValidThemeRef(deps.db, shaped.value.theme, themeKeys)) {
-      return c.html(displayDetailPage(null, 'Choose a theme from the list.'), 400);
+      return c.html(displayDetailPage(null, 'Choose a theme from the list.', c), 400);
     }
 
     /*
@@ -2439,11 +2515,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const daytimeRaw = shaped.value.daytime_theme;
     const scheduled = daytimeRaw !== undefined && daytimeRaw !== 'none';
     if (scheduled && !isValidThemeRef(deps.db, daytimeRaw, themeKeys)) {
-      return c.html(displayDetailPage(null, 'Choose a daylight theme from the list.'), 400);
+      return c.html(displayDetailPage(null, 'Choose a daylight theme from the list.', c), 400);
     }
 
     const order = blockOrder(body, readHousehold(deps.db).displayBlocks);
-    if ('error' in order) return c.html(displayDetailPage(null, order.error), 400);
+    if ('error' in order) return c.html(displayDetailPage(null, order.error, c), 400);
 
     writeDisplaySettings(deps.db, {
       theme: shaped.value.theme,
@@ -2462,7 +2538,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
 
     // Back to the Default display; the wall picks it up on its next poll.
-    return c.redirect('/admin/displays/default', 302);
+    return savedRedirect(c, '/admin/displays/default', 'screen-settings');
   });
 
   // -------------------------------------------------------------------------
@@ -2575,7 +2651,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.html(templateGalleryPage(owner, 'That template is not one we ship.'), 400);
     }
     applyTemplate(deps.db, owner, template);
-    return c.redirect(layoutUrl(owner), 302);
+    return savedRedirect(c, layoutUrl(owner), 'layout-template-applied');
   });
 
   /**
@@ -2593,7 +2669,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.html(templateGalleryPage(to, 'Pick a different display to copy from.'), 400);
     }
     copyLayout(deps.db, from, to);
-    return c.redirect(layoutUrl(to), 302);
+    return savedRedirect(c, layoutUrl(to), 'layout-copied');
   });
 
   /**
@@ -2609,7 +2685,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const owner = resolveOwner(id === 'default' ? null : id);
     if (isEpaperOwner(owner)) clearLayout(deps.db, owner as string);
     else applyTemplate(deps.db, owner, CLASSIC_TEMPLATE);
-    return c.redirect(layoutUrl(owner), 302);
+    return savedRedirect(c, layoutUrl(owner), 'layout-reset');
   });
 
   // -------------------------------------------------------------------------
@@ -2760,7 +2836,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
-  function shiftsPage(error?: { message: string; suggestion?: string }): string {
+  function shiftsPage(c: Context, error?: { message: string; suggestion?: string }): string {
     const plans = readShiftPlansAdmin(deps.db);
     const people = readPeopleAdmin(deps.db);
     const sources = readAdminSources(deps.db);
@@ -2775,8 +2851,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</p>` +
       `<div class="row">` +
       `<a class="btn secondary btn-sm" href="admin/shifts/${encodeURIComponent(plan.id)}/edit">Edit</a>` +
-      `<form method="post" action="admin/shifts/${encodeURIComponent(plan.id)}/delete">` +
-      `<button class="secondary" type="submit">Remove</button></form>` +
+      `<form method="get" action="admin/shifts/${encodeURIComponent(plan.id)}/delete">` +
+      `<button class="btn-danger" type="submit">Remove</button></form>` +
       `</div></article>`;
 
     const canAdd = people.length > 0;
@@ -2785,6 +2861,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Work Schedule — Maverick Wall',
       nav: 'shifts',
       heading: 'Work Schedule',
+      saved: readSaved(c),
       action: { label: 'Shift types', href: 'admin/shifts/types' },
       intro:
         'The wall colours each day by who is working. A rotation is either read ' +
@@ -3059,7 +3136,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
   }
 
-  function peoplePage(error?: string, suggestion?: string): string {
+  function peoplePage(c: Context, error?: string, suggestion?: string): string {
     const people = readPeopleAdmin(deps.db);
 
     const card = (person: PersonRecord, first: boolean, last: boolean): string =>
@@ -3119,6 +3196,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'People — Maverick Wall',
       nav: 'people',
       heading: 'People',
+      saved: readSaved(c),
       action: { label: 'Add someone', href: 'admin/people#add' },
       intro:
         'Everyone the wall knows about. Their colour marks their events and ' +
@@ -3757,7 +3835,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * that opens its own page. Screens and Layout used to be two sections for one
    * thing — this is the single door to a display.
    */
-  function displaysPage(error?: string): string {
+  function displaysPage(c: Context, error?: string): string {
     const at = now();
     // e-paper panels live under their own "eInk Displays" door, not here.
     const all = readAdminScreens(deps.db).filter((screen) => screen.kind !== 'epaper');
@@ -3779,6 +3857,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Displays — Maverick Wall',
       nav: 'displays',
       heading: 'Displays',
+      saved: readSaved(c),
       action: { label: 'Pair a new screen', href: 'admin/displays#add' },
       ...(active.length === 0
         ? { intro: 'No screens paired yet. The Default below is what a wall shows until you pair one and give it its own layout.' }
@@ -3875,7 +3954,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Device, then Save. On a phone nobody could tell which of the three they
    * were editing, and pairing sat beside the everyday tools as an equal.
    */
-  function displayDetailPage(ownerId: string | null, error?: string): string {
+  function displayDetailPage(ownerId: string | null, error: string | undefined, c: Context): string {
     const at = now();
     const household = readHousehold(deps.db);
     const owner = ownerId === null ? null : activeScreens().find((s) => s.id === ownerId) ?? null;
@@ -4064,6 +4143,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: `${owner ? owner.name : 'Default display'} — Maverick Wall`,
       nav: 'displays',
       heading: owner ? owner.name : 'Default display',
+      saved: readSaved(c),
       back: { label: 'Walls', href: 'admin/displays' },
       body:
         `<div class="disp-editor" data-wall-editor>` +
@@ -4473,7 +4553,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<button class="secondary" type="submit">Sync now</button></form>`
         : '') +
       `<form method="get" action="admin/calendars/${id}/delete">` +
-      `<button class="secondary" type="submit">Remove</button></form>` +
+      `<button class="btn-danger" type="submit">Remove</button></form>` +
       `</div></article>`
     );
   }
