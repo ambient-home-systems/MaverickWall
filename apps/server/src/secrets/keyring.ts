@@ -85,10 +85,23 @@ function keyPath(dataDir: string): string {
 
 const TRAILING_WHITESPACE = new Set([0x09, 0x0a, 0x0d, 0x20]);
 
-/** Trailing tab, newline, carriage return or space bytes, stripped. */
-function trimTrailingWhitespace(buffer: Buffer): Buffer {
+/**
+ * Trailing tab, newline, carriage return or space bytes, stripped — **at most
+ * `most` of them**.
+ *
+ * The bound is the whole correctness of this function. A master key is 32
+ * random bytes, so its last byte is one of the four whitespace values about
+ * 1.6% of the time — and an unbounded strip run over a 33-byte file then eats
+ * the appended newline *and* the real last byte of the key, leaving 31. That
+ * reads as an unusable key: it is renamed aside and replaced with a fresh one,
+ * and every encrypted calendar address in the database is gone with it.
+ *
+ * Only the excess can be padding, so only the excess may be trimmed.
+ */
+function trimTrailingWhitespace(buffer: Buffer, most: number): Buffer {
   let end = buffer.length;
-  while (end > 0 && TRAILING_WHITESPACE.has(buffer[end - 1] as number)) end--;
+  const floor = Math.max(0, buffer.length - most);
+  while (end > floor && TRAILING_WHITESPACE.has(buffer[end - 1] as number)) end--;
   return buffer.subarray(0, end);
 }
 
@@ -97,7 +110,9 @@ function trimTrailingWhitespace(buffer: Buffer): Buffer {
  * newline — the ordinary outcome of a text editor, `echo`, a copy-paste or a
  * sync tool touching the raw binary key. Never trims a buffer that is already
  * the right length, so a genuine key whose last byte happens to be a
- * whitespace byte is never shortened.
+ * whitespace byte is never shortened — and never trims *past* the right length
+ * either, which is the same promise one byte along and the one that matters
+ * when the last real byte is itself whitespace.
  *
  * Shared between loading the key at boot and validating a re-uploaded one on
  * the restore screen — a key good enough to boot with should be good enough
@@ -105,7 +120,8 @@ function trimTrailingWhitespace(buffer: Buffer): Buffer {
  */
 export function normaliseMasterKeyBytes(buffer: Buffer): Buffer | undefined {
   if (buffer.length === MASTER_KEY_BYTES) return buffer;
-  const trimmed = trimTrailingWhitespace(buffer);
+  if (buffer.length < MASTER_KEY_BYTES) return undefined;
+  const trimmed = trimTrailingWhitespace(buffer, buffer.length - MASTER_KEY_BYTES);
   return trimmed.length === MASTER_KEY_BYTES ? trimmed : undefined;
 }
 
