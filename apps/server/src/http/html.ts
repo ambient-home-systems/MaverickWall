@@ -1242,11 +1242,15 @@ pre.code{background:var(--mw-surface-2);
  * still promises that selection keeps its accent regardless. A dash reads
  * against either colour. */
 .le-widget.is-not-drawn{border-style:dashed}
-.le-widget-flag{position:absolute;right:0;top:0;
+/* Bottom-left, not top-right: the top strip is the widget's own name, and the
+ * boxes that are actually flagged on a fresh install are the narrow ones —
+ * Classic's shift and weather — where a second chip on that row paints over it.
+ * Bottom-right is the resize handle, so the remaining corner is the free one. */
+.le-widget-flag{position:absolute;left:0;bottom:0;
   font:var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-bg);background:var(--mw-ink-2);opacity:.85;
-  padding:2px 6px;border-radius:0 0 0 var(--mw-r-2);
+  padding:2px 6px;border-radius:0 var(--mw-r-2) 0 0;
   pointer-events:none;user-select:none}
 /* The reason, at the head of the inspector — read before any of its options,
  * because none of them matter while nothing draws the widget. */

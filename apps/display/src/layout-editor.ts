@@ -1115,7 +1115,7 @@ function boot(): void {
       const response = await fetch(`admin/epaper/${encodeURIComponent(panel.id)}/preview.png`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ widgets: widgetsForSave(state.widgets) }),
+        body: JSON.stringify({ widgets: widgetsForSave(drawnWidgets()) }),
       });
       if (!response.ok) return;
       const url = URL.createObjectURL(await response.blob());
@@ -1150,7 +1150,7 @@ function boot(): void {
       const response = await fetch(`admin/epaper/${detailSeg}/preview.png`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ widgets: widgetsForSave(state.widgets) }),
+        body: JSON.stringify({ widgets: widgetsForSave(drawnWidgets()) }),
       });
       if (!response.ok) return;
       const url = URL.createObjectURL(await response.blob());
@@ -1245,6 +1245,12 @@ function boot(): void {
    * looking at while they arrange it.
    */
   function drawnWidgets(): Widget[] {
+    /*
+     * Used by every *preview* and by no save. The overlay boxes are always the
+     * whole canvas — they are what you drag, and one that vanished under the
+     * pointer would be unusable — so filtering here removes the ink beneath a
+     * flagged box and nothing else, which is exactly what the flag on it says.
+     */
     if (notDrawn.size === 0) return state.widgets;
     const kept = state.widgets.filter((widget) => !notDrawn.has(widget.type));
     return kept.length === 0 ? state.widgets : kept;

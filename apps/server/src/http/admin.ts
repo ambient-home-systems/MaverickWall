@@ -2094,12 +2094,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Nothing is stored. `POST` because a canvas does not belong in a URL, and
    * `no-store` because this frame is a keystroke old.
    *
-   * Deliberately **not** filtered the way the saved preview above is: this
-   * draws the canvas as it is being arranged, and a box that vanished from
-   * under the pointer because the household has not set a location yet would
-   * make the editor unusable for the widget they are placing. The saved
-   * preview is the claim about the glass; this one is the claim about the
-   * canvas.
+   * Renders exactly the canvas it is posted, and does not second-guess it: the
+   * caller decides what to draw. The editor posts what it draws — the same
+   * filtered set its own preview uses (RFC 009 Phase 2), so the arrange
+   * backdrop and the ink-lane frame agree with the saved preview above and with
+   * the device. Nothing is ungrabbable as a result: the draggable boxes are the
+   * editor's overlay and are always the whole canvas, so a flagged widget keeps
+   * its box and loses only the ink under it, which is what its flag says.
    *
    * The posted boxes are the canvas *by definition* here, whatever the row says.
    * A panel that has never been saved has `layout_mode` NULL, and reading it

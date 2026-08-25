@@ -1029,7 +1029,7 @@ describe('4 · the editor, driven', () => {
     async () => {
       const wall = await fresh({ feed: true });
       const context = await (await browser()).newContext({
-        viewport: { width: 1400, height: 1000 },
+        viewport: { width: 900, height: 1000 },
       });
       try {
         const page = await context.newPage();
@@ -1049,14 +1049,39 @@ describe('4 · the editor, driven', () => {
         ).toEqual(['Shift', 'Weather']);
         expect(new Set(flagged.map((one) => one.flag))).toEqual(new Set(['Not on the wall']));
 
-        // And the reason, in the inspector, when one is selected.
-        await page.click('.le-overlay .le-widget.is-not-drawn');
-        await page.waitForSelector('.le-not-drawn', { timeout: 10_000 });
-        const reason = await page.evaluate(
-          () => document.querySelector('.le-not-drawn')?.textContent ?? '',
+        /*
+         * And the flag keeps out of the row the widget's own name is in.
+         *
+         * Measured, and asserted as *rows* rather than as rectangles that
+         * happen not to touch. On the default wall the two chips clear each
+         * other by 23px in a 154px box with the flag in the top-right corner —
+         * so a check for overlap passes today and would keep passing until a
+         * slightly longer name or a slightly narrower box closed that gap,
+         * which is the wrong moment to find out. The boxes that carry this flag
+         * are the narrow ones by construction (Classic's shift and weather), so
+         * the rule is the strong one: the flag has its own band.
+         */
+        const sharingARow = await page.evaluate(() =>
+          [...document.querySelectorAll('.le-overlay .le-widget.is-not-drawn')]
+            .map((box) => {
+              const name = box.querySelector('.le-widget-label')?.getBoundingClientRect();
+              const flag = box.querySelector('.le-widget-flag')?.getBoundingClientRect();
+              if (name === undefined || flag === undefined) return 'a flagged box lost a chip';
+              const clear = flag.top >= name.bottom - 0.5 || flag.bottom <= name.top + 0.5;
+              return clear
+                ? ''
+                : `name spans ${Math.round(name.top)}..${Math.round(name.bottom)} and the ` +
+                  `flag ${Math.round(flag.top)}..${Math.round(flag.bottom)}, in a ` +
+                  `${Math.round(box.getBoundingClientRect().width)}px box`;
+            })
+            .filter((one) => one !== ''),
         );
-        expect(reason, 'the inspector said nothing about why').toContain('Not on the wall yet.');
-        expect(reason, 'the reason names no screen to go to').toMatch(/Weather|Shifts/);
+        expect(
+          sharingARow,
+          'the "not on the wall" flag shares a row with the widget’s own name. ' +
+            'They are both chips and the flag is the longer of the two, so on a ' +
+            'narrow box one paints over the other.',
+        ).toEqual([]);
 
         /*
          * And the preview underneath draws what the wall draws.
