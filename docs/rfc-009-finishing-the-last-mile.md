@@ -300,7 +300,10 @@ is also why a `failed` outcome now carries the server's own sentence
 the difference decides three things — whether "Not reaching the server" is
 drawn, whether the two-hour contact-silence watchdog is armed against a server
 the wall is talking to every minute, and whether the refusal can explain
-itself. And it is why a failed poll with no manifest renders a message
+itself. `answered` is the `x-server-time` header rather than the mere arrival of
+a reply, so a captive portal's 200 and a proxy's 5xx still read as unreachable;
+`unavailable` sends that header for exactly this reason, through a guard,
+because a throwing clock is one of the ways a request reaches it. And it is why a failed poll with no manifest renders a message
 at all rather than leaving the boot text up: `draw()` returns at its first line with no manifest,
 so "Waiting for the first update…" was all a household saw for as long as the
 fault lasted. What it keeps is the household's days, people, sources

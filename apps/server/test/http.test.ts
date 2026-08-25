@@ -395,6 +395,19 @@ describe('/d/manifest', () => {
       'a 200 here is a fresh manifest as far as the display is concerned',
     ).toBeGreaterThanOrEqual(500);
 
+    /*
+     * And the refusal has to be recognisable as *ours*.
+     *
+     * The display reads this header's presence to tell a reply from this
+     * server apart from a captive portal's 200 or a proxy's own error page,
+     * and that decides three things on the wall: whether it says "not reaching
+     * the server", whether it advances its contact clock, and whether it arms
+     * a two-hour watchdog against a server it is talking to every minute.
+     * Dropping it here breaks all three silently and nothing else would fail,
+     * because it is the *other* package that reads it.
+     */
+    expect(response.headers.get('x-server-time'), 'the mark a display looks for').not.toBeNull();
+
     // And specifically not a body a wall would draw over its own calendar.
     const body = (await response.json()) as Record<string, unknown>;
     expect(body['manifestVersion'], 'nothing here may pass isRenderableManifest').toBeUndefined();
@@ -584,6 +597,10 @@ describe('/d/manifest', () => {
     ).toBe(true);
 
     expect(response.status).toBe(503);
+    // Even here, where the clock is what failed: the stamp is read through a
+    // guard precisely so the last-resort path cannot be taken down by it.
+    expect(response.headers.get('x-server-time'), 'the mark a display looks for').not.toBeNull();
+
     const body = (await response.json()) as Record<string, unknown>;
     expect(body['error']).toBe('unavailable');
     expect(

@@ -1700,6 +1700,20 @@ stayed labelled that way once the server came back refusing. The outcome carries
 either way, so the banner says "Last updated N ago" without claiming a cause it
 cannot know.
 
+**And `answered` is not "an HTTP reply arrived".** A captive portal answers 200
+with its own page and a proxy in front of a stopped container answers its own
+5xx — both are replies and neither means the wall reached anything, so reading
+them as contact would leave a genuinely cut-off wall with no offline banner and
+a watchdog that could never fire. The mark is `x-server-time`, which
+`/d/manifest` sets on every answer it gives, **refusals included** — a header
+`unavailable` had to start sending, through a guard, because a `now` that throws
+is one of the ways a request reaches it and a safety net that can throw is not
+one. The display only checks the header is *there* on a refusal, so a zero costs
+nothing. Both halves are pinned: the display's test drives a real server that
+withholds it, and the server's asserts it is sent, because the package that
+reads it is not the package that writes it and dropping it failed nothing at
+all before those went in.
+
 **And only one of them can explain itself.** Every non-2xx body was thrown away unread, so the 503
 this route now answers with reached the wall as a bare status and a screen with
 nothing cached could only say it was not reaching a server that was up. The

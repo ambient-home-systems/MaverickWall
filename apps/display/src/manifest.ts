@@ -372,8 +372,13 @@ export type FetchOutcome =
        * display was treating them as one: it drew "Not reaching the server"
        * over a wall whose server had just replied, stopped advancing
        * `lastContactAt`, and so tripped a watchdog limit `watchdog.ts` says is
-       * for the case where *we* are broken. True for any HTTP reply, including
-       * one this bundle cannot use.
+       * for the case where *we* are broken.
+       *
+       * Not merely "an HTTP reply arrived" — a captive portal's cheerful 200
+       * and a proxy's own error page are both replies, and neither is this
+       * wall's server. It is the `x-server-time` header, which `/d/manifest`
+       * sets on every answer it gives including a refusal, and which nothing
+       * in between has any reason to invent.
        */
       readonly answered: boolean;
       /**
@@ -441,8 +446,12 @@ export function createManifestClient(
         };
       }
 
-      const headerTime = Number(response.headers.get('x-server-time'));
+      const stamp = response.headers.get('x-server-time');
+      const headerTime = Number(stamp);
       const serverTime = Number.isFinite(headerTime) && headerTime > 0 ? headerTime : 0;
+      // Presence, not value: the header is what identifies a reply as this
+      // wall's own server rather than whatever else answered on the way.
+      const answered = stamp !== null;
 
       if (response.status === 304) return { status: 'unchanged', serverTime };
       if (response.status === 401) return { status: 'unpaired' };
@@ -450,7 +459,7 @@ export function createManifestClient(
         const said = await sentenceFrom(response);
         const failed = {
           status: 'failed',
-          answered: true,
+          answered,
           reason: `server answered ${response.status}`,
         } as const;
         return said === undefined ? failed : { ...failed, serverSaid: said };
@@ -460,10 +469,10 @@ export function createManifestClient(
       try {
         body = await response.json();
       } catch {
-        return { status: 'failed', answered: true, reason: 'reply was not readable' };
+        return { status: 'failed', answered, reason: 'reply was not readable' };
       }
       if (!isRenderableManifest(body)) {
-        return { status: 'failed', answered: true, reason: 'reply was not a manifest' };
+        return { status: 'failed', answered, reason: 'reply was not a manifest' };
       }
 
       // Only stored once the body has been accepted. Keeping an ETag for a

@@ -48,6 +48,8 @@ interface Behaviour {
   body?: unknown;
   /** Sent verbatim, for the reply that is not JSON at all. */
   raw?: string;
+  /** Withheld, for the reply that did not come from this wall's server. */
+  noServerTime?: boolean;
   serverTime?: number;
 }
 
@@ -55,11 +57,10 @@ async function serverWith(behaviour: () => Behaviour): Promise<string> {
   const server = createServer((request, response) => {
     const next = behaviour();
     const etag = next.etag ?? '"v1"';
-    const headers: Record<string, string> = {
-      'content-type': 'application/json',
-      'x-server-time': String(next.serverTime ?? Date.now()),
-      etag,
-    };
+    const headers: Record<string, string> = { 'content-type': 'application/json', etag };
+    if (next.noServerTime !== true) {
+      headers['x-server-time'] = String(next.serverTime ?? Date.now());
+    }
     if (next.status !== undefined && next.status !== 200) {
       response.writeHead(next.status, headers);
       if (next.status === 304) {
@@ -130,6 +131,35 @@ describe('polling', () => {
     // front of a stopped container answers with.
     behaviour = { status: 502, raw: '<html>a proxy said no</html>' };
     expect(await client.poll()).not.toHaveProperty('serverSaid');
+  });
+
+  /*
+   * And a reply is not the same thing as a reply from *this wall's server*.
+   *
+   * A captive portal answers 200 with its own page and a proxy in front of a
+   * stopped container answers its own 5xx — both are HTTP replies, and neither
+   * means the wall is reaching anything. Reading them as contact would leave a
+   * genuinely cut-off wall with no offline banner and a watchdog that could
+   * never fire. `x-server-time` is the mark: `/d/manifest` sets it on every
+   * answer it gives, refusals included, and nothing in between has a reason to.
+   */
+  it('does not mistake a captive portal or a proxy for its own server', async () => {
+    let behaviour: Behaviour = { noServerTime: true, body: { hello: 'from the hotel wifi' } };
+    const url = await serverWith(() => behaviour);
+    const client = createManifestClient((input, init) => fetch(input, init), url);
+
+    const portal = await client.poll();
+    expect(portal.status, 'a 200 that is not a manifest').toBe('failed');
+    expect(portal).toHaveProperty('answered', false);
+
+    behaviour = { status: 502, noServerTime: true, raw: '<html>a proxy said no</html>' };
+    const proxy = await client.poll();
+    expect(proxy.status).toBe('failed');
+    expect(proxy).toHaveProperty('answered', false);
+
+    // And the same 502 *with* the mark is this wall's server refusing.
+    behaviour = { status: 502, body: { error: 'unavailable' } };
+    expect(await client.poll()).toHaveProperty('answered', true);
   });
 
   it('knows an unreachable server from one that refused', async () => {
@@ -299,14 +329,20 @@ describe('polling', () => {
 
   /*
    * And keeping the calendar must not mean discarding what the stand-in came
-   * to say.
+   * to say — which is its notice, and only its notice.
    *
-   * Its notice is the only text on the wall that names the fault and points at
-   * System — without it the household sees their calendar under "not reaching
-   * the server", which is false, since the server is up and answering. And its
-   * interrupts are why the OK button still works: the acknowledgement is
-   * recorded server-side and the re-poll is what clears the takeover, so
-   * freezing the held copy whole would leave a warning nothing could dismiss.
+   * The notice is the only text on the wall that names the fault and points at
+   * System. The interrupts are deliberately *not* taken, and the argument for
+   * taking them is the one that reads better: an acknowledgement is recorded
+   * server-side and it is the re-poll that clears a takeover, so a frozen copy
+   * leaves a warning the OK button cannot dismiss. That is true and it is the
+   * smaller harm. The stand-in carries no interrupts at all — a process that
+   * cannot read its database cannot evaluate a rule either — so merging them
+   * never clears an acknowledged warning, it drops a live unacknowledged one.
+   * A tornado takeover must not vanish because a migration failed. It is the
+   * same stance the `failed` branch states outright: the interrupt stays up,
+   * because nothing has been acknowledged as far as the household is
+   * concerned.
    */
   it('keeps the calendar and the warning, and takes only the notice', () => {
     const storm = {

@@ -979,14 +979,37 @@ export function createApp(deps: AppDeps): Hono {
    * exactly when it has nothing else to put up. A message shown solely where
    * it is false is worse than a plainer one.
    */
-  const unavailable = (c: Context): Response =>
-    c.json(
+  const unavailable = (c: Context): Response => {
+    /*
+     * The header is how a wall knows this refusal came from *its* server.
+     * `/d/manifest` already sets it on every manifest, so a display can tell a
+     * reply of ours from a captive portal's cheerful 200 or a proxy's own error
+     * page — and that difference decides whether it draws "not reaching the
+     * server" and whether it arms a watchdog against a server it is in fact
+     * talking to. It carries no information a caller does not already have.
+     *
+     * The clock is read through a guard because this is the last-resort path:
+     * a `now` that throws is one of the ways a request arrives here at all, and
+     * a safety net that can throw is not one. The display only checks that the
+     * header is *there* on a refusal — it reads a time from the 200 and the 304
+     * — so a zero costs nothing, and it is below the `> 0` bar the client
+     * already applies.
+     */
+    let stamp = 0;
+    try {
+      stamp = now();
+    } catch {
+      // Deliberately swallowed; see above.
+    }
+    c.header('x-server-time', String(stamp));
+    return c.json(
       {
         error: 'unavailable',
         message: 'This wall could not be built just now. The screen will try again shortly.',
       },
       503,
     );
+  };
 
   /**
    * The degraded manifest, and a way out if even that cannot be built.
