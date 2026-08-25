@@ -188,6 +188,15 @@ describe('the Weather screen', () => {
       expect(await page.inputValue('input[name="longitude"]')).toBe('-0.1278');
       expect(await page.isChecked('input[name="alerts_enabled"]')).toBe(true);
       expect(await page.inputValue('select[name="weather_provider"]')).toBe('openmeteo');
+      /*
+       * And the hints under the form read the *form*, not the database. Asking
+       * the stored row would put "Fill in the latitude and longitude above"
+       * under two boxes that visibly have numbers in them.
+       */
+      expect(
+        await page.locator('form[action="admin/weather"]').textContent(),
+        'the coordinates are on screen, so nothing should ask for them',
+      ).not.toContain('Fill in the latitude and longitude above');
 
       // And nothing was written: a refused form changes nothing.
       expect(readWeatherSettings(home.db).provider).toBe('nws');

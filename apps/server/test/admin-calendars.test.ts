@@ -744,6 +744,8 @@ describe('testing a feed before saving it', () => {
   });
 
   it('claims nothing for a calendar that was already gone', async () => {
+    // A stale tab: the calendar went in another one, and every button on this
+    // page is now about a row that is not there.
     const h = await harness();
     const gone = await h.form('/admin/calendars/nosuchsource/delete', {});
     expect(gone.headers.get('location'), '"Calendar removed." for one that never was').toBe(
@@ -751,6 +753,13 @@ describe('testing a feed before saving it', () => {
     );
     const stale = await h.form('/admin/calendars/nosuchsource/sync', {});
     expect(stale.headers.get('location')).toBe('/admin/calendars');
+    const settings = await h.form('/admin/calendars/nosuchsource/settings', {
+      name: 'Family', color: '#4C7FD1', person_id: '', enabled: '1',
+    });
+    expect(
+      settings.headers.get('location'),
+      '"Calendar settings saved." for a row that no longer exists',
+    ).toBe('/admin/calendars');
   });
 
   it('still saves when the save button is the one pressed', async () => {

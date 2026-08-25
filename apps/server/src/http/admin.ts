@@ -956,14 +956,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
 
-    updateSource(deps.db, c.req.param('id') ?? '', {
+    // The UPDATE's own answer, not a second lookup: no row means the calendar
+    // went in another tab, and "Calendar settings saved." for one that is not
+    // there is the same false claim `/sync` and `/delete` are guarded against.
+    const saved = updateSource(deps.db, c.req.param('id') ?? '', {
       name: shaped.value.name,
       color: shaped.value.color,
       personId: personId ?? null,
       enabled: shaped.value.enabled,
       allowPrivateNetwork: shaped.value.allow_lan,
     });
-    return savedRedirect(c, '/admin/calendars', 'calendar-settings');
+    return saved
+      ? savedRedirect(c, '/admin/calendars', 'calendar-settings')
+      : c.redirect('/admin/calendars', 302);
   });
 
   app.post('/admin/calendars/:id/sync', (c: Context) => {
@@ -1017,11 +1022,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/calendars/:id/delete', (c: Context) => {
     // "Calendar removed." only when there was one. A stale tab or a second
     // press of Back-then-Remove otherwise gets a confirmation for something
-    // that had already gone.
-    const id = c.req.param('id') ?? '';
-    const existed = readAdminSources(deps.db).some((candidate) => candidate.id === id);
-    deleteSource(deps.db, id);
-    return existed
+    // that had already gone — and `deleteSource` already answers that, so the
+    // claim is read off the delete rather than off a second scan of every row.
+    return deleteSource(deps.db, c.req.param('id') ?? '')
       ? savedRedirect(c, '/admin/calendars', 'calendar-removed')
       : c.redirect('/admin/calendars', 302);
   });

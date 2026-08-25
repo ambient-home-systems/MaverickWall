@@ -550,7 +550,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           'a public service. Nothing about your household is sent; the request ' +
           'asks about a public zone code.',
       }) +
-      (hasWeatherLocation(deps.db)
+      /*
+       * Read off the *form*, not off the database.
+       *
+       * Everything else in here shows `weather`, which is the echo on a 400 —
+       * so asking the stored row would put "Fill in the latitude and longitude
+       * above" under two boxes that visibly have numbers in them, on exactly
+       * the re-render where the household is looking hardest.
+       */
+      (weather.latitude !== '' && weather.longitude !== ''
         ? ''
         : `<p class="hint">Fill in the latitude and longitude above — the alert ` +
           `zones are worked out from them.</p>`) +
