@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { confirmDestroyPage, escapeHtml, errorBlock, page, selectField, textField } from './html.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
   COLOUR_TOKENS,
@@ -10,6 +10,7 @@ import {
   readTheme,
   readThemes,
   themeTokensSchema,
+  themeUsage,
   updateTheme,
   type ThemeRow,
   type ThemeTokens,
@@ -128,6 +129,37 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     return savedRedirect(c, '/admin/themes', 'theme-saved');
   });
 
+  /**
+   * Removing a theme asks first — the same GET-then-POST shape as every other
+   * destructive control, in place of the one-click "Delete" the card used to
+   * post directly. A theme in use never bricks a wall (`resolveTheme` falls
+   * back to Board), but naming which walls change is still the honest thing
+   * to put in front of the button.
+   */
+  app.get('/admin/themes/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const theme = readTheme(deps.db, id);
+    if (theme === undefined) return c.redirect('/admin/themes', 302);
+    const usage = themeUsage(deps.db, id);
+    const affected = [...(usage.household ? ['the household default'] : []), ...usage.screens];
+    return c.html(
+      confirmDestroyPage({
+        modules: navModules(deps.db),
+        title: 'Remove theme',
+        nav: 'themes',
+        heading: `Remove “${theme.name}”?`,
+        intro:
+          affected.length === 0
+            ? 'Nothing is using it right now.'
+            : `${affected.join(', ')} ${affected.length === 1 ? 'is' : 'are'} using it — ` +
+              `${affected.length === 1 ? 'it switches' : 'they switch'} to Board.`,
+        destroyAction: `admin/themes/${encodeURIComponent(id)}/delete`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/themes',
+      }),
+    );
+  });
+
   app.post('/admin/themes/:id/delete', (c: Context) => {
     deleteTheme(deps.db, c.req.param('id') ?? '');
     return savedRedirect(c, '/admin/themes', 'theme-removed');
@@ -172,7 +204,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="rname" style="flex:1;font-size:16px">${escapeHtml(theme.name)}</div></div>` +
       `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
       `<a class="btn btn-sm" href="admin/themes/${encodeURIComponent(theme.id)}">Edit</a>` +
-      `<form method="post" action="admin/themes/${encodeURIComponent(theme.id)}/delete">` +
+      `<form method="get" action="admin/themes/${encodeURIComponent(theme.id)}/delete">` +
       `<button class="btn-danger btn-sm" type="submit" style="margin-left:auto">Delete</button></form>` +
       `</div></article>`;
 

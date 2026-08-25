@@ -260,6 +260,30 @@ export function deleteTheme(db: SqliteDatabase, id: string): void {
 }
 
 /**
+ * Where a custom theme is actually drawn — the household default, and any
+ * screen with its own override — so removing it can name what changes rather
+ * than only that it will.
+ *
+ * `resolveTheme` already falls back to Board for a reference that no longer
+ * resolves (rule nine: a deleted theme degrades a wall, it never bricks one),
+ * so this is purely for the household's benefit at the moment of deleting —
+ * nothing here is a precondition for the delete itself.
+ */
+export function themeUsage(db: SqliteDatabase, id: string): { household: boolean; screens: string[] } {
+  const ref = `${CUSTOM_PREFIX}${id}`;
+  const household =
+    db
+      .prepare(`SELECT 1 FROM household_settings WHERE id = 'singleton' AND (theme = ? OR daytime_theme = ?)`)
+      .get(ref, ref) !== undefined;
+  const screens = (
+    db.prepare(`SELECT name FROM screens WHERE theme = ? OR daytime_theme = ?`).all(ref, ref) as {
+      name: string;
+    }[]
+  ).map((row) => row.name);
+  return { household, screens };
+}
+
+/**
  * Is a stored theme reference one the wall can actually draw? Empty (follow the
  * default), a built-in key, or a `custom:<id>` that still exists. Used by the
  * form validators so a household cannot pin a wall to a theme that was deleted.

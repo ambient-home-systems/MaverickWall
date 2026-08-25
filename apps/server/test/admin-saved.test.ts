@@ -31,6 +31,7 @@ import { SAVED_MESSAGES } from '../src/http/saved.js';
 import { seedDefaultRules, writeRule } from '../src/api/rules.js';
 import { createPerson, saveShiftPlan } from '../src/api/queries.js';
 import { watchEntity, writeHaSettings } from '../src/modules/homeassistant/store.js';
+import { createTheme } from '../src/api/themes.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
@@ -633,6 +634,58 @@ describe('destructive actions ask first', () => {
 
     const page = await (await h.call('/admin/home-assistant?saved=ha-disconnected')).text();
     expect(page).toContain('Disconnected from Home Assistant.');
+  });
+
+  it('removing an unused theme says nothing is using it, changes nothing on GET, and only deletes on POST', async () => {
+    const h = await harness();
+    const theme = createTheme(h.db, {
+      name: 'Sea glass',
+      tokens: {
+        '--bg': '#0B0E11', '--panel': '#151A21', '--rule': '#242D38', '--ink': '#E9EEF4',
+        '--muted': '#7E8C9C', '--faint': '#4A5563', '--accent': '#E8A33D', '--s-day': '#E8A33D',
+        '--s-night': '#4C7FD1', '--s-break': '#35916A', '--s-straight': '#6B7684', '--radius': '0.2rem',
+      },
+    });
+
+    const interstitial = await (await h.call(`/admin/themes/${theme.id}/delete`)).text();
+    expect(interstitial).toContain('Sea glass');
+    expect(interstitial).toContain('Nothing is using it');
+    expect(interstitial).toContain(`action="admin/themes/${theme.id}/delete"`);
+    expect(interstitial).toContain('method="post"');
+    expect(interstitial).toContain('btn-danger');
+
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM themes WHERE id = ?`).get(theme.id)).toEqual({ n: 1 });
+
+    const removed = await h.form(`/admin/themes/${theme.id}/delete`, {});
+    expect(removed.status).toBe(302);
+    expect(removed.headers.get('location')).toBe('/admin/themes?saved=theme-removed');
+    expect(h.db.prepare(`SELECT COUNT(*) n FROM themes WHERE id = ?`).get(theme.id)).toEqual({ n: 0 });
+  });
+
+  it('removing a theme in use names what switches to Board', async () => {
+    const h = await harness();
+    const theme = createTheme(h.db, {
+      name: 'Sea glass',
+      tokens: {
+        '--bg': '#0B0E11', '--panel': '#151A21', '--rule': '#242D38', '--ink': '#E9EEF4',
+        '--muted': '#7E8C9C', '--faint': '#4A5563', '--accent': '#E8A33D', '--s-day': '#E8A33D',
+        '--s-night': '#4C7FD1', '--s-break': '#35916A', '--s-straight': '#6B7684', '--radius': '0.2rem',
+      },
+    });
+    h.db.prepare(`UPDATE household_settings SET theme = ? WHERE id = 'singleton'`).run(`custom:${theme.id}`);
+    const stamp = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO screens (id, name, token_hash, token_issued_at, theme, created_at, updated_at)
+         VALUES ('screen1', 'Kitchen', 'x', ?, ?, ?, ?)`,
+      )
+      .run(stamp, `custom:${theme.id}`, stamp, stamp);
+
+    const interstitial = await (await h.call(`/admin/themes/${theme.id}/delete`)).text();
+    expect(interstitial).toContain('the household default');
+    expect(interstitial).toContain('Kitchen');
+    expect(interstitial).toContain('switch');
+    expect(interstitial).toContain('Board');
   });
 
   it('the Calendars list draws Remove and Sync now at different visual weights', async () => {
