@@ -1057,6 +1057,30 @@ describe('4 · the editor, driven', () => {
         );
         expect(reason, 'the inspector said nothing about why').toContain('Not on the wall yet.');
         expect(reason, 'the reason names no screen to go to').toMatch(/Weather|Shifts/);
+
+        /*
+         * And the preview underneath draws what the wall draws.
+         *
+         * It is captioned "Live preview" and it is a claim about the glass, so
+         * "Nothing to show yet." in it under a box flagged "Not on the wall" is
+         * two sentences on one screen contradicting each other. Read through
+         * the shadow root the preview lives in, which is the only way to see
+         * it at all.
+         */
+        const previewNotes = await page.evaluate(() => {
+          const host = document.querySelector('.le-preview');
+          const root = (host as HTMLElement | null)?.shadowRoot;
+          if (!root) return null;
+          return [...root.querySelectorAll('.fw-empty, .canvas-empty')].map((note) =>
+            (note.textContent ?? '').trim(),
+          );
+        });
+        expect(previewNotes, 'no shadow-root preview to read at all').not.toBeNull();
+        expect(
+          previewNotes,
+          'the editor preview still draws the note for a widget it has just ' +
+            'flagged as not being on the wall.',
+        ).toEqual([]);
       } finally {
         await context.close();
       }

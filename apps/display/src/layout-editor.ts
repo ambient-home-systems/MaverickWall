@@ -1038,7 +1038,7 @@ function boot(): void {
     // font-size of its own.
     renderFreeform(previewWall, model, {
       aspect: state.aspect,
-      widgets: state.widgets.map((w) => ({ ...w })),
+      widgets: drawnWidgets().map((w) => ({ ...w })),
       ...(state.background !== undefined ? { background: state.background } : {}),
     }, EDITOR_MEDIA_BASE);
 
@@ -1226,6 +1226,28 @@ function boot(): void {
     }
     canvas.style.width = `${Math.round(w)}px`;
     canvas.style.height = `${Math.round(h)}px`;
+  }
+
+  /**
+   * What the wall will actually draw of this canvas.
+   *
+   * The overlay keeps every box — one you cannot see is one you cannot move —
+   * but the *preview* is a claim about the glass, and a preview drawing
+   * "Nothing to show yet." underneath a box flagged "Not on the wall" is two
+   * sentences on one screen contradicting each other. The manifest omits those
+   * widgets and so does this.
+   *
+   * `notDrawn` comes from the server, derived from the same `widgetIsSetUp` the
+   * manifest uses, so this is not a second opinion about *which* widgets. The
+   * one thing decided here is the never-empty guard, and it is the same rule
+   * for the same reason (rule nine): a canvas that filtered away to nothing
+   * would draw "Nothing on this display yet" — a lie about a canvas somebody is
+   * looking at while they arrange it.
+   */
+  function drawnWidgets(): Widget[] {
+    if (notDrawn.size === 0) return state.widgets;
+    const kept = state.widgets.filter((widget) => !notDrawn.has(widget.type));
+    return kept.length === 0 ? state.widgets : kept;
   }
 
   /**

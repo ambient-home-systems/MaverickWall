@@ -1236,8 +1236,12 @@ pre.code{background:var(--mw-surface-2);
  * grabbable, and this is the screen where they find out why — but it says so.
  * A dashed edge and a flag rather than a colour: this is not an error, and the
  * status hues are spoken for. */
-.le-widget.is-not-drawn{border-style:dashed;
-  border-color:color-mix(in srgb,var(--mw-ink-2) 90%,transparent)}
+/* Style only, never colour. The .is-selected rule is the same specificity and
+ * declared above, so repainting the border here would quietly take the accent
+ * off a flagged widget the moment it was selected — and the rule three up
+ * still promises that selection keeps its accent regardless. A dash reads
+ * against either colour. */
+.le-widget.is-not-drawn{border-style:dashed}
 .le-widget-flag{position:absolute;right:0;top:0;
   font:var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans);
   letter-spacing:var(--mw-t-label-xs-tracking);

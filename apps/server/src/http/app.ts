@@ -805,7 +805,7 @@ export function createApp(deps: AppDeps): Hono {
        * behind it yields its space instead of drawing a permanent note nobody
        * standing at the wall can act on (RFC 009 Phase 2).
        */
-      readyModules: householdSetUp(deps.db).modules,
+      readyModules: householdSetUp(deps.db, modules).modules,
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.
