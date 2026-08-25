@@ -281,21 +281,26 @@ export function shouldKeepHeld(heldIsReal: boolean, incoming: Manifest): boolean
 /**
  * The household's data, with the server's live commentary over the top.
  *
- * Keeping the calendar must not mean discarding everything the stand-in came
- * to say, and it carries exactly two things worth having. `notices` is the
- * only text on the wall that names the fault and points at System — without it
- * the household sees their calendar under "not reaching the server", which is
- * false, since the server is up and answering. And `interrupts` is why the OK
- * button still works: the acknowledgement is recorded server-side and the
- * re-poll is what clears the takeover, so freezing the held copy whole would
- * leave a warning on the wall that nothing could dismiss.
+ * Keeping the calendar must not mean discarding what the stand-in came to say,
+ * and there is exactly one thing on it worth having: `notices`. It is the only
+ * text on the wall that names the fault and points at System, and without it
+ * the household reads their own calendar under a banner about the server being
+ * unreachable, which is false — it is up and answering.
  *
- * Everything else — the days, the people, the sources — stays as it was,
- * because the stand-in has nothing to put there and an empty calendar is the
- * thing being avoided.
+ * Everything else stays as it was, `interrupts` emphatically included. Taking
+ * those looked right — an acknowledgement is recorded server-side and it is the
+ * re-poll that clears a takeover, so a frozen copy leaves a warning the OK
+ * button cannot dismiss — but it has the sign wrong. The stand-in is built with
+ * no interrupts at all, because the server that could evaluate a rule is the
+ * one that cannot read its database, so merging them does not *clear* an
+ * acknowledged warning, it silently drops a live unacknowledged one. A tornado
+ * takeover must not vanish because a migration failed. The honest outcome is
+ * the one the `failed` branch already states in its own comment: the interrupt
+ * stays up, because nothing has been acknowledged as far as the household is
+ * concerned.
  */
 export function keepHeld(held: Manifest, incoming: Manifest): Manifest {
-  return { ...held, notices: incoming.notices, interrupts: incoming.interrupts ?? [] };
+  return { ...held, notices: incoming.notices };
 }
 
 /**

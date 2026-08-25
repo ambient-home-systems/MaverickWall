@@ -250,27 +250,33 @@ describe('polling', () => {
    * recorded server-side and the re-poll is what clears the takeover, so
    * freezing the held copy whole would leave a warning nothing could dismiss.
    */
-  it('keeps the calendar but takes the notice and the interrupts', () => {
-    const held = {
-      ...MANIFEST,
-      notices: [],
-      interrupts: [
-        { id: 'i1', name: 'Storm', message: 'Take cover', action: 'takeover', priority: 1 },
-      ],
+  it('keeps the calendar and the warning, and takes only the notice', () => {
+    const storm = {
+      id: 'i1',
+      name: 'Storm',
+      message: 'Take cover',
+      action: 'takeover',
+      priority: 1,
     };
+    const held = { ...MANIFEST, notices: [], interrupts: [storm] };
     const standIn = {
       ...MANIFEST,
       days: [],
       notices: [
         { level: 'error', code: 'schema-degraded', message: 'The database could not be fully read.' },
       ],
+      // As the server builds it: a process that cannot read its database
+      // cannot evaluate an interrupt rule either, so this is always empty.
       interrupts: [],
     };
 
     const kept = keepHeld(held, standIn);
     expect(kept.days, 'the household keeps their calendar').toEqual(MANIFEST.days);
     expect(kept.notices, 'and is told why it is not being updated').toEqual(standIn.notices);
-    expect(kept.interrupts, 'and OK can still clear a warning').toEqual([]);
+    expect(
+      kept.interrupts,
+      'a tornado takeover must not vanish because a migration failed',
+    ).toEqual([storm]);
 
     // And the result must not read as a stand-in, or the next poll would let
     // the empty document through on the strength of the notice just merged in.

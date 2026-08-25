@@ -1649,21 +1649,39 @@ renderer was fine and the two-hour contact-silence limit is the one meant for a
 server that is not — a distinction `watchdog.ts` states and the no-manifest path
 was quietly ignoring — and the pairing form had the identical hole, which is
 where a reload actually costs something: a code being typed on a television
-remote, wiped every ninety seconds.
+remote, wiped every ninety seconds. Saying so at each branch was not enough
+either, and the arithmetic is the reason: those branches run on the sixty-second
+poll and `drawSilenceMs` is sixty seconds, so a few milliseconds of jitter still
+fired it. It is one line inside `draw`'s own early return now, which the
+fifteen-second tick reaches — **nothing to draw is not a stopped renderer**, and
+the watchdog cannot tell those apart on its own.
 
 **Keeping the calendar must not mean discarding what the stand-in came to
-say.** It carries exactly two things worth having: the `notices`, which are the
-only text on the wall naming the fault and pointing at System — without them the
-household reads their own calendar under "not reaching the server", which is
-false, since the server is up and answering — and the `interrupts`, which are
-why the OK button still works, because an acknowledgement is recorded
-server-side and it is the *re-poll* that clears the takeover. Freezing the held
-copy whole would have left a warning on the wall that nothing could dismiss. So
-`keepHeld` merges those two over the household's days, people and sources. That
-merge is also why both rules are **told** whether the wall holds a real calendar
-rather than asking the document: a merged manifest carries the stand-in's notice
-and so reads as one, and re-deriving would let the empty document through from
-the second poll on.
+say.** It carries exactly one thing worth having: the `notices`, which are the only
+text on the wall naming the fault and pointing at System. `keepHeld` merges
+those over the household's days, people and sources, and that merge is why both
+rules are **told** whether the wall holds a real calendar rather than asking the
+document — a merged manifest carries the stand-in's notice and so reads as one,
+and re-deriving would let the empty document through from the second poll on.
+
+**The interrupts were merged too for one commit, and that had the sign
+backwards.** The argument read well: an acknowledgement is recorded server-side
+and it is the *re-poll* that clears a takeover, so a frozen copy leaves a
+warning the OK button cannot dismiss. But the stand-in is built with **no
+interrupts at all** — the process that could evaluate a rule is the one that
+cannot read its database — so merging them never cleared an acknowledged
+warning, it silently dropped a live unacknowledged one. A tornado takeover must
+not vanish because a migration failed. The honest outcome is the one the
+`failed` branch already states: the interrupt stays up, because nothing has been
+acknowledged as far as the household is concerned. **An empty field from a
+source that cannot speak is not an assertion**, and that is the general form of
+it.
+
+**And the wall was told it was offline while the server was answering it.** The
+keep-held branch set `offline`, which draws "Not reaching the server" directly
+above a notice from that very server. It does not any more: `lastConfirmedAt` is
+what stays frozen, so the banner becomes "Last updated N ago" on its own once
+the calendar is old enough — true, and over a notice that says why.
 
 Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough

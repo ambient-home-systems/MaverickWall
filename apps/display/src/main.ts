@@ -145,7 +145,23 @@ function start(): void {
     );
 
   const draw = (): void => {
-    if (manifest === undefined) return;
+    if (manifest === undefined) {
+      /*
+       * Nothing to draw is not a stopped renderer, and the watchdog cannot
+       * tell them apart on its own: `lastDrawAt` advances only in here, so a
+       * wall waiting to be paired or waiting for its first manifest read as a
+       * dead loop and reloaded every ninety seconds — wiping a half-typed
+       * pairing code, which on a television remote is most of the work. Saying
+       * so here rather than at each caller is what keeps the margin honest: on
+       * the branches it advances the poll is sixty seconds and `drawSilenceMs`
+       * is sixty seconds, so a few milliseconds of jitter fired it anyway. The
+       * tick runs every fifteen. The two-hour contact-silence limit is the one
+       * that covers a server which never answers, and `watchdog.ts` says as
+       * much in its own comments.
+       */
+      lastDrawAt = Date.now();
+      return;
+    }
     const now = clock.now();
     const geo = geometry();
     applyGeometry(geo);
@@ -208,15 +224,19 @@ function start(): void {
         if (manifest !== undefined && shouldKeepHeld(heldIsReal, outcome.manifest)) {
           /*
            * The server is answering, and answering with its stand-in. Keep the
-           * calendar rather than trading it for an empty document, but take
-           * what the stand-in came to say — its notice, which is the only text
-           * naming the fault, and its interrupts, which is what lets the OK
-           * button still clear a warning. `lastConfirmedAt` deliberately does
-           * not advance, so the age the banner reports keeps growing.
+           * calendar rather than trading it for an empty document, and take
+           * the one thing the stand-in came to say: its notice, which is the
+           * only text naming the fault.
+           *
+           * `offline` stays false, because it is not — the wall reached the
+           * server and the server replied. `lastConfirmedAt` deliberately does
+           * not advance instead, so the banner becomes "Last updated N ago" on
+           * its own once the calendar is old enough, which is true, over a
+           * notice that says why. Marking it offline would have drawn "Not
+           * reaching the server" above a notice from that very server.
            */
           manifest = keepHeld(manifest, outcome.manifest);
           lastContactAt = Date.now();
-          offline = true;
           break;
         }
         manifest = outcome.manifest;
@@ -254,15 +274,6 @@ function start(): void {
           pairingShown = true;
           renderPairing(root, submitPairingCode);
         }
-        /*
-         * And keep the watchdog off it. `lastDrawAt` only advances inside
-         * `draw`, which returns at its first line with no manifest — so a
-         * screen sitting on the pairing form read as a stopped renderer and
-         * reloaded every ninety seconds, taking a half-typed code with it,
-         * which on a television remote is most of the work. The form is on
-         * screen and correct; there is nothing here for a reload to fix.
-         */
-        lastDrawAt = Date.now();
         return;
       case 'failed':
         // Deliberately keeps the last manifest. The banner will say how old it
@@ -279,12 +290,6 @@ function start(): void {
          * screen booted during an outage — a server that is down, or one
          * answering "not just now" because it cannot read its own database.
          */
-        if (pairingShown) {
-          // The form is on screen and correct. Same reasoning as the branch
-          // above: this is not a stopped renderer, so do not let the watchdog
-          // reload a code somebody is typing.
-          lastDrawAt = Date.now();
-        }
         if (manifest === undefined && !pairingShown) {
           /*
            * Never over the pairing form. `renderMessage` clears the root, and
@@ -299,17 +304,6 @@ function start(): void {
             'Maverick Wall',
             'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.',
           );
-          /*
-           * That was a draw, and saying so is what keeps the watchdog off it.
-           * `lastDrawAt` only advances inside `draw`, which returns at its
-           * first line with no manifest — so a wall in this state read as a
-           * stopped renderer and reloaded every ninety seconds for as long as
-           * the fault lasted (`reloads` is per page load, so `maxReloads`
-           * never bites). The renderer is fine; it is the server that is not,
-           * and that is what the two-hour contact-silence limit is for — which
-           * is exactly the distinction `watchdog.ts` says it draws.
-           */
-          lastDrawAt = Date.now();
         }
         break;
     }
@@ -553,8 +547,13 @@ function start(): void {
     // form would take the form away for good.
     if (stored !== undefined && !pairingShown && shouldAdoptStored(heldIsReal)) {
       manifest = stored.manifest;
-      // The stand-in is never saved, so anything in the store is the real thing.
-      heldIsReal = true;
+      /*
+       * Asked, not assumed. This bundle never saves the stand-in — but the
+       * store outlives a release, and one written before this fix can hold one;
+       * treating that as the household's calendar would pin an empty document
+       * under a days-old banner.
+       */
+      heldIsReal = !isStandInManifest(stored.manifest);
       lastConfirmedAt = stored.confirmedAt;
       offline = true;
       safely(draw);
