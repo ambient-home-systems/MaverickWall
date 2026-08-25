@@ -141,7 +141,10 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const theme = readTheme(deps.db, id);
     if (theme === undefined) return c.redirect('/admin/themes', 302);
     const usage = themeUsage(deps.db, id);
-    const affected = [...(usage.household ? ['the household default'] : []), ...usage.screens];
+    const affected = [
+      ...(usage.household ? ['the household default'] : []),
+      ...usage.screens.map((name) => `“${name}”`),
+    ];
     return c.html(
       confirmDestroyPage({
         modules: navModules(deps.db),
@@ -151,8 +154,12 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
         intro:
           affected.length === 0
             ? 'Nothing is using it right now.'
-            : `${affected.join(', ')} ${affected.length === 1 ? 'is' : 'are'} using it — ` +
-              `${affected.length === 1 ? 'it switches' : 'they switch'} to Board.`,
+            : // A leading verb, not a bare list, so the sentence reads naturally
+              // whatever the list starts with — a lowercase "the household
+              // default" or a screen's own name — and Intl.ListFormat supplies
+              // the "and" a plain join() drops for two or more items.
+              `In use by ${new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(affected)} ` +
+              `— ${affected.length === 1 ? 'it switches' : 'they switch'} to Board.`,
         destroyAction: `admin/themes/${encodeURIComponent(id)}/delete`,
         destroyLabel: 'Remove it',
         cancelAction: 'admin/themes',

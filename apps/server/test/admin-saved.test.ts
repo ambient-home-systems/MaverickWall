@@ -677,15 +677,17 @@ describe('destructive actions ask first', () => {
     h.db
       .prepare(
         `INSERT INTO screens (id, name, token_hash, token_issued_at, theme, created_at, updated_at)
-         VALUES ('screen1', 'Kitchen', 'x', ?, ?, ?, ?)`,
+         VALUES ('screen1', 'Kitchen', 'x', ?, ?, ?, ?),
+                ('screen2', 'Lounge', 'y', ?, ?, ?, ?)`,
       )
-      .run(stamp, `custom:${theme.id}`, stamp, stamp);
+      .run(stamp, `custom:${theme.id}`, stamp, stamp, stamp, `custom:${theme.id}`, stamp, stamp);
 
     const interstitial = await (await h.call(`/admin/themes/${theme.id}/delete`)).text();
-    expect(interstitial).toContain('the household default');
-    expect(interstitial).toContain('Kitchen');
-    expect(interstitial).toContain('switch');
-    expect(interstitial).toContain('Board');
+    // A real sentence, not a bare comma-join — "and" before the last item,
+    // and no lowercase word opening a paragraph.
+    expect(interstitial).toContain(
+      'In use by the household default, “Kitchen”, and “Lounge” — they switch to Board.',
+    );
   });
 
   it('the Calendars list draws Remove and Sync now at different visual weights', async () => {
