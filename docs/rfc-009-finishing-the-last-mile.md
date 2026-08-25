@@ -706,6 +706,21 @@ already answered that; it is called on every edit now, both ways. The server's
 `data-dirty="dirty"` stays sticky, because there the markup itself is the
 unsaved thing.
 
+A **twenty-first** collapsed the two flags into one — `leaving` already names
+the form, so asking whether *it* is a download needs no second piece of state —
+and made the comment honest about the bound it had been claiming away: on an
+engine that does not fire `beforeunload` for an attachment at all, the next
+departure sees a stale `leaving` and one warning is swallowed, after which the
+guard is armed again. Bounded, and it costs a warning rather than the data. The
+alternative is a timer deciding when a navigation was abandoned, which is a bug
+wearing a delay.
+
+It also raised a third: `leaving` is consumed at navigation start, so clicking a
+link while a slow save is in flight prompts. That one is left alone
+deliberately. The save has not completed, the prompt is about leaving a form
+whose write is still in the air, and "Stay" cancels the *link* rather than the
+POST — so it is a true warning and nothing is lost by heeding it.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
