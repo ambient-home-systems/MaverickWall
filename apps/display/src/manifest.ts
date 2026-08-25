@@ -263,6 +263,21 @@ export function shouldKeepHeld(held: Manifest | undefined, incoming: Manifest): 
   return isStandInManifest(incoming) && !isStandInManifest(held);
 }
 
+/**
+ * Whether the copy read out of IndexedDB is still worth putting up.
+ *
+ * The load is asynchronous and the first poll is not waited for, so on a slow
+ * tablet the server can answer first — and if what it answered with was the
+ * stand-in, the boot guard's "only when there is nothing yet" let an empty
+ * document beat the household's real cached calendar to the screen. Worse, it
+ * then stuck: the held manifest was itself a stand-in, so `shouldKeepHeld` said
+ * no for ever after. A stand-in is not something the stored copy has to defer
+ * to.
+ */
+export function shouldAdoptStored(held: Manifest | undefined): boolean {
+  return held === undefined || isStandInManifest(held);
+}
+
 export type FetchOutcome =
   /** New document. */
   | { readonly status: 'fresh'; readonly manifest: Manifest; readonly serverTime: number }

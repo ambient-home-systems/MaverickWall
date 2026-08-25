@@ -4,6 +4,7 @@ import {
   createManifestClient,
   isRenderableManifest,
   isStandInManifest,
+  shouldAdoptStored,
   shouldKeepHeld,
 } from '../src/manifest.js';
 import { createClock } from '../src/clock.js';
@@ -238,6 +239,29 @@ describe('polling', () => {
     // And a wall already showing the stand-in takes the next one, or it would
     // pin the very first empty document it saw for the life of the page.
     expect(shouldKeepHeld(standIn, standIn)).toBe(false);
+  });
+
+  /*
+   * And the stored copy does not have to defer to a stand-in.
+   *
+   * `store.load()` is asynchronous and the first poll is not waited for, so on
+   * a slow tablet the server can answer first. A boot guard of "only when
+   * there is nothing yet" then let an empty stand-in beat the household's real
+   * cached calendar to the screen — and stuck there, because the held manifest
+   * was itself a stand-in and `shouldKeepHeld` says no for ever after.
+   */
+  it('lets the stored calendar in over a stand-in that arrived first', () => {
+    const standIn = {
+      ...MANIFEST,
+      days: [],
+      notices: [
+        { level: 'error', code: 'schema-degraded', message: 'The database could not be fully read.' },
+      ],
+    };
+
+    expect(shouldAdoptStored(undefined), 'the ordinary boot').toBe(true);
+    expect(shouldAdoptStored(standIn), 'the race this exists for').toBe(true);
+    expect(shouldAdoptStored(MANIFEST), 'never over a real one the server just sent').toBe(false);
   });
 });
 

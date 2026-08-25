@@ -2,6 +2,7 @@ import { createClock } from './clock.js';
 import {
   createManifestClient,
   isStandInManifest,
+  shouldAdoptStored,
   shouldKeepHeld,
   type Manifest,
   type ManifestWidget,
@@ -255,7 +256,15 @@ function start(): void {
          * screen booted during an outage — a server that is down, or one
          * answering "not just now" because it cannot read its own database.
          */
-        if (manifest === undefined) {
+        if (manifest === undefined && !pairingShown) {
+          /*
+           * Never over the pairing form. `renderMessage` clears the root, and
+           * `pairingShown` is only ever set — so one failed poll during pairing
+           * (a restart, a LAN blip, this route's own 503) would wipe a
+           * half-typed code and the form would never be drawn again. The screen
+           * would sit saying the server is unreachable while the server was up
+           * and waiting to be paired.
+           */
           renderMessage(
             root,
             'Maverick Wall',
@@ -496,7 +505,10 @@ function start(): void {
    * is — that is the honest part, and it is why the age is stored alongside.
    */
   void store.load().then((stored) => {
-    if (stored !== undefined && manifest === undefined) {
+    // `shouldAdoptStored` rather than "nothing yet": the poll is not waited for,
+    // so on a slow tablet the server can answer first — and an empty stand-in
+    // must not beat the household's real calendar to the screen.
+    if (stored !== undefined && shouldAdoptStored(manifest)) {
       manifest = stored.manifest;
       lastConfirmedAt = stored.confirmedAt;
       offline = true;

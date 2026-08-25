@@ -1622,6 +1622,19 @@ line, so a screen sat on the boot message, "Waiting for the first update…", fo
 as long as the fault lasted. True for the first minute, a lie by the tenth, on
 the one screen with nothing else on it.
 
+**Both of those introduced a fault of their own, and both were about what else
+is on the glass.** `renderMessage` clears the root, and `pairingShown` is only
+ever *set* — so one failed poll during pairing wiped a half-typed code and the
+form was never drawn again: the wall said the server was unreachable while the
+server was up and waiting to be paired. And the boot guard "adopt the stored
+copy only if there is nothing yet" let the stand-in win a race it should lose —
+`store.load()` is asynchronous and the first poll is not waited for, so on a
+slow tablet an empty document beat the household's real cached calendar to the
+screen and then stuck, because the held manifest was itself a stand-in and
+nothing would displace it. Both are one predicate each, and both are the same
+lesson as the rest of this paragraph: the state a rule reads is rarely only the
+one it names.
+
 Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough
 failure took the fallback down too and the household got Hono's bare 500 — the
