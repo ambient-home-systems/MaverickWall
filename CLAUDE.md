@@ -1647,7 +1647,23 @@ a draw: without it the watchdog read that screen as a stopped renderer and
 reloaded it every ninety seconds for as long as the fault lasted, where the
 renderer was fine and the two-hour contact-silence limit is the one meant for a
 server that is not — a distinction `watchdog.ts` states and the no-manifest path
-was quietly ignoring.
+was quietly ignoring — and the pairing form had the identical hole, which is
+where a reload actually costs something: a code being typed on a television
+remote, wiped every ninety seconds.
+
+**Keeping the calendar must not mean discarding what the stand-in came to
+say.** It carries exactly two things worth having: the `notices`, which are the
+only text on the wall naming the fault and pointing at System — without them the
+household reads their own calendar under "not reaching the server", which is
+false, since the server is up and answering — and the `interrupts`, which are
+why the OK button still works, because an acknowledgement is recorded
+server-side and it is the *re-poll* that clears the takeover. Freezing the held
+copy whole would have left a warning on the wall that nothing could dismiss. So
+`keepHeld` merges those two over the household's days, people and sources. That
+merge is also why both rules are **told** whether the wall holds a real calendar
+rather than asking the document: a merged manifest carries the stand-in's notice
+and so reads as one, and re-deriving would let the empty document through from
+the second poll on.
 
 Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough

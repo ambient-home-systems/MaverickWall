@@ -297,7 +297,10 @@ document, which is the freshly-loaded screen this section is about. That screen
 is also why a failed poll with no manifest now renders a message rather than
 leaving the boot text up: `draw()` returns at its first line with no manifest,
 so "Waiting for the first update…" was all a household saw for as long as the
-fault lasted. One further correction belongs to this
+fault lasted. What it keeps is the household's days, people and sources; what it
+takes from the stand-in is the `notices` (the only text naming the fault) and
+the `interrupts` (without which the OK button cannot clear a takeover, since it
+is the re-poll that does the clearing). One further correction belongs to this
 section rather than to the narrowing: the fallback token lookup answered **401**
 when it too could not read, and a display reads 401 as `unpaired` and draws the
 code-entry form — so a corrupt database put a pairing form on every screen in

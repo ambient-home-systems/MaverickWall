@@ -262,16 +262,40 @@ export function isStandInManifest(manifest: Manifest): boolean {
  * during the outage — drawing it is the entire point of RFC 009 1.9: an empty
  * calendar with the reason on it beats a black screen. With a real calendar
  * already on the glass, replacing it with an empty one throws away the more
- * useful half of the wall to gain a sentence; the offline banner already says
- * the wall is not being kept up to date, and yesterday's calendar is still
- * mostly true. Not saving the stand-in was only half of that — nothing could
- * reach the saved copy while the stand-in kept arriving and overwriting what
- * was on screen, so a reload flashed the real calendar and dropped straight
- * back to the empty one.
+ * useful half of the wall; the offline banner already says the wall is not
+ * being kept up to date, and yesterday's calendar is still mostly true. Not
+ * saving the stand-in was only half of that — nothing could reach the saved
+ * copy while the stand-in kept arriving and overwriting what was on screen, so
+ * a reload flashed the real calendar and dropped straight back to the empty
+ * one.
+ *
+ * `heldIsReal` is tracked by the caller rather than re-derived from the held
+ * document, because `keepHeld` below folds the stand-in's notices *into* what
+ * is held — so asking the document would answer "this is a stand-in" from the
+ * second poll on and let the empty one through after all.
  */
-export function shouldKeepHeld(held: Manifest | undefined, incoming: Manifest): boolean {
-  if (held === undefined) return false;
-  return isStandInManifest(incoming) && !isStandInManifest(held);
+export function shouldKeepHeld(heldIsReal: boolean, incoming: Manifest): boolean {
+  return heldIsReal && isStandInManifest(incoming);
+}
+
+/**
+ * The household's data, with the server's live commentary over the top.
+ *
+ * Keeping the calendar must not mean discarding everything the stand-in came
+ * to say, and it carries exactly two things worth having. `notices` is the
+ * only text on the wall that names the fault and points at System — without it
+ * the household sees their calendar under "not reaching the server", which is
+ * false, since the server is up and answering. And `interrupts` is why the OK
+ * button still works: the acknowledgement is recorded server-side and the
+ * re-poll is what clears the takeover, so freezing the held copy whole would
+ * leave a warning on the wall that nothing could dismiss.
+ *
+ * Everything else — the days, the people, the sources — stays as it was,
+ * because the stand-in has nothing to put there and an empty calendar is the
+ * thing being avoided.
+ */
+export function keepHeld(held: Manifest, incoming: Manifest): Manifest {
+  return { ...held, notices: incoming.notices, interrupts: incoming.interrupts ?? [] };
 }
 
 /**
@@ -283,10 +307,16 @@ export function shouldKeepHeld(held: Manifest | undefined, incoming: Manifest): 
  * document beat the household's real cached calendar to the screen. Worse, it
  * then stuck: the held manifest was itself a stand-in, so `shouldKeepHeld` said
  * no for ever after. A stand-in is not something the stored copy has to defer
- * to.
+ * to; a real calendar the server has just sent is.
+ *
+ * Told rather than asked, exactly as `shouldKeepHeld` is, and for the same
+ * reason: `keepHeld` folds the stand-in's notices into the held document, so a
+ * document that reads as a stand-in is not the same question as a wall that is
+ * showing one. One of this pair asking and the other being told is the drift
+ * worth avoiding.
  */
-export function shouldAdoptStored(held: Manifest | undefined): boolean {
-  return held === undefined || isStandInManifest(held);
+export function shouldAdoptStored(heldIsReal: boolean): boolean {
+  return !heldIsReal;
 }
 
 export type FetchOutcome =

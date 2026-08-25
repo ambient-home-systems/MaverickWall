@@ -2,6 +2,7 @@ import { createClock } from './clock.js';
 import {
   createManifestClient,
   isStandInManifest,
+  keepHeld,
   shouldAdoptStored,
   shouldKeepHeld,
   type Manifest,
@@ -101,6 +102,14 @@ function start(): void {
   const store = createManifestStore();
 
   let manifest: Manifest | undefined;
+  /*
+   * Whether what is held is the household's calendar rather than the server's
+   * stand-in. Tracked rather than re-derived, because the keep-held branch
+   * folds the stand-in's notices into the held document — so asking the
+   * document would answer "stand-in" from the second poll on, and the empty one
+   * would get through after all.
+   */
+  let heldIsReal = false;
   let lastConfirmedAt = 0;
   let offline = false;
   // Drawn once when the screen first turns out to be unpaired, then left alone
@@ -196,18 +205,22 @@ function start(): void {
     switch (outcome.status) {
       case 'fresh':
         clock.sync(outcome.serverTime);
-        if (shouldKeepHeld(manifest, outcome.manifest)) {
+        if (manifest !== undefined && shouldKeepHeld(heldIsReal, outcome.manifest)) {
           /*
            * The server is answering, and answering with its stand-in. Keep the
-           * calendar rather than trading it for an empty document, and let the
-           * banner say the wall is not being kept up to date — `lastConfirmedAt`
-           * deliberately does not advance, so the age it reports keeps growing.
+           * calendar rather than trading it for an empty document, but take
+           * what the stand-in came to say — its notice, which is the only text
+           * naming the fault, and its interrupts, which is what lets the OK
+           * button still clear a warning. `lastConfirmedAt` deliberately does
+           * not advance, so the age the banner reports keeps growing.
            */
+          manifest = keepHeld(manifest, outcome.manifest);
           lastContactAt = Date.now();
           offline = true;
           break;
         }
         manifest = outcome.manifest;
+        heldIsReal = !isStandInManifest(outcome.manifest);
         lastConfirmedAt = clock.now();
         lastContactAt = Date.now();
         offline = false;
@@ -234,12 +247,22 @@ function start(): void {
         break;
       case 'unpaired':
         manifest = undefined;
+        heldIsReal = false;
         // Render the code-entry form once. Redrawing it every poll would clear
         // the field between keystrokes on a remote, which is slow enough already.
         if (!pairingShown) {
           pairingShown = true;
           renderPairing(root, submitPairingCode);
         }
+        /*
+         * And keep the watchdog off it. `lastDrawAt` only advances inside
+         * `draw`, which returns at its first line with no manifest — so a
+         * screen sitting on the pairing form read as a stopped renderer and
+         * reloaded every ninety seconds, taking a half-typed code with it,
+         * which on a television remote is most of the work. The form is on
+         * screen and correct; there is nothing here for a reload to fix.
+         */
+        lastDrawAt = Date.now();
         return;
       case 'failed':
         // Deliberately keeps the last manifest. The banner will say how old it
@@ -256,6 +279,12 @@ function start(): void {
          * screen booted during an outage — a server that is down, or one
          * answering "not just now" because it cannot read its own database.
          */
+        if (pairingShown) {
+          // The form is on screen and correct. Same reasoning as the branch
+          // above: this is not a stopped renderer, so do not let the watchdog
+          // reload a code somebody is typing.
+          lastDrawAt = Date.now();
+        }
         if (manifest === undefined && !pairingShown) {
           /*
            * Never over the pairing form. `renderMessage` clears the root, and
@@ -522,8 +551,10 @@ function start(): void {
     // `!pairingShown` for the same reason the message below the poll has it:
     // the 401 can win this race, and drawing a calendar over the code-entry
     // form would take the form away for good.
-    if (stored !== undefined && !pairingShown && shouldAdoptStored(manifest)) {
+    if (stored !== undefined && !pairingShown && shouldAdoptStored(heldIsReal)) {
       manifest = stored.manifest;
+      // The stand-in is never saved, so anything in the store is the real thing.
+      heldIsReal = true;
       lastConfirmedAt = stored.confirmedAt;
       offline = true;
       safely(draw);

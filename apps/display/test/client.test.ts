@@ -4,6 +4,7 @@ import {
   createManifestClient,
   isRenderableManifest,
   isStandInManifest,
+  keepHeld,
   shouldAdoptStored,
   shouldKeepHeld,
 } from '../src/manifest.js';
@@ -233,12 +234,50 @@ describe('polling', () => {
       ],
     };
 
-    expect(shouldKeepHeld(MANIFEST, standIn), 'a wall with a calendar keeps it').toBe(true);
-    expect(shouldKeepHeld(undefined, standIn), 'a wall with nothing draws the reason').toBe(false);
-    expect(shouldKeepHeld(MANIFEST, MANIFEST), 'an ordinary update is never held off').toBe(false);
-    // And a wall already showing the stand-in takes the next one, or it would
-    // pin the very first empty document it saw for the life of the page.
-    expect(shouldKeepHeld(standIn, standIn)).toBe(false);
+    expect(shouldKeepHeld(true, standIn), 'a wall with a calendar keeps it').toBe(true);
+    expect(shouldKeepHeld(false, standIn), 'a wall with nothing draws the reason').toBe(false);
+    expect(shouldKeepHeld(true, MANIFEST), 'an ordinary update is never held off').toBe(false);
+  });
+
+  /*
+   * And keeping the calendar must not mean discarding what the stand-in came
+   * to say.
+   *
+   * Its notice is the only text on the wall that names the fault and points at
+   * System — without it the household sees their calendar under "not reaching
+   * the server", which is false, since the server is up and answering. And its
+   * interrupts are why the OK button still works: the acknowledgement is
+   * recorded server-side and the re-poll is what clears the takeover, so
+   * freezing the held copy whole would leave a warning nothing could dismiss.
+   */
+  it('keeps the calendar but takes the notice and the interrupts', () => {
+    const held = {
+      ...MANIFEST,
+      notices: [],
+      interrupts: [
+        { id: 'i1', name: 'Storm', message: 'Take cover', action: 'takeover', priority: 1 },
+      ],
+    };
+    const standIn = {
+      ...MANIFEST,
+      days: [],
+      notices: [
+        { level: 'error', code: 'schema-degraded', message: 'The database could not be fully read.' },
+      ],
+      interrupts: [],
+    };
+
+    const kept = keepHeld(held, standIn);
+    expect(kept.days, 'the household keeps their calendar').toEqual(MANIFEST.days);
+    expect(kept.notices, 'and is told why it is not being updated').toEqual(standIn.notices);
+    expect(kept.interrupts, 'and OK can still clear a warning').toEqual([]);
+
+    // And the result must not read as a stand-in, or the next poll would let
+    // the empty document through on the strength of the notice just merged in.
+    expect(
+      isStandInManifest(kept),
+      'the merged document reads as a stand-in — which is why both rules above are told, not asked',
+    ).toBe(true);
   });
 
   /*
@@ -259,9 +298,12 @@ describe('polling', () => {
       ],
     };
 
-    expect(shouldAdoptStored(undefined), 'the ordinary boot').toBe(true);
-    expect(shouldAdoptStored(standIn), 'the race this exists for').toBe(true);
-    expect(shouldAdoptStored(MANIFEST), 'never over a real one the server just sent').toBe(false);
+    // `standIn` is what makes the second case reachable at all: without a poll
+    // having adopted one, `heldIsReal` would simply still be false from boot.
+    expect(isStandInManifest(standIn)).toBe(true);
+
+    expect(shouldAdoptStored(false), 'the ordinary boot, and the race this exists for').toBe(true);
+    expect(shouldAdoptStored(true), 'never over a real one the server just sent').toBe(false);
   });
 
   /*
@@ -279,8 +321,7 @@ describe('polling', () => {
 
     expect(() => isStandInManifest(legacy as never)).not.toThrow();
     expect(isStandInManifest(legacy as never)).toBe(false);
-    expect(shouldKeepHeld(legacy as never, MANIFEST)).toBe(false);
-    expect(shouldAdoptStored(legacy as never)).toBe(false);
+    expect(shouldKeepHeld(true, legacy as never)).toBe(false);
   });
 });
 
