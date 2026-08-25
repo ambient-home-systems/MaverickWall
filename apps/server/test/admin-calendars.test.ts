@@ -723,20 +723,24 @@ describe('testing a feed before saving it', () => {
     expect(row.color).not.toBe('#123456');
   });
 
-  it('says why nothing was fetched when Sync now is pressed on a disabled calendar', async () => {
-    // `ics-sync` skips a source whose switch is off, and the button is drawn
-    // for those rows anyway — so "Syncing now" would be the strip promising a
-    // fetch that never happens.
+  it('does not offer Sync now on a calendar whose sync is off', async () => {
+    /*
+     * `ics-sync` skips a source whose switch is off, so the button would report
+     * a fetch that never happens — and the answer to a control that can do
+     * nothing is not to explain it afterwards in a green strip shaped exactly
+     * like a success. It is not to draw the control.
+     */
     const h = await harness();
     await h.addFeed('Family');
     const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
-    h.db.prepare('UPDATE calendar_sources SET enabled = 0 WHERE id = ?').run(id);
 
+    expect(await (await h.call('/admin/calendars')).text()).toContain(`${id}/sync`);
+    h.db.prepare('UPDATE calendar_sources SET enabled = 0 WHERE id = ?').run(id);
+    expect(await (await h.call('/admin/calendars')).text()).not.toContain(`${id}/sync`);
+
+    // And the endpoint still guards a stale page, claiming nothing.
     const off = await h.form(`/admin/calendars/${id}/sync`, {});
-    expect(off.headers.get('location')).toBe('/admin/calendars?saved=calendar-sync-off');
-    expect(await (await h.call('/admin/calendars?saved=calendar-sync-off')).text()).toContain(
-      'Sync is off for that calendar',
-    );
+    expect(off.headers.get('location')).toBe('/admin/calendars');
 
     h.db.prepare('UPDATE calendar_sources SET enabled = 1 WHERE id = ?').run(id);
     const on = await h.form(`/admin/calendars/${id}/sync`, {});

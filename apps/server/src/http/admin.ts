@@ -983,8 +983,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      */
     const id = c.req.param('id') ?? '';
     const source = readAdminSources(deps.db).find((candidate) => candidate.id === id);
-    if (source === undefined) return c.redirect('/admin/calendars', 302);
-    if (source.enabled !== 1) return savedRedirect(c, '/admin/calendars', 'calendar-sync-off');
+    // Nothing to confirm: an id that is not there (a stale tab, a double
+    // submit), or a calendar whose sync is off, which `ics-sync` skips outright
+    // — so the button is not drawn for one and this is the stale-page guard.
+    if (source === undefined || source.enabled !== 1) return c.redirect('/admin/calendars', 302);
     // Automates the SQL that was previously the documented way to do this.
     requestSyncNow(deps.db, id);
     return savedRedirect(c, '/admin/calendars', 'calendar-sync');
@@ -4369,8 +4371,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</form>` +
 
       `<div class="row">` +
-      `<form method="post" action="admin/calendars/${id}/sync">` +
-      `<button class="secondary" type="submit">Sync now</button></form>` +
+      // Not drawn while sync is off: `ics-sync` skips a disabled source, so the
+      // button would report a fetch that never happens. A control that can do
+      // nothing is worse than a control that is not offered.
+      (shown.enabled
+        ? `<form method="post" action="admin/calendars/${id}/sync">` +
+          `<button class="secondary" type="submit">Sync now</button></form>`
+        : '') +
       `<form method="get" action="admin/calendars/${id}/delete">` +
       `<button class="secondary" type="submit">Remove</button></form>` +
       `</div></article>`

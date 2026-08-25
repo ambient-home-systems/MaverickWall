@@ -511,6 +511,18 @@ The generalisation for 3b is worth carrying: **a token is a claim, so check the
 branch it is on.** A handler with an early return, a skip, or a "nothing to do"
 path needs a different token or none.
 
+And a fifth review closed the loop on that: the first fix for "Sync now" on a
+disabled calendar was a *sentence* — "Sync is off for that calendar" — drawn in
+the same green strip, in the same shape, as "Syncing now". Every sentence the
+strip carries is a confirmation, and there is deliberately no second tone: **the
+answer to a control that can do nothing is not to explain it afterwards, it is
+not to draw the control.** The button is not rendered while sync is off; the
+endpoint keeps the guard for a stale page and claims nothing. It also caught
+`writeAll` pulling the NWS zone poll forward on *every* weather save rather than
+on the transition to on, which throws away the job's failure backoff — so
+changing the units would hammer `api.weather.gov` while it was having a bad
+morning.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

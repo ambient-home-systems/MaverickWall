@@ -29,6 +29,12 @@
  *     parameter, which also stops a refresh re-announcing a save from ten
  *     minutes ago.
  *
+ * Every sentence here is a *confirmation*, drawn on the `ok` pair. There is
+ * deliberately no second tone: a "nothing happened" notice in a green strip
+ * shaped exactly like "Calendar added." is the strip mumbling, and the answer
+ * to a control that can do nothing is not to explain it afterwards — it is not
+ * to draw the control (see "Sync now" on a calendar whose sync is off).
+ *
  * This file holds no markup on purpose: `page()` in `html.ts` draws the strip,
  * because that is the one place the shell's DOM order is decided. It imports
  * the table from here, so the dependency runs one way.
@@ -51,10 +57,6 @@ export const SAVED_MESSAGES = {
   'calendar-added': 'Calendar added.',
   'calendar-settings': 'Calendar settings saved.',
   'calendar-sync': 'Syncing now — it will show as synced within a minute.',
-  // Not a success and not an error: the button did what it says and the sync
-  // will decline it, so the strip says why rather than promising a fetch that
-  // `ics-sync` skips outright for a source whose switch is off.
-  'calendar-sync-off': 'Sync is off for that calendar, so nothing was fetched. Turn it on above first.',
   'calendar-removed': 'Calendar removed.',
   // System
   'timezone': 'Timezone saved.',

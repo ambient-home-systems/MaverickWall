@@ -126,6 +126,50 @@ describe('the Weather form marker', () => {
     expect(row.latitude, 'and must not half-apply either').toBe(null);
   });
 
+  /**
+   * The zone poll is brought forward on the *transition*, not on every save.
+   *
+   * "Bring it forward so the household sees the zones fill in rather than
+   * staring at 'working it out' for a minute" is right for the moment somebody
+   * turns alerts on, and wrong for every save after it — once the switch shares
+   * the forecast's form, changing the units would reset `next_run_at` too and
+   * throw away the job's failure backoff, hammering api.weather.gov while it
+   * was having a bad morning.
+   */
+  it('brings the zone poll forward when alerts go on, and not on every save after', async () => {
+    const h = await harness();
+    // The row the scheduler registers at boot; this harness makes no scheduler.
+    const stamp = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO job_state (key, kind, next_run_at, consecutive_failures, created_at, updated_at)
+         VALUES ('alerts-sync', 'alerts-sync', ?, 0, ?, ?)`,
+      )
+      .run(stamp, stamp, stamp);
+    const nextRun = (): number =>
+      (h.db.prepare(`SELECT next_run_at AS at FROM job_state WHERE kind = 'alerts-sync'`).get() as
+        | { at: number }
+        | undefined)?.at ?? -1;
+    expect(nextRun(), 'the alerts job has to exist for this to mean anything').toBeGreaterThan(-1);
+
+    const save = (fields: Record<string, string>): Promise<Response> =>
+      h.form('/admin/weather', {
+        weather_form: '1', latitude: '51.5', longitude: '-0.1',
+        weather_provider: 'nws', weather_units: 'imperial', ...fields,
+      });
+
+    // Off, then on: the transition, which should reach forward.
+    await save({});
+    h.db.prepare(`UPDATE job_state SET next_run_at = 9999999999 WHERE kind = 'alerts-sync'`).run();
+    await save({ alerts_enabled: '1' });
+    expect(nextRun(), 'turning alerts on should bring the first check forward').toBe(0);
+
+    // Backed off after a failure, then an unrelated save. The backoff stands.
+    h.db.prepare(`UPDATE job_state SET next_run_at = 9999999999 WHERE kind = 'alerts-sync'`).run();
+    await save({ alerts_enabled: '1', weather_units: 'metric' });
+    expect(nextRun(), 'changing the units must not reset the job’s backoff').toBe(9999999999);
+  });
+
   it('accepts the same body once it carries the marker', async () => {
     const h = await harness();
     const saved = await h.form('/admin/weather', {

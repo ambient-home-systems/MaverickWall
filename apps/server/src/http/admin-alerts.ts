@@ -180,12 +180,22 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       provider: value.provider,
       units: value.units,
     });
+    /*
+     * The poll is brought forward on the *transition*, not on every save.
+     *
+     * "Bring it forward so the household sees the zones fill in rather than
+     * staring at 'working it out' for a minute" is right for the moment
+     * somebody turns alerts on. It is wrong for every subsequent save: once the
+     * alerts switch shares this form, changing the units would reset
+     * `next_run_at` too, which throws away the job's failure backoff — so a
+     * household fiddling with the forecast would hammer api.weather.gov while
+     * it was having a bad morning.
+     */
+    const wasOn = readAlertsEnabled();
     deps.db
       .prepare(`UPDATE household_settings SET alerts_enabled = ?, updated_at = ? WHERE id = 'singleton'`)
       .run(value.alertsEnabled ? 1 : 0, now());
-    if (value.alertsEnabled) {
-      // Bring the poll forward so the household sees the zones fill in rather
-      // than staring at "working it out" for a minute.
+    if (value.alertsEnabled && !wasOn) {
       deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'alerts-sync'`).run();
     }
   }
