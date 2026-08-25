@@ -872,6 +872,28 @@ export function createApp(deps: AppDeps): Hono {
   deps.onManifestBuilder?.(manifestForScreen);
 
   /**
+   * Is this the database failing to be read, or is it anything else?
+   *
+   * The difference decides what a wall is told, and the two answers are not
+   * interchangeable. A schema a migration left half-upgraded is *persistent*
+   * and there is no better data anywhere, so the degraded manifest below —
+   * empty, with a notice naming the cause — is genuinely the best thing to
+   * send. Anything else is a bug in this process, the household's data is
+   * intact, and the wall's own cached copy is worth more than an empty
+   * document; a 5xx keeps it, a 200 destroys it (see the route).
+   *
+   * Matched on the message rather than on an error class, because
+   * `better-sqlite3` reports both as `SqliteError` with `SQLITE_ERROR` — the
+   * code cannot tell "no such column" from a typo in our own SQL. These two
+   * phrases are SQLite's own, and they are what a database behind its
+   * migrations actually says.
+   */
+  const isSchemaFailure = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error);
+    return /no such (column|table)\b/i.test(message);
+  };
+
+  /**
    * The manifest a wall gets when its own database could not be read.
    *
    * Built through the same pure `buildManifest` every other wall gets, with
@@ -899,6 +921,46 @@ export function createApp(deps: AppDeps): Hono {
       appVersion: deps.appVersion,
       notices: [...deps.bootNotices, extra],
     });
+
+  /**
+   * "Not now" — the answer for a wall whose manifest this process could not
+   * build, when the household's data is fine.
+   *
+   * Deliberately not a manifest. The display's `failed` branch keeps the last
+   * one it drew, leaves the stored copy alone, and says how old it is; that is
+   * a far better wall than an empty document, and rule nine's "reduced
+   * function with a clear on-screen message" is already what it produces.
+   */
+  const unavailable = (c: Context): Response =>
+    c.json(
+      {
+        error: 'unavailable',
+        message: 'This wall could not be built just now. The screen keeps showing its last one.',
+      },
+      503,
+    );
+
+  /**
+   * The degraded manifest, and a way out if even that cannot be built.
+   *
+   * `degradedManifest` is the safety net, and a safety net that can throw is
+   * not one: it calls `now()` and `buildManifest`, so a failure systemic enough
+   * to reach either takes the fallback down with it and the household gets
+   * Hono's bare JSON 500 — the exact unhandled-exception shape RFC 009 1.9 set
+   * out to remove, one layer further in. Failing to "not now" instead at least
+   * leaves the wall drawing what it already had.
+   */
+  const degraded = (c: Context, extra: ManifestNotice): Response => {
+    try {
+      return c.json(degradedManifest(extra), 200);
+    } catch (error) {
+      console.error(
+        '[manifest] degraded manifest failed too:',
+        error instanceof Error ? error.message : error,
+      );
+      return unavailable(c);
+    }
+  };
 
   app.get('/d/manifest', (c: Context) => {
     // No credential presented at all is the ordinary shape of an unpaired
@@ -947,7 +1009,7 @@ export function createApp(deps: AppDeps): Hono {
       if (!recognised) {
         return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
       }
-      return c.json(degradedManifest(schemaNotice), 200);
+      return degraded(c, schemaNotice);
     }
     if (!screen) {
       return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
@@ -958,7 +1020,21 @@ export function createApp(deps: AppDeps): Hono {
       manifest = manifestForScreen(screen);
     } catch (error) {
       console.error('[manifest] build failed:', error instanceof Error ? error.message : error);
-      return c.json(degradedManifest(schemaNotice), 200);
+      /*
+       * Only a database that could not be read earns the degraded manifest.
+       *
+       * `readScreens` reads one table, so a partial upgrade can pass the
+       * lookup above and fail here — that case still degrades, or 1.9's
+       * guarantee would hold on one path by accident. Anything else is a bug
+       * in this process with the household's data intact, and answering 200
+       * with an empty manifest is the worst of both: the display accepts it as
+       * `fresh`, blanks the wall, and then `await store.save(...)` overwrites
+       * the IndexedDB last-good copy, so even a reload cannot get the calendar
+       * back. A 503 costs nothing — the display's `failed` branch keeps the
+       * last manifest, never touches the store, and says how old it is.
+       */
+      if (!isSchemaFailure(error)) return unavailable(c);
+      return degraded(c, schemaNotice);
     }
 
     // Recorded after building, so a screen that is failing to render still

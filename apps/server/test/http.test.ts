@@ -63,6 +63,70 @@ function harness() {
   return { db, app, call, token: issued.token, dataDir };
 }
 
+/**
+ * The same installation, with a clock that throws once the manifest build has
+ * started.
+ *
+ * A stand-in for "something in the build threw that is not the schema", which
+ * is a class rather than a specific bug: every `JSON.parse` on this path is
+ * already guarded and an unknown timezone already falls back, so there is no
+ * *current* way to induce one — and that is exactly why the catch-all around
+ * the build is worth narrowing before there is. `now` is injected because it is
+ * the one seam `createApp` already offers into that code; what is under test is
+ * what the route does with the exception, not where it came from.
+ *
+ * `recover` is which of two failures this is. A healthy request makes exactly
+ * two `now()` calls and the first is before the build starts, so throwing on
+ * the second alone breaks the build and leaves the route's own fallback a
+ * working clock — the ordinary case. Throwing from the second call *onwards*
+ * breaks the fallback as well, which is the systemic case: the safety net has
+ * to answer rather than take the request down with it.
+ */
+function harnessWithBrokenBuild(options: { recover?: boolean } = {}) {
+  const { recover = true } = options;
+  const dataDir = mkdtempSync(join(tmpdir(), 'mw-http-'));
+  roots.push(dataDir);
+  const { db } = openDatabase({ dataDir });
+  runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
+
+  const at = Date.now();
+  db.prepare(
+    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'America/New_York', 'board', ?, ?, ?)`,
+  ).run(at, at, at);
+  const issued = issueDisplayToken();
+  db.prepare(
+    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+     VALUES ('screen1', 'Kitchen', ?, ?, ?, ?)`,
+  ).run(issued.tokenHash, at, at, at);
+
+  let calls = 0;
+  const app = createApp({
+    db,
+    appVersion: '0.1.0-test',
+    bootNotices: [],
+    auth: { secret: 'h'.repeat(32), baseUrl: 'http://localhost' },
+    keyring: createKeyring(randomBytes(32)),
+    fetcher: createFetcher(),
+    dataDir,
+    now: () => {
+      calls += 1;
+      // The second call is inside the build: a healthy request makes exactly
+      // two, and the first is before it. Only that one throws, so the route's
+      // own fallback still has a working clock — otherwise the *fallback*
+      // fails too and Hono's bare 500 hides what is being tested.
+      if (recover ? calls === 2 : calls > 1) {
+        throw new Error('something in the build went wrong');
+      }
+      return at;
+    },
+  });
+  const call = (path: string, headers: Record<string, string> = {}) =>
+    app.fetch(new Request(`http://localhost${path}`, { headers }));
+
+  return { db, app, call, token: issued.token, dataDir };
+}
+
 describe('/healthz', () => {
   it('answers without a credential', async () => {
     // A monitoring check that needs a token is a monitoring check nobody sets
@@ -179,6 +243,77 @@ describe('/d/manifest', () => {
     expect(Array.isArray(manifest['days'])).toBe(true);
     const notices = manifest['notices'] as { level: string; code: string; message: string }[];
     expect(notices.some((n) => n.code === 'schema-degraded' && n.level === 'error')).toBe(true);
+  });
+
+  /*
+   * A build that fails for any *other* reason must not blank the wall.
+   *
+   * The degraded manifest is the right answer for a database that could not be
+   * read: there is no better data anywhere and the notice is what lets the
+   * household read the reason. It is the wrong answer for everything else,
+   * because it is a **200 carrying a valid, empty manifest** — which the
+   * display accepts as `fresh`. So it does not merely blank the wall for one
+   * poll: `main.ts` then awaits `store.save(...)`, overwriting the IndexedDB
+   * last-good copy, so even a reload cannot get the calendar back. A 5xx costs
+   * nothing at all — the display's `failed` branch deliberately keeps the last
+   * manifest and never touches the store, and the banner says how old it is.
+   */
+  it('does not hand a wall an empty manifest when the build fails for another reason', async () => {
+    const { call, token } = harnessWithBrokenBuild();
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+
+    expect(
+      response.status,
+      'a 200 here is a fresh manifest as far as the display is concerned',
+    ).toBeGreaterThanOrEqual(500);
+
+    // And specifically not a body a wall would draw over its own calendar.
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body['manifestVersion'], 'nothing here may pass isRenderableManifest').toBeUndefined();
+    expect(body['days']).toBeUndefined();
+  });
+
+  /*
+   * And a schema failure that surfaces during the *build* still degrades.
+   *
+   * `readScreens` reads one table. A database stuck a migration behind can have
+   * every column that query wants and be missing one the manifest needs, so the
+   * partial-upgrade case reaches the second catch as often as the first — and
+   * RFC 009 1.9's guarantee has to hold on both paths, or it holds by accident.
+   */
+  it('still degrades when the schema is what failed during the build', async () => {
+    const { call, token, db } = harness();
+    db.exec('ALTER TABLE household_settings DROP COLUMN layout_landscape_background');
+
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+    expect(response.status).toBe(200);
+
+    const manifest = (await response.json()) as Record<string, unknown>;
+    expect(manifest['manifestVersion']).toBe(1);
+    const notices = manifest['notices'] as { level: string; code: string }[];
+    expect(notices.some((n) => n.code === 'schema-degraded' && n.level === 'error')).toBe(true);
+  });
+
+  /*
+   * And a safety net that can throw is not one.
+   *
+   * `degradedManifest` calls `now()` and `buildManifest`, so a failure systemic
+   * enough to reach either takes the fallback down too — and the household then
+   * gets Hono's bare JSON 500, which is the exact unhandled-exception shape
+   * RFC 009 1.9 set out to remove, one layer further in. Simulated with a clock
+   * that never recovers, so both the build *and* its fallback fail.
+   */
+  it('answers "not now" rather than an unhandled 500 when the fallback fails too', async () => {
+    const { call, token } = harnessWithBrokenBuild({ recover: false });
+    const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body['error']).toBe('unavailable');
+    expect(
+      body['message'],
+      'and it says what the screen will do, not what the server could not',
+    ).toContain('keeps showing its last one');
   });
 
   it('still refuses a request with no credential at all when the schema cannot be read', async () => {
