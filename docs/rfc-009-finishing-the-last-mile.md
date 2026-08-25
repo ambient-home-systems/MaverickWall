@@ -474,6 +474,22 @@ phase because it was on the *default install*:
   disabled with the visible Save. Otherwise Enter on an untouched form saved
   and announced it while the Save button sat greyed out beside it.
 
+A third review found two more, one of which had shipped long before this phase:
+
+- **Every "Turn off" in the alert ladder re-enabled its rule.** The card sends
+  a *hidden* input (`1` on, the empty string off) and the handler read
+  presence-of-key, which is the right reading for a checkbox and the wrong one
+  here. 302, no error, and the card came back saying "Turn off" again. Fixed
+  here because it is in this file, it is one line, and a household cannot turn
+  a level off without it; found by *running* the endpoint, not by reading it.
+- **The leave guard latched.** `navigating` was set by a submit and cleared by
+  nothing, so on a page with two settings forms — the System screen has two —
+  saving one while the other was dirty prompted, and "Stay" left the first
+  form's guard dead for the life of the page. It is cleared inside
+  `beforeunload` now. Its test asserts on the **URL**, because a prompt count
+  cannot tell two forms apart; the first version of it passed with the bug in
+  place for exactly that reason.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

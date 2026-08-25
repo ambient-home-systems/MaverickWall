@@ -1799,6 +1799,16 @@ different answers is worse than either; and Calendars had the same 400 loss,
 made worse by the dirty state, so `SourceEcho` is `WeatherEcho` keyed on the
 source.
 
+**And a third review found a bug that had shipped: every "Turn off" in the
+alert ladder re-enabled its rule.** The card sends a *hidden* input — `1` to
+turn on, the empty string to turn off — and the handler read
+`typeof body['enabled'] === 'string'`, which is the correct reading for a
+checkbox (absent when unticked) and the wrong one for a hidden field, because
+the empty string is still a string. 302, no error, and the card came back
+saying "Turn off" again. Nothing tested it, and no household could turn a level
+off. Found by a review *running* the endpoint against the real app rather than
+by reading it — the same shape as everything else on the list above.
+
 **Save is off until dirty on a settings form, and a settings page may carry
 script — decided, not assumed.** The no-script fence covers the wizard and
 sign-in and nothing else, which `wizard-noscript.test.ts` already pins.
@@ -1811,7 +1821,13 @@ form exactly. `page()` ships the script keyed on the body carrying `data-dirty`,
 so marking a form is the whole of adopting it; a screen emitting its own
 `<script src>` beside its own markup is how the e-paper editor silently lost its
 editor once — matched on a `<form>` tag rather than by `includes('data-dirty')`,
-which the editor's own `data-dirty-flag` span satisfies too. Cancel's
+which the editor's own `data-dirty-flag` span satisfies too. **`navigating`
+also latched**, and only a page with two settings forms shows it: on System
+(timezone and update-check) saving one while the other was dirty prompted, and
+answering "Stay" cancelled the navigation and left the first form's guard dead
+for the life of the page. It is cleared inside `beforeunload` — disarmed for
+one navigation rather than for good — and its test asserts on the **URL**
+rather than on a prompt count, because a count cannot tell two forms apart. Cancel's
 destination is *stated* rather than derived, because a
 form re-rendered at 400 leaves the browser on the POST URL — `reload()` would
 re-submit the edits Cancel exists to throw away.
