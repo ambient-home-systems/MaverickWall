@@ -39,16 +39,16 @@ function partsOf(form: HTMLFormElement): Parts {
   /*
    * Every control marked `data-dirty-save`, and there can be two.
    *
-   * A form with a second submit posting elsewhere — the Weather screen's "Use
-   * my Home Assistant home location", which carries a `formaction` so it
-   * travels with the unsaved fields — also carries a clipped first submit, so
-   * that pressing Enter means Save rather than that button. Both are marked,
-   * and they have to enable and disable together or the form has two answers
-   * to "is there anything to save".
-   *
-   * What is *not* marked is that Home Assistant button itself: disabling it
-   * would be a control whose whole job is to fill a field in refusing to work
-   * until a field has been filled in.
+   * The Weather screen's form holds three submits and only one is marked. The
+   * visible Save is. The Home Assistant button is not — disabling a control
+   * whose whole job is to fill a field in, until a field has been filled in,
+   * is a control that does nothing. And the clipped first submit
+   * (`defaultSubmit()`, which is what "press Enter" resolves to) is not marked
+   * *deliberately*: the spec says implicit submission does nothing when the
+   * first submit is disabled, engines have not always agreed, and one that
+   * walks on to the first enabled submit would reach the Home Assistant button
+   * and overwrite the coordinates being typed. Enter must mean Save on every
+   * engine, so that one stays live even while Save is greyed.
    */
   const saves: HTMLButtonElement[] = [];
   const found = form.querySelectorAll<HTMLButtonElement>('[data-dirty-save]');
@@ -223,6 +223,29 @@ function boot(): void {
   document.addEventListener('submit', () => {
     navigating = true;
   }, true);
+
+  /*
+   * And re-armed by the next thing the household does, whatever the engine.
+   *
+   * A submit disarms the guard and `beforeunload` re-arms it — which is enough
+   * *measured*: Chromium fires `beforeunload` when the navigation starts,
+   * before the response headers can say `Content-Disposition`, so a submit that
+   * turns out to be a download (System carries three, beside two of these
+   * forms) re-arms on the way past. That reasoning is about when an engine
+   * cannot yet know, so it should hold everywhere, and one engine is not
+   * everywhere.
+   *
+   * This is the belt: any pointer or key on the page means the household is
+   * still here, which means the last submit did not take them anywhere. Three
+   * lines, no timers, and the failure it closes — an unguarded departure after
+   * a download — is silent. It cannot fire between a submit and its own
+   * unload, because the interaction that caused the submit precedes it.
+   */
+  const rearm = (): void => {
+    navigating = false;
+  };
+  document.addEventListener('pointerdown', rearm, true);
+  document.addEventListener('keydown', rearm, true);
 
   /*
    * One guard for the document, asking every form.

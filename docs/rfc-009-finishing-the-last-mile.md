@@ -633,6 +633,19 @@ unchanged values and says so, which is a shade talkative and is exactly what
 Enter does with script off. A talkative confirmation is a smaller fault than an
 engine-dependent one.
 
+A **sixteenth** found the fifth closed list and the one with the sharpest
+consequence: the *per-screen* Timezone in the wall editor's Device panel. A
+screen zone outside `offeredTimezones()` leaves nothing selected, the browser
+preselects the first option — "Household default" — and the next save of that
+panel silently clears an override the household set. Same fix. It also re-raised
+the download latch as an argument about *engines* rather than about Chromium,
+which is fair: the measurement holds and the reasoning behind it should hold
+everywhere, but one engine is not everywhere. The belt is three lines — any
+pointer or key on the page means the household is still here, so the last submit
+took them nowhere and the guard re-arms. No timers, and it cannot fire between a
+submit and its own unload, because the interaction that caused the submit
+precedes it.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

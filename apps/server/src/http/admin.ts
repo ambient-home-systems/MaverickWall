@@ -3525,9 +3525,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             label: 'Timezone',
             name: 'timezone',
             wide: true,
+            /*
+             * The screen's own zone is always one of the options, even one this
+             * build's `Intl` has never heard of — the same rule as the
+             * household select on System, and for the sharper reason. Listing
+             * only the offered zones leaves nothing selected, the browser
+             * preselects the first ("Household default"), and the next save of
+             * this panel silently clears an override the household set.
+             */
             optionsHtml:
               option('', `Household default — ${household.timezone}`, screen.timezone === null) +
-              offeredTimezones()
+              (screen.timezone === null || offeredTimezones().includes(screen.timezone)
+                ? offeredTimezones()
+                : [screen.timezone, ...offeredTimezones()]
+              )
                 .map((zone) => option(zone, zone, screen.timezone === zone))
                 .join(''),
           }) +
