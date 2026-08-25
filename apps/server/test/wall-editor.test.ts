@@ -318,6 +318,23 @@ describe('wall settings are categories, and every field kept its name', () => {
       [...panel.matchAll(/<option value="([^"]*)"[^>]*\sselected/g)].map((m) => m[1]),
       'exactly one selected, and it is the screen’s own zone',
     ).toEqual(['Mars/Olympus_Mons']);
+
+    /*
+     * And the handler accepts it. Asserting only the rendered option is how the
+     * household select on System shipped half-fixed once: the page preselects a
+     * value its own endpoint answers 400 to, and *this* 400 re-renders from the
+     * database — so the whole Wall settings panel becomes unsavable and every
+     * other edit in it goes with the refusal.
+     */
+    const saved = await h.postForm('/admin/screens/s8', {
+      name: 'Hall', orientation: 'auto', rotation: '0', timezone: 'Mars/Olympus_Mons',
+    });
+    expect(saved.status).toBe(302);
+    expect(
+      (h.db.prepare('SELECT timezone FROM screens WHERE id = ?').get('s8') as
+        { timezone: string | null }).timezone,
+      'the override the panel preselected is still the override',
+    ).toBe('Mars/Olympus_Mons');
   });
 
   it('hides what cannot apply until it can', async () => {

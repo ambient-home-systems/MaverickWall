@@ -646,6 +646,15 @@ took them nowhere and the guard re-arms. No timers, and it cannot fire between a
 submit and its own unload, because the interaction that caused the submit
 precedes it.
 
+A **seventeenth** caught that fix shipping half-done, the same way the household
+one had: the *handler* still checked `offeredTimezones()` alone, so the panel
+preselected a value its own endpoint answered 400 to — and that 400 re-renders
+from the database, so the whole Wall settings panel was unsavable and every
+other edit in it went with the refusal. Both halves now, and the test posts the
+value back rather than only reading the markup, which is exactly how the
+asymmetry survived twice. **A list and the handler that reads it are one
+decision**; asserting only the render checks half of it.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

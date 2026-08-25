@@ -1635,7 +1635,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (scheduled && startsAt === endsAt) {
       return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.'), 400);
     }
-    if (timezone !== '' && !offeredTimezones().includes(timezone)) {
+    /*
+     * Whatever the panel offered, which is the offered zones *and* the one this
+     * screen already has.
+     *
+     * The picker adds a stored zone this build's `Intl` has never heard of
+     * rather than silently swapping it for "Household default" (see the Time
+     * group in `displayDetailPage`), so checking only `offeredTimezones()`
+     * refuses an option the page had just preselected — and this 400 re-renders
+     * from the database, so the whole Wall settings panel becomes unsavable and
+     * every other edit in it goes with the refusal. The household select on
+     * System has the same pair; getting only one half of it is how this
+     * survived there once already.
+     */
+    const screenZone =
+      readAdminScreens(deps.db).find((candidate) => candidate.id === id)?.timezone ?? null;
+    if (timezone !== '' && timezone !== screenZone && !offeredTimezones().includes(timezone)) {
       return c.html(displayDetailPage(id, 'Choose a timezone from the list.'), 400);
     }
 
