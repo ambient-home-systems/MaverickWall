@@ -495,6 +495,116 @@ describe('the update check setting', () => {
     expect(readUpdateState(h.db).lastCheckedAt).toBeNull();
   });
 
+  it('lists a stored zone this build’s Intl has never heard of', async () => {
+    /*
+     * A database restored from an image with different tzdata — or one running
+     * the ten-zone fallback used when `Intl.supportedValuesOf` is missing — can
+     * hold a zone the offered list does not contain. Listing only the offered
+     * ones leaves *nothing* selected; the browser picks whatever sorts first
+     * (`Africa/Abidjan`), `looksEdited` correctly reports a form that differs
+     * from its markup, and one press of the now-live Save re-anchors every
+     * all-day event and the whole shift rotation to west Africa.
+     */
+    const h = await signedIn(harness());
+    h.db
+      .prepare(`UPDATE household_settings SET timezone = 'Mars/Olympus_Mons' WHERE id = 'singleton'`)
+      .run();
+    const html = await (await h.call('/admin/system')).text();
+
+    const selected = [...html.matchAll(/<option value="([^"]+)" selected>/g)].map((m) => m[1]);
+    expect(selected, 'exactly one, and it is the household’s own zone').toEqual([
+      'Mars/Olympus_Mons',
+    ]);
+
+    // And the handler accepts what the page offered. A list drawing an option
+    // the endpoint refuses would answer "Choose a timezone from the list"
+    // about something that is on the list.
+    const kept = await h.call('/admin/system/timezone', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'timezone=Mars%2FOlympus_Mons',
+    });
+    expect(kept.status).toBe(302);
+    expect(kept.headers.get('location')).toBe('/admin/system?saved=timezone');
+  });
+
+  it('marks every download form, so the leave guard says nothing about one', async () => {
+    /*
+     * A browser fires `beforeunload` when the navigation *starts*, before the
+     * headers can say `Content-Disposition` — so at the moment the guard has to
+     * decide, a download is indistinguishable from a departure. Without the
+     * marker, pressing Download diagnostics with an unsaved timezone asks
+     * whether you mean to abandon it, about a navigation that abandons nothing.
+     * `downloadForm()` keeps the marker from being forgotten; this keeps the
+     * three that exist honest, and would fail on a fourth written by hand.
+     */
+    const h = await signedIn(harness());
+    const html = await (await h.call('/admin/system')).text();
+    const forms = [...html.matchAll(/<form\b[^>]*>/g)].map((m) => m[0]);
+    const downloads = forms.filter((tag) =>
+      /action="admin\/system\/(backup|key|diagnostics)"/.test(tag),
+    );
+    expect(downloads.length, 'the three downloads System offers').toBe(3);
+    for (const tag of downloads) expect(tag, tag).toContain('data-download');
+    // And nothing else claims to be one — the marker means exactly this.
+    expect(forms.filter((tag) => tag.includes('data-download')).length).toBe(3);
+  });
+
+  it('keeps the stored zone selected when it refuses a choice', async () => {
+    /*
+     * A closed list is not a text field, and echoing a rejected value back into
+     * one is worse than not echoing at all: the value reaches that branch
+     * *because* it is not offered, so nothing is `selected` and the browser
+     * preselects whatever sorts first — `Africa/Abidjan` — with a live Save
+     * over it. One press and the household's timezone is silently somewhere in
+     * west Africa. `setup.ts`'s `detectedTimezoneOption` already says never
+     * "nothing"; this is the same rule on the other screen.
+     */
+    const h = await signedIn(harness());
+    const refused = await h.call('/admin/system/timezone', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'timezone=Mars%2FOlympus_Mons',
+    });
+    expect(refused.status).toBe(400);
+    const html = await refused.text();
+    expect(html).toContain('Choose a timezone from the list');
+
+    const selected = [...html.matchAll(/<option value="([^"]+)" selected>/g)].map((m) => m[1]);
+    expect(selected, 'exactly one zone selected, and it is the stored one').toEqual([
+      'Europe/London',
+    ]);
+    // And the form is honestly clean: the select shows what is stored, so there
+    // is nothing unsaved and Save says so.
+    expect(html).not.toContain('data-dirty="dirty"');
+  });
+
+  it('does not draw a green "checked" strip over a red "check failed"', async () => {
+    /*
+     * A check that could not reach the host is not a thing that happened. The
+     * page already answers that case properly — `updateSection()` draws
+     * "Last check failed: …" in the danger box — so an ok-coloured
+     * "Checked for a newer version." above it is the confirmation strip
+     * contradicting the page it sits on.
+     *
+     * Asserted as a *correspondence* rather than by forcing a failure: whether
+     * this box can reach api.github.com is not this test's business (a CI
+     * runner behind a proxy can, a developer offline cannot), and a test that
+     * assumed either would be green for the wrong reason on the other. The
+     * property is that the token follows the outcome.
+     */
+    const h = await signedIn(harness());
+    setUpdateCheckEnabled(h.db, true);
+    const response = await h.call('/admin/system/check-now', { method: 'POST' });
+    expect(response.status).toBe(302);
+
+    const failed = readUpdateState(h.db).lastError !== null;
+    expect(
+      response.headers.get('location'),
+      failed ? 'a failed check must claim nothing' : 'a check that worked should say so',
+    ).toBe(failed ? '/admin/system' : '/admin/system?saved=update-checked');
+  });
+
   it('forgets what it found when it is switched off', async () => {
     const h = await signedIn(harness());
     setUpdateCheckEnabled(h.db, true);

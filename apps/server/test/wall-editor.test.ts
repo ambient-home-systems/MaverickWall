@@ -296,6 +296,47 @@ describe('wall settings are categories, and every field kept its name', () => {
     expect(html).toContain('Household default — the same theme all day');
   });
 
+  it('lists a screen’s own zone this build’s Intl has never heard of', async () => {
+    /*
+     * The fifth closed list (RFC 009 Phase 3.1), and the one with the sharpest
+     * consequence. A screen zone outside `offeredTimezones()` — a database
+     * restored onto an image with different tzdata, or the ten-zone fallback
+     * used when `Intl.supportedValuesOf` is missing — leaves nothing selected;
+     * the browser preselects the first option, "Household default", and the
+     * next save of this panel silently clears an override the household set.
+     */
+    const h = await ready();
+    h.pairScreen('s8', 'Hall');
+    h.db
+      .prepare(`UPDATE screens SET timezone = 'Mars/Olympus_Mons' WHERE id = 's8'`)
+      .run();
+    const html = await (await h.call('/admin/displays/s8')).text();
+
+    const panel = /<select[^>]*name="timezone"[\s\S]*?<\/select>/.exec(html)?.[0] ?? '';
+    expect(panel, 'the picker is on the page').not.toBe('');
+    expect(
+      [...panel.matchAll(/<option value="([^"]*)"[^>]*\sselected/g)].map((m) => m[1]),
+      'exactly one selected, and it is the screen’s own zone',
+    ).toEqual(['Mars/Olympus_Mons']);
+
+    /*
+     * And the handler accepts it. Asserting only the rendered option is how the
+     * household select on System shipped half-fixed once: the page preselects a
+     * value its own endpoint answers 400 to, and *this* 400 re-renders from the
+     * database — so the whole Wall settings panel becomes unsavable and every
+     * other edit in it goes with the refusal.
+     */
+    const saved = await h.postForm('/admin/screens/s8', {
+      name: 'Hall', orientation: 'auto', rotation: '0', timezone: 'Mars/Olympus_Mons',
+    });
+    expect(saved.status).toBe(302);
+    expect(
+      (h.db.prepare('SELECT timezone FROM screens WHERE id = ?').get('s8') as
+        { timezone: string | null }).timezone,
+      'the override the panel preselected is still the override',
+    ).toBe('Mars/Olympus_Mons');
+  });
+
   it('hides what cannot apply until it can', async () => {
     const h = await ready();
     h.pairScreen('s8', 'Kitchen');

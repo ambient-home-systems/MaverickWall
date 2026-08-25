@@ -670,6 +670,129 @@ describe('testing a feed before saving it', () => {
     expect(await response.text()).toContain('.ics');
   });
 
+  /**
+   * A refused field must not cost the rest of the row (RFC 009 Phase 3.1).
+   *
+   * The page re-rendered every row from the database on a 400, so an error in
+   * one field silently threw away every other change made in the same row — the
+   * Weather screen's loss, one screen along. Worse since Save is disabled until
+   * dirty: a row redrawn from the database has nothing unsaved and correctly
+   * says so, which leaves an error above a dead button.
+   *
+   * Driven as a POST rather than in a browser on purpose: `name` is `required`,
+   * so a browser refuses to submit the empty field at all and the handler is
+   * unreachable from the form. It is reachable from a stale page, a second tab,
+   * and the person-is-gone race — and this is what it must do when it is.
+   */
+  it('hands a calendar row back as it was left when it refuses a field', async () => {
+    const h = await harness();
+    await h.addFeed('Family');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+
+    const refused = await h.form(`/admin/calendars/${id}/settings`, {
+      name: '', color: '#123456', person_id: '',
+      // `enabled` and `allow_lan` deliberately absent: unticked switches.
+    });
+    expect(refused.status).toBe(400);
+    const html = await refused.text();
+
+    /*
+     * And the reason is above the rows, not two thousand pixels down under
+     * "Add a calendar". With the row echoed back and its Save live, a message
+     * under the wrong heading reads as a save that worked.
+     */
+    const firstError = html.indexOf('class="error"');
+    expect(firstError, 'the reason must be on the page at all').toBeGreaterThan(-1);
+    expect(firstError, 'above the row it is about').toBeLessThan(html.indexOf('/settings"'));
+    expect(firstError, 'and above "Add a calendar", which is a different form')
+      .toBeLessThan(html.indexOf('Add a calendar</h2>'));
+
+    expect(html, 'the colour they changed in the same breath').toContain('#123456');
+    expect(html, 'and the switch they turned off').not.toMatch(
+      /name="enabled"[^>]*\schecked/,
+    );
+    // And the row comes back already dirty, so Save is live rather than greyed
+    // out over changes that have not been saved.
+    expect(html).toContain('data-dirty="dirty"');
+
+    // Nothing was written.
+    const row = h.db
+      .prepare('SELECT name, color, enabled FROM calendar_sources')
+      .get() as { name: string; color: string; enabled: number };
+    expect(row).toMatchObject({ name: 'Family', enabled: 1 });
+    expect(row.color).not.toBe('#123456');
+  });
+
+  it('never hands a row back with nobody selected in "Belongs to"', async () => {
+    /*
+     * The 400 this echo is for is "That person is no longer there." — the very
+     * case where the posted id matches no option. Echoed raw, the select comes
+     * back with nothing selected and the browser preselects the first
+     * ("Everyone") on a row whose Save is live. Same closed-list rule as the
+     * timezone and the two weather selects.
+     */
+    const h = await harness();
+    await h.addFeed('Family');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+
+    const refused = await h.form(`/admin/calendars/${id}/settings`, {
+      name: 'Family', color: '#123456', person_id: 'person-who-left', enabled: '1',
+    });
+    expect(refused.status).toBe(400);
+    const html = await refused.text();
+    expect(html).toContain('no longer there');
+
+    const row = /<select[^>]*name="person_id"[\s\S]*?<\/select>/.exec(html)?.[0] ?? '';
+    expect(row, 'the picker is on the page').not.toBe('');
+    expect(
+      [...row.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1]),
+      'exactly one selected, and it is what the next Save would store',
+    ).toEqual(['']);
+  });
+
+  it('does not offer Sync now on a calendar whose sync is off', async () => {
+    /*
+     * `ics-sync` skips a source whose switch is off, so the button would report
+     * a fetch that never happens — and the answer to a control that can do
+     * nothing is not to explain it afterwards in a green strip shaped exactly
+     * like a success. It is not to draw the control.
+     */
+    const h = await harness();
+    await h.addFeed('Family');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+
+    expect(await (await h.call('/admin/calendars')).text()).toContain(`${id}/sync`);
+    h.db.prepare('UPDATE calendar_sources SET enabled = 0 WHERE id = ?').run(id);
+    expect(await (await h.call('/admin/calendars')).text()).not.toContain(`${id}/sync`);
+
+    // And the endpoint still guards a stale page, claiming nothing.
+    const off = await h.form(`/admin/calendars/${id}/sync`, {});
+    expect(off.headers.get('location')).toBe('/admin/calendars');
+
+    h.db.prepare('UPDATE calendar_sources SET enabled = 1 WHERE id = ?').run(id);
+    const on = await h.form(`/admin/calendars/${id}/sync`, {});
+    expect(on.headers.get('location')).toBe('/admin/calendars?saved=calendar-sync');
+  });
+
+  it('claims nothing for a calendar that was already gone', async () => {
+    // A stale tab: the calendar went in another one, and every button on this
+    // page is now about a row that is not there.
+    const h = await harness();
+    const gone = await h.form('/admin/calendars/nosuchsource/delete', {});
+    expect(gone.headers.get('location'), '"Calendar removed." for one that never was').toBe(
+      '/admin/calendars',
+    );
+    const stale = await h.form('/admin/calendars/nosuchsource/sync', {});
+    expect(stale.headers.get('location')).toBe('/admin/calendars');
+    const settings = await h.form('/admin/calendars/nosuchsource/settings', {
+      name: 'Family', color: '#4C7FD1', person_id: '', enabled: '1',
+    });
+    expect(
+      settings.headers.get('location'),
+      '"Calendar settings saved." for a row that no longer exists',
+    ).toBe('/admin/calendars');
+  });
+
   it('still saves when the save button is the one pressed', async () => {
     const h = await harness();
     const url = await icsServer();
@@ -685,6 +808,11 @@ describe('weather provider', () => {
   it('saves the forecast provider and units, and shows both in the settings', async () => {
     const h = await harness();
     const response = await h.form('/admin/weather', {
+      // The marker the screen's own form carries. Without it the handler
+      // refuses the body outright: an unticked checkbox is not sent, so an
+      // empty body and "everything off" are the same bytes, and a page cached
+      // from before the alerts switch joined this form would turn alerts off.
+      weather_form: '1',
       weather_enabled: '1', latitude: '51.5074', longitude: '-0.1278',
       weather_provider: 'openmeteo', weather_units: 'metric',
     });

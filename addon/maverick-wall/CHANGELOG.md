@@ -87,6 +87,35 @@ promising a check that will never come back with anything. When a zone does
 arrive you get exactly the ladder that was always there — none of your own
 on/off choices are touched.
 
+**The settings tell you when they have saved something.** Every screen used to
+answer a save by quietly redrawing itself, which looks exactly the same as a
+save that did not happen. A green line now appears at the top of the page
+naming what was saved — "Timezone saved.", "Calendar added." — and goes when
+you dismiss it. Calendars, System and Weather have it so far; the rest follow.
+
+**Weather had two Save buttons, and pressing the wrong one lost your
+location.** The forecast and the alerts were two separate forms on one screen,
+350px apart, both with a button labelled Save — and the lower one sat directly
+under the sentence telling you to fill in the location above. Typing a latitude
+and longitude and then pressing that button stored the alerts switch and threw
+the numbers away without a word. **It is one form and one Save now**, and
+"Use my Home Assistant home location" saves the rest of the form with it
+instead of discarding whatever you had changed.
+
+**Save is off until there is something to save, and there is a Cancel.** On the
+settings forms, Save stays quiet until you actually change something; a Cancel
+appears beside it when you do, along with a small "Not saved yet"; and closing
+the tab or following a link with an unsaved change now asks first. The wall
+editor has worked this way for a while — this is the same behaviour on the
+other screens. If you browse with JavaScript turned off, these forms behave
+exactly as they always have.
+
+**"Turn off" on a weather alert level turned it back on.** The five cards under
+"What each level does" on the Weather screen each have a button, and pressing
+"Turn off" reported success and left the level exactly as it was — so a
+household who did not want a takeover for every severe thunderstorm had no way
+to say so. It has been like that since the screen was written. It works now.
+
 ## 0.53.0
 
 **A new way for the month to look, and a new theme to go with it.**

@@ -13,6 +13,7 @@
  */
 
 import { ADMIN_SCHEMES, adminColorVars, adminTypeVars } from './design-tokens.js';
+import { SAVED_MESSAGES, type Saved } from './saved.js';
 
 /** Escape for HTML text and quoted attributes. Everything echoed back goes through this. */
 export function escapeHtml(value: string): string {
@@ -779,6 +780,54 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 .error strong{color:var(--mw-danger);display:block;
   font-size:14px;font-weight:600;margin-bottom:2px}
 .error span{color:var(--mw-danger);font-size:13px;line-height:1.5}
+
+/* ---- The confirmation strip (RFC 009 Phase 3.1) --------------------------
+ * The .error box's calm twin: the same tinted container and 6px corner, on the
+ * ok pair rather than the danger one, so a save and a failure are the same
+ * shape in two colours and neither has to be read to be told apart. Deliberately
+ * one line and no heading — a confirmation that needs a title is a confirmation
+ * doing too much.
+ *
+ * The dismiss control clears its background, so it declares its own hover and
+ * pressed states: button,.btn is the *filled* variant and its state rules
+ * would otherwise fill this with the accent and draw the glyph gold on gold
+ * (see test/admin-button-states.test.ts). */
+.saved{display:flex;align-items:center;gap:.75rem;
+  background:var(--mw-ok-soft);color:var(--mw-ok);
+  padding:.7rem .75rem .7rem 1.1rem;border-radius:var(--mw-r-3);margin:0 0 1rem}
+.saved-text{flex:1;font-size:14px;font-weight:600;line-height:1.4}
+.saved-x{display:inline-flex;align-items:center;justify-content:center;
+  flex:none;width:32px;height:32px;background:none;border:0;padding:0;
+  border-radius:var(--mw-r-2);color:var(--mw-ok);cursor:pointer;text-decoration:none}
+.saved-x svg{width:18px;height:18px}
+.saved-x:hover{background:var(--mw-surface-2)}
+.saved-x:active{background:var(--mw-surface-3)}
+/* The glyph stays 18px; the target does not. A dismiss is the one thing on
+ * this strip somebody taps, and 32px on a phone is under the minimum — so the
+ * box grows and the icon does not, which is the distinction Phase 7's sweep is
+ * about. A new control shipping under the bar would be one more line for that
+ * sweep to find. */
+@media(max-width:900px){.saved-x{width:44px;height:44px}}
+
+/* ---- The foot of a settings form (RFC 009 Phase 3.2) ---------------------
+ * [hidden] is spelled out against the class rather than left to the browser:
+ * button,.btn declares display:inline-flex, which beats the user agent's
+ * [hidden]{display:none} outright — so a Cancel marked hidden would sit there
+ * in plain sight on every form that has nothing to cancel. (0,2,0) over
+ * (0,0,1), the same reason the editor's panels each carry their own rule. */
+/* The clipped default submit (see defaultSubmit): out of sight, out of the
+ * accessibility tree, and still the first submit in tree order — which is the
+ * only thing that decides what Enter does. Clipped rather than display:none or
+ * [hidden], because what a non-rendered submit does on implicit submission
+ * varies by browser, and the whole point of this element is that it is not in
+ * any doubt. Proven by pressing Enter in a real one (browser-admin.test.ts). */
+.formdefault{position:absolute;width:1px;height:1px;min-height:0;padding:0;margin:-1px;
+  border:0;overflow:hidden;clip-path:inset(50%)}
+.saverow{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
+.saverow>button{margin-top:0}
+.saverow [hidden]{display:none}
+.dirtyflag{font:var(--mw-t-label-sm);letter-spacing:var(--mw-t-label-sm-tracking);
+  color:var(--mw-warn)}
 
 /* ---- Cards ----------------------------------------------------------------
  * One kind, two states. A card is a flat panel on the surface with a hairline
@@ -1779,12 +1828,19 @@ pre.code{background:var(--mw-surface-2);
 .savebar button{margin:0}
 .savebar button[hidden]{display:none}
 /* Disabled Save still reads as the primary action, quietly: the disabled
- * treatment, never a control that has vanished. */
-.savebar button:disabled{background:color-mix(in srgb,
+ * treatment, never a control that has vanished.
+ *
+ * Shared with the settings forms' .saverow (RFC 009 Phase 3.2) rather than
+ * written twice — and it is not decoration. Without it a disabled Save is
+ * pixel-identical to an enabled one, so "Save is off until you change
+ * something" becomes a button that silently does nothing when pressed, which
+ * is worse than the always-enabled Save it replaced. Found by rendering the
+ * System page and looking at it. */
+.savebar button:disabled,.saverow button:disabled{background:color-mix(in srgb,
   var(--mw-ink) 12%,transparent);
   color:color-mix(in srgb,var(--mw-ink) 38%,transparent);
   cursor:default}
-.savebar button:disabled:hover{background:color-mix(in srgb,
+.savebar button:disabled:hover,.saverow button:disabled:hover{background:color-mix(in srgb,
   var(--mw-ink) 12%,transparent)}
 
 /* ---- Compact: one column, and the inspector becomes a sheet -------------- */
@@ -1893,7 +1949,7 @@ pre.code{background:var(--mw-surface-2);
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(button,.btn,.walls a,.le-tool-link,.nav-item,input,select,textarea):focus-visible{
+:is(button,.btn,.walls a,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
 .themecard:has(input:focus-visible){outline:3px solid var(--mw-accent);
   outline-offset:2px}
@@ -2379,8 +2435,58 @@ export interface PageOptions {
    * sidebar; empty is fine and just draws the built-in modules and the Store.
    */
   readonly modules?: readonly NavModule[];
+  /**
+   * The confirmation strip, from `readSaved(c)` — what a redirect just said it
+   * saved (RFC 009 Phase 3.1). Absent is the ordinary case and draws nothing.
+   *
+   * `| undefined` explicitly, under `exactOptionalPropertyTypes`: adopting the
+   * strip is meant to be `saved: readSaved(c)` at a page's own `page({…})`
+   * call, and `readSaved` answers `undefined` most of the time. Without this
+   * every one of those call sites would need a conditional spread — which is a
+   * lot of ceremony to make a screen say "Saved."
+   */
+  readonly saved?: Saved | undefined;
   /** Already-escaped markup. */
   readonly body: string;
+}
+
+/**
+ * Does this page hold a form the dirty-state script should wire?
+ *
+ * A `<form>` tag carrying `data-dirty` — and specifically not a plain
+ * `includes('data-dirty')`, which the wall editor's `data-dirty-flag` span
+ * satisfies too. That match would fetch and run `settings-form.js` on the
+ * editor pages, where `form[data-dirty]` selects nothing: a module downloaded
+ * and executed for no reason, on the two heaviest pages in the admin. The
+ * lookahead is what keeps `data-dirty-flag` out — a hyphen is neither a space,
+ * an `=`, nor a `>`.
+ */
+const WANTS_DIRTY_SCRIPT = /<form\b[^>]*\bdata-dirty(?=[\s=>])/;
+
+/**
+ * The strip itself: one sentence and a way to be rid of it.
+ *
+ * The sentence is a literal from `SAVED_MESSAGES`, never anything the request
+ * carried, so there is nothing here that could be made to say something else.
+ * Dismissing is a link back to the same page without the parameter — no
+ * script, and it stops a refresh re-announcing a save from ten minutes ago.
+ *
+ * `role="status"` (with the RFC's explicit `aria-live="polite"` beside it) is
+ * honest about what it buys and what it does not. A live region is announced
+ * when something is inserted *into* it; on a full page load a screen reader
+ * reaches this as ordinary content at the top of the main column, which is
+ * where somebody looking for the outcome would land anyway. The role is what
+ * makes it a status rather than a paragraph, and it is what a page that later
+ * updates the strip from script would need to already be there.
+ */
+function savedStrip(saved: Saved): string {
+  return (
+    `<div class="saved" role="status" aria-live="polite">` +
+    `<span class="saved-text">${escapeHtml(SAVED_MESSAGES[saved.key])}</span>` +
+    `<a class="saved-x" href="${escapeHtml(saved.dismissHref)}" aria-label="Dismiss">` +
+    `${icon('close')}</a>` +
+    `</div>`
+  );
 }
 
 /**
@@ -2523,9 +2629,32 @@ export function page(options: PageOptions): string {
     // The intro leads the content now, not the sticky bar — one lead line kept
     // out of the permanent header so the bar stays compact.
     `<div class="content">` +
+    /*
+     * The confirmation, above the lead line and above everything it is about.
+     *
+     * Only in the shell. The wizard's steps advance rather than save — every
+     * one of its redirects goes to the *next* screen, where "Saved." would be
+     * noise beside the heading that already says what happened — and the
+     * wizard is the one page that must stay as plain as it can be.
+     */
+    (options.saved === undefined ? '' : savedStrip(options.saved)) +
     (options.intro === undefined ? '' : `<p class="note">${escapeHtml(options.intro)}</p>`) +
     options.body +
     `</div>` +
+    /*
+     * The dirty-state script, shipped by the page that needs it rather than by
+     * the page that remembers to ask (RFC 009 Phase 3.2).
+     *
+     * Marking a form `data-dirty` is the whole of adopting it. The alternative
+     * — every screen emitting its own `<script src>` beside its own markup —
+     * is exactly how the e-paper editor silently lost its editor once: the
+     * mount stayed and the tag moved. A page with no such form ships nothing,
+     * and the wizard branch above never reaches this line at all, which is
+     * what keeps the no-script fence where `wizard-noscript.test.ts` put it.
+     */
+    (WANTS_DIRTY_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/settings-form.js"></script>`
+      : '') +
     `</main></body></html>`
   );
 }
@@ -2686,6 +2815,121 @@ export function switchRow(options: SwitchRowOptions): string {
     (options.checked ? ' checked' : '') +
     (options.attrs === undefined ? '' : ` ${options.attrs}`) +
     `></label>`
+  );
+}
+
+/**
+ * The `data-dirty` attribute for a form tag: `dirtyForm()` for one rendered
+ * fresh, `dirtyForm(true)` for one handed back at 400 with what the household
+ * typed still in it.
+ *
+ * The second case matters more than it looks. A re-render carries *unsaved*
+ * values, so a script that boots clean disables Save, hides Cancel and disarms
+ * the leave guard — on the one page where all three are most needed. Worse, an
+ * error the household cannot fix by editing a field ("Home Assistant is not
+ * connected") leaves them looking at a disabled Save with no way to retry.
+ * The server is the only thing that knows a body was posted, so the server
+ * says so.
+ */
+export function dirtyForm(alreadyDirty = false): string {
+  return alreadyDirty ? ' data-dirty="dirty"' : ' data-dirty';
+}
+
+/**
+ * The form's default button, drawn nowhere.
+ *
+ * Pressing Enter in a text field activates the **first submit button in tree
+ * order**, and a form that holds a second submit posting somewhere else — the
+ * Weather screen's "Use my Home Assistant home location", which carries a
+ * `formaction` so it can travel with the unsaved fields — would answer Enter
+ * with *that*. On Weather that meant typing a latitude, pressing Enter, and
+ * having the number replaced by `zone.home` and reported as saved: the same
+ * silent loss this phase exists to end, in a new place.
+ *
+ * The spec's own answer is tree order, so this is a real submit button placed
+ * first and clipped out of sight. It has no accessible name and no tab stop —
+ * a keyboard user reaches the visible Save, and a screen reader never meets
+ * this at all. It is not a second Save the household can find; it is what
+ * "press Enter" means.
+ *
+ * Only needed on a form with a `formaction` button in it. A form whose only
+ * submit is Save already behaves correctly.
+ */
+export function defaultSubmit(): string {
+  /*
+   * Never disabled, and that is the point rather than an oversight.
+   *
+   * It carried `data-dirty-save` for a while, so the script greyed it out with
+   * the visible Save and Enter on an untouched form did nothing — tidier, and
+   * wrong. The spec says implicit submission uses the first submit button in
+   * tree order and does nothing when that button is disabled; engines have not
+   * always agreed, and WebKit has historically walked on to the first *enabled*
+   * one. On this form that is "Use my Home Assistant home location", so Enter
+   * in Latitude on a clean page would overwrite the stored coordinates with
+   * `zone.home` — the exact loss this element exists to prevent, on the exact
+   * page it exists for.
+   *
+   * So it stays enabled and Enter always means Save. On a clean form that saves
+   * unchanged values and says so, which is a shade talkative and is precisely
+   * what Enter does with script off. A talkative confirmation is a smaller
+   * fault than an engine-dependent one, and it is the same one the no-script
+   * baseline already has.
+   */
+  return `<button type="submit" class="formdefault" tabindex="-1" aria-hidden="true"></button>`;
+}
+
+/**
+ * The foot of a settings form: Save, Cancel, and the flag that says why they
+ * are there (RFC 009 Phase 3.2).
+ *
+ * The pattern is lifted from the wall editor's save bar rather than invented
+ * beside it — Save disabled until dirty, Discard hidden until there is
+ * something to discard, and a flag that says so. `display-editor.ts` had it
+ * right and every other settings form in the product had neither.
+ *
+ * **What this renders is the no-script state**, and that is the whole of the
+ * degradation promise: Save is a plain enabled submit, exactly as it has always
+ * been, and the two controls that only mean something once there is a *diff* to
+ * talk about are `hidden`. `settings-form.js` disables Save on boot and reveals
+ * the rest on the first edit; a household who blocks script keeps today's form.
+ *
+ * `cancelHref` is stated rather than derived, because the obvious derivation is
+ * wrong in the one case that matters: a form re-rendered at 400 leaves the
+ * browser sitting on the POST URL, so "reload" would re-submit and "go to
+ * `location.pathname`" would ask for a route that only answers POST. The page
+ * knows where its own settings live; it says so.
+ */
+/**
+ * A form whose response is a file, not a page.
+ *
+ * It matters to exactly one thing and it is not visible in the markup. A
+ * browser fires `beforeunload` when the navigation *starts*, before the
+ * response headers can say `Content-Disposition` — so at the moment the leave
+ * guard has to decide, a download is indistinguishable from a departure. System
+ * carries three of them (database, key, diagnostics) beside two settings forms,
+ * and without this, pressing Download diagnostics with an unsaved timezone asks
+ * whether you mean to abandon it, about a navigation that abandons nothing.
+ *
+ * A helper rather than an attribute to remember, for the reason `pruneToLane`
+ * exists: somebody adding the fourth download form should not have to have read
+ * this. `test/system.test.ts` pins the three that exist.
+ */
+export function downloadForm(action: string, label: string, className = ''): string {
+  return (
+    `<form method="get" action="${escapeHtml(action)}" data-download>` +
+    `<button${className === '' ? '' : ` class="${escapeHtml(className)}"`} type="submit">` +
+    `${escapeHtml(label)}</button></form>`
+  );
+}
+
+export function saveRow(cancelHref: string, label = 'Save'): string {
+  return (
+    `<div class="saverow">` +
+    `<button type="submit" data-dirty-save>${escapeHtml(label)}</button>` +
+    `<button type="button" class="secondary" data-dirty-cancel="${escapeHtml(cancelHref)}" hidden>` +
+    `Cancel</button>` +
+    `<span class="dirtyflag" data-dirty-flag hidden>Not saved yet</span>` +
+    `</div>`
   );
 }
 

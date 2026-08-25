@@ -90,8 +90,9 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, icon, page, selectField, selectRow, switchRow, textField,
-  type NavModule } from './html.js';
+import { dirtyForm, downloadForm, errorBlock, escapeHtml, icon, page, saveRow, selectField,
+  selectRow, switchRow, textField, type NavModule } from './html.js';
+import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
 /**
@@ -118,6 +119,42 @@ const sourceSettingsBody = z.object({
   enabled: checkbox(),
   allow_lan: checkbox(),
 });
+
+/**
+ * One calendar's settings as the household left them, for a page that comes
+ * back at 400 (RFC 009 Phase 3.1).
+ *
+ * The screen re-rendered every row from the database, so clearing the name and
+ * pressing Save handed back an error *and* threw away the colour, the owner and
+ * the switches they had changed in the same row. Same silent loss the Weather
+ * screen had, one screen along — and worse now that Save is disabled until
+ * something is dirty, because a row redrawn from the database has nothing to
+ * save and correctly says so.
+ *
+ * Keyed on the source, because one page draws every calendar and only one of
+ * them was being edited.
+ */
+interface SourceEcho {
+  readonly sourceId: string;
+  readonly name: string;
+  readonly color: string;
+  readonly personId: string;
+  readonly enabled: boolean;
+  readonly allowLan: boolean;
+}
+
+/** The echo, read off the raw body — before any schema has had an opinion. */
+function sourceEchoOf(sourceId: string, body: Record<string, unknown>): SourceEcho {
+  const str = (key: string): string => (typeof body[key] === 'string' ? (body[key] as string) : '');
+  return {
+    sourceId,
+    name: str('name'),
+    color: str('color'),
+    personId: str('person_id'),
+    enabled: typeof body['enabled'] === 'string',
+    allowLan: typeof body['allow_lan'] === 'string',
+  };
+}
 
 /**
  * The shift builder's form, which is a draft rather than a submission.
@@ -811,7 +848,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // One small request to Home Assistant, for the calendars it could offer.
     // It answers with none when there is no connection or the box is down, so
     // this page never waits on Home Assistant to be well (rule nine).
-    c.html(calendarsPage({}, undefined, undefined, await fetchCalendarEntities(
+    c.html(calendarsPage(c, {}, undefined, undefined, await fetchCalendarEntities(
       deps.db, deps.keyring, deps.fetcher,
     ))),
   );
@@ -837,13 +874,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowLoopback: typeof body['allow_loopback'] === 'string',
       allowHttp: typeof body['allow_http'] === 'string',
     };
-    if (!shaped.ok) return c.html(calendarsPage(echo, { message: shaped.message }), 400);
+    if (!shaped.ok) return c.html(calendarsPage(c, echo, { message: shaped.message }), 400);
 
     const testOnly = shaped.value.action === 'test';
     // A name is only required to *store* one. Testing an address is a
     // question, and asking it should not need the answer named first.
     if (!testOnly && shaped.value.name === undefined) {
-      return c.html(calendarsPage(echo, { message: 'Enter a name and an address.' }), 400);
+      return c.html(calendarsPage(c, echo, { message: 'Enter a name and an address.' }), 400);
     }
 
     const name = shaped.value.name ?? '';
@@ -865,7 +902,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (!tested.ok) {
       return c.html(
-        calendarsPage(values, {
+        calendarsPage(c, values, {
           message: tested.message,
           ...(tested.suggestion !== undefined ? { suggestion: tested.suggestion } : {}),
         }),
@@ -874,7 +911,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     // Nothing stored yet: this is the person checking their own work.
-    if (testOnly) return c.html(calendarsPage(values, undefined, tested));
+    if (testOnly) return c.html(calendarsPage(c, values, undefined, tested));
 
     // Membership is a question for the database, not the schema. An owner who
     // has since gone is treated as "Everyone" rather than rejected — losing the
@@ -892,39 +929,67 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowHttp,
     });
     if (!added.ok) {
-      return c.html(calendarsPage(values, { message: added.message }), 400);
+      return c.html(calendarsPage(c, values, { message: added.message }), 400);
     }
 
-    return c.redirect('/admin/calendars', 302);
+    return savedRedirect(c, '/admin/calendars', 'calendar-added');
   });
 
   /** Editing what a stored source is, as opposed to where it points. */
   app.post('/admin/calendars/:id/settings', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(sourceSettingsBody, body);
-    if (!shaped.ok) return c.html(calendarsPage({}, { message: shaped.message }), 400);
+    // Echoed back on both failures below, so a cleared name never also costs
+    // the colour and the owner changed in the same row.
+    const echo = sourceEchoOf(c.req.param('id') ?? '', body);
+    if (!shaped.ok) {
+      return c.html(calendarsPage(c, {}, { message: shaped.message }, undefined, [], echo), 400);
+    }
 
     // Membership, and it cannot live in the schema: who exists is a question
     // for the database rather than for the shape of the request.
     const personId = shaped.value.person_id;
     if (personId !== undefined && !readPeopleAdmin(deps.db).some((p) => p.id === personId)) {
-      return c.html(calendarsPage({}, { message: 'That person is no longer there.' }), 400);
+      return c.html(
+        calendarsPage(c, {}, { message: 'That person is no longer there.' }, undefined, [], echo),
+        400,
+      );
     }
 
-    updateSource(deps.db, c.req.param('id') ?? '', {
+    // The UPDATE's own answer, not a second lookup: no row means the calendar
+    // went in another tab, and "Calendar settings saved." for one that is not
+    // there is the same false claim `/sync` and `/delete` are guarded against.
+    const saved = updateSource(deps.db, c.req.param('id') ?? '', {
       name: shaped.value.name,
       color: shaped.value.color,
       personId: personId ?? null,
       enabled: shaped.value.enabled,
       allowPrivateNetwork: shaped.value.allow_lan,
     });
-    return c.redirect('/admin/calendars', 302);
+    return saved
+      ? savedRedirect(c, '/admin/calendars', 'calendar-settings')
+      : c.redirect('/admin/calendars', 302);
   });
 
   app.post('/admin/calendars/:id/sync', (c: Context) => {
+    /*
+     * Say what will actually happen, which is not always a sync.
+     *
+     * `ics-sync` skips a source whose switch is off ("source is disabled"), and
+     * the button is drawn for those rows anyway — so an unconditional "Syncing
+     * now" is the strip promising a fetch that never happens, which is the
+     * exact dishonesty this whole phase exists to remove. And an id that is not
+     * there (a stale tab, a double submit) claims nothing at all.
+     */
+    const id = c.req.param('id') ?? '';
+    const source = readAdminSources(deps.db).find((candidate) => candidate.id === id);
+    // Nothing to confirm: an id that is not there (a stale tab, a double
+    // submit), or a calendar whose sync is off, which `ics-sync` skips outright
+    // — so the button is not drawn for one and this is the stale-page guard.
+    if (source === undefined || source.enabled !== 1) return c.redirect('/admin/calendars', 302);
     // Automates the SQL that was previously the documented way to do this.
-    requestSyncNow(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/calendars', 302);
+    requestSyncNow(deps.db, id);
+    return savedRedirect(c, '/admin/calendars', 'calendar-sync');
   });
 
   /**
@@ -957,15 +1022,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   app.post('/admin/calendars/:id/delete', (c: Context) => {
-    deleteSource(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/calendars', 302);
+    // "Calendar removed." only when there was one. A stale tab or a second
+    // press of Back-then-Remove otherwise gets a confirmation for something
+    // that had already gone — and `deleteSource` already answers that, so the
+    // claim is read off the delete rather than off a second scan of every row.
+    return deleteSource(deps.db, c.req.param('id') ?? '')
+      ? savedRedirect(c, '/admin/calendars', 'calendar-removed')
+      : c.redirect('/admin/calendars', 302);
   });
 
   // -------------------------------------------------------------------------
   // System
   // -------------------------------------------------------------------------
 
-  app.get('/admin/system', (c: Context) => c.html(systemPage()));
+  app.get('/admin/system', (c: Context) => c.html(systemPage(c)));
 
   /**
    * Turning the check on or off.
@@ -978,13 +1048,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(z.object({ update_check_enabled: checkbox() }), body);
     setUpdateCheckEnabled(deps.db, shaped.ok && shaped.value.update_check_enabled);
-    return c.redirect('/admin/system', 302);
+    return savedRedirect(c, '/admin/system', 'update-check');
   });
 
   /** An explicit ask, which is the only thing that checks immediately. */
   app.post('/admin/system/check-now', async (c: Context) => {
     if (!readUpdateState(deps.db).enabled) {
-      return c.html(systemPage('Turn update checking on first.'), 400);
+      return c.html(systemPage(c, 'Turn update checking on first.'), 400);
     }
     const result = await checkForUpdate(deps.fetcher, deps.appVersion);
     recordUpdateCheck(
@@ -993,22 +1063,45 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       result.status === 'ok' ? result.latest : null,
       result.status === 'ok' ? null : result.message,
     );
-    return c.redirect('/admin/system', 302);
+    /*
+     * A failed check gets no strip.
+     *
+     * `updateSection()` draws "Last check failed: …" in the danger box directly
+     * below, so the ok-coloured "Checked for a newer version." would sit on top
+     * of the red one contradicting it. The page already answers this case
+     * properly; the strip's job is to say a thing happened, and here it did not.
+     */
+    return result.status === 'ok'
+      ? savedRedirect(c, '/admin/system', 'update-checked')
+      : c.redirect('/admin/system', 302);
   });
 
   app.post('/admin/system/timezone', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
+    /*
+     * Whatever the form offered, which is the offered zones *and* the one this
+     * household already has.
+     *
+     * The select adds a stored zone this build's `Intl` has never heard of
+     * rather than silently swapping it for another (see `systemPage`), so a
+     * handler checking only `offeredTimezones()` would refuse an option the
+     * page had just drawn — "Choose a timezone from the list" about something
+     * that is on the list. Reachable with script blocked, where Save is enabled
+     * by design, and with script on by moving the select away and back.
+     */
+    const stored = readHousehold(deps.db).timezone;
+    const allowed = offeredTimezones();
     const shaped = parse(
-      z.string().refine((value) => offeredTimezones().includes(value), {
+      z.string().refine((value) => value === stored || allowed.includes(value), {
         error: () => 'Choose a timezone from the list.',
       }),
       body['timezone'],
     );
-    if (!shaped.ok) return c.html(systemPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(systemPage(c, shaped.message), 400);
     deps.db
       .prepare(`UPDATE household_settings SET timezone = ?, updated_at = ? WHERE id = 'singleton'`)
       .run(shaped.value, now());
-    return c.redirect('/admin/system', 302);
+    return savedRedirect(c, '/admin/system', 'timezone');
   });
 
   /**
@@ -1049,7 +1142,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       c.header('content-disposition', 'attachment; filename="maverick-wall.key"');
       return c.body(bytesOf(bytes));
     } catch {
-      return c.html(systemPage('The encryption key could not be read.'), 500);
+      return c.html(systemPage(c, 'The encryption key could not be read.'), 500);
     }
   });
 
@@ -1086,7 +1179,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = await c.req.parseBody();
     const file = body['backup'];
     if (!(file instanceof File) || file.size === 0) {
-      return c.html(systemPage('Choose a backup file to restore.'), 400);
+      return c.html(systemPage(c, 'Choose a backup file to restore.'), 400);
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
@@ -1094,7 +1187,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // cannot be armed with a photograph.
     if (bytes.subarray(0, 15).toString('latin1') !== 'SQLite format 3') {
       return c.html(
-        systemPage('That file is not a Maverick Wall backup.'),
+        systemPage(c, 'That file is not a Maverick Wall backup.'),
         400,
       );
     }
@@ -1112,7 +1205,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (keyFile instanceof File && keyFile.size > 0) {
       const usable = normaliseMasterKeyBytes(Buffer.from(await keyFile.arrayBuffer()));
       if (usable === undefined) {
-        return c.html(systemPage('That is not a Maverick Wall key file.'), 400);
+        return c.html(systemPage(c, 'That is not a Maverick Wall key file.'), 400);
       }
       keyBytes = usable;
     }
@@ -1542,7 +1635,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (scheduled && startsAt === endsAt) {
       return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.'), 400);
     }
-    if (timezone !== '' && !offeredTimezones().includes(timezone)) {
+    /*
+     * Whatever the panel offered, which is the offered zones *and* the one this
+     * screen already has.
+     *
+     * The picker adds a stored zone this build's `Intl` has never heard of
+     * rather than silently swapping it for "Household default" (see the Time
+     * group in `displayDetailPage`), so checking only `offeredTimezones()`
+     * refuses an option the page had just preselected — and this 400 re-renders
+     * from the database, so the whole Wall settings panel becomes unsavable and
+     * every other edit in it goes with the refusal. The household select on
+     * System has the same pair; getting only one half of it is how this
+     * survived there once already.
+     */
+    const screenZone =
+      readAdminScreens(deps.db).find((candidate) => candidate.id === id)?.timezone ?? null;
+    if (timezone !== '' && timezone !== screenZone && !offeredTimezones().includes(timezone)) {
       return c.html(displayDetailPage(id, 'Choose a timezone from the list.'), 400);
     }
 
@@ -2724,7 +2832,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
-  function systemPage(error?: string): string {
+  function systemPage(c: Context, error?: string): string {
     const household = readHousehold(deps.db);
     const at = now();
     const integrity = integrityCheck(deps.db);
@@ -2764,6 +2872,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'System — Maverick Wall',
       nav: 'system',
       heading: 'System',
+      saved: readSaved(c),
       body:
         (error === undefined ? '' : errorBlock(error)) +
 
@@ -2777,11 +2886,47 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add">Timezone</h2>` +
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
         `anchored to this. A screen somewhere else can override it on its own card.</p>` +
-        `<form method="post" action="admin/system/timezone">` +
+        /*
+         * No echo here, deliberately — unlike Weather and Calendars.
+         *
+         * A rejected timezone reaches that branch *because* it is not in
+         * `offeredTimezones()`, so echoing it selects nothing and the browser
+         * preselects whatever sorts first: `Africa/Abidjan`, with Save live
+         * over it. That is `setup.ts`'s `detectedTimezoneOption` rule
+         * ("never 'nothing' … rather than leaving the select to preselect
+         * whatever sorts first") and it is worth restating, because an echo is
+         * the right answer for a text field and the wrong one for a closed
+         * list: there is nothing to hand back that the control can show. The
+         * stored zone stays selected, so the form is honestly clean and the
+         * message says to choose from the list.
+         */
+        `<form method="post" action="admin/system/timezone"${dirtyForm()}>` +
         selectField({
           label: 'Household timezone',
           name: 'timezone',
-          optionsHtml: offeredTimezones()
+          /*
+           * The stored zone is always one of the options, even when `Intl` has
+           * never heard of it.
+           *
+           * `offeredTimezones()` is whatever this build's `Intl` knows, plus a
+           * UTC fallback — and a database restored from an image with different
+           * tzdata, or one running the ten-zone list used when
+           * `supportedValuesOf` is missing, can hold a zone that is not in it.
+           * Listing only the offered ones then leaves *nothing* selected, the
+           * browser picks whatever sorts first (`Africa/Abidjan`), `looksEdited`
+           * correctly reports a form that differs from its markup, and one
+           * press of the now-live Save re-anchors every all-day event and the
+           * whole shift rotation to west Africa.
+           *
+           * So the household's own zone is added rather than replaced: it is a
+           * fact about them, not a suggestion. `setup.ts`'s
+           * `detectedTimezoneOption` falls back to UTC instead, which is right
+           * there — nothing is stored yet and it is guessing.
+           */
+          optionsHtml: (offeredTimezones().includes(household.timezone)
+            ? offeredTimezones()
+            : [household.timezone, ...offeredTimezones()]
+          )
             .map(
               (zone) =>
                 `<option value="${escapeHtml(zone)}"` +
@@ -2789,7 +2934,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             )
             .join(''),
         }) +
-        `<button type="submit">Save</button></form>` +
+        saveRow('admin/system') +
+        `</form>` +
 
         `<h2 class="add">Update check</h2>` +
         updateSection() +
@@ -2799,10 +2945,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `database holds your calendars and settings; the key is what decrypts the ` +
         `calendar addresses inside it.</p>` +
         `<div class="row">` +
-        `<form method="get" action="admin/system/backup">` +
-        `<button type="submit">Download database</button></form>` +
-        `<form method="get" action="admin/system/key">` +
-        `<button class="secondary" type="submit">Download key</button></form>` +
+        downloadForm('admin/system/backup', 'Download database') +
+        downloadForm('admin/system/key', 'Download key', 'secondary') +
         `</div>` +
         errorBlock(
           'The key file is a credential.',
@@ -2828,8 +2972,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Safe to attach to a bug report: it carries no calendar ` +
         `addresses, no event titles and no email addresses — only hostnames, ` +
         `counts and the log below.</p>` +
-        `<form method="get" action="admin/system/diagnostics">` +
-        `<button type="submit">Download diagnostics</button></form>` +
+        downloadForm('admin/system/diagnostics', 'Download diagnostics') +
 
         `<h2 class="add">Recent log</h2>` +
         (lines.length === 0
@@ -2881,14 +3024,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">The exact address it asks: ` +
       `<span class="code">${escapeHtml(RELEASE_URL)}</span></p>` +
 
-      `<form method="post" action="admin/system/updates">` +
+      `<form method="post" action="admin/system/updates"${dirtyForm()}>` +
       switchRow({
         label: 'Check for updates once a day',
         name: 'update_check_enabled',
         checked: state.enabled,
         hint: 'Turning this off also forgets anything it had already found.',
       }) +
-      `<button type="submit">Save</button></form>` +
+      saveRow('admin/system') +
+      `</form>` +
 
       status +
       (state.enabled
@@ -3393,9 +3537,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             label: 'Timezone',
             name: 'timezone',
             wide: true,
+            /*
+             * The screen's own zone is always one of the options, even one this
+             * build's `Intl` has never heard of — the same rule as the
+             * household select on System, and for the sharper reason. Listing
+             * only the offered zones leaves nothing selected, the browser
+             * preselects the first ("Household default"), and the next save of
+             * this panel silently clears an override the household set.
+             */
             optionsHtml:
               option('', `Household default — ${household.timezone}`, screen.timezone === null) +
-              offeredTimezones()
+              (screen.timezone === null || offeredTimezones().includes(screen.timezone)
+                ? offeredTimezones()
+                : [screen.timezone, ...offeredTimezones()]
+              )
                 .map((zone) => option(zone, zone, screen.timezone === zone))
                 .join(''),
           }) +
@@ -4184,7 +4339,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function sourceRow(source: AdminSourceRow, at: number, people: readonly PersonRecord[]): string {
+  function sourceRow(
+    source: AdminSourceRow,
+    at: number,
+    people: readonly PersonRecord[],
+    /**
+     * What the household had in this row's fields, when a save of it came back
+     * at 400 — so the error costs only the thing that was wrong. Absent is the
+     * ordinary case and the row draws from the database.
+     */
+    echo?: SourceEcho,
+  ): string {
     const status =
       source.lastError !== null
         ? errorBlock(
@@ -4197,13 +4362,35 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `synced ${escapeHtml(ago(source.lastSuccessAt, at))}</p>`;
 
     const id = encodeURIComponent(source.id);
+    // The echo wins wherever there is one; with none, the stored row is the form.
+    const shown = {
+      name: echo?.name ?? source.name,
+      color: echo?.color ?? source.color,
+      /*
+       * Only a person who exists, so the closed list always has one option
+       * selected. The 400 this echo is for is "That person is no longer
+       * there." — the very case where the posted id matches no option, which
+       * would leave the browser to preselect the first ("Everyone") on a row
+       * with a live Save. Falling back to `null` selects Everyone *deliberately*,
+       * which is also what the next Save would store. Same rule as the timezone
+       * and the two weather selects.
+       */
+      personId:
+        echo === undefined
+          ? source.personId
+          : people.some((person) => person.id === echo.personId)
+            ? echo.personId
+            : null,
+      enabled: echo?.enabled ?? source.enabled === 1,
+      allowLan: echo?.allowLan ?? source.allowPrivateNetwork === 1,
+    };
     const personOptions =
-      `<option value=""${source.personId === null ? ' selected' : ''}>Everyone</option>` +
+      `<option value=""${shown.personId === null ? ' selected' : ''}>Everyone</option>` +
       people
         .map(
           (person) =>
             `<option value="${escapeHtml(person.id)}"` +
-            `${person.id === source.personId ? ' selected' : ''}>` +
+            `${person.id === shown.personId ? ' selected' : ''}>` +
             `${escapeHtml(person.name)}</option>`,
         )
         .join('');
@@ -4228,18 +4415,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // keeps the stored colour so it returns intact if they pick "Everyone".
       (() => {
         const owner =
-          source.personId === null ? null : (people.find((p) => p.id === source.personId) ?? null);
+          shown.personId === null ? null : (people.find((p) => p.id === shown.personId) ?? null);
         const colourField =
           owner === null
-            ? textField({ label: 'Colour', name: 'color', type: 'color', value: source.color })
+            ? textField({ label: 'Colour', name: 'color', type: 'color', value: shown.color })
             : `<span><label>Colour</label>` +
               `<span class="owned-colour"><span class="swatch" ` +
               `style="--swatch:${escapeHtml(owner.color)}"></span>Uses ${escapeHtml(owner.name)}’s colour</span>` +
-              `<input type="hidden" name="color" value="${escapeHtml(source.color)}"></span>`;
+              `<input type="hidden" name="color" value="${escapeHtml(shown.color)}"></span>`;
         return (
-          `<form method="post" action="admin/calendars/${id}/settings">` +
+          `<form method="post" action="admin/calendars/${id}/settings"${dirtyForm(echo !== undefined)}>` +
           `<div class="row-fields">` +
-          textField({ label: 'Name', name: 'name', required: true, value: source.name }) +
+          textField({ label: 'Name', name: 'name', required: true, value: shown.name }) +
           colourField +
           selectField({ label: 'Belongs to', name: 'person_id', optionsHtml: personOptions }) +
           `</div>`
@@ -4249,7 +4436,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       switchRow({
         label: 'Sync this calendar',
         name: 'enabled',
-        checked: source.enabled === 1,
+        checked: shown.enabled,
       }) +
       // Named as a risk rather than as a feature, because it is one — and not
       // drawn at all for a Home Assistant calendar, which is not fetched from
@@ -4261,16 +4448,30 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         : switchRow({
             label: 'Allow a local network address',
             name: 'allow_lan',
-            checked: source.allowPrivateNetwork === 1,
+            checked: shown.allowLan,
             hint:
               'Local network access lets this feed reach devices inside your home. ' +
               'Only turn it on for a calendar you host yourself.',
           })) +
-      `<button type="submit">Save</button></form>` +
+      saveRow('admin/calendars') +
+      `</form>` +
 
       `<div class="row">` +
-      `<form method="post" action="admin/calendars/${id}/sync">` +
-      `<button class="secondary" type="submit">Sync now</button></form>` +
+      /*
+       * Not drawn while sync is off: `ics-sync` skips a disabled source, so the
+       * button would report a fetch that never happens. A control that can do
+       * nothing is worse than a control that is not offered.
+       *
+       * The *stored* switch, not `shown.enabled` — this is an action on the
+       * calendar as it is, and the endpoint guards on the stored row too. Read
+       * off the echo, a 400 re-render would draw the button for a calendar the
+       * database still has disabled (press it and nothing happens) or hide it
+       * for one that is enabled.
+       */
+      (source.enabled === 1
+        ? `<form method="post" action="admin/calendars/${id}/sync">` +
+          `<button class="secondary" type="submit">Sync now</button></form>`
+        : '') +
       `<form method="get" action="admin/calendars/${id}/delete">` +
       `<button class="secondary" type="submit">Remove</button></form>` +
       `</div></article>`
@@ -4358,6 +4559,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   function calendarsPage(
+    c: Context,
     values: {
       name?: string;
       url?: string;
@@ -4376,6 +4578,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * empty section explaining itself.
      */
     haCalendars: readonly { readonly entityId: string; readonly name: string }[] = [],
+    /** One row's unsaved values, when a save of that row came back at 400. */
+    echo?: SourceEcho,
   ): string {
     const at = now();
     const sources = readAdminSources(deps.db);
@@ -4388,15 +4592,31 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Calendars — Maverick Wall',
       nav: 'calendars',
       heading: 'Calendars',
+      saved: readSaved(c),
       action: { label: 'Add a calendar', href: 'admin/calendars#add' },
       ...(sources.length === 0
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }
         : {}),
       body:
-        sources.map((source) => sourceRow(source, at, people)).join('') +
+        /*
+         * A row's error belongs above the rows, not under "Add a calendar".
+         *
+         * One page, two error sources: the add form at the foot, and a rejected
+         * save of one existing calendar. The block has always been drawn under
+         * the add form's heading, which was right when that was the only way to
+         * fail — and became a real fault once a rejected row is echoed back at
+         * the top with Save live: the household sees their edits, an enabled
+         * Save, and the reason 2,000px further down under the wrong heading,
+         * which reads as a save that worked. The echo is what tells the two
+         * apart, because it is only ever set by a row's own handler.
+         */
+        (echo === undefined || error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        sources
+          .map((source) => sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined))
+          .join('') +
         haCalendarSection(haCalendars, sources) +
         `<h2 class="add" id="add">Add a calendar</h2>` +
-        (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        (echo !== undefined || error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         (tested === undefined ? '' : previewPanel(tested)) +
         `<form method="post" action="admin/calendars">` +
         textField({

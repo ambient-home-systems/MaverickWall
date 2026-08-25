@@ -1734,6 +1734,170 @@ in for, and the one this project counts. What has not happened is the sidebar of
 a real supervisor, where two hamburgers now stack: Home Assistant's and this
 one. That is a different screen from a phone browser and still unproven.
 
+**The admin answers back now, and the Weather screen is why (RFC 009 Phase
+3.1/3.2).** There were seventy-nine `c.redirect(...)` calls and no flash
+mechanism anywhere, so every successful POST redirected and said nothing — and
+"the fields show the new value" is also exactly what a *discarded* save looks
+like. `http/saved.ts` is the whole mechanism: `savedRedirect(c, path, key)`
+replaces `c.redirect(path, 302)`, `readSaved(c)` reads it back, and `page()`
+draws a dismissible strip in an `aria-live="polite"` region. **The token is a
+key, never a message** — the strip renders a literal out of `SAVED_MESSAGES`, so
+a crafted `?saved=` can say one of those sentences and nothing else, and rule
+five is satisfied by the shape rather than by a validator. The key is a
+TypeScript union, so a typo is a compile error rather than a 302 that
+confirms nothing. Dismissing is a *link* back to the same URL without the
+parameter — no script, the rest of the query kept, and relative, because the
+single `<base>` is what carries it through ingress and an absolute `/…` would
+land a sidebar household in Home Assistant's own UI. Calendars, System and
+Weather have it; the other ~70 redirects are the mechanical half.
+
+**The Weather screen lost a typed location every time somebody pressed the
+wrong Save, and that was two forms rather than a bad handler.** The forecast's
+fields sat in one form and the alerts switch in another, with a button labelled
+"Save" on each 350px apart — and the lower one directly beneath the hint telling
+you to fill in the location above. A browser sends the fields of the form whose
+button was pressed and no others. It is one form and one Save now, and **"Use my
+Home Assistant home location" is a second submit inside it** (`formaction`)
+rather than a form of its own, so it carries the unsaved fields and writes them
+back; a separate form there is the same bug in a quieter costume. Reproduced
+first, in a real browser, because `app.fetch` with a hand-built body cannot see
+it: the body is the thing under test. **The 400 path was the same loss one
+error message along** — the screen re-rendered from the stored row, so a
+mistyped latitude came back as an empty field and would now have taken the
+alerts switch with it; every failure echoes the raw body back, the way
+`calendarsPage` already did.
+
+**Merging the two forms produced three more faults, all the same shape: a
+property the *browser* has that neither handler can see.** Implicit submission
+activates the **first submit button in tree order**, and the Home Assistant
+button is a submit now — so Enter in Latitude replaced the number being typed
+with `zone.home` and called it saved; `defaultSubmit()` is a clipped,
+untabbable, `aria-hidden` submit rendered first, which is what "press Enter"
+means — and **never disabled**, though it was for a while: the spec says
+implicit submission does nothing when the first submit is disabled, engines have
+not always agreed, and one that walks on to the first *enabled* submit reaches
+the Home Assistant button and overwrites the coordinates. Enter saving unchanged
+values on a clean form is a shade talkative and is what it does with script off;
+an engine-dependent Enter is a data loss. **An unticked checkbox is not sent**, so an empty body and a form with
+every switch off are byte-identical — harmless while alerts had its own
+endpoint, and not harmless once a page cached from before the merge posts a
+body with no `alerts_enabled` in it; a hidden `weather_form` marker is how the
+form says "this is me, and everything I do not mention is off". And **a form
+re-rendered at 400 is already dirty**: booting the script clean disabled Save
+on the one page where pressing it again is the point, so the form tag carries
+`data-dirty="dirty"` when it is handed back with an echo.
+
+**And merging two forms merges their validation, which deadlocked the default
+install.** `weather_enabled` defaults to 1 and a fresh household has no
+coordinates, so "the forecast is on, therefore demand a location" refused every
+submission with a 400 — and the alerts switch now shares that form, so it could
+not be turned off, or on, from the screen at all. Blank is "not set yet" and
+saves; only a *typed* coordinate that is not one, or one of a pair, is refused.
+That is the thing to check before merging any other pair of forms. Three
+smaller ones came with it: `use-ha-location` reads a *narrower* schema than
+Save, because it replaces the coordinates and so must not be able to fail on
+one (a pasted "51.5074, -0.1278 London" is longer than the field allows, and
+the fallback would have discarded the edits the button exists to carry while
+claiming to have saved them); `POST /admin/alerts` still answers, with the same
+"out of date, reload" rather than a bare 404, since one stale page giving two
+different answers is worse than either; and Calendars had the same 400 loss,
+made worse by the dirty state, so `SourceEcho` is `WeatherEcho` keyed on the
+source.
+
+**And a third review found a bug that had shipped: every "Turn off" in the
+alert ladder re-enabled its rule.** The card sends a *hidden* input — `1` to
+turn on, the empty string to turn off — and the handler read
+`typeof body['enabled'] === 'string'`, which is the correct reading for a
+checkbox (absent when unticked) and the wrong one for a hidden field, because
+the empty string is still a string. 302, no error, and the card came back
+saying "Turn off" again. Nothing tested it, and no household could turn a level
+off. Found by a review *running* the endpoint against the real app rather than
+by reading it — the same shape as everything else on the list above.
+
+**Save is off until dirty on a settings form, and a settings page may carry
+script — decided, not assumed.** The no-script fence covers the wizard and
+sign-in and nothing else, which `wizard-noscript.test.ts` already pins.
+`apps/display/src/settings-form.ts` lifts the wall editor's pattern rather than
+writing a second one, including the part that was a bug: `navigating` is set by
+the submit and by Cancel and by nothing else. **The degradation promise is a
+property of the markup**, not of the script — the server renders Save enabled
+and Cancel and the flag `hidden`, so a household who blocks script keeps today's
+form exactly. `page()` ships the script keyed on the body carrying `data-dirty`,
+so marking a form is the whole of adopting it; a screen emitting its own
+`<script src>` beside its own markup is how the e-paper editor silently lost its
+editor once — matched on a `<form>` tag rather than by `includes('data-dirty')`,
+which the editor's own `data-dirty-flag` span satisfies too. **`navigating`
+also latched**, and only a page with two settings forms shows it: on System
+(timezone and update-check) saving one while the other was dirty prompted, and
+answering "Stay" cancelled the navigation and left the first form's guard dead
+for the life of the page. It is cleared inside `beforeunload` — disarmed for
+one navigation rather than for good. And the guard itself is **one listener for
+the document, asking every form**, not one each: with a listener each, pressing
+Save on the timezone form raised the update-check form's "Changes you made may
+not be saved" — the household presses Save, is asked whether they meant it, and
+"Stay" cancels the save. Pressing Save is not leaving without saving — and nor
+is pressing *any* submit on the page: a settings form rarely has one to itself
+(Weather carries five rule cards, Calendars a Sync now and a Remove per row,
+every page the sidebar's Sign out), and armed only by its own submits the guard
+asked about a rule card's "Turn off" and cancelled the POST when answered.
+**The guard asks about work, not about buttons**, which took three attempts:
+armed by a form's own submit it asked about a rule card's "Turn off" as though
+that were the question; armed by *any* submit it went silent while the edits
+went with it. `leaving` names the form being submitted, and the guard prompts
+when anything dirty is not that form — so saving one settings form warns about
+the other, which is right, and the household can save that one first. Set by a
+document-level **submit**, never a click: RFC 009 1.7's lesson was a listener on
+`a[href]` clicks, and a submit is unambiguous where a click is not. `data-download`
+marks the three System downloads, because `beforeunload` fires when the
+navigation *starts* — before the headers can say `Content-Disposition` — so a
+download is indistinguishable from a departure exactly when the guard has to
+decide. And the flag is **two-way**: `looksEdited` runs on every edit, so an
+edit taken back is not an edit.
+
+**And an echo belongs on a text field, not on a closed list.** Handing a
+rejected timezone back into the `<select>` selects *nothing* — it is refused
+precisely because it is not one of the options — so the browser preselects
+whatever sorts first, `Africa/Abidjan`, with a live Save over it. That is
+`setup.ts`'s `detectedTimezoneOption` rule ("never 'nothing'") one screen along,
+and it is the limit on "always echo the body back": there has to be something
+the control can show.
+
+**And the dirty flag cannot come from the server alone**, which is this phase's
+own thesis turned on its fix: a browser may put edits back on screen without
+telling anyone — form-state restoration on a reload, and on a back/forward that
+misses the back-forward cache — so the control reads "on" over a database that
+says off, with Save disabled and the guard down. `looksEdited` measures every
+control against `defaultValue`/`defaultChecked`/`defaultSelected`, the DOM's
+words for what the markup declared. Its test *simulates* the restore rather than
+claiming a browser it cannot demonstrate: Chromium under Playwright restores
+nothing on a reload (measured — a first version mistook the server's own value
+for a restored one), so the switch is flipped from an init script the moment the
+element parses, which is where a restoring browser writes it.
+
+**And a fourth review found three places where the strip simply lied**, which
+is the failure this phase is about rather than a detail of it: "Syncing now"
+for a calendar whose sync switch is off, where `ics-sync` skips it outright; a
+green "Checked for a newer version." drawn directly above the red box saying
+the check had failed; and "Calendar removed." for an id that never existed. A
+rejected *row* save also drew its reason at the foot of the page under "Add a
+calendar" — right when that was the only way to fail, and a fault the moment
+the row is echoed back at the top with Save live, because edits plus an enabled
+Save plus a reason 2,000px below under the wrong heading reads as a save that
+worked. **A token is a claim, so check the branch it is on**: a handler with an
+early return, a skip or a nothing-to-do path needs a different token or none.
+That is the rule the remaining seventy adoptions have to be read against. Cancel's
+destination is *stated* rather than derived, because a
+form re-rendered at 400 leaves the browser on the POST URL — `reload()` would
+re-submit the edits Cancel exists to throw away.
+
+**Its one fault was only ever going to be found by looking.** `.saverow`
+shipped with no disabled treatment, so a disabled Save was pixel-identical to an
+enabled one: "Save is off until you change something" reading as a button that
+silently does nothing, which is strictly worse than the always-enabled Save it
+replaced. The editor's `.savebar button:disabled` rule is shared now, and the
+assertion is on the **computed background** rather than on the `disabled`
+property — the chore-tick lesson one screen along.
+
 **The wall editor is three contexts, and it used to be one column.** A display's
 page carried its status and pairing buttons, the canvas, whichever widget was
 selected, the Look/Content/Device tabs and the save bar, all at one visual

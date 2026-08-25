@@ -569,14 +569,70 @@ describe('readings on the wall', () => {
     const display = await (await h.call('/admin/alerts')).text();
     expect(display).toContain('admin/weather/use-ha-location');
 
+    // Deliberately bodyless — a POST that is *not* the screen's own form. It
+    // must still fill the location in and must change nothing else: every
+    // switch on that form is a checkbox, so an empty body reads as "everything
+    // off" unless the handler can tell the two apart.
+    h.db
+      .prepare(`UPDATE household_settings SET alerts_enabled = 1 WHERE id = 'singleton'`)
+      .run();
     const response = await h.call('/admin/weather/use-ha-location', { method: 'POST' });
     expect(response.status).toBe(302);
 
     const saved = h.db
-      .prepare(`SELECT latitude, longitude FROM household_settings WHERE id = 'singleton'`)
-      .get() as { latitude: number; longitude: number };
+      .prepare(
+        `SELECT latitude, longitude, alerts_enabled AS alerts
+           FROM household_settings WHERE id = 'singleton'`,
+      )
+      .get() as { latitude: number; longitude: number; alerts: number };
     expect(saved.latitude).toBeCloseTo(38.8894);
     expect(saved.longitude).toBeCloseTo(-77.0352);
+    expect(saved.alerts, 'filling in a location must not turn the alerts off').toBe(1);
+  });
+
+  /**
+   * The button carries the rest of the form with it, and a coordinate it cannot
+   * parse must not be able to stop that.
+   *
+   * "Use my Home Assistant home location" is a second submit inside the one
+   * settings form, so its body is whatever is on screen — including a switch
+   * the household just flipped. It reads a *narrower* shape than Save does,
+   * with the coordinates left out, because it is about to replace them: a
+   * pasted "51.5074, -0.1278 London" in the latitude box is longer than the
+   * field allows and would otherwise fail the parse, at which point falling
+   * back to the stored row would discard the edits the button was pressed to
+   * keep — and then redirect saying it had saved them.
+   */
+  it('keeps the rest of the form when the coordinate box holds something unparseable', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+
+    const response = await h.form('/admin/weather/use-ha-location', {
+      weather_form: '1',
+      weather_enabled: '1',
+      // Not sent: alerts_enabled — the household turned the switch off.
+      latitude: '51.5074, -0.1278 London, United Kingdom',
+      longitude: '',
+      weather_provider: 'openmeteo',
+      weather_units: 'metric',
+    });
+    expect(response.status).toBe(302);
+
+    const saved = h.db
+      .prepare(
+        `SELECT latitude, longitude, alerts_enabled AS alerts, weather_provider AS provider,
+                weather_units AS units
+           FROM household_settings WHERE id = 'singleton'`,
+      )
+      .get() as {
+        latitude: number; longitude: number; alerts: number; provider: string; units: string;
+      };
+    expect(saved.latitude, 'the location it was pressed for').toBeCloseTo(38.8894);
+    expect(saved.longitude).toBeCloseTo(-77.0352);
+    expect(saved.provider, 'and the provider they changed in the same breath').toBe('openmeteo');
+    expect(saved.units).toBe('metric');
+    expect(saved.alerts, 'and the switch they turned off').toBe(0);
   });
 
   it('refuses an empty batch from the picker', async () => {
