@@ -16,6 +16,27 @@
 
 ## Unreleased
 
+**A wall no longer goes blank, and stays blank, because the server had a bad
+moment.**
+
+When the server could not build a wall, it sent an empty one — and a screen
+that receives an empty wall draws it *and* forgets the calendar it had saved,
+so the display stayed blank until the server recovered, even across a reload.
+It now says "not just now" instead, and a screen that hears that keeps showing
+its last calendar with a note of how old it is. The empty wall is still sent for
+the one case it was written for — a database this version genuinely cannot read,
+where it carries the message explaining why — and a screen no longer files that
+one away as its saved calendar, so a reload still has the real one to fall back
+on.
+
+When a screen has nothing saved to fall back on, it now says what the server
+told it rather than guessing that the network is down.
+
+Two smaller things on the same path: a screen is no longer told it needs pairing
+again when the server is too damaged to check, which used to put a code-entry
+box on every wall in the house; and a calendar sync running at the same moment
+as a wall's refresh no longer counts as damage.
+
 **A restored encryption key is no longer thrown away about one time in sixty.**
 
 Restoring from System → Backup hands you a key file, and it has always allowed

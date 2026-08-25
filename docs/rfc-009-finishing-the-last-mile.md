@@ -269,6 +269,57 @@ freshly loaded one gets 1.1's black screen.
 Wrap the screen read and the manifest build, and on failure return a **200
 carrying only `notices`**. The wall already knows how to draw one.
 
+**Built, and then corrected — the 200 is for one cause, not for every
+exception.** As first written both catches answered the degraded manifest for
+*anything* that threw. That body passes `isRenderableManifest`, so the display
+takes it as `fresh`, draws it, and then `await store.save(...)` overwrites the
+IndexedDB last-good copy: one bug in manifest assembly blanked the wall and
+destroyed its cache, and a reload could not get the calendar back. The 200 is
+correct only when the **database could not be read** — persistent, no better
+data anywhere, and on a never-cached wall the only thing between the household
+and 1.1's black screen. Anything else answers 503, which the display's `failed`
+branch already handles by keeping the last manifest and saying how old it is.
+The class is read off the error's SQLite `code` rather than its message, so
+corruption and `SQLITE_NOTADB` are inside it and `SQLITE_BUSY`/`SQLITE_LOCKED`
+— the two that clear on their own — are outside. It is an allowlist, not a list
+of exclusions: the degraded answer blanks a wall and the 503 costs it nothing,
+so an unrecognised code takes the cheap one. Every match is a prefix, because
+better-sqlite3 reports SQLite's extended code (`SQLITE_BUSY_SNAPSHOT` is what a
+CLI tool holding a lock actually raises).
+
+The display owns the other half: it now declines to *store* the stand-in, having
+previously saved it like any other `fresh` manifest and so spent the wall's last
+good calendar on the one poll that proves the server cannot supply a real one.
+Drawing it is the point of this section; remembering it never was. Nor does it
+*replace* a calendar already on screen — a wall that has one keeps it under the
+offline banner, and only a wall booted during the outage draws the empty
+document, which is the freshly-loaded screen this section is about. That screen
+is also why a `failed` outcome now carries the server's own sentence
+(`serverSaid`, read defensively off the error body) and an `answered` flag: a
+503 and an unreachable server are the same event to the display otherwise, and
+the difference decides three things — whether "Not reaching the server" is
+drawn, whether the two-hour contact-silence watchdog is armed against a server
+the wall is talking to every minute, and whether the refusal can explain
+itself. `answered` is the `x-server-time` header rather than the mere arrival of
+a reply, so a captive portal's 200 and a proxy's 5xx still read as unreachable;
+`unavailable` sends that header for exactly this reason, through a guard,
+because a throwing clock is one of the ways a request reaches it. And it is why a failed poll with no manifest renders a message
+at all rather than leaving the boot text up: `draw()` returns at its first line with no manifest,
+so "Waiting for the first update…" was all a household saw for as long as the
+fault lasted. What it keeps is the household's days, people, sources
+*and interrupts*; what it takes from the stand-in is only the `notices`, the one
+text naming the fault. Merging the interrupts was tried and is wrong: the
+stand-in carries none, because the process that could evaluate a rule is the one
+that cannot read its database, so the merge silently dropped live warnings
+instead of clearing acknowledged ones. One further correction belongs to this
+section rather than to the narrowing: the fallback token lookup answered **401**
+when it too could not read, and a display reads 401 as `unpaired` and draws the
+code-entry form — so a corrupt database put a pairing form on every screen in
+the house. A check that could not run may not say "not paired"; it says "not
+now". And `degradedManifest` itself
+is wrapped: it calls `now()`, so a failure systemic enough to reach it took the
+safety net down too and produced the bare 500 this section exists to remove.
+
 ### 1.10 Documentation that is false
 
 Three, all small, all corrosive because they sit in the places written to be

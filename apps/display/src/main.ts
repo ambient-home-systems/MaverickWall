@@ -1,5 +1,15 @@
 import { createClock } from './clock.js';
-import { createManifestClient, type Manifest, type ManifestWidget, type CanvasBackground } from './manifest.js';
+import {
+  createManifestClient,
+  isRenderableManifest,
+  isStandInManifest,
+  keepHeld,
+  shouldAdoptStored,
+  shouldKeepHeld,
+  type Manifest,
+  type ManifestWidget,
+  type CanvasBackground,
+} from './manifest.js';
 import { renderFreeform, renderMessage, renderPairing } from './render.js';
 import { applyTheme, daytimeActive } from './theme.js';
 import {
@@ -93,6 +103,14 @@ function start(): void {
   const store = createManifestStore();
 
   let manifest: Manifest | undefined;
+  /*
+   * Whether what is held is the household's calendar rather than the server's
+   * stand-in. Tracked rather than re-derived, because the keep-held branch
+   * folds the stand-in's notices into the held document — so asking the
+   * document would answer "stand-in" from the second poll on, and the empty one
+   * would get through after all.
+   */
+  let heldIsReal = false;
   let lastConfirmedAt = 0;
   let offline = false;
   // Drawn once when the screen first turns out to be unpaired, then left alone
@@ -128,7 +146,23 @@ function start(): void {
     );
 
   const draw = (): void => {
-    if (manifest === undefined) return;
+    if (manifest === undefined) {
+      /*
+       * Nothing to draw is not a stopped renderer, and the watchdog cannot
+       * tell them apart on its own: `lastDrawAt` advances only in here, so a
+       * wall waiting to be paired or waiting for its first manifest read as a
+       * dead loop and reloaded every ninety seconds — wiping a half-typed
+       * pairing code, which on a television remote is most of the work. Saying
+       * so here rather than at each caller is what keeps the margin honest: on
+       * the branches it advances the poll is sixty seconds and `drawSilenceMs`
+       * is sixty seconds, so a few milliseconds of jitter fired it anyway. The
+       * tick runs every fifteen. The two-hour contact-silence limit is the one
+       * that covers a server which never answers, and `watchdog.ts` says as
+       * much in its own comments.
+       */
+      lastDrawAt = Date.now();
+      return;
+    }
     const now = clock.now();
     const geo = geometry();
     applyGeometry(geo);
@@ -188,13 +222,44 @@ function start(): void {
     switch (outcome.status) {
       case 'fresh':
         clock.sync(outcome.serverTime);
+        if (manifest !== undefined && shouldKeepHeld(heldIsReal, outcome.manifest)) {
+          /*
+           * The server is answering, and answering with its stand-in. Keep the
+           * calendar rather than trading it for an empty document, and take
+           * the one thing the stand-in came to say: its notice, which is the
+           * only text naming the fault.
+           *
+           * `offline` stays false, because it is not — the wall reached the
+           * server and the server replied. `lastConfirmedAt` deliberately does
+           * not advance instead, so the banner becomes "Last updated N ago" on
+           * its own once the calendar is old enough, which is true, over a
+           * notice that says why. Marking it offline would have drawn "Not
+           * reaching the server" above a notice from that very server.
+           */
+          manifest = keepHeld(manifest, outcome.manifest);
+          lastContactAt = Date.now();
+          offline = false;
+          break;
+        }
         manifest = outcome.manifest;
+        heldIsReal = !isStandInManifest(outcome.manifest);
         lastConfirmedAt = clock.now();
         lastContactAt = Date.now();
         offline = false;
-        // Kept for the next reload. Awaited so a save that is going to fail
-        // does so before the wall is told everything is fine.
-        await store.save({ manifest: outcome.manifest, confirmedAt: lastConfirmedAt });
+        /*
+         * Kept for the next reload — unless it is the server's stand-in.
+         *
+         * That document is empty by design and carries the reason as a notice,
+         * so drawing it is right; remembering it is not. Saving it overwrote
+         * the last calendar this wall had, and a reload then had nothing to
+         * fall back to — the whole point of the store, spent on the one poll
+         * that proves the server cannot supply the real thing. Awaited so a
+         * save that is going to fail does so before the wall is told
+         * everything is fine.
+         */
+        if (!isStandInManifest(outcome.manifest)) {
+          await store.save({ manifest: outcome.manifest, confirmedAt: lastConfirmedAt });
+        }
         break;
       case 'unchanged':
         clock.sync(outcome.serverTime);
@@ -204,6 +269,16 @@ function start(): void {
         break;
       case 'unpaired':
         manifest = undefined;
+        heldIsReal = false;
+        /*
+         * A marked 401 is proof the server answered, so this is contact. Without
+         * it a screen sitting on the pairing form tripped the two-hour
+         * contact-silence limit and was reloaded for ever — the same cost as
+         * the ninety-second draw-silence one, and the same code being typed on
+         * a remote lost with it.
+         */
+        lastContactAt = Date.now();
+        offline = false;
         // Render the code-entry form once. Redrawing it every poll would clear
         // the field between keystrokes on a remote, which is slow enough already.
         if (!pairingShown) {
@@ -214,7 +289,62 @@ function start(): void {
       case 'failed':
         // Deliberately keeps the last manifest. The banner will say how old it
         // is; the calendar is still the most useful thing on the wall.
-        offline = true;
+        /*
+         * But a refusal is not an unreachable server, and saying so was three
+         * faults at once. A wall holding a calendar drew "Not reaching the
+         * server" while the server was up and answering — the same false
+         * sentence the keep-held branch above exists to avoid. `lastContactAt`
+         * stopped advancing, so a persistent refusal tripped the two-hour
+         * contact-silence limit and reloaded a wall that was talking to its
+         * server every sixty seconds, which is the case `watchdog.ts` says
+         * that limit is *not* for. And the flag is owned rather than merely
+         * set: a wall that was offline and is now being refused is no longer
+         * offline.
+         *
+         * What stays frozen either way is `lastConfirmedAt`, so the banner
+         * tells the truth on its own — "Last updated N ago" — without claiming
+         * a cause it cannot know.
+         */
+        offline = !outcome.answered;
+        if (outcome.answered) lastContactAt = Date.now();
+        /*
+         * Except that a wall with no manifest at all has no banner either —
+         * `draw` returns at its first line — so it would sit on the boot
+         * message, "Waiting for the first update…", for as long as the fault
+         * lasted. That sentence is true for the first minute and a lie by the
+         * tenth, on the one screen with nothing else on it: a household
+         * looking at a wall that has never worked is owed the reason rule nine
+         * promises rather than a hopeful ellipsis. This is the shape of a
+         * screen booted during an outage — a server that is down, or one
+         * answering "not just now" because it cannot read its own database.
+         */
+        if (manifest === undefined && !pairingShown) {
+          /*
+           * Never over the pairing form. `renderMessage` clears the root, and
+           * `pairingShown` is only ever set — so one failed poll during pairing
+           * (a restart, a LAN blip, this route's own 503) would wipe a
+           * half-typed code and the form would never be drawn again. The screen
+           * would sit saying the server is unreachable while the server was up
+           * and waiting to be paired.
+           */
+          /*
+           * A refusal and an unreachable server both arrive as `failed`, and
+           * only one of them can explain itself. When the server answered with
+           * a sentence — "This wall could not be built just now", and what the
+           * screen will do about it — that is the one to draw: it is written
+           * for somebody standing in a kitchen and it names a fault they can
+           * act on, where the line below would send them looking at the
+           * network for a server that is up.
+           */
+          renderMessage(
+            root,
+            'Maverick Wall',
+            outcome.serverSaid ??
+              (outcome.answered
+                ? 'This wall’s server answered, but not with a wall. Nothing has arrived yet — it keeps trying.'
+                : 'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.'),
+          );
+        }
         break;
     }
     // Through `safely`, like the tick does: a poll-driven draw gets the same
@@ -449,10 +579,47 @@ function start(): void {
    * is — that is the honest part, and it is why the age is stored alongside.
    */
   void store.load().then((stored) => {
-    if (stored !== undefined && manifest === undefined) {
-      manifest = stored.manifest;
+    // `shouldAdoptStored` rather than "nothing yet": the poll is not waited for,
+    // so on a slow tablet the server can answer first — and an empty stand-in
+    // must not beat the household's real calendar to the screen.
+    // `!pairingShown` for the same reason the message below the poll has it:
+    // the 401 can win this race, and drawing a calendar over the code-entry
+    // form would take the form away for good.
+    if (stored !== undefined && !pairingShown && shouldAdoptStored(heldIsReal)) {
+      /*
+       * This no longer only runs before the first poll — that is the whole
+       * point of `shouldAdoptStored`, which lets the stored calendar in over a
+       * stand-in that won the race. So anything the stand-in was carrying has
+       * to come with it: its notice is the only text naming the fault, and
+       * dropping it here would blank the reason until the next poll a minute
+       * later put it back.
+       */
+      /*
+       * Shape-checked before it is drawn, not only before it is classified.
+       * `isStandInManifest` survives a stored document with no `notices`, but
+       * `buildModel` then does `manifest.notices.map(...)` and throws — inside
+       * `safely`, which swallows it, so the wall sits on the boot message and
+       * gets reloaded into the same failure for ever. A cache this bundle
+       * cannot draw is worth exactly as much as no cache.
+       */
+      if (!isRenderableManifest(stored.manifest)) return;
+      manifest = manifest === undefined ? stored.manifest : keepHeld(stored.manifest, manifest);
+      /*
+       * Asked, not assumed. This bundle never saves the stand-in — but the
+       * store outlives a release, and one written before this fix can hold one;
+       * treating that as the household's calendar would pin an empty document
+       * under a days-old banner.
+       */
+      heldIsReal = !isStandInManifest(stored.manifest);
       lastConfirmedAt = stored.confirmedAt;
-      offline = true;
+      /*
+       * And only when nothing has answered yet. `lastContactAt` moves off
+       * `startedAt` the moment a poll succeeds, so this says "no poll has ever
+       * got through" — without it, a stored copy arriving late would relabel a
+       * server that had just replied as unreachable, and nothing would clear
+       * the flag again.
+       */
+      if (lastContactAt === startedAt) offline = true;
       safely(draw);
     }
   });

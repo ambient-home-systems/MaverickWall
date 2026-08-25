@@ -1559,6 +1559,221 @@ plain http**, because a service worker needs a secure context and a LAN address
 is not one. On http the stored manifest still covers the commoner case: a wall
 that stays loaded for months while the server comes and goes underneath it.
 
+**And what the wall remembers, the safety net was destroying.** `/d/manifest`
+answered `degradedManifest(...)` with a **200** from its build catch for *any*
+exception. That body is structurally valid, so `isRenderableManifest` passes it,
+`fetchManifest` reports `fresh`, and `main.ts` does the two things it does for a
+good manifest: draws it, and `await store.save(...)`. So one transient bug in
+manifest assembly blanked the wall *and* overwrote the IndexedDB last-good copy
+underneath it, after which even a reload had nothing to draw. Rule nine
+inverted: the thing written to stop a black screen was the thing causing one.
+
+The degraded manifest is right for exactly one class — **a database that could
+not be read**, which is persistent, has no better data anywhere, and on a wall
+that has never cached anything is the only thing between the household and 1.1's
+black screen. Everything else is a bug in this process with the data intact, and
+there the wall's own copy is worth more than an empty document: a 5xx keeps it
+(the display's `failed` branch never touches the store and says how old it is), a
+200 destroys it. The predicate asks the error's `code`, not its message —
+`better-sqlite3` stamps SQLite's own on every error it raises and nothing else
+here carries a `SQLITE_` one, where a "no such column" *message* match silently
+excluded corruption and `SQLITE_NOTADB`, which are the cases that matter most.
+It is an **allowlist** — `SQLITE_ERROR`, `SQLITE_CORRUPT`, `SQLITE_NOTADB`,
+`SQLITE_CANTOPEN` — because the two answers are not equally cheap: degrading
+blanks a wall for that poll and a 503 costs it nothing, so a code has to be
+*known* persistent to buy the expensive one, and everything unrecognised takes
+the cheap one. Written the other way round, as "everything degrades unless it is
+a lock", the next transient class SQLite grows blanks every wall in the house
+until somebody notices — and the first version was written that way round, with
+`SQLITE_BUSY` exact, which missed `SQLITE_BUSY_SNAPSHOT`: better-sqlite3 reports
+SQLite's *extended* code, so every match here is a prefix.
+
+**And a 401 is not a refusal as far as a wall is concerned.** The display reads
+it as `unpaired`, drops the manifest it is holding and draws the code-entry
+form — so a database damaged badly enough that even the one-column fallback
+lookup throws would put a pairing form on every screen in the house, which is
+louder than a blank wall and nothing a household can act on. "Not paired" is a
+claim: only a check that *ran* may make it, and one that could not complete says
+"not now" instead. It costs a genuinely unrecognised token its 401 while the
+database is unreadable, which is the right side to be wrong on — neither answer
+serves any household data.
+
+**And the wall was still doing it to itself for the one case the 200 is
+kept for.** `main.ts` saved every `fresh` manifest, the stand-in included — so
+the document that exists to explain a database this server cannot read was
+overwriting the calendar the wall could still have drawn, and a reload had
+nothing to fall back to. Drawing it is right; remembering it is not. The rule is
+`isStandInManifest` in the display's `manifest.ts` rather than in the poll loop,
+because there is no DOM in that package's tests and a rule living in `main.ts`
+is a rule nothing can check — and it is keyed on the `schema-degraded` notice
+rather than on "any error notice", since a real manifest complaining that one
+calendar failed to sync is still the household's data and is still worth keeping.
+
+**And not saving it was only half of that.** Nothing could reach the saved copy
+while the stand-in kept arriving and replacing what was on the glass, so a
+reload flashed the real calendar and dropped straight back to the empty one.
+The stand-in is a fallback rather than a replacement: a wall that has a calendar
+keeps it and lets the offline banner say it is not being kept up to date —
+`lastConfirmedAt` deliberately does not advance, so the age it reports keeps
+growing — and a wall booted *during* the outage has nothing better and draws the
+reason, which is the case 1.9 wrote it for. And that wall is why the `failed`
+branch now says something: with no manifest at all `draw` returns at its first
+line, so a screen sat on the boot message, "Waiting for the first update…", for
+as long as the fault lasted. True for the first minute, a lie by the tenth, on
+the one screen with nothing else on it.
+
+**Both of those introduced a fault of their own, and both were about what else
+is on the glass.** `renderMessage` clears the root, and `pairingShown` is only
+ever *set* — so one failed poll during pairing wiped a half-typed code and the
+form was never drawn again: the wall said the server was unreachable while the
+server was up and waiting to be paired. And the boot guard "adopt the stored
+copy only if there is nothing yet" let the stand-in win a race it should lose —
+`store.load()` is asynchronous and the first poll is not waited for, so on a
+slow tablet an empty document beat the household's real cached calendar to the
+screen and then stuck, because the held manifest was itself a stand-in and
+nothing would displace it. Both are one predicate each, and both are the same
+lesson as the rest of this paragraph: the state a rule reads is rarely only the
+one it names — which the *stored* read then proved a third time, drawing a
+cached calendar over the pairing form when the first 401 won that race.
+
+**And a rule that reads the store reads a document nothing has shape-checked.**
+`store.load()` hands back whatever IndexedDB holds, which on a wall that has
+been hanging for months may have been written by an older bundle — so
+`isStandInManifest` is tolerant of a missing `notices`, because reading `.some`
+off it would throw *inside the poll*. A draw is wrapped in `safely` and a poll
+is not, so the wall would have stopped updating for good over a field that is
+merely absent. The message on an empty wall also sets `lastDrawAt`, since it is
+a draw: without it the watchdog read that screen as a stopped renderer and
+reloaded it every ninety seconds for as long as the fault lasted, where the
+renderer was fine and the two-hour contact-silence limit is the one meant for a
+server that is not — a distinction `watchdog.ts` states and the no-manifest path
+was quietly ignoring — and the pairing form had the identical hole, which is
+where a reload actually costs something: a code being typed on a television
+remote, wiped every ninety seconds. Saying so at each branch was not enough
+either, and the arithmetic is the reason: those branches run on the sixty-second
+poll and `drawSilenceMs` is sixty seconds, so a few milliseconds of jitter still
+fired it. It is one line inside `draw`'s own early return now, which the
+fifteen-second tick reaches — **nothing to draw is not a stopped renderer**, and
+the watchdog cannot tell those apart on its own.
+
+**Keeping the calendar must not mean discarding what the stand-in came to
+say.** It carries exactly one thing worth having: the `notices`, which are the only
+text on the wall naming the fault and pointing at System. `keepHeld` merges
+those over the household's days, people and sources, and that merge is why both
+rules are **told** whether the wall holds a real calendar rather than asking the
+document — a merged manifest carries the stand-in's notice and so reads as one,
+and re-deriving would let the empty document through from the second poll on.
+
+**The interrupts were merged too for one commit, and that had the sign
+backwards.** The argument read well: an acknowledgement is recorded server-side
+and it is the *re-poll* that clears a takeover, so a frozen copy leaves a
+warning the OK button cannot dismiss. But the stand-in is built with **no
+interrupts at all** — the process that could evaluate a rule is the one that
+cannot read its database — so merging them never cleared an acknowledged
+warning, it silently dropped a live unacknowledged one. A tornado takeover must
+not vanish because a migration failed. The honest outcome is the one the
+`failed` branch already states: the interrupt stays up, because nothing has been
+acknowledged as far as the household is concerned. **An empty field from a
+source that cannot speak is not an assertion**, and that is the general form of
+it.
+
+**And the wall was told it was offline while the server was answering it.** The
+keep-held branch set `offline`, which draws "Not reaching the server" directly
+above a notice from that very server. It does not any more: `lastConfirmedAt` is
+what stays frozen, so the banner becomes "Last updated N ago" on its own once
+the calendar is old enough — true, and over a notice that says why. **Not
+setting a flag is not the same as clearing it**, which took a second pass: a
+`failed` poll sets `offline`, and a keep-held branch that merely declined to set
+it left the wall saying "not reaching the server" for ever once the server came
+back answering only its stand-in. Every branch that knows owns the flag.
+
+**A refusal and an unreachable server both arrive as `failed`, and treating
+them as one event was three faults at once.** A wall holding a calendar drew
+"Not reaching the server" while the server was up and answering — the same false
+sentence the keep-held branch exists to avoid, one branch along. `lastContactAt`
+stopped advancing, so a persistent refusal tripped the *two-hour*
+contact-silence limit and reloaded a wall that was talking to its server every
+sixty seconds, which is precisely the case `watchdog.ts` says that limit is not
+for. And `offline` was set rather than owned, so a wall that had been offline
+stayed labelled that way once the server came back refusing. The outcome carries
+`answered` now, and it decides all three; `lastConfirmedAt` is what stays frozen
+either way, so the banner says "Last updated N ago" without claiming a cause it
+cannot know.
+
+**And `answered` is not "an HTTP reply arrived".** A captive portal answers 200
+with its own page and a proxy in front of a stopped container answers its own
+5xx — both are replies and neither means the wall reached anything, so reading
+them as contact would leave a genuinely cut-off wall with no offline banner and
+a watchdog that could never fire. The mark is `x-server-time`, which
+`/d/manifest` sets on every answer it gives, **refusals included** — a header
+`unavailable` had to start sending, through a guard, because a `now` that throws
+is one of the ways a request reaches it and a safety net that can throw is not
+one. The display only checks the header is *there* on a refusal, so a zero costs
+nothing. Both halves are pinned: the display's test drives a real server that
+withholds it, and the server's asserts it is sent, because the package that
+reads it is not the package that writes it and dropping it failed nothing at
+all before those went in.
+
+**And the mark has to decide the things a household actually reads, not just
+the flags.** Three followed from it. A `message` off a body that is not ours was
+being drawn as the server's own explanation — a stranger's sentence with this
+product's authority behind it. The fallback wording said "not reaching this
+wall's server" on the line after `offline = false`, which is the branch's own
+false sentence one screen along. And the **401** was the one answer not gated at
+all, which is the most destructive one the display acts on: it drops the
+manifest, puts the code-entry form up and latches it, so a hotel portal asking
+for its own credentials could take a household's calendar off the wall and ask
+them to pair it again. So `unauthorized` and `degraded` stamp the header too —
+every answer `/d/manifest` gives carries it, and a path that forgets is a path
+the wall reads as a stranger.
+
+**And one string written twice in two packages that cannot import each other
+now has a parity test.** `schema-degraded` is the server's notice code and the
+display's `STAND_IN_NOTICE`; renaming it on one side would silently reinstate
+both stand-in faults with every test still green, each package being internally
+consistent. Same seam and same answer as `epaper-ladder-parity.test.ts`: read
+both files, compare what each one actually says.
+
+Three last ones, each a place the invariant leaked. `app.onError`'s 500 was
+unmarked, and `/d/manifest` guards the screen read and the build but not
+`manifestEtag` or the serialisation after them — so a throw out there came back
+as a stranger. The `unpaired` branch never advanced `lastContactAt`, though a
+marked 401 is proof the server answered, so a screen on the pairing form was
+reloaded every two hours for ever. And the stored copy was shape-checked before
+it was *classified* but not before it was *drawn*: `isStandInManifest` survives
+a document with no `notices`, and `buildModel` then does `notices.map(...)` and
+throws inside `safely`, so a wall restoring a pre-`notices` cache sat on the
+boot message and was reloaded into the same failure. **A cache this bundle
+cannot draw is worth exactly as much as no cache.**
+
+**And only one of them can explain itself.** Every non-2xx body was thrown away unread, so the 503
+this route now answers with reached the wall as a bare status and a screen with
+nothing cached could only say it was not reaching a server that was up. The
+body's `message` is written for somebody standing in a kitchen, so a `failed`
+outcome carries it as `serverSaid` and the empty-wall message draws it in place
+of the generic line. `reason` stays diagnostic and is still never drawn. Read
+defensively — not JSON, no `message`, not a string, all yield nothing and the
+display falls back to its own wording — and capped and stripped, because a wall
+with one line to say something cannot afford it to be unreadable. The sentence
+itself had to change too: "the screen keeps showing its last one" is read out
+loud *only* by a screen that has no last one, because that text is drawn exactly
+when there is nothing else to put up. A message shown solely where it is false
+is worse than a plainer one. What is still missing — stated rather than fixed —
+is any explanation on a wall that *does* hold a calendar: it goes stale
+honestly, but the reason travels in the manifest's `notices`, and a 503 carries
+no manifest.
+
+Three more things came out of it and two are about the tests. **A safety net that can
+throw is not one**: `degradedManifest` calls `now()`, so a systemic enough
+failure took the fallback down too and the household got Hono's bare 500 — the
+exact shape 1.9 exists to remove, one layer further in. The test written for
+*that* then passed without ever reaching the fallback, because the route answered
+one branch earlier and a 503 is what both paths produce; it asserts the log line
+now, which is the only evidence from outside that the net was entered. And a
+harness that breaks the clock for the whole request cannot prove a narrowing at
+all — the wrongly-degraded case answers 503 too. It throws on one measured call
+and no others.
+
 **A migration file the journal does not list never runs, and looks like it
 did.** `migration-upgrade.test.ts` asserts the two agree in both directions,
 and it earned that assertion: a file-sync collision left nine `… 2.sql`

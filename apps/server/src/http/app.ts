@@ -872,6 +872,70 @@ export function createApp(deps: AppDeps): Hono {
   deps.onManifestBuilder?.(manifestForScreen);
 
   /**
+   * The SQLite codes that mean "this file cannot be read, and waiting will not
+   * change that".
+   *
+   * An allowlist rather than a list of exclusions, because the two answers are
+   * not equally cheap. Degrading blanks a wall for that poll; a 503 costs it
+   * nothing, since the display keeps drawing what it has. So an unrecognised
+   * code takes the cheap answer, and a code has to be *known* persistent to
+   * buy the expensive one. Written the other way round — everything degrades
+   * unless it is a lock — the next transient class SQLite grows blanks every
+   * wall in the house until somebody notices.
+   *
+   * Prefixes, because `better-sqlite3` reports SQLite's *extended* code:
+   * `SQLITE_CORRUPT_VTAB` and `SQLITE_CANTOPEN_ISDIR` are real, and a WAL
+   * reader whose snapshot moved raises `SQLITE_BUSY_SNAPSHOT` — measured, and
+   * the reason an exact-match set was wrong here before.
+   *
+   * - `SQLITE_ERROR` is what a half-finished migration leaves: "no such
+   *   column", "no such table". A typo in our own SQL is the same code and so
+   *   degrades too; that is deliberate and it is the right side to err on,
+   *   being every bit as persistent as a missing column.
+   * - `SQLITE_CORRUPT` is the SD card that came out of a power cut.
+   * - `SQLITE_NOTADB` is a file that never was one — a half-finished restore.
+   * - `SQLITE_CANTOPEN` is the file or its directory being gone.
+   *
+   * Deliberately absent: `SQLITE_BUSY` and `SQLITE_LOCKED` (a CLI tool holding
+   * a lock), `SQLITE_IOERR` (a disk that may well answer next time),
+   * `SQLITE_PROTOCOL` (documented as retryable under WAL contention) and
+   * `SQLITE_NOMEM`. All of those are a bad moment rather than a bad file.
+   */
+  const UNREADABLE_SQLITE_PREFIXES = [
+    'SQLITE_ERROR',
+    'SQLITE_CORRUPT',
+    'SQLITE_NOTADB',
+    'SQLITE_CANTOPEN',
+  ];
+
+  /**
+   * Could the database not be read, or is this a bug in this process?
+   *
+   * The difference decides what a wall is told, and the two answers are not
+   * interchangeable. A database that cannot be read is *persistent* and there
+   * is no better data anywhere — a schema a migration left half-upgraded, an
+   * SD card that came out of a power cut corrupt, a file that is no longer a
+   * database at all — so the degraded manifest below, empty with a notice
+   * naming the cause, is genuinely the best thing to send, and on a freshly
+   * loaded wall it is the only thing standing between the household and RFC
+   * 009 1.1's black screen. Anything else is a bug in this process with the
+   * household's data intact, and the wall's own cached copy is worth more than
+   * an empty document; a 5xx keeps it, a 200 replaces it (see the route).
+   *
+   * Asked of the error's `code` rather than of its message, because that is
+   * the fact: `better-sqlite3` stamps every one it raises with SQLite's own
+   * code and nothing else in this process carries a `SQLITE_` one — a
+   * `TypeError` from our own assembly has no `code` at all, which is exactly
+   * the class that must not degrade. A message match was tried first and
+   * silently excluded corruption, which is the case this matters most for.
+   */
+  const isDatabaseFailure = (error: unknown): boolean => {
+    const code = (error as { code?: unknown } | null | undefined)?.code;
+    if (typeof code !== 'string') return false;
+    return UNREADABLE_SQLITE_PREFIXES.some((prefix) => code.startsWith(prefix));
+  };
+
+  /**
    * The manifest a wall gets when its own database could not be read.
    *
    * Built through the same pure `buildManifest` every other wall gets, with
@@ -900,6 +964,92 @@ export function createApp(deps: AppDeps): Hono {
       notices: [...deps.bootNotices, extra],
     });
 
+  /**
+   * "Not now" — the answer for a wall whose manifest this process could not
+   * build, when the household's data is fine.
+   *
+   * Deliberately not a manifest. The display's `failed` branch keeps the last
+   * one it drew, leaves the stored copy alone, and says how old it is; that is
+   * a far better wall than an empty document, and rule nine's "reduced
+   * function with a clear on-screen message" is already what it produces.
+   *
+   * The sentence promises nothing about what is on the screen, though an
+   * earlier one did — "the screen keeps showing its last one" is read out loud
+   * only by a screen that has no last one, since the display draws this text
+   * exactly when it has nothing else to put up. A message shown solely where
+   * it is false is worse than a plainer one.
+   */
+  /**
+   * Mark this reply as coming from *this wall's server*.
+   *
+   * `x-server-time` is what a display checks to tell an answer of ours from a
+   * captive portal's cheerful 200, a hotel proxy's own error page, or a 401
+   * from something that has never heard of this household — and that
+   * difference decides whether the wall says "not reaching the server",
+   * whether it advances its contact clock, whether it arms a two-hour watchdog
+   * against a server it is talking to every minute, whose sentence it draws,
+   * and, on a 401, whether it throws away its calendar and asks to be paired
+   * again. So **every** answer `/d/manifest` gives carries it, refusals
+   * included; a path that forgets is a path the wall reads as unreachable.
+   *
+   * The clock is read through a guard because some of those answers are the
+   * last-resort ones: a `now` that throws is one of the ways a request reaches
+   * them, and a safety net that can throw is not one. The display checks only
+   * that the header is *there* on anything but a 200 or a 304, so a zero costs
+   * nothing and stays below the `> 0` bar the client applies to the value.
+   */
+  const stamped = (c: Context): void => {
+    let stamp = 0;
+    try {
+      stamp = now();
+    } catch {
+      // Deliberately swallowed; see above.
+    }
+    c.header('x-server-time', String(stamp));
+  };
+
+  const unauthorized = (c: Context): Response => {
+    stamped(c);
+    return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+  };
+
+  const unavailable = (c: Context): Response => {
+    stamped(c);
+    return c.json(
+      {
+        error: 'unavailable',
+        message: 'This wall could not be built just now. The screen will try again shortly.',
+      },
+      503,
+    );
+  };
+
+  /**
+   * The degraded manifest, and a way out if even that cannot be built.
+   *
+   * `degradedManifest` is the safety net, and a safety net that can throw is
+   * not one: it calls `now()` and `buildManifest`, so a failure systemic enough
+   * to reach either takes the fallback down with it and the household gets
+   * Hono's bare JSON 500 — the exact unhandled-exception shape RFC 009 1.9 set
+   * out to remove, one layer further in. Failing to "not now" instead at least
+   * leaves the wall drawing what it already had.
+   */
+  const degraded = (c: Context, extra: ManifestNotice): Response => {
+    try {
+      const body = degradedManifest(extra);
+      // Built before the header is set, so a fallback that throws falls to
+      // `unavailable` with nothing half-written on the response.
+      stamped(c);
+      return c.json(body, 200);
+    } catch (error) {
+      console.error(
+        '[manifest] degraded manifest failed too:',
+        error instanceof Error ? error.message : error,
+      );
+      return unavailable(c);
+    }
+  };
+
   app.get('/d/manifest', (c: Context) => {
     // No credential presented at all is the ordinary shape of an unpaired
     // browser polling — refused outright, with no database read, so a
@@ -907,7 +1057,7 @@ export function createApp(deps: AppDeps): Hono {
     // actually perform.
     const presented = presentedDisplayToken(c.req.header('authorization'), c.req.header('cookie'));
     if (presented === undefined || presented === '') {
-      return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+      return unauthorized(c);
     }
 
     const schemaNotice: ManifestNotice = {
@@ -933,6 +1083,7 @@ export function createApp(deps: AppDeps): Hono {
        * still recognised even when the full row cannot be built.
        */
       let recognised = false;
+      let undecidable = false;
       try {
         const minimal = deps.db
           .prepare(`SELECT token_hash AS tokenHash FROM screens WHERE revoked_at IS NULL`)
@@ -943,14 +1094,41 @@ export function createApp(deps: AppDeps): Hono {
           '[manifest] minimal screen lookup also failed:',
           innerError instanceof Error ? innerError.message : innerError,
         );
+        undecidable = true;
       }
+      /*
+       * "Not paired" is a claim, and this is the one place it cannot be made.
+       *
+       * A 401 is not a refusal as far as a wall is concerned — the display
+       * reads it as `unpaired`, drops the manifest it is holding and draws the
+       * code-entry form. So a database damaged badly enough that even this
+       * one-column read throws would put a pairing form on every screen in the
+       * house, which is a far louder wrong answer than a 503 and one nobody
+       * standing in a kitchen can act on. When the check could not be
+       * completed, say so; only a check that *ran* may say no.
+       *
+       * It costs a genuinely unrecognised token its 401 for as long as the
+       * database is unreadable, which is the right side to be wrong on: a 503
+       * discloses nothing, and neither answer serves any household data.
+       */
+      if (undecidable) return unavailable(c);
       if (!recognised) {
-        return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+        return unauthorized(c);
       }
-      return c.json(degradedManifest(schemaNotice), 200);
+      /*
+       * Narrowed exactly as the build's catch below is, and for the same
+       * reason. A token this database still recognises has earned an answer,
+       * but only a database that could not be *read* has earned the empty one:
+       * this block also covers `authenticateScreen`, so anything that is a bug
+       * in this process rather than a fact about the file would otherwise come
+       * back as a 200 a wall draws over its own calendar. The asymmetry was
+       * the accident, not the narrowing.
+       */
+      if (!isDatabaseFailure(error)) return unavailable(c);
+      return degraded(c, schemaNotice);
     }
     if (!screen) {
-      return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+      return unauthorized(c);
     }
 
     let manifest: Manifest;
@@ -958,7 +1136,21 @@ export function createApp(deps: AppDeps): Hono {
       manifest = manifestForScreen(screen);
     } catch (error) {
       console.error('[manifest] build failed:', error instanceof Error ? error.message : error);
-      return c.json(degradedManifest(schemaNotice), 200);
+      /*
+       * Only a database that could not be read earns the degraded manifest.
+       *
+       * `readScreens` reads one table, so a partial upgrade can pass the
+       * lookup above and fail here — that case still degrades, or 1.9's
+       * guarantee would hold on one path by accident. Anything else is a bug
+       * in this process with the household's data intact, and answering 200
+       * with an empty manifest is the worst of both: the display accepts it as
+       * `fresh`, blanks the wall, and then `await store.save(...)` overwrites
+       * the IndexedDB last-good copy, so even a reload cannot get the calendar
+       * back. A 503 costs nothing — the display's `failed` branch keeps the
+       * last manifest, never touches the store, and says how old it is.
+       */
+      if (!isDatabaseFailure(error)) return unavailable(c);
+      return degraded(c, schemaNotice);
     }
 
     // Recorded after building, so a screen that is failing to render still
@@ -1475,6 +1667,16 @@ export function createApp(deps: AppDeps): Hono {
     // Never leak internals to a display. The detail goes to the log.
     // eslint-disable-next-line no-console
     console.error('[http]', error.message);
+    /*
+     * Marked as ours, like every other answer. `/d/manifest` guards the screen
+     * read and the build, but not `manifestEtag` or the serialisation that
+     * follow — so a throw out there lands here, and an unmarked 500 is one a
+     * wall reads as a stranger: no offline banner cleared, no contact clock
+     * advanced, and a two-hour watchdog armed against a server it is talking to
+     * every minute. Harmless on the other routes, which is why it sits here
+     * rather than being threaded through the ones that can reach it.
+     */
+    stamped(c);
     return c.json({ error: 'internal', message: 'Something went wrong on the server.' }, 500);
   });
 
