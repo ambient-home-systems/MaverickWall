@@ -39,6 +39,7 @@ import {
 } from './rule-templates.js';
 import { randomBytes } from 'node:crypto';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
+import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
 
 /** One schema per form on this screen. */
@@ -226,13 +227,14 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   async function render(
+    c: Context,
     error?: PageError,
     status?: number,
     template?: RuleTemplate,
   ): Promise<Response> {
     const live = await look();
     const shown = error ?? live.problem ?? undefined;
-    return new Response(haPage(live, shown, template), {
+    return new Response(haPage(c, live, shown, template), {
       status: status ?? 200,
       headers: { 'content-type': 'text/html; charset=UTF-8' },
     });
@@ -249,7 +251,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.get('/admin/home-assistant', async (c: Context) => {
     const chosen = RULE_TEMPLATES.find((entry) => entry.key === c.req.query('template'));
-    return render(undefined, undefined, chosen);
+    return render(c, undefined, undefined, chosen);
   });
 
   /**
@@ -266,7 +268,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
     const shaped = parse(connectBody, body);
     if (!shaped.ok) {
-      return render(
+      return render(c,
         { message: shaped.message, suggestion: 'Usually something like http://192.168.1.10:8123' },
         400,
       );
@@ -284,7 +286,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
      * because it is consent for this address rather than a setting.
      */
     if (baseUrl.startsWith('http://') && !shaped.value.accept_http) {
-      return render(
+      return render(c,
         {
           message: 'That address is not encrypted.',
           suggestion:
@@ -298,7 +300,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
     const token = shaped.value.token ?? '';
     if (token === '' && !settings.hasToken) {
-      return render(
+      return render(c,
         {
           message: 'Paste a long-lived access token.',
           suggestion:
@@ -316,7 +318,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
     const resolved = resolveConnection(deps.db, deps.keyring);
     if (!resolved.ok) {
-      return render(
+      return render(c,
         {
           message: resolved.message,
           ...(resolved.suggestion !== undefined ? { suggestion: resolved.suggestion } : {}),
@@ -339,7 +341,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `UPDATE ha_settings SET last_error = ?, updated_at = ? WHERE id = 'singleton'`,
         )
         .run(proved.message, now());
-      return render(
+      return render(c,
         {
           message: proved.message,
           ...(proved.suggestion !== undefined ? { suggestion: proved.suggestion } : {}),
@@ -348,22 +350,52 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
 
-    return c.redirect('/admin/home-assistant', 302);
+    return savedRedirect(c, '/admin/home-assistant', 'ha-connected');
+  });
+
+  /**
+   * Disconnecting is destroying, not a setting — the token, every reading on
+   * the wall, and every rule about the house all go with it, which is exactly
+   * what the status card's own helper text has always said. A one-click
+   * neutral button on that sentence was the sharpest gap this RFC found, so it
+   * now asks first, quoting the same consequence rather than inventing a
+   * second account of it.
+   */
+  app.get('/admin/home-assistant/disconnect', (c: Context) => {
+    if (!readHaSettings(deps.db).hasToken) return c.redirect('/admin/home-assistant', 302);
+    return c.html(
+      page({
+        modules: navModules(deps.db),
+        title: 'Disconnect Home Assistant',
+        nav: 'homeassistant',
+        heading: 'Disconnect Home Assistant?',
+        intro:
+          'This deletes the stored token, the readings on the wall, and any rules ' +
+          'about your house. Calendars you added stay, and stop updating. Recovering ' +
+          'means creating a new long-lived token and re-adding every entity and rule ' +
+          'by hand.',
+        body:
+          `<form method="post" action="admin/home-assistant/disconnect">` +
+          `<button class="btn-danger" type="submit">Disconnect it</button></form>` +
+          `<form method="get" action="admin/home-assistant">` +
+          `<button class="secondary" type="submit">Keep it connected</button></form>`,
+      }),
+    );
   });
 
   app.post('/admin/home-assistant/disconnect', (c: Context) => {
     disconnectHa(deps.db);
-    return c.redirect('/admin/home-assistant', 302);
+    return savedRedirect(c, '/admin/home-assistant', 'ha-disconnected');
   });
 
   app.post('/admin/home-assistant/entities', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const watched = parse(watchBody, body);
-    if (!watched.ok) return render({ message: watched.message }, 400);
+    if (!watched.ok) return render(c, { message: watched.message }, 400);
 
     const entityId = watched.value.entity_id;
     if (!isSupported(entityId)) {
-      return render(
+      return render(c,
         {
           message: 'Choose an entity from the list.',
           suggestion:
@@ -387,7 +419,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         ? mode
         : 'label_value') as DisplayMode,
     });
-    return c.redirect('/admin/home-assistant', 302);
+    return savedRedirect(c, '/admin/home-assistant', 'ha-entity-added');
   });
 
   /**
@@ -429,23 +461,49 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return c.json({ ok: true, added });
   });
 
+  /**
+   * Removing a reading asks first — the same GET-then-POST shape as every
+   * other destructive control, in place of the one-click "Remove" the card
+   * used to post directly.
+   */
+  app.get('/admin/home-assistant/entities/remove', (c: Context) => {
+    const entityId = c.req.query('entity_id') ?? '';
+    const watched = readWatched(deps.db).find((row) => row.entityId === entityId && row.watched === 1);
+    if (watched === undefined) return c.redirect('/admin/home-assistant', 302);
+    return c.html(
+      page({
+        modules: navModules(deps.db),
+        title: 'Remove reading',
+        nav: 'homeassistant',
+        heading: `Remove “${watched.label ?? watched.friendlyName ?? watched.entityId}”?`,
+        intro: 'It stops showing on the wall. Any rule that watches this entity is untouched.',
+        body:
+          `<form method="post" action="admin/home-assistant/entities/remove">` +
+          `<input type="hidden" name="entity_id" value="${escapeHtml(entityId)}">` +
+          `<button class="btn-danger" type="submit">Remove it</button></form>` +
+          `<form method="get" action="admin/home-assistant">` +
+          `<button class="secondary" type="submit">Keep it</button></form>`,
+      }),
+    );
+  });
+
   app.post('/admin/home-assistant/entities/remove', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const removal = parse(z.object({ entity_id: text('An entity', 255) }), body);
     if (removal.ok) unwatchEntity(deps.db, removal.value.entity_id);
-    return c.redirect('/admin/home-assistant', 302);
+    return savedRedirect(c, '/admin/home-assistant', 'ha-entity-removed');
   });
 
   app.post('/admin/home-assistant/calendars', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const picked = parse(calendarSourceBody, body);
-    if (!picked.ok) return render({ message: picked.message }, 400);
+    if (!picked.ok) return render(c, { message: picked.message }, 400);
     const entityId = picked.value.entity_id;
     if (!entityId.startsWith('calendar.')) {
-      return render({ message: 'Choose a calendar from the list.' }, 400);
+      return render(c, { message: 'Choose a calendar from the list.' }, 400);
     }
     if (haCalendarEntityIds(deps.db).has(entityId)) {
-      return render({ message: 'That calendar has already been added.' }, 400);
+      return render(c, { message: 'That calendar has already been added.' }, 400);
     }
 
     const live = await look();
@@ -454,20 +512,20 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       entityId,
       name: picked.value.name ?? known?.name ?? entityId,
     });
-    return c.redirect('/admin/calendars', 302);
+    return savedRedirect(c, '/admin/calendars', 'ha-calendar-added');
   });
 
   app.post('/admin/home-assistant/rules', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
     const shaped = parse(ruleBody, body);
-    if (!shaped.ok) return render({ message: shaped.message }, 400);
+    if (!shaped.ok) return render(c, { message: shaped.message }, 400);
 
     const { name, entity_id: entityId, condition, value, action } = shaped.value;
     // Membership rather than shape: which domains this can watch is a fact
     // about the application, not about the request.
     if (!isSupported(entityId)) {
-      return render({ message: 'That entity is not one this can watch.' }, 400);
+      return render(c, { message: 'That entity is not one this can watch.' }, 400);
     }
 
     const minutes = shaped.value.for_minutes;
@@ -513,26 +571,51 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       .run(entityId, entityId);
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'ha-sync'`).run();
 
-    return c.redirect('/admin/home-assistant', 302);
+    return savedRedirect(c, '/admin/home-assistant', 'ha-rule-added');
+  });
+
+  /**
+   * Deleting a rule asks first — the same GET-then-POST shape as every other
+   * destructive control, in place of the one-click "Delete" the card used to
+   * post directly.
+   */
+  app.get('/admin/home-assistant/rules/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const row = readRuleRows(deps.db).find((candidate) => candidate.id === id);
+    if (row === undefined) return c.redirect('/admin/home-assistant', 302);
+    return c.html(
+      page({
+        modules: navModules(deps.db),
+        title: 'Delete rule',
+        nav: 'homeassistant',
+        heading: `Delete “${row.name}”?`,
+        intro: 'The wall stops watching for it. This cannot be undone; you can always add it again.',
+        body:
+          `<form method="post" action="admin/home-assistant/rules/${encodeURIComponent(id)}/delete">` +
+          `<button class="btn-danger" type="submit">Delete it</button></form>` +
+          `<form method="get" action="admin/home-assistant">` +
+          `<button class="secondary" type="submit">Keep it</button></form>`,
+      }),
+    );
   });
 
   app.post('/admin/home-assistant/rules/:id/delete', (c: Context) => {
     deleteRule(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/home-assistant', 302);
+    return savedRedirect(c, '/admin/home-assistant', 'ha-rule-removed');
   });
 
   app.post('/admin/home-assistant/rules/:id/toggle', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const toggled = parse(z.object({ enabled: checkbox() }), body);
     setRuleEnabled(deps.db, c.req.param('id') ?? '', toggled.ok && toggled.value.enabled);
-    return c.redirect('/admin/home-assistant', 302);
+    return savedRedirect(c, '/admin/home-assistant', 'ha-rule-updated');
   });
 
   // -------------------------------------------------------------------------
   // The page
   // -------------------------------------------------------------------------
 
-  function haPage(live: LiveState, error?: PageError, template?: RuleTemplate): string {
+  function haPage(c: Context, live: LiveState, error?: PageError, template?: RuleTemplate): string {
     const settings = readHaSettings(deps.db);
     const connected = live.mode !== null;
 
@@ -541,6 +624,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Home Assistant — Maverick Wall',
       nav: 'homeassistant',
       heading: 'Home Assistant',
+      saved: readSaved(c),
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         boundary() +
@@ -597,8 +681,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="host">${escapeHtml(live.host ?? '')} · ${live.entities.length} readable ` +
         `entities · ${live.calendars.length} calendars` +
         `${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(agoOf(lastSyncAt))}</p>` +
-        `<form method="post" action="admin/home-assistant/disconnect">` +
-        `<button class="secondary" type="submit">Disconnect</button></form>` +
+        `<form method="get" action="admin/home-assistant/disconnect">` +
+        `<button class="btn-danger" type="submit">Disconnect</button></form>` +
         `<p class="hint">Disconnecting deletes the stored token, the readings on the ` +
         `wall, and any rules about your house. Calendars you added stay, and stop ` +
         `updating.</p>` +
@@ -675,9 +759,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
           `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(agoOf(row.fetchedAt))}</p>` +
           `<p class="host">${escapeHtml(row.entityId)}</p>` +
-          `<form method="post" action="admin/home-assistant/entities/remove">` +
+          `<form method="get" action="admin/home-assistant/entities/remove">` +
           `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
-          `<button class="secondary" type="submit">Remove</button></form>` +
+          `<button class="btn-danger" type="submit">Remove</button></form>` +
           `</article>`,
       )
       .join('');
@@ -800,8 +884,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +
           `<button class="secondary" type="submit">${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button>` +
           `</form>` +
-          `<form method="post" action="admin/home-assistant/rules/${encodeURIComponent(row.id)}/delete">` +
-          `<button class="secondary" type="submit">Delete</button></form>` +
+          `<form method="get" action="admin/home-assistant/rules/${encodeURIComponent(row.id)}/delete">` +
+          `<button class="btn-danger" type="submit">Delete</button></form>` +
           `</div></article>`
         );
       })

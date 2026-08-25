@@ -148,8 +148,11 @@ describe('the generate route, through to the wall', () => {
     });
     expect(generated.status).toBe(302);
     const location = generated.headers.get('location') ?? '';
-    const id = /\/admin\/themes\/([0-9a-f]+)$/.exec(location)?.[1];
+    // A confirmation token rides the redirect (RFC 009 Phase 3.1/3.2), so the
+    // theme id is no longer the last thing in the path.
+    const id = /\/admin\/themes\/([0-9a-f]+)(?:\?|$)/.exec(location)?.[1];
     expect(id, `redirect ${location} should open the new theme`).toBeDefined();
+    expect(location).toBe(`/admin/themes/${id}?saved=theme-generated`);
 
     // Select it as the household default through the display-settings route.
     const selected = await h.form('/admin/display', {

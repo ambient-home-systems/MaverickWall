@@ -22,6 +22,7 @@ import {
 import { readHousehold, readPeople } from '../api/queries.js';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
 
 /**
@@ -193,18 +194,18 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
   /** Today in the household's own zone — the default anchor, and the preview's start. */
   const today = (): CivilDate => localToday(readHousehold(deps.db).timezone, now());
 
-  app.get('/admin/chores', (c: Context) => c.html(choresPage()));
+  app.get('/admin/chores', (c: Context) => c.html(choresPage(c)));
 
   app.post('/admin/chores', async (c: Context) => {
     const shaped = parse(choreBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(choresPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(choresPage(c, shaped.message), 400);
     createChore(deps.db, {
       name: shaped.value.name,
       personId: personOrNull(shaped.value.person_id),
       schedule: scheduleFrom(shaped.value),
       dueTime: normaliseTime(shaped.value.due_time),
     });
-    return c.redirect('/admin/chores', 302);
+    return savedRedirect(c, '/admin/chores', 'chore-added');
   });
 
   app.post('/admin/chores/:id', async (c: Context) => {
@@ -213,14 +214,14 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       return c.redirect('/admin/chores', 302);
     }
     const shaped = parse(choreBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(choresPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(choresPage(c, shaped.message), 400);
     updateChore(deps.db, id, {
       name: shaped.value.name,
       personId: personOrNull(shaped.value.person_id),
       schedule: scheduleFrom(shaped.value),
       dueTime: normaliseTime(shaped.value.due_time),
     });
-    return c.redirect('/admin/chores', 302);
+    return savedRedirect(c, '/admin/chores', 'chore-updated');
   });
 
   /**
@@ -233,8 +234,9 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/chores/:id/pause', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    setChorePaused(deps.db, c.req.param('id') ?? '', body['resume'] !== '1');
-    return c.redirect('/admin/chores', 302);
+    const resuming = body['resume'] === '1';
+    setChorePaused(deps.db, c.req.param('id') ?? '', !resuming);
+    return savedRedirect(c, '/admin/chores', resuming ? 'chore-resumed' : 'chore-paused');
   });
 
   /**
@@ -281,13 +283,13 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/chores/:id/delete', (c: Context) => {
     deleteChore(deps.db, c.req.param('id') ?? '');
-    return c.redirect('/admin/chores', 302);
+    return savedRedirect(c, '/admin/chores', 'chore-removed');
   });
 
   app.post('/admin/chores/:id/move', async (c: Context) => {
     const dir = String(((await c.req.parseBody()) as Record<string, unknown>)['dir'] ?? '');
     moveChore(deps.db, c.req.param('id') ?? '', dir === 'up' ? 'up' : 'down');
-    return c.redirect('/admin/chores', 302);
+    return savedRedirect(c, '/admin/chores', 'order-saved');
   });
 
   /**
@@ -508,7 +510,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function choresPage(error?: string): string {
+  function choresPage(c: Context, error?: string): string {
     const chores = readChores(deps.db);
     const from = today();
     const people = readPeople(deps.db);
@@ -518,6 +520,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Chores — Maverick Wall',
       nav: 'chores',
       heading: 'Chores',
+      saved: readSaved(c),
       action: { label: 'Add a chore', href: 'admin/chores#add' },
       intro:
         'What gets done around the house, and when. Chores are set up here and ' +

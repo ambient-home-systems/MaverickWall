@@ -315,7 +315,9 @@ describe('the eInk Displays page', () => {
     // to the built-in fixed layout and returns to the panel's own designer.
     const reset = await h.call(`${B}/admin/displays/${id}/reset-layout`, { method: 'POST' });
     expect(reset.status).toBe(302);
-    expect(reset.headers.get('location')).toBe(`/admin/epaper/${id}/design`);
+    // A confirmation token rides the redirect (RFC 009 Phase 3.1/3.2) — the
+    // path is still the panel's own designer.
+    expect(reset.headers.get('location')).toBe(`/admin/epaper/${id}/design?saved=layout-reset`);
     expect(h.db.prepare(`SELECT COUNT(*) n FROM layout_widgets WHERE screen_id = ?`).get(id)).toEqual({ n: 0 });
     const row = h.db.prepare(`SELECT layout_mode FROM screens WHERE id = ?`).get(id) as {
       layout_mode: string | null;
@@ -474,15 +476,37 @@ describe('the eInk Displays page', () => {
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
 
     const view = await (await h.call(`${B}/admin/epaper/${id}`)).text();
+    // The trigger is a GET link to an interstitial, not an inline script —
+    // there is no `onsubmit="confirm(…)"` anywhere in the server-rendered
+    // admin (RFC 009 Phase 3.3).
     expect(view).toContain(`action="admin/epaper/${id}/regenerate"`);
-    expect(view).toContain('onsubmit=');
-    expect(view).toContain('confirm(');
-    expect(view).toContain('re-flashing');
+    expect(view).toContain('method="get"');
+    expect(view).not.toContain('onsubmit=');
+    expect(view).not.toContain('confirm(');
+
+    const interstitial = await (await h.call(`${B}/admin/epaper/${id}/regenerate`)).text();
+    expect(interstitial).toContain('re-flashing');
+    expect(interstitial).toContain(`action="admin/epaper/${id}/regenerate"`);
+    expect(interstitial).toContain('method="post"');
 
     const regenerated = await (await h.post(`${B}/admin/epaper/${id}/regenerate`, {})).text();
     const newUrl = frameUrl(regenerated)!;
     expect(newUrl).not.toBe(originalUrl);
     expect((await h.call(originalUrl)).status).toBe(404);
     expect((await h.call(newUrl)).status).toBe(200);
+  });
+
+  it('the regenerate interstitial performs no mutation on its own', async () => {
+    const h = await harness();
+    const created = await (
+      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
+    ).text();
+    const originalUrl = frameUrl(created)!;
+    const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
+
+    await h.call(`${B}/admin/epaper/${id}/regenerate`);
+    // The old URL still works — visiting the confirmation page did not rotate
+    // the token by itself.
+    expect((await h.call(originalUrl)).status).toBe(200);
   });
 });
