@@ -582,7 +582,19 @@ restored one; its guard clause caught that), while Firefox does and the spec
 permits it, so the switch is flipped from an init script the moment the element
 parses — where a restoring browser writes it, before the deferred module boots.
 A second test pins the hazard that comes with measuring: a freshly served form
-must read as clean, or every settings page arrives claiming edits nobody made.
+must read as clean, or every settings page arrives claiming edits nobody made —
+and that guard earned itself immediately. An **eleventh** review found the false
+positive it was written for: `<input type="color">` *lowercases* the value it is
+given while `defaultValue` hands back the attribute as written, and the calendar
+rows ship `#4C7FD1`, so every unowned row booted dirty. The test had visited
+only the two pages with no colour input; it visits Calendars now. The same round
+found the merge had made a pre-existing bug reachable — `writeWeatherSettings`
+adds the forecast strip to `display_blocks` on `if (settings.enabled)` where the
+comment beside it says "enabling is the moment they asked for it", so any later
+save with the switch on put the block back on a wall the household had taken it
+off, and toggling alerts now routes through there. It is the transition now, as
+the comment always said. And the disabled-Save colour assertion was sampling
+mid-transition and failing about one run in three; it polls.
 
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for

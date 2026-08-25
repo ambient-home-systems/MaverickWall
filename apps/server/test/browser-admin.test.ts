@@ -367,6 +367,7 @@ describe('a settings form', () => {
        * always-enabled button it replaced. Found by rendering the page and
        * looking at it, and invisible to any assertion about state.
        */
+      // Settled: nothing is transitioning on a page that has just loaded.
       const off = await save.evaluate((node) => getComputedStyle(node).backgroundColor);
 
       await page.selectOption('select[name="timezone"]', 'Europe/Paris');
@@ -375,8 +376,17 @@ describe('a settings form', () => {
       expect(await cancel.isVisible()).toBe(true);
       expect(await flag.isVisible()).toBe(true);
 
-      const on = await save.evaluate((node) => getComputedStyle(node).backgroundColor);
-      expect(off, 'a disabled Save that looks enabled is a button that does nothing').not.toBe(on);
+      /*
+       * Polled, not sampled once: `button` carries a background transition, so
+       * reading the instant the state flips catches an interpolated colour
+       * partway between the two and can equal the one it started from. That
+       * failed about one run in three.
+       */
+      await expect
+        .poll(() => save.evaluate((node) => getComputedStyle(node).backgroundColor), {
+          timeout: 10_000,
+        })
+        .not.toBe(off);
     },
     SLOW,
   );
@@ -603,15 +613,34 @@ describe('a settings form', () => {
   it(
     'reads a freshly served form as clean',
     async () => {
-      const { page, home } = await signedIn();
-      for (const path of ['/admin/system', '/admin/alerts']) {
-        await page.goto(`${home.base}${path}`, { waitUntil: 'load' });
-        await expect
-          .poll(() => page.locator('.saverow [data-dirty-save]').first().isDisabled(), {
-            timeout: 10_000,
-          })
-          .toBe(true);
-        expect(await page.locator('[data-dirty-flag]').first().isVisible(), path).toBe(false);
+      /*
+       * A real feed, so Calendars has a row to draw — and Calendars is in this
+       * list deliberately. Its rows carry an `<input type="color">`, which
+       * *lowercases* the value it is given while `defaultValue` hands back the
+       * attribute as written; the rows ship `#4C7FD1`, so a plain string
+       * compare made every unowned row boot dirty, with Save live and "Not
+       * saved yet" showing on a page nobody had touched.
+       */
+      const home = await fresh({ feed: true });
+      const context = await (await browser()).newContext();
+      try {
+        const page = await context.newPage();
+        await home.signIn(page);
+        for (const path of ['/admin/system', '/admin/alerts', '/admin/calendars']) {
+          await page.goto(`${home.base}${path}`, { waitUntil: 'load' });
+          expect(
+            await page.locator('form[data-dirty]').count(),
+            `${path} has to carry a dirty-aware form for this to mean anything`,
+          ).toBeGreaterThan(0);
+          await expect
+            .poll(() => page.locator('.saverow [data-dirty-save]').first().isDisabled(), {
+              timeout: 10_000,
+            })
+            .toBe(true);
+          expect(await page.locator('[data-dirty-flag]').first().isVisible(), path).toBe(false);
+        }
+      } finally {
+        await context.close();
       }
     },
     SLOW,

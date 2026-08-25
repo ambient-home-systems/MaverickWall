@@ -112,6 +112,15 @@ function looksEdited(form: HTMLFormElement): boolean {
     if (control instanceof HTMLInputElement) {
       if (control.type === 'checkbox' || control.type === 'radio') {
         if (control.checked !== control.defaultChecked) return true;
+      } else if (control.type === 'color') {
+        /*
+         * `<input type="color">` normalises: it lowercases the hex it is given,
+         * while `defaultValue` hands back the attribute as written. The
+         * calendar rows ship `#4C7FD1`, so a plain string compare made *every*
+         * unowned row boot dirty — Save live and "Not saved yet" showing on a
+         * page nobody had touched, and a leave prompt on the way out.
+         */
+        if (control.value.toLowerCase() !== control.defaultValue.toLowerCase()) return true;
       } else if (control.type !== 'file' && control.value !== control.defaultValue) {
         return true;
       }

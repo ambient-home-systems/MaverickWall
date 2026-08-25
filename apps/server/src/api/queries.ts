@@ -1188,8 +1188,15 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
      * turn weather on, wait an hour, and see nothing. Enabling is the moment
      * they asked for it, so that is the moment to add it. The order is still
      * theirs to change afterwards, and turning it off leaves the list alone.
+     *
+     * On the *transition*, and that was written as `settings.enabled` — true of
+     * the intent, false of the code, and the difference is a household who took
+     * the forecast strip off their wall getting it put back by any later save
+     * with the switch still on. It became reachable from a second direction
+     * when the alerts switch joined this form (RFC 009 Phase 3.1): toggling
+     * alerts writes weather settings, so it re-inserted the block too.
      */
-    if (settings.enabled) {
+    if (settings.enabled && !previous.enabled) {
       const row = db
         .prepare(`SELECT display_blocks AS blocks FROM household_settings WHERE id = 'singleton'`)
         .get() as { blocks: string | null } | undefined;

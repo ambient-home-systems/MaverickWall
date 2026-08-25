@@ -227,6 +227,43 @@ describe('the Weather form marker', () => {
     ]);
   });
 
+  /**
+   * Saving does not put a block back on a wall the household took it off.
+   *
+   * `writeWeatherSettings` adds the forecast strip to `display_blocks` when
+   * weather is switched on — "enabling is the moment they asked for it", which
+   * is right, and was written as `if (settings.enabled)`: true of the intent
+   * and false of the code. So any later save with the switch still on re-added
+   * it. Merging the alerts switch into this form made it reachable from a
+   * second direction, since toggling alerts now writes weather settings too.
+   */
+  it('does not re-add the forecast block on a save that did not switch it on', async () => {
+    const h = await harness();
+    const blocks = (): string =>
+      (h.db.prepare(`SELECT display_blocks AS b FROM household_settings WHERE id = 'singleton'`)
+        .get() as { b: string | null }).b ?? '';
+    const save = (fields: Record<string, string>): Promise<Response> =>
+      h.form('/admin/weather', {
+        weather_form: '1', weather_provider: 'nws', weather_units: 'imperial',
+        latitude: '51.5', longitude: '-0.1', ...fields,
+      });
+
+    // Off, then on: the transition, which is what puts the strip on the wall.
+    await save({});
+    expect(blocks()).not.toContain('weather');
+    await save({ weather_enabled: '1' });
+    expect(blocks(), 'switching it on is what asks for the block').toContain('weather');
+
+    // The household takes it off their wall, then comes back and saves again.
+    h.db
+      .prepare(`UPDATE household_settings SET display_blocks = 'now,next,horizon' WHERE id = 'singleton'`)
+      .run();
+    await save({ weather_enabled: '1', alerts_enabled: '1' });
+    expect(blocks(), 'a save that changed the alerts switch is not "switch weather on"').toBe(
+      'now,next,horizon',
+    );
+  });
+
   it('accepts the same body once it carries the marker', async () => {
     const h = await harness();
     const saved = await h.form('/admin/weather', {
