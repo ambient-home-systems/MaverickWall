@@ -105,10 +105,11 @@ export function savedRedirect(c: Context, path: string, key: SavedKey): Response
 /**
  * Read the strip back off the request, for the page that renders it.
  *
- * Absent, unknown or repeated tokens all answer `undefined` rather than
- * guessing — an unrecognised key is somebody's bookmark or somebody's
- * curiosity, and a page that invents a confirmation for it would be the
- * dishonest half of exactly the problem this solves.
+ * An absent or unrecognised token answers `undefined` rather than guessing —
+ * an unknown key is somebody's bookmark or somebody's curiosity, and a page
+ * that invented a confirmation for it would be the dishonest half of exactly
+ * the problem this solves. A repeated `?saved=a&saved=b` takes the first, which
+ * is Hono's reading and is harmless here: only a table literal can ever render.
  */
 export function readSaved(c: Context): Saved | undefined {
   const raw = c.req.query('saved');

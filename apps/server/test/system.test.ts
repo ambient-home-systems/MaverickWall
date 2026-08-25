@@ -495,6 +495,27 @@ describe('the update check setting', () => {
     expect(readUpdateState(h.db).lastCheckedAt).toBeNull();
   });
 
+  it('hands the timezone form back live when it refuses a choice', async () => {
+    /*
+     * Rebuilding the select from the stored row would discard the choice *and*
+     * boot the form clean — Save disabled, Cancel hidden — on the one page
+     * where pressing Save again is the point. Same class as the Weather and
+     * Calendars echoes.
+     */
+    const h = await signedIn(harness());
+    const refused = await h.call('/admin/system/timezone', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'timezone=Mars%2FOlympus_Mons',
+    });
+    expect(refused.status).toBe(400);
+    const html = await refused.text();
+    expect(html).toContain('Choose a timezone from the list');
+    expect(html, 'and the form knows it is holding something unsaved').toContain(
+      'data-dirty="dirty"',
+    );
+  });
+
   it('does not draw a green "checked" strip over a red "check failed"', async () => {
     /*
      * A check that could not reach the host is not a thing that happened. The
@@ -503,17 +524,22 @@ describe('the update check setting', () => {
      * "Checked for a newer version." above it is the confirmation strip
      * contradicting the page it sits on.
      *
-     * The harness has no network, so the check genuinely fails here.
+     * Asserted as a *correspondence* rather than by forcing a failure: whether
+     * this box can reach api.github.com is not this test's business (a CI
+     * runner behind a proxy can, a developer offline cannot), and a test that
+     * assumed either would be green for the wrong reason on the other. The
+     * property is that the token follows the outcome.
      */
     const h = await signedIn(harness());
     setUpdateCheckEnabled(h.db, true);
     const response = await h.call('/admin/system/check-now', { method: 'POST' });
     expect(response.status).toBe(302);
-    expect(readUpdateState(h.db).lastError, 'the check has to have failed').not.toBeNull();
+
+    const failed = readUpdateState(h.db).lastError !== null;
     expect(
       response.headers.get('location'),
-      'a failed check must claim nothing',
-    ).toBe('/admin/system');
+      failed ? 'a failed check must claim nothing' : 'a check that worked should say so',
+    ).toBe(failed ? '/admin/system' : '/admin/system?saved=update-checked');
   });
 
   it('forgets what it found when it is switched off', async () => {

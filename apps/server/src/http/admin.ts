@@ -1084,7 +1084,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       }),
       body['timezone'],
     );
-    if (!shaped.ok) return c.html(systemPage(c, shaped.message), 400);
+    if (!shaped.ok) {
+      const typed = body['timezone'];
+      return c.html(
+        systemPage(c, shaped.message, typeof typed === 'string' ? typed : ''),
+        400,
+      );
+    }
     deps.db
       .prepare(`UPDATE household_settings SET timezone = ?, updated_at = ? WHERE id = 'singleton'`)
       .run(shaped.value, now());
@@ -2804,7 +2810,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
-  function systemPage(c: Context, error?: string): string {
+  function systemPage(
+    c: Context,
+    error?: string,
+    /**
+     * The timezone the household chose, when a save of it came back at 400.
+     *
+     * Rebuilding the select from the stored row would discard their choice and
+     * boot the form clean — Save disabled and Cancel hidden on the one page
+     * where pressing Save again is the point. Same class as the Weather and
+     * Calendars echoes; unreachable from the form itself, since the select can
+     * only send an option it was given, and reachable from a stale page.
+     */
+    echoTimezone?: string,
+  ): string {
     const household = readHousehold(deps.db);
     const at = now();
     const integrity = integrityCheck(deps.db);
@@ -2858,7 +2877,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2 class="add">Timezone</h2>` +
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
         `anchored to this. A screen somewhere else can override it on its own card.</p>` +
-        `<form method="post" action="admin/system/timezone"${dirtyForm()}>` +
+        `<form method="post" action="admin/system/timezone"${dirtyForm(echoTimezone !== undefined)}>` +
         selectField({
           label: 'Household timezone',
           name: 'timezone',
@@ -2866,7 +2885,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             .map(
               (zone) =>
                 `<option value="${escapeHtml(zone)}"` +
-                `${zone === household.timezone ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
+                `${zone === (echoTimezone ?? household.timezone) ? ' selected' : ''}>` +
+                `${escapeHtml(zone)}</option>`,
             )
             .join(''),
         }) +
@@ -4371,10 +4391,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</form>` +
 
       `<div class="row">` +
-      // Not drawn while sync is off: `ics-sync` skips a disabled source, so the
-      // button would report a fetch that never happens. A control that can do
-      // nothing is worse than a control that is not offered.
-      (shown.enabled
+      /*
+       * Not drawn while sync is off: `ics-sync` skips a disabled source, so the
+       * button would report a fetch that never happens. A control that can do
+       * nothing is worse than a control that is not offered.
+       *
+       * The *stored* switch, not `shown.enabled` — this is an action on the
+       * calendar as it is, and the endpoint guards on the stored row too. Read
+       * off the echo, a 400 re-render would draw the button for a calendar the
+       * database still has disabled (press it and nothing happens) or hide it
+       * for one that is enabled.
+       */
+      (source.enabled === 1
         ? `<form method="post" action="admin/calendars/${id}/sync">` +
           `<button class="secondary" type="submit">Sync now</button></form>`
         : '') +
