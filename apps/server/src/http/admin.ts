@@ -1078,8 +1078,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/system/timezone', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
+    /*
+     * Whatever the form offered, which is the offered zones *and* the one this
+     * household already has.
+     *
+     * The select adds a stored zone this build's `Intl` has never heard of
+     * rather than silently swapping it for another (see `systemPage`), so a
+     * handler checking only `offeredTimezones()` would refuse an option the
+     * page had just drawn — "Choose a timezone from the list" about something
+     * that is on the list. Reachable with script blocked, where Save is enabled
+     * by design, and with script on by moving the select away and back.
+     */
+    const stored = readHousehold(deps.db).timezone;
+    const allowed = offeredTimezones();
     const shaped = parse(
-      z.string().refine((value) => offeredTimezones().includes(value), {
+      z.string().refine((value) => value === stored || allowed.includes(value), {
         error: () => 'Choose a timezone from the list.',
       }),
       body['timezone'],

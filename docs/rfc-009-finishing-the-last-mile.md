@@ -616,7 +616,11 @@ re-anchors every all-day event and the whole shift rotation to `Africa/Abidjan`.
 The household's own zone is **added** to the list rather than replaced, because
 it is a fact about them and not a suggestion — which is where this differs from
 `setup.ts`'s `detectedTimezoneOption`, right to fall back to UTC because nothing
-is stored yet and it is guessing.
+is stored yet and it is guessing. A **fourteenth** closed the other half of that
+one: the handler still validated against `offeredTimezones()` alone, so the page
+drew an option the endpoint refused — "Choose a timezone from the list" about
+something that is on the list. It accepts the stored zone too, which is the same
+rule read from the other end.
 
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for

@@ -515,6 +515,17 @@ describe('the update check setting', () => {
     expect(selected, 'exactly one, and it is the household’s own zone').toEqual([
       'Mars/Olympus_Mons',
     ]);
+
+    // And the handler accepts what the page offered. A list drawing an option
+    // the endpoint refuses would answer "Choose a timezone from the list"
+    // about something that is on the list.
+    const kept = await h.call('/admin/system/timezone', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'timezone=Mars%2FOlympus_Mons',
+    });
+    expect(kept.status).toBe(302);
+    expect(kept.headers.get('location')).toBe('/admin/system?saved=timezone');
   });
 
   it('keeps the stored zone selected when it refuses a choice', async () => {
