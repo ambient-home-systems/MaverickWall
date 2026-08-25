@@ -46,6 +46,8 @@ interface Behaviour {
   etag?: string;
   status?: number;
   body?: unknown;
+  /** Sent verbatim, for the reply that is not JSON at all. */
+  raw?: string;
   serverTime?: number;
 }
 
@@ -60,7 +62,11 @@ async function serverWith(behaviour: () => Behaviour): Promise<string> {
     };
     if (next.status !== undefined && next.status !== 200) {
       response.writeHead(next.status, headers);
-      response.end(next.status === 304 ? undefined : JSON.stringify({ error: 'nope' }));
+      if (next.status === 304) {
+        response.end();
+        return;
+      }
+      response.end(next.raw ?? JSON.stringify(next.body ?? { error: 'nope' }));
       return;
     }
     if (request.headers['if-none-match'] === etag) {
@@ -88,6 +94,39 @@ describe('polling', () => {
 
     const second = await client.poll();
     expect(second.status).toBe('unchanged');
+  });
+
+  /*
+   * A refusal and an unreachable server both arrive as `failed`, and only one
+   * of them can explain itself.
+   *
+   * `/d/manifest` answers 503 with a sentence written for somebody standing in
+   * a kitchen when it cannot build a wall, and every non-2xx body used to be
+   * thrown away unread — so a screen with nothing cached could only say it was
+   * not reaching a server that was up and answering it. This runs against a
+   * real server returning the route's real body.
+   */
+  it("keeps the sentence a refusal came with, and none of a body that has none", async () => {
+    const said = 'This wall could not be built just now. The screen keeps showing its last one.';
+    let behaviour: Behaviour = { status: 503, body: { error: 'unavailable', message: said } };
+    const url = await serverWith(() => behaviour);
+    const client = createManifestClient((input, init) => fetch(input, init), url);
+
+    const refused = await client.poll();
+    expect(refused.status).toBe('failed');
+    expect(refused).toHaveProperty('serverSaid', said);
+    // And the diagnostic stays diagnostic — it is never the thing drawn.
+    expect(refused).toHaveProperty('reason', 'server answered 503');
+
+    // A body with nothing to say leaves the display to its own wording rather
+    // than putting `undefined` or an error code on a wall.
+    behaviour = { status: 500, body: { error: 'oops' } };
+    expect(await client.poll()).not.toHaveProperty('serverSaid');
+
+    // Including a reply that is not JSON at all, which is what a proxy in
+    // front of a stopped container answers with.
+    behaviour = { status: 502, raw: '<html>a proxy said no</html>' };
+    expect(await client.poll()).not.toHaveProperty('serverSaid');
   });
 
   it('carries server time on a 304 as well as a 200', async () => {

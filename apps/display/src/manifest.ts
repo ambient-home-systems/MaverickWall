@@ -324,6 +324,36 @@ export function shouldAdoptStored(heldIsReal: boolean): boolean {
   return !heldIsReal;
 }
 
+/**
+ * The one sentence worth taking off a refusal.
+ *
+ * The server's own error bodies carry a `message` written for somebody standing
+ * in a kitchen — "This wall could not be built just now", and what the screen
+ * will do about it — and until now every non-2xx body was thrown away unread,
+ * so a wall that had never cached a manifest could only say it was not reaching
+ * a server that was up and answering.
+ *
+ * Everything here is defensive rather than trusting: a reply that is not JSON,
+ * or has no `message`, or is something other than a string, yields nothing and
+ * the caller falls back to its own wording. It is capped because this is drawn,
+ * and control characters go because a wall that has one line to say something
+ * cannot afford it to be unreadable. Nothing is ever inserted as markup —
+ * `render.ts` sets `textContent` — so this is about legibility, not injection.
+ */
+async function sentenceFrom(response: { json(): Promise<unknown> }): Promise<string | undefined> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return undefined;
+  }
+  if (typeof body !== 'object' || body === null) return undefined;
+  const message = (body as { message?: unknown }).message;
+  if (typeof message !== 'string') return undefined;
+  const clean = message.replace(/\s+/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return clean === '' ? undefined : clean.slice(0, 200);
+}
+
 export type FetchOutcome =
   /** New document. */
   | { readonly status: 'fresh'; readonly manifest: Manifest; readonly serverTime: number }
@@ -332,7 +362,21 @@ export type FetchOutcome =
   /** This screen is not paired, or its token was revoked. */
   | { readonly status: 'unpaired' }
   /** Anything else: offline, a 500, a body that is not a manifest. */
-  | { readonly status: 'failed'; readonly reason: string };
+  | {
+      readonly status: 'failed';
+      readonly reason: string;
+      /**
+       * What the server said, when it said anything.
+       *
+       * A refusal is not the same event as a wall that cannot reach anything,
+       * and the display has no way to tell them apart from a status code: both
+       * arrive as `failed`. So a body carrying a household-readable `message`
+       * is kept, and a screen with nothing else to draw shows that sentence
+       * instead of guessing at the network. `reason` stays what it was —
+       * diagnostic, never drawn.
+       */
+      readonly serverSaid?: string;
+    };
 
 export interface ManifestClient {
   poll(): Promise<FetchOutcome>;
@@ -388,7 +432,9 @@ export function createManifestClient(
       if (response.status === 304) return { status: 'unchanged', serverTime };
       if (response.status === 401) return { status: 'unpaired' };
       if (response.status < 200 || response.status >= 300) {
-        return { status: 'failed', reason: `server answered ${response.status}` };
+        const said = await sentenceFrom(response);
+        const failed = { status: 'failed', reason: `server answered ${response.status}` } as const;
+        return said === undefined ? failed : { ...failed, serverSaid: said };
       }
 
       let body: unknown;

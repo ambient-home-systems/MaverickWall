@@ -29,6 +29,9 @@ where it carries the message explaining why — and a screen no longer files tha
 one away as its saved calendar, so a reload still has the real one to fall back
 on.
 
+When a screen has nothing saved to fall back on, it now says what the server
+told it rather than guessing that the network is down.
+
 Two smaller things on the same path: a screen is no longer told it needs pairing
 again when the server is too damaged to check, which used to put a code-entry
 box on every wall in the house; and a calendar sync running at the same moment

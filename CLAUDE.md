@@ -1681,7 +1681,22 @@ it.
 keep-held branch set `offline`, which draws "Not reaching the server" directly
 above a notice from that very server. It does not any more: `lastConfirmedAt` is
 what stays frozen, so the banner becomes "Last updated N ago" on its own once
-the calendar is old enough — true, and over a notice that says why.
+the calendar is old enough — true, and over a notice that says why. **Not
+setting a flag is not the same as clearing it**, which took a second pass: a
+`failed` poll sets `offline`, and a keep-held branch that merely declined to set
+it left the wall saying "not reaching the server" for ever once the server came
+back answering only its stand-in. Every branch that knows owns the flag.
+
+**A refusal and an unreachable server both arrive as `failed`, and only one of
+them can explain itself.** Every non-2xx body was thrown away unread, so the 503
+this route now answers with reached the wall as a bare status and a screen with
+nothing cached could only say it was not reaching a server that was up. The
+body's `message` is written for somebody standing in a kitchen, so a `failed`
+outcome carries it as `serverSaid` and the empty-wall message draws it in place
+of the generic line. `reason` stays diagnostic and is still never drawn. Read
+defensively — not JSON, no `message`, not a string, all yield nothing and the
+display falls back to its own wording — and capped and stripped, because a wall
+with one line to say something cannot afford it to be unreadable.
 
 Three more things came out of it and two are about the tests. **A safety net that can
 throw is not one**: `degradedManifest` calls `now()`, so a systemic enough

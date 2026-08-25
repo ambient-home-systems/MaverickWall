@@ -237,6 +237,7 @@ function start(): void {
            */
           manifest = keepHeld(manifest, outcome.manifest);
           lastContactAt = Date.now();
+          offline = false;
           break;
         }
         manifest = outcome.manifest;
@@ -299,10 +300,20 @@ function start(): void {
            * would sit saying the server is unreachable while the server was up
            * and waiting to be paired.
            */
+          /*
+           * A refusal and an unreachable server both arrive as `failed`, and
+           * only one of them can explain itself. When the server answered with
+           * a sentence — "This wall could not be built just now", and what the
+           * screen will do about it — that is the one to draw: it is written
+           * for somebody standing in a kitchen and it names a fault they can
+           * act on, where the line below would send them looking at the
+           * network for a server that is up.
+           */
           renderMessage(
             root,
             'Maverick Wall',
-            'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.',
+            outcome.serverSaid ??
+              'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.',
           );
         }
         break;
@@ -546,7 +557,15 @@ function start(): void {
     // the 401 can win this race, and drawing a calendar over the code-entry
     // form would take the form away for good.
     if (stored !== undefined && !pairingShown && shouldAdoptStored(heldIsReal)) {
-      manifest = stored.manifest;
+      /*
+       * This no longer only runs before the first poll — that is the whole
+       * point of `shouldAdoptStored`, which lets the stored calendar in over a
+       * stand-in that won the race. So anything the stand-in was carrying has
+       * to come with it: its notice is the only text naming the fault, and
+       * dropping it here would blank the reason until the next poll a minute
+       * later put it back.
+       */
+      manifest = manifest === undefined ? stored.manifest : keepHeld(stored.manifest, manifest);
       /*
        * Asked, not assumed. This bundle never saves the stand-in — but the
        * store outlives a release, and one written before this fix can hold one;
@@ -555,7 +574,14 @@ function start(): void {
        */
       heldIsReal = !isStandInManifest(stored.manifest);
       lastConfirmedAt = stored.confirmedAt;
-      offline = true;
+      /*
+       * And only when nothing has answered yet. `lastContactAt` moves off
+       * `startedAt` the moment a poll succeeds, so this says "no poll has ever
+       * got through" — without it, a stored copy arriving late would relabel a
+       * server that had just replied as unreachable, and nothing would clear
+       * the flag again.
+       */
+      if (lastContactAt === startedAt) offline = true;
       safely(draw);
     }
   });

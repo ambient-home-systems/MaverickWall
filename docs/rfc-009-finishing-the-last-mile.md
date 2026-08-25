@@ -294,8 +294,11 @@ Drawing it is the point of this section; remembering it never was. Nor does it
 *replace* a calendar already on screen — a wall that has one keeps it under the
 offline banner, and only a wall booted during the outage draws the empty
 document, which is the freshly-loaded screen this section is about. That screen
-is also why a failed poll with no manifest now renders a message rather than
-leaving the boot text up: `draw()` returns at its first line with no manifest,
+is also why a `failed` outcome now carries the server's own sentence
+(`serverSaid`, read defensively off the error body): a 503 and an unreachable
+server are the same event to the display otherwise, and only one of them can
+explain itself. And it is why a failed poll with no manifest renders a message
+at all rather than leaving the boot text up: `draw()` returns at its first line with no manifest,
 so "Waiting for the first update…" was all a household saw for as long as the
 fault lasted. What it keeps is the household's days, people, sources
 *and interrupts*; what it takes from the stand-in is only the `notices`, the one
