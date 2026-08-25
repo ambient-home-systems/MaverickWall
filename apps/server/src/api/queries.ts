@@ -1158,6 +1158,19 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
     if (moved) {
       db.prepare(`DELETE FROM alert_zones WHERE provider = 'nws'`).run();
       db.prepare('DELETE FROM active_alerts').run();
+      /*
+       * And asked for again at once, not at the next scheduled poll.
+       *
+       * Clearing the zones un-arms every weather rule until one comes back, so
+       * the gap between the two is a gap in the one feature with a life-safety
+       * disclaimer on it — and under the job's backoff that gap can be half an
+       * hour. A household correcting a coordinate, or pressing "Use my Home
+       * Assistant home location", may well be doing it *because* of a warning
+       * they can see. The alerts screen brings the poll forward for exactly
+       * this reason when the switch is turned on; a move deserves it more.
+       */
+      db.prepare(`UPDATE job_state SET next_run_at = 0, consecutive_failures = 0
+                   WHERE kind = 'alerts-sync'`).run();
     }
 
     /*

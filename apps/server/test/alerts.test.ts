@@ -553,6 +553,17 @@ describe('the polling job, against a real server', () => {
      */
     const db = database();
     const nws = await fakeNws();
+    /*
+     * The scheduler's own row, as boot registers it — with a poll comfortably in
+     * the future, which is the state this is about. Without the row the UPDATE
+     * below matches nothing and the assertion passes on an absence.
+     */
+    const later = Date.now() + 1_800_000;
+    db.prepare(
+      `INSERT INTO job_state (key, kind, next_run_at, consecutive_failures, created_at, updated_at)
+       VALUES ('alerts-sync', 'alerts-sync', ?, 3, ?, ?)`,
+    ).run(later, Date.now(), Date.now());
+
     await job(db, nws)(record);
     expect(readZones(db).length).toBeGreaterThan(0);
     expect(knownAlerts(db, 'MDC027').length).toBeGreaterThan(0);
@@ -564,6 +575,16 @@ describe('the polling job, against a real server', () => {
     expect(knownAlerts(db, 'MDC027')).toEqual([]);
     // And the ladder is not armed against nowhere while the next poll runs.
     expect(readRules(db).filter((rule) => rule.source === 'nws' && rule.enabled)).toEqual([]);
+    /*
+     * Which is why the poll is brought forward rather than left to its
+     * schedule: the un-armed gap is a gap in the one feature with a life-safety
+     * disclaimer on it, and under the job's backoff it can be half an hour —
+     * on somebody who may well be correcting the coordinate *because* of a
+     * warning they can see.
+     */
+    expect(
+      db.prepare(`SELECT next_run_at AS at FROM job_state WHERE kind = 'alerts-sync'`).get(),
+    ).toEqual({ at: 0 });
 
     // Saving the same coordinates again is not a move, so a household who
     // presses Save on an unchanged form does not lose the zones they have.

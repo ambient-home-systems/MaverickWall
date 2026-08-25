@@ -834,8 +834,8 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
        * screen and too much to ask on the last step of a first run.
        */
       intro:
-        'Two numbers put a forecast on the wall. A name is who the wall is for ' +
-        '— their colour marks their events. Both can be skipped and added later.',
+        'Two numbers put a forecast on the wall. A name is somebody for the wall ' +
+        'to know about. Both can be skipped and added later.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="setup/place">` +
@@ -865,8 +865,9 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
           placeholder: 'Sam',
           value: values.person ?? '',
           hint:
-            'Add anyone else on the People screen. A shift rotation is set up ' +
-            'separately, on Shifts — a name on its own does not start one.',
+            'Their colour marks their events once a calendar is assigned to ' +
+            'them on Calendars. A shift rotation is separate again, on Shifts ' +
+            '— a name on its own starts neither.',
         }) +
         `<button type="submit">Save and finish</button></form>` +
         `<form method="get" action="setup/done">` +

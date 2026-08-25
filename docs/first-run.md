@@ -36,7 +36,9 @@ expires — restart the container if you missed it.
 4. **Your location, and who lives here.** Also optional. A latitude and
    longitude for the forecast strip — and, in the United States, for working
    out which National Weather Service zones to watch — and the name of one
-   person, whose colour marks their events.
+   person. A person is somebody for the wall to know about: their colour marks
+   their events once a calendar is assigned to them, and a rota once one
+   exists.
 
 Setup is complete after the timezone.
 
@@ -46,10 +48,11 @@ the widgets it has nothing to put in, rather than drawing a box that says
 strip appears where it always was; **Walls → Layout** marks any widget the wall
 is leaving out and names the screen that fixes it.
 
-The rota badge is the one that needs more than a name. It appears once a
-rotation exists on **Shifts**, which adding a person does not create — so the
-wizard's person is who the wall is *for*, and the rota is a separate job
-whenever you want one.
+A name on its own changes nothing on the glass, and that is worth knowing
+before you look for it. A person's colour marks events on a calendar assigned
+to them, which is done on **Calendars**; the rota badge appears once a rotation
+exists on **Shifts**. Adding a person creates neither — it creates the person
+both of those then attach to.
 
 **No weather alert rule is armed until a zone is being watched.** The zones are
 worked out from the location, so there are none without one — and none at all
