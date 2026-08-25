@@ -87,6 +87,46 @@ let navigating = false;
 /** Every wired form, for the one guard below to ask. */
 const wired: { isDirty(): boolean }[] = [];
 
+/**
+ * Does this form already hold something different from what the server sent?
+ *
+ * The dirty flag cannot come from the server alone, because a *browser* can put
+ * edits back on screen without telling anyone: reload a page with an unsaved
+ * change and Chromium restores the controls, so the timezone select comes back
+ * reading "Europe/Paris" over a database that still says London — with Save
+ * disabled, no Cancel, no "Not saved yet", and the leave guard down. That is
+ * precisely the "the fields show the new value" ambiguity this phase exists to
+ * remove, reintroduced by the fix for it.
+ *
+ * So it is measured rather than assumed: every control against the value the
+ * markup declared. `defaultValue` / `defaultChecked` / `defaultSelected` are the
+ * DOM's words for "what the attribute said", which is exactly the server's copy
+ * — a comparison against the live value with nothing else to consult.
+ *
+ * File inputs are skipped: a server cannot set one, so there is no default to
+ * differ from.
+ */
+function looksEdited(form: HTMLFormElement): boolean {
+  const controls = Array.prototype.slice.call(form.elements) as Element[];
+  for (const control of controls) {
+    if (control instanceof HTMLInputElement) {
+      if (control.type === 'checkbox' || control.type === 'radio') {
+        if (control.checked !== control.defaultChecked) return true;
+      } else if (control.type !== 'file' && control.value !== control.defaultValue) {
+        return true;
+      }
+    } else if (control instanceof HTMLTextAreaElement) {
+      if (control.value !== control.defaultValue) return true;
+    } else if (control instanceof HTMLSelectElement) {
+      const options = Array.prototype.slice.call(control.options) as HTMLOptionElement[];
+      for (const option of options) {
+        if (option.selected !== option.defaultSelected) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function wire(form: HTMLFormElement): void {
   const parts = partsOf(form);
   // Nothing to enhance: a form marked dirty-aware with no Save is a markup
@@ -100,8 +140,10 @@ function wire(form: HTMLFormElement): void {
    * the page where all three matter most — and would leave an error they cannot
    * fix by editing a field ("Home Assistant is not connected") staring at a
    * Save they cannot press.
+   *
+   * The second source is the browser itself — see `looksEdited`.
    */
-  let dirty = form.dataset['dirty'] === 'dirty';
+  let dirty = form.dataset['dirty'] === 'dirty' || looksEdited(form);
 
   const refresh = (): void => {
     for (const save of parts.saves) save.disabled = !dirty;

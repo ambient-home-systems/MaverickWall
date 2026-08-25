@@ -1846,6 +1846,18 @@ whatever sorts first, `Africa/Abidjan`, with a live Save over it. That is
 and it is the limit on "always echo the body back": there has to be something
 the control can show.
 
+**And the dirty flag cannot come from the server alone**, which is this phase's
+own thesis turned on its fix: a browser may put edits back on screen without
+telling anyone — form-state restoration on a reload, and on a back/forward that
+misses the back-forward cache — so the control reads "on" over a database that
+says off, with Save disabled and the guard down. `looksEdited` measures every
+control against `defaultValue`/`defaultChecked`/`defaultSelected`, the DOM's
+words for what the markup declared. Its test *simulates* the restore rather than
+claiming a browser it cannot demonstrate: Chromium under Playwright restores
+nothing on a reload (measured — a first version mistook the server's own value
+for a restored one), so the switch is flipped from an init script the moment the
+element parses, which is where a restoring browser writes it.
+
 **And a fourth review found three places where the strip simply lied**, which
 is the failure this phase is about rather than a detail of it: "Syncing now"
 for a calendar whose sync switch is off, where `ics-sync` skips it outright; a

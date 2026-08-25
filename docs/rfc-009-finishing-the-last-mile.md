@@ -566,6 +566,24 @@ also stops prompting, which it did before the listener existed. A
 `data-download` marker was built and then deleted. `browser-admin.test.ts` keeps
 the measurement, because the property is real and nothing else pinned it.
 
+A tenth found the last one, and it is the phase's own thesis turned on the fix:
+**the dirty flag cannot come from the server alone.** A browser may put edits
+back on screen without telling anyone — form-state restoration on a reload, and
+on a back/forward that does not come out of the back-forward cache, where the
+script's own state would have survived with it. The control then reads "on"
+over a database that says off, with Save disabled and the guard down, which is
+the "fields show the new value" ambiguity this phase set out to remove.
+`looksEdited` measures every control against `defaultValue` / `defaultChecked` /
+`defaultSelected` — the DOM's words for what the markup declared, which is the
+server's copy — rather than taking the attribute's word for it. Restoration is
+*simulated* in the test, and honestly: Chromium under Playwright restores
+nothing on a reload (a first version mistook the server's own value for a
+restored one; its guard clause caught that), while Firefox does and the spec
+permits it, so the switch is flipped from an init script the moment the element
+parses — where a restoring browser writes it, before the deferred module boots.
+A second test pins the hazard that comes with measuring: a freshly served form
+must read as clean, or every settings page arrives claiming edits nobody made.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.

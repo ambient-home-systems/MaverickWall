@@ -521,6 +521,103 @@ describe('a settings form', () => {
   );
 
   /**
+   * The dirty flag cannot come from the server alone.
+   *
+   * A browser may put edits back on screen without telling anyone: form-state
+   * restoration on a reload, and on a back/forward that does not come out of
+   * the back-forward cache (where the script's own state would have survived
+   * with it). The control then reads "on" over a database that says off, with
+   * Save disabled, no Cancel, no "Not saved yet" and the leave guard down —
+   * which is the exact "the fields show the new value" ambiguity this phase
+   * exists to remove, reintroduced by the fix for it. `looksEdited` measures
+   * every control against what the markup declared instead.
+   *
+   * Restoration is *simulated* here, and honestly: Chromium under Playwright
+   * restores nothing on a reload (measured — a first version of this test
+   * mistook the server's own value for a restored one, and its guard clause is
+   * what caught that), while Firefox does and the spec permits it. So the
+   * switch is flipped from an init script the moment the element parses, which
+   * is where a restoring browser writes it: before the deferred module boots,
+   * with the markup still saying otherwise. That is the state `looksEdited`
+   * has to notice, whoever produced it.
+   */
+  it(
+    'notices an edit the browser put back before the script booted',
+    async () => {
+      const home = await fresh();
+      home.db
+        .prepare(`UPDATE household_settings SET alerts_enabled = 0 WHERE id = 'singleton'`)
+        .run();
+      const context = await (await browser()).newContext();
+      try {
+        const page = await context.newPage();
+        await home.signIn(page);
+        /*
+         * At document-start, `document.documentElement` may not exist yet, so
+         * the observer is attached to the document itself — which is always
+         * there — and watches the tree as the parser builds it.
+         */
+        await page.addInitScript(() => {
+          const watch = new MutationObserver(() => {
+            const box = document.querySelector<HTMLInputElement>('input[name="alerts_enabled"]');
+            if (box === null) return;
+            box.checked = true;
+            watch.disconnect();
+          });
+          watch.observe(document, { childList: true, subtree: true });
+        });
+        await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+
+        expect(
+          await page.isChecked('input[name="alerts_enabled"]'),
+          'the simulation has to have taken, or this proves nothing',
+        ).toBe(true);
+        expect(
+          await page.locator('input[name="alerts_enabled"]').evaluate((box) =>
+            (box as HTMLInputElement).defaultChecked,
+          ),
+          'while the markup — the server\'s copy — still says off',
+        ).toBe(false);
+
+        const form = 'form[action="admin/weather"]';
+        await expect
+          .poll(() => page.locator(`${form} .saverow [data-dirty-save]`).isEnabled(), { timeout: 10_000 })
+          .toBe(true);
+        expect(await page.locator(`${form} [data-dirty-cancel]`).isVisible()).toBe(true);
+        expect(await page.locator(`${form} [data-dirty-flag]`).isVisible()).toBe(true);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * And a plain load is not "edited".
+   *
+   * The hazard of measuring the DOM against the markup is the false positive:
+   * a control the server rendered normally must not read as an unsaved change,
+   * or every settings page arrives claiming edits nobody made and the flag
+   * means nothing.
+   */
+  it(
+    'reads a freshly served form as clean',
+    async () => {
+      const { page, home } = await signedIn();
+      for (const path of ['/admin/system', '/admin/alerts']) {
+        await page.goto(`${home.base}${path}`, { waitUntil: 'load' });
+        await expect
+          .poll(() => page.locator('.saverow [data-dirty-save]').first().isDisabled(), {
+            timeout: 10_000,
+          })
+          .toBe(true);
+        expect(await page.locator('[data-dirty-flag]').first().isVisible(), path).toBe(false);
+      }
+    },
+    SLOW,
+  );
+
+  /**
    * A download must not disarm the guard for good — and it does not, for a
    * reason worth writing down rather than defending against.
    *
