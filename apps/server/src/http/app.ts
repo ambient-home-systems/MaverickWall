@@ -979,22 +979,26 @@ export function createApp(deps: AppDeps): Hono {
    * exactly when it has nothing else to put up. A message shown solely where
    * it is false is worse than a plainer one.
    */
-  const unavailable = (c: Context): Response => {
-    /*
-     * The header is how a wall knows this refusal came from *its* server.
-     * `/d/manifest` already sets it on every manifest, so a display can tell a
-     * reply of ours from a captive portal's cheerful 200 or a proxy's own error
-     * page — and that difference decides whether it draws "not reaching the
-     * server" and whether it arms a watchdog against a server it is in fact
-     * talking to. It carries no information a caller does not already have.
-     *
-     * The clock is read through a guard because this is the last-resort path:
-     * a `now` that throws is one of the ways a request arrives here at all, and
-     * a safety net that can throw is not one. The display only checks that the
-     * header is *there* on a refusal — it reads a time from the 200 and the 304
-     * — so a zero costs nothing, and it is below the `> 0` bar the client
-     * already applies.
-     */
+  /**
+   * Mark this reply as coming from *this wall's server*.
+   *
+   * `x-server-time` is what a display checks to tell an answer of ours from a
+   * captive portal's cheerful 200, a hotel proxy's own error page, or a 401
+   * from something that has never heard of this household — and that
+   * difference decides whether the wall says "not reaching the server",
+   * whether it advances its contact clock, whether it arms a two-hour watchdog
+   * against a server it is talking to every minute, whose sentence it draws,
+   * and, on a 401, whether it throws away its calendar and asks to be paired
+   * again. So **every** answer `/d/manifest` gives carries it, refusals
+   * included; a path that forgets is a path the wall reads as unreachable.
+   *
+   * The clock is read through a guard because some of those answers are the
+   * last-resort ones: a `now` that throws is one of the ways a request reaches
+   * them, and a safety net that can throw is not one. The display checks only
+   * that the header is *there* on anything but a 200 or a 304, so a zero costs
+   * nothing and stays below the `> 0` bar the client applies to the value.
+   */
+  const stamped = (c: Context): void => {
     let stamp = 0;
     try {
       stamp = now();
@@ -1002,6 +1006,15 @@ export function createApp(deps: AppDeps): Hono {
       // Deliberately swallowed; see above.
     }
     c.header('x-server-time', String(stamp));
+  };
+
+  const unauthorized = (c: Context): Response => {
+    stamped(c);
+    return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+  };
+
+  const unavailable = (c: Context): Response => {
+    stamped(c);
     return c.json(
       {
         error: 'unavailable',
@@ -1023,7 +1036,11 @@ export function createApp(deps: AppDeps): Hono {
    */
   const degraded = (c: Context, extra: ManifestNotice): Response => {
     try {
-      return c.json(degradedManifest(extra), 200);
+      const body = degradedManifest(extra);
+      // Built before the header is set, so a fallback that throws falls to
+      // `unavailable` with nothing half-written on the response.
+      stamped(c);
+      return c.json(body, 200);
     } catch (error) {
       console.error(
         '[manifest] degraded manifest failed too:',
@@ -1040,7 +1057,7 @@ export function createApp(deps: AppDeps): Hono {
     // actually perform.
     const presented = presentedDisplayToken(c.req.header('authorization'), c.req.header('cookie'));
     if (presented === undefined || presented === '') {
-      return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+      return unauthorized(c);
     }
 
     const schemaNotice: ManifestNotice = {
@@ -1096,7 +1113,7 @@ export function createApp(deps: AppDeps): Hono {
        */
       if (undecidable) return unavailable(c);
       if (!recognised) {
-        return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+        return unauthorized(c);
       }
       /*
        * Narrowed exactly as the build's catch below is, and for the same
@@ -1111,7 +1128,7 @@ export function createApp(deps: AppDeps): Hono {
       return degraded(c, schemaNotice);
     }
     if (!screen) {
-      return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+      return unauthorized(c);
     }
 
     let manifest: Manifest;

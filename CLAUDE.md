@@ -1714,6 +1714,26 @@ withholds it, and the server's asserts it is sent, because the package that
 reads it is not the package that writes it and dropping it failed nothing at
 all before those went in.
 
+**And the mark has to decide the things a household actually reads, not just
+the flags.** Three followed from it. A `message` off a body that is not ours was
+being drawn as the server's own explanation — a stranger's sentence with this
+product's authority behind it. The fallback wording said "not reaching this
+wall's server" on the line after `offline = false`, which is the branch's own
+false sentence one screen along. And the **401** was the one answer not gated at
+all, which is the most destructive one the display acts on: it drops the
+manifest, puts the code-entry form up and latches it, so a hotel portal asking
+for its own credentials could take a household's calendar off the wall and ask
+them to pair it again. So `unauthorized` and `degraded` stamp the header too —
+every answer `/d/manifest` gives carries it, and a path that forgets is a path
+the wall reads as a stranger.
+
+**And one string written twice in two packages that cannot import each other
+now has a parity test.** `schema-degraded` is the server's notice code and the
+display's `STAND_IN_NOTICE`; renaming it on one side would silently reinstate
+both stand-in faults with every test still green, each package being internally
+consistent. Same seam and same answer as `epaper-ladder-parity.test.ts`: read
+both files, compare what each one actually says.
+
 **And only one of them can explain itself.** Every non-2xx body was thrown away unread, so the 503
 this route now answers with reached the wall as a bare status and a screen with
 nothing cached could only say it was not reaching a server that was up. The

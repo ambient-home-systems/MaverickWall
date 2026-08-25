@@ -157,9 +157,46 @@ describe('polling', () => {
     expect(proxy.status).toBe('failed');
     expect(proxy).toHaveProperty('answered', false);
 
+    // And a proxy that answers in JSON does not get to speak for the server:
+    // its sentence would be drawn on a wall with this product's authority.
+    behaviour = {
+      status: 503,
+      noServerTime: true,
+      body: { message: 'Upstream unavailable — contact your network administrator.' },
+    };
+    const talkative = await client.poll();
+    expect(talkative).toHaveProperty('answered', false);
+    expect(talkative, "a stranger's sentence is not the server's").not.toHaveProperty('serverSaid');
+
     // And the same 502 *with* the mark is this wall's server refusing.
     behaviour = { status: 502, body: { error: 'unavailable' } };
     expect(await client.poll()).toHaveProperty('answered', true);
+  });
+
+  /*
+   * And the mark decides the two things the household actually reads.
+   *
+   * A 401 is the most destructive answer the display acts on — it drops the
+   * manifest, puts the code-entry form up and latches it — so a hotel portal
+   * asking for its own credentials must not be able to take a calendar off a
+   * wall and ask the household to pair it again. And a `message` in a body that
+   * is not ours must never be drawn as this server's explanation: that is a
+   * stranger's sentence with the product's authority behind it.
+   */
+  it('will not let something else unpair a screen or speak for the server', async () => {
+    const said = 'Sign in to HotelWiFi to continue.';
+    let behaviour: Behaviour = { status: 401, noServerTime: true, body: { message: said } };
+    const url = await serverWith(() => behaviour);
+    const client = createManifestClient((input, init) => fetch(input, init), url);
+
+    const stranger = await client.poll();
+    expect(stranger.status, 'unpairing is ours to say').toBe('failed');
+    expect(stranger).toHaveProperty('answered', false);
+    expect(stranger, 'and so is what the wall reads').not.toHaveProperty('serverSaid');
+
+    // The identical 401 carrying the mark is this server revoking a token.
+    behaviour = { status: 401, body: { error: 'unauthorized' } };
+    expect((await client.poll()).status).toBe('unpaired');
   });
 
   it('knows an unreachable server from one that refused', async () => {

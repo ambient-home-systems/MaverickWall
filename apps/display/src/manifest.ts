@@ -454,9 +454,24 @@ export function createManifestClient(
       const answered = stamp !== null;
 
       if (response.status === 304) return { status: 'unchanged', serverTime };
-      if (response.status === 401) return { status: 'unpaired' };
+      /*
+       * And only *our* 401 unpairs a screen. It is the most destructive answer
+       * the display acts on — the manifest is dropped, the code-entry form
+       * goes up and `pairingShown` latches — so a hotel captive portal or a
+       * proxy asking for its own credentials must not be able to take a
+       * household's calendar off the wall and ask them to pair it again.
+       * Anything else 401 is simply not reaching this wall's server.
+       */
+      if (response.status === 401) {
+        return answered
+          ? { status: 'unpaired' }
+          : { status: 'failed', answered: false, reason: 'a 401 from something else' };
+      }
       if (response.status < 200 || response.status >= 300) {
-        const said = await sentenceFrom(response);
+        // Only ours has anything to say. A proxy's JSON `message` drawn on a
+        // wall as "the server said" would be a stranger's sentence with this
+        // product's authority behind it.
+        const said = answered ? await sentenceFrom(response) : undefined;
         const failed = {
           status: 'failed',
           answered,

@@ -429,6 +429,10 @@ describe('/d/manifest', () => {
     const response = await call('/d/manifest', { authorization: `Bearer ${token}` });
     expect(response.status).toBe(200);
 
+    // Every answer this route gives carries the mark, the stand-in included:
+    // a display reads its absence as "this did not come from my server".
+    expect(response.headers.get('x-server-time'), 'the mark a display looks for').not.toBeNull();
+
     const manifest = (await response.json()) as Record<string, unknown>;
     expect(manifest['manifestVersion']).toBe(1);
     const notices = manifest['notices'] as { level: string; code: string }[];
@@ -630,6 +634,14 @@ describe('/d/manifest', () => {
 
     const response = await call('/d/manifest', { authorization: 'Bearer nonsense' });
     expect(response.status).toBe(401);
+    /*
+     * And a 401 carries the mark too, which is not decoration. It is the most
+     * destructive answer a display acts on — the manifest is dropped, the
+     * code-entry form goes up and latches — so the wall only obeys a 401 it can
+     * tell came from its own server. Unmarked, this one would be read as a
+     * hotel portal and ignored, and a revoked screen would go on drawing.
+     */
+    expect(response.headers.get('x-server-time'), 'the mark a display looks for').not.toBeNull();
   });
 });
 

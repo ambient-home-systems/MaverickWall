@@ -330,7 +330,9 @@ function start(): void {
             root,
             'Maverick Wall',
             outcome.serverSaid ??
-              'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.',
+              (outcome.answered
+                ? 'This wall’s server answered, but not with a wall. Nothing has arrived yet — it keeps trying.'
+                : 'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.'),
           );
         }
         break;
