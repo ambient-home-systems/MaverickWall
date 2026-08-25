@@ -204,6 +204,29 @@ describe('the Weather form marker', () => {
     ).toBe(null);
   });
 
+  /**
+   * A closed list always has exactly one option selected, echo or no echo.
+   *
+   * A value matching no option selects nothing, and the browser then preselects
+   * whatever comes first — over a live Save. That is the timezone defect one
+   * screen along, and these two selects had it latently: only a body that is
+   * not the screen's own form can carry a provider that is not one.
+   */
+  it('never hands back a select with nothing selected', async () => {
+    const h = await harness();
+    const refused = await h.form('/admin/weather', {
+      weather_form: '1', weather_enabled: '1', latitude: '999', longitude: '-0.1',
+      weather_provider: 'nonsense', weather_units: 'furlongs',
+    });
+    expect(refused.status).toBe(400);
+    const html = await refused.text();
+    const selected = [...html.matchAll(/<option value="([^"]+)" selected>/g)].map((m) => m[1]);
+    expect(selected, 'one provider and one unit, and both are ones a save would store').toEqual([
+      'nws',
+      'imperial',
+    ]);
+  });
+
   it('accepts the same body once it carries the marker', async () => {
     const h = await harness();
     const saved = await h.form('/admin/weather', {

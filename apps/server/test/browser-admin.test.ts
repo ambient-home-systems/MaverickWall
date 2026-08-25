@@ -19,6 +19,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 import { readWeatherSettings } from '../src/api/queries.js';
+import { seedDefaultRules } from '../src/api/rules.js';
 
 /** Long, because each of these boots a server and a browser context. */
 const SLOW = 60_000;
@@ -469,6 +470,52 @@ describe('a settings form', () => {
       expect(prompts, 'a deliberate Save was second-guessed by a sibling form').toBe(0);
       expect(new URL(page.url()).search).toBe('?saved=update-check');
       expect(await page.locator('.saved-text').textContent()).toBe('Update check setting saved.');
+    },
+    SLOW,
+  );
+
+  /**
+   * Nor about a button that is not this form's at all.
+   *
+   * A settings form rarely has a page to itself: Weather carries five
+   * "Turn off" rule cards beside it, and every admin page carries the sidebar's
+   * Sign out. Armed only by the wired form's own submits, the guard asked
+   * "Changes you made may not be saved" when a household changed Units and then
+   * pressed Turn off on a rule — and answering Stay cancelled the POST, so the
+   * rule stayed on with nothing said.
+   */
+  it(
+    'does not ask when a button beside the form is the one pressed',
+    async () => {
+      const { page, home } = await signedIn();
+      seedDefaultRules(home.db);
+      await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+
+      // An unsaved edit in the settings form...
+      await page.selectOption('select[name="weather_units"]', 'metric');
+      await expect
+        .poll(() => page.locator('.saverow [data-dirty-save]').isEnabled(), { timeout: 10_000 })
+        .toBe(true);
+
+      let prompts = 0;
+      page.on('dialog', (dialog) => {
+        prompts++;
+        void dialog.dismiss();
+      });
+
+      // The ladder ships with one rung already off, so count the change.
+      const off = (): number =>
+        (home.db
+          .prepare(`SELECT COUNT(*) AS n FROM interrupt_rules WHERE trigger = 'nws' AND enabled = 0`)
+          .get() as { n: number }).n;
+      const before = off();
+
+      // ...and then a rule card's own button, which is a different form.
+      const turnOff = page.locator('form[action*="/alerts/rules/"] button').first();
+      await Promise.all([page.waitForNavigation({ timeout: 20_000 }), turnOff.click()]);
+
+      expect(prompts, 'pressing a button beside the form is not leaving without saving').toBe(0);
+      expect(off(), 'the POST was cancelled by the guard, so the rule stayed on').toBe(before + 1);
     },
     SLOW,
   );

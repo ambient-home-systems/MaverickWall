@@ -1830,7 +1830,13 @@ one navigation rather than for good. And the guard itself is **one listener for
 the document, asking every form**, not one each: with a listener each, pressing
 Save on the timezone form raised the update-check form's "Changes you made may
 not be saved" — the household presses Save, is asked whether they meant it, and
-"Stay" cancels the save. Pressing Save is not leaving without saving.
+"Stay" cancels the save. Pressing Save is not leaving without saving — and nor
+is pressing *any* submit on the page: a settings form rarely has one to itself
+(Weather carries five rule cards, Calendars a Sync now and a Remove per row,
+every page the sidebar's Sign out), and armed only by its own submits the guard
+asked about a rule card's "Turn off" and cancelled the POST when answered.
+Armed by a document-level **submit**, never a click — RFC 009 1.7's lesson was a
+listener on `a[href]` clicks, and a submit is unambiguous where a click is not.
 
 **And an echo belongs on a text field, not on a closed list.** Handing a
 rejected timezone back into the `<select>` selects *nothing* — it is refused

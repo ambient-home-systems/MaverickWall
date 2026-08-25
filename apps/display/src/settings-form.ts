@@ -119,18 +119,6 @@ function wire(form: HTMLFormElement): void {
   form.addEventListener('input', mark);
   form.addEventListener('change', mark);
 
-  /*
-   * Submit rather than the Save button's click.
-   *
-   * Enter in a text field submits the form without the button being pressed at
-   * all, and the second submit button (`formaction`) posts this form too. Both
-   * are deliberate departures, and both would otherwise trip the leave guard on
-   * the way out.
-   */
-  form.addEventListener('submit', () => {
-    navigating = true;
-  });
-
   if (parts.cancel !== null) {
     parts.cancel.addEventListener('click', () => {
       navigating = true;
@@ -160,6 +148,30 @@ function boot(): void {
     if (form !== undefined) wire(form);
   }
   if (wired.length === 0) return;
+
+  /*
+   * Any submit on the page is a deliberate departure — not just this form's.
+   *
+   * A settings form rarely has a page to itself. Weather carries five
+   * "Turn off" rule cards beside it, Calendars a Sync now, a Remove and an Add
+   * per row, System a "Check for updates now", and every admin page carries the
+   * sidebar's Sign out. Armed only by the wired forms' own submits, the guard
+   * asked "Changes you made may not be saved" when a household changed Units
+   * and then pressed Turn off on a rule — and answering Stay cancelled the
+   * POST, so the rule stayed on with nothing said. That is the fault the shared
+   * flag fixed between sibling settings forms, left open for everything else
+   * beside them.
+   *
+   * A *submit* is the right signal and a click is not: RFC 009 1.7's lesson was
+   * a document-level listener on `a[href]` clicks, which armed on any stray
+   * click in a link and disarmed the guard for good. A form being submitted is
+   * unambiguous, and native constraint validation blocks the event entirely, so
+   * a submission the browser refuses never reaches this. In the capture phase,
+   * so a handler that stops propagation cannot hide one.
+   */
+  document.addEventListener('submit', () => {
+    navigating = true;
+  }, true);
 
   /*
    * One guard for the document, asking every form.

@@ -484,8 +484,27 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       enabled: echo?.weatherEnabled ?? stored.enabled,
       latitude: echo === undefined ? number(stored.latitude) : echo.latitude,
       longitude: echo === undefined ? number(stored.longitude) : echo.longitude,
-      provider: echo === undefined ? stored.provider : echo.provider,
-      units: echo === undefined ? stored.units : echo.units,
+      /*
+       * Normalised to the two values the handler honours, never echoed raw.
+       *
+       * These are closed lists, and a value that matches no option selects
+       * *nothing* — the browser then preselects whatever comes first, over a
+       * live Save. That is the timezone defect one screen along (see
+       * `systemPage`), and the rule is the same: an echo belongs on a text
+       * field; a `<select>` gets the value a save would actually store.
+       */
+      provider:
+        echo === undefined
+          ? stored.provider
+          : echo.provider === 'openmeteo'
+            ? ('openmeteo' as const)
+            : ('nws' as const),
+      units:
+        echo === undefined
+          ? stored.units
+          : echo.units === 'metric'
+            ? ('metric' as const)
+            : ('imperial' as const),
     };
     const alertsOn = echo?.alertsEnabled ?? readAlertsEnabled();
 

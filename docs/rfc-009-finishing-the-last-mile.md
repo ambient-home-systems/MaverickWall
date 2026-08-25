@@ -543,6 +543,20 @@ from silently moving the household to west Africa. That is `setup.ts`'s
 `detectedTimezoneOption` rule ("never 'nothing'") on a second screen. The
 select keeps the stored zone, and the form is then honestly clean.
 
+An eighth found the same two rules under-applied. The leave guard was armed only
+by the wired forms' own submits, so **a button beside the form tripped it** — a
+settings form rarely has a page to itself (Weather carries five rule cards,
+Calendars a Sync now and a Remove per row, every page the sidebar's Sign out),
+and changing Units then pressing "Turn off" asked "Changes you made may not be
+saved" and cancelled the POST when answered. It arms on a document-level
+*submit* now, never a click: 1.7's lesson was a listener on `a[href]` clicks,
+and a submit is unambiguous where a click is not (and native validation blocks
+the event entirely, so a submission the browser refuses never arms it). And the
+Weather form echoed `weather_provider`/`weather_units` raw into two closed
+lists — the timezone defect above, latent, since only a body that is not this
+form can carry a value that is not an option. Both selects now show what a save
+would store.
+
 Adopted on Calendars, System and Weather as proof. The remaining ~70 redirects
 are 3b's mechanical work: add a token to the table, swap `c.redirect` for
 `savedRedirect`, and pass `saved: readSaved(c)` at the screen's `page({…})`.
