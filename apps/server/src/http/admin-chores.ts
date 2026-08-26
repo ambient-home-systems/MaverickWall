@@ -343,7 +343,8 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
 
   function dayChecks(days: readonly number[], idPrefix: string): string {
     return (
-      `<fieldset class="checks checks-inline"><legend class="kick">Days of the week</legend>` +
+      `<fieldset class="checks checks-inline" data-cond-show="weekdays">` +
+      `<legend class="kick">Days of the week</legend>` +
       DAY_NAMES.map(
         (label, day) =>
           `<label><input type="checkbox" id="${escapeHtml(idPrefix)}-day-${day}" ` +
@@ -473,19 +474,27 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       selectField({ label: 'Who does it', name: 'person_id', optionsHtml: personOptions(chore.personId) }) +
       `</div>` +
       `<div class="row-fields">` +
-      selectField({ label: 'Repeats', name: 'kind', optionsHtml: kindOptions(chore.schedule.kind) }) +
+      selectField({
+        label: 'Repeats',
+        name: 'kind',
+        optionsHtml: kindOptions(chore.schedule.kind),
+        attrs: 'data-cond',
+      }) +
       textField({ label: 'By (optional)', name: 'due_time', type: 'time', value: chore.dueTime ?? '' }) +
       `</div>` +
       dayChecks(days, chore.id) +
-      `<div class="row-fields">` +
+      `<div class="row-fields" data-cond-show="everyNDays">` +
       textField({ label: 'Every N days', name: 'every_n', type: 'number', value: everyN, attrs: 'min="1" max="365"' }) +
       textField({ label: 'Starting', name: 'every_from', type: 'date', value: everyFrom }) +
       `</div>` +
-      `<div class="row-fields">` +
+      `<div class="row-fields" data-cond-show="monthlyDate">` +
       textField({ label: 'Day of the month', name: 'month_day', type: 'number', value: monthDay, attrs: 'min="1" max="28"' }) +
+      `</div>` +
+      `<div class="row-fields" data-cond-show="once">` +
       textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: onceDate }) +
       `</div>` +
-      `<p class="hint">Only the boxes belonging to the “Repeats” choice above are used. ` +
+      `<p class="hint">Only the boxes belonging to the “Repeats” choice above are used ` +
+      `— with script off, every box shows and this still holds. ` +
       `A day of the month goes up to 28, so the chore lands in February the same ` +
       `way it lands in every other month.</p>` +
       `<button type="submit">Save</button></form></details>` +
@@ -550,22 +559,30 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
         selectField({ label: 'Who does it', name: 'person_id', optionsHtml: personOptions(null) }) +
         `</div>` +
         `<div class="row-fields">` +
-        selectField({ label: 'Repeats', name: 'kind', optionsHtml: kindOptions('weekdays') }) +
+        selectField({
+          label: 'Repeats',
+          name: 'kind',
+          optionsHtml: kindOptions('weekdays'),
+          attrs: 'data-cond',
+        }) +
         textField({ label: 'By (optional)', name: 'due_time', type: 'time' }) +
         `</div>` +
         dayChecks([], 'new') +
-        `<div class="row-fields">` +
+        `<div class="row-fields" data-cond-show="everyNDays">` +
         textField({ label: 'Every N days', name: 'every_n', type: 'number', attrs: 'min="1" max="365"' }) +
         // Today, on the *add* form only: a chore being created has no anchor yet,
         // so this is a suggestion rather than a claim about what was saved.
         textField({ label: 'Starting', name: 'every_from', type: 'date', value: from }) +
         `</div>` +
-        `<div class="row-fields">` +
+        `<div class="row-fields" data-cond-show="monthlyDate">` +
         textField({ label: 'Day of the month', name: 'month_day', type: 'number', attrs: 'min="1" max="28"' }) +
+        `</div>` +
+        `<div class="row-fields" data-cond-show="once">` +
         textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: from }) +
         `</div>` +
         `<p class="hint">Pick how it repeats, then fill in only the boxes that ` +
-        `belong to it. “By” is a time of day the wall shows beside the chore; ` +
+        `belong to it — with script off, every box shows and this still holds. ` +
+        `“By” is a time of day the wall shows beside the chore; ` +
         `leave it blank for any time that day.</p>` +
         `<button type="submit">Add</button></form>`,
     });

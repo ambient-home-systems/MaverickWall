@@ -2065,14 +2065,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           label: 'Panel',
           name: 'preset',
           optionsHtml: `${options}<option value="custom">Custom size…</option>`,
+          attrs: 'data-cond',
         }) +
-        `<div class="grid g2">` +
+        `<div class="grid g2" data-cond-show="custom">` +
         `<div>` +
         textField({ label: 'Width (px)', name: 'width', placeholder: '800', attrs: 'inputmode="numeric"' }) +
         `</div><div>` +
         textField({ label: 'Height (px)', name: 'height', placeholder: '480', attrs: 'inputmode="numeric"' }) +
         `</div></div>` +
-        `<p class="hint">Width and height are only used for a Custom panel. In the panel's ` +
+        `<p class="hint">Width and height are only used for a Custom panel — with script ` +
+        `off, both boxes show regardless of the panel chosen above. In the panel's ` +
         `native (landscape) resolution — rotation is separate.</p>` +
         selectField({
           label: 'Rotation',

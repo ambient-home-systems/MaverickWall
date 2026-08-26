@@ -601,6 +601,8 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 .checks-inline{display:flex;flex-wrap:wrap;gap:0 20px}
 .checks-inline legend{width:100%}
 .checks-inline label{min-width:4.5rem}
+/* Same [hidden] override as .row-fields and .grid above, for the same reason. */
+.checks-inline[hidden]{display:none}
 
 /* A paused chore's card. Quieter, not hidden: it is still a chore the household
    set up and the screen it lives on is where they go to bring it back. The tag
@@ -661,6 +663,11 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 .row-fields{display:flex;gap:1rem;flex-wrap:wrap}
 .row-fields span,.row-fields .field{flex:1 1 12rem}
 .row-fields .field{margin-top:1rem}
+/* Spelled out against the class rather than left to the browser, the same
+ * reason the settings-form foot does below: display:flex here wins over the
+ * user agent's [hidden]{display:none}, so a hidden row-fields would sit
+ * there in plain sight rather than actually disappear. */
+.row-fields[hidden]{display:none}
 
 /* ---- Buttons ---------------------------------------------------------------
  * The default is a filled button: 40px container, 4px corner, 20px of side
@@ -869,6 +876,8 @@ p.hint,.hint{font-size:12.5px;color:var(--mw-ink-2);margin:0.25rem 0 0;line-heig
 
 /* ---- Grids and section headers ------------------------------------------ */
 .grid{display:grid;gap:16px;margin:1rem 0}
+/* Same [hidden] override as .row-fields above, for the same reason. */
+.grid[hidden]{display:none}
 .g3{grid-template-columns:repeat(3,1fr)}
 .g2{grid-template-columns:repeat(2,1fr)}
 @media(max-width:1040px){.g3{grid-template-columns:repeat(2,1fr)}}
@@ -2595,6 +2604,16 @@ export interface PageOptions {
 const WANTS_DIRTY_SCRIPT = /<form\b[^>]*\bdata-dirty(?=[\s=>])/;
 
 /**
+ * Does this page hold a `<select data-cond>` the conditional-fields script
+ * should wire (RFC 009 Phase 7)?
+ *
+ * Same shape as `WANTS_DIRTY_SCRIPT` and the same reason: fetch and run
+ * `conditional-fields.js` only on the pages that actually have a select to
+ * drive it, not on every page in the admin.
+ */
+const WANTS_CONDITIONAL_FIELDS_SCRIPT = /<select\b[^>]*\bdata-cond(?=[\s=>])/;
+
+/**
  * The strip itself: one sentence and a way to be rid of it.
  *
  * The sentence is a literal from `SAVED_MESSAGES`, never anything the request
@@ -2788,6 +2807,9 @@ export function page(options: PageOptions): string {
      */
     (WANTS_DIRTY_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/settings-form.js"></script>`
+      : '') +
+    (WANTS_CONDITIONAL_FIELDS_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/conditional-fields.js"></script>`
       : '') +
     `</main></body></html>`
   );
