@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  adminStylesheet,
+  declarationsOf,
+  rulesOf,
+  stripComments,
+} from './admin-stylesheet.js';
+import {
   ADMIN_SCHEMES,
   TYPE_ROLES,
   adminColorVars,
@@ -223,5 +229,216 @@ describe('the emitted custom properties', () => {
         weightOf('body'),
       );
     }
+  });
+});
+
+/**
+ * The same question again, asked of the stylesheet instead of the intent
+ * (RFC 009 Phase 6, assertion 4).
+ *
+ * Everything above validates a token against the job it was *designed* for.
+ * That is worth having and it is not enough, and `--mw-ink-3` is the proof:
+ * it is declared "placeholder and disabled text only", certified above at 3:1
+ * as the control-boundary role — 3.73:1 on `surface`, comfortably clear — and
+ * then set as the `color` of twenty-three rules, `.hint` among them, where the
+ * bar is 4.5:1 and it does not reach it on any ground in either scheme. Both
+ * statements were true at once. Nothing was wrong with the table; the table
+ * was answering a different question from the one the browser asks.
+ *
+ * So this block asks the browser's question: for every rule in the served
+ * stylesheet, what does it paint on what? A rule that sets both a `color` and
+ * a `background` states its own pair. A rule that sets only a `color` does not
+ * know where it will land, so it is held against **all four grounds** — which
+ * is not pessimism, it is what the sheet does: a card is `surface`, an input
+ * and a settings row are `surface-2`, a tag and a nav badge are `surface-3`.
+ *
+ * The hand-written tables above are kept rather than replaced. They say what a
+ * role is for; this says what the stylesheet does with it. The gap between the
+ * two is the bug, so both halves have to be written down for the gap to be
+ * visible at all.
+ */
+
+/** The four grounds the admin actually paints text on. */
+const GROUNDS = ['bg', 'surface', 'surface-2', 'surface-3'] as const;
+
+/**
+ * The two rules are exempt from the 3:1 object bar, and are checked instead by
+ * `orders the three rules from invisible to visible` and `keeps the soft
+ * divider present but quiet` above.
+ *
+ * This is a real exemption rather than an allow-listed failure: a divider
+ * inside a card is *supposed* to be near-invisible, and a derivation reading
+ * `border:1px solid var(--mw-line)` cannot tell a hairline between two rows
+ * from the outline of a control. Holding them to 3:1 would not fix anything —
+ * it would box the whole admin in, which is the look this design system was
+ * built to get away from.
+ */
+const NOT_AN_OBJECT = new Set(['line', 'line-strong']);
+
+/**
+ * Pairs the stylesheet paints that do not clear their bar today.
+ *
+ * `ink-3` as text is the finding this assertion was written for and is the
+ * larger half of the list. `ok` on `surface-3` is the same class, one hue
+ * along. The `accent-ink` entries are a limitation of the derivation rather
+ * than a defect: they are the checkmark drawn inside a *checked* checkbox, so
+ * its ground is the accent fill on the parent rule and not any of the four
+ * page grounds — the fan-out cannot see that, and narrowing the fan-out to
+ * avoid it would lose the `ink-3` border finding beside it, which is worth
+ * more.
+ *
+ * Ratios are recorded so a change to a scheme shows up as a moved number
+ * rather than as a line that silently still passes.
+ */
+const UNMET_PAIRS: readonly string[] = [
+  'dark object: accent-ink on bg = 1.03 (needs 3)',
+  'dark object: accent-ink on surface = 1.04 (needs 3)',
+  'dark object: accent-ink on surface-2 = 1.15 (needs 3)',
+  'dark object: accent-ink on surface-3 = 1.30 (needs 3)',
+  'dark text: ink-3 on surface = 4.46 (needs 4.5)',
+  'dark text: ink-3 on surface-2 = 4.02 (needs 4.5)',
+  'dark text: ink-3 on surface-3 = 3.56 (needs 4.5)',
+  'light object: accent-ink on bg = 1.08 (needs 3)',
+  'light object: accent-ink on surface = 1.00 (needs 3)',
+  'light object: accent-ink on surface-2 = 1.15 (needs 3)',
+  'light object: accent-ink on surface-3 = 1.27 (needs 3)',
+  'light object: ink-3 on surface-3 = 2.95 (needs 3)',
+  'light text: ink-3 on bg = 3.46 (needs 4.5)',
+  'light text: ink-3 on surface = 3.73 (needs 4.5)',
+  'light text: ink-3 on surface-2 = 3.25 (needs 4.5)',
+  'light text: ink-3 on surface-3 = 2.95 (needs 4.5)',
+  'light text: ok on surface-3 = 4.21 (needs 4.5)',
+];
+
+describe('the pairs the stylesheet actually paints', () => {
+  const alias = (css: string): Map<string, string> => {
+    const out = new Map<string, string>();
+    for (const m of css.matchAll(/(--[a-zA-Z0-9-]+)\s*:\s*var\(\s*(--mw-[a-z0-9-]+)\s*\)/g)) {
+      out.set(m[1] as string, m[2] as string);
+    }
+    return out;
+  };
+
+  /**
+   * A value that names exactly one role, resolved through the alias layer.
+   *
+   * `border:1px solid var(--mw-line)` names one; `background:var(--ink-2)`
+   * names one through an alias. A value carrying any *other* function names
+   * none — and that exclusion is load-bearing rather than tidy. A hover ground
+   * here is `color-mix(in srgb, var(--mw-ink-2) 6%, transparent)`: a six per
+   * cent wash over whatever the control is sitting on, not a ground of
+   * `ink-2`. Reading the mix's first ingredient as the ground reported
+   * `.signout:hover` as ink-on-ink-2 at 1.83:1, which is a pair no browser
+   * ever paints. An element whose ground is a translucent wash has an unknown
+   * ground, so it falls through to the four-ground fan-out below, which is the
+   * honest answer.
+   */
+  const roleOf = (value: string, aliases: Map<string, string>): string | undefined => {
+    const references = [...value.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)\s*\)/g)];
+    if (references.length !== 1) return undefined;
+    if (value.replace(/var\(\s*--[a-zA-Z0-9-]+\s*\)/g, '').includes('(')) return undefined;
+    const named = references[0]?.[1] as string;
+    const token = aliases.get(named) ?? named;
+    if (!token.startsWith('--mw-')) return undefined;
+    const role = token.slice('--mw-'.length);
+    return role in ADMIN_SCHEMES.dark.color ? role : undefined;
+  };
+
+  const BORDER = /^(border|outline)(-(top|right|bottom|left))?(-color)?$/;
+
+  /** Every `role on ground` the sheet paints, as text and as an object. */
+  const painted = async (): Promise<{ text: Set<string>; object: Set<string> }> => {
+    const css = stripComments(await adminStylesheet());
+    const aliases = alias(css);
+    const text = new Set<string>();
+    const object = new Set<string>();
+    for (const rule of rulesOf(css)) {
+      if (rule.selectors.some((s) => s.includes(':root'))) continue;
+      let ink: string | undefined;
+      let ground: string | undefined;
+      for (const [property, value] of declarationsOf(rule)) {
+        if (property === 'color') ink = roleOf(value, aliases) ?? ink;
+        if (property === 'background' || property === 'background-color') {
+          ground = roleOf(value, aliases) ?? ground;
+        }
+      }
+      const place = (into: Set<string>, role: string): void => {
+        if (ground !== undefined) into.add(`${role}|${ground}`);
+        else for (const g of GROUNDS) into.add(`${role}|${g}`);
+      };
+      if (ink !== undefined) place(text, ink);
+      for (const [property, value] of declarationsOf(rule)) {
+        if (!BORDER.test(property)) continue;
+        const role = roleOf(value, aliases);
+        if (role === undefined || NOT_AN_OBJECT.has(role)) continue;
+        place(object, role);
+      }
+    }
+    return { text, object };
+  };
+
+  it('keeps every painted pair at the bar its job needs', async () => {
+    const { text, object } = await painted();
+    // A guard on the guard: a derivation that stops finding pairs passes over
+    // everything, which is the failure mode of the table it is checking.
+    expect(text.size, 'no text pairs derived from the stylesheet').toBeGreaterThan(20);
+    expect(object.size, 'no border pairs derived from the stylesheet').toBeGreaterThan(10);
+
+    const unmet: string[] = [];
+    for (const [name, scheme] of schemes) {
+      for (const [kind, pairs, bar] of [
+        ['text', text, 4.5],
+        ['object', object, 3],
+      ] as const) {
+        for (const pair of [...pairs].sort()) {
+          const [role, ground] = pair.split('|') as [string, string];
+          if (role === ground) continue;
+          const a = scheme.color[role];
+          const b = scheme.color[ground];
+          // `scrim` is an rgba over whatever is behind it and has no ratio.
+          if (a === undefined || b === undefined) continue;
+          if (!a.startsWith('#') || !b.startsWith('#')) continue;
+          const ratio = contrast(a, b);
+          if (ratio >= bar) continue;
+          unmet.push(`${name} ${kind}: ${role} on ${ground} = ${ratio.toFixed(2)} (needs ${bar})`);
+        }
+      }
+    }
+
+    const permitted = new Set(UNMET_PAIRS);
+    const fresh = unmet.filter((entry) => !permitted.has(entry));
+    expect(
+      fresh,
+      `${fresh.length} newly unreadable pairs (allow-list holds ${UNMET_PAIRS.length}):\n` +
+        fresh.map((entry) => `  ${entry}`).join('\n'),
+    ).toEqual([]);
+
+    const seen = new Set(unmet);
+    const stale = UNMET_PAIRS.filter((entry) => !seen.has(entry));
+    expect(
+      stale,
+      `${stale.length} allow-listed pairs are fixed or have moved — delete these lines, ` +
+        `the list is down to ${UNMET_PAIRS.length - stale.length}:\n` +
+        stale.map((entry) => `  ${entry}`).join('\n'),
+    ).toEqual([]);
+  });
+
+  it('sees `ink-3` set as text, which is the gap it was written for', async () => {
+    /*
+     * Pinned so a future narrowing of the derivation cannot quietly close it.
+     * `ink-3` is declared "placeholder and disabled text only" and appears in
+     * `OBJECT_PAIRS` at the 3:1 border bar; the stylesheet sets it as `color`
+     * on twenty-three rules all the same, and this is what notices.
+     *
+     * Only the positive half is asserted. "`ink-3` is absent from `TEXT_PAIRS`"
+     * was the other half and it was a trap: it holds today and would fail on
+     * the exact fix Phase 6b is expected to make — raising the contrast and
+     * listing the pair as a legitimate one — with a message naming nothing.
+     * An assertion that goes red when somebody does the right thing teaches
+     * people to delete assertions.
+     */
+    const { text } = await painted();
+    const asText = [...text].filter((pair) => pair.startsWith('ink-3|'));
+    expect(asText.length, 'the derivation no longer sees ink-3 as text').toBeGreaterThan(0);
   });
 });
