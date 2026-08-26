@@ -14,7 +14,6 @@
   Left as a comment rather than filled with a placeholder, because a stock
   photo or a mockup here would be a claim about the product that is not true.
 -->
-## THIS IS UNDER ACTIVE DEVELOPMENT
 
 <!--
   The mark, not the lockup: the wordmark would only repeat the heading under
@@ -36,6 +35,9 @@ subscription, no cloud.
 Runs on your own hardware — a NAS, a Pi, a mini PC, or as a Home Assistant
 add-on. Wall-mounted tablets and televisions point at it and run unattended for
 months.
+
+> **Under active development.** Pre-1.0: it works, and it is not finished.
+> [Honest limitations](#honest-limitations) says what is unproven.
 
 ```bash
 docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
