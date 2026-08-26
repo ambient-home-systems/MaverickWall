@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.54.1
 
 **Calendars and People are lists again, not stacks of open forms.** Each
 calendar card drew its name, colour, owner, sync switch and network-access
