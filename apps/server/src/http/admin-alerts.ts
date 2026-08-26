@@ -533,14 +533,17 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       textField({
         label: 'Latitude',
         name: 'latitude',
-        placeholder: '38.8894',
+        // "e.g." on purpose: 38.8894 is the geographic centre of the United
+        // States, and a plain number here looked like a stored value in an
+        // empty field rather than an example of the shape one takes.
+        placeholder: 'e.g. 38.8894',
         value: weather.latitude,
         attrs: 'inputmode="decimal"',
       }) +
       textField({
         label: 'Longitude',
         name: 'longitude',
-        placeholder: '-97.7431',
+        placeholder: 'e.g. -97.7431',
         value: weather.longitude,
         attrs: 'inputmode="decimal"',
       }) +

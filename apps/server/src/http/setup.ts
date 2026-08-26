@@ -843,14 +843,16 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         textField({
           label: 'Latitude',
           name: 'latitude',
-          placeholder: '38.8894',
+          // "e.g." on purpose: a bare number here reads as a stored value in
+          // an empty field, not an example of the shape one takes.
+          placeholder: 'e.g. 38.8894',
           value: values.latitude ?? '',
           attrs: 'inputmode="decimal"',
         }) +
         textField({
           label: 'Longitude',
           name: 'longitude',
-          placeholder: '-97.7431',
+          placeholder: 'e.g. -97.7431',
           value: values.longitude ?? '',
           attrs: 'inputmode="decimal"',
         }) +
