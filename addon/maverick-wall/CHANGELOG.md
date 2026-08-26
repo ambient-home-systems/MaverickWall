@@ -14,6 +14,18 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**The settings pages are back in the product's own typeface.** Since 0.54.0
+every screen behind the login had quietly rendered in whatever font your
+device happened to supply. Nothing looked broken — that is how it went
+unnoticed — but the headings, the labels and the Maverick Wall lockup in the
+sidebar were all the wrong shapes. The setup wizard and the sign-in page were
+never affected, which is the other reason it hid for so long.
+
+Nothing to do: the fonts have always shipped inside the add-on, so this
+corrects itself the moment you update. No internet required, as ever.
+
 ## 0.54.2
 
 **The admin sidebar is grouped by what a household is looking for, not by
