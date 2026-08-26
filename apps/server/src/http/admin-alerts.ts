@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono';
 import {
-  defaultSubmit, dirtyForm, escapeHtml, errorBlock, noticeBlock, page, saveRow, selectField, switchRow, textField,
+  defaultSubmit, dirtyForm, escapeHtml, errorBlock, icon, noticeBlock, page, saveRow, selectField, switchRow,
+  textField,
 } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
@@ -727,37 +728,53 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   /**
    * The ladder, and whether each rung is actually armed.
    *
+   * A table rather than five ~180px cards: each held three short lines and one
+   * small button, 900px of a 2,400px page, and the on/off state was
+   * communicated *only* by the button label — a household scanning four "Turn
+   * off" buttons had to invert each one to know what was on. A row's state is
+   * a chip now, and the button moves to an overflow so it reads as an action
+   * rather than as the state itself.
+   *
    * `watching` is not decoration: with no zone being watched there is no signal
    * any of these could match, so `readRules` refuses to arm them (RFC 009 Phase
-   * 2). A card that said "on" here while the evaluator treated it as off would
+   * 2). A row that said "on" here while the evaluator treated it as off would
    * be the screen disagreeing with the wall, which is exactly the fault this
-   * phase is about — so the card reads the same fact the evaluator does.
+   * phase is about — so the chip reads the same fact the evaluator does.
    */
   function rules(watching: boolean): string {
-    return readRuleRows(deps.db)
+    const rows = readRuleRows(deps.db)
       .filter((row) => row.trigger === 'nws')
       .map((row) => {
         const parsed = readMatch(safeJson(row.conditions));
         const severity = parsed?.match.minSeverity ?? 'Any';
         const urgency = parsed?.match.minUrgency;
-        const state =
-          row.enabled !== 1 ? ' (off)' : watching ? '' : ' (not armed — no zones yet)';
+        const off = row.enabled !== 1;
+        const armed = !off && watching;
+        const stateLabel = off ? 'Off' : armed ? 'On' : 'Not armed';
+        const stateClass = off ? 'tag' : armed ? 'tag tag-ok' : 'tag tag-warn';
+        const stateTitle = off || armed ? '' : ' title="No zone is being watched yet"';
         return (
-          `<article class="card">` +
-          `<h2>${escapeHtml(row.name)}${state}</h2>` +
-          `<p class="host">${escapeHtml(severity)} or worse` +
-          `${urgency === undefined ? '' : `, and ${escapeHtml(urgency)}`}</p>` +
-          `<p>${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +
+          `<tr>` +
+          `<td><div class="rname">${escapeHtml(row.name)}</div>` +
+          `<div class="host">${escapeHtml(severity)} or worse` +
+          `${urgency === undefined ? '' : `, and ${escapeHtml(urgency)}`}</div>` +
+          `<div class="host">${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +
           `${row.piercesNightMode === 1 ? ' · may wake a dark wall' : ''}` +
-          `${row.dismissible === 0 ? ' · cannot be cleared from the wall' : ''}</p>` +
+          `${row.dismissible === 0 ? ' · cannot be cleared from the wall' : ''}</div></td>` +
+          `<td><span class="${stateClass}"${stateTitle}>${stateLabel}</span></td>` +
+          `<td class="ovfcell"><details class="ovf" data-overflow>` +
+          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+          `aria-label="More actions for ${escapeHtml(row.name)}" title="More">${icon('more')}</summary>` +
+          `<div class="ovf-menu" role="menu">` +
           `<form method="post" action="admin/alerts/rules/${encodeURIComponent(row.id)}">` +
           `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +
-          `<button class="secondary" type="submit">` +
-          `${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
-          `</article>`
+          `<button class="ovf-item" type="submit">${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button>` +
+          `</form></div></details></td>` +
+          `</tr>`
         );
       })
       .join('');
+    return `<table class="rules-table"><tbody>${rows}</tbody></table>`;
   }
 }
 

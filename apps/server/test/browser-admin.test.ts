@@ -544,8 +544,9 @@ describe('a settings form', () => {
           .get() as { n: number }).n;
       const before = off();
 
-      // A rule card is its own form: submitting it navigates, and the unsaved
-      // units change goes with it.
+      // A rule row's action is a form behind its overflow menu: submitting it
+      // navigates, and the unsaved units change goes with it.
+      await page.locator('.rules-table .ovf-btn').first().click();
       await page.locator('form[action*="/alerts/rules/"] button').first().click();
       await page.waitForTimeout(1500);
 

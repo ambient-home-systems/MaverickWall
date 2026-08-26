@@ -149,7 +149,7 @@ const OFF_GRID_SPACING: readonly string[] = [];
  *    zero references while the drawer, the nav row and the settings row all
  *    hard-code 48px, so the token is *stricter* than the code and disagrees
  *    with it in silence. `--mw-focus`, `--mw-hairline`, `--mw-shadow-0`,
- *    `--mw-danger-ink`, `--mw-warn-soft`, `--mw-night-soft`, `--mw-dur-3` and
+ *    `--mw-danger-ink`, `--mw-night-soft`, `--mw-dur-3` and
  *    the `--night` alias are the same shape: declared, described in a comment,
  *    and never used. Each is a delete or a use, and it is 6b's call which.
  *  - **The unfilled rungs of a ladder.** `--mw-s-2` and the `--mw-t-*` parts
@@ -201,7 +201,6 @@ const UNREFERENCED_TOKENS: readonly string[] = [
   '--mw-t-label-xs-lh',
   '--mw-t-label-xs-weight',
   '--mw-touch',
-  '--mw-warn-soft',
   '--night',
 ];
 

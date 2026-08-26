@@ -942,8 +942,20 @@ a.card:active{background:var(--mw-surface-3)}
   color:var(--mw-danger)}
 .tag-accent{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
+.tag-warn{background:var(--mw-warn-soft);
+  color:var(--mw-warn)}
 .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;
   background:var(--swatch);flex:0 0 auto;vertical-align:baseline}
+
+/* ---- The alert rules table (RFC 009 Phase 7) ------------------------------
+ * Replaced five ~180px cards, each holding three short lines and one small
+ * button — 900px of a 2,400px page, and the on/off state was communicated
+ * only by the button label. A row's state is its own chip now; the action
+ * moves to an overflow, which is the same .ovf every wall's header uses. */
+.rules-table{width:100%;border-collapse:collapse;margin:1rem 0}
+.rules-table td{padding:12px 8px;border-bottom:1px solid var(--mw-line);vertical-align:middle}
+.rules-table tr:last-child td{border-bottom:0}
+.rules-table .ovfcell{width:48px;text-align:right}
 img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
   margin-right:0.5rem;vertical-align:-.4rem;background:var(--panel2)}
 
