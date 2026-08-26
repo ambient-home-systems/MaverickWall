@@ -14,6 +14,18 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**Calendars and People are lists again, not stacks of open forms.** Each
+calendar card drew its name, colour, owner, sync switch and network-access
+controls open at once, and each person card drew its name/colour form and
+picture uploader open too — so a household with a handful of either scrolled
+past mostly-untouched fields just to see what they had. The editor is folded
+behind an "Edit" disclosure now, the same one chores already use, with the
+name, host and sync or calendar count still readable without opening it. A
+calendar whose save was rejected still opens itself, so a correction is never
+hidden behind a tap.
+
 ## 0.54.0
 
 **A wall no longer goes blank, and stays blank, because the server had a bad
