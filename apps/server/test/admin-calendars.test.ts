@@ -933,6 +933,30 @@ describe('people', () => {
     expect(h.db.prepare('SELECT enabled FROM calendar_sources').get()).toEqual({ enabled: 0 });
   });
 
+  it('names which SSRF opt-ins are on and opens the disclosure rather than hiding them', async () => {
+    // Folding all three behind a closed <details> with no state shown would
+    // mean a household has to remember to click it open to notice a feed has
+    // a relaxed guard.
+    const h = await harness();
+    await h.addFeed('Family'); // addFeed turns on loopback and http, for the fixture's own real fetch.
+    const source = h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string };
+
+    await h.form(`/admin/calendars/${source.id}/settings`, {
+      name: 'Family', color: '#4C7FD1', person_id: '', enabled: '1',
+      allow_lan: '1', allow_loopback: '1', allow_http: '1',
+    });
+    const withAllOn = await (await h.call('/admin/calendars')).text();
+    expect(withAllOn).toContain('Network access — local network, this machine, plain http on');
+    expect(withAllOn).toContain('<details class="disclose" open>');
+
+    await h.form(`/admin/calendars/${source.id}/settings`, {
+      name: 'Family', color: '#4C7FD1', person_id: '', enabled: '1',
+    });
+    const withNoneOn = await (await h.call('/admin/calendars')).text();
+    expect(withNoneOn).toContain('<summary>Network access</summary>');
+    expect(withNoneOn).not.toContain('<details class="disclose" open>');
+  });
+
   it('keeps the calendars when the person is removed', async () => {
     // Deleting somebody must not silently unsubscribe the household from the
     // school calendar.

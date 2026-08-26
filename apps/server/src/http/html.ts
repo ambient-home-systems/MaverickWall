@@ -2004,12 +2004,21 @@ pre.code{background:var(--mw-surface-2);
  * .link) was sized by its text alone — 15-21px tall. All under the 44px a
  * touch target needs, on the one breakpoint where every tap is a finger
  * rather than a pointer. --mw-touch is the token for it; the hit area grows,
- * the visual size does not — a field and a small button both keep their drawn
- * height and centre their content in the taller box instead. */
+ * the visual size does not.
+ *
+ * A field and a small button both keep their drawn height and centre their
+ * content in the taller box instead — they are their own line. A .link is
+ * not: most are one word inside a sentence ("choose where it sits on the
+ * Default wall."), so growing its box the same way would inflate that one
+ * word into a 44px-tall block mid-paragraph. The chore tick's idiom applies
+ * instead — the checkbox pointer-target pattern above — a pseudo-element
+ * that extends the hit area without taking up any layout space, so the text
+ * never moves. -15px on every side turns even a 15px line into 45px. */
 @media(max-width:900px){
   .field .field-input{min-height:var(--mw-touch);box-sizing:border-box}
   .btn-sm{min-height:var(--mw-touch);display:inline-flex;align-items:center}
-  a.link,.link{min-height:var(--mw-touch);display:inline-flex;align-items:center}
+  a.link,.link{position:relative}
+  a.link::before,.link::before{content:"";position:absolute;inset:-15px}
 }
 
 /* ---- Pressed and hover states for every control with no container ---------

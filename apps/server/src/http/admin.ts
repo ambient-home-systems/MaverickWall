@@ -133,10 +133,17 @@ const sourceSettingsBody = z.object({
  * `<details>` because a household adding an ordinary public feed should never
  * have to read past "Add" to get there.
  */
-const NETWORK_ACCESS_FIELDS: readonly { readonly name: string; readonly label: string; readonly hint: string }[] = [
+const NETWORK_ACCESS_FIELDS: readonly {
+  readonly name: string;
+  readonly label: string;
+  /** The short form for the collapsed summary — see `networkAccessDisclosure`. */
+  readonly short: string;
+  readonly hint: string;
+}[] = [
   {
     name: 'allow_lan',
     label: 'Allow a local network address',
+    short: 'local network',
     hint:
       'Local network access lets this feed reach devices inside your home. ' +
       'Only turn it on for a calendar you host yourself.',
@@ -144,6 +151,7 @@ const NETWORK_ACCESS_FIELDS: readonly { readonly name: string; readonly label: s
   {
     name: 'allow_loopback',
     label: 'Allow this machine itself',
+    short: 'this machine',
     hint:
       'Lets this feed reach the machine Maverick Wall is running on. Only turn ' +
       'it on for a calendar hosted on this same box.',
@@ -151,6 +159,7 @@ const NETWORK_ACCESS_FIELDS: readonly { readonly name: string; readonly label: s
   {
     name: 'allow_http',
     label: 'Allow plain http',
+    short: 'plain http',
     hint:
       'This address would not be encrypted. Calendar addresses are passwords in ' +
       'effect, so only turn this on for a feed you trust on your own network.',
@@ -167,8 +176,17 @@ function networkAccessDisclosure(values: {
     allow_loopback: values.allowLoopback,
     allow_http: values.allowHttp,
   };
+  /*
+   * The summary names what is on, and the whole thing opens by default when
+   * anything is — a switch relaxing an SSRF guard is not something a
+   * household should have to remember to click open to notice is on. A
+   * closed "Network access" with nothing to say gives the common case (an
+   * ordinary public feed) one line rather than three.
+   */
+  const on = NETWORK_ACCESS_FIELDS.filter((field) => checked[field.name] === true);
+  const summary = on.length === 0 ? 'Network access' : `Network access — ${on.map((f) => f.short).join(', ')} on`;
   return (
-    `<details class="disclose"><summary>Network access</summary>` +
+    `<details class="disclose"${on.length > 0 ? ' open' : ''}><summary>${escapeHtml(summary)}</summary>` +
     NETWORK_ACCESS_FIELDS.map((field) =>
       switchRow({
         label: field.label,
