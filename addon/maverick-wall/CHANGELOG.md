@@ -14,6 +14,19 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**The admin sidebar is grouped by what a household is looking for, not by
+when each screen was built.** Chores used to sit with Calendars and People
+while Weather and Home Assistant sat off in their own "Extras" group with
+the Store — the same kind of thing, split apart for no reason anyone could
+see from the menu. Weather and Home Assistant now sit in the same group as
+Calendars, People, Work Schedule and Chores (renamed "Content" — everything
+that can appear on a wall), and the Store moved in with Walls and Themes,
+since installing a module is a step toward putting something on a wall.
+Nothing moved, renamed, or changed behaviour — only where it sits in the
+menu.
+
 ## 0.54.1
 
 **Calendars and People are lists again, not stacks of open forms.** Each

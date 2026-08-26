@@ -2424,13 +2424,23 @@ export function icon(key: string): string {
 }
 
 /**
- * The admin, in three groups rather than nine flat pages.
+ * The admin, in three groups rather than eight flat pages.
  *
- * **Modules** is everything a wall shows — the calendar first, because the
- * calendar is the product, then the rest as equals whether they are core or an
- * integration. **Walls** is the screens themselves and what each one draws.
- * **Settings** is the shared defaults a wall inherits, the people its calendars
- * belong to, and the box's own housekeeping.
+ * **Content** is everything a wall shows — the calendar first, because the
+ * calendar is the product, then the rest as equals whether they are core
+ * (People, Work Schedule, Chores) or an integration (Weather, Home
+ * Assistant): a household deciding what appears on the wall does not care
+ * which of those shipped first. **Walls** is the screens themselves, how
+ * they look, and where new content comes from — Store is last in it
+ * deliberately, because installing a module is a step on the way to putting
+ * something on a wall, not a distinct kind of task. **System** is the box's
+ * own housekeeping.
+ *
+ * Chores used to sit in this first group while Weather and Home Assistant
+ * sat in a separate "Extras" group with the Store, even though Chores lives
+ * in `modules/chores/` alongside them — the same kind of thing, split
+ * across groups by build order rather than by what a household is thinking
+ * about. This groups all of it by what it does: content, display, system.
  *
  * A group's tab goes to its first page. `href` is relative, so the single
  * `<base>` carries every link through ingress.
@@ -2461,8 +2471,8 @@ export interface NavModule {
 
 const GROUPS: readonly { readonly key: string; readonly label: string; readonly items: readonly NavItem[] }[] = [
   {
-    key: 'calendar',
-    label: 'Calendar',
+    key: 'content',
+    label: 'Content',
     items: [
       // Overview used to sit above every group, in none of them; it is the
       // first thing a household about their calendar wants, so it is the
@@ -2474,6 +2484,11 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
       // Defining a chore is admin work; ticking one off is the wall's, and
       // deliberately not here (RFC 008).
       { key: 'chores', label: 'Chores', href: 'admin/chores', icon: 'chores' },
+      // Weather and Home Assistant are modules exactly like Chores is — see
+      // the group doc comment above for why they sit here rather than off
+      // in a separate group with the Store.
+      { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
+      { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
     ],
   },
   {
@@ -2486,14 +2501,8 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
       // and `/admin/epaper` routes redirect into it.
       { key: 'walls', label: 'Walls', href: 'admin/walls', icon: 'screens' },
       { key: 'themes', label: 'Themes', href: 'admin/themes', icon: 'palette' },
-    ],
-  },
-  {
-    key: 'extras',
-    label: 'Extras',
-    items: [
-      { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
-      { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
+      // Store is last deliberately: navBar attaches installed modules to
+      // whichever group's last item has key 'modules'.
       { key: 'modules', label: 'Store', href: 'admin/modules', icon: 'addons' },
     ],
   },
@@ -2536,8 +2545,9 @@ function navBar(active: string, modules: readonly NavModule[]): string {
     let body: string;
     const store = g.items[g.items.length - 1];
     // Installed modules attach to whichever group holds the Store item, found
-    // by item key rather than group key — the Store moved into Extras and a
-    // group-key check would silently stop finding it.
+    // by item key rather than group key — the Store has already moved groups
+    // once and a group-key check would silently stop finding it if it moves
+    // again.
     if (modules.length > 0 && store !== undefined && store.key === 'modules') {
       // Built-ins, then one entry per installed module, then the Store — which
       // is the last item in the group by construction.
