@@ -2,6 +2,7 @@ import { validateOutboundUrl } from '@maverick-wall/core';
 import { randomBytes } from 'node:crypto';
 import type { SqliteDatabase } from '../db/open.js';
 import type { Keyring } from '../secrets/keyring.js';
+import { nextCalendarColor } from './palette.js';
 
 /**
  * Creating a calendar source.
@@ -52,16 +53,20 @@ export function addCalendarSource(
   const id = randomBytes(8).toString('hex');
   const now = Date.now();
 
+  // Rotated rather than left to the column default, which is one fixed blue:
+  // three calendars all drawing the same colour is a wall that cannot say whose
+  // event anything is. See `palette.ts`.
   db.prepare(
     `INSERT INTO calendar_sources
-       (id, name, url_encrypted, url_host, person_id, allow_private_network, allow_loopback,
+       (id, name, url_encrypted, url_host, color, person_id, allow_private_network, allow_loopback,
         allow_http, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.name,
     keyring.encrypt(input.url, 'calendar-source-url'),
     validated.value.hostname,
+    nextCalendarColor(db),
     input.personId ?? null,
     input.allowPrivateNetwork === true ? 1 : 0,
     input.allowLoopback === true ? 1 : 0,

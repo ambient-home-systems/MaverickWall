@@ -3,6 +3,7 @@ import type { SqliteDatabase } from '../../db/open.js';
 import type { Keyring } from '../../secrets/keyring.js';
 import { HOME_BLOCK } from './index.js';
 import type { DisplayMode } from './entities.js';
+import { nextCalendarColor } from '../../api/palette.js';
 
 /**
  * This module's corner of the database.
@@ -240,6 +241,10 @@ export interface AddHaCalendarInput {
  * `url_encrypted` stays null: this source has no address of its own. It is
  * reached through the one connection on the Home Assistant screen, which is
  * also why moving that connection needs no rewrite here.
+ *
+ * An absent colour rotates the shared palette rather than falling back to one
+ * fixed blue — a Home Assistant calendar draws on the same wall as an ICS feed,
+ * so the two rotations have to be the same rotation. See `api/palette.ts`.
  */
 export function addHaCalendarSource(db: SqliteDatabase, input: AddHaCalendarInput): string {
   const id = randomBytes(8).toString('hex');
@@ -250,7 +255,7 @@ export function addHaCalendarSource(db: SqliteDatabase, input: AddHaCalendarInpu
       `INSERT INTO calendar_sources
          (id, name, kind, ha_entity_id, color, created_at, updated_at)
        VALUES (?, ?, 'homeassistant', ?, ?, ?, ?)`,
-    ).run(id, input.name, input.entityId, input.color ?? '#4C7FD1', at, at);
+    ).run(id, input.name, input.entityId, input.color ?? nextCalendarColor(db), at, at);
 
     db.prepare(
       `INSERT INTO job_state (key, kind, next_run_at, consecutive_failures, created_at, updated_at)

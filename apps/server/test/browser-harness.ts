@@ -208,6 +208,16 @@ export interface Installation {
   post(path: string, fields: Record<string, string>): Promise<Response>;
   /** A new screen and the pairing link the admin prints for it. */
   pairLink(name?: string): Promise<string>;
+  /**
+   * The loopback ICS feed's address — **only with `feed: true`**.
+   *
+   * Exposed so a test can add a *second* and *third* calendar through the real
+   * admin form. One household with several feeds is the ordinary case and there
+   * was no way to build one here.
+   */
+  readonly feedUrl: string | undefined;
+  /** Run the real sync job over every source, as the scheduler would. */
+  sync(): Promise<void>;
   /** Sign this browser in the way a household does: the form, not a cookie. */
   signIn(page: Page): Promise<void>;
   /** A power cut: the port closes and connections are refused, not stubbed. */
@@ -347,6 +357,8 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
       if (link === undefined) throw new Error('the pairing page printed no link');
       return link;
     },
+    feedUrl: feedServer?.url,
+    sync: (): Promise<void> => syncEveryFeed(db, keyring),
     kill,
     async dispose(): Promise<void> {
       await kill();

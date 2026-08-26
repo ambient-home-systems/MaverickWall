@@ -1,5 +1,6 @@
 import type { Context, Hono } from 'hono';
 import { addCalendarSource } from '../api/sources.js';
+import { nextPersonColor } from '../api/palette.js';
 import {
   createPerson,
   deletePerson,
@@ -3335,7 +3336,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<form method="post" action="admin/people">` +
         `<div class="row-fields">` +
         textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sam' }) +
-        textField({ label: 'Colour', name: 'color', type: 'color', value: '#4C7FD1' }) +
+        // Pre-filled with the colour this person would be given anyway, so the
+        // picker agrees with what a household who never touches it gets. A
+        // fixed literal here was half of the bug: everyone came out blue.
+        textField({ label: 'Colour', name: 'color', type: 'color', value: nextPersonColor(deps.db) }) +
         `</div>` +
         `<p class="hint">A picture can be added once they exist. The colour is what ` +
         `marks their events either way.</p>` +
