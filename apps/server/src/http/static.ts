@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -39,6 +40,13 @@ function contentTypeFor(name: string): string {
 export interface StaticFile {
   readonly body: Buffer;
   readonly contentType: string;
+  /** Content-derived, so a rebuild changes it and a byte-identical file does not. */
+  readonly etag: string;
+}
+
+/** Same construction as `manifestEtag`: a short, quoted content hash. */
+export function contentEtag(body: Buffer): string {
+  return `"${createHash('sha256').update(body).digest('hex').slice(0, 32)}"`;
 }
 
 export interface StaticFiles {
@@ -94,10 +102,12 @@ export function createStaticFiles(directory: string): StaticFiles {
     read(name: string): StaticFile | undefined {
       if (!SAFE_NAME.test(name)) return undefined;
       try {
-        // No cache. The bundle is small, the reader is one tablet on a LAN,
-        // and a stale file surviving a rebuild is the kind of confusion that
-        // costs an hour. Revisit when there is a hashed filename scheme.
-        return { body: readFileSync(join(directory, name)), contentType: contentTypeFor(name) };
+        // Cache-Control stays `no-cache` — the bundle is small, the reader is
+        // one tablet on a LAN, and a stale file surviving a rebuild is the
+        // kind of confusion that costs an hour — but an ETag turns that
+        // mandatory revalidation into a 304 instead of a full re-download.
+        const body = readFileSync(join(directory, name));
+        return { body, contentType: contentTypeFor(name), etag: contentEtag(body) };
       } catch {
         return undefined;
       }
