@@ -15,10 +15,11 @@ services:
       # The calendar, the settings and the key that decrypts the feed
       # addresses. Back this up and you have backed up everything.
       #
-      # A named volume rather than `./data`, because the container runs as uid
-      # 1000 and a folder you created belongs to you — on Linux it could not
-      # write its own database. Swap in `./data:/data` if you would rather see
-      # the files, and `chown -R 1000:1000 ./data` first.
+      # A named volume rather than `./data`, because it is the one thing that
+      # works the same everywhere and there is nothing on the host to keep in
+      # step. Swap in `./data:/data` if you would rather see the files — that
+      # needs no chown: the container takes ownership of its data directory at
+      # startup, then drops to an unprivileged user before it serves anything.
       - maverick-wall:/data
     env_file:
       # Copy .env.example to .env first. Every variable is optional.
