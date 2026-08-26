@@ -1,15 +1,5 @@
-import { afterAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { openDatabase } from '../src/db/open.js';
-import { runMigrations } from '../src/db/migrate.js';
-import { createApp } from '../src/http/app.js';
-import { createSetupTokenHolder } from '../src/http/setup.js';
-import { createKeyring } from '../src/secrets/keyring.js';
-import { createFetcher } from '../src/net/fetcher.js';
+import { describe, expect, it } from 'vitest';
+import { adminStylesheet as stylesheet, rulesOf } from './admin-stylesheet.js';
 
 /**
  * Every control that opts out of the filled button must opt out of its states.
@@ -31,64 +21,6 @@ import { createFetcher } from '../src/net/fetcher.js';
  * a control with no container, and must declare both states. A new one is
  * covered the day it is written.
  */
-
-const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
-const roots: string[] = [];
-let n = 0;
-afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
-});
-
-/** The admin stylesheet, as a page actually serves it. */
-async function stylesheet(): Promise<string> {
-  const dataDir = mkdtempSync(join(tmpdir(), 'mw-btnstate-'));
-  roots.push(dataDir);
-  const { db } = openDatabase({ dataDir });
-  runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
-  const stamp = Date.now();
-  db.prepare(
-    `INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`,
-  ).run(stamp, stamp);
-
-  const setupToken = createSetupTokenHolder(() => {});
-  const app = createApp({
-    db,
-    appVersion: '0.1.0-test',
-    bootNotices: [],
-    auth: { secret: 'b'.repeat(32), baseUrl: 'http://localhost' },
-    keyring: createKeyring(randomBytes(32)),
-    fetcher: createFetcher(),
-    clientAddress: () => `10.9.0.${++n}`,
-    setupToken,
-    dataDir,
-  });
-
-  // Sign-in is served signed out and carries the whole stylesheet.
-  const html = await (await app.fetch(new Request('http://localhost/admin/sign-in'))).text();
-  const opened = html.indexOf('<style>');
-  const closed = html.indexOf('</style>', opened);
-  expect(opened, 'the admin page must carry an inline stylesheet').toBeGreaterThan(-1);
-  return html.slice(opened + '<style>'.length, closed);
-}
-
-interface Rule {
-  readonly selectors: readonly string[];
-  readonly body: string;
-}
-
-function rulesOf(css: string): Rule[] {
-  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  const out: Rule[] = [];
-  const pattern = /([^{}]+)\{([^{}]*)\}/g;
-  for (let m = pattern.exec(withoutComments); m !== null; m = pattern.exec(withoutComments)) {
-    const selectors = (m[1] ?? '')
-      .split(',')
-      .map((part) => part.replace(/\s+/g, ' ').trim())
-      .filter((part) => part !== '');
-    out.push({ selectors, body: m[2] ?? '' });
-  }
-  return out;
-}
 
 const SETS_BACKGROUND = /(^|;|\s)background(-color)?\s*:/;
 const CLEARS_BACKGROUND = /background\s*:\s*(none|transparent)/;

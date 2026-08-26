@@ -149,6 +149,17 @@ const THEMES: Readonly<Record<ThemeName, ThemeTokens>> = {
   swiss: SWISS,
 };
 
+/**
+ * Every theme this bundle draws, in declaration order.
+ *
+ * Exported so a test can iterate them rather than transcribe them. A sixth
+ * theme added to `THEMES` above joins the contrast assertions in
+ * `test/theme.test.ts` on the same commit — a hand-copied list would not, and
+ * the whole reason those assertions exist is that four themes shipped without
+ * anything checking them.
+ */
+export const THEME_NAMES: readonly ThemeName[] = Object.keys(THEMES) as ThemeName[];
+
 /** The fallback for an unknown key — a version skew, or a retired theme. */
 const DEFAULT_THEME: ThemeName = 'panels';
 
