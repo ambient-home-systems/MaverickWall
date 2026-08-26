@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.54.0
 
 **A wall no longer goes blank, and stays blank, because the server had a bad
 moment.**
