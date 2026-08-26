@@ -145,13 +145,12 @@ const OFF_GRID_SPACING: readonly string[] = [];
  * Tokens nothing reads today. Two kinds, and the difference matters when one
  * is being burned down:
  *
- *  - **The one-offs.** `--mw-touch: 44px` is the RFC's own example: it has
- *    zero references while the drawer, the nav row and the settings row all
- *    hard-code 48px, so the token is *stricter* than the code and disagrees
- *    with it in silence. `--mw-focus`, `--mw-hairline`, `--mw-shadow-0`,
+ *  - **The one-offs.** `--mw-focus`, `--mw-hairline`, `--mw-shadow-0`,
  *    `--mw-danger-ink`, `--mw-night-soft`, `--mw-dur-3` and
- *    the `--night` alias are the same shape: declared, described in a comment,
- *    and never used. Each is a delete or a use, and it is 6b's call which.
+ *    the `--night` alias are declared, described in a comment, and never
+ *    used. Each is a delete or a use, and it is 6b's call which. (`--mw-touch`
+ *    was the RFC's own example of one — it now backs the Phase 7 touch-target
+ *    rules below 900px.)
  *  - **The unfilled rungs of a ladder.** `--mw-s-2` and the `--mw-t-*` parts
  *    are emitted as complete scales by construction — `adminTypeVars()` writes
  *    four parts and a shorthand for every role whether or not a call site
@@ -200,7 +199,6 @@ const UNREFERENCED_TOKENS: readonly string[] = [
   '--mw-t-label-sm-weight',
   '--mw-t-label-xs-lh',
   '--mw-t-label-xs-weight',
-  '--mw-touch',
   '--night',
 ];
 
@@ -314,9 +312,7 @@ describe('the admin token vocabulary', () => {
   it('reads every token it declares', async () => {
     // The mirror of `admin-design-system.test.ts`'s dangling-var check, and the
     // half that had never been asserted. A token nothing reads is a claim the
-    // stylesheet is making about itself and not honouring — `--mw-touch:44px`
-    // has zero references while the code hard-codes 48px, so the token is
-    // *stricter* than the design it describes and nobody reading it would know.
+    // stylesheet is making about itself and not honouring.
     const css = stripComments(await adminStylesheet());
     const declared = [
       ...new Set([...css.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)].map((m) => m[1] as string)),

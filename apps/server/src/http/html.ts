@@ -1990,6 +1990,19 @@ pre.code{background:var(--mw-surface-2);
   .savebar{left:0;padding:12px 20px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
 }
 
+/* ---- Touch targets below 900px (RFC 009 Phase 7) --------------------------
+ * A form field was 40px, a .btn-sm was 32px, and an inline nav link (a.link,
+ * .link) was sized by its text alone — 15-21px tall. All under the 44px a
+ * touch target needs, on the one breakpoint where every tap is a finger
+ * rather than a pointer. --mw-touch is the token for it; the hit area grows,
+ * the visual size does not — a field and a small button both keep their drawn
+ * height and centre their content in the taller box instead. */
+@media(max-width:900px){
+  .field .field-input{min-height:var(--mw-touch);box-sizing:border-box}
+  .btn-sm{min-height:var(--mw-touch);display:inline-flex;align-items:center}
+  a.link,.link{min-height:var(--mw-touch);display:inline-flex;align-items:center}
+}
+
 /* ---- Pressed and hover states for every control with no container ---------
  *
  * button,.btn is the *filled* variant: primary ground, on-primary label. A
