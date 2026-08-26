@@ -544,8 +544,9 @@ describe('a settings form', () => {
           .get() as { n: number }).n;
       const before = off();
 
-      // A rule card is its own form: submitting it navigates, and the unsaved
-      // units change goes with it.
+      // A rule row's action is a form behind its overflow menu: submitting it
+      // navigates, and the unsaved units change goes with it.
+      await page.locator('.rules-table .ovf-btn').first().click();
       await page.locator('form[action*="/alerts/rules/"] button').first().click();
       await page.waitForTimeout(1500);
 
@@ -867,6 +868,89 @@ describe('a settings form', () => {
         ).toBe('Europe/Paris');
         // And the strip is script-free too — it is markup, and its dismiss is a link.
         expect(await page.locator('.saved-text').textContent()).toBe('Timezone saved.');
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});
+
+// ===========================================================================
+// Conditional fields (RFC 009 Phase 7)
+// ===========================================================================
+
+describe('the Chores screen', () => {
+  /**
+   * The add form's five mutually-exclusive schedule field groups, shown or
+   * hidden as "Repeats" changes — and shown all at once is the fault this
+   * is for: four chores made a page whose real content was three lines each.
+   */
+  it(
+    'shows only the schedule fields that belong to the chosen repeat',
+    async () => {
+      const { page, home } = await signedIn();
+      await page.goto(`${home.base}/admin/chores#add`, { waitUntil: 'load' });
+
+      const weekdays = page.locator('form[action="admin/chores"] fieldset.checks');
+      const everyN = page.locator('form[action="admin/chores"] [data-cond-show="everyNDays"]');
+      const monthDay = page.locator('form[action="admin/chores"] [data-cond-show="monthlyDate"]');
+      const once = page.locator('form[action="admin/chores"] [data-cond-show="once"]');
+
+      const visible = async (): Promise<Record<string, boolean>> => ({
+        weekdays: await weekdays.isVisible(),
+        everyN: await everyN.isVisible(),
+        monthDay: await monthDay.isVisible(),
+        once: await once.isVisible(),
+      });
+
+      // "weekdays" is the add form's default.
+      expect(await visible()).toEqual({ weekdays: true, everyN: false, monthDay: false, once: false });
+
+      await page.selectOption('form[action="admin/chores"] select[name="kind"]', 'everyNDays');
+      expect(await visible()).toEqual({ weekdays: false, everyN: true, monthDay: false, once: false });
+
+      await page.selectOption('form[action="admin/chores"] select[name="kind"]', 'once');
+      expect(await visible()).toEqual({ weekdays: false, everyN: false, monthDay: false, once: true });
+
+      // "daily" belongs to none of the five groups.
+      await page.selectOption('form[action="admin/chores"] select[name="kind"]', 'daily');
+      expect(await visible()).toEqual({ weekdays: false, everyN: false, monthDay: false, once: false });
+    },
+    SLOW,
+  );
+
+  /**
+   * The degradation promise: a household who blocks script gets every field
+   * visible, exactly as before this phase — the form's own hint already says
+   * which boxes to use, and this script only ever adds `hidden`.
+   */
+  it(
+    'shows every schedule field with script off',
+    async () => {
+      const home = await fresh();
+      const context = await (await browser()).newContext({ javaScriptEnabled: false });
+      try {
+        const page = await context.newPage();
+        await page.goto(`${home.base}/admin/sign-in`, { waitUntil: 'load' });
+        await page.fill('input[name="email"]', home.account?.email ?? '');
+        await page.fill('input[name="password"]', home.account?.password ?? '');
+        await Promise.all([
+          page.waitForURL((url) => !url.pathname.endsWith('/sign-in'), { timeout: 20_000 }),
+          page.click('button[type="submit"]'),
+        ]);
+
+        await page.goto(`${home.base}/admin/chores#add`, { waitUntil: 'load' });
+        for (const group of ['everyNDays', 'monthlyDate', 'once']) {
+          expect(
+            await page
+              .locator(`form[action="admin/chores"] [data-cond-show="${group}"]`)
+              .isVisible(),
+          ).toBe(true);
+        }
+        expect(
+          await page.locator('form[action="admin/chores"] fieldset.checks').isVisible(),
+        ).toBe(true);
       } finally {
         await context.close();
       }

@@ -15,7 +15,7 @@ import { testFeed } from '../api/test-feed.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, page, selectField, textField } from './html.js';
+import { errorBlock, escapeHtml, noticeBlock, page, selectField, textField } from './html.js';
 import { ingressPath } from './ingress.js';
 import { checkbox, coordinate, optionalText, parse, text, z } from '../validation.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
@@ -747,9 +747,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
          * alerts screen would otherwise have a wall that shows tornado
          * warnings and never be told what it does not promise.
          */
-        `<div class="error" style="margin-top:2rem">` +
-        `<strong>About weather alerts</strong>` +
-        `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
+        `<div style="margin-top:2rem">${noticeBlock('About weather alerts', LIFE_SAFETY_DISCLAIMER)}</div>` +
         `<p class="hint">National Weather Service alerts are shown in the United ` +
         `States. You can change what each level does, or switch them off, on the ` +
         `Weather page.</p>`,
@@ -843,14 +841,16 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         textField({
           label: 'Latitude',
           name: 'latitude',
-          placeholder: '38.8894',
+          // "e.g." on purpose: a bare number here reads as a stored value in
+          // an empty field, not an example of the shape one takes.
+          placeholder: 'e.g. 38.8894',
           value: values.latitude ?? '',
           attrs: 'inputmode="decimal"',
         }) +
         textField({
           label: 'Longitude',
           name: 'longitude',
-          placeholder: '-97.7431',
+          placeholder: 'e.g. -97.7431',
           value: values.longitude ?? '',
           attrs: 'inputmode="decimal"',
         }) +

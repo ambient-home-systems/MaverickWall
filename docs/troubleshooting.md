@@ -71,6 +71,35 @@ That is deliberate when the server is unreachable — it draws the last good cop
 and says how old it is, rather than going blank. If the server *is* reachable,
 check the **Calendars** screen for a failing feed.
 
+## I forgot the account password
+
+There is no reset flow — no email address is ever collected, so there is
+nothing to send a reset link to. Two ways forward:
+
+**Restore a backup taken before the password was lost.** It restores the
+account along with everything else — see [Backup and restore](backup.md). If
+you never took one, this option is not available; the household is the one
+account, and there is no default credential to fall back to (rule ten).
+
+**Or, on a Docker or Compose install with shell access, create a new account
+without losing the calendar.** The add-on has no shell, so this is Docker
+only. With the container stopped:
+
+```bash
+sqlite3 /path/to/wall.db <<'SQL'
+DELETE FROM user;
+UPDATE household_settings SET setup_completed_at = NULL WHERE id = 'singleton';
+SQL
+```
+
+Deleting from `user` cascades to `account` and `session` — the only two
+tables that reference it — so calendars, screens, chores and every setting
+are untouched. Start the container again: with no account, boot prints a
+fresh setup code to the log exactly as it did on a brand-new install, and
+`/setup` opens straight to creating one. This is a manual, unsupported
+procedure — back the database up first — but it is the one way to recover the
+household's data rather than starting over.
+
 ## Nothing here helped
 
 **System → Diagnostics** produces an export that is safe to attach to an issue:

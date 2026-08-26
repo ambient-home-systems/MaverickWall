@@ -26,7 +26,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "declaration": false,
-    "sourceMap": true,
+    // Off deliberately: the bundle ships in the image, and a source map is
+    // ~200KB of dead weight served publicly with nothing here to debug
+    // against once it's on somebody's wall.
+    "sourceMap": false,
     "types": [],
     "rootDir": "./src",
     "outDir": "./dist"

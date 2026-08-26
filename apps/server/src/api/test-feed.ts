@@ -77,6 +77,10 @@ function suggestionFor(code: string): string | undefined {
       return 'This address is on your local network. Turn on "allow local network" for this feed if that is intended.';
     case 'loopback-name':
       return 'That address points back at the machine running Maverick Wall. Turn on "allow loopback" for this feed if that is intended.';
+    case 'reserved-name':
+      // No suggestion here on purpose: unlike the local-network codes above,
+      // there is no flag that would make one of these resolve.
+      return undefined;
     case 'userinfo-present':
       return 'Remove the username and password from the address.';
     case 'unacceptable-content-type':

@@ -46,6 +46,30 @@ directory to a fresh machine, say — the download is named `maverick-wall.key`
 and needs renaming to `.secret` once it is in the data directory. The keyring
 only ever reads the file named `.secret`.
 
+## Moving to a new machine
+
+There is no export-and-reconnect step, because everything the wall needs is
+already in the data directory. Moving it is the whole procedure:
+
+1. Stop the container on the old machine. Copying `wall.db` while it is
+   running is unsafe — SQLite is in WAL mode and you would get a torn copy.
+2. Copy the whole data directory to the new machine (`wall.db`, its `-wal` and
+   `-shm` sidecars if present, and `.secret`). A named volume can be copied
+   with `docker run --rm -v maverick-wall:/from -v newvolume:/to alpine cp -a
+   /from/. /to/`; a bind-mounted folder is just a folder to copy.
+3. Run the same `docker run` (or the add-on) on the new machine, pointed at
+   the copied data.
+
+The screens and their pairing tokens travel with the database, so a wall
+already paired keeps working once it can reach the new address — which is the
+one thing to plan for. On Docker, if the new machine has a different LAN
+address, set `BASE_URL` to it so sign-in and pairing links resolve correctly.
+The add-on needs nothing set here; Home Assistant's own address is what the
+sidebar and any pairing link already use. Either way, point each screen's
+browser at the new address. `.secret` has to make the trip — without it every
+calendar address is unreadable ciphertext, which reads exactly like the
+"restore without the key" case above.
+
 ## Diagnostics
 
 **System → Diagnostics** is the one that is safe to hand to somebody else.

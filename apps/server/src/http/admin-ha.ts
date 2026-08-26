@@ -40,7 +40,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
-import { navModules, type AdminDeps } from './admin.js';
+import { ago, navModules, type AdminDeps } from './admin.js';
 
 /** One schema per form on this screen. */
 const connectBody = z.object({
@@ -677,7 +677,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         `<p>Home Assistant is reached through the supervisor. There is nothing to ` +
         `configure and no token to manage.</p>` +
         `<p class="host">${live.entities.length} readable entities · ` +
-        `${live.calendars.length} calendars${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(agoOf(lastSyncAt))}</p>` +
+        `${live.calendars.length} calendars${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(ago(lastSyncAt, now()))}</p>` +
         `</div>`
       );
     }
@@ -686,7 +686,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         `<div class="card"><h2>Connected</h2>` +
         `<p class="host">${escapeHtml(live.host ?? '')} · ${live.entities.length} readable ` +
         `entities · ${live.calendars.length} calendars` +
-        `${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(agoOf(lastSyncAt))}</p>` +
+        `${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(ago(lastSyncAt, now()))}</p>` +
         `<form method="get" action="admin/home-assistant/disconnect">` +
         `<button class="btn-danger" type="submit">Disconnect</button></form>` +
         `<p class="hint">${escapeHtml(HA_DISCONNECT_CONSEQUENCE)}</p>` +
@@ -694,15 +694,6 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
     return `<div class="card"><h2>Not connected</h2><p>Nothing from your house is on the wall.</p></div>`;
-  }
-
-  function agoOf(at: number): string {
-    const seconds = Math.max(0, Math.round((now() - at) / 1000));
-    if (seconds < 60) return 'just now';
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-    const hours = Math.round(minutes / 60);
-    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
   }
 
   function connectionForm(settings: ReturnType<typeof readHaSettings>): string {
@@ -761,7 +752,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `<h2>${escapeHtml(row.label ?? row.friendlyName ?? row.entityId)}</h2>` +
           `<p>${escapeHtml(row.state ?? '—')}` +
           `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
-          `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(agoOf(row.fetchedAt))}</p>` +
+          `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(ago(row.fetchedAt, now()))}</p>` +
           `<p class="host">${escapeHtml(row.entityId)}</p>` +
           `<form method="get" action="admin/home-assistant/entities/remove">` +
           `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +

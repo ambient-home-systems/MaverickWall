@@ -601,6 +601,8 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 .checks-inline{display:flex;flex-wrap:wrap;gap:0 20px}
 .checks-inline legend{width:100%}
 .checks-inline label{min-width:4.5rem}
+/* Same [hidden] override as .row-fields and .grid above, for the same reason. */
+.checks-inline[hidden]{display:none}
 
 /* A paused chore's card. Quieter, not hidden: it is still a chore the household
    set up and the screen it lives on is where they go to bring it back. The tag
@@ -661,6 +663,11 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 .row-fields{display:flex;gap:1rem;flex-wrap:wrap}
 .row-fields span,.row-fields .field{flex:1 1 12rem}
 .row-fields .field{margin-top:1rem}
+/* Spelled out against the class rather than left to the browser, the same
+ * reason the settings-form foot does below: display:flex here wins over the
+ * user agent's [hidden]{display:none}, so a hidden row-fields would sit
+ * there in plain sight rather than actually disappear. */
+.row-fields[hidden]{display:none}
 
 /* ---- Buttons ---------------------------------------------------------------
  * The default is a filled button: 40px container, 4px corner, 20px of side
@@ -785,6 +792,15 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
   font-size:14px;font-weight:600;margin-bottom:4px}
 .error span{color:var(--mw-danger);font-size:var(--mw-t-label-size);line-height:1.5}
 
+/* .error's calm twin for a notice or a disclaimer: same shape, the warn hue
+ * rather than danger, so a warning that is not a failure does not read as one. */
+.notice{background:var(--mw-warn-soft);
+  color:var(--mw-warn);
+  padding:1rem 1rem;border-radius:var(--mw-r-3);margin:1rem 0}
+.notice strong{color:var(--mw-warn);display:block;
+  font-size:14px;font-weight:600;margin-bottom:4px}
+.notice span{color:var(--mw-warn);font-size:var(--mw-t-label-size);line-height:1.5}
+
 /* ---- The confirmation strip (RFC 009 Phase 3.1) --------------------------
  * The .error box's calm twin: the same tinted container and 6px corner, on the
  * ok pair rather than the danger one, so a save and a failure are the same
@@ -860,6 +876,8 @@ p.hint,.hint{font-size:12.5px;color:var(--mw-ink-2);margin:0.25rem 0 0;line-heig
 
 /* ---- Grids and section headers ------------------------------------------ */
 .grid{display:grid;gap:16px;margin:1rem 0}
+/* Same [hidden] override as .row-fields above, for the same reason. */
+.grid[hidden]{display:none}
 .g3{grid-template-columns:repeat(3,1fr)}
 .g2{grid-template-columns:repeat(2,1fr)}
 @media(max-width:1040px){.g3{grid-template-columns:repeat(2,1fr)}}
@@ -933,8 +951,20 @@ a.card:active{background:var(--mw-surface-3)}
   color:var(--mw-danger)}
 .tag-accent{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
+.tag-warn{background:var(--mw-warn-soft);
+  color:var(--mw-warn)}
 .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;
   background:var(--swatch);flex:0 0 auto;vertical-align:baseline}
+
+/* ---- The alert rules table (RFC 009 Phase 7) ------------------------------
+ * Replaced five ~180px cards, each holding three short lines and one small
+ * button — 900px of a 2,400px page, and the on/off state was communicated
+ * only by the button label. A row's state is its own chip now; the action
+ * moves to an overflow, which is the same .ovf every wall's header uses. */
+.rules-table{width:100%;border-collapse:collapse;margin:1rem 0}
+.rules-table td{padding:12px 8px;border-bottom:1px solid var(--mw-line);vertical-align:middle}
+.rules-table tr:last-child td{border-bottom:0}
+.rules-table .ovfcell{width:48px;text-align:right}
 img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
   margin-right:0.5rem;vertical-align:-.4rem;background:var(--panel2)}
 
@@ -1969,6 +1999,28 @@ pre.code{background:var(--mw-surface-2);
   .savebar{left:0;padding:12px 20px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
 }
 
+/* ---- Touch targets below 900px (RFC 009 Phase 7) --------------------------
+ * A form field was 40px, a .btn-sm was 32px, and an inline nav link (a.link,
+ * .link) was sized by its text alone — 15-21px tall. All under the 44px a
+ * touch target needs, on the one breakpoint where every tap is a finger
+ * rather than a pointer. --mw-touch is the token for it; the hit area grows,
+ * the visual size does not.
+ *
+ * A field and a small button both keep their drawn height and centre their
+ * content in the taller box instead — they are their own line. A .link is
+ * not: most are one word inside a sentence ("choose where it sits on the
+ * Default wall."), so growing its box the same way would inflate that one
+ * word into a 44px-tall block mid-paragraph. The chore tick's idiom applies
+ * instead — the checkbox pointer-target pattern above — a pseudo-element
+ * that extends the hit area without taking up any layout space, so the text
+ * never moves. -15px on every side turns even a 15px line into 45px. */
+@media(max-width:900px){
+  .field .field-input{min-height:var(--mw-touch);box-sizing:border-box}
+  .btn-sm{min-height:var(--mw-touch);display:inline-flex;align-items:center}
+  a.link,.link{position:relative}
+  a.link::before,.link::before{content:"";position:absolute;inset:-15px}
+}
+
 /* ---- Pressed and hover states for every control with no container ---------
  *
  * button,.btn is the *filled* variant: primary ground, on-primary label. A
@@ -2561,6 +2613,16 @@ export interface PageOptions {
 const WANTS_DIRTY_SCRIPT = /<form\b[^>]*\bdata-dirty(?=[\s=>])/;
 
 /**
+ * Does this page hold a `<select data-cond>` the conditional-fields script
+ * should wire (RFC 009 Phase 7)?
+ *
+ * Same shape as `WANTS_DIRTY_SCRIPT` and the same reason: fetch and run
+ * `conditional-fields.js` only on the pages that actually have a select to
+ * drive it, not on every page in the admin.
+ */
+const WANTS_CONDITIONAL_FIELDS_SCRIPT = /<select\b[^>]*\bdata-cond(?=[\s=>])/;
+
+/**
  * The strip itself: one sentence and a way to be rid of it.
  *
  * The sentence is a literal from `SAVED_MESSAGES`, never anything the request
@@ -2755,6 +2817,9 @@ export function page(options: PageOptions): string {
     (WANTS_DIRTY_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/settings-form.js"></script>`
       : '') +
+    (WANTS_CONDITIONAL_FIELDS_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/conditional-fields.js"></script>`
+      : '') +
     `</main></body></html>`
   );
 }
@@ -2817,6 +2882,22 @@ export function confirmDestroyPage(options: ConfirmDestroyOptions): string {
 export function errorBlock(message: string, suggestion?: string): string {
   return (
     `<div class="error"><strong>${escapeHtml(message)}</strong>` +
+    (suggestion === undefined ? '' : `<span>${escapeHtml(suggestion)}</span>`) +
+    `</div>`
+  );
+}
+
+/**
+ * Something worth reading first, not something that went wrong.
+ *
+ * `.error`'s calm twin, on the warn hue rather than danger: the Weather screen
+ * put an informational note and the life-safety disclaimer in the danger
+ * surface, which is the wrong colour for either — neither is an error, and the
+ * disclaimer in particular needs prominence rather than alarm.
+ */
+export function noticeBlock(message: string, suggestion?: string): string {
+  return (
+    `<div class="notice"><strong>${escapeHtml(message)}</strong>` +
     (suggestion === undefined ? '' : `<span>${escapeHtml(suggestion)}</span>`) +
     `</div>`
   );
