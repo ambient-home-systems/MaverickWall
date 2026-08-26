@@ -10,6 +10,7 @@ import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { ago, navModules, type AdminDeps } from './admin.js';
+import { selfHref } from './self.js';
 
 /**
  * The screen's one form (RFC 009 Phase 3.1).
@@ -659,6 +660,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const located = hasWeatherLocation(deps.db);
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Weather — Maverick Wall',
       nav: 'alerts',

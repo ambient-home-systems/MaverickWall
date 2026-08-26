@@ -397,6 +397,7 @@ import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { offeredTimezones } from './setup.js';
+import { selfHref } from './self.js';
 import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
@@ -855,6 +856,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+        self: selfHref(c),
       modules: navModules(deps.db),
         title: 'Maverick Wall',
         nav: 'home',
@@ -1090,6 +1092,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+        self: selfHref(c),
       modules: navModules(deps.db),
         title: 'Remove calendar',
         nav: 'calendars',
@@ -1300,6 +1303,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+        self: selfHref(c),
       modules: navModules(deps.db),
         title: 'Restore staged',
         nav: 'system',
@@ -1425,6 +1429,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+        self: selfHref(c),
       modules: navModules(deps.db),
         title: 'Remove person',
         nav: 'people',
@@ -1521,7 +1526,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const owner = deps.db
       .prepare('SELECT person_id AS personId FROM shift_plans WHERE id = ?')
       .get(id) as { personId: string | null } | undefined;
-    return c.html(draftPage(draftFromPlan(plan, owner?.personId ?? '')));
+    return c.html(draftPage(c, draftFromPlan(plan, owner?.personId ?? '')));
   });
 
   /** Step one: who, and where the answer comes from. */
@@ -1549,24 +1554,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       slots: Array.from({ length: MAX_CYCLE }, () => SLOT_UNUSED),
       titleMap: suggestedTitleMap(sourceId),
     };
-    return c.html(draftPage(draft));
+    return c.html(draftPage(c, draft));
   });
 
   app.post('/admin/shifts/preview', async (c: Context) => {
     const draft = draftFrom((await c.req.parseBody()) as Record<string, unknown>);
     const plan = planFrom(draft, 'preview');
-    if ('message' in plan) return c.html(draftPage(draft, plan), 400);
-    return c.html(draftPage(draft, undefined, plan));
+    if ('message' in plan) return c.html(draftPage(c, draft, plan), 400);
+    return c.html(draftPage(c, draft, undefined, plan));
   });
 
   app.post('/admin/shifts/save', async (c: Context) => {
     const draft = draftFrom((await c.req.parseBody()) as Record<string, unknown>);
     const plan = planFrom(draft, randomBytes(8).toString('hex'));
-    if ('message' in plan) return c.html(draftPage(draft, plan), 400);
+    if ('message' in plan) return c.html(draftPage(c, draft, plan), 400);
 
     const person = readPeopleAdmin(deps.db).find((candidate) => candidate.id === draft.personId);
     if (person === undefined) {
-      return c.html(draftPage(draft, { message: 'That person is no longer there.' }), 400);
+      return c.html(draftPage(c, draft, { message: 'That person is no longer there.' }), 400);
     }
 
     saveShiftPlan(deps.db, {
@@ -1597,6 +1602,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (plan === undefined) return c.redirect('/admin/shifts', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Remove rotation',
         nav: 'shifts',
@@ -1664,23 +1670,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const flow = deps.deviceFlow.lookupByUserCode(code, now());
     if (flow === undefined || flow.state !== 'pending') {
       return c.html(approveResultPage(
+      c,
         'Nothing to approve',
         'That pairing code has expired or was already used. Start pairing again on ' +
           'the wall, then approve the new code here.',
       ), flow === undefined ? 404 : 409);
     }
-    return c.html(approvePromptPage(flow.userCode));
+    return c.html(approvePromptPage(c, flow.userCode));
   });
 
   app.post('/admin/screens/approve', async (c: Context) => {
     const shaped = parse(approveDeviceBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(approveResultPage('That did not work', shaped.message), 400);
+    if (!shaped.ok) return c.html(approveResultPage(c, 'That did not work', shaped.message), 400);
     const { code, name, action } = shaped.value;
     const at = now();
 
     if (action === 'deny') {
       deps.deviceFlow.deny(code, at);
       return c.html(approveResultPage(
+      c,
         'Wall declined',
         'That wall will not be paired. It is safe to close it, or start again.',
       ));
@@ -1693,6 +1701,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const issued = issueDisplayToken();
     if (!deps.deviceFlow.approve(code, issued.token, name, at)) {
       return c.html(approveResultPage(
+      c,
         'Nothing to approve',
         'That pairing code has expired or was already used. Start pairing again on ' +
           'the wall, then approve the new code here.',
@@ -1701,6 +1710,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const id = randomBytes(6).toString('hex');
     createScreen(deps.db, id, name, pairingSecret(issued));
     return c.html(approveResultPage(
+      c,
       `${escapeHtml(name)} is paired`,
       'The wall will pick up its token on its next check, within a few seconds, ' +
         'and start drawing. You can rename or remove it from the Walls page.',
@@ -1975,6 +1985,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const url = frameUrlFor(token, c);
     const unreachable = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url);
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'E-paper wall — Maverick Wall',
       nav: 'walls',
@@ -2018,12 +2029,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * screen at all.
    */
   const epaperViewPage = (
+    c: Context,
     id: string,
     name: string,
     geometry: { width: number; height: number; rotation: number },
   ): string => {
     const placeholder = "<this wall's frame URL>";
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'E-paper wall — Maverick Wall',
       nav: 'walls',
@@ -2060,6 +2073,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       .join('');
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Add an e-paper wall — Maverick Wall',
       nav: 'walls',
@@ -2125,7 +2139,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
     return c.html(
-      epaperViewPage(id, screen.name, {
+      epaperViewPage(c, id, screen.name, {
         width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation,
       }),
     );
@@ -2182,6 +2196,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (screen === undefined) return c.redirect('/admin/walls', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Regenerate URL',
         nav: 'walls',
@@ -2268,6 +2283,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (screen === undefined) return c.redirect('/admin/walls', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Remove e-paper wall',
         nav: 'walls',
@@ -2531,6 +2547,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return c.html(
       page({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: `${screen.name} layout — Maverick Wall`,
         nav: 'walls',
@@ -2709,7 +2726,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (id !== 'default' && !activeScreens().some((s) => s.id === id)) {
       return c.redirect('/admin/walls', 302);
     }
-    return c.html(templateGalleryPage(resolveOwner(id === 'default' ? null : id)));
+    return c.html(templateGalleryPage(c, resolveOwner(id === 'default' ? null : id)));
   });
 
   /**
@@ -2723,7 +2740,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const template = typeof body['templateId'] === 'string' ? findTemplate(body['templateId']) : undefined;
     if (template === undefined) {
-      return c.html(templateGalleryPage(owner, 'That template is not one we ship.'), 400);
+      return c.html(templateGalleryPage(c, owner, 'That template is not one we ship.'), 400);
     }
     applyTemplate(deps.db, owner, template);
     return savedRedirect(c, layoutUrl(owner), 'layout-template-applied');
@@ -2741,7 +2758,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const src = typeof body['sourceOwner'] === 'string' ? body['sourceOwner'] : '';
     const from = resolveOwner(src === 'default' ? null : src);
     if (from === to) {
-      return c.html(templateGalleryPage(to, 'Pick a different wall to copy from.'), 400);
+      return c.html(templateGalleryPage(c, to, 'Pick a different wall to copy from.'), 400);
     }
     copyLayout(deps.db, from, to);
     return savedRedirect(c, layoutUrl(to), 'layout-copied');
@@ -2816,6 +2833,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   /** The editor: tag titles or set a cycle, preview, then save. */
   function draftPage(
+    c: Context,
     draft: Draft,
     error?: { message: string; suggestion?: string },
     plan?: ReturnType<typeof planFrom>,
@@ -2879,6 +2897,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Work Schedule — Maverick Wall',
       nav: 'shifts',
@@ -2932,6 +2951,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const canAdd = people.length > 0;
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Work Schedule — Maverick Wall',
       nav: 'shifts',
@@ -3020,6 +3040,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       .join('\n');
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'System — Maverick Wall',
       nav: 'system',
@@ -3276,6 +3297,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</article>`;
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'People — Maverick Wall',
       nav: 'people',
@@ -3355,6 +3377,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     if (portOff) {
       return page({
+        self: selfHref(c),
       modules: navModules(deps.db),
         title: 'Pair this wall',
         nav: 'walls',
@@ -3374,6 +3397,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Pair this wall',
       nav: 'walls',
@@ -3418,11 +3442,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * the code at the Walls page. The code travels in a hidden field so the one
    * form carries it to whichever button the household presses.
    */
-  function approvePromptPage(userCode: string): string {
+  function approvePromptPage(c: Context, userCode: string): string {
     return page({
       modules: navModules(deps.db),
       title: 'Approve this wall',
       nav: 'walls',
+      self: selfHref(c),
       heading: 'A wall wants to pair',
       intro:
         'A wall on your network is asking to join your household. Give it a ' +
@@ -3449,11 +3474,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /** A plain outcome page for the approve/decline actions. */
-  function approveResultPage(heading: string, message: string): string {
+  function approveResultPage(c: Context, heading: string, message: string): string {
     return page({
       modules: navModules(deps.db),
       title: heading,
       nav: 'walls',
+      self: selfHref(c),
       heading,
       intro: message,
       body: `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
@@ -3986,6 +4012,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<button class="secondary" type="submit">Continue</button></div></form>`;
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Walls — Maverick Wall',
       nav: 'walls',
@@ -4276,6 +4303,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</section>`;
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: `${owner ? owner.name : 'Default wall'} — Maverick Wall`,
       nav: 'walls',
@@ -4318,7 +4346,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * portrait canvas as JSON; a first-party script draws each card's live preview
    * through the wall's own renderer, so the card shows what the wall will draw.
    */
-  function templateGalleryPage(owner: string | null, error?: string): string {
+  function templateGalleryPage(c: Context, owner: string | null, error?: string): string {
     const ownerName = owner === null
       ? 'Default wall'
       : activeScreens().find((s) => s.id === owner)?.name ?? 'this wall';
@@ -4386,6 +4414,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: `Templates — ${ownerName} — Maverick Wall`,
       nav: 'walls',
@@ -4818,6 +4847,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const people = readPeopleAdmin(deps.db);
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Calendars — Maverick Wall',
       nav: 'calendars',

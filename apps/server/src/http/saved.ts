@@ -40,6 +40,7 @@
  * the table from here, so the dependency runs one way.
  */
 import type { Context } from 'hono';
+import { queryOf, selfHref } from './self.js';
 
 /**
  * What each token says, in the household's words.
@@ -179,23 +180,13 @@ export function readSaved(c: Context): Saved | undefined {
  *
  * Built from the request's own path and query so anything else the page was
  * carrying (`?install=…`, `?template=…`) survives being dismissed. Relative,
- * for the `<base>`; a path that is somehow empty falls back to the admin root
- * rather than to `""`, which a browser resolves as "this URL, parameters and
- * all" and would make the control do nothing.
+ * for the `<base>` — see `self.ts`, which owns that reasoning and which the
+ * skip link needs for the same reason.
  */
 function withoutSaved(c: Context): string {
-  // `queries()`, not `query()`: the latter keeps only the first value of a
-  // repeated parameter, so dismissing would quietly drop the rest — which is
-  // the opposite of what this function is for.
-  const params = new URLSearchParams();
-  for (const [name, values] of Object.entries(c.req.queries())) {
-    for (const value of values) params.append(name, value);
-  }
+  const params = queryOf(c);
   params.delete('saved');
-  const rest = params.toString();
-  const relative = c.req.path.replace(/^\/+/, '');
-  if (relative === '') return 'admin';
-  return rest === '' ? relative : `${relative}?${rest}`;
+  return selfHref(c, params);
 }
 
 function splitOn(value: string, mark: string): readonly [string, string] {

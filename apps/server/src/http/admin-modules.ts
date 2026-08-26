@@ -27,6 +27,7 @@ import {
 import { CATALOG, catalogEntry, previewFor, type CatalogEntry, type RecipeEntry, type ServiceEntry } from './catalog.js';
 import { parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
+import { selfHref } from './self.js';
 
 /**
  * The module store (docs/rfc-002-module-catalog-and-recipes.md).
@@ -70,13 +71,13 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   // recipe by hand. `?install=<id>` prefills the service form from a store entry.
   app.get('/admin/modules/advanced', (c: Context) => {
     const entry = catalogEntry(c.req.query('install') ?? '');
-    return c.html(advancedPage(undefined, entry?.kind === 'service' ? entry : undefined));
+    return c.html(advancedPage(c, undefined, entry?.kind === 'service' ? entry : undefined));
   });
 
   app.get('/admin/modules/install/:id', (c: Context) => {
     const entry = catalogEntry(c.req.param('id') ?? '');
     if (entry === undefined || entry.kind !== 'recipe') return c.redirect('/admin/modules', 302);
-    return c.html(installRecipePage(entry));
+    return c.html(installRecipePage(c, entry));
   });
 
   app.post('/admin/modules/install/:id', async (c: Context) => {
@@ -129,7 +130,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     return deps.keyring.encrypt(JSON.stringify(values), 'recipe-secret');
   }
 
-  app.get('/admin/modules/recipe', (c: Context) => c.html(recipePage()));
+  app.get('/admin/modules/recipe', (c: Context) => c.html(recipePage(c)));
 
   app.post('/admin/modules/recipe', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
@@ -138,7 +139,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     const secretsRaw = typeof body['secrets'] === 'string' ? body['secrets'] : '';
     const nameOverride = typeof body['name'] === 'string' ? body['name'].trim() : '';
     const back = (message: string): Response =>
-      c.html(recipePage(message, manifestRaw, configRaw, secretsRaw), 400);
+      c.html(recipePage(c, message, manifestRaw, configRaw, secretsRaw), 400);
 
     let manifestJson: unknown;
     try {
@@ -207,16 +208,16 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/modules', async (c: Context) => {
     const shaped = parse(addBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(advancedPage(shaped.message), 400);
+    if (!shaped.ok) return c.html(advancedPage(c, shaped.message), 400);
 
     let url: URL;
     try {
       url = new URL(shaped.value.url.trim());
     } catch {
-      return c.html(advancedPage('That does not look like a web address.'), 400);
+      return c.html(advancedPage(c, 'That does not look like a web address.'), 400);
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return c.html(advancedPage('A module address has to start with http:// or https://.'), 400);
+      return c.html(advancedPage(c, 'A module address has to start with http:// or https://.'), 400);
     }
 
     const id = randomBytes(6).toString('hex');
@@ -271,6 +272,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     if (module === undefined) return c.redirect('/admin/modules', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Remove module',
         nav: 'modules',
@@ -388,6 +390,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   function storePage(c: Context, error?: string): string {
     const modules = readExternalModules(deps.db);
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Store — Maverick Wall',
       nav: 'modules',
@@ -412,7 +415,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /** Advanced: the two power tools, off the everyday path. */
-  function advancedPage(error?: string, prefill?: ServiceEntry): string {
+  function advancedPage(c: Context, error?: string, prefill?: ServiceEntry): string {
     const urlValue = prefill?.install.url ?? '';
     const nameValue = prefill?.name ?? '';
     const prefillHint =
@@ -427,6 +430,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
               `rel="noreferrer noopener">Where to get it</a>`) +
           `</div>`;
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Advanced — Maverick Wall',
       nav: 'modules',
@@ -487,12 +491,14 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   );
 
   function recipePage(
+    c: Context,
     error?: string,
     manifest?: string,
     config?: string,
     secrets?: string,
   ): string {
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Add a recipe — Maverick Wall',
       nav: 'modules',
@@ -600,7 +606,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
    * input per `recipe.config` field, its default pre-filled. A recipe with no
    * config is just a confirm.
    */
-  function installRecipePage(entry: RecipeEntry): string {
+  function installRecipePage(c: Context, entry: RecipeEntry): string {
     const fields = entry.recipe.config
       .map(
         (field) =>
@@ -633,6 +639,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           `only to <span class="code">${escapeHtml(recipeFetchHost(entry.recipe))}</span>. ` +
           `They never appear on the wall or in a log.</p>${secretFields}`;
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: `Install ${entry.name} — Maverick Wall`,
       nav: 'modules',
