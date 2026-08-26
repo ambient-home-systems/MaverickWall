@@ -137,6 +137,50 @@ exactly as they always have.
 household who did not want a takeover for every severe thunderstorm had no way
 to say so. It has been like that since the screen was written. It works now.
 
+**The Weather page said "1 hours ago".** Any age from an hour up to an hour
+and a half read that way. Fixed, along with the same kind of bug on the Home
+Assistant page, which was dropping the day count entirely and calling three
+days "72 hours ago".
+
+**Weather alert rules are a table now, not five cards.** Each rule used to
+take up about the space of a business card, and whether it was on or off was
+said only by its button's label — "Turn off" meant it was currently on, so a
+glance at four of them meant inverting each one in your head. A row now says
+**On**, **Off** or **Not armed** plainly, and the button moves into a small
+menu beside it.
+
+**Adding a calendar with a relaxed address check no longer looks different
+from an ordinary one, and the three switches for it are the same everywhere.**
+The add and edit screens used to ask about local-network, this-machine and
+plain-http access differently from each other — three bare boxes on one
+screen, a single switch worded differently on the other — and two of the
+three could never be changed again once a calendar existed. All three now
+look and read the same on both screens, folded behind one **Network access**
+disclosure that opens itself and says what is on whenever anything is.
+
+**Latitude and longitude no longer look like they are already filled in.**
+The example numbers shown in an empty box used to read as a real, saved
+location. They are marked as examples now.
+
+**Chores and eInk panels ask one question at a time.** Adding a chore used to
+show every field for every way it could repeat, all at once — weekday boxes,
+a day-of-month box, a starting date — with a note underneath saying which ones
+actually mattered. Only the boxes for the repeat you picked show now, and the
+rest come back if you change your mind. The eInk panel form does the same:
+Width and Height only show for a Custom size. Browsing with scripts turned off
+brings every box back, exactly as it has always worked.
+
+**Buttons and links are easier to tap on a phone.** Form boxes, small buttons
+and inline links were all a little under the size a finger needs. They are
+bigger to tap below a certain screen width, without changing how anything
+looks.
+
+Two smaller things: a container that cannot read its own database now fails
+its healthcheck properly, rather than reporting healthy with nothing behind
+it; and the documentation now covers how to upgrade, how to move an
+installation to a new machine, and — the one real gap — what to do about a
+forgotten password when there is no email address to send a reset link to.
+
 ## 0.53.0
 
 **A new way for the month to look, and a new theme to go with it.**
