@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.54.2
 
 **The admin sidebar is grouped by what a household is looking for, not by
 when each screen was built.** Chores used to sit with Calendars and People
