@@ -50,7 +50,10 @@ function siteOf(selectors: readonly string[], property: string, value: string): 
 }
 
 /** Report offenders against an allow-list, in both directions. */
-function holdTo(offenders: readonly string[], allowed: readonly string[], what: string): void {
+function holdTo(found: readonly string[], allowed: readonly string[], what: string): void {
+  // Two rules can produce the same site string — the same selector and value in
+  // a base rule and again inside a media query. One entry is one thing to fix.
+  const offenders = [...new Set(found)];
   const permitted = new Set(allowed);
   const fresh = offenders.filter((site) => !permitted.has(site)).sort();
   expect(
@@ -120,8 +123,17 @@ const OFF_SCALE_TYPE: readonly string[] = [
   'input[type=file] { font-size: .95rem }',
 ];
 
-/** Font shorthands written out longhand rather than as a role. */
+/**
+ * Font shorthands written out longhand rather than as a role.
+ *
+ * The last two are the interesting ones and the loose first version of this
+ * check waved them through: they *name* scale roles for weight and
+ * line-height, and then set the size to a hand-picked `10px` in between. A
+ * shorthand that mentions a role is not a shorthand that uses one.
+ */
 const HAND_WRITTEN_FONT: readonly string[] = [
+  '.le-widget-flag { font: var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans) }',
+  '.le-widget-label { font: var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans) }',
   '.switch { font: 400 14px/20px var(--sans) }',
   'pre.code { font: 12px/1.5 var(--mono) }',
   'pre.log { font: 12px/1.55 var(--mono) }',
@@ -129,8 +141,16 @@ const HAND_WRITTEN_FONT: readonly string[] = [
 
 /* ---- 2. The 4px spacing grid ---------------------------------------------- */
 
+/**
+ * Every property that spends space.
+ *
+ * The logical forms and `grid-gap` are here even though the sheet uses none of
+ * them today, which is exactly why: a check that only knows the properties
+ * already written is a check a new screen walks straight past. `padding-inline`
+ * is the same decision as `padding-left` and has to answer to the same grid.
+ */
 const SPACING_PROPERTY =
-  /^(margin|padding|gap|row-gap|column-gap)(-(top|right|bottom|left))?$/;
+  /^(margin|padding)(-(top|right|bottom|left|inline|block)(-(start|end))?)?$|^(grid-)?(row-|column-)?gap$/;
 
 /**
  * 159 of 372 spacing declarations are off the grid today, in 33 distinct
@@ -387,7 +407,9 @@ describe('the admin type scale', () => {
       for (const [property, value] of declarationsOf(rule)) {
         if (property !== 'font-size') continue;
         counted += 1;
-        if (/var\(\s*--mw-t-/.test(value)) continue;
+        // The whole value, not a substring. `clamp(11px,2vw,var(--mw-t-h1-size))`
+        // mentions a role and is still an off-scale 11px on a narrow phone.
+        if (/^var\(\s*--mw-t-[a-z0-9-]+\s*\)$/.test(value)) continue;
         if (onTheScale.has(value)) continue;
         offenders.push(siteOf(rule.selectors, property, value));
       }
@@ -408,7 +430,7 @@ describe('the admin type scale', () => {
       for (const [property, value] of declarationsOf(rule)) {
         if (property !== 'font') continue;
         if (value === 'inherit') continue;
-        if (/var\(\s*--mw-t-[a-z0-9-]+\s*\)/.test(value)) continue;
+        if (/^var\(\s*--mw-t-[a-z0-9-]+\s*\)$/.test(value)) continue;
         offenders.push(siteOf(rule.selectors, property, value));
       }
     }

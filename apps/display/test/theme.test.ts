@@ -5,6 +5,7 @@ import {
   shiftTint,
   THEME_NAMES,
   themeAt,
+  type ThemeName,
   type Themeable,
 } from '../src/theme.js';
 
@@ -221,6 +222,22 @@ const UNREADABLE: readonly string[] = [
   'almanac --s-straight on --panel = 3.66',
 ];
 
+/** Every pair one theme fails today, measured. */
+function unmetOn(name: ThemeName): string[] {
+  const t = tokensOf(name);
+  const unmet: string[] = [];
+  for (const ground of GROUNDS) {
+    for (const token of READABLE) {
+      const value = t[token];
+      expect(value, `${name} is missing ${token}`).toBeDefined();
+      const ratio = contrast(value as string, t[ground] as string);
+      if (ratio >= 4.5) continue;
+      unmet.push(`${name} ${token} on ${ground} = ${ratio.toFixed(2)}`);
+    }
+  }
+  return unmet;
+}
+
 describe.each(THEME_NAMES)('the %s theme', (name) => {
   it('is a theme this bundle draws, not an unknown key falling back', () => {
     // An unrecognised key resolves to the default, so asserting the attribute
@@ -234,34 +251,35 @@ describe.each(THEME_NAMES)('the %s theme', (name) => {
   });
 
   it('carries every readable token at 4.5:1 over both of its grounds', () => {
-    const t = tokensOf(name);
-    const unmet: string[] = [];
-    for (const ground of GROUNDS) {
-      for (const token of READABLE) {
-        const value = t[token];
-        expect(value, `${name} is missing ${token}`).toBeDefined();
-        const ratio = contrast(value as string, t[ground] as string);
-        if (ratio >= 4.5) continue;
-        unmet.push(`${name} ${token} on ${ground} = ${ratio.toFixed(2)}`);
-      }
-    }
-
     const permitted = new Set(UNREADABLE);
-    const fresh = unmet.filter((entry) => !permitted.has(entry));
+    const fresh = unmetOn(name).filter((entry) => !permitted.has(entry));
     expect(
       fresh,
       `${fresh.length} newly unreadable pairs (allow-list holds ${UNREADABLE.length}):\n` +
         fresh.map((entry) => `  ${entry}`).join('\n'),
     ).toEqual([]);
+  });
+});
 
-    const seen = new Set(unmet);
-    const stale = UNREADABLE.filter(
-      (entry) => entry.startsWith(`${name} `) && !seen.has(entry),
-    );
+describe('the unreadable-pair allow-list', () => {
+  /*
+   * The burn-down half, and it is deliberately outside `describe.each`.
+   *
+   * Inside it, an entry could only be checked by the theme it names — so an
+   * entry for a theme that had been *retired* would be checked by nothing and
+   * would sit in the list for ever, describing a wall nobody has. This bundle
+   * has retired themes before: Board, Slate and Glance are `LEGACY_ALIASES`
+   * now. Measuring the whole list against every theme at once is what makes
+   * the list shrink in both of the ways it can.
+   */
+  it('holds nothing that is already fixed', () => {
+    const measured = new Set(THEME_NAMES.flatMap((name) => unmetOn(name)));
+    const stale = UNREADABLE.filter((entry) => !measured.has(entry));
     expect(
       stale,
-      `${stale.length} allow-listed pairs on ${name} are fixed or have moved — delete these ` +
-        `lines, the list is down to ${UNREADABLE.length - stale.length}:\n` +
+      `${stale.length} allow-listed pairs are fixed, have moved, or name a theme this ` +
+        `bundle no longer draws — delete these lines, the list is down to ` +
+        `${UNREADABLE.length - stale.length}:\n` +
         stale.map((entry) => `  ${entry}`).join('\n'),
     ).toEqual([]);
   });

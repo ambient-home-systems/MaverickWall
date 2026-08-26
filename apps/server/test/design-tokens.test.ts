@@ -423,13 +423,22 @@ describe('the pairs the stylesheet actually paints', () => {
     ).toEqual([]);
   });
 
-  it('sees the pairs the hand-written table cannot', async () => {
-    // The specific gap this exists for, pinned so a future narrowing of the
-    // derivation cannot quietly close it: `ink-3` is in `OBJECT_PAIRS` above
-    // at 3:1 and nowhere in `TEXT_PAIRS`, and the stylesheet sets it as
-    // `color` all the same.
+  it('sees `ink-3` set as text, which is the gap it was written for', async () => {
+    /*
+     * Pinned so a future narrowing of the derivation cannot quietly close it.
+     * `ink-3` is declared "placeholder and disabled text only" and appears in
+     * `OBJECT_PAIRS` at the 3:1 border bar; the stylesheet sets it as `color`
+     * on twenty-three rules all the same, and this is what notices.
+     *
+     * Only the positive half is asserted. "`ink-3` is absent from `TEXT_PAIRS`"
+     * was the other half and it was a trap: it holds today and would fail on
+     * the exact fix Phase 6b is expected to make — raising the contrast and
+     * listing the pair as a legitimate one — with a message naming nothing.
+     * An assertion that goes red when somebody does the right thing teaches
+     * people to delete assertions.
+     */
     const { text } = await painted();
-    expect([...text].some((pair) => pair.startsWith('ink-3|'))).toBe(true);
-    expect(TEXT_PAIRS.some(([ink]) => ink === 'ink-3')).toBe(false);
+    const asText = [...text].filter((pair) => pair.startsWith('ink-3|'));
+    expect(asText.length, 'the derivation no longer sees ink-3 as text').toBeGreaterThan(0);
   });
 });
