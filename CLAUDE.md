@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **sixty-two real bugs**, and the pattern in how is the most
+This project has found **sixty-five real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -142,6 +142,8 @@ useful thing in this document:
 | **A release that went red only because the tag was cut in the UI** | Reading the failed step, which ran after the image had shipped |
 | **Half a phone screen spent on navigation before any content** | Measuring where `.content` starts at 390px: 407px down |
 | A modal scrim leaving a live 16px strip across the app bar | Measuring a fixed `inset:0` element and reading back `y:16` |
+| **Sixteen tab stops in front of every admin page's content** | Counting them, on a page nobody had ever tabbed through |
+| A skip link that resolved against the `<base>` and left the page | Reading the anchor's `.href`, which disagreed with its markup |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -240,7 +242,7 @@ day. This is the single most common ICS bug.
 > holds. The *counts and statuses* are the part that rots. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
-**0.51.0 is the current release.** `main`, the tag and the published image
+**0.54.2 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
 signed, pulled anonymously and verified.
@@ -275,7 +277,7 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**1692 tests passing.** calendar 153 · core 305 · display 214 · server 1020. CI
+**1913 tests passing.** calendar 153 · core 308 · display 261 · server 1191. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -1948,6 +1950,46 @@ since, in v0.33.0** — which is the check the headless measurements were standi
 in for, and the one this project counts. What has not happened is the sidebar of
 a real supervisor, where two hamburgers now stack: Home Assistant's and this
 one. That is a different screen from a phone browser and still unproven.
+
+**That drawer was sixteen tab stops, and nothing could get past it.** The
+redesign fixed how much of a *phone screen* the navigation ate and left the
+keyboard cost untouched: measured on `/admin/calendars`, the brand link, eleven
+nav links, sign-out and the three theme buttons stand in front of "Add a
+calendar" at stop seventeen — and because every admin screen is a fresh
+document load, that was paid on *every* navigation rather than once per
+session. WCAG 2.4.1, Level A. The fix is the ordinary one and it lives in
+`page()`, which is already the one place the body's child order is decided; it
+goes **above** the drawer's checkbox, which is safe for the reason the ordering
+constraint is written down at all — `~` only looks forward, so an element in
+front of the checkbox cannot disturb it.
+
+**The interesting half is that the obvious spelling does not work here.** A
+bare `href="#mw-main"` resolves against the document's `<base>`, and every page
+emits one for ingress — so on `/admin/calendars` it resolves to `/#mw-main` and
+*leaves the page*. The markup reads as correct at every character and only the
+anchor's resolved `.href` says otherwise, which is why it was measured in
+Chromium before a line of the fix was written. So the link names its own
+document, `self.ts` is what answers that, and `page()` is handed the value
+rather than deriving it from `nav` — a section key, which `/admin/walls` and
+`/admin/walls/:id` share. That made `self` required, which made `PageOptions` a
+union of a wizard shape and a shell shape: required is the whole enforcement,
+since an optional field would be a page silently missing its skip link, and the
+wizard has no navigation to skip.
+
+Two things in it were only ever going to be found by measuring. `tabindex="-1"`
+on `<main>`: without it a browser scrolls to the target and leaves focus where
+it was, so the next Tab resumes from the top of the navigation — the link moves
+the viewport and nothing else, which no snapshot shows. And it sits 56px from
+the left rather than flush: at compact width the app bar's menu button and the
+invisible 48px checkbox behind it live in that corner, and a focused skip link
+drawn over them eats the tap that opens the navigation. That one surfaced while
+*breaking* the reveal to check the assertion — a tap that simply timed out.
+
+`browser-skip-link.test.ts` drives it at 1280 and 390: the first Tab, the ring
+read off the **computed outline** rather than off a class, "invisible until
+focused" read off `getBoundingClientRect` at both widths, the pathname
+unchanged after activation, and the drawer still opening by tap and by Space —
+which is now the *second* stop rather than the first.
 
 **The admin answers back now, and the Weather screen is why (RFC 009 Phase
 3.1/3.2).** There were seventy-nine `c.redirect(...)` calls and no flash
