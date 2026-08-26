@@ -77,7 +77,7 @@ describe('reading a real forecast', () => {
 
   /*
    * The date is what lets the agenda put a day's numbers beside that day's
-   * events (RFC 007 phase 3). `startTime` is local to the forecast point,
+   * events (RFC 010 phase 3). `startTime` is local to the forecast point,
    * offset included, so its date part is already the household's own calendar
    * date — no zone conversion, and `foldPeriods` stays pure.
    */

@@ -448,12 +448,19 @@ jobs:
           # Idempotent: re-running a release must not fail, and must not make
           # an empty commit that looks like a second release.
           current=$(grep -oP '^version:\s*"\K[^"]+' addon/maverick-wall/config.yaml)
-          if [ "$current" = "$VERSION" ]; then
+          server=$(python3 -c 'import json;print(json.load(open("apps/server/package.json"))["version"])')
+          if [ "$current" = "$VERSION" ] && [ "$server" = "$VERSION" ]; then
             echo "config.yaml already advertises ${VERSION}; nothing to do."
             exit 0
           fi
 
           sed -i -E "s/^version: \".*\"$/version: \"${VERSION}\"/" addon/maverick-wall/config.yaml
+          # The server package's own version, which is what a build with no
+          # `MW_VERSION` reports (a checkout, and any image built without the
+          # build arg). Kept level with the advertisement here rather than by
+          # hand, because a number nobody has to remember is the only kind that
+          # stays true — `version.test.ts` fails the build if these two drift.
+          python3 -c 'import json, re, sys; p = "apps/server/package.json"; raw = open(p).read(); out = re.sub(r"(\"version\":\s*)\"[^\"]*\"", lambda m: m.group(1) + json.dumps(sys.argv[1]), raw, count=1); assert json.loads(out)["version"] == sys.argv[1]; open(p, "w").write(out)' "$VERSION"
           # Only the first, and only if somebody wrote one.
           sed -i "0,/^## Unreleased[[:space:]]*$/s//## ${VERSION}/" addon/maverick-wall/CHANGELOG.md
 
@@ -479,7 +486,7 @@ jobs:
             git push origin "v${VERSION}"
             echo "tagged v${VERSION} at ${GITHUB_SHA}"
           fi
-          git add addon/maverick-wall/config.yaml addon/maverick-wall/CHANGELOG.md
+          git add addon/maverick-wall/config.yaml addon/maverick-wall/CHANGELOG.md apps/server/package.json
           git commit \
             -m "Advertise ${VERSION} to Home Assistant" \
             -m "The image is published, signed, and was pulled anonymously before this commit was made, so the update the supervisor now offers is one that installs."

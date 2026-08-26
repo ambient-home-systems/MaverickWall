@@ -571,7 +571,7 @@ describe('people, for the legend and the per-event owner cue', () => {
 });
 
 /*
- * The day group, redrawn (RFC 007 phase 1).
+ * The day group, redrawn (RFC 010 phase 1).
  *
  * Two of these are the ones that matter. `spanLabel` reads `endsAt` as
  * exclusive, which is the single most common ICS bug and the reason a
@@ -661,7 +661,7 @@ describe('an event that spans more than one day says how far in', () => {
 });
 
 /*
- * Weather in the agenda (RFC 007 phase 3).
+ * Weather in the agenda (RFC 010 phase 3).
  *
  * The join is by date and nothing else. A name cannot do it — "Tonight" names
  * no weekday and "Monday" names no year — and joining by position would put

@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**The version on the System page is the version you are running.** A build made
+from a checkout rather than from a release reported `0.0.0` everywhere — on the
+page whose whole job is to say what you are running, in the diagnostics you
+attach to a bug report, and to the update check, which compared `0.0.0` against
+the newest release and so announced an update every day that could never be
+installed. Such a build now says what it is (`0.54.2-dev`) and the update check
+stays quiet until you are on a released version. Nothing changes for the add-on
+or the published image, which have always known their own version.
+
 **The settings pages are back in the product's own typeface.** Since 0.54.0
 every screen behind the login had quietly rendered in whatever font your
 device happened to supply. Nothing looked broken — that is how it went
