@@ -680,20 +680,24 @@ function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, confi
   if (mode === 'week' || mode === 'skyweek') return drawWeekBox(fb, model, box);
   if (mode !== 'list') {
     /*
-     * `swiss` draws names here exactly as `pills` does, and that is not a
+     * `text`, `swiss` and `pills` all draw names here, and that is not a
      * shortcut.
      *
-     * What separates the two on the wall is a coloured ground versus a colour
-     * dot, and a panel has neither — it is one bit, so both resolve to the same
-     * question: does the cell show the event's name, or a mark that something
-     * is on? Reading `=== 'pills'` alone would have answered "no" for swiss and
-     * dropped a panel back to dots while the wall it follows drew names, which
-     * is one stored value giving two renderers two answers.
+     * What separates them on the wall is a coloured ground versus a colour dot
+     * versus neither, and a panel has none of those — it is one bit, so they
+     * all resolve to the same question: does the cell show the event's name, or
+     * a mark that something is on? Reading `=== 'pills'` alone would have
+     * answered "no" for swiss and dropped a panel back to dots while the wall
+     * it follows drew names, which is one stored value giving two renderers two
+     * answers.
+     *
+     * The absence is the live half of that now. `cellEvents` unset means `text`
+     * on the wall, so it has to mean names here — `dots` is the value a
+     * household writes when they want the quiet grid, and it is the only one
+     * that answers no.
      */
     const cellEvents = str(config, 'cellEvents');
-    return drawMonthBox(fb, model, box, {
-      pills: cellEvents === 'pills' || cellEvents === 'swiss',
-    });
+    return drawMonthBox(fb, model, box, { pills: cellEvents !== 'dots' });
   }
   const calendars = strings(config, 'calendars');
   const count = num(config, 'count');

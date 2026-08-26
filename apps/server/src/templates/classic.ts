@@ -26,14 +26,15 @@ export const template: DisplayTemplate = {
       { type: 'shift', x: 0.57, y: 0.03, w: 0.38, h: 0.12 },
       { type: 'weather', x: 0.05, y: 0.16, w: 0.9, h: 0.12 },
       { type: 'calendar', x: 0.05, y: 0.3, w: 0.9, h: 0.2, config: { mode: 'list', count: 8 } },
-      {
-        type: 'calendar',
-        x: 0.05,
-        y: 0.52,
-        w: 0.9,
-        h: 0.45,
-        config: { mode: 'month', cellEvents: 'pills' },
-      },
+      /*
+       * No `cellEvents`: the month takes the default cell treatment, which is
+       * flat event names. It used to say `pills` here, and that made Classic
+       * the wall the pill measurements were taken on — 37 titles, 32 of them
+       * clipped, the worst showing 26% of its string. A template that names the
+       * treatment is a template that cannot follow the default when the default
+       * is corrected.
+       */
+      { type: 'calendar', x: 0.05, y: 0.52, w: 0.9, h: 0.45, config: { mode: 'month' } },
     ],
   },
   landscape: {
@@ -43,14 +44,7 @@ export const template: DisplayTemplate = {
       { type: 'shift', x: 0.04, y: 0.24, w: 0.26, h: 0.16 },
       { type: 'weather', x: 0.04, y: 0.42, w: 0.26, h: 0.22 },
       { type: 'calendar', x: 0.04, y: 0.66, w: 0.26, h: 0.3, config: { mode: 'list', count: 6 } },
-      {
-        type: 'calendar',
-        x: 0.34,
-        y: 0.06,
-        w: 0.62,
-        h: 0.9,
-        config: { mode: 'month', cellEvents: 'pills' },
-      },
+      { type: 'calendar', x: 0.34, y: 0.06, w: 0.62, h: 0.9, config: { mode: 'month' } },
     ],
   },
 };

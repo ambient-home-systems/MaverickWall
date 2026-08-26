@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **sixty-five real bugs**, and the pattern in how is the most
+This project has found **sixty-nine real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -144,6 +144,9 @@ useful thing in this document:
 | A modal scrim leaving a live 16px strip across the app bar | Measuring a fixed `inset:0` element and reading back `y:16` |
 | **Sixteen tab stops in front of every admin page's content** | Counting them, on a page nobody had ever tabbed through |
 | A skip link that resolved against the `<base>` and left the page | Reading the anchor's `.href`, which disagreed with its markup |
+| **Not one event name in the whole month grid was legible** | Measuring every text node in the cells against three real calendars |
+| A cell with room for one row spending it on "+2" and drawing neither event | The same measurement, one wall size down |
+| An assertion for "all-day events draw first" that no edit could turn red | Deleting both things that could have caused it, twice |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -888,7 +891,7 @@ no wall already hanging changed.
 **How many events a cell shows is measured, never counted.** The old grid
 hard-coded three. A calendar widget is whatever size the household dragged it
 to, and the same grid is drawn at 1080x1920, on a 1280px television and inside a
-200px preview — so `trimSwissCells` runs at the same seam `fitToBox` does, after
+200px preview — so `trimCellRows` runs at the same seam `fitToBox` does, after
 the wall has a size, and hides what does not fit. Proven by rendering: a 323px
 cell draws seven rows, a 184px cell four, an 85px cell one. The counter is paid
 for out of the same budget, so a cell showing "+5" shows one fewer event than
@@ -913,6 +916,61 @@ verified that anything was *shown*. There is an assertion for it now, and the
 type came down a rung: a month cell cannot be both readable from ten feet and
 hold a sentence, so the grid is the glance and the agenda beside it is where the
 day is read.
+
+**And then the whole grid was measured, and it could not be read.** Not the
+Swiss mode — the *default*. On a paired 1080x1920 wall with three ordinary
+family calendars on it, the shipped pill treatment drew 37 event names and cut
+32 of them, the worst at 26% of its string: seventeen cells reading "Stan…",
+and "Year 6 trip to the Science Museum" and "Year 6 sports day" both rendering
+as "Year 6…". A truncation that deep is not a shortened title, it is a
+*different* string, and two events can share it. The arithmetic says it is not
+fixable inside a pill: 972px over seven columns is ~139px a cell, of which a
+pill's inside is 100, which at the 22px this document calls the floor is eight
+characters. In landscape the grid bought width by spending type and landed at
+18.6px — under its own floor, on the screen viewed from furthest away.
+
+So four things changed and none of them is a restyling. **Flat names are the
+default cell treatment** (`cellEvents` absent used to mean `dots`, a cell that
+says a day is busy and never says what is on it; `dots` is written out in full
+now, and `pills` is kept because it is a look and because canvases have it
+stored). **A title wraps to two lines and is drawn whole or not at all** — one
+that would have to be cut is hidden and joins the "+N", because "+1" is honest
+where "Year 6…" is not. **An all-day event takes the whole cell**, carrying its
+colour as a rule down the row's edge rather than a dot column, because a
+birthday or a half term is what a family wall is *for* and those are the longest
+titles anyone writes. And **22px is a hard clamp** (`--t-floor`, declared twice
+so an engine without `max()` keeps today's behaviour), so when it binds the cell
+gives up a row rather than the type giving up a point. Measured after: 0 titles
+cut at any of the three sizes, nothing under 22px, and every cell that has
+events shows at least one whole name on the two larger walls.
+
+Three things in it are worth keeping. The default moving means **the panel's
+absence had to move with it** — `cellEvents` unset now draws names on a panel
+too, and `EPAPER_RENDERER_VERSION` is 3 for a pixel change where no line of
+`epaper/` changed at all: the meaning of an absent value did. The old walk
+**stopped at the first row that did not fit**, which is only correct while every
+row is the same height; with one- and two-line rows mixed, a tall title that
+does not fit says nothing about the short one under it, and six cells at
+1280x720 drew "+2" and neither event. And the fix for *that* had the same fault
+one layer along: the packing that reserves room for the counter resumed from the
+previous packing's leftovers, so a short row already hidden was never looked at
+again. Both were found by measuring a wall, not by reading the code.
+
+The ordering half of it is the honest footnote. "All-day events draw first" is
+over-determined — an all-day event starts at midnight, so it sorts ahead of a
+timed one on start time alone, and `buildManifest` sorts explicitly for it as
+well — so the renderer's own third copy of that decision was deleted rather than
+kept. The assertion for it stays, labelled as a guard on what a household sees
+rather than as a test of a change, because removing either of the other two does
+not turn it red and pretending otherwise would be worse than saying so.
+
+**What did not change: a wall that already stores `pills`.** Every household
+backfilled onto Classic before this has `cellEvents: 'pills'` in its
+`layout_widgets` row and keeps the treatment the measurements above condemn.
+Classic itself no longer names it, so a new install and a reset both get the
+default — but reaching the walls already hanging needs a migration that rewrites
+somebody's stored canvas, which is a different decision from correcting a
+default and has not been taken.
 
 **The panel had to be told, and that is the same bug as `shifts[0]`.**
 `epaper/honours.ts` declares `cellEvents` honoured and the panel read it as
