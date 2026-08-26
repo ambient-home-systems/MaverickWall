@@ -1,5 +1,6 @@
 import { integrityCheck, type SqliteDatabase } from '../db/open.js';
 import type { LogLine } from '../logbuffer.js';
+import { redactLog } from './redact.js';
 
 /**
  * The document somebody attaches to a bug report.
@@ -11,7 +12,12 @@ import type { LogLine } from '../logbuffer.js';
  * usually failing at a host somebody can recognise.
  *
  * There is a test asserting that a database stuffed with private-looking data
- * produces an export containing none of it. That test is the feature.
+ * produces an export containing none of it. That test is the feature — and for
+ * a long time it was the *only* one, which is how the log tail went out
+ * unfiltered: it proved the database projection was clean and could say
+ * nothing at all about `log`, because it never put a secret in one. There is
+ * now a second test that does, because every field here is a projection and
+ * the log is the only one whose contents this file does not choose.
  */
 
 export interface Diagnostics {
@@ -190,6 +196,9 @@ export function buildDiagnostics(input: DiagnosticsInput): Diagnostics {
       revoked: screen.revokedAt !== null,
     })),
     jobs,
-    log: input.log,
+    // Never `input.log` — see `redact.ts`. The buffer holds whatever any
+    // `console.log` in the process wrote, and this is the one field of the
+    // export that is not something this file picked out on purpose.
+    log: redactLog(input.log),
   };
 }
