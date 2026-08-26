@@ -31,6 +31,7 @@ import {
   type ScreenRow,
 } from './api/queries.js';
 import { checkForUpdate } from './api/update-check.js';
+import { readPackageVersion, resolveAppVersion } from './version.js';
 import { pollExternalModules } from './modules/external/index.js';
 import { manifestEtag, type Manifest, type ManifestNotice } from './api/manifest.js';
 import { PushHub, PUSH_PATH } from './net/push-hub.js';
@@ -51,17 +52,23 @@ function env(name: string, fallback: string): string {
 }
 
 /*
- * The real version of this image, not a constant somebody has to remember to
+ * The real version of this process, not a constant somebody has to remember to
  * bump.
  *
  * It was hardcoded `'0.1.1'` for four releases, so every `/healthz`, every
  * screen's reported version, and — the one that bites — the update check's
  * baseline all lied. `MW_VERSION` is set in the image from the release tag the
  * build already receives (`VERSION` in the Dockerfile), with the `v` stripped.
- * A local build has no tag, so it reports `0.0.0`, which reads honestly as
- * "unversioned" rather than as some specific release it is not.
+ *
+ * A build with no tag — a checkout, which is what the README documents for
+ * development — used to report `0.0.0` and told the same three lies again.
+ * It now reports the package's own version with `-dev` on it, and that suffix
+ * is what suppresses the update check (`isReleaseVersion`): comparing an
+ * unreleased build against the latest release can only ever answer "there is
+ * an update", every day, for ever.
  */
-const APP_VERSION = env('MW_VERSION', '0.0.0').replace(/^v/, '');
+const APP = resolveAppVersion(process.env.MW_VERSION, readPackageVersion());
+const APP_VERSION = APP.version;
 
 /**
  * How often the push server checks each screen for changes.
@@ -309,6 +316,20 @@ async function main(): Promise<void> {
       },
       'update-check': async () => {
         if (!readUpdateState(db).enabled) return { status: 'ok' };
+        /*
+         * A build that is not a release has nothing to compare.
+         *
+         * `isNewer` reads `0.54.2-dev` as 0.54.2 and the latest release as
+         * 0.54.2, so this would report "up to date" — right by luck, and wrong
+         * the moment a checkout is behind or ahead of what is published. The
+         * honest answer is that this question does not apply to a build nobody
+         * released, and the settings page says so in place of the result.
+         *
+         * Nothing is recorded either: a stale `latestVersion` written here
+         * would keep the phantom update on screen after the household stopped
+         * being on a dev build.
+         */
+        if (!APP.isRelease) return { status: 'ok' };
         const result = await checkForUpdate(fetcher, APP_VERSION);
         recordUpdateCheck(
           db,

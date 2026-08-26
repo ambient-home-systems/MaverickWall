@@ -616,6 +616,22 @@ the first icon.
 the store list and the lockup in the sidebar are the check, and by this
 project's history that is where an asset fault actually surfaces.
 
+**A build with no tag knows what it is now, and that is what suppresses the
+update check.** `MW_VERSION` is set in the image from the release tag and that
+path is untouched; every other way this runs — a checkout, which is what the
+commands above document — had no tag and reported `0.0.0`. Three things read
+that number and all three lied: the System page, the diagnostics export, and
+the update check, which compared `0.0.0` against the latest release and so
+announced a phantom update every day for ever. `src/version.ts` falls back to
+the server package's own version with `-dev` on it, and **the suffix is the
+signal** rather than a second flag threaded through every harness:
+`isReleaseVersion` is what the job, the Check now handler and the settings page
+all ask. `0.0.0` and `0.0.0-dev` are deliberately not releases — the second is
+the Dockerfile's placeholder, so an image built with no `--build-arg` gets the
+fallback too rather than being told it is fifty versions behind. The package
+version is raised by `advertise` in the same commit as `config.yaml`, and
+`version.test.ts` fails the build when the two drift.
+
 **A release advertises itself last, and that ordering is the whole design.**
 The supervisor compares `config.yaml`'s `version:` against what is installed —
 it watches this repository, not the registry — so writing that field is the

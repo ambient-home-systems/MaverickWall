@@ -66,8 +66,14 @@ async function icsServer(): Promise<string> {
   return `http://127.0.0.1:${port}/feed.ics`;
 }
 
-/** A household with things in it that must never leave the house. */
-function harness() {
+/**
+ * A household with things in it that must never leave the house.
+ *
+ * The version is a parameter because it decides real behaviour: a released
+ * version is the only one the update check will compare against anything, so
+ * the default is a clean `x.y.z` and the dev-build cases pass their own.
+ */
+function harness(appVersion = '9.9.9') {
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-sys-'));
   roots.push(dataDir);
   const { db } = openDatabase({ dataDir });
@@ -100,7 +106,7 @@ function harness() {
   const log = createLogBuffer();
   const app = createApp({
     db,
-    appVersion: '9.9.9-test',
+    appVersion,
     bootNotices: [],
     auth: { secret: 's'.repeat(32), baseUrl: 'http://localhost' },
     keyring: createKeyring(randomBytes(32)),
@@ -679,11 +685,76 @@ describe('the update check setting', () => {
   it('says a newer version exists without pretending to install it', async () => {
     const h = await signedIn(harness());
     setUpdateCheckEnabled(h.db, true);
-    // The harness reports 9.9.9-test, so the offered version has to beat it.
+    // The harness reports 9.9.9, so the offered version has to beat it.
     recordUpdateCheck(h.db, h.at, 'v10.0.0', null);
 
     const page = await (await h.call('/admin/system')).text();
     expect(page).toContain('Version v10.0.0 is available');
     expect(page).toContain('Nothing has been ');
+  });
+});
+
+/*
+ * A build nobody released.
+ *
+ * Running from a checkout is what the README documents for development, and
+ * there `MW_VERSION` is simply absent — which used to mean the whole product
+ * reported `0.0.0` and the update check compared that against the latest
+ * release, so it answered "there is an update" every single day. These are the
+ * three consequences, asserted from the outside.
+ */
+describe('a development build', () => {
+  const DEV = '0.54.2-dev';
+
+  it('says what it is running on the page whose job that is', async () => {
+    const h = await signedIn(harness(DEV));
+    const page = await (await h.call('/admin/system')).text();
+
+    expect(page).toContain(`Version ${DEV}`);
+    expect(page).not.toContain('Version 0.0.0<');
+  });
+
+  it('reports its version at /healthz', async () => {
+    const h = harness(DEV);
+    const body = (await (await h.call('/healthz')).json()) as { version: string };
+
+    expect(body.version).toBe(DEV);
+  });
+
+  it('never claims an update is available, however far ahead the release is', async () => {
+    const h = await signedIn(harness(DEV));
+    setUpdateCheckEnabled(h.db, true);
+    // The state a household who was on a release would already have in the
+    // database — the phantom update has to be suppressed at the point it is
+    // drawn, not merely never written.
+    recordUpdateCheck(h.db, h.at, 'v99.0.0', null);
+
+    const page = await (await h.call('/admin/system')).text();
+    expect(page).not.toContain('is available');
+    expect(page).toContain('development build');
+    // And nothing to press: the check itself does not apply here.
+    expect(page).not.toContain('Check now');
+  });
+
+  it('refuses the check when it is asked for directly, since the button is gone', async () => {
+    const h = await signedIn(harness(DEV));
+    setUpdateCheckEnabled(h.db, true);
+
+    const response = await h.call('/admin/system/check-now', { method: 'POST' });
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain('development build');
+    // Nothing recorded, so switching to a release later starts from silence
+    // rather than from an answer to a question that could not be asked.
+    expect(readUpdateState(h.db).lastCheckedAt).toBeNull();
+  });
+
+  it('carries its real version into the diagnostics export', async () => {
+    const h = harness(DEV);
+    const report = buildDiagnostics({
+      db: h.db, appVersion: DEV, startedAt: h.at - 1000, now: h.at,
+      log: h.log.lines(), databaseSizeBytes: 1234,
+    });
+
+    expect(report.appVersion).toBe(DEV);
   });
 });

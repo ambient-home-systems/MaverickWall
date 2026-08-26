@@ -64,6 +64,7 @@ import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
+import { DEV_BUILD_NOTE, isReleaseVersion } from '../version.js';
 import type { LogBuffer } from '../logbuffer.js';
 import { keepWidgetsWithSomethingToSay, parseBackground, widgetIsSetUp, WIDGET_TYPES } from '../api/manifest.js';
 import { householdSetUp } from '../modules/index.js';
@@ -1143,6 +1144,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/system/check-now', async (c: Context) => {
     if (!readUpdateState(deps.db).enabled) {
       return c.html(systemPage(c, 'Turn update checking on first.'), 400);
+    }
+    /*
+     * The same refusal the scheduled job makes, for the same reason: this
+     * build is not a released one, so there is nothing for a release number to
+     * be compared against. The button is not drawn in that case; this is the
+     * handler agreeing, because a form nobody can see is still a form anybody
+     * can post.
+     */
+    if (!isReleaseVersion(deps.appVersion)) {
+      return c.html(systemPage(c, DEV_BUILD_NOTE), 400);
     }
     const result = await checkForUpdate(deps.fetcher, deps.appVersion);
     recordUpdateCheck(
@@ -3163,12 +3174,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   function updateSection(): string {
     const state = readUpdateState(deps.db);
+    /*
+     * A dev build is never behind. `isNewer` would read `0.54.2-dev` as
+     * 0.54.2 and answer from a comparison that means nothing here — and a
+     * `latestVersion` recorded while this install was on a release would
+     * otherwise keep drawing "Version x is available" for a build that is not
+     * one of them.
+     */
+    const release = isReleaseVersion(deps.appVersion);
     const behind =
-      state.latestVersion !== null && isNewer(state.latestVersion, deps.appVersion);
+      release && state.latestVersion !== null && isNewer(state.latestVersion, deps.appVersion);
 
     const status = !state.enabled
       ? `<p class="hint">Off. Maverick Wall is not contacting anyone.</p>`
-      : state.lastError !== null
+      : !release
+        ? `<p class="hint">${escapeHtml(DEV_BUILD_NOTE)}</p>`
+        : state.lastError !== null
         ? errorBlock(`Last check failed: ${state.lastError}`, 'It will try again tomorrow.')
         : state.lastCheckedAt === null
           ? `<p class="hint">On. The first check runs within the day, or press the button.</p>`
@@ -3208,7 +3229,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</form>` +
 
       status +
-      (state.enabled
+      (state.enabled && release
         ? `<form method="post" action="admin/system/check-now">` +
           `<button class="secondary" type="submit">Check now</button></form>`
         : '')
