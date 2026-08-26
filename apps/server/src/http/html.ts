@@ -1090,7 +1090,7 @@ pre.code{background:var(--mw-surface-2);
  * four clusters, two of whose items duplicated the page overflow menu a few
  * pixels above — 124px of an 844px phone before the canvas began.
  * position:relative so the Layers and Layout popovers anchor to the row. */
-.le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 /* The canvas's shape, on the Layout button. Hidden on a phone (below), where
  * the row has to fit and the popover states it anyway. */
 .le-tool-note{color:var(--mw-ink-2)}
@@ -1624,7 +1624,7 @@ pre.code{background:var(--mw-surface-2);
 
 /* Layout | Wall settings. Two contexts, one control, and it is the segmented
  * button the rest of the admin already uses. */
-.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 12px;margin:0 0 20px}
+.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 16px}
 .modeswitch{flex:1 1 260px;max-width:440px;display:flex}
 .modebar .ovf{margin-left:auto}
 .mode[hidden]{display:none}
