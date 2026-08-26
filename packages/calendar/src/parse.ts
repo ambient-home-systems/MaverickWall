@@ -291,17 +291,53 @@ function rootComponents(jcal: unknown): Component[] {
   return [new Component(jcal as never)];
 }
 
+/** True if any VTIMEZONE component exists anywhere we look for VEVENTs. */
+function hasAnyVtimezone(roots: readonly Component[]): boolean {
+  for (const root of roots) {
+    if (root.name === 'vtimezone') return true;
+    if (root.getAllSubcomponents('vtimezone').length > 0) return true;
+    for (const nested of root.getAllSubcomponents('vcalendar')) {
+      if (nested.getAllSubcomponents('vtimezone').length > 0) return true;
+    }
+  }
+  return false;
+}
+
 function collectVevents(roots: readonly Component[]): Component[] {
+  // Reading DTSTART on a property carrying a TZID makes ical.js ask the root
+  // component for that zone's definition. A *hit* is cached; a **miss is not**,
+  // and on a miss it rescans every subcomponent of the VCALENDAR looking for a
+  // VTIMEZONE. A feed that names zones by TZID and ships no VTIMEZONE blocks —
+  // which is most of them, Google's included — therefore rescans all N events
+  // for every date property it reads, which is quadratic. Measured on the R20
+  // fixture: parsing 5,000 events took 1.4s and 10,000 took 6.0s.
+  //
+  // When the document carries no VTIMEZONE at all, that lookup can only ever
+  // answer null, so detaching each VEVENT from its parent is free of meaning:
+  // an unparented component holds no timezone cache and returns null on the
+  // spot without scanning anything. This is also exactly the shape the salvage
+  // path below already produces, one VEVENT per throwaway VCALENDAR.
+  //
+  // We do not detach when VTIMEZONE blocks *are* present, even though this
+  // package never uses ical.js's zone resolution (see the note at the top of
+  // this file). That would be a behaviour change on the one input where the
+  // answer differs, in exchange for a case that is far rarer, and rule nine
+  // says a speed-up is not worth a new way for a household's feed to read
+  // differently.
+  const detach = !hasAnyVtimezone(roots);
+  const take = (vevent: Component): Component =>
+    detach ? new Component(vevent.jCal as never) : vevent;
+
   const vevents: Component[] = [];
   for (const root of roots) {
     if (root.name === 'vevent') {
-      vevents.push(root);
+      vevents.push(take(root));
       continue;
     }
-    vevents.push(...root.getAllSubcomponents('vevent'));
+    for (const vevent of root.getAllSubcomponents('vevent')) vevents.push(take(vevent));
     // Some producers nest VCALENDARs one level deep.
     for (const nested of root.getAllSubcomponents('vcalendar')) {
-      vevents.push(...nested.getAllSubcomponents('vevent'));
+      for (const vevent of nested.getAllSubcomponents('vevent')) vevents.push(take(vevent));
     }
   }
   return vevents;

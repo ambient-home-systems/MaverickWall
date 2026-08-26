@@ -33,15 +33,36 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
   return created;
 }
 
+/**
+ * Memoised for the same reason `formatterCache` above it is: constructing an
+ * `Intl.DateTimeFormat` is one of the most expensive things ICU does, and a
+ * feed asks this question twice per event (DTSTART and DTEND) while naming only
+ * a handful of distinct zones. Uncached it was the single largest cost in
+ * parsing a large feed. A zone's validity is a fact about the platform's ICU
+ * build, so it cannot go stale inside one process.
+ */
+const validityCache = new Map<string, boolean>();
+const VALIDITY_CACHE_LIMIT = 1_000;
+
 /** True if this platform's ICU recognises the zone. */
 export function isValidTimeZone(timeZone: string): boolean {
   if (!timeZone) return false;
+  const cached = validityCache.get(timeZone);
+  if (cached !== undefined) return cached;
+
+  let valid: boolean;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone });
-    return true;
+    valid = true;
   } catch {
-    return false;
+    valid = false;
   }
+  // Bounded, and cleared wholesale rather than evicted one at a time, matching
+  // `wallClockMemo` below. A feed naming tens of thousands of distinct zones is
+  // hostile, not real.
+  if (validityCache.size >= VALIDITY_CACHE_LIMIT) validityCache.clear();
+  validityCache.set(timeZone, valid);
+  return valid;
 }
 
 /** Build a UTC epoch ms from wall-clock fields, safe for years 0-99. */
