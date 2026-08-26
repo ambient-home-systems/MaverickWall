@@ -8,7 +8,7 @@ import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
-import { navModules, type AdminDeps } from './admin.js';
+import { ago, navModules, type AdminDeps } from './admin.js';
 
 /**
  * The screen's one form (RFC 009 Phase 3.1).
@@ -765,12 +765,4 @@ function safeJson(value: string | null): unknown {
   } catch {
     return null;
   }
-}
-
-function ago(from: number, at: number): string {
-  const seconds = Math.max(0, Math.round((at - from) / 1000));
-  if (seconds < 90) return 'just now';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} minutes ago`;
-  return `${Math.round(minutes / 60)} hours ago`;
 }
