@@ -65,6 +65,7 @@ export const SAVED_MESSAGES = {
   // Weather
   'weather': 'Weather settings saved.',
   'weather-location': 'Location filled in from Home Assistant, and saved.',
+  'alert-rule-updated': 'Alert rule updated.',
   // People
   'person-added': 'Person added.',
   'person-updated': 'Person saved.',

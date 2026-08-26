@@ -1,7 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { FETCH_LIMITS } from '@maverick-wall/core';
-import { errorBlock, escapeHtml, page, textField, textareaField } from './html.js';
+import { confirmDestroyPage, errorBlock, escapeHtml, page, textField, textareaField } from './html.js';
 import { ago, navModules } from './admin.js';
 import type { AdminDeps } from './admin.js';
 import {
@@ -260,6 +260,29 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     return savedRedirect(c, '/admin/modules', 'module-alerts-saved');
   });
 
+  /**
+   * Removing a module asks first — the same GET-then-POST shape as every
+   * other destructive control, in place of the one-click "Remove" the card
+   * used to post directly.
+   */
+  app.get('/admin/modules/:id/remove', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const module = readExternalModules(deps.db).find((m) => m.id === id);
+    if (module === undefined) return c.redirect('/admin/modules', 302);
+    return c.html(
+      confirmDestroyPage({
+        modules: navModules(deps.db),
+        title: 'Remove module',
+        nav: 'modules',
+        heading: `Remove “${module.name}”?`,
+        intro: 'It stops appearing on the wall, and any alert rule it raised goes with it.',
+        destroyAction: `admin/modules/${encodeURIComponent(id)}/remove`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/modules',
+      }),
+    );
+  });
+
   app.post('/admin/modules/:id/remove', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const module = readExternalModules(deps.db).find((m) => m.id === id);
@@ -313,7 +336,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
       `<form method="post" action="${action}/toggle">` +
       `<button class="secondary" type="submit">${module.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
-      `<form method="post" action="${action}/remove">` +
+      `<form method="get" action="${action}/remove">` +
       `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
       `</div></article>`
     );

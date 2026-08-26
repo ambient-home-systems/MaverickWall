@@ -1,6 +1,6 @@
 # RFC 009 — Finishing the last mile
 
-Status: **Phases 0, 1, 2 and 3.1–3.2 built; 3.3 and 4 to 6 proposed** · Owner: — ·
+Status: **Phases 0, 1, 2 and 3.1–3.3 built; 4 to 6 proposed** · Owner: — ·
 First drafted 2026-08-24 ·
 Arises from a full audit of the running application (built from a checkout,
 paired to a real screen, measured in a browser at six widths) rather than from
@@ -823,7 +823,7 @@ nothing, which is strictly worse than the always-enabled Save it replaced. The
 editor's `.savebar button:disabled` rule is shared now, and the assertion is on
 the **computed background**, never on the `disabled` property.
 
-### 3.3 One convention for destroying things — proposed
+### 3.3 One convention for destroying things — built
 
 Today there are four mechanisms and three visual weights, decided by which file
 the button lives in:
@@ -851,6 +851,26 @@ the non-destructive alternative. Every destructive control in a list gets
 `btn-danger`. Delete the `onsubmit="confirm()"` at `admin.ts:1757`, which is the
 only inline script in the server-rendered admin and will otherwise have to be
 exempted from Phase 6's CSP.
+
+**Recounting rather than trusting the audit found the sweep further along than
+this section said.** Remove shift rotation, Remove HA entity, Delete rule and
+Disconnect all already carried the `confirmDestroyPage` interstitial by the
+time this phase was picked back up — the inline `onsubmit="confirm()"` was
+already gone too. What recounting the 79 `c.redirect(...)` calls this section
+opened with (35 remained) turned up instead: two one-click destructive POSTs
+the first pass missed because neither reads as "delete" from the route table —
+**removing a Store module** and **removing a shift type** both posted directly
+with no page in between, and got the same `confirmDestroyPage` treatment.
+**Person Remove was `btn-danger` in the RFC's own table above and `secondary`
+in the actual markup** — the table was aspirational the whole time and nobody
+had checked the rendered button against it. And one real mutation was still a
+bare unconfirmed `c.redirect`: toggling a weather alert rule on or off, which
+predates the strip and had no token — it has `alert-rule-updated` now. Every
+other remaining `c.redirect` in the admin is a not-found guard, a legacy-route
+alias, or a stale-page fallback that deliberately does not confirm a save that
+did not happen (`calendar-settings`'s and `update-checked`'s own ternaries are
+the pattern — a token is a claim, and these check the branch they are on
+before making one).
 
 ---
 

@@ -151,10 +151,12 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    * back saying "Turn off" again. Nothing tested it.
    */
   app.post('/admin/alerts/rules/:id', async (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    if (!readRuleRows(deps.db).some((row) => row.id === id)) return c.redirect('/admin/alerts', 302);
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(z.object({ enabled: optionalText(4) }), body);
-    setRuleEnabled(deps.db, c.req.param('id') ?? '', shaped.ok && shaped.value.enabled === '1');
-    return c.redirect('/admin/alerts', 302);
+    setRuleEnabled(deps.db, id, shaped.ok && shaped.value.enabled === '1');
+    return savedRedirect(c, '/admin/alerts', 'alert-rule-updated');
   });
 
   /**
