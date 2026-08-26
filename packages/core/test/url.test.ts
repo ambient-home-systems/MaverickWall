@@ -108,6 +108,16 @@ describe('names that mean somewhere internal', () => {
     expect(code(url)).toBe(expected);
   });
 
+  it.each([
+    'https://calendar.test/c.ics',
+    'https://calendar.example/c.ics',
+    'https://calendar.invalid/c.ics',
+  ])('%s is a reserved name, not a local-network one', (url) => {
+    // RFC 6761: these never resolve anywhere, on any network, so "turn on
+    // allow local network" is not a suggestion that would help.
+    expect(code(url)).toBe('reserved-name');
+  });
+
   it('refuses a trailing dot', () => {
     // The DNS root. It makes `evil.com.` a different string to `evil.com`
     // while resolving identically — enough to slip past a suffix check

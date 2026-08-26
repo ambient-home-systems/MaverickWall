@@ -25,6 +25,7 @@ export type UrlRejectionCode =
   | 'private-address'
   | 'loopback-name'
   | 'internal-suffix'
+  | 'reserved-name'
   | 'bare-hostname'
   | 'trailing-dot';
 
@@ -97,11 +98,15 @@ const INTERNAL_SUFFIXES = [
   '.home',
   '.home.arpa',
   '.lan',
-  '.test',
-  '.example',
-  '.invalid',
   '.onion',
 ];
+
+/**
+ * RFC 6761 names reserved for documentation and testing. They never resolve
+ * to anything, anywhere — not just on this network, so "turn on allow local
+ * network" is a suggestion that would not help. They get their own message.
+ */
+const RESERVED_SUFFIXES = ['.test', '.example', '.invalid'];
 
 const LOOPBACK_NAMES = ['localhost', 'localhost.localdomain', 'ip6-localhost', 'ip6-loopback'];
 
@@ -204,6 +209,17 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
         'internal-suffix',
         `Addresses ending in ${suffix} name something on the local network ` +
           'rather than a public calendar service.',
+      );
+    }
+  }
+
+  for (const suffix of RESERVED_SUFFIXES) {
+    if (hostname.endsWith(suffix)) {
+      return reject(
+        'reserved-name',
+        `Addresses ending in ${suffix} are reserved for documentation and ` +
+          "testing and never resolve to anything. Check for a typo, or that " +
+          "this isn't placeholder text left in the address.",
       );
     }
   }
