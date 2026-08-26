@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { escapeHtml, errorBlock, page, textField } from './html.js';
+import { confirmDestroyPage, escapeHtml, errorBlock, page, textField } from './html.js';
 import {
   createShiftType,
   deleteShiftType,
@@ -118,6 +118,32 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
     return savedRedirect(c, '/admin/shifts/types', 'shift-type-saved');
   });
 
+  /**
+   * Removing a shift type asks first — the same GET-then-POST shape as every
+   * other destructive control, in place of the one-click "Remove" the card
+   * used to post directly.
+   */
+  app.get('/admin/shifts/types/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const type = readShiftTypes(deps.db).find((candidate) => candidate.id === id);
+    if (type === undefined) return c.redirect('/admin/shifts/types', 302);
+    return c.html(
+      confirmDestroyPage({
+        modules: navModules(deps.db),
+        title: 'Remove shift type',
+        nav: 'shifts',
+        heading: `Remove “${type.label}”?`,
+        intro:
+          'Any rotation still referring to it keeps working, but you will no ' +
+          'longer be able to assign it — so a type in use cannot be removed. ' +
+          'This cannot be undone.',
+        destroyAction: `admin/shifts/types/${encodeURIComponent(id)}/delete`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/shifts/types',
+      }),
+    );
+  });
+
   app.post('/admin/shifts/types/:id/delete', (c: Context) => {
     const result = deleteShiftType(deps.db, c.req.param('id') ?? '');
     if (!result.ok) return c.html(typesPage(c, result.message), 400);
@@ -165,7 +191,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
         ? ''
         : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="down">` +
           `<button class="secondary" type="submit">↓ Down</button></form>`) +
-      `<form method="post" action="admin/shifts/types/${id}/delete">` +
+      `<form method="get" action="admin/shifts/types/${id}/delete">` +
       `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
       `</div></article>`
     );

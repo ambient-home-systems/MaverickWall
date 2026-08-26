@@ -154,7 +154,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(z.object({ enabled: optionalText(4) }), body);
     setRuleEnabled(deps.db, c.req.param('id') ?? '', shaped.ok && shaped.value.enabled === '1');
-    return c.redirect('/admin/alerts', 302);
+    return savedRedirect(c, '/admin/alerts', 'alert-rule-updated');
   });
 
   /**

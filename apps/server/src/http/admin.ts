@@ -3187,7 +3187,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<input type="hidden" name="dir" value="down">` +
           `<button class="secondary" type="submit">↓ Down</button></form>`) +
       `<form method="get" action="admin/people/${encodeURIComponent(person.id)}/delete">` +
-      `<button class="secondary" type="submit" style="margin-left:auto">Remove</button></form>` +
+      `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
       `</div>` +
       `</article>`;
 
