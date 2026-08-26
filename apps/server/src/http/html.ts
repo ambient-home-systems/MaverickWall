@@ -12,9 +12,9 @@
  * as a fixture in a house rather than as an app wearing a wallpaper colour.
  */
 
-import { createHash } from 'node:crypto';
 import { ADMIN_SCHEMES, adminColorVars, adminTypeVars } from './design-tokens.js';
 import { SAVED_MESSAGES, type Saved } from './saved.js';
+import { contentEtag } from './static.js';
 
 /** Escape for HTML text and quoted attributes. Everything echoed back goes through this. */
 export function escapeHtml(value: string): string {
@@ -2167,17 +2167,18 @@ pre.code{background:var(--mw-surface-2);
 export const ADMIN_STYLESHEET = STYLE.replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
- * A short content hash for the `?v=` query on the stylesheet link.
+ * One hash, read two ways: the `etag` header value, and — with its quotes
+ * and length trimmed — the `?v=` query on the stylesheet link. Computed once
+ * via the same `contentEtag` every other served file uses, rather than a
+ * second ad-hoc hash for the same job living beside it and free to drift.
  *
- * The link itself carries `Cache-Control: immutable`, so the query string is
- * what makes a new build fetch a new file instead of the browser's old copy —
- * the ETag alone would only save bytes on the *next* request, after a client
- * had already served a stale one from cache.
+ * The query string is what makes a new build fetch a new file instead of the
+ * browser's old copy, since the link carries `Cache-Control: immutable` — the
+ * ETag alone would only save bytes on the *next* request, after a client had
+ * already served a stale one from cache.
  */
-export const ADMIN_STYLESHEET_VERSION = createHash('sha256')
-  .update(ADMIN_STYLESHEET, 'utf8')
-  .digest('hex')
-  .slice(0, 12);
+export const ADMIN_STYLESHEET_ETAG = contentEtag(Buffer.from(ADMIN_STYLESHEET, 'utf8'));
+export const ADMIN_STYLESHEET_VERSION = ADMIN_STYLESHEET_ETAG.replace(/"/g, '').slice(0, 12);
 
 /**
  * The admin theme, applied before the first paint and toggled from the sidebar.

@@ -27,7 +27,7 @@ import {
 } from '../auth/session.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
-import { contentEtag, createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.js';
+import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.js';
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
@@ -37,7 +37,7 @@ import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
-import { ADMIN_STYLESHEET, errorBlock, escapeHtml, page, textField } from './html.js';
+import { ADMIN_STYLESHEET, ADMIN_STYLESHEET_ETAG, errorBlock, escapeHtml, page, textField } from './html.js';
 import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
@@ -232,9 +232,6 @@ export function bytesOf(buffer: Buffer): ArrayBuffer {
 /** The pairing-code guess limit: how many, and over how long. */
 const PAIR_WINDOW_MS = 5 * 60_000;
 const PAIR_MAX_ATTEMPTS = 20;
-
-/** `ADMIN_STYLESHEET` is a module constant, so its bytes never change at runtime. */
-const ADMIN_STYLESHEET_ETAG = contentEtag(Buffer.from(ADMIN_STYLESHEET, 'utf8'));
 
 /**
  * Identify the screen behind a request.
@@ -1568,14 +1565,26 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   /**
-   * The display bundle.
+   * Every ETag-validated GET below shares this: set Cache-Control, answer a
+   * matching conditional request with a bare 304, otherwise send the body
+   * with its content-type and ETag.
    *
-   * Open, like `/d/*` and for the same reason: the screen carries its own
-   * token and the manifest behind it is what is actually protected. Serving
-   * the shell to anyone on the LAN gives away nothing, and putting it behind
-   * the session gate would mean a wall that cannot draw until somebody signs
-   * in on it, which is the one thing these screens cannot do.
+   * Extracted after the fourth copy of this four-line dance: this project's
+   * own history is full of exactly the bug a fifth copy invites — a check
+   * present in three call sites and quietly missing from the one added later.
    */
+  function serveWithEtag(
+    c: Context,
+    file: { readonly body: Buffer | string; readonly contentType: string; readonly etag: string },
+    cacheControl: string,
+  ): Response {
+    c.header('cache-control', cacheControl);
+    if (c.req.header('if-none-match') === file.etag) return c.body(null, 304, { etag: file.etag });
+    c.header('content-type', file.contentType);
+    c.header('etag', file.etag);
+    return c.body(typeof file.body === 'string' ? file.body : bytesOf(file.body));
+  }
+
   /**
    * The authenticated shell's stylesheet, cached rather than inlined.
    *
@@ -1584,25 +1593,32 @@ export function createApp(deps: AppDeps): Hono {
    * `?v=` so a rebuild is a new URL, which is what makes the long, immutable
    * cache safe — the ETag is a second validator for a request that lands here
    * anyway, e.g. a proxy that has stripped the query string.
+   *
+   * Registered ahead of `/assets/:name` below: Hono's router matches routes
+   * in registration order, so a literal segment after a param route would
+   * lose to the param and never be reached.
    */
-  app.get('/assets/admin.css', (c: Context) => {
-    c.header('cache-control', 'public, max-age=31536000, immutable');
-    if (c.req.header('if-none-match') === ADMIN_STYLESHEET_ETAG) {
-      return c.body(null, 304, { etag: ADMIN_STYLESHEET_ETAG });
-    }
-    c.header('content-type', 'text/css; charset=utf-8');
-    c.header('etag', ADMIN_STYLESHEET_ETAG);
-    return c.body(ADMIN_STYLESHEET);
-  });
+  app.get('/assets/admin.css', (c: Context) =>
+    serveWithEtag(
+      c,
+      { body: ADMIN_STYLESHEET, contentType: 'text/css; charset=utf-8', etag: ADMIN_STYLESHEET_ETAG },
+      'public, max-age=31536000, immutable',
+    ),
+  );
 
+  /**
+   * The display bundle.
+   *
+   * Open, like `/d/*` and for the same reason: the screen carries its own
+   * token and the manifest behind it is what is actually protected. Serving
+   * the shell to anyone on the LAN gives away nothing, and putting it behind
+   * the session gate would mean a wall that cannot draw until somebody signs
+   * in on it, which is the one thing these screens cannot do.
+   */
   app.get('/assets/:name', (c: Context) => {
     const file = staticFiles.read(c.req.param('name') ?? '');
     if (file === undefined) return c.json({ error: 'not-found' }, 404);
-    c.header('cache-control', 'no-cache');
-    if (c.req.header('if-none-match') === file.etag) return c.body(null, 304, { etag: file.etag });
-    c.header('content-type', file.contentType);
-    c.header('etag', file.etag);
-    return c.body(bytesOf(file.body));
+    return serveWithEtag(c, file, 'no-cache');
   });
 
   /*
@@ -1616,11 +1632,7 @@ export function createApp(deps: AppDeps): Hono {
   app.get('/assets/fonts/:name', (c: Context) => {
     const file = fontFiles.read(c.req.param('name') ?? '');
     if (file === undefined) return c.json({ error: 'not-found' }, 404);
-    c.header('cache-control', 'public, max-age=31536000, immutable');
-    if (c.req.header('if-none-match') === file.etag) return c.body(null, 304, { etag: file.etag });
-    c.header('content-type', file.contentType);
-    c.header('etag', file.etag);
-    return c.body(bytesOf(file.body));
+    return serveWithEtag(c, file, 'public, max-age=31536000, immutable');
   });
 
   /**
@@ -1634,12 +1646,8 @@ export function createApp(deps: AppDeps): Hono {
   app.get('/sw.js', (c: Context) => {
     const worker = staticFiles.read('sw.js');
     if (worker === undefined) return c.json({ error: 'not-found' }, 404);
-    c.header('cache-control', 'no-cache');
     c.header('service-worker-allowed', '/');
-    if (c.req.header('if-none-match') === worker.etag) return c.body(null, 304, { etag: worker.etag });
-    c.header('content-type', 'text/javascript; charset=utf-8');
-    c.header('etag', worker.etag);
-    return c.body(bytesOf(worker.body));
+    return serveWithEtag(c, { ...worker, contentType: 'text/javascript; charset=utf-8' }, 'no-cache');
   });
 
   app.get('/', (c: Context) => {
@@ -1655,11 +1663,7 @@ export function createApp(deps: AppDeps): Hono {
 
     const shell = staticFiles.read('index.html');
     if (shell !== undefined) {
-      c.header('cache-control', 'no-cache');
-      if (c.req.header('if-none-match') === shell.etag) return c.body(null, 304, { etag: shell.etag });
-      c.header('content-type', 'text/html; charset=utf-8');
-      c.header('etag', shell.etag);
-      return c.body(bytesOf(shell.body));
+      return serveWithEtag(c, { ...shell, contentType: 'text/html; charset=utf-8' }, 'no-cache');
     }
 
     // Not built. Say so rather than 404 — a blank screen is the one outcome to
