@@ -26,17 +26,37 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-const STYLE = `
+/**
+ * The three bundled faces, emitted with a prefix chosen by where the CSS lands.
+ *
+ * Rule three forbids fetching a web font, so these ship in the image and are
+ * served same-origin from `/assets/fonts`. What the prefix has to be is not a
+ * property of the font — it is a property of the *document the URL resolves
+ * against*, and this stylesheet has two homes:
+ *
+ *   - inlined into a `<style>` in the wizard and sign-in, where a relative URL
+ *     resolves against the document's `<base>` (`/`), so it needs
+ *     `assets/fonts/…`;
+ *   - served as `/assets/admin.css` to the authenticated shell, where a
+ *     relative URL inside a stylesheet resolves against the **stylesheet's own
+ *     URL** and not the document's `<base>` at all — so the same string became
+ *     `/assets/assets/fonts/…` and 404'd on every page behind the login from
+ *     v0.54.0. It needs `fonts/…`.
+ *
+ * Neither may be an absolute `/assets/fonts/…`: under Home Assistant ingress
+ * the app is mounted under a per-session prefix, and a leading slash escapes
+ * it. Both relative forms carry through it correctly, which is the whole
+ * reason these were made relative in the first place.
+ */
+function fontFaces(prefix: string): string {
+  return `
 /*
- * Self-hosted, first-party, no network. Rule three forbids fetching a web font,
- * so Roboto Condensed ships in the image and is served same-origin; the src is
- * relative, so the single <base> carries it through Home Assistant ingress.
- * This face backs only the wordmark's fallback stack here — the file itself
- * stays bundled
- * because the display's custom themes are served from the same directory.
+ * Roboto Condensed. This face backs only the wordmark's fallback stack here —
+ * the file itself stays bundled because the display's custom themes are served
+ * from the same directory.
  */
 @font-face{font-family:'Roboto Condensed';font-style:normal;font-weight:400 700;
-  font-display:swap;src:url('assets/fonts/roboto-condensed.woff2') format('woff2')}
+  font-display:swap;src:url('${prefix}roboto-condensed.woff2') format('woff2')}
 
 /*
  * Roboto — the admin's text face, bundled the same way:
@@ -45,7 +65,7 @@ const STYLE = `
  * stack below because on Android system-ui IS Roboto.
  */
 @font-face{font-family:'Roboto';font-style:normal;font-weight:100 900;
-  font-display:swap;src:url('assets/fonts/roboto.woff2') format('woff2')}
+  font-display:swap;src:url('${prefix}roboto.woff2') format('woff2')}
 
 /*
  * Oswald, for the brand lockup and nothing else.
@@ -58,8 +78,21 @@ const STYLE = `
  * the identity, not a new heading style.
  */
 @font-face{font-family:'Oswald';font-style:normal;font-weight:700;
-  font-display:swap;src:url('assets/fonts/oswald-700.woff2') format('woff2')}
+  font-display:swap;src:url('${prefix}oswald-700.woff2') format('woff2')}
+`;
+}
 
+/** Resolved against a document `<base>`: the inline `<style>` copy. */
+const FONTS_FROM_DOCUMENT = 'assets/fonts/';
+
+/** Resolved against `/assets/admin.css` itself: the served-file copy. */
+const FONTS_FROM_STYLESHEET = 'fonts/';
+
+/**
+ * Everything after the faces. One string, shared verbatim by both copies —
+ * only the `@font-face` prefix above differs between them.
+ */
+const STYLE_BODY = `
 :root{
   --wordmark:'Oswald','Roboto Condensed','Arial Narrow',system-ui,sans-serif;
   --sans:'Roboto',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;
@@ -2201,6 +2234,12 @@ pre.code{background:var(--mw-surface-2);
 `;
 
 /**
+ * The stylesheet as the wizard and sign-in carry it: inlined into a `<style>`,
+ * so its URLs resolve against the document's `<base>`.
+ */
+const STYLE = fontFaces(FONTS_FROM_DOCUMENT) + STYLE_BODY;
+
+/**
  * The authenticated shell's stylesheet, served as a cached file rather than
  * inlined.
  *
@@ -2216,7 +2255,10 @@ pre.code{background:var(--mw-surface-2);
  * a constant for the life of the process, so there is nothing to invalidate
  * beyond a restart, which is exactly when the version in the URL changes too.
  */
-export const ADMIN_STYLESHEET = STYLE.replace(/\/\*[\s\S]*?\*\//g, '');
+export const ADMIN_STYLESHEET = (fontFaces(FONTS_FROM_STYLESHEET) + STYLE_BODY).replace(
+  /\/\*[\s\S]*?\*\//g,
+  '',
+);
 
 /**
  * One hash, read two ways: the `etag` header value, and — with its quotes
