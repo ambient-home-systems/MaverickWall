@@ -9,6 +9,7 @@ import { openDatabase, databasePath, backupTo } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
+import { issueSetupToken } from '../src/auth/tokens.js';
 import { createKeyring, loadOrCreateMasterKey } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { createLogBuffer } from '../src/logbuffer.js';
@@ -26,6 +27,7 @@ function stubFetcher(outcome: FetchOutcome): Fetcher {
 }
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const roots: string[] = [];
 const servers: Server[] = [];
 let nextAddress = 0;
@@ -175,6 +177,62 @@ describe('diagnostics', () => {
     expect(report.counts).toMatchObject({ calendars: 1, events: 1, people: 1, users: 1 });
     expect(report.sources[0]).toMatchObject({ host: 'calendar.google.com', eventCount: 0 });
     expect(report.log.map((line) => line.text)).toContain('ics-sync failed for calendar.google.com');
+  });
+
+  it('carries no credential the log happened to catch', async () => {
+    /*
+     * The gap this closes. The test above seeds the *database* with secrets and
+     * proves the projection is clean — it never put one in a log line, so it
+     * proved nothing at all about `log`, which was `input.log` verbatim. A real
+     * export from a running instance carried the first-run setup token and the
+     * bootstrap short code, because `main.ts` prints both and `log.capture()`
+     * is installed before it does.
+     *
+     * A real token from the real generator, through the real capture path, in
+     * the shape `main.ts` really prints — the parity check below is what keeps
+     * that last claim true.
+     */
+    const h = harness();
+    const token = issueSetupToken(h.at);
+    const baseUrl = 'http://192.168.1.10:8080';
+    const noop = (..._args: unknown[]): void => {};
+    const fake = { log: noop, warn: noop, error: noop };
+    h.log.capture(fake);
+    fake.log(`    ${baseUrl}/setup?token=${token.token}`);
+    fake.log(`  Or go to ${baseUrl}/setup and enter this code:  ${token.shortCode}`);
+    fake.log('[job] ics-sync: calendar.google.com did not resolve.');
+
+    const report = buildDiagnostics({
+      db: h.db, appVersion: '9.9.9-test', startedAt: h.at - 1000, now: h.at,
+      log: h.log.lines(), databaseSizeBytes: 1234,
+    });
+    const text = JSON.stringify(report);
+
+    expect(text).not.toContain(token.token);
+    expect(text).not.toContain(token.shortCode);
+    // The line is kept, not dropped: a bug report needs to know it was there,
+    // and the address the household reached the box on is worth having.
+    expect(report.log[0]?.text).toBe(`    ${baseUrl}/setup?token=[redacted]`);
+    expect(report.log[1]?.text).toBe(
+      `  Or go to ${baseUrl}/setup and enter this code:  [redacted]`,
+    );
+    // And the other direction, which is the half that makes the export worth
+    // attaching at all: an ordinary line survives byte for byte.
+    expect(report.log[2]?.text).toBe('[job] ics-sync: calendar.google.com did not resolve.');
+  });
+
+  it('prints the setup credential in the shape that test assumes', () => {
+    /*
+     * The fixture above transcribes two lines out of `main.ts`, because the
+     * boot printer is inline in a six-hundred-line function and cannot be
+     * imported. So the two files are compared, the way the migrations
+     * directory is compared with its journal: change the boot output and this
+     * says so, rather than leaving a redaction test quietly guarding a shape
+     * nothing emits any more.
+     */
+    const main = readFileSync(join(SRC, 'main.ts'), 'utf8');
+    expect(main).toContain('/setup?token=${token.token}');
+    expect(main).toContain('enter this code:  ${token.shortCode}');
   });
 
   it('downloads as a file behind the session gate', async () => {
