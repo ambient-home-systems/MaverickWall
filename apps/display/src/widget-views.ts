@@ -62,3 +62,25 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
   image: [{ value: '', label: 'Picture' }],
   external: [{ value: '', label: 'Module panel' }],
 };
+
+/**
+ * Which view a widget is set to, in words — or nothing, when naming it would
+ * say nothing.
+ *
+ * Two Calendars on a canvas were both labelled "Calendar", on the box and in
+ * the Layers list, with the month grid and the upcoming list indistinguishable
+ * until you selected one and read its Content tab. The name a household reads
+ * has to carry the difference, and the difference is already declared here.
+ *
+ * A type with one view answers nothing rather than repeating itself: "Clock —
+ * Time and date" is a longer way of writing "Clock", and on a 10px chip inside
+ * a narrow box the length is the whole cost. An unknown or dropped `mode` reads
+ * as the default, which is how the renderers read it — the default is stored as
+ * an absence, so "not one of these" and "not set" are the same answer.
+ */
+export function viewLabel(type: string, mode: unknown): string | undefined {
+  const views = WIDGET_VIEWS[type] ?? [];
+  if (views.length < 2) return undefined;
+  const value = typeof mode === 'string' ? mode : '';
+  return (views.find((view) => view.value === value) ?? views[0])?.label;
+}

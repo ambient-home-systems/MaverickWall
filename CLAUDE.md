@@ -2195,6 +2195,73 @@ so the page adds no second header and, in particular, no second hamburger — th
 supervisor's sidebar already stacks one against the admin drawer's, and a third
 standing for the wall list would have been the third of three.
 
+**The editor has an undo now, and everything else in RFC 009 Phase 5 followed
+from it.** Before it, the only way back from a mistake was Discard changes,
+which is `location.reload()` — so an accidental drag after twenty minutes of
+arranging cost the twenty minutes, and the delete confirmation's own
+reassurance was "Discard changes brings it back", which is a dialogue
+nominating a substitute for an undo that does not exist. The stack is
+`history.ts`: the serialised canvas pushed before each mutation, capped at
+thirty, oldest dropped, Ctrl/Cmd+Z and a toolbar button. Duplicate is three
+lines once it exists, and the delete dialogue is gone.
+
+**`boot()` was not rewritten — deliberately, and the RFC says so.** What came
+out of it is three pure modules, the way `widget-options.ts`, `ink.ts` and
+`ladder.ts` came out of the same file before: `history.ts`, `placement.ts`
+(every rule about where a box may land, so a drag, an arrow key and a typed
+number cannot stop at different edges) and `tabs.ts` (`wireTabs`, imported by
+both editors instead of half-repeated in one — the layout editor set a roving
+`tabindex` with no arrow handler, so the Style tab and the whole ink lane were
+unreachable by keyboard and had no other route in).
+
+**`selectWidget` toggles two classes rather than rebuilding the overlay, and
+that is what makes the keyboard work at all.** Selection destroyed the focused
+box by the act of choosing it, so an arrow key could move a widget once and the
+next one went to the document. Arrows nudge 1%, Shift resizes, and the Style tab
+carries four numeric fields, which are the only way to line two widgets up
+exactly — a drag lands on a pixel and the snap grid is a twenty-fourth.
+
+**Dirtiness became a comparison rather than a flag**, and that is what made
+"stop writing on the orientation switch" a deletion. The toggle used to post
+the canvas being left, discard the outcome and clear the flag either way — a
+failed save reported as a success, on a control nobody presses to save. Both
+canvases are already in the page; what was missing was somewhere to record that
+the one going into the stash is unsaved. The editor now compares what would be
+posted with what was last posted, per orientation, so undoing back to where you
+started leaves the save bar honestly quiet and Save writes both canvases.
+
+**Three faults came out of building it and two were found by driving it.** A
+box went on saying "Month grid" while drawing a week, because changing the view
+rebuilt the inspector and nothing else — names are re-read in place now, on the
+canvas and in Layers. Every selection click silently restacked the canvas:
+`startDrag` raised the grabbed widget's `z` on *pointerdown*, so a tap that was
+only ever a look reordered the layers with nothing marking the page dirty; it
+is raised on the first pointer *move* now. And **the focus assertion passed
+with the fix removed** — `locator.press()` re-resolves its locator and focuses
+it before every key, handing focus back after each one and hiding exactly the
+rebuild being tested. Focus once, then send the keys to the page. Every
+assertion in `browser-editor.test.ts` was checked by breaking its fix and
+watching it go red.
+
+**The handle is 12px drawn and about 30px to hit**, which is one line —
+`.le-handle::before{inset:-16px}`, the chore tick's idiom — and moves nothing.
+Not the 44px the declaration reads as, and the reason is worth keeping:
+`.le-widget` is `overflow:hidden`, which clips hit-testing as well as painting,
+so the half that reaches outside the box is unreachable. Growing it further
+inward would reach 44 and swallow a small widget's whole drag area — a 5% box
+on a phone canvas is about 20px — and dropping the clip would let a long name
+chip paint over the neighbouring box. The test walks in from the middle of the
+square until the browser stops answering with the handle, rather than trusting
+the declaration.
+And the toolbar is one row: four clusters in three visual treatments became
+orientation, `+ Add widget`, Undo, Layers and one Layout button, with Templates
+and Reset dropped because the page's own overflow menu two rows above already
+carried both. An e-paper panel's page has no overflow menu, so there they stay.
+Measured on a 390×844 phone: the canvas was 388px starting 386px down and is
+455px starting 313px down — 54% of the screen for the thing being edited, and
+clear of the fixed save bar, which is where the bottom row of resize handles
+lives.
+
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody
 already signed in to Home Assistant, so asking for a second login in the
