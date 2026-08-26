@@ -1077,15 +1077,20 @@ pre.code{background:var(--mw-surface-2);
   transform:rotate(-45deg)}
 
 /* ---- Layout editor (behaviour lives in the display bundle; this styles it) */
-/* position:relative so the Layers popover anchors here, never on <body>. */
+/* position:relative so a popover can never anchor on <body> and float over
+ * the settings pane; the row inside is what they actually anchor to. */
 .le-toolbar{position:relative;display:flex;flex-direction:column;align-items:stretch;
   gap:10px;margin:0 0 12px}
-/* Row one is what a household reaches for every time: which canvas, add a
- * widget, start from a template. Row two is the rest, at compact density. */
-.le-bar-main{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
-.le-bar-tools{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+/* One row (RFC 009 Phase 5): which canvas, add a widget, undo, the layers
+ * list, and the canvas's own settings behind one button. It was two rows and
+ * four clusters, two of whose items duplicated the page overflow menu a few
+ * pixels above — 124px of an 844px phone before the canvas began.
+ * position:relative so the Layers and Layout popovers anchor to the row. */
+.le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+/* The canvas's shape, on the Layout button. Hidden on a phone (below), where
+ * the row has to fit and the popover states it anyway. */
+.le-tool-note{color:var(--mw-ink-2)}
 .le-orient{flex:0 0 auto}
-.le-tool-spacer{flex:1 1 auto}
 /* Toolbar tools are compact outlined buttons — the shared anatomy at 32px
  * density, targets stretched back to 48px. */
 .le-tool-link,.le-tool-btn,.le-layers-btn{position:relative;margin:0;height:32px;
@@ -1103,9 +1108,17 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-accent) var(--mw-wash-hover),transparent)}
 .le-layers-btn.is-on{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink);border-color:transparent}
+/* Nothing to undo reads as nothing to undo. A disabled control that is
+ * pixel-identical to a live one is worse than no control: .saverow shipped
+ * exactly that once, and the assertion for it is on the computed colour rather
+ * than on the disabled property.
+ * (No backticks in this file's CSS — the stylesheet is a template literal.) */
+.le-tool-btn:disabled{color:color-mix(in srgb,var(--mw-ink) 38%,transparent);
+  border-color:color-mix(in srgb,var(--mw-ink) 12%,transparent);cursor:default}
+.le-tool-btn:disabled:hover{background:transparent}
 .le-reset-form{margin:0}
-/* The Layers popover — anchored under its toolbar button (offsetParent is the
-   toolbar), so it never floats over the settings pane. */
+/* The Layers popover — anchored under the toolbar row it belongs to
+   (offsetParent is .le-bar-main), so it never floats over the settings pane. */
 /* A menu surface: 4px corner, a bordered panel, and the one heavy shadow —
  * it genuinely floats over the page, so it is allowed to say so. */
 .le-layers-pop{position:absolute;top:calc(100% + 6px);right:0;width:320px;z-index:30;
@@ -1308,6 +1321,11 @@ pre.code{background:var(--mw-surface-2);
   font:var(--mw-t-body-sm);color:var(--mw-ink-2)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
+/* A 12px corner is a pointer target on a mouse and nothing at all on a
+ * phone — in an editor this project redesigned for phones. The mark stays
+ * 12px and the *target* grows to 44px around it, which moves nothing and
+ * paints nothing: the chore tick's idiom, one screen along. */
+.le-handle::before{content:"";position:absolute;inset:-16px}
 /* The canvas background control — none / solid / gradient, per canvas. */
 .le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 0}
 .le-bg-label{
@@ -1419,6 +1437,18 @@ pre.code{background:var(--mw-surface-2);
   letter-spacing:var(--mw-t-label-sm-tracking);
   color:var(--mw-ink-2);margin-bottom:6px}
 .le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
+/* Position and size, in per cent of the canvas — the unit that is stored, so
+ * what is typed is what is saved. Four across on a column inspector, two by two
+ * when the inspector is a phone's sheet. */
+.le-box-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.le-box-cell{display:flex;flex-direction:column;gap:3px;margin:0;min-width:0}
+.le-box-cell span{font-size:11px;color:var(--mw-ink-2);letter-spacing:.02em}
+/* 16px, like every other field here: below that iOS Safari zooms the page on
+ * focus, and a settings screen that jumps on every tap is its own bug. */
+.le-box-cell input[type=number]{width:100%;min-width:0;box-sizing:border-box;
+  height:40px;padding:0 8px;font-size:16px;
+  background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:var(--mw-r-1)}
 /* A view a widget cannot change: stated, not offered as a dropdown of one. */
 .le-cfg-fact{font-size:14px;line-height:1.4;color:var(--mw-ink)}
 .le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;
@@ -1674,6 +1704,12 @@ pre.code{background:var(--mw-surface-2);
 .insp-tab.is-on{color:var(--mw-accent)}
 .insp-tab.is-on::before{content:"";position:absolute;left:8px;right:8px;bottom:0;height:3px;
   border-radius:3px 3px 0 0;background:var(--mw-accent)}
+/* Duplicate: the cheapest thing on this panel, so it sits above the rule and
+ * not inside the danger row — "Reset layout" beside "Add widget" is the
+ * mistake this avoids, one panel along. */
+.insp-actions[hidden]{display:none}
+.insp-actions{margin-top:16px}
+.insp-actions .le-add{width:100%;justify-content:center}
 /* Removing the selected widget lives with the widget, not in the toolbar —
  * a disabled "Remove selected" beside the everyday tools said nothing. */
 .insp-danger{margin-top:18px;padding-top:14px;border-top:1px solid var(--ruleSoft)}
@@ -1849,6 +1885,17 @@ pre.code{background:var(--mw-surface-2);
  * shell's own 900px collapse, which is where the savebar stops clearing the
  * drawer. */
 @media(max-width:560px){
+  /* The canvas gets the screen (RFC 009 Phase 5). Content used to start 386px
+   * down an 844px viewport — half the phone spent on chrome before the thing
+   * being edited. Two of those are here and the third is the one-row toolbar
+   * above; sizeCanvas spends what they free on the canvas itself.
+   *
+   * The preview caption is 31px naming the thing directly beneath it, and the
+   * shape it repeats is on the Layout button. */
+  .prev-head{display:none}
+  .le-tool-note{display:none}
+  /* Four number fields across a 358px sheet is four unusable fields. */
+  .le-box-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   /* A long value takes the line under its label rather than being clipped to
    * the half that says nothing. */
   .srow.is-wide{flex-wrap:wrap;align-items:flex-start;padding-top:10px;padding-bottom:10px}

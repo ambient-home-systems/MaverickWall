@@ -1,6 +1,6 @@
 # RFC 009 — Finishing the last mile
 
-Status: **Phases 0, 1, 2 and 3.1–3.3 built; 4 to 6 proposed** · Owner: — ·
+Status: **Phases 0, 1, 2, 3.1–3.3, 4 and 5 built; 6 to 7 proposed** · Owner: — ·
 First drafted 2026-08-24 ·
 Arises from a full audit of the running application (built from a checkout,
 paired to a real screen, measured in a browser at six widths) rather than from
@@ -953,7 +953,7 @@ redirect — they all already are, and that is why this is safe.
 
 ---
 
-## Phase 5 — The editor becomes safe
+## Phase 5 — The editor becomes safe — built
 
 **Goal: the product's most differentiated surface stops being its most hostile
 one.**
@@ -1017,6 +1017,48 @@ instead of toggling two classes, which is in turn why keyboard focus is destroye
 on select. **Do not rewrite it.** Extract the decision logic the way this package
 already extracts `widget-options.ts`, `ink.ts` and `ladder.ts`, and make
 `selectWidget` toggle classes in place. That is enough.
+
+**Built, in that order, and `boot()` was not rewritten.** Three pure modules
+came out of it — `history.ts` (the stack, its cap and when an entry is not
+worth keeping), `placement.ts` (every rule about where a box may land) and
+`tabs.ts` (`wireTabs`, now imported by both editors rather than half-repeated
+in one). The point of the extraction is that a drag, an arrow key and a typed
+number cannot disagree about the edge of the canvas, and that a rule inside a
+pointer handler is a rule no test in this package can reach.
+
+Dirtiness stopped being a flag and became a comparison: the canvas as it would
+be posted, against what was last posted, per orientation. That is what made
+item 5 a deletion rather than a feature — there was nowhere to record that the
+canvas going into the stash was unsaved, which is why the switch wrote it out —
+and it also means undoing back to where you started leaves the save bar
+honestly quiet.
+
+**Three faults came out of building it, and two were found by driving the
+editor rather than by reading it:**
+
+- **A box went on saying "Month grid" while drawing a week.** Changing the view
+  rebuilt the inspector and nothing else, so the name the RFC asked for was
+  correct exactly once, at boot. Names are re-read in place now, on the canvas
+  and in Layers.
+- **Every selection click silently restacked the canvas.** `startDrag` raised
+  the grabbed widget's `z` on *pointerdown*, so a tap that was only ever a look
+  reordered the layers — with nothing marking the page dirty, so it rode along
+  with the next save. It is raised on the first pointer *move* now, which is
+  what bringing a dragged box to the front was for.
+- **The focus assertion passed with the fix removed.** `locator.press()`
+  re-resolves the locator and focuses it before every key, which hands focus
+  back after each one and hides precisely the fault — the overlay rebuild that
+  destroys the focused box. Focus once, then send the keys to the page. Every
+  other assertion in `browser-editor.test.ts` was checked the same way: break
+  the fix, watch it go red.
+
+Item 7's consolidation is partly a deletion too — Templates and Reset left the
+toolbar because the page's own overflow menu two rows above already carried
+both, and an e-paper panel's page, which has no overflow menu, keeps them.
+Measured on a 390×844 phone: the canvas was 388px starting 386px down, and is
+455px starting 313px down — 54% of the screen for the thing being edited, and
+clear of the fixed save bar, which is where the resize handles of the bottom
+row of widgets live.
 
 ---
 

@@ -20,8 +20,11 @@ import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
-import { WIDGET_VIEWS } from './widget-views.js';
+import { WIDGET_VIEWS, viewLabel } from './widget-views.js';
 import { clearLaneKeys, inkOf, mergeInk, setLaneValue } from './ink.js';
+import { createHistory, type History } from './history.js';
+import { MIN_SIZE, moveTo, nudge, resizeTo, setDimension, type Box } from './placement.js';
+import { markTabs, wireTabs } from './tabs.js';
 import {
   HOUSE_FIELDS,
   SHIFT_FIELDS,
@@ -157,6 +160,20 @@ const SHEET_CLEARANCE = 96 + 64 + 16;
 
 function labelFor(type: string): string {
   return PALETTE.find((p) => p.type === type)?.label ?? type;
+}
+
+/**
+ * What a box is called on the canvas and in the Layers list.
+ *
+ * The type's name, plus which view it is set to when the type has more than
+ * one. Two Calendars used to be two boxes both reading "Calendar", and the one
+ * showing a month and the one showing the next few events were told apart only
+ * by selecting each and reading its Content tab.
+ */
+function describeWidget(widget: Widget): string {
+  const base = labelFor(widget.type);
+  const view = viewLabel(widget.type, (widget.config ?? {})['mode']);
+  return view === undefined ? base : `${base} \u2014 ${view}`;
 }
 
 function randomId(): string {
@@ -345,6 +362,14 @@ function boot(): void {
    * one, but a list is simpler than a nullable and cannot go stale.
    */
   let ladderPanels: { readonly widget: Widget; readonly list: HTMLElement }[] = [];
+  /**
+   * The inspector's four numeric box fields, so a drag or an arrow key writes
+   * back into them rather than leaving them stale. Rebuilt with the panel;
+   * absent whenever the Style tab is not the one showing.
+   */
+  let boxFields:
+    | { readonly id: string; readonly inputs: readonly (readonly ['x' | 'y' | 'w' | 'h', HTMLInputElement])[] }
+    | undefined;
   // Whether the anchored Layers / Canvas popovers are open. UI-only; not saved.
   let layersOpen = false;
   let canvasOpen = false;
@@ -365,6 +390,128 @@ function boot(): void {
       // The bar is a convenience; a missing host must never break the editor.
     }
   }
+  /**
+   * The canvas as it would be saved, as one string.
+   *
+   * `widgetsForSave` is what the server is posted, so this is the canonical
+   * form of "what this canvas is" — which makes two questions the same
+   * comparison. **Is anything unsaved?** is this against what was last saved.
+   * **Did that drag change anything?** is this against what was remembered
+   * before it. A flag set by hand would answer both approximately, and this
+   * project has already had one that answered "saved" for a save that failed.
+   */
+  function canvasSnapshot(canvas: {
+    readonly aspect: number;
+    readonly widgets: readonly Widget[];
+    readonly background?: Background | undefined;
+  }): string {
+    return JSON.stringify({
+      aspect: round3(canvas.aspect),
+      background: canvas.background ?? null,
+      widgets: widgetsForSave(canvas.widgets),
+    });
+  }
+  const activeSnapshot = (): string => canvasSnapshot(state);
+
+  /**
+   * What the server holds for each orientation, and whether the canvas waiting
+   * in the stash differs from it.
+   *
+   * Dirtiness is *per canvas* (RFC 009 Phase 5). It used to be one flag, which
+   * is why switching orientation performed a hidden save: with one flag there
+   * was nowhere to record that portrait still had unsaved work, so the switch
+   * wrote it out — discarded the outcome, and cleared the flag whether or not
+   * the write succeeded, reporting a failed save as a success. Nothing is
+   * written on a switch now; the save bar saves both.
+   */
+  const savedSnapshot: Record<'portrait' | 'landscape', string> = { portrait: '', landscape: '' };
+  let stashDirty = false;
+
+  /**
+   * One undo stack per canvas.
+   *
+   * Portrait and landscape are two arrangements that share nothing, so a single
+   * stack would offer to restore a portrait canvas over a landscape one. The
+   * stacks are not saved anywhere: undo is about the session in front of you,
+   * and a stack that survived a reload would offer to undo edits the household
+   * has already seen written.
+   */
+  const histories: Record<'portrait' | 'landscape', History> = {
+    portrait: createHistory(),
+    landscape: createHistory(),
+  };
+  const history = (): History => histories[state.orientation];
+
+  /*
+   * A run of small edits is one intention.
+   *
+   * Thirty arrow-key nudges are one "move it left a bit", and spending the
+   * whole stack on them would put the delete that came before out of reach —
+   * so a run of the same edit on the same widget records once. Discrete
+   * mutations (add, remove, duplicate, a drag, a switch) always record.
+   */
+  const RUN_MS = 700;
+  let runKey = '';
+  let runAt = 0;
+
+  /** Remember the canvas as it is now, before mutating it. */
+  function record(): void {
+    history().push(activeSnapshot());
+    runKey = '';
+    refreshUndo();
+  }
+  function recordRun(key: string): void {
+    const at = Date.now();
+    if (key === runKey && at - runAt < RUN_MS) {
+      runAt = at;
+      return;
+    }
+    record();
+    runKey = key;
+    runAt = at;
+  }
+  /** End an interaction: a drag that put the box back drops its entry. */
+  function settle(): void {
+    history().settle(activeSnapshot());
+    refreshUndo();
+  }
+
+  function refreshUndo(): void {
+    undoButton.disabled = !history().canUndo();
+  }
+
+  /** Step back one remembered canvas. Nothing to undo is a no-op, not an error. */
+  function undoLast(): void {
+    const snapshot = history().undo();
+    if (snapshot === undefined) return;
+    restoreCanvas(snapshot);
+  }
+
+  /**
+   * Put a remembered canvas back.
+   *
+   * Read as defensively as the boot parse is, for the same reason: this string
+   * was written by this bundle, but a shape assumed and not checked is how a
+   * poll throws inside a wall. A selection whose widget is no longer there is
+   * dropped, so the inspector cannot end up describing a box that has gone.
+   */
+  function restoreCanvas(snapshot: string): void {
+    let parsed: { aspect?: unknown; background?: unknown; widgets?: unknown };
+    try {
+      parsed = JSON.parse(snapshot) as { aspect?: unknown; background?: unknown; widgets?: unknown };
+    } catch {
+      return;
+    }
+    if (typeof parsed.aspect === 'number' && parsed.aspect > 0) state.aspect = parsed.aspect;
+    state.widgets = Array.isArray(parsed.widgets) ? (parsed.widgets as Widget[]) : [];
+    state.background = bgFrom(parsed.background);
+    if (selected !== undefined && !state.widgets.some((w) => w.id === selected)) selected = undefined;
+    runKey = '';
+    syncAspectSelect();
+    draw();
+    markDirty();
+  }
+
   // Snap to the grid while dragging. An editor affordance only — the stored
   // coordinates stay fractional, so snapping changes where a widget lands, never
   // how it is saved.
@@ -420,22 +567,24 @@ function boot(): void {
   backgroundPanel.className = 'le-bg';
 
   /**
-   * The toolbar, in two rows.
+   * The toolbar: one row (RFC 009 Phase 5).
    *
-   * Row one is what a household reaches for every time it opens this: which of
-   * the two canvases it is arranging, add a widget, start from a template. Row
-   * two is everything else at compact density, and most of it lives behind one
-   * "Canvas" button — the canvas size, matching the screen, snapping, the
-   * background and the reset. They were seven outlined buttons in a row, which
-   * gave "reset this layout" exactly the weight of "add a widget".
+   * It was four clusters in three visual treatments across two rows — a
+   * Portrait/Landscape toggle, a chip, Add widget and Templates on one; Canvas
+   * and Layers on another — and two of those items were duplicates of entries
+   * in the page's own overflow menu a few pixels above. On a 390px phone the
+   * pair cost 124px of an 844px viewport before the canvas began.
+   *
+   * One row now: which canvas, add a widget, undo, the layers list, and the
+   * canvas's own settings behind one button. Templates and Reset are gone from
+   * here on a wall because the page's overflow menu already carries both — an
+   * e-paper panel's page has no overflow menu, so there they stay.
    */
   const toolbar = document.createElement('div');
   toolbar.className = 'le-toolbar';
   const barMain = document.createElement('div');
   barMain.className = 'le-bar-main';
-  const barTools = document.createElement('div');
-  barTools.className = 'le-bar-tools';
-  toolbar.append(barMain, barTools);
+  toolbar.append(barMain);
 
   // Portrait | Landscape — which of the display's two canvases is being edited.
   const orientToggle = document.createElement('div');
@@ -454,7 +603,7 @@ function boot(): void {
     // Selected state announced, not drawn only — the tick and the fill are the
     // sighted half of the same fact.
     button.setAttribute('aria-pressed', state.orientation === which ? 'true' : 'false');
-    button.addEventListener('click', () => void switchOrientation(which));
+    button.addEventListener('click', () => switchOrientation(which));
     orientToggle.appendChild(button);
   }
 
@@ -496,6 +645,7 @@ function boot(): void {
     const small = Math.min(report.w, report.h);
     matchButton.textContent = `Match this wall (${report.w}×${report.h})`;
     matchButton.addEventListener('click', () => {
+      record();
       // Wide for landscape, tall for portrait, from the same reported pixels.
       state.aspect = round3(state.orientation === 'landscape' ? big / small : small / big);
       syncAspectSelect();
@@ -609,6 +759,52 @@ function boot(): void {
     if (event.key === 'Escape' && !modal.hidden) closeAddModal();
   });
 
+  /**
+   * Undo, in the toolbar and on Ctrl/Cmd+Z (RFC 009 Phase 5).
+   *
+   * Before this the only way back from a mistake was Discard changes, which is
+   * `location.reload()` — so an accidental drag after twenty minutes of
+   * arranging cost the twenty minutes. It is also what lets Remove stop asking:
+   * a confirmation whose reassurance was "Discard changes brings it back" was
+   * offering exactly that trade.
+   */
+  const undoButton = document.createElement('button');
+  undoButton.type = 'button';
+  undoButton.className = 'le-tool-btn';
+  undoButton.textContent = 'Undo';
+  undoButton.title = 'Undo the last change (Ctrl+Z)';
+  undoButton.disabled = true;
+  undoButton.addEventListener('click', () => undoLast());
+  /*
+   * The keyboard shortcut everybody tries first.
+   *
+   * Not inside a *text* box: a field somebody is typing in has its own undo and
+   * the browser's is the right one there — taking a keystroke out of a title
+   * being typed to move a box somewhere else is a worse editor than no shortcut
+   * at all. A checkbox, a colour or a range is not a text box and has no undo of
+   * its own, so a household who has just ticked something and pressed Ctrl+Z
+   * with the focus still on it gets what they asked for. Shift+Ctrl+Z is redo on
+   * most platforms and there is no redo here, so it is left alone rather than
+   * quietly doing a second undo.
+   */
+  const TEXT_ENTRY = ['text', 'number', 'search', 'url', 'tel', 'email', 'password'];
+  document.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() !== 'z') return;
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.isContentEditable === true) return;
+    if (target?.tagName === 'TEXTAREA') return;
+    // An <input> with no type at all is a text field, so an unknown type is
+    // treated as one: the safe direction is leaving a keystroke alone.
+    if (target?.tagName === 'INPUT') {
+      const kind = (target as HTMLInputElement).type;
+      if (kind === '' || TEXT_ENTRY.includes(kind)) return;
+    }
+    if (!history().canUndo()) return;
+    event.preventDefault();
+    undoLast();
+  });
+
   // Templates sits beside Add widget as its quieter neighbour: both start a
   // layout, one widget at a time or all at once.
   const templateLink = document.createElement('a');
@@ -647,6 +843,13 @@ function boot(): void {
   canvasButton.className = 'le-tool-btn';
   canvasButton.setAttribute('aria-haspopup', 'true');
   canvasButton.setAttribute('aria-expanded', 'false');
+  canvasButton.appendChild(document.createTextNode('Layout'));
+  // The shape, as its own node rather than part of the label: on a phone the
+  // row has to fit and the popover states it anyway, so the stylesheet hides
+  // this and the button keeps its name.
+  const canvasNote = document.createElement('span');
+  canvasNote.className = 'le-tool-note';
+  canvasButton.appendChild(canvasNote);
 
   const canvasPopover = document.createElement('div');
   canvasPopover.className = 'le-canvas-pop';
@@ -687,10 +890,15 @@ function boot(): void {
       sep2.className = 'le-pop-sep';
       canvasPopover.append(sep2, backgroundPanel);
     }
-    const actions = document.createElement('div');
-    actions.className = 'le-pop-actions';
-    actions.appendChild(resetForm);
-    canvasPopover.appendChild(actions);
+    // The reset, on a panel only. On a wall the page's overflow menu carries
+    // "Reset layout…" already, and one destructive action offered twice on one
+    // screen is one of them somebody presses by accident.
+    if (epaperHost) {
+      const actions = document.createElement('div');
+      actions.className = 'le-pop-actions';
+      actions.appendChild(resetForm);
+      canvasPopover.appendChild(actions);
+    }
   }
 
   // Layers: a toggle that opens an anchored popover (built below). Anchored to
@@ -760,9 +968,20 @@ function boot(): void {
     }
   });
 
-  palette.appendChild(templateLink);
-  barMain.append(orientToggle, panelChip, palette);
-  barTools.append(canvasButton, canvasPopover, layersButton, layersPopover);
+  // Templates duplicates the page overflow's "Start from a template…" on a
+  // wall, and is the only route to the gallery on a panel, whose page has no
+  // overflow menu at all.
+  if (epaperHost) palette.appendChild(templateLink);
+  barMain.append(
+    orientToggle,
+    panelChip,
+    palette,
+    undoButton,
+    layersButton,
+    layersPopover,
+    canvasButton,
+    canvasPopover,
+  );
 
   /**
    * What the canvas currently is, in words — on the "Layout" button and on the
@@ -782,7 +1001,8 @@ function boot(): void {
   }
 
   function updateCanvasLabel(): void {
-    canvasButton.textContent = `Layout — ${canvasSizeLabel()}`;
+    canvasNote.textContent = `\u2014 ${canvasSizeLabel()}`;
+    canvasButton.setAttribute('aria-label', `Layout \u2014 ${canvasSizeLabel()}`);
     const dims = document.querySelector<HTMLElement>('[data-preview-dims]');
     if (dims !== null) dims.textContent = `${canvasSizeLabel()} · updates within a minute`;
   }
@@ -869,13 +1089,27 @@ function boot(): void {
     button.type = 'button';
     button.className = 'insp-tab';
     button.setAttribute('role', 'tab');
+    button.dataset['tab'] = which;
     button.textContent = which === 'content' ? 'Content' : 'Style';
-    button.addEventListener('click', () => {
-      inspectorTab = which;
-      renderConfigPanel();
-    });
     inspectorTabs.appendChild(button);
   }
+  /*
+   * Arrow keys, Home and End — `wireTabs`, shared with `display-editor.ts`.
+   *
+   * These carried a roving `tabindex` and no arrow handler, which is the worst
+   * of both: the inactive tab leaves the tab order, and nothing else reaches
+   * it. Style was unreachable by keyboard entirely, and so was everything on
+   * it — including, now, the numeric position fields.
+   */
+  wireTabs(
+    [inspectorTabButtons.content, inspectorTabButtons.style],
+    (tab) => tab.dataset['tab'],
+    (key) => {
+      inspectorTab = key === 'style' ? 'style' : 'content';
+      renderConfigPanel();
+    },
+    false,
+  );
 
   /*
    * The two lanes (RFC 005, direction B): the wall's settings, and what this
@@ -899,20 +1133,46 @@ function boot(): void {
     button.type = 'button';
     button.className = 'insp-lane';
     button.setAttribute('role', 'tab');
+    button.dataset['lane'] = which;
     button.textContent = which === 'wall' ? 'On the wall' : 'On ink';
-    button.addEventListener('click', () => {
-      if (lane === which) return;
-      lane = which;
+    laneBar.appendChild(button);
+  }
+  // The lane had the same roving-tabindex-with-no-arrows fault as the tabs
+  // above, so the whole ink lane was pointer-only.
+  wireTabs(
+    [laneButtons.wall, laneButtons.ink],
+    (tab) => tab.dataset['lane'],
+    (key) => {
+      const next = key === 'ink' ? 'ink' : 'wall';
+      if (lane === next) return;
+      lane = next;
       inspectorTab = 'content';
       renderConfigPanel();
       renderPreview();
-    });
-    laneBar.appendChild(button);
-  }
+    },
+    false,
+  );
 
   // The per-widget options themselves. Boxless — the inspector is the card.
   const configPanel = document.createElement('div');
   configPanel.className = 'le-config';
+
+  /*
+   * Duplicate, which the undo stack is what makes safe to offer.
+   *
+   * It sits above Remove and outside the danger row: copying a widget is the
+   * cheapest thing on this panel, and putting it beside the destructive action
+   * would give the two the same weight — the mistake the toolbar made with
+   * "Reset layout" beside "Add widget".
+   */
+  const inspectorActions = document.createElement('div');
+  inspectorActions.className = 'insp-actions';
+  const duplicateButton = document.createElement('button');
+  duplicateButton.type = 'button';
+  duplicateButton.className = 'le-add';
+  duplicateButton.textContent = 'Duplicate';
+  duplicateButton.addEventListener('click', duplicateSelected);
+  inspectorActions.appendChild(duplicateButton);
 
   const inspectorDanger = document.createElement('div');
   inspectorDanger.className = 'insp-danger';
@@ -922,7 +1182,7 @@ function boot(): void {
   removeButton.addEventListener('click', removeSelected);
   inspectorDanger.appendChild(removeButton);
 
-  inspectorBody.append(laneBar, inspectorTabs, configPanel, inspectorDanger);
+  inspectorBody.append(laneBar, inspectorTabs, configPanel, inspectorActions, inspectorDanger);
   inspectorHost.append(inspectorHead, inspectorBody);
   // Nothing selected yet: on a wall the host keeps the empty note the server
   // rendered, so the column is not a blank box on a desktop.
@@ -1174,8 +1434,16 @@ function boot(): void {
 
   // ---- the draggable overlay -------------------------------------------
 
+  /**
+   * Recompute whether anything is unsaved, rather than assert it.
+   *
+   * Every mutation calls this, and it answers by comparing what would be posted
+   * with what was last posted — so undoing back to where you started clears the
+   * flag honestly, and the other orientation's unsaved work keeps it set.
+   */
   function markDirty(): void {
-    setDirty(true);
+    setDirty(stashDirty || activeSnapshot() !== savedSnapshot[state.orientation]);
+    refreshUndo();
   }
 
   function sizeCanvas(): void {
@@ -1205,6 +1473,21 @@ function boot(): void {
     // see is not a preview.
     const sheetOpen = inspectorIsSheet() && inspectorHost.classList.contains('is-open');
     const narrow = window.innerWidth < 900;
+    /*
+     * What is left of a phone once the chrome above the canvas and the save bar
+     * below it are paid for (RFC 009 Phase 5).
+     *
+     * Measured, not guessed at a fraction of the viewport: the canvas's own top
+     * is a fact about everything above it and does not move when the canvas is
+     * resized, so there is no feedback loop here. Guessing is also how a canvas
+     * ends up with its bottom edge — and the resize handle of every widget on
+     * it — underneath a fixed save bar.
+     */
+    const roomBelowChrome = (): number => {
+      const above = canvas.getBoundingClientRect().top + window.scrollY;
+      const bar = document.getElementById('savebar')?.getBoundingClientRect().height ?? 64;
+      return Math.round(window.innerHeight - above - bar - 12);
+    };
     // Measured against the sheet rather than guessed at a fraction of the
     // viewport: the sheet's own height is a min() of two values in the
     // stylesheet, and a second copy of that sum here would drift.
@@ -1216,7 +1499,9 @@ function boot(): void {
           ),
         )
       : narrow
-        ? Math.max(260, Math.round(window.innerHeight * 0.46))
+        // The canvas is the point of this screen, so on a phone it takes what
+        // the chrome leaves rather than a fixed 46% of the viewport.
+        ? Math.max(260, Math.min(Math.round(window.innerHeight * 0.62), roomBelowChrome()))
         : Math.min(720, Math.max(360, window.innerHeight - 220));
     let w = maxW;
     let h = w / state.aspect;
@@ -1309,17 +1594,43 @@ function boot(): void {
      */
     box.tabIndex = 0;
     box.setAttribute('role', 'button');
-    box.setAttribute('aria-label', `${labelFor(widget.type)} widget`);
+    box.setAttribute('aria-label', `${describeWidget(widget)} widget`);
     box.setAttribute('aria-pressed', widget.id === selected ? 'true' : 'false');
     box.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectWidget(widget.id);
+        return;
+      }
+      /*
+       * Arrow keys place the box (RFC 009 Phase 5): 1% a press, Shift to
+       * resize. The editor was pointer-only — the only key bound to a widget
+       * was Enter to select it, and the arrows scrolled the page underneath.
+       *
+       * The arithmetic is `placement.ts`, shared with the drag and with the
+       * inspector's numeric fields, so all three stop at the same edge.
+       */
+      const next = nudge(widget, event.key, { resize: event.shiftKey });
+      if (next === undefined) return;
       event.preventDefault();
-      selectWidget(widget.id);
+      recordRun(`${event.shiftKey ? 'size' : 'move'}:${widget.id}`);
+      applyBox(widget, next);
+      positionBox(box, widget);
+      /*
+       * Nudging is editing, so the inspector follows the box — and keeps focus
+       * where it is, which is the whole reason `selectWidget` toggles classes
+       * in place instead of rebuilding the overlay. Rebuilding destroyed the
+       * focused element, so the second arrow key went to the document.
+       */
+      if (selected !== widget.id) selectWidget(widget.id, true);
+      else syncBoxFields(widget);
+      markDirty();
+      schedulePreview();
     });
 
     const label = document.createElement('span');
     label.className = 'le-widget-label';
-    label.textContent = labelFor(widget.type);
+    label.textContent = describeWidget(widget);
     box.appendChild(label);
 
     /*
@@ -1342,7 +1653,7 @@ function boot(): void {
       box.appendChild(flag);
       box.setAttribute(
         'aria-label',
-        `${labelFor(widget.type)} widget — not on the ${surfaceWord()}. ${why}`,
+        `${describeWidget(widget)} widget — not on the ${surfaceWord()}. ${why}`,
       );
     }
 
@@ -1353,6 +1664,49 @@ function boot(): void {
     box.addEventListener('pointerdown', (event) => startDrag(event, widget, box, false));
     handle.addEventListener('pointerdown', (event) => startDrag(event, widget, box, true));
     return box;
+  }
+
+  /** Write a box computed by `placement.ts` back onto the widget. */
+  function applyBox(widget: Widget, box: Box): void {
+    widget.x = box.x;
+    widget.y = box.y;
+    widget.w = box.w;
+    widget.h = box.h;
+  }
+
+  /**
+   * Put the widget's real box back into the inspector's numeric fields.
+   *
+   * A drag and an arrow key both move the same widget the fields describe, so
+   * leaving them behind would give one widget two positions on one screen —
+   * and the field is the one a household would then trust. Never over a field
+   * being typed into, unless the edit has been committed (`force`), which is
+   * where the clamp becomes visible: type 140 and the field settles on what
+   * the canvas can actually hold.
+   */
+  function syncBoxFields(widget: Widget, force = false): void {
+    if (boxFields === undefined || boxFields.id !== widget.id) return;
+    for (const [field, input] of boxFields.inputs) {
+      if (!force && document.activeElement === input) continue;
+      input.value = String(Math.round(widget[field] * 100));
+    }
+  }
+
+  /*
+   * The preview catches up shortly after, never on every keystroke.
+   *
+   * A drag redraws it once on release for the same reason: re-rendering a month
+   * grid on every pointer move judders. Holding an arrow key is the same event
+   * rate, so it gets the same treatment — the box itself moves immediately,
+   * because that is the thing being placed.
+   */
+  let previewTimer: number | undefined;
+  function schedulePreview(): void {
+    if (previewTimer !== undefined) window.clearTimeout(previewTimer);
+    previewTimer = window.setTimeout(() => {
+      previewTimer = undefined;
+      renderPreview();
+    }, 140);
   }
 
   function positionBox(box: HTMLElement, widget: Widget): void {
@@ -1393,7 +1747,7 @@ function boot(): void {
 
       const name = document.createElement('span');
       name.className = 'le-layer-name';
-      name.textContent = labelFor(widget.type);
+      name.textContent = describeWidget(widget);
 
       row.append(grip, swatch, name);
       row.addEventListener('click', () => selectWidget(widget.id));
@@ -1410,6 +1764,8 @@ function boot(): void {
   function startReorder(event: PointerEvent, widget: Widget): void {
     event.preventDefault();
     event.stopPropagation();
+    // Restacking is a mutation, so it is one step back like any other.
+    record();
     // Front-first working order of ids.
     let order = [...state.widgets].sort((a, b) => b.z - a.z).map((w) => w.id);
 
@@ -1445,6 +1801,7 @@ function boot(): void {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       draw();
+      settle();
       markDirty();
     };
     window.addEventListener('pointermove', move);
@@ -1474,6 +1831,7 @@ function boot(): void {
       select.appendChild(opt);
     }
     select.addEventListener('change', () => {
+      record();
       if (select.value === 'solid') state.background = { type: 'solid', color: '#111820' };
       else if (select.value === 'gradient') {
         state.background = { type: 'gradient', from: '#0B0E11', to: '#242D38', angle: 180 };
@@ -1491,7 +1849,12 @@ function boot(): void {
       const input = document.createElement('input');
       input.type = 'color';
       input.value = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#111820';
-      input.addEventListener('change', () => { onChange(input.value); renderPreview(); markDirty(); });
+      input.addEventListener('change', () => {
+        record();
+        onChange(input.value);
+        renderPreview();
+        markDirty();
+      });
       return input;
     };
 
@@ -1499,6 +1862,7 @@ function boot(): void {
     if (bg?.type === 'image') {
       backgroundPanel.appendChild(
         mediaPicker(bg.image === '' ? undefined : bg.image, (name) => {
+          record();
           state.background = { type: 'image', image: name };
           renderPreview();
           markDirty();
@@ -1516,6 +1880,7 @@ function boot(): void {
       angle.value = String(bg.angle);
       angle.title = 'Gradient angle in degrees';
       angle.addEventListener('change', () => {
+        record();
         const n = Math.round(Number(angle.value));
         bg.angle = Number.isFinite(n) ? ((n % 360) + 360) % 360 : 180;
         renderPreview();
@@ -1571,10 +1936,58 @@ function boot(): void {
   function clearSelection(restoreFocus: boolean): void {
     const previous = selected;
     selected = undefined;
-    for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
+    markSelection();
     renderConfigPanel();
     if (!restoreFocus || previous === undefined) return;
     overlay.querySelector<HTMLElement>(`.le-widget[data-id="${previous}"]`)?.focus();
+  }
+
+  /**
+   * Re-read every box's name from its own options, in place.
+   *
+   * A widget's name carries the view it is set to, so changing the view has to
+   * change the name — on the canvas and in Layers, which are two lists of the
+   * same boxes. Found by driving it: the Calendar's picker rebuilt the
+   * inspector and nothing else, so a box went on saying "Month grid" while
+   * drawing a week. In place rather than a redraw, for the same reason
+   * selection is: a rebuild throws away focus and the boxes have not changed.
+   */
+  function refreshLabels(): void {
+    for (const box of overlay.querySelectorAll<HTMLElement>('.le-widget')) {
+      const widget = state.widgets.find((one) => one.id === box.dataset['id']);
+      if (widget === undefined) continue;
+      const name = describeWidget(widget);
+      const label = box.querySelector('.le-widget-label');
+      if (label !== null) label.textContent = name;
+      // A flagged box says more than its name; that label is composed where
+      // the flag is, and draw() rebuilds it when the flag changes.
+      if (!box.classList.contains('is-not-drawn')) box.setAttribute('aria-label', `${name} widget`);
+    }
+    for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
+      const widget = state.widgets.find((one) => one.id === row.dataset['id']);
+      const name = row.querySelector('.le-layer-name');
+      if (widget !== undefined && name !== null) name.textContent = describeWidget(widget);
+    }
+  }
+
+  /**
+   * Reflect the selection on the boxes and the layer rows, in place.
+   *
+   * Selecting used to rebuild the whole overlay (RFC 009 Phase 5). Every box
+   * was a new element, so the one that had focus was destroyed by the act of
+   * choosing it — which is why the keyboard could select a widget and then do
+   * nothing else with it. Two classes and an `aria-pressed` is all a selection
+   * ever was; the boxes themselves have not changed.
+   */
+  function markSelection(): void {
+    for (const box of overlay.querySelectorAll<HTMLElement>('.le-widget')) {
+      const on = box.dataset['id'] === selected;
+      box.classList.toggle('is-selected', on);
+      box.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
+      row.classList.toggle('is-selected', row.dataset['id'] === selected);
+    }
   }
 
   // ---- per-widget config ------------------------------------------------
@@ -1590,9 +2003,14 @@ function boot(): void {
    * says nothing different on a panel carries nothing.
    */
   function setConfig(widget: Widget, key: string, value: unknown): void {
+    // One step back per option — and a run of writes from one control (a colour
+    // committed twice, a title typed) is one step rather than thirty.
+    recordRun(`cfg:${lane}:${widget.id}:${key}`);
     const next = setLaneValue(widget.config, lane, key, value);
     if (next !== undefined) widget.config = next;
     else delete widget.config;
+    // The name carries the view, so any option write may have renamed the box.
+    refreshLabels();
     markDirty();
     renderPreview();
   }
@@ -1744,7 +2162,7 @@ function boot(): void {
     }
   }
 
-  function openInspector(): void {
+  function openInspector(keepFocus = false): void {
     const wasOpen = inspectorHost.classList.contains('is-open');
     inspectorEmpty.hidden = true;
     inspectorHead.hidden = false;
@@ -1769,7 +2187,7 @@ function boot(): void {
     // goes just below the sticky app bar, where the whole of it is visible.
     const top = window.scrollY + canvas.getBoundingClientRect().top - 88;
     window.scrollTo(0, Math.max(0, top));
-    inspectorClose.focus();
+    if (!keepFocus) inspectorClose.focus();
   }
 
   function closeInspector(): void {
@@ -1782,16 +2200,24 @@ function boot(): void {
     if (wasOpen && inspectorIsSheet()) sizeCanvas();
   }
 
-  /** Select a widget from anywhere — a tap, the keyboard, the layers list. */
-  function selectWidget(id: string): void {
+  /**
+   * Select a widget from anywhere — a tap, the keyboard, the layers list.
+   *
+   * `keepFocus` is for the keyboard: an arrow key selects the box it is moving,
+   * and focus has to stay on that box or the next arrow key goes to the
+   * document. On a phone the inspector is a sheet and opening it normally takes
+   * focus, which is right for a tap and wrong for a nudge.
+   */
+  function selectWidget(id: string, keepFocus = false): void {
     selected = id;
-    drawOverlay();
-    drawLayers();
+    markSelection();
+    renderConfigPanel(keepFocus);
   }
 
-  function renderConfigPanel(): void {
+  function renderConfigPanel(keepFocus = false): void {
     configPanel.textContent = '';
     ladderPanels = [];
+    boxFields = undefined;
     const widget = state.widgets.find((w) => w.id === selected);
     if (widget === undefined) {
       closeInspector();
@@ -1814,19 +2240,13 @@ function boot(): void {
      */
     laneBar.hidden = ink === undefined;
     if (ink === undefined) lane = 'wall';
-    for (const which of ['wall', 'ink'] as const) {
-      const button = laneButtons[which];
-      const on = lane === which;
-      button.classList.toggle('is-on', on);
-      button.setAttribute('aria-selected', on ? 'true' : 'false');
-      button.tabIndex = on ? 0 : -1;
-    }
+    markTabs([laneButtons.wall, laneButtons.ink], (tab) => tab.dataset['lane'], lane, 'is-on');
     const overrides = Object.keys(inkOf(widget.config));
     laneButtons.ink.classList.toggle('has-override', overrides.length > 0);
 
     if (lane === 'ink') {
       renderInkPanel(widget);
-      openInspector();
+      openInspector(keepFocus);
       return;
     }
 
@@ -1851,13 +2271,13 @@ function boot(): void {
     // ever empty and the inspector reads the same whichever widget is open.
     inspectorTabs.hidden = false;
     inspectorDanger.hidden = false;
-    for (const which of ['content', 'style'] as const) {
-      const button = inspectorTabButtons[which];
-      const on = inspectorTab === which;
-      button.classList.toggle('is-on', on);
-      button.setAttribute('aria-selected', on ? 'true' : 'false');
-      button.tabIndex = on ? 0 : -1;
-    }
+    inspectorActions.hidden = false;
+    markTabs(
+      [inspectorTabButtons.content, inspectorTabButtons.style],
+      (tab) => tab.dataset['tab'],
+      inspectorTab,
+      'is-on',
+    );
 
     // Layering moved to the Layers list (drag a row to restack); the
     // per-widget front/back buttons it replaces are gone.
@@ -1868,7 +2288,7 @@ function boot(): void {
       // implementation, writing the same per-widget keys it always has.
       buildFormatConfig(widget, cfg);
     }
-    openInspector();
+    openInspector(keepFocus);
   }
 
   /** The type's own controls — the Content tab, and the ink lane's raw material. */
@@ -1904,9 +2324,10 @@ function boot(): void {
    */
   function renderInkPanel(widget: Widget): void {
     inspectorTabs.hidden = true;
-    // Removing a widget here would remove it from the wall, which is not what
-    // "on ink" means anywhere else on this panel.
+    // Removing or copying a widget here would remove or copy it on the wall,
+    // which is not what "on ink" means anywhere else on this panel.
     inspectorDanger.hidden = true;
+    inspectorActions.hidden = true;
 
     const panel = inkPanelForCanvas();
     if (panel === undefined) {
@@ -2298,6 +2719,8 @@ function boot(): void {
    * remove working controls rather than irrelevant ones.
    */
   function buildFormatConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    buildBoxFields(widget);
+
     // Title — countdown sets its own label in Content (the same `title` key),
     // so offering it again here would be two fields for one value.
     if (widget.type !== 'countdown') {
@@ -2389,6 +2812,73 @@ function boot(): void {
         setConfig(widget, 'shadow', checked ? true : undefined),
       ),
     );
+  }
+
+  /**
+   * Where the box is, in numbers (RFC 009 Phase 5).
+   *
+   * Percentages of the canvas, which is what is stored — so what is typed is
+   * what is saved, with no second unit to convert between. They cost almost
+   * nothing and they are the only way to line two widgets up exactly: a drag
+   * lands on a pixel and the snap grid is a twenty-fourth, so "the same left
+   * edge as the one above" is otherwise a thing you can approach and never
+   * reach.
+   *
+   * Deliberately unannotated with a config key, so `pruneToLane` drops the
+   * whole row on the ink lane: a panel follows the wall's arrangement, and a
+   * box that moved on ink alone would be two canvases a household believes are
+   * one.
+   */
+  function buildBoxFields(widget: Widget): void {
+    // Not built at all on the ink lane rather than built and pruned: pruning
+    // detaches the row, and `boxFields` would go on pointing at inputs nothing
+    // can see, which a drag would then dutifully write into.
+    if (lane === 'ink') return;
+    const row = document.createElement('div');
+    row.className = 'le-cfg-field le-box';
+    const label = document.createElement('span');
+    label.textContent = 'Position and size';
+    const grid = document.createElement('div');
+    grid.className = 'le-box-grid';
+    const inputs: (readonly ['x' | 'y' | 'w' | 'h', HTMLInputElement])[] = [];
+    for (const [field, name] of [
+      ['x', 'X'],
+      ['y', 'Y'],
+      ['w', 'Width'],
+      ['h', 'Height'],
+    ] as const) {
+      const cell = document.createElement('label');
+      cell.className = 'le-box-cell';
+      const cellName = document.createElement('span');
+      cellName.textContent = name;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.max = '100';
+      input.step = '1';
+      input.inputMode = 'numeric';
+      input.value = String(Math.round(widget[field] * 100));
+      input.setAttribute('aria-label', `${name}, per cent of the canvas`);
+      input.addEventListener('input', () => {
+        const typed = Number(input.value);
+        // An empty field is a number half-typed, not a widget at zero.
+        if (input.value.trim() === '' || !Number.isFinite(typed)) return;
+        recordRun(`box:${widget.id}`);
+        applyBox(widget, setDimension(widget, field, typed / 100));
+        const box = overlay.querySelector<HTMLElement>(`.le-widget[data-id="${widget.id}"]`);
+        if (box !== null) positionBox(box, widget);
+        markDirty();
+        schedulePreview();
+      });
+      // Committed: show what the canvas took, including the clamp.
+      input.addEventListener('change', () => syncBoxFields(widget, true));
+      cell.append(cellName, input);
+      grid.appendChild(cell);
+      inputs.push([field, input] as const);
+    }
+    row.append(label, grid);
+    configPanel.appendChild(row);
+    boxFields = { id: widget.id, inputs };
   }
 
   function buildCalendarConfig(widget: Widget, cfg: Record<string, unknown>): void {
@@ -2876,13 +3366,14 @@ function boot(): void {
   function startDrag(event: PointerEvent, widget: Widget, box: HTMLElement, resizing: boolean): void {
     event.preventDefault();
     event.stopPropagation();
+    // The canvas as it is before the drag, so putting the box down in the wrong
+    // place is one Ctrl+Z. `settle` drops this again if the box came back to
+    // where it started, so a grab that moved nothing is not an undo step.
+    record();
     selected = widget.id;
-    widget.z = Math.max(0, ...state.widgets.map((w) => w.z)) + 1;
-    box.style.zIndex = String(widget.z);
-    for (const other of overlay.querySelectorAll('.le-widget')) other.classList.remove('is-selected');
-    box.classList.add('is-selected');
     renderConfigPanel();
     drawLayers();
+    markSelection();
 
     const rect = canvas.getBoundingClientRect();
     const startX = event.clientX;
@@ -2897,22 +3388,49 @@ function boot(): void {
      * and certainly not the preview: re-rendering a month grid on every pointer
      * move would judder. The preview catches up once, on release.
      */
+    /*
+     * Grabbing brings a box to the front — on the first *move*, not on the
+     * press.
+     *
+     * It used to be raised on pointerdown, which made every selection click a
+     * silent restack of the canvas: nothing marked it dirty, so it would ride
+     * along with the next save, and with an undo stack it also spent a step on
+     * a tap that was only ever a look. A drag brings the box you are dragging
+     * to the front, which is what the behaviour was for.
+     */
+    let raised = false;
+    const bringToFront = (): void => {
+      if (raised) return;
+      raised = true;
+      widget.z = Math.max(0, ...state.widgets.map((w) => w.z)) + 1;
+      box.style.zIndex = String(widget.z);
+      drawLayers();
+    };
+
     const move = (moveEvent: PointerEvent): void => {
       const dx = (moveEvent.clientX - startX) / rect.width;
       const dy = (moveEvent.clientY - startY) / rect.height;
-      if (resizing) {
-        widget.w = snapv(Math.min(1 - widget.x, Math.max(0.05, origin.w + dx)));
-        widget.h = snapv(Math.min(1 - widget.y, Math.max(0.05, origin.h + dy)));
-      } else {
-        widget.x = snapv(clamp01(Math.min(1 - widget.w, origin.x + dx)));
-        widget.y = snapv(clamp01(Math.min(1 - widget.h, origin.y + dy)));
-      }
+      bringToFront();
+      /*
+       * Snap first, then clamp — and the clamping is `placement.ts`, the same
+       * arithmetic the arrow keys and the inspector's numeric fields use, so a
+       * drag and a nudge stop at the same edge. Snapping the other way round
+       * could round a box back over the edge it had just been held inside.
+       */
+      applyBox(
+        widget,
+        resizing
+          ? resizeTo(widget, snapv(origin.w + dx), snapv(origin.h + dy))
+          : moveTo(widget, snapv(origin.x + dx), snapv(origin.y + dy)),
+      );
       positionBox(box, widget);
+      syncBoxFields(widget);
       markDirty();
     };
     const up = (): void => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      settle();
       renderPreview();
     };
     window.addEventListener('pointermove', move);
@@ -2922,6 +3440,7 @@ function boot(): void {
   // ---- mutations --------------------------------------------------------
 
   function addWidget(type: string): void {
+    record();
     const z = Math.max(0, ...state.widgets.map((w) => w.z), 0) + 1;
     const n = state.widgets.length;
     state.widgets.push({
@@ -2939,21 +3458,51 @@ function boot(): void {
   }
 
   /**
+   * Copy the widget the inspector is showing, options and all.
+   *
+   * Three lines once undo exists, which is why it is here and was not before:
+   * an editor whose only recovery was reloading the page could not afford a
+   * one-tap way to create something.
+   *
+   * The copy is offset rather than placed exactly over the original — two boxes
+   * at the same coordinates look like one box, and the household would go
+   * looking for the widget they had just made.
+   */
+  function duplicateSelected(): void {
+    const widget = state.widgets.find((w) => w.id === selected);
+    if (widget === undefined) return;
+    record();
+    const copy: Widget = {
+      ...widget,
+      id: randomId(),
+      z: Math.max(0, ...state.widgets.map((w) => w.z)) + 1,
+      // A deep copy: sharing the options object would make editing the copy
+      // edit the original. `structuredClone` is out under rule two.
+      ...(widget.config !== undefined
+        ? { config: JSON.parse(JSON.stringify(widget.config)) as Record<string, unknown> }
+        : {}),
+    };
+    applyBox(copy, moveTo(copy, copy.x + 0.02, copy.y + 0.02));
+    state.widgets.push(copy);
+    selected = copy.id;
+    draw();
+    markDirty();
+  }
+
+  /**
    * Remove the widget the inspector is showing.
    *
-   * It asks, and it names what it is removing — the control used to be a
-   * "Remove selected" button in the toolbar, permanently visible and usually
-   * disabled, which said neither. Nothing is written until Save, so Discard
-   * changes is the undo, and the question says so.
+   * It used to ask, and the reassurance it offered was "Discard changes brings
+   * it back" — which throws away every other edit since the page loaded. That
+   * was the confirmation nominating a substitute for an undo that did not
+   * exist. It exists now, so the dialogue is gone: the Undo button lights up
+   * and Ctrl+Z puts the widget back exactly where it was, options and all.
    */
   function removeSelected(): void {
     if (selected === undefined) return;
     const widget = state.widgets.find((w) => w.id === selected);
     if (widget === undefined) return;
-    const question =
-      `Remove the ${labelFor(widget.type)} widget from this layout? ` +
-      'Nothing is written until you press Save wall, so Discard changes brings it back.';
-    if (!window.confirm(question)) return;
+    record();
     state.widgets = state.widgets.filter((w) => w.id !== widget.id);
     clearSelection(false);
     draw();
@@ -2961,6 +3510,7 @@ function boot(): void {
   }
 
   aspectSelect.addEventListener('change', () => {
+    record();
     state.aspect = Number(aspectSelect.value) || 0.5625;
     draw();
     markDirty();
@@ -3001,23 +3551,28 @@ function boot(): void {
   }
 
   /**
-   * Swap the active canvas for the other orientation's.
+   * Swap the active canvas for the other orientation's. Nothing is written.
    *
-   * The canvas you leave is saved first if it has unsaved changes, so a
-   * household that arranges portrait, flips to landscape and arranges that loses
-   * neither — each orientation is its own row set on the server (RFC 005). The
-   * active canvas lives flat in `aspect`/`widgets`; the other waits in `stash`,
-   * and this is the one place they trade.
+   * It used to post the canvas being left whenever the editor was dirty — a
+   * write nobody asked for on a tab press, whose outcome was discarded and
+   * whose dirty flag was cleared either way, so a save that failed was reported
+   * as a success (RFC 009 Phase 5). Both canvases are already here: the active
+   * one flat in `aspect`/`widgets`, the other in `stash`. What was missing was
+   * somewhere to record that the one going into the stash has unsaved work,
+   * which is `stashDirty` — and the save bar saves both.
+   *
+   * A household that arranges portrait, flips to landscape and arranges that
+   * still loses neither; it now loses neither to a failed request either.
    */
-  async function switchOrientation(which: 'portrait' | 'landscape'): Promise<void> {
+  function switchOrientation(which: 'portrait' | 'landscape'): void {
     if (which === state.orientation) return;
-    if (dirty) await postCanvas(state.orientation, state.aspect, state.widgets, state.background);
 
     const leaving: Canvas = {
       aspect: state.aspect,
       widgets: state.widgets,
       ...(state.background !== undefined ? { background: state.background } : {}),
     };
+    stashDirty = canvasSnapshot(leaving) !== savedSnapshot[state.orientation];
     state.aspect = state.stash.aspect;
     state.widgets = state.stash.widgets;
     state.background = state.stash.background;
@@ -3025,9 +3580,6 @@ function boot(): void {
     state.orientation = which;
     rememberOrientation(state.screen, which);
     selected = undefined;
-    // The leaving canvas was saved above if it was dirty; the arriving one is
-    // clean until touched. Tell the save bar.
-    setDirty(false);
 
     // Reflect the switch in the toolbar: the active button, and the aspect
     // select. `aria-pressed` moves with the class — the fill and the tick are
@@ -3039,6 +3591,9 @@ function boot(): void {
     }
     syncAspectSelect();
     draw();
+    // Both canvases decide the flag now, and the undo button follows the stack
+    // belonging to the one that just arrived.
+    markDirty();
   }
 
   // ---- save -------------------------------------------------------------
@@ -3052,8 +3607,8 @@ function boot(): void {
         type: w.type,
         x: round3(clamp01(w.x)),
         y: round3(clamp01(w.y)),
-        w: round3(Math.max(0.05, Math.min(1, w.w))),
-        h: round3(Math.max(0.05, Math.min(1, w.h))),
+        w: round3(Math.max(MIN_SIZE, Math.min(1, w.w))),
+        h: round3(Math.max(MIN_SIZE, Math.min(1, w.h))),
         z: index,
         // Only when it holds something, so an untouched widget stores no config
         // row and the server sees a clean absence rather than `{}`.
@@ -3094,7 +3649,9 @@ function boot(): void {
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (response.ok) {
-        setDirty(false);
+        // What the server now holds. The dirty flag is derived from this, so
+        // there is no second place saying whether this canvas is clean.
+        savedSnapshot[orientation] = canvasSnapshot({ aspect, widgets, background });
         return { ok: true };
       }
       return { ok: false, message: body.message ?? 'That did not save.' };
@@ -3103,9 +3660,28 @@ function boot(): void {
     }
   }
 
-  /** Save the canvas being edited now — the host save bar calls this. */
+  /**
+   * Save what is unsaved — the host save bar calls this.
+   *
+   * Both canvases, because the orientation toggle no longer writes: the one in
+   * the stash is posted first and only when it differs from what the server
+   * holds, so a household who arranged portrait, switched to landscape and
+   * pressed Save keeps both. Its failure is reported rather than swallowed, and
+   * it names which layout failed — the household is looking at the other one.
+   */
   async function saveCurrent(): Promise<{ ok: boolean; message?: string }> {
-    return postCanvas(state.orientation, state.aspect, state.widgets, state.background);
+    const other = state.orientation === 'portrait' ? 'landscape' : 'portrait';
+    if (stashDirty) {
+      const stashed = await postCanvas(other, state.stash.aspect, state.stash.widgets, state.stash.background);
+      if (!stashed.ok) {
+        markDirty();
+        return { ok: false, message: `Your ${other} layout did not save. ${stashed.message ?? ''}`.trim() };
+      }
+      stashDirty = false;
+    }
+    const outcome = await postCanvas(state.orientation, state.aspect, state.widgets, state.background);
+    markDirty();
+    return outcome;
   }
 
   // Publish the bridge the page chrome drives: one sticky save bar saves the
@@ -3116,6 +3692,16 @@ function boot(): void {
   // Keep the preview from being referenced-as-unused when a build tightens up.
   void previewShadow;
 
+  /*
+   * What the server holds for each canvas, as the strings dirtiness is measured
+   * against. Seeded from what was rendered into the page, before anything can
+   * switch orientation — a switch compares against these, and a blank one would
+   * read as "everything is unsaved" on a canvas nobody has touched.
+   */
+  savedSnapshot[state.orientation] = activeSnapshot();
+  savedSnapshot[state.orientation === 'portrait' ? 'landscape' : 'portrait'] =
+    canvasSnapshot(state.stash);
+
   // Reopen on the orientation last edited on this device — except on a panel,
   // which has exactly one and remembers nothing. The panel case is not a
   // preference: opening a landscape 800x480 panel on the wall's portrait
@@ -3125,7 +3711,7 @@ function boot(): void {
   // so it saves nothing) and draws the arriving canvas itself.
   const openOn = epaperHost ? (hostOrientation ?? 'landscape') : rememberedOrientation(state.screen);
   if (openOn !== null && openOn !== undefined && openOn !== state.orientation) {
-    void switchOrientation(openOn);
+    switchOrientation(openOn);
   } else {
     draw();
   }

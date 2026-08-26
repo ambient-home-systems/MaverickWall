@@ -36,6 +36,8 @@
  * lost the editor.
  */
 
+import { markTabs, wireTabs } from './tabs.js';
+
 interface EditorBridge {
   saveCurrent(): Promise<{ ok: boolean; message?: string }>;
   isDirty(): boolean;
@@ -63,52 +65,6 @@ function recall(key: string): string | null {
     return localStorage.getItem(key);
   } catch {
     return null;
-  }
-}
-
-/**
- * One tablist: buttons that carry `aria-selected`, roving tabindex, and the
- * arrow keys the pattern requires. Selecting is what the caller does with the
- * key it is handed — this only owns the control's own semantics.
- */
-function wireTabs(
-  tabs: readonly HTMLButtonElement[],
-  keyOf: (tab: HTMLButtonElement) => string | undefined,
-  select: (key: string) => void,
-  vertical: boolean,
-): void {
-  const previous = vertical ? 'ArrowUp' : 'ArrowLeft';
-  const next = vertical ? 'ArrowDown' : 'ArrowRight';
-  for (const [index, tab] of tabs.entries()) {
-    tab.addEventListener('click', () => {
-      const key = keyOf(tab);
-      if (key !== undefined) select(key);
-    });
-    tab.addEventListener('keydown', (event) => {
-      let target = -1;
-      if (event.key === previous) target = (index - 1 + tabs.length) % tabs.length;
-      else if (event.key === next) target = (index + 1) % tabs.length;
-      else if (event.key === 'Home') target = 0;
-      else if (event.key === 'End') target = tabs.length - 1;
-      if (target === -1) return;
-      event.preventDefault();
-      const moved = tabs[target];
-      if (moved === undefined) return;
-      const key = keyOf(moved);
-      if (key !== undefined) select(key);
-      moved.focus();
-    });
-  }
-}
-
-/** Reflect the selected tab on every button in one tablist. */
-function markTabs(tabs: readonly HTMLButtonElement[], keyOf: (t: HTMLButtonElement) => string | undefined,
-  active: string, onClass: string): void {
-  for (const tab of tabs) {
-    const on = keyOf(tab) === active;
-    tab.classList.toggle(onClass, on);
-    tab.setAttribute('aria-selected', on ? 'true' : 'false');
-    tab.tabIndex = on ? 0 : -1;
   }
 }
 
@@ -368,7 +324,3 @@ if (document.readyState === 'loading') {
 } else {
   boot();
 }
-
-// No runtime imports, so mark this a module (not a global script) to keep `boot`
-// out of the shared script scope the other bundles compile into.
-export {};
