@@ -519,14 +519,21 @@ export function createApp(deps: AppDeps): Hono {
     } catch {
       ok = false;
     }
-    return c.json({
-      ok,
-      version: deps.appVersion,
-      schemaVersion,
-      lastSync,
-      // Lets a display detect clock drift before it has a token.
-      serverTime: now(),
-    });
+    return c.json(
+      {
+        ok,
+        version: deps.appVersion,
+        schemaVersion,
+        lastSync,
+        // Lets a display detect clock drift before it has a token.
+        serverTime: now(),
+      },
+      // A 200 on ok:false is a healthcheck nothing can act on: a container
+      // orchestrator watches the status code, not the body. Feed failures are
+      // not this — those surface on the wall via healthNotices, which is the
+      // right audience for them — this is only the database read above.
+      ok ? 200 : 503,
+    );
   });
 
   const requireScreen = async (c: Context, next: Next): Promise<Response | void> => {

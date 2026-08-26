@@ -282,6 +282,18 @@ describe('/healthz', () => {
     const body = (await (await call('/healthz')).json()) as Record<string, number>;
     expect(body['schemaVersion']).toBeGreaterThan(0);
   });
+
+  it('answers 503 when ok is false, not a 200 nothing can act on', async () => {
+    // A container orchestrator watches the status code, not the body — a 200
+    // on a failing read is a healthcheck that can never see the one failure
+    // this route knows how to report.
+    const { call } = harness((db) => dbWithFailingQuery(db, /calendar_sources/, new Error('boom')));
+    const response = await call('/healthz');
+    expect(response.status).toBe(503);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body['ok']).toBe(false);
+  });
 });
 
 describe('/d/manifest', () => {
