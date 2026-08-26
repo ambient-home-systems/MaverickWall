@@ -120,7 +120,7 @@ describe('the wall editor is two modes, not one page', () => {
   it('draws Layout and Wall settings as separate panels under one mode control', async () => {
     const h = await ready();
     h.pairScreen('s1', 'Kitchen');
-    const res = await h.call('/admin/displays/s1');
+    const res = await h.call('/admin/walls/s1');
     expect(res.status).toBe(200);
     const html = await res.text();
 
@@ -166,7 +166,7 @@ describe('the wall editor is two modes, not one page', () => {
       )
       .run('amy', 'Amy', '#4C7FD1', 0, at, at);
 
-    const html = await (await h.call('/admin/displays/s1')).text();
+    const html = await (await h.call('/admin/walls/s1')).text();
     const json = /<div id="layout-editor" data-json="([^"]*)"/.exec(html)?.[1] ?? '';
     const initial = JSON.parse(
       json.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'),
@@ -177,10 +177,10 @@ describe('the wall editor is two modes, not one page', () => {
   it('gives the wall one header: a back link in the app bar, no second hamburger', async () => {
     const h = await ready();
     h.pairScreen('s2', 'Hall');
-    const html = await (await h.call('/admin/displays/s2')).text();
+    const html = await (await h.call('/admin/walls/s2')).text();
 
     // The crumb is the way back to the list.
-    expect(html).toContain('class="crumb crumb-back" href="admin/displays"');
+    expect(html).toContain('class="crumb crumb-back" href="admin/walls"');
     expect(html).toContain('>Walls</a>');
     // Exactly one menu glyph on the page: the app shell's navigation drawer.
     // A wall-list button drawn as a second one is the ambiguity this replaces.
@@ -199,7 +199,7 @@ describe('the wall editor is two modes, not one page', () => {
     h.pairScreen('s3', 'Landing');
     h.db.prepare('UPDATE screens SET last_seen_at = ?, app_version = ? WHERE id = ?')
       .run(Date.now(), 'web 9.9.9', 's3');
-    const html = await (await h.call('/admin/displays/s3')).text();
+    const html = await (await h.call('/admin/walls/s3')).text();
     expect(html).toContain('<b>Online</b>');
     expect(html).toContain('web 9.9.9');
   });
@@ -207,10 +207,10 @@ describe('the wall editor is two modes, not one page', () => {
   it('keeps pairing, unpair and reset out of the everyday tools', async () => {
     const h = await ready();
     h.pairScreen('s4', 'Snug');
-    const html = await (await h.call('/admin/displays/s4')).text();
+    const html = await (await h.call('/admin/walls/s4')).text();
 
     // They live in the header overflow and in the Advanced category…
-    expect(html).toContain('aria-label="More actions for this display"');
+    expect(html).toContain('aria-label="More actions for this wall"');
     expect(html).toContain('admin/screens/s4/regenerate');
     expect(html).toContain('admin/screens/s4/revoke');
     // …each with a confirmation that names what it takes.
@@ -227,7 +227,7 @@ describe('wall settings are categories, and every field kept its name', () => {
   it('offers five categories, each a tab over its own panel', async () => {
     const h = await ready();
     h.pairScreen('s5', 'Kitchen');
-    const html = await (await h.call('/admin/displays/s5')).text();
+    const html = await (await h.call('/admin/walls/s5')).text();
 
     for (const key of ['appearance', 'content', 'device', 'alerts', 'advanced']) {
       expect(html, key).toContain(`data-wset="${key}"`);
@@ -249,10 +249,10 @@ describe('wall settings are categories, and every field kept its name', () => {
     }
     // The alert control says what it does and who it does it for.
     expect(form).toContain('Allow alert dismissal');
-    expect(form).toContain('Lets this display clear alerts for the household.');
+    expect(form).toContain('Lets this wall clear alerts for the household.');
     // The two orientation-ish controls are still told apart, in the copy.
     expect(form).toContain('Layout orientation');
-    expect(form).toContain('Display mounting');
+    expect(form).toContain('Wall mounting');
     expect(html).toContain('chooses which layout this wall shows');
     expect(html).toContain('not the Portrait/Landscape buttons in the layout editor');
   });
@@ -260,7 +260,7 @@ describe('wall settings are categories, and every field kept its name', () => {
   it('keeps the Advanced actions outside the settings form — HTML has no nested forms', async () => {
     const h = await ready();
     h.pairScreen('s6', 'Kitchen');
-    const html = await (await h.call('/admin/displays/s6')).text();
+    const html = await (await h.call('/admin/walls/s6')).text();
     const form = settingsFormOf(html);
 
     // The one save bar is still the only submit for the settings themselves.
@@ -283,7 +283,7 @@ describe('wall settings are categories, and every field kept its name', () => {
       theme: 'almanac', daytime_theme: 'none', today_events: '9', next_days: '4',
       horizon_weeks: '6', week_start: 'monday',
     });
-    const html = await (await h.call('/admin/displays/s7')).text();
+    const html = await (await h.call('/admin/walls/s7')).text();
 
     // Not "Follow the default", and not a bare "9".
     expect(html).not.toContain('Follow the default');
@@ -310,7 +310,7 @@ describe('wall settings are categories, and every field kept its name', () => {
     h.db
       .prepare(`UPDATE screens SET timezone = 'Mars/Olympus_Mons' WHERE id = 's8'`)
       .run();
-    const html = await (await h.call('/admin/displays/s8')).text();
+    const html = await (await h.call('/admin/walls/s8')).text();
 
     const panel = /<select[^>]*name="timezone"[\s\S]*?<\/select>/.exec(html)?.[0] ?? '';
     expect(panel, 'the picker is on the page').not.toBe('');
@@ -340,7 +340,7 @@ describe('wall settings are categories, and every field kept its name', () => {
   it('hides what cannot apply until it can', async () => {
     const h = await ready();
     h.pairScreen('s8', 'Kitchen');
-    const html = await (await h.call('/admin/displays/s8')).text();
+    const html = await (await h.call('/admin/walls/s8')).text();
 
     // The daylight window is ignored outright while this wall follows the
     // household's schedule, so it is not drawn.
@@ -367,7 +367,7 @@ describe('wall settings are categories, and every field kept its name', () => {
       theme: '', daytime_theme: '', timezone: '', clock_24: '',
       today_events: '5', next_days: '', horizon_weeks: '',
     });
-    const html = await (await h.call('/admin/displays/s9')).text();
+    const html = await (await h.call('/admin/walls/s9')).text();
     // The one it set is open and filled; the two it did not are still inherited.
     expect(html).not.toMatch(/data-inherit-field="today_events" [^>]*hidden/);
     expect(html).toMatch(/data-inherit-field="next_days" [^>]*hidden/);
@@ -431,7 +431,7 @@ describe('saving a wall', () => {
   it('starts clean: Save is disabled, Discard is not drawn, and both say what they do', async () => {
     const h = await ready();
     h.pairScreen('sc', 'Kitchen');
-    const html = await (await h.call('/admin/displays/sc')).text();
+    const html = await (await h.call('/admin/walls/sc')).text();
     expect(html).toContain('>Save wall</button>');
     expect(html).toContain('data-action="save" disabled');
     expect(html).toContain('data-action="discard" hidden');
@@ -443,7 +443,7 @@ describe('saving a wall', () => {
 describe('the Default display is the same editor without the hardware', () => {
   it('renders both modes and the categories that apply to it', async () => {
     const h = await ready();
-    const html = await (await h.call('/admin/displays/default')).text();
+    const html = await (await h.call('/admin/walls/default')).text();
     expect(html).toContain('id="layout-editor"');
     expect(html).toContain('data-mode-panel="settings" hidden');
     expect(html).toContain('data-wset="appearance"');
@@ -460,7 +460,7 @@ describe('the stylesheet the editor is drawn with', () => {
   it('takes the closed widget sheet away from the keyboard, not merely off screen', async () => {
     const h = await ready();
     // The admin stylesheet is inline in every page.
-    const style = await (await h.call('/admin/displays/default')).text();
+    const style = await (await h.call('/admin/walls/default')).text();
 
     // Translated away *and* invisible: a sheet that is only translated still
     // hands every control in it to the keyboard.

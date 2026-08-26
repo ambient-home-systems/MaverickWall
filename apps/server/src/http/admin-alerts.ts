@@ -108,7 +108,7 @@ function echoOf(body: Record<string, unknown>): WeatherEcho {
  */
 
 const ACTION_WORDS: Readonly<Record<string, string>> = {
-  takeover_and_wake: 'Covers the wall, and lights a screen that has gone dark',
+  takeover_and_wake: 'Covers the wall, and wakes it if it has gone dark',
   takeover: 'Covers the wall',
   banner: 'A strip above the calendar',
   none: 'Nothing',
@@ -133,7 +133,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/alerts', (c: Context) =>
     c.html(
-      alertsPage(c, 'That page was out of date, so nothing was changed. Reload this screen and try again.'),
+      alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
       400,
     ),
   );
@@ -221,7 +221,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
      */
     if (!fromTheForm(body)) {
       return c.html(
-        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this screen and try again.'),
+        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
         400,
       );
     }
@@ -332,7 +332,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       return c.html(
         alertsPage(
           c,
-          'Home Assistant is not connected. Connect it on the Home Assistant screen, then try this again.',
+          'Home Assistant is not connected. Connect it on the Home Assistant page, then try this again.',
           echo,
         ),
         400,
@@ -452,8 +452,8 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
     return (
       `<h2 class="add" style="margin-top:0;padding-top:0;border-top:0">Forecast</h2>` +
-      `<p class="hint">A five-day forecast strip. It is a block like any other — ` +
-      `choose where it sits on the <a class="link" href="admin/displays/default">Default display</a>.</p>` +
+      `<p class="hint">A five-day forecast strip. It is a widget like any other — ` +
+      `choose where it sits on the <a class="link" href="admin/walls/default">Default wall</a>.</p>` +
       forecastBlock +
       (weather.enabled && located && forecastBlock === ''
         ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
@@ -745,7 +745,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="host">${escapeHtml(severity)} or worse` +
           `${urgency === undefined ? '' : `, and ${escapeHtml(urgency)}`}</p>` +
           `<p>${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +
-          `${row.piercesNightMode === 1 ? ' · may wake a dark screen' : ''}` +
+          `${row.piercesNightMode === 1 ? ' · may wake a dark wall' : ''}` +
           `${row.dismissible === 0 ? ' · cannot be cleared from the wall' : ''}</p>` +
           `<form method="post" action="admin/alerts/rules/${encodeURIComponent(row.id)}">` +
           `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +

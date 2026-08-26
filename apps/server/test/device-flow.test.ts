@@ -151,7 +151,7 @@ describe('device-authorization pairing, end to end', () => {
     const prompt = await h.call(start.verifyUrl);
     expect(prompt.status).toBe(200);
     const promptHtml = await prompt.text();
-    expect(promptHtml).toContain('A screen wants to pair');
+    expect(promptHtml).toContain('A wall wants to pair');
     expect(promptHtml).toContain(start.userCode);
 
     // 4. They name it and approve.

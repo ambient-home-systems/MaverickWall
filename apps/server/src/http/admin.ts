@@ -182,7 +182,7 @@ const personBody = z.object({
 });
 
 const screenBody = z.object({
-  name: text('A name for the screen', 80),
+  name: text('A name for the wall', 80),
   orientation: oneOf('an orientation', ['auto', 'portrait', 'landscape']),
   rotation: z
     .unknown()
@@ -209,7 +209,7 @@ const screenBody = z.object({
 });
 
 /** Creating a screen asks for one thing; everything else follows the household. */
-const newScreenBody = z.object({ name: text('A name for the screen', 80) });
+const newScreenBody = z.object({ name: text('A name for the wall', 80) });
 
 /**
  * E-paper panel presets, all 1-bit for now (RFC 006 phase 1). Dimensions are
@@ -245,7 +245,7 @@ const epaperSourceBody = z.object({
 });
 
 const newEpaperBody = z.object({
-  name: text('A name for the screen', 80),
+  name: text('A name for the wall', 80),
   preset: text('A panel', 40),
   width: optionalText(6),
   height: optionalText(6),
@@ -262,13 +262,13 @@ const newEpaperBody = z.object({
  *
  * The `code` is the short user code shown on the wall; the household reached
  * this form either by scanning the screen's QR (which pre-fills it) or by typing
- * it at the Screens page. `action` is which button they pressed. Everything is
+ * it at the Walls page. `action` is which button they pressed. Everything is
  * behind the session gate, which is the entire reason an 8-character code is
  * safe here — see `auth/device-flow.ts`.
  */
 const approveDeviceBody = z.object({
   code: text('A pairing code', 32),
-  name: text('A name for the screen', 80),
+  name: text('A name for the wall', 80),
   action: oneOf('an action', ['approve', 'deny']),
 });
 
@@ -360,7 +360,7 @@ export interface AdminDeps {
   readonly deviceFlow: DeviceFlowStore;
   /**
    * What boot detected from the supervisor about the wall's own address — the
-   * mapped port and a best-guess host. The Screens page pre-fills the pairing
+   * mapped port and a best-guess host. The Walls page pre-fills the pairing
    * address from it and, when the port is turned off, says so where the
    * household is looking rather than leaving a link that points nowhere.
    */
@@ -431,7 +431,7 @@ function blockOrder(
     }
     if (chosen.includes(value)) {
       const label = BLOCKS.find((block) => block.key === value)?.label ?? value;
-      return { error: `${label} is in the list twice. Each block can only appear once.` };
+      return { error: `${label} is in the list twice. Each widget can only appear once.` };
     }
     chosen.push(value);
   }
@@ -448,7 +448,7 @@ function blockOrder(
 }
 
 /**
- * The Display screen, as one schema.
+ * The wall settings form, as one schema.
  *
  * The daylight window is the interesting part: three fields that are only
  * required *together*, and only when a second theme was chosen. Expressing
@@ -503,7 +503,7 @@ const displayBody = z
 const HHMM_SHAPE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 const THEMES = [
-  { key: 'panels', label: 'Panels — dark, each block a card' },
+  { key: 'panels', label: 'Panels — dark, each widget a card' },
   { key: 'household', label: 'Household — warm daylight paper' },
   { key: 'blueprint', label: 'Blueprint — light technical wireframe' },
   { key: 'almanac', label: 'Paper Almanac — the month, as a ledger' },
@@ -511,7 +511,7 @@ const THEMES = [
 ] as const;
 
 /**
- * The three swatch colours per theme, for the Display screen's theme cards —
+ * The three swatch colours per theme, for the wall settings theme cards —
  * background, accent, a shift hue. Taken from the design file's token sets so
  * the card previews what the wall will actually look like. Kept beside `THEMES`
  * so a theme added to one is a visible hole in the other.
@@ -785,9 +785,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             `Timezone ${escapeHtml(household.timezone)}`,
           ) +
           statCard(
-            'admin/displays', 'screens', scrTag, screens.length,
-            `Wall display${screens.length === 1 ? '' : 's'} paired`,
-            screens.length === 0 ? 'Pair one on the Displays page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
+            'admin/walls', 'screens', scrTag, screens.length,
+            `Wall${screens.length === 1 ? '' : 's'} paired`,
+            screens.length === 0 ? 'Pair one on the Walls page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
           ) +
           statCard(
             'admin/shifts', 'shifts',
@@ -815,10 +815,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="card today-card">` +
           `<div class="kick">Today on the wall</div>` +
           `<div class="today-big">${escapeHtml(household.timezone)}</div>` +
-          `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} screen${screens.length === 1 ? '' : 's'}</div>` +
+          `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'}</div>` +
           `<div class="row" style="margin-top:auto;padding-top:16px">` +
-          `<a class="btn btn-ghost btn-sm" href="admin/displays/default">Edit what shows</a>` +
-          `<a class="btn btn-ghost btn-sm" href="admin/displays/default#layout">Arrange layout</a></div>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
           `</div></div></div>` +
 
           // Sign-out lives in the sidebar footer now, shown on every page for a
@@ -1533,13 +1533,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Screens
   // -------------------------------------------------------------------------
 
-  // The unified section. Screens and Layout were two pages for one thing; a
-  // display is now one place — its status, pairing, settings and layout.
-  app.get('/admin/displays', (c: Context) => c.html(displaysPage(c)));
-  app.get('/admin/displays/:id', (c: Context) => {
+  // The unified section. Screens and Layout were two pages for one thing, and
+  // browser walls and e-paper walls were two nav items for one kind of object;
+  // `/admin/walls` is the one list and the one canonical route now (RFC 009
+  // Phase 4) — its status, pairing, settings and layout.
+  app.get('/admin/walls', (c: Context) => c.html(displaysPage(c)));
+  app.get('/admin/walls/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
     if (id === 'default') return c.html(displayDetailPage(null, undefined, c));
-    if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/displays', 302);
+    if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/walls', 302);
     // An e-paper panel's page is its design page — a panel landing here (an
     // old link, or the shared layout routes before they were kind-aware) gets
     // wall settings that do not apply to it.
@@ -1551,7 +1553,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   // Old routes kept as redirects so bookmarks and any hand-typed links land in
   // the new section rather than 404ing.
-  app.get('/admin/screens', (c: Context) => c.redirect('/admin/displays', 302));
+  app.get('/admin/displays', (c: Context) => c.redirect('/admin/walls', 302));
+  app.get('/admin/displays/:id', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    return c.redirect(`/admin/walls/${encodeURIComponent(id)}`, 302);
+  });
+  app.get('/admin/screens', (c: Context) => c.redirect('/admin/walls', 302));
 
   /**
    * Approve (or decline) a screen waiting in a device-authorization flow.
@@ -1559,7 +1566,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * This is the household half of frictionless pairing (RFC 003 Phase 3): the
    * screen began the flow at `/d/pair/device-start` and is polling; the QR it
    * shows leads here with the code pre-filled, or the household types the code
-   * at the Screens page. Behind the session gate — which is what makes the short
+   * at the Walls page. Behind the session gate — which is what makes the short
    * code safe, because approval is impossible without the login.
    *
    * Registered *before* `POST /admin/screens/:id` on purpose: `approve` would
@@ -1574,7 +1581,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.html(approveResultPage(
         'Nothing to approve',
         'That pairing code has expired or was already used. Start pairing again on ' +
-          'the screen, then approve the new code here.',
+          'the wall, then approve the new code here.',
       ), flow === undefined ? 404 : 409);
     }
     return c.html(approvePromptPage(flow.userCode));
@@ -1589,8 +1596,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (action === 'deny') {
       deps.deviceFlow.deny(code, at);
       return c.html(approveResultPage(
-        'Screen declined',
-        'That screen will not be paired. It is safe to close it, or start again.',
+        'Wall declined',
+        'That wall will not be paired. It is safe to close it, or start again.',
       ));
     }
 
@@ -1603,15 +1610,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.html(approveResultPage(
         'Nothing to approve',
         'That pairing code has expired or was already used. Start pairing again on ' +
-          'the screen, then approve the new code here.',
+          'the wall, then approve the new code here.',
       ), 409);
     }
     const id = randomBytes(6).toString('hex');
     createScreen(deps.db, id, name, pairingSecret(issued));
     return c.html(approveResultPage(
       `${escapeHtml(name)} is paired`,
-      'The screen will pick up its token on its next check, within a few seconds, ' +
-        'and start drawing. You can rename or remove it from the Displays page.',
+      'The wall will pick up its token on its next check, within a few seconds, ' +
+        'and start drawing. You can rename or remove it from the Walls page.',
     ));
   });
 
@@ -1719,10 +1726,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         clock24,
       })
     ) {
-      return c.redirect('/admin/displays', 302);
+      return c.redirect('/admin/walls', 302);
     }
     // Back to the wall's own page; it picks the change up on its next poll.
-    return savedRedirect(c, `/admin/displays/${encodeURIComponent(id)}`, 'screen-settings');
+    return savedRedirect(c, `/admin/walls/${encodeURIComponent(id)}`, 'screen-settings');
   });
 
   /**
@@ -1769,7 +1776,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/screens/:id/regenerate', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = readAdminScreens(deps.db).find((candidate) => candidate.id === id);
-    if (screen === undefined) return c.html(displaysPage(c, 'That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(displaysPage(c, 'That wall is no longer there.'), 404);
 
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
@@ -1778,7 +1785,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.post('/admin/screens/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
-    return savedRedirect(c, '/admin/displays', 'screen-removed');
+    return savedRedirect(c, '/admin/walls', 'screen-removed');
   });
 
   // -------------------------------------------------------------------------
@@ -1884,8 +1891,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const unreachable = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url);
     return page({
       modules: navModules(deps.db),
-      title: 'eInk display — Maverick Wall',
-      nav: 'epaper',
+      title: 'E-paper wall — Maverick Wall',
+      nav: 'walls',
       heading: name,
       intro: `${geometry.width}×${geometry.height}, black & white${geometry.rotation === 0 ? '' : `, rotated ${geometry.rotation}°`}.`,
       body:
@@ -1895,7 +1902,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               'Set this add-on’s base URL (or open the admin by the address a device on your network uses), then regenerate the URL.',
             )
           : '') +
-        `<p>This is the screen's image URL. It contains the screen's token, so it is ` +
+        `<p>This is the wall's image URL. It contains the wall's token, so it is ` +
         `shown <strong>once</strong> — copy it now. Regenerating makes a new one and ` +
         `retires this.</p>` +
         `<input readonly onclick="this.select()" value="${escapeHtml(url)}" ` +
@@ -1906,7 +1913,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe(url)) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(url)) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
-        `<a class="btn" href="admin/epaper">Done</a>` +
+        `<a class="btn" href="admin/walls">Done</a>` +
         `<form method="get" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
         `<button class="btn ghost" type="submit">Regenerate URL</button></form>` +
         `</div>`,
@@ -1930,75 +1937,56 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     name: string,
     geometry: { width: number; height: number; rotation: number },
   ): string => {
-    const placeholder = "<this screen's frame URL>";
+    const placeholder = "<this wall's frame URL>";
     return page({
       modules: navModules(deps.db),
-      title: 'eInk display — Maverick Wall',
-      nav: 'epaper',
+      title: 'E-paper wall — Maverick Wall',
+      nav: 'walls',
       heading: name,
       intro: `${geometry.width}×${geometry.height}, black & white${geometry.rotation === 0 ? '' : `, rotated ${geometry.rotation}°`}.`,
       body:
-        `<p>The frame URL is shown only once — when this screen is added, or its ` +
+        `<p>The frame URL is shown only once — when this wall is added, or its ` +
         `URL is regenerated — and is never stored anywhere it could be shown again. ` +
         `If the panel or Home Assistant already has it configured, there is nothing ` +
         `to do here.</p>` +
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe(placeholder)) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(placeholder)) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
-        `<a class="btn" href="admin/epaper">Done</a>` +
+        `<a class="btn" href="admin/walls">Done</a>` +
         `<form method="get" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
         `<button class="btn ghost" type="submit">Regenerate URL (the panel will need re-flashing)</button></form>` +
         `</div>`,
     });
   };
 
-  /** The eInk Displays list and the add form. */
+  /**
+   * The add-an-e-paper-wall page.
+   *
+   * The list of e-paper walls themselves moved onto the merged `/admin/walls`
+   * list (RFC 009 Phase 4, `epaperListCard`) — this page is now only the form,
+   * reached from a link there. Kept at its own route rather than folded into
+   * the Walls page's own markup because the size presets and rotation picker
+   * are e-paper-specific and would otherwise crowd the pairing form every
+   * household sees.
+   */
   const epaperPage = (c: Context, error?: string): string => {
-    const screens = readAdminScreens(deps.db).filter(
-      (screen) => screen.kind === 'epaper' && screen.revokedAt === null,
-    );
-    const seen = (at: number | null): string =>
-      at === null ? 'never connected' : `last seen ${ago(at, now())}`;
-    const card = (screen: (typeof screens)[number]): string =>
-      `<div class="card"><div style="display:flex;align-items:center;gap:12px">` +
-      `<div class="ic">${icon('screens')}</div>` +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)}</div>` +
-      `<div class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
-      `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen(screen.lastSeenAt)}</div>` +
-      `</div></div>` +
-      `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">` +
-      // One filled action per card; the rest are outlined ("btn ghost" here
-      // never matched the .btn-ghost rule, so all three used to render filled).
-      `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
-      `<a class="btn-ghost" href="admin/epaper/${encodeURIComponent(screen.id)}">URL &amp; recipes</a>` +
-      `<form method="get" action="admin/epaper/${encodeURIComponent(screen.id)}/delete">` +
-      `<button class="btn-danger" type="submit">Remove</button></form>` +
-      `</div></div>`;
-
     const options = Object.entries(EPAPER_PRESETS)
       .map(([key, p]) => `<option value="${key}">${escapeHtml(p.label)}</option>`)
       .join('');
 
     return page({
       modules: navModules(deps.db),
-      title: 'eInk Displays — Maverick Wall',
-      nav: 'epaper',
-      heading: 'eInk Displays',
+      title: 'Add an e-paper wall — Maverick Wall',
+      nav: 'walls',
+      heading: 'Add an e-paper wall',
       saved: readSaved(c),
-      action: { label: 'Add an eInk screen', href: 'admin/epaper#add' },
-      ...(screens.length === 0
-        ? {
-            intro:
-              'Low-power e-paper panels. Maverick Wall renders the picture; a device pulls it, ' +
-              'or Home Assistant pushes it to a BLE tag. Add one to get its image URL and the recipes.',
-          }
-        : {}),
+      intro:
+        'Low-power e-paper panels. Maverick Wall renders the picture; a device pulls it, ' +
+        'or Home Assistant pushes it to a BLE tag. Add one to get its image URL and the recipes.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        (screens.length === 0 ? '' : `<div class="grid g2">${screens.map(card).join('')}</div>`) +
-        `<h2 class="add" id="add">Add an eInk screen</h2>` +
-        `<form method="post" action="admin/epaper">` +
+        `<p><a class="link" href="admin/walls">← Back to walls</a></p>` +
+        `<form method="post" action="admin/epaper" id="add">` +
         textField({
           label: 'Name',
           name: 'name',
@@ -2026,7 +2014,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             `<option value="0">None</option><option value="90">90°</option>` +
             `<option value="180">180°</option><option value="270">270°</option>`,
         }) +
-        `<p class="hint">Colour panels are coming; today every e-paper screen is rendered ` +
+        `<p class="hint">Colour panels are coming; today every e-paper wall is rendered ` +
         `black &amp; white.</p>` +
         `<button class="btn" type="submit">Create</button>` +
         `</form>`,
@@ -2048,7 +2036,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const screen = readAdminScreens(deps.db).find(
       (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
     );
-    if (screen === undefined) return c.html(epaperPage(c, 'That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
     return c.html(
       epaperViewPage(id, screen.name, {
         width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation,
@@ -2104,12 +2092,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const screen = readAdminScreens(deps.db).find(
       (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
     );
-    if (screen === undefined) return c.redirect('/admin/epaper', 302);
+    if (screen === undefined) return c.redirect('/admin/walls', 302);
     return c.html(
       confirmDestroyPage({
         modules: navModules(deps.db),
         title: 'Regenerate URL',
-        nav: 'epaper',
+        nav: 'walls',
         heading: `Regenerate the URL for “${screen.name}”?`,
         intro: 'The old one stops working immediately, and the panel will need re-flashing with the new one.',
         destroyAction: `admin/epaper/${encodeURIComponent(id)}/regenerate`,
@@ -2125,7 +2113,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const screen = readAdminScreens(deps.db).find(
       (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
     );
-    if (screen === undefined) return c.html(epaperPage(c, 'That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
     return c.html(
@@ -2151,7 +2139,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/epaper/:id/source', async (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = findEpaper(id);
-    if (screen === undefined) return c.html(epaperPage(c, 'That screen is no longer there.'), 404);
+    if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
     const shaped = parse(epaperSourceBody, (await c.req.parseBody()) as Record<string, unknown>);
     if (!shaped.ok) return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
 
@@ -2174,7 +2162,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       (candidate) => candidate.id === target && candidate.id !== id && candidate.revokedAt === null,
     );
     if (wall === undefined) {
-      return c.html(epaperPage(c, 'That display is no longer there.'), 400);
+      return c.html(epaperPage(c, 'That wall is no longer there.'), 400);
     }
     setPanelSource(deps.db, id, 'follow', wall.id);
     return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
@@ -2190,24 +2178,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const screen = readAdminScreens(deps.db).find(
       (candidate) => candidate.id === id && candidate.kind === 'epaper' && candidate.revokedAt === null,
     );
-    if (screen === undefined) return c.redirect('/admin/epaper', 302);
+    if (screen === undefined) return c.redirect('/admin/walls', 302);
     return c.html(
       confirmDestroyPage({
         modules: navModules(deps.db),
-        title: 'Remove eInk screen',
-        nav: 'epaper',
+        title: 'Remove e-paper wall',
+        nav: 'walls',
         heading: `Remove “${screen.name}”?`,
         intro: 'Its URL stops working immediately, and any device or automation using it will fail.',
         destroyAction: `admin/epaper/${encodeURIComponent(id)}/revoke`,
         destroyLabel: 'Remove it',
-        cancelAction: 'admin/epaper',
+        cancelAction: 'admin/walls',
       }),
     );
   });
 
   app.post('/admin/epaper/:id/revoke', (c: Context) => {
     revokeScreen(deps.db, c.req.param('id') ?? '');
-    return savedRedirect(c, '/admin/epaper', 'epaper-screen-removed');
+    return savedRedirect(c, '/admin/walls', 'epaper-screen-removed');
   });
 
   const findEpaper = (id: string): AdminScreenRow | undefined =>
@@ -2338,7 +2326,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/epaper/:id/design', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const screen = findEpaper(id);
-    if (screen === undefined) return c.redirect('/admin/epaper', 302);
+    if (screen === undefined) return c.redirect('/admin/walls', 302);
 
     const pw = screen.panelWidth ?? 800;
     const ph = screen.panelHeight ?? 480;
@@ -2410,8 +2398,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       followed === undefined
         ? ''
         : followed === null
-          ? 'the Default display'
-          : (walls.find((w) => w.id === followed)?.name ?? 'a display that is no longer there');
+          ? 'the Default wall'
+          : (walls.find((w) => w.id === followed)?.name ?? 'a wall that is no longer there');
     const currentSource =
       screen.layoutMode === 'freeform' ? 'own' : followed === undefined ? 'builtin' : `follow:${followed ?? 'default'}`;
     const sourceOption = (value: string, label: string): string =>
@@ -2425,10 +2413,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         optionsHtml:
           sourceOption('builtin', 'Its built-in layout') +
           sourceOption('own', "Its own arrangement") +
-          sourceOption('follow:default', "The Default display's arrangement") +
+          sourceOption('follow:default', "The Default wall's arrangement") +
           walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s arrangement`)).join(''),
         hint:
-          'Following a display draws that arrangement in black &amp; white — move a box there ' +
+          'Following a wall draws that arrangement in black &amp; white — move a box there ' +
           'and this panel moves with it. Each widget can say less on ink without changing the wall.',
       }) +
       `<button class="secondary" type="submit">Use this</button></div></form>`;
@@ -2450,7 +2438,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="hint">This panel follows <b>${escapeHtml(followedName)}</b>. Arrange it there — ` +
           `and use the <b>On ink</b> lane beside a widget to say less on this panel without changing ` +
           `that wall.</p>` +
-          `<p><a class="btn" href="admin/displays/${
+          `<p><a class="btn" href="admin/walls/${
             followed === null ? 'default' : encodeURIComponent(followed)
           }#layout">Open ${escapeHtml(followedName)}</a></p>`;
 
@@ -2458,7 +2446,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       page({
         modules: navModules(deps.db),
         title: `${screen.name} layout — Maverick Wall`,
-        nav: 'epaper',
+        nav: 'walls',
         heading: `${screen.name} — layout`,
         saved: readSaved(c),
         intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
@@ -2488,8 +2476,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // -------------------------------------------------------------------------
 
   // The global Display page is retired: its appearance controls are the Default
-  // display's now. Kept as a redirect so old bookmarks and links land there.
-  app.get('/admin/display', (c: Context) => c.redirect('/admin/displays/default', 302));
+  // wall's now. Kept as a redirect so old bookmarks and links land there.
+  app.get('/admin/display', (c: Context) => c.redirect('/admin/walls/default', 302));
 
   // The Default display's appearance form posts here — the household defaults
   // every wall inherits. (Weather moved to its own page; see admin-alerts.ts.)
@@ -2537,8 +2525,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       weekStart: shaped.value.week_start,
     });
 
-    // Back to the Default display; the wall picks it up on its next poll.
-    return savedRedirect(c, '/admin/displays/default', 'screen-settings');
+    // Back to the Default wall; it picks the change up on its next poll.
+    return savedRedirect(c, '/admin/walls/default', 'screen-settings');
   });
 
   // -------------------------------------------------------------------------
@@ -2557,7 +2545,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   app.get('/admin/layout', (c: Context) => {
     const owner = resolveOwner(c.req.query('screen'));
-    return c.redirect(owner === null ? '/admin/displays/default' : `/admin/displays/${encodeURIComponent(owner)}`, 302);
+    return c.redirect(owner === null ? '/admin/walls/default' : `/admin/walls/${encodeURIComponent(owner)}`, 302);
   });
 
   /**
@@ -2608,17 +2596,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /** Whether an owner id is an e-paper panel — their layout lives on its own
-   *  design page, not in the wall Displays section. */
+   *  design page, not in the Walls section. */
   const isEpaperOwner = (owner: string | null): boolean =>
     owner !== null && activeScreens().some((s) => s.id === owner && s.kind === 'epaper');
 
-  /** The layout view of a display's page, where apply/copy/reset return to.
+  /** The layout view of a wall's page, where apply/copy/reset return to.
    *  Kind-aware: an e-paper panel goes back to its design page — sending it to
-   *  the wall Displays section is how Reset looked like it did nothing. */
+   *  the Walls section is how Reset looked like it did nothing. */
   const layoutUrl = (owner: string | null): string =>
     isEpaperOwner(owner)
       ? `/admin/epaper/${encodeURIComponent(owner as string)}/design`
-      : `/admin/displays/${owner === null ? 'default' : encodeURIComponent(owner)}#layout`;
+      : `/admin/walls/${owner === null ? 'default' : encodeURIComponent(owner)}#layout`;
 
   /**
    * The template gallery — pick a starting layout for this display (RFC 005).
@@ -2632,7 +2620,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/displays/:id/gallery', (c: Context) => {
     const id = c.req.param('id') ?? '';
     if (id !== 'default' && !activeScreens().some((s) => s.id === id)) {
-      return c.redirect('/admin/displays', 302);
+      return c.redirect('/admin/walls', 302);
     }
     return c.html(templateGalleryPage(resolveOwner(id === 'default' ? null : id)));
   });
@@ -2666,7 +2654,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const src = typeof body['sourceOwner'] === 'string' ? body['sourceOwner'] : '';
     const from = resolveOwner(src === 'default' ? null : src);
     if (from === to) {
-      return c.html(templateGalleryPage(to, 'Pick a different display to copy from.'), 400);
+      return c.html(templateGalleryPage(to, 'Pick a different wall to copy from.'), 400);
     }
     copyLayout(deps.db, from, to);
     return savedRedirect(c, layoutUrl(to), 'layout-copied');
@@ -2866,7 +2854,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       intro:
         'The wall colours each day by who is working. A rotation is either read ' +
         'from a calendar that already has the shifts in it, or set as a pattern ' +
-        'that repeats. Name and colour the shift types on the Shift types screen.',
+        'that repeats. Name and colour the shift types on the Shift types page.',
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         plans.map(card).join('') +
@@ -2904,7 +2892,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
                   .join(''),
             }) +
             `<button type="submit">Continue</button></form>`
-          : `<p>Add someone on the <a class="link" href="admin/people">People</a> screen first — ` +
+          : `<p>Add someone on the <a class="link" href="admin/people">People</a> page first — ` +
             `a rotation belongs to a person.</p>`),
     });
   }
@@ -2962,7 +2950,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
         `<h2 class="add">Timezone</h2>` +
         `<p class="hint">Every all-day event and the whole shift rotation are ` +
-        `anchored to this. A screen somewhere else can override it on its own card.</p>` +
+        `anchored to this. A wall somewhere else can override it on its own card.</p>` +
         /*
          * No echo here, deliberately — unlike Weather and Calendars.
          *
@@ -3226,11 +3214,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   function pairingPage(id: string, name: string, token: string, shortCode: string, c: Context): string {
     // Pairing the tablet and designing the layout are separate jobs: this button
-    // opens the display's page so the household can arrange it now, whether or
-    // not a screen has connected yet. It is what stops the flow dead-ending on a
+    // opens the wall's page so the household can arrange it now, whether or
+    // not a wall has connected yet. It is what stops the flow dead-ending on a
     // pairing code with nowhere to go.
     const setUp =
-      `<p><a class="btn" href="admin/displays/${encodeURIComponent(id)}">` +
+      `<p><a class="btn" href="admin/walls/${encodeURIComponent(id)}">` +
       `Set up its layout →</a></p>`;
     /*
      * The origin a wall screen can actually reach — which is not always the one
@@ -3272,35 +3260,35 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (portOff) {
       return page({
       modules: navModules(deps.db),
-        title: 'Pair this screen',
-        nav: 'displays',
+        title: 'Pair this wall',
+        nav: 'walls',
         heading: `Pair ${name}`,
-        intro: 'This screen cannot be paired until the display port is turned on.',
+        intro: 'This wall cannot be paired until the display port is turned on.',
         body:
           errorBlock(
-            'The wall display port is turned off, so a screen has nowhere to connect.',
+            'The wall display port is turned off, so a wall has nowhere to connect.',
             'Open this add-on’s Network panel, give “Wall displays connect here” ' +
               '(8080/tcp) a free host port, and restart the add-on.',
           ) +
-          `<p class="hint">Then come back to Screens and pair this screen again — ` +
+          `<p class="hint">Then come back to Walls and pair this wall again — ` +
           `the add-on will fill in the address for you once the port is on.</p>` +
           setUp +
-          `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
+          `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
       });
     }
 
     return page({
       modules: navModules(deps.db),
-      title: 'Pair this screen',
-      nav: 'displays',
+      title: 'Pair this wall',
+      nav: 'walls',
       heading: `Pair ${name}`,
       intro:
-        'Open this on the screen itself. It is shown once — if you lose it, ' +
+        'Open this on the wall itself. It is shown once — if you lose it, ' +
         'generate another, which costs nothing.',
       body:
         (unreachable
           ? errorBlock(
-              'This link points at localhost, which is nowhere from a wall screen.',
+              'This link points at localhost, which is nowhere from a wall.',
               mappedPort !== undefined
                 ? `The display port is mapped to ${mappedPort}. Set the add-on’s ` +
                     `“base_url” to this box’s network address with that port — like ` +
@@ -3315,36 +3303,36 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (matrix === undefined
           ? errorBlock('That address is too long to put in a QR code.', 'Use the link below.')
           : `<div class="qr">${qrSvg(matrix, 260)}</div>`) +
-        `<p class="hint">No camera? Open Maverick Wall on the screen itself and ` +
+        `<p class="hint">No camera? Open Maverick Wall on the wall itself and ` +
         `type this pairing code:</p>` +
         `<p><span class="code">${escapeHtml(formatShortCode(shortCode))}</span></p>` +
-        `<p class="hint">It works for the next day, and once — pairing a screen ` +
-        `spends it. Or type this whole address on the screen instead:</p>` +
+        `<p class="hint">It works for the next day, and once — pairing a wall ` +
+        `spends it. Or type this whole address on the wall instead:</p>` +
         `<p><span class="code">${escapeHtml(url)}</span></p>` +
         setUp +
-        `<p class="hint">You can arrange its layout now — the screen does not have ` +
+        `<p class="hint">You can arrange its layout now — the wall does not have ` +
         `to be paired first.</p>` +
-        `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
+        `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
     });
   }
 
   /**
-   * The confirm page for a device-flow pairing: name the screen, approve or
-   * decline. Reached from the QR the screen shows (code pre-filled) or by typing
-   * the code at the Screens page. The code travels in a hidden field so the one
+   * The confirm page for a device-flow pairing: name the wall, approve or
+   * decline. Reached from the QR the wall shows (code pre-filled) or by typing
+   * the code at the Walls page. The code travels in a hidden field so the one
    * form carries it to whichever button the household presses.
    */
   function approvePromptPage(userCode: string): string {
     return page({
       modules: navModules(deps.db),
-      title: 'Approve this screen',
-      nav: 'displays',
-      heading: 'A screen wants to pair',
+      title: 'Approve this wall',
+      nav: 'walls',
+      heading: 'A wall wants to pair',
       intro:
-        'A screen on your network is asking to become a wall display. Give it a ' +
+        'A wall on your network is asking to join your household. Give it a ' +
         'name and approve it, or decline if you did not start this.',
       body:
-        `<p class="hint">Pairing code from the screen: ` +
+        `<p class="hint">Pairing code from the wall: ` +
         `<span class="code">${escapeHtml(formatShortCode(userCode))}</span></p>` +
         `<form method="post" action="admin/screens/approve">` +
         `<input type="hidden" name="code" value="${escapeHtml(userCode)}">` +
@@ -3352,9 +3340,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           label: 'Name',
           name: 'name',
           required: true,
-          value: 'New screen',
+          value: 'New wall',
           placeholder: 'Kitchen',
-          hint: 'This is how the screen shows up on the Displays page.',
+          hint: 'This is how the wall shows up on the Walls page.',
           attrs: 'maxlength="80"',
         }) +
         `<button type="submit" name="action" value="approve">Approve</button> ` +
@@ -3369,10 +3357,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return page({
       modules: navModules(deps.db),
       title: heading,
-      nav: 'displays',
+      nav: 'walls',
       heading,
       intro: message,
-      body: `<p><a class="link" href="admin/displays">← Back to displays</a></p>`,
+      body: `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
     });
   }
 
@@ -3579,11 +3567,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (
           `<div id="${helpId}" class="helppop" hidden>` +
           `<p><b>Layout orientation</b> chooses which layout this wall shows. ` +
-          `<i>Automatic</i> picks portrait or landscape from how the screen reports ` +
+          `<i>Automatic</i> picks portrait or landscape from how the wall reports ` +
           `itself — right for almost every wall. Pick <i>Always portrait</i> or ` +
           `<i>Always landscape</i> only for a kiosk frame that reports the wrong size.</p>` +
           `<p>This is not the Portrait/Landscape buttons in the layout editor: those ` +
-          `choose which canvas you are arranging (you arrange both), while this decides ` +
+          `choose which layout you are arranging (you arrange both), while this decides ` +
           `which of the two the wall actually draws.</p></div>` +
           `<div class="rows">` +
           selectRow({
@@ -3596,9 +3584,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               option('landscape', 'Always landscape', screen.orientation === 'landscape'),
           }) +
           selectRow({
-            label: 'Display mounting',
+            label: 'Wall mounting',
             name: 'rotation',
-            hint: 'For a screen hung on its side.',
+            hint: 'For a wall hung on its side.',
             optionsHtml:
               option('0', 'No rotation', screen.rotation === 0) +
               option('90', '90° clockwise', screen.rotation === 90) +
@@ -3656,8 +3644,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         name: 'allow_dismiss',
         checked: screen.allowDismiss === 1,
         hint:
-          'Lets this display clear alerts for the household. Leave this off for ' +
-          'displays without intentional input or screens that may be touched accidentally.',
+          'Lets this wall clear alerts for the household. Leave this off for ' +
+          'walls without intentional input or ones that may be touched accidentally.',
       }) +
       /*
        * Its own switch rather than one "this screen accepts input", because the
@@ -3672,8 +3660,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         name: 'allow_chores',
         checked: screen.allowChores === 1,
         hint:
-          'Puts a tick box beside each chore on this display. Best on a tablet ' +
-          'somebody can reach; leave it off for a screen behind glass, or one a ' +
+          'Puts a tick box beside each chore on this wall. Best on a tablet ' +
+          'somebody can reach; leave it off for a wall behind glass, or one a ' +
           'passing sleeve could press.',
       }) +
       `</div>`;
@@ -3701,9 +3689,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<small>Both orientations, back to the Classic layout.</small></span></button></form>` +
       `<form method="post" action="admin/screens/${id}/revoke" ` +
       `data-confirm="Unpair ${escapeHtml(screen.name)}? Its token stops working and it drops off the wall.">` +
-      `<button class="arow is-danger" type="submit"><span class="arow-text">Unpair display` +
-      `<small>The screen stops receiving this wall until it is paired again.</small></span></button></form>` +
-      `<div class="frow"><span>Display id</span><code>${escapeHtml(screen.id)}</code></div>` +
+      `<button class="arow is-danger" type="submit"><span class="arow-text">Unpair wall` +
+      `<small>This wall stops receiving updates until it is paired again.</small></span></button></form>` +
+      `<div class="frow"><span>Wall id</span><code>${escapeHtml(screen.id)}</code></div>` +
       `</div>`;
 
     return (
@@ -3715,18 +3703,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // Names both switches: the section holds one about alerts and one about
       // chores, and a subtitle that mentions only the first is a heading a
       // household would not open looking for the second.
-      wsetRow('alerts', 'Alerts and interaction', 'What this screen can press', false) +
+      wsetRow('alerts', 'Alerts and interaction', 'What this wall can press', false) +
       wsetRow('advanced', 'Advanced', 'Pairing, reset, unpair', false) +
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the Default display.', appearance, true) +
+      wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the Default wall.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
-      wsetPanel('device', 'Device and time', 'What this screen is called, how it is hung, and the clock it keeps.', device, false) +
+      wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, and the clock it keeps.', device, false) +
       // Both switches, not just the alert one — this panel is now where every
       // "can this screen write anything" decision lives, and it is worth saying
       // that a wall display can only ever press what is listed here.
-      wsetPanel('alerts', 'Alerts and interaction', 'What a person standing at this screen is allowed to press. Both are off until you turn them on.', alerts, false) +
+      wsetPanel('alerts', 'Alerts and interaction', 'What a person standing at this wall is allowed to press. Both are off until you turn them on.', alerts, false) +
       `</form>` +
       wsetPanel('advanced', 'Advanced', 'Infrequent, and some of it destructive. These act at once — they are not part of Save wall.', advanced, false) +
       `</div></div>`
@@ -3742,22 +3730,55 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * A display on the unified Displays list: a summary that opens its own page,
-   * where its status, pairing, settings and layout all live together.
+   * A browser wall on the unified Walls list: a summary that opens its own
+   * page, where its status, pairing, settings and layout all live together.
+   * The "Browser" chip is what tells it apart from an e-paper row in the same
+   * grid (`epaperListCard`) — one list, one nav item, a kind chip per row
+   * (RFC 009 Phase 4).
    */
   function displayListCard(screen: AdminScreenRow, at: number): string {
-    const href = `admin/displays/${encodeURIComponent(screen.id)}`;
+    const href = `admin/walls/${encodeURIComponent(screen.id)}`;
     return (
       `<a class="card" href="${href}">` +
       `<div style="display:flex;align-items:center;gap:12px">` +
       seenDot(screen.lastSeenAt, at) +
       `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)}</div>` +
+      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
+      `<span class="tag">Browser</span></div>` +
       `<div class="host">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
       (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
       `</div></div>` +
       `<span class="link">Open ${icon('arrow')}</span>` +
       `</div></a>`
+    );
+  }
+
+  /**
+   * An e-paper wall on the unified Walls list — the "E-paper" twin of
+   * `displayListCard`. Its actions stay inline on the card rather than behind
+   * one link, because an e-paper wall has no single settings page the way a
+   * browser wall does: design, recipes and removal are three separate places
+   * (RFC 006), reused here rather than rebuilt for the merge.
+   */
+  function epaperListCard(screen: AdminScreenRow): string {
+    const seen = screen.lastSeenAt === null ? 'never connected' : `last seen ${ago(screen.lastSeenAt, now())}`;
+    return (
+      `<div class="card"><div style="display:flex;align-items:center;gap:12px">` +
+      `<div class="ic">${icon('screens')}</div>` +
+      `<div style="flex:1;min-width:0">` +
+      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
+      `<span class="tag">E-paper</span></div>` +
+      `<div class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
+      `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen}</div>` +
+      `</div></div>` +
+      `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">` +
+      // One filled action per card; the rest are outlined ("btn ghost" here
+      // never matched the .btn-ghost rule, so all three used to render filled).
+      `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
+      `<a class="btn-ghost" href="admin/epaper/${encodeURIComponent(screen.id)}">URL &amp; recipes</a>` +
+      `<form method="get" action="admin/epaper/${encodeURIComponent(screen.id)}/delete">` +
+      `<button class="btn-danger" type="submit">Remove</button></form>` +
+      `</div></div>`
     );
   }
 
@@ -3831,19 +3852,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The Displays list: the shared Default plus every paired screen, each a card
-   * that opens its own page. Screens and Layout used to be two sections for one
-   * thing — this is the single door to a display.
+   * The Walls list: the shared Default plus every paired wall, browser and
+   * e-paper alike — one list, one nav item, with a kind chip on each row
+   * rather than two nav entries for one kind of object (RFC 009 Phase 4).
+   * A browser wall's card opens its own page; an e-paper wall's card carries
+   * its own actions inline, reusing `epaperListCard` rather than rebuilding a
+   * settings page e-paper walls do not have.
    */
   function displaysPage(c: Context, error?: string): string {
     const at = now();
-    // e-paper panels live under their own "eInk Displays" door, not here.
-    const all = readAdminScreens(deps.db).filter((screen) => screen.kind !== 'epaper');
+    const all = readAdminScreens(deps.db);
     const active = all.filter((screen) => screen.revokedAt === null);
     const revoked = all.length - active.length;
 
     const defaultCard =
-      `<a class="card" href="admin/displays/default">` +
+      `<a class="card" href="admin/walls/default">` +
       `<div style="display:flex;align-items:center;gap:12px">` +
       `<div class="ic">${icon('layout')}</div>` +
       `<div style="flex:1;min-width:0">` +
@@ -3852,27 +3875,41 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<span class="link">Open ${icon('arrow')}</span>` +
       `</div></a>`;
 
+    const cardFor = (screen: AdminScreenRow): string =>
+      screen.kind === 'epaper' ? epaperListCard(screen) : displayListCard(screen, at);
+
+    // Reachable from nothing before this (RFC 009 Phase 4) — the device-flow
+    // approve/decline page existed only as a URL a QR or a hand-typed link
+    // could reach, with no form anywhere in the admin to get there.
+    const approveForm =
+      `<h2 class="add">Approve a pairing code</h2>` +
+      `<p class="hint">A wall starting its own pairing flow shows an eight-character ` +
+      `code. Type it here to approve or decline it.</p>` +
+      `<form method="get" action="admin/screens/approve"><div class="row">` +
+      textField({ label: 'Pairing code', name: 'code', placeholder: 'ABCD-EFGH', attrs: 'maxlength="12"' }) +
+      `<button class="secondary" type="submit">Continue</button></div></form>`;
+
     return page({
       modules: navModules(deps.db),
-      title: 'Displays — Maverick Wall',
-      nav: 'displays',
-      heading: 'Displays',
+      title: 'Walls — Maverick Wall',
+      nav: 'walls',
+      heading: 'Walls',
       saved: readSaved(c),
-      action: { label: 'Pair a new screen', href: 'admin/displays#add' },
+      action: { label: 'Pair a new wall', href: 'admin/walls#add' },
       ...(active.length === 0
-        ? { intro: 'No screens paired yet. The Default below is what a wall shows until you pair one and give it its own layout.' }
+        ? { intro: 'No walls paired yet. The Default below is what a wall shows until you pair one and give it its own layout.' }
         : {}),
       body:
         (error === undefined ? '' : errorBlock(error)) +
         `<div class="grid g2">` +
         defaultCard +
-        active.map((screen) => displayListCard(screen, at)).join('') +
+        active.map(cardFor).join('') +
         `</div>` +
         (revoked === 0
           ? ''
-          : `<p class="hint">${revoked} unpaired screen${revoked === 1 ? '' : 's'} kept ` +
+          : `<p class="hint">${revoked} unpaired wall${revoked === 1 ? '' : 's'} kept ` +
             `for the record. Their tokens no longer work.</p>`) +
-        `<h2 class="add" id="add">Pair a new screen</h2>` +
+        `<h2 class="add" id="add">Pair a new wall</h2>` +
         `<form method="post" action="admin/screens">` +
         textField({
           label: 'Name',
@@ -3880,12 +3917,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           required: true,
           placeholder: 'Kitchen',
           hint:
-            'You get a QR code and a short code to enter on the screen itself. ' +
+            'You get a QR code and a short code to enter on the wall itself. ' +
             'Open its page afterwards to arrange its layout and settings.',
           attrs: 'maxlength="80"',
         }) +
-        `<button type="submit">Add screen</button></form>` +
-        `<p class="hint">Over SSH instead: <span class="code">add-screen "Kitchen"</span>.</p>`,
+        `<button type="submit">Add wall</button></form>` +
+        approveForm +
+        `<h2 class="add">Add an e-paper wall</h2>` +
+        `<p class="hint">Low-power e-paper panels are added on their own page, with ` +
+        `a panel size and rotation to choose. ` +
+        `<a class="link" href="admin/epaper#add">Add an e-paper wall →</a></p>`,
     });
   }
 
@@ -3937,7 +3978,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Everything about that wall in one place — its status and pairing, the
    * layout editor for its canvas, and (for a real screen) its own settings. The
    * Default has no hardware, so no status or pairing; the household-wide stacked
-   * defaults still live on the Display screen and are linked to from here.
+   * defaults still live on the Default wall's own page and are linked to from here.
    */
   /**
    * One wall's editor: its identity, its layout, and its settings.
@@ -3991,7 +4032,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * The e-paper panels drawing *this* canvas, for the ink lane's preview.
      *
      * `panelCanvasOwner` again, from the other side: a panel following this
-     * wall (or the Default display, when that is what is open) is a screen whose
+     * wall (or the Default wall, when that is what is open) is a screen whose
      * canvas owner is this one. The first is the lane's preview target, since
      * its `preview.png` renders any posted canvas at that panel's geometry.
      */
@@ -4062,7 +4103,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       owner === null
         ? `<b>Shared default</b> · every wall starts from this`
         : owner.lastSeenAt === null
-          ? `<b>Never connected</b> · open its pairing link on the screen`
+          ? `<b>Never connected</b> · open its pairing link on the wall`
           : online
             ? `<b>Online</b>${owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`}`
             : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(owner.lastSeenAt, at))}`;
@@ -4077,14 +4118,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="ovf-sep"></div>` +
       `<form method="post" action="admin/displays/${ownerParam}/reset-layout" ` +
       `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(
-        owner === null ? 'the Default display' : owner.name,
+        owner === null ? 'the Default wall' : owner.name,
       )} to the Classic layout? Everything arranged here is replaced.">` +
       `<button class="ovf-item is-danger" type="submit">Reset layout…</button></form>` +
       (owner === null
         ? ''
         : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/revoke" ` +
           `data-confirm="Unpair ${escapeHtml(owner.name)}? Its token stops working and it drops off the wall.">` +
-          `<button class="ovf-item is-danger" type="submit">Unpair display…</button></form>`);
+          `<button class="ovf-item is-danger" type="submit">Unpair wall…</button></form>`);
 
     // Status and the overflow ride the mode bar rather than a header of their
     // own: the app bar already carries the way back and the wall's name, and a
@@ -4095,7 +4136,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<span>${statusLine}</span></p>` +
       `<details class="ovf" data-overflow>` +
       `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
-      `aria-label="More actions for this display" title="More">${icon('more')}</summary>` +
+      `aria-label="More actions for this wall" title="More">${icon('more')}</summary>` +
       `<div class="ovf-menu" role="menu">${menuItems}</div>` +
       `</details>`;
 
@@ -4127,7 +4168,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // The contextual inspector. The editor script fills it when a widget is
       // selected; below 1200px the same element is the bottom sheet.
       `<aside class="lay-inspector" id="wall-inspector" aria-label="Selected widget">` +
-      `<p class="insp-empty">Nothing selected. Tap a widget on the canvas to change ` +
+      `<p class="insp-empty">Nothing selected. Tap a widget on the layout to change ` +
       `what it shows and how it looks.</p>` +
       `</aside>` +
       `</div></section>`;
@@ -4140,11 +4181,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return page({
       modules: navModules(deps.db),
-      title: `${owner ? owner.name : 'Default display'} — Maverick Wall`,
-      nav: 'displays',
-      heading: owner ? owner.name : 'Default display',
+      title: `${owner ? owner.name : 'Default wall'} — Maverick Wall`,
+      nav: 'walls',
+      heading: owner ? owner.name : 'Default wall',
       saved: readSaved(c),
-      back: { label: 'Walls', href: 'admin/displays' },
+      back: { label: 'Walls', href: 'admin/walls' },
       body:
         `<div class="disp-editor" data-wall-editor>` +
         (error === undefined ? '' : errorBlock(error)) +
@@ -4183,8 +4224,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   function templateGalleryPage(owner: string | null, error?: string): string {
     const ownerName = owner === null
-      ? 'Default display'
-      : activeScreens().find((s) => s.id === owner)?.name ?? 'this display';
+      ? 'Default wall'
+      : activeScreens().find((s) => s.id === owner)?.name ?? 'this wall';
     const ownerParam = owner === null ? 'default' : encodeURIComponent(owner);
 
     const card = (t: (typeof TEMPLATES)[number]): string =>
@@ -4210,16 +4251,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return `<div class="tpl-cat">${label}</div><div class="tpl-grid">${cards}</div>`;
     };
 
-    // Every other display, to copy a layout from. Empty when this is the only one.
+    // Every other wall, to copy a layout from. Empty when this is the only one.
     const others = [
-      ...(owner === null ? [] : [{ id: null as string | null, name: 'Default display' }]),
+      ...(owner === null ? [] : [{ id: null as string | null, name: 'Default wall' }]),
       ...activeScreens()
         .filter((s) => s.id !== owner)
         .map((s) => ({ id: s.id as string | null, name: s.name })),
     ];
     const copyFrom = others.length === 0
       ? ''
-      : `<div class="tpl-copy"><div class="tpl-cat">Or copy another display</div>` +
+      : `<div class="tpl-copy"><div class="tpl-cat">Or copy another wall</div>` +
         `<form method="post" action="admin/displays/${ownerParam}/copy-from" ` +
         `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with a copy?"><div class="row">` +
         selectField({
@@ -4251,11 +4292,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return page({
       modules: navModules(deps.db),
       title: `Templates — ${ownerName} — Maverick Wall`,
-      nav: 'displays',
+      nav: 'walls',
       heading: 'Start from a template',
       intro: `Pick a starting layout for ${ownerName}. You can move, remove and add to it afterwards.`,
       body:
-        `<p><a class="link" href="admin/displays/${ownerParam}#layout">← Back to ${escapeHtml(ownerName)}</a></p>` +
+        `<p><a class="link" href="admin/walls/${ownerParam}#layout">← Back to ${escapeHtml(ownerName)}</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         `<div id="template-gallery" data-json="${escapeHtml(galleryData)}"></div>` +
         group('Home', 'home') +
@@ -4267,9 +4308,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   /**
    * The household's default appearance — theme, daylight schedule and density —
-   * shown as the Default display's Wall settings. Every wall inherits these
+   * shown as the Default wall's Wall settings. Every wall inherits these
    * until it overrides them on its own page. Same categories as a wall's own
-   * settings, so the two read as one screen with one of them missing its
+   * settings, so the two read as one page with one of them missing its
    * hardware. Weather lives on the Weather page now, not here.
    */
   function defaultsForm(): string {
@@ -4311,7 +4352,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'Theme',
         `<p class="hint-1">How the layout looks — its colours and type. Panels separates ` +
           `the shift colours best from across a room. Build your own on the ` +
-          `<a class="link" href="admin/themes">Themes</a> screen.</p>` +
+          `<a class="link" href="admin/themes">Themes</a> page.</p>` +
           themeCards(displayThemeRef(household.theme), custom),
       ) +
       wsetGroup(
@@ -4379,12 +4420,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'Every wall inherits this until it sets its own.',
       }) +
       `</div>` +
-      `<p class="hint-1">The Default display is not a screen, so it has no name, ` +
+      `<p class="hint-1">The Default wall is not a paired device, so it has no name, ` +
       `mounting or timezone of its own.</p>`;
 
     return (
       `<div class="wset" data-wset-root>` +
-      `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Default display settings">` +
+      `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Default wall settings">` +
       wsetRow('appearance', 'Appearance', 'Theme and daylight schedule', true) +
       wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
       wsetRow('device', 'Device and time', 'The household clock', false) +
@@ -4394,7 +4435,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<form method="post" action="admin/display" data-settings>` +
       wsetPanel('appearance', 'Appearance', 'The look every wall starts from. A wall can override any of it on its own page.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars show, on every wall that has not said otherwise.', content, false) +
-      wsetPanel('device', 'Device and time', 'The clock every wall inherits. The household timezone is on the System screen.', device, false) +
+      wsetPanel('device', 'Device and time', 'The clock every wall inherits. The household timezone is on the System page.', device, false) +
       `</form>` +
       wsetPanel(
         'advanced',
@@ -4405,7 +4446,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<small>Replace the default layout with one we ship, or copy a wall's.</small></span>` +
           `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
           `<a class="arow" href="admin/system"><span class="arow-text">Household timezone` +
-          `<small>${escapeHtml(household.timezone)} — set on the System screen.</small></span>` +
+          `<small>${escapeHtml(household.timezone)} — set on the System page.</small></span>` +
           `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
           `<form method="post" action="admin/displays/default/reset-layout" ` +
           `data-confirm="Reset both the portrait and landscape default layouts to the Classic layout? ` +

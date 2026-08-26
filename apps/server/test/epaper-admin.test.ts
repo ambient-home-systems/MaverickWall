@@ -155,7 +155,7 @@ describe('the eInk Displays page', () => {
   it('shows the add form', async () => {
     const h = await harness();
     const html = await (await h.call(`${B}/admin/epaper`)).text();
-    expect(html).toContain('Add an eInk screen');
+    expect(html).toContain('Add an e-paper wall');
     expect(html).toContain('Seeed 7.5'); // the preset option (the quote is HTML-escaped)
   });
 
@@ -218,8 +218,9 @@ describe('the eInk Displays page', () => {
     await h.post(`${B}/admin/epaper`, { name: 'Studio', preset: 'seeed-7in5', rotation: '0' });
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
 
-    // The list card links to the designer.
-    expect(await (await h.call(`${B}/admin/epaper`)).text()).toContain(`admin/epaper/${id}/design`);
+    // The list card, now on the merged Walls list (RFC 009 Phase 4), links to
+    // the designer.
+    expect(await (await h.call(`${B}/admin/walls`)).text()).toContain(`admin/epaper/${id}/design`);
 
     // The design page hosts the same drag-and-drop editor and the preview —
     // and the editor actually loads. The mount div alone shipped for two
@@ -330,10 +331,15 @@ describe('the eInk Displays page', () => {
     expect([...(await bytesOf(fixed)).slice(0, 8)]).toEqual(PNG_SIGNATURE);
 
     // And the wall-detail URL for a panel — where the old redirect landed —
-    // now forwards to the design page instead of rendering wall settings.
+    // now forwards to the merged Walls list's own detail route, which is what
+    // does the epaper-kind check and sends it on to the design page (RFC 009
+    // Phase 4 — `/admin/displays/:id` is a bare alias for `/admin/walls/:id`).
     const detail = await h.call(`${B}/admin/displays/${id}`, { redirect: 'manual' });
     expect(detail.status).toBe(302);
-    expect(detail.headers.get('location')).toBe(`/admin/epaper/${encodeURIComponent(id)}/design`);
+    expect(detail.headers.get('location')).toBe(`/admin/walls/${encodeURIComponent(id)}`);
+    const wallsDetail = await h.call(`${B}/admin/walls/${id}`, { redirect: 'manual' });
+    expect(wallsDetail.status).toBe(302);
+    expect(wallsDetail.headers.get('location')).toBe(`/admin/epaper/${encodeURIComponent(id)}/design`);
   });
 
   it('previews an unsaved canvas from what the editor posts, not what is stored', async () => {
@@ -408,12 +414,15 @@ describe('the eInk Displays page', () => {
     expect(nowhere.status).toBe(404);
   });
 
-  it('keeps e-paper panels out of the browser Displays list', async () => {
+  it('lists an e-paper wall on the merged Walls list, chipped apart from a browser wall', async () => {
+    // RFC 009 Phase 4: one list, one nav item — a browser wall and an e-paper
+    // wall now share `/admin/walls`, told apart by a kind chip on the row
+    // rather than by being on two different pages.
     const h = await harness();
     await h.post(`${B}/admin/epaper`, { name: 'OnlyInk', preset: 'seeed-7in5', rotation: '0' });
-    expect(await (await h.call(`${B}/admin/displays`)).text()).not.toContain('OnlyInk');
-    // …but it is on the eInk Displays list.
-    expect(await (await h.call(`${B}/admin/epaper`)).text()).toContain('OnlyInk');
+    const html = await (await h.call(`${B}/admin/walls`)).text();
+    expect(html).toContain('OnlyInk');
+    expect(html).toContain('E-paper');
   });
 
   it('removing a screen drops it from the list and kills its URL', async () => {
@@ -423,10 +432,11 @@ describe('the eInk Displays page', () => {
     expect((await h.call(url)).status).toBe(200);
 
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
+    expect(await (await h.call(`${B}/admin/walls`)).text()).toContain('Gone');
     await h.post(`${B}/admin/epaper/${id}/revoke`, {});
 
     expect((await h.call(url)).status).toBe(404); // token no longer resolves
-    expect(await (await h.call(`${B}/admin/epaper`)).text()).not.toContain('Gone');
+    expect(await (await h.call(`${B}/admin/walls`)).text()).not.toContain('Gone');
   });
 
   /*
@@ -447,8 +457,9 @@ describe('the eInk Displays page', () => {
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
 
     // The list no longer offers a form that POSTs straight to /regenerate —
-    // it is a plain link to the read-only page.
-    const list = await (await h.call(`${B}/admin/epaper`)).text();
+    // it is a plain link to the read-only page. It lives on the merged Walls
+    // list now (RFC 009 Phase 4).
+    const list = await (await h.call(`${B}/admin/walls`)).text();
     expect(list).not.toContain(`action="admin/epaper/${id}/regenerate"`);
     expect(list).toContain(`href="admin/epaper/${id}"`);
 

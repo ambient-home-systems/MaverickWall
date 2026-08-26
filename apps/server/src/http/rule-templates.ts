@@ -58,7 +58,7 @@ export const RULE_TEMPLATES: readonly RuleTemplate[] = [
     // owner is awake has failed at the one job it has.
     dismissible: false,
     priority: 90,
-    hint: 'The whole wall, the moment it is wet, and it lights a screen that has gone dark. Water does not wait.',
+    hint: 'The whole wall, the moment it is wet, and it wakes it if it has gone dark. Water does not wait.',
   },
   {
     key: 'garage',

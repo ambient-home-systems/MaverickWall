@@ -14,6 +14,7 @@
     "dev": "tsc -p tsconfig.json && node dist/main.js",
     "add-source": "node dist/tools/add-source.js",
     "add-screen": "node dist/tools/add-screen.js",
+    "add-wall": "node dist/tools/add-screen.js",
     "diagnose": "node dist/tools/diagnose-source.js",
     "enable-shift": "node dist/tools/enable-shift.js",
     "analyse-titles": "node dist/tools/analyse-titles.js"

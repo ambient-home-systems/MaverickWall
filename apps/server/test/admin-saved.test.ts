@@ -475,7 +475,7 @@ describe('the confirmation strip', () => {
      * fetch and run the module on the two heaviest pages in the admin for
      * nothing.
      */
-    const editor = await (await h.call('/admin/displays/default')).text();
+    const editor = await (await h.call('/admin/walls/default')).text();
     expect(editor).toContain('data-dirty-flag');
     expect(editor, 'nothing here for it to wire').not.toContain('assets/settings-form.js');
     // A page with neither, for the other direction.

@@ -141,7 +141,7 @@ const ruleBody = z.object({
 const ACTIONS: readonly { key: InterruptAction; label: string }[] = [
   { key: 'banner', label: 'A strip above the calendar' },
   { key: 'takeover', label: 'The whole wall' },
-  { key: 'takeover_and_wake', label: 'The whole wall, and wake a dark screen' },
+  { key: 'takeover_and_wake', label: 'The whole wall, and wake it if it has gone dark' },
 ];
 
 /** One `<option>`, selected when it is the one a template chose. */
@@ -664,7 +664,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `</ul>` +
       `<p class="hint">A Home Assistant long-lived access token has full control of ` +
       `your home and cannot be limited to reading. That is why the limit is on this ` +
-      `side: if a screen in your hallway were ever compromised, the worst it could ` +
+      `side: if a wall in your hallway were ever compromised, the worst it could ` +
       `give away is your indoor temperature.</p>` +
       `</div>`
     );
@@ -846,7 +846,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<h2 class="add">Calendars</h2>` +
       `<p class="hint">Calendars already in Home Assistant, added without finding a ` +
-      `single address. They appear on the Calendars screen like any other, and can be ` +
+      `single address. They appear on the Calendars page like any other, and can be ` +
       `coloured and assigned to a person there.</p>` +
       (available.length === 0
         ? `<p>${already.size === 0 ? 'Home Assistant has no calendar entities.' : 'All of them have been added.'}</p>`
