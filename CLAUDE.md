@@ -144,6 +144,7 @@ useful thing in this document:
 | A modal scrim leaving a live 16px strip across the app bar | Measuring a fixed `inset:0` element and reading back `y:16` |
 | **Sixteen tab stops in front of every admin page's content** | Counting them, on a page nobody had ever tabbed through |
 | A skip link that resolved against the `<base>` and left the page | Reading the anchor's `.href`, which disagreed with its markup |
+| **Every calendar and every person given the same colour** | Adding three calendars and reading the stored rows back |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted

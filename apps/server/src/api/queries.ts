@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { ShiftOverride, ShiftPlan, ShiftType } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
+import { nextPersonColor } from './palette.js';
 import type { SetupState } from '../auth/session.js';
 import type {
   EventCacheRow,
@@ -613,15 +614,25 @@ export function readPeopleAdmin(db: SqliteDatabase): PersonRecord[] {
     .all() as PersonRecord[];
 }
 
-export function createPerson(db: SqliteDatabase, id: string, name: string, color: string): void {
+/**
+ * Add a person.
+ *
+ * `color` is optional and an absent one rotates the shared palette rather than
+ * repeating one fixed blue — see `palette.ts`. The People form still sends a
+ * colour and is still authoritative when it does; what it sends is the same
+ * rotated value, pre-filled into its picker, so what the household is shown
+ * before they press Add is what they get.
+ */
+export function createPerson(db: SqliteDatabase, id: string, name: string, color?: string): void {
   const at = Date.now();
+  const hue = color ?? nextPersonColor(db);
   const next = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM people').get() as {
     n: number;
   };
   db.prepare(
     `INSERT INTO people (id, name, color, sort_order, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, name, color, next.n, at, at);
+  ).run(id, name, hue, next.n, at, at);
 }
 
 export function setPersonAvatar(db: SqliteDatabase, id: string, path: string | null): boolean {

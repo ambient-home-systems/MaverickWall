@@ -1,6 +1,7 @@
 import { DEFAULT_SHIFT_MATCHERS, presetByKey, buildRotationCycle } from '@maverick-wall/core';
 import { randomBytes } from 'node:crypto';
 import { openAndMigrate } from '../db/bootstrap.js';
+import { nextPersonColor } from '../api/palette.js';
 
 /**
  * Turn on the shift feature.
@@ -46,11 +47,13 @@ function ensurePerson(name: string): { id: string; name: string } {
   }
   const id = randomBytes(6).toString('hex');
   const count = (db.prepare('SELECT COUNT(*) AS n FROM people').get() as { n: number }).n;
-  const palette = ['#E8A33D', '#4C7FD1', '#6FB07F', '#B3372B'];
+  // The shared rotation, not a private one. This tool grew its own four-colour
+  // palette while the web UI had a fixed blue; keeping both would mean the
+  // colour somebody gets depends on which door they came through.
   db.prepare(
     `INSERT INTO people (id, name, color, sort_order, has_shift_rotation, created_at, updated_at)
      VALUES (?, ?, ?, ?, 1, ?, ?)`,
-  ).run(id, name, palette[count % palette.length], count, now, now);
+  ).run(id, name, nextPersonColor(db), count, now, now);
   console.log(`Created "${name}".`);
   return { id, name };
 }

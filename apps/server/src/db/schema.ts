@@ -590,6 +590,10 @@ export const calendarSources = sqliteTable(
      */
     haEntityId: text('ha_entity_id'),
 
+    // Every insert path supplies a colour now (`api/palette.ts` rotates one), so
+    // this default is a floor nothing reaches — kept as the migrations created
+    // it, because changing a SQLite column default forces a table recreate and
+    // a dead default is not worth one. The same note stands on `people.color`.
     color: text('color').notNull().default('#4C7FD1'),
     /**
      * Whose calendar this is, when it is one person's.
@@ -705,11 +709,12 @@ export const calendarEventsCache = sqliteTable(
 export const people = sqliteTable('people', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  // The form always sends a colour, so this column default is never actually
-  // hit — the Add-someone form's blue #4C7FD1 is the real default a new person
-  // gets. This value is deliberately left as the migrations created it: changing
-  // a SQLite column default forces a table recreate, and a dead default is not
-  // worth one. The form is authoritative; do not "align" this without a reason.
+  // Never actually hit: `createPerson` supplies a colour on every path, either
+  // the one the form sent or the next one out of the rotation in
+  // `api/palette.ts` — which is also what the form's picker is pre-filled with,
+  // so the two agree. This value is deliberately left as the migrations created
+  // it: changing a SQLite column default forces a table recreate, and a dead
+  // default is not worth one. Do not "align" this without a reason.
   color: text('color').notNull().default('#E8A33D'),
   /** Path under /data/media, never an external URL. */
   avatarPath: text('avatar_path'),

@@ -71,15 +71,6 @@ const placeBody = z.object({
   person: optionalText(80),
 });
 
-/**
- * The colour the first person gets.
- *
- * The same value the People screen's Add form pre-fills, so somebody who adds
- * their first person here and their second there sees one product rather than
- * two, and neither is a hue nobody chose.
- */
-const FIRST_PERSON_COLOR = '#4C7FD1';
-
 /** What was typed, echoed back so a refusal costs nothing already right. */
 function valuesFrom(body: Record<string, unknown>): {
   latitude: string;
@@ -619,7 +610,11 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
        * People screen is, and a default that can be changed in one click beats
        * a fourth field on the last step somebody wants to be finished with.
        */
-      createPerson(deps.db, randomBytes(8).toString('hex'), values.person, FIRST_PERSON_COLOR);
+      // No colour: `createPerson` rotates the shared palette, which is the same
+      // rotation the People screen's Add form pre-fills. Somebody who adds their
+      // first person here and their second there sees one product rather than
+      // two, and neither is a hue nobody chose.
+      createPerson(deps.db, randomBytes(8).toString('hex'), values.person);
     }
 
     return c.redirect('/setup/done', 302);
