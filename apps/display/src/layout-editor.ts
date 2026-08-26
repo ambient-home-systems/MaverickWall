@@ -407,10 +407,24 @@ function boot(): void {
   }): string {
     return JSON.stringify({
       aspect: round3(canvas.aspect),
-      background: canvas.background ?? null,
+      background: postedBackground(canvas.background),
       widgets: widgetsForSave(canvas.widgets),
     });
   }
+
+  /**
+   * The background as it is *posted*, which is not quite the background as it
+   * is held: an image type with no picture chosen yet is "no background".
+   *
+   * One rule, read by the request body and by the snapshot dirtiness is
+   * measured with. Two readings of one value is how a canvas identical to the
+   * one the server holds comes to report unsaved changes — and it is the shape
+   * of half the faults in this project's own list.
+   */
+  const postedBackground = (background: Background | undefined): Background | null =>
+    background !== undefined && !(background.type === 'image' && background.image === '')
+      ? background
+      : null;
   const activeSnapshot = (): string => canvasSnapshot(state);
 
   /**
@@ -454,13 +468,35 @@ function boot(): void {
   let runKey = '';
   let runAt = 0;
 
+  /**
+   * One step back for a change that takes more than one write.
+   *
+   * The ladder is the case: it clears the switches it supersedes and *then*
+   * writes the field list, so the snapshot `setConfig` takes has already lost
+   * the switches — undoing restored the list and left them deleted. Recording
+   * around the pair rather than inside it is the fix, and the suspend is what
+   * keeps it one step rather than two.
+   */
+  let suspendRecording = false;
+  function recordOnce(change: () => void): void {
+    record();
+    suspendRecording = true;
+    try {
+      change();
+    } finally {
+      suspendRecording = false;
+    }
+  }
+
   /** Remember the canvas as it is now, before mutating it. */
   function record(): void {
+    if (suspendRecording) return;
     history().push(activeSnapshot());
     runKey = '';
     refreshUndo();
   }
   function recordRun(key: string): void {
+    if (suspendRecording) return;
     const at = Date.now();
     if (key === runKey && at - runAt < RUN_MS) {
       runAt = at;
@@ -791,6 +827,15 @@ function boot(): void {
   document.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() !== 'z') return;
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    /*
+     * Only while the canvas is on screen.
+     *
+     * The wall's page has two panes and the settings one hides this editor
+     * entirely — Ctrl+Z there would silently step back a layout edit nobody can
+     * see, which the next Save would then write. `offsetParent` is null for a
+     * hidden pane, and this mount is never positioned, so it is the whole check.
+     */
+    if (mount.offsetParent === null) return;
     const target = event.target as HTMLElement | null;
     if (target?.isContentEditable === true) return;
     if (target?.tagName === 'TEXTAREA') return;
@@ -972,15 +1017,28 @@ function boot(): void {
   // wall, and is the only route to the gallery on a panel, whose page has no
   // overflow menu at all.
   if (epaperHost) palette.appendChild(templateLink);
+  /*
+   * Each popover hangs off its own button, not off the row.
+   *
+   * They used to anchor to a tools row whose first item was the button that
+   * opened them, so `left: 0` landed underneath it by luck. In one row the
+   * buttons are at the end, and a popover anchored to the row opens flush with
+   * the far edge — detached from the control that opened it, which is how it
+   * looked the first time this was rendered and read as a stray panel.
+   */
+  const anchor = (button: HTMLElement, popover: HTMLElement): HTMLElement => {
+    const wrap = document.createElement('span');
+    wrap.className = 'le-pop-anchor';
+    wrap.append(button, popover);
+    return wrap;
+  };
   barMain.append(
     orientToggle,
     panelChip,
     palette,
     undoButton,
-    layersButton,
-    layersPopover,
-    canvasButton,
-    canvasPopover,
+    anchor(layersButton, layersPopover),
+    anchor(canvasButton, canvasPopover),
   );
 
   /**
@@ -1499,9 +1557,25 @@ function boot(): void {
           ),
         )
       : narrow
-        // The canvas is the point of this screen, so on a phone it takes what
-        // the chrome leaves rather than a fixed 46% of the viewport.
-        ? Math.max(260, Math.min(Math.round(window.innerHeight * 0.62), roomBelowChrome()))
+        /*
+         * The canvas is the point of this screen, so on a phone it takes what
+         * the chrome above it leaves rather than a fixed 46% of the viewport —
+         * but never *less* than that fraction.
+         *
+         * A page whose chrome is taller than the viewport is one the household
+         * scrolls to reach the canvas at all: the panel designer carries a
+         * source form and a full-height preview above its mount, so "what is
+         * left below the chrome" there is negative, and taken literally it
+         * would collapse the canvas to its floor — smaller than before this
+         * measurement existed.
+         */
+        ? Math.max(
+            260,
+            Math.min(
+              Math.round(window.innerHeight * 0.62),
+              Math.max(roomBelowChrome(), Math.round(window.innerHeight * 0.46)),
+            ),
+          )
         : Math.min(720, Math.max(360, window.innerHeight - 220));
     let w = maxW;
     let h = w / state.aspect;
@@ -1610,6 +1684,9 @@ function boot(): void {
        * The arithmetic is `placement.ts`, shared with the drag and with the
        * inspector's numeric fields, so all three stop at the same edge.
        */
+      // Alt+Left and Cmd+Left are Back, and Ctrl+Arrow is a word jump or a
+      // desktop switch. A nudge is a bare arrow, or Shift for the size.
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
       const next = nudge(widget, event.key, { resize: event.shiftKey });
       if (next === undefined) return;
       event.preventDefault();
@@ -2429,6 +2506,9 @@ function boot(): void {
       reset.textContent =
         overrides.length === 1 ? 'Match the wall again (1 change)' : `Match the wall again (${overrides.length} changes)`;
       reset.addEventListener('click', () => {
+        // Every override at once, and unrecoverable without this: it was the
+        // one mutation in this file that took no step back.
+        record();
         const cfgNow: Record<string, unknown> = { ...(widget.config ?? {}) };
         delete cfgNow['ink'];
         if (Object.keys(cfgNow).length > 0) widget.config = cfgNow;
@@ -3206,11 +3286,17 @@ function boot(): void {
        * override object, and clearing the wall's copy from there would rewrite
        * the household's wall from a panel's settings. The lanes are one-way by
        * design and this is the one place that could have quietly broken it.
+       *
+       * Both writes are one step back: the clear happens first, so a snapshot
+       * taken inside `setConfig` would restore the list and leave the switches
+       * it cleared deleted.
        */
-      const cleared = clearLaneKeys(widget.config, lane, spec.replaces);
-      if (cleared !== undefined) widget.config = cleared;
-      else delete widget.config;
-      setConfig(widget, 'fields', [...next]);
+      recordOnce(() => {
+        const cleared = clearLaneKeys(widget.config, lane, spec.replaces);
+        if (cleared !== undefined) widget.config = cleared;
+        else delete widget.config;
+        setConfig(widget, 'fields', [...next]);
+      });
       renderConfigPanel();
     };
 
@@ -3641,10 +3727,7 @@ function boot(): void {
           // The canvas background object, or null for none — the shape the
           // server's backgroundSchema validates. An image type with no picture
           // chosen yet is "no background", not a save the server would refuse.
-          background:
-            background !== undefined && !(background.type === 'image' && background.image === '')
-              ? background
-              : null,
+          background: postedBackground(background),
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };

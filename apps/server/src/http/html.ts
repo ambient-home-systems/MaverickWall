@@ -1117,8 +1117,11 @@ pre.code{background:var(--mw-surface-2);
   border-color:color-mix(in srgb,var(--mw-ink) 12%,transparent);cursor:default}
 .le-tool-btn:disabled:hover{background:transparent}
 .le-reset-form{margin:0}
-/* The Layers popover — anchored under the toolbar row it belongs to
-   (offsetParent is .le-bar-main), so it never floats over the settings pane. */
+/* Each popover hangs off its own button — the anchor is the offsetParent, so
+   it opens under the control that opened it rather than at the end of the row,
+   and never floats over the settings pane. Right-aligned: both buttons sit at
+   the end of the toolbar, where a left-aligned 320px panel would run off. */
+.le-pop-anchor{position:relative;display:inline-flex}
 /* A menu surface: 4px corner, a bordered panel, and the one heavy shadow —
  * it genuinely floats over the page, so it is allowed to say so. */
 .le-layers-pop{position:absolute;top:calc(100% + 6px);right:0;width:320px;z-index:30;
@@ -1206,7 +1209,7 @@ pre.code{background:var(--mw-surface-2);
  * one button. They are real choices, and they are not everyday ones — a row of
  * outlined buttons for each gave a canvas control the same weight as "add a
  * widget", which is the whole complaint the redesign answers. */
-.le-canvas-pop{position:absolute;top:calc(100% + 6px);left:0;width:min(340px,92vw);z-index:30;
+.le-canvas-pop{position:absolute;top:calc(100% + 6px);right:0;width:min(340px,92vw);z-index:30;
   padding:14px 16px 16px;background:var(--mw-surface);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1)}
@@ -1323,8 +1326,17 @@ pre.code{background:var(--mw-surface-2);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
 /* A 12px corner is a pointer target on a mouse and nothing at all on a
  * phone — in an editor this project redesigned for phones. The mark stays
- * 12px and the *target* grows to 44px around it, which moves nothing and
- * paints nothing: the chore tick's idiom, one screen along. */
+ * 12px and the *target* grows around it, which moves nothing and paints
+ * nothing: the chore tick's idiom, one screen along.
+ *
+ * It does not reach the full 44px, and the reason is worth stating rather
+ * than discovering: .le-widget above is overflow:hidden, which clips
+ * hit-testing as well as painting, so the half of this that reaches outside
+ * the box is not reachable — about 30x30 inside the corner, up from 12x12.
+ * Growing it further inward would reach 44 and swallow a small widget's own
+ * drag area whole (a 5% box on a phone canvas is about 20px), and removing
+ * the clip would let a long name chip paint over the neighbouring box. The
+ * test measures what is actually reachable rather than trusting this line. */
 .le-handle::before{content:"";position:absolute;inset:-16px}
 /* The canvas background control — none / solid / gradient, per canvas. */
 .le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 0}

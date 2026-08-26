@@ -232,6 +232,36 @@ describe('1 · the undo stack', () => {
         ).toBe(false);
         // And the rest of the canvas is where the selection click left it.
         expect(await canvasState(page)).toBe(before);
+
+        /*
+         * A ladder edit is one step too, not two.
+         *
+         * Writing a field list also clears the switches it supersedes, and the
+         * clear happens first — so a snapshot taken inside `setConfig` restores
+         * the list and leaves the cleared keys deleted. Recording around the
+         * pair is the fix, and one Ctrl+Z putting the row back is what proves
+         * it is a pair rather than two steps.
+         */
+        const shift = (await boxes(page)).find((one) => one.label === 'Shift');
+        await page.locator(`.le-overlay .le-widget[data-id="${shift?.id ?? ''}"]`).click();
+        await page.click('.insp-tab:has-text("Content")');
+        // By name, not by position: unticking a rung rewrites the list and
+        // moves the row it was on to the bottom, so "the first checkbox" is a
+        // different field by the time anything reads it back.
+        const rung = (): ReturnType<typeof page.locator> =>
+          page.locator('.le-ladder-row[data-field="hours"] input[type=checkbox]');
+        expect(await rung().isChecked(), 'the shift ladder opened with its hours rung off').toBe(
+          true,
+        );
+        await rung().click();
+        await page.waitForTimeout(200);
+        expect(await rung().isChecked()).toBe(false);
+        await pressUndo(page);
+        expect(
+          await rung().isChecked(),
+          'one Ctrl+Z did not take back one ladder edit — the clear and the write ' +
+            'are two steps rather than one',
+        ).toBe(true);
       } finally {
         await context.close();
       }
@@ -287,6 +317,45 @@ describe('1 · the undo stack', () => {
           await page.locator('.le-config .switch input[type=checkbox]').first().isChecked(),
           'the widget came back without the options it was carrying',
         ).toBe(true);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * And the shortcut belongs to the pane the canvas is on.
+   *
+   * The wall's page has two: Layout, and Wall settings, which hides the editor
+   * entirely. A Ctrl+Z typed over a settings control would otherwise step the
+   * canvas back with nobody able to see it happen — and the next Save writes
+   * whatever the canvas is by then.
+   */
+  it(
+    'leaves the canvas alone when the Wall settings pane is the one showing',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        await dragBox(page, 0, 40, 60);
+        await page.waitForTimeout(150);
+        const arranged = await canvasState(page);
+
+        await page.click('[data-mode="settings"]');
+        await page.waitForTimeout(150);
+        await page.keyboard.press('Control+z');
+        await page.keyboard.press('Control+z');
+        await page.waitForTimeout(150);
+
+        await page.click('[data-mode="layout"]');
+        await page.waitForTimeout(150);
+        expect(
+          await canvasState(page),
+          'Ctrl+Z on the settings pane stepped the canvas back where nobody could see it',
+        ).toBe(arranged);
       } finally {
         await context.close();
       }
@@ -351,6 +420,16 @@ describe('2 · the keyboard', () => {
         expect(await page.evaluate(() => window.scrollY)).toBe(0);
         // Nudging is editing, so the widget is the one the inspector is on.
         expect(await page.locator('.insp-title').textContent()).toContain('widget');
+
+        // Alt+Left is Back and Cmd+Left is Back — neither is a nudge, and a
+        // widget that moved instead would be a browser control taken away.
+        await page.keyboard.press('Alt+ArrowLeft');
+        await page.keyboard.press('Control+ArrowLeft');
+        await page.waitForTimeout(120);
+        expect(
+          (await boxes(page)).find((one) => one.id === id)?.x,
+          'a modifier + arrow moved the widget, so Back does not work here',
+        ).toBe(moved?.x);
 
         await page.keyboard.press('Shift+ArrowRight');
         await page.waitForTimeout(120);
@@ -419,6 +498,41 @@ describe('2 · the keyboard', () => {
           await page.locator('.insp-lane').nth(1).getAttribute('aria-selected'),
           'the ink lane is still pointer-only',
         ).toBe('true');
+
+        /*
+         * And "Match the wall again" is a mutation like any other.
+         *
+         * It drops every override on the widget at once, and it was the one
+         * mutation in the editor that took no step back — so the most
+         * destructive thing on the panel was also the only unrecoverable one.
+         */
+        // On the canvas the panel actually draws: the lane picks its panel by
+        // orientation, and this one is an 800×480 landscape screen — on
+        // portrait it says so instead of offering controls.
+        await page.click('.le-orient-btn:has-text("Landscape")');
+        await page.waitForTimeout(300);
+        const calendar = (await boxes(page)).find((one) => one.label.startsWith('Calendar'));
+        expect(calendar, 'the landscape canvas has no calendar to override').toBeDefined();
+        await page.locator(`.le-overlay .le-widget[data-id="${calendar?.id ?? ''}"]`).click();
+        await page.click('.insp-lane:has-text("On ink")');
+        await page.waitForTimeout(200);
+        const mode = page.locator('.le-cfg-field[data-cfg-key="mode"] select');
+        expect(await mode.count(), 'the ink lane offered no control to override').toBeGreaterThan(0);
+        await mode.selectOption('list');
+        await page.waitForTimeout(250);
+
+        const reset = page.locator('.insp-ink-reset');
+        expect(await reset.count(), 'changing an option on the lane recorded no override').toBe(1);
+        await reset.click();
+        await page.waitForTimeout(250);
+        expect(await page.locator('.insp-ink-reset').count()).toBe(0);
+
+        await page.keyboard.press('Control+z');
+        await page.waitForTimeout(250);
+        expect(
+          await page.locator('.insp-ink-reset').count(),
+          'Ctrl+Z did not bring back the overrides "Match the wall again" wiped',
+        ).toBe(1);
       } finally {
         await context.close();
       }
@@ -503,16 +617,24 @@ describe('2 · the keyboard', () => {
 
 describe('3 · the resize handle', () => {
   /**
-   * 12px drawn, 44px to hit, and nothing moved.
+   * 12px drawn, ~30px to hit, and nothing moved.
    *
    * The mark stays exactly where it was — this is the chore tick's idiom, an
-   * invisible `::before` with a negative inset — so the assertion is a pair: the
-   * drawn square is still 12px, and a press 14px in from it resizes rather than
-   * dragging the whole widget. Pressing inside the box is what tells the two
-   * apart: a grab that landed on the widget would move it.
+   * invisible `::before` with a negative inset — so the assertions are a pair:
+   * the drawn square is still 12px, and a press well inside the corner resizes
+   * rather than dragging the whole widget.
+   *
+   * The reachable size is **measured rather than taken from the stylesheet**,
+   * and it is not the 44px the declaration reads as: `.le-widget` is
+   * `overflow:hidden`, which clips hit-testing as well as painting, so the half
+   * that reaches outside the box cannot be pressed. What is reachable is about
+   * 30×30 in from the corner, against 12×12 before. Growing it further inward
+   * would reach 44 and swallow a small widget's whole drag area — a 5% box on a
+   * phone canvas is about 20px — and dropping the clip would let a long name
+   * chip paint over the neighbouring box.
    */
   it(
-    'takes a press 14px inside its corner, while the drawn mark stays 12px',
+    'takes a press well inside its corner, while the drawn mark stays 12px',
     async () => {
       const wall = await fresh();
       const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
@@ -526,25 +648,36 @@ describe('3 · the resize handle', () => {
         if (rect === null) throw new Error('no resize handle');
         expect([Math.round(rect.width), Math.round(rect.height)]).toEqual([12, 12]);
 
-        // The target, as the browser resolves it: a point inside the widget,
-        // 14px up and left of the drawn square, has to belong to the handle.
-        const hit = await page.evaluate(
-          ([px, py]) => {
-            const at = document.elementFromPoint(px as number, py as number);
-            return at === null ? '' : at.className;
+        /*
+         * The target, as the browser resolves it: walk in from the middle of
+         * the drawn square until `elementFromPoint` stops answering the handle.
+         * That is the only honest measure — the declaration says 44px and the
+         * clip says otherwise.
+         */
+        const reach = await page.evaluate(
+          ([cx, cy]) => {
+            const at = (x: number, y: number): boolean =>
+              (document.elementFromPoint(x, y)?.className ?? '').toString().includes('le-handle');
+            let wide = 0;
+            let tall = 0;
+            while (wide < 80 && at((cx as number) - wide, cy as number)) wide += 1;
+            while (tall < 80 && at(cx as number, (cy as number) - tall)) tall += 1;
+            return { wide, tall };
           },
-          [rect.x - 14, rect.y - 14],
+          [rect.x + rect.width / 2, rect.y + rect.height / 2],
         );
         expect(
-          hit,
-          'a press 14px inside the corner does not reach the handle: the 12px ' +
-            'square is still the whole target',
-        ).toContain('le-handle');
+          [reach.wide, reach.tall],
+          `the handle is reachable ${reach.wide}px in and ${reach.tall}px up from ` +
+            'its middle — the 12px square is still most of the target',
+        ).toEqual([expect.any(Number), expect.any(Number)]);
+        expect(reach.wide).toBeGreaterThanOrEqual(22);
+        expect(reach.tall).toBeGreaterThanOrEqual(22);
 
         const before = (await boxes(page)).find((one) => one.id === id);
-        await page.mouse.move(rect.x - 14, rect.y - 14);
+        await page.mouse.move(rect.x - 12, rect.y - 12);
         await page.mouse.down();
-        await page.mouse.move(rect.x - 14 - 60, rect.y - 14 - 60, { steps: 6 });
+        await page.mouse.move(rect.x - 12 - 60, rect.y - 12 - 60, { steps: 6 });
         await page.mouse.up();
         await page.waitForTimeout(120);
         const after = (await boxes(page)).find((one) => one.id === id);
@@ -713,6 +846,63 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         } finally {
           await context.close();
         }
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * Each toolbar popover opens under the button that opened it.
+   *
+   * They used to anchor to a tools row whose first item was that button, so
+   * `left: 0` landed under it by luck. In one row the buttons are at the end,
+   * and a popover anchored to the row opens flush with the far edge — a panel
+   * with no visible relationship to what was pressed. Measured, because "the
+   * popover is open" passes just as happily either way.
+   */
+  it(
+    'opens the Layers and Layout popovers under their own buttons',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+
+        for (const [button, popover] of [
+          ['.le-layers-btn', '.le-layers-pop'],
+          ['.le-tool-btn:not(:disabled)', '.le-canvas-pop'],
+        ] as const) {
+          await page.click(button);
+          await page.waitForTimeout(150);
+          const seen = await page.evaluate(
+            ([b, p]) => {
+              const one = document.querySelector(b as string)?.getBoundingClientRect();
+              const two = document.querySelector(p as string)?.getBoundingClientRect();
+              if (one === undefined || two === undefined) return null;
+              return {
+                buttonRight: Math.round(one.right),
+                popoverRight: Math.round(two.right),
+                popoverLeft: Math.round(two.left),
+                below: two.top >= one.bottom - 1,
+                width: window.innerWidth,
+              };
+            },
+            [button, popover],
+          );
+          expect(seen, `${popover} did not open`).not.toBeNull();
+          expect(
+            Math.abs((seen?.popoverRight ?? 0) - (seen?.buttonRight ?? 0)),
+            `${popover} opened ${(seen?.popoverLeft ?? 0)}px from the left while its ` +
+              `button ends at ${seen?.buttonRight ?? 0}px — it is anchored to the row, ` +
+              'not to the control that opened it',
+          ).toBeLessThanOrEqual(2);
+          expect(seen?.below, `${popover} does not hang below its button`).toBe(true);
+          expect(seen?.popoverLeft ?? -1).toBeGreaterThanOrEqual(0);
+          await page.click(button);
+        }
+      } finally {
+        await context.close();
       }
     },
     SLOW,

@@ -2243,8 +2243,16 @@ rebuild being tested. Focus once, then send the keys to the page. Every
 assertion in `browser-editor.test.ts` was checked by breaking its fix and
 watching it go red.
 
-**The handle is 12px drawn and 44px to hit**, which is one line —
+**The handle is 12px drawn and about 30px to hit**, which is one line —
 `.le-handle::before{inset:-16px}`, the chore tick's idiom — and moves nothing.
+Not the 44px the declaration reads as, and the reason is worth keeping:
+`.le-widget` is `overflow:hidden`, which clips hit-testing as well as painting,
+so the half that reaches outside the box is unreachable. Growing it further
+inward would reach 44 and swallow a small widget's whole drag area — a 5% box
+on a phone canvas is about 20px — and dropping the clip would let a long name
+chip paint over the neighbouring box. The test walks in from the middle of the
+square until the browser stops answering with the handle, rather than trusting
+the declaration.
 And the toolbar is one row: four clusters in three visual treatments became
 orientation, `+ Add widget`, Undo, Layers and one Layout button, with Templates
 and Reset dropped because the page's own overflow menu two rows above already
