@@ -93,6 +93,38 @@ and Home Assistant authenticates you. The wall displays connect to the add-on's
 port instead — a screen screwed to a wall has no Home Assistant session and
 cannot get one.
 
+## Upgrading
+
+**Docker:** pull the new image and recreate the container. The data lives in
+the volume, not the container, so this loses nothing:
+
+```bash
+docker pull ghcr.io/ambient-home-systems/maverick-wall:stable
+docker stop maverick-wall && docker rm maverick-wall
+docker run -d \
+  --name maverick-wall \
+  --restart unless-stopped \
+  -v maverick-wall:/data \
+  -p 8080:8080 \
+  ghcr.io/ambient-home-systems/maverick-wall:stable
+```
+
+Using Compose, `docker compose pull && docker compose up -d` does the same
+thing.
+
+**Home Assistant add-on:** the sidebar (or the Add-ons page) shows an Update
+button whenever a newer release exists. Press it; the supervisor pulls the new
+image and restarts the add-on. There is nothing else to do.
+
+Either way, migrations run automatically on boot, forward-only, behind a file
+lock — there is no separate migration step to run, and no version of this
+image has ever needed one. A migration is never edited once shipped, so an
+older backup restores cleanly through however many releases have passed since.
+There is no supported way to go backwards: downgrading to an older image
+against a database a newer migration has already touched is unsupported and
+may refuse to start. If you need to roll back, restore a backup taken before
+the upgrade (see [Backup and restore](backup.md)).
+
 ## Verifying the image
 
 Every release is signed. There is no way to patch a household remotely, so
