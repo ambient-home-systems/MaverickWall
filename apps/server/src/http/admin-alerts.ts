@@ -1,6 +1,6 @@
 import type { Context, Hono } from 'hono';
 import {
-  defaultSubmit, dirtyForm, escapeHtml, errorBlock, page, saveRow, selectField, switchRow, textField,
+  defaultSubmit, dirtyForm, escapeHtml, errorBlock, noticeBlock, page, saveRow, selectField, switchRow, textField,
 } from './html.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
@@ -587,7 +587,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         ? `<p class="hint">Open-Meteo covers the whole world and needs no account ` +
           `or key. Weather alerts, below, are still the US National Weather Service ` +
           `only — Open-Meteo has no alert feed.</p>`
-        : errorBlock(
+        : noticeBlock(
             'The forecast comes from the US National Weather Service.',
             'It covers the United States only. Outside the US, switch “Forecast from” ' +
               'to Open-Meteo above.',
@@ -595,9 +595,9 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
 
       `<h2 class="add">Alerts</h2>` +
       // Before the switch. Somebody deciding whether to rely on this should
-      // read it before they decide, not after.
-      `<div class="error"><strong>Not a life-safety system.</strong>` +
-      `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
+      // read it before they decide, not after. Prominence, not alarm — this is
+      // not an error, so it is not in the .error surface.
+      noticeBlock('Not a life-safety system.', LIFE_SAFETY_DISCLAIMER) +
       switchRow({
         label: 'Show National Weather Service alerts on the wall',
         name: 'alerts_enabled',

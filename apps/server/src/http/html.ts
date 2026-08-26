@@ -785,6 +785,15 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
   font-size:14px;font-weight:600;margin-bottom:4px}
 .error span{color:var(--mw-danger);font-size:var(--mw-t-label-size);line-height:1.5}
 
+/* .error's calm twin for a notice or a disclaimer: same shape, the warn hue
+ * rather than danger, so a warning that is not a failure does not read as one. */
+.notice{background:var(--mw-warn-soft);
+  color:var(--mw-warn);
+  padding:1rem 1rem;border-radius:var(--mw-r-3);margin:1rem 0}
+.notice strong{color:var(--mw-warn);display:block;
+  font-size:14px;font-weight:600;margin-bottom:4px}
+.notice span{color:var(--mw-warn);font-size:var(--mw-t-label-size);line-height:1.5}
+
 /* ---- The confirmation strip (RFC 009 Phase 3.1) --------------------------
  * The .error box's calm twin: the same tinted container and 6px corner, on the
  * ok pair rather than the danger one, so a save and a failure are the same
@@ -2817,6 +2826,22 @@ export function confirmDestroyPage(options: ConfirmDestroyOptions): string {
 export function errorBlock(message: string, suggestion?: string): string {
   return (
     `<div class="error"><strong>${escapeHtml(message)}</strong>` +
+    (suggestion === undefined ? '' : `<span>${escapeHtml(suggestion)}</span>`) +
+    `</div>`
+  );
+}
+
+/**
+ * Something worth reading first, not something that went wrong.
+ *
+ * `.error`'s calm twin, on the warn hue rather than danger: the Weather screen
+ * put an informational note and the life-safety disclaimer in the danger
+ * surface, which is the wrong colour for either — neither is an error, and the
+ * disclaimer in particular needs prominence rather than alarm.
+ */
+export function noticeBlock(message: string, suggestion?: string): string {
+  return (
+    `<div class="notice"><strong>${escapeHtml(message)}</strong>` +
     (suggestion === undefined ? '' : `<span>${escapeHtml(suggestion)}</span>`) +
     `</div>`
   );
