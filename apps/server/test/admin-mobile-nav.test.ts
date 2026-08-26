@@ -116,11 +116,20 @@ async function harness() {
   return { call, form, setupToken, jar, signedIn };
 }
 
-/** The one inline stylesheet every page carries. */
-function styleOf(html: string): string {
-  const match = /<style[^>]*>([\s\S]*?)<\/style>/i.exec(html);
-  expect(match, 'the page must carry an inline stylesheet').not.toBeNull();
-  return (match as RegExpExecArray)[1] as string;
+/**
+ * The page's stylesheet: inline on the wizard and sign-in, or the shell's
+ * cached, linked file (RFC 009 Phase 6) — fetched through the same session so
+ * the assertions below read the bytes a browser on this page would.
+ */
+async function styleOf(h: Awaited<ReturnType<typeof harness>>, html: string): Promise<string> {
+  const inline = /<style[^>]*>([\s\S]*?)<\/style>/i.exec(html);
+  if (inline !== null) return inline[1] as string;
+  const link = /<link rel="stylesheet" href="([^"]+)">/i.exec(html);
+  expect(link, 'the page must carry an inline stylesheet or a linked one').not.toBeNull();
+  const href = (link as RegExpExecArray)[1] as string;
+  const response = await h.call(href.startsWith('/') ? href : `/${href}`);
+  expect(response.status, 'the linked stylesheet must be reachable').toBe(200);
+  return await response.text();
 }
 
 /** The body of the `@media(max-width:900px)` block that lays out the shell. */
@@ -199,7 +208,7 @@ describe('the admin navigation at compact width', () => {
   it('makes the drawer a hidden, off-canvas panel that the checkbox reveals', async () => {
     const h = await harness();
     await h.signedIn();
-    const compact = compactShellBlock(styleOf(await (await h.call('/admin')).text()));
+    const compact = compactShellBlock(await styleOf(h, await (await h.call('/admin')).text()));
 
     // Off-canvas and out of the tab order when closed. visibility is the half
     // that matters and the half that is easy to drop: a panel that is merely
@@ -227,7 +236,7 @@ describe('the admin navigation at compact width', () => {
   it('stops flattening the drawer, so the headings, pills and foot survive', async () => {
     const h = await harness();
     await h.signedIn();
-    const compact = compactShellBlock(styleOf(await (await h.call('/admin')).text()));
+    const compact = compactShellBlock(await styleOf(h, await (await h.call('/admin')).text()));
 
     // Each of these is a rule the old compact block carried, and each one is a
     // thing a household lost on a phone. They are asserted as absences because
@@ -249,7 +258,7 @@ describe('the admin navigation at compact width', () => {
   it('gives the menu button a 48px pointer target', async () => {
     const h = await harness();
     await h.signedIn();
-    const compact = compactShellBlock(styleOf(await (await h.call('/admin')).text()));
+    const compact = compactShellBlock(await styleOf(h, await (await h.call('/admin')).text()));
 
     // 40px visual, 48px target from the ::after extension every control under
     // 48px uses — and position:relative, because a <label> gets none of the
@@ -261,7 +270,7 @@ describe('the admin navigation at compact width', () => {
   it('resets the margin the generic label rule would give the scrim and button', async () => {
     const h = await harness();
     await h.signedIn();
-    const compact = compactShellBlock(styleOf(await (await h.call('/admin')).text()));
+    const compact = compactShellBlock(await styleOf(h, await (await h.call('/admin')).text()));
 
     // Both controls are <label>, so they inherit `label{margin:1rem 0 .35rem}`
     // from the form styles. On the scrim that is not cosmetic: a fixed inset:0

@@ -117,15 +117,19 @@ describe('shiftTint (per-type shift colour wash)', () => {
  * is `describe.each` over all five now, against **both** `--bg` and `--panel`,
  * because a wall paints text on both: the month grid sits on the canvas and a
  * day card sits on the panel, and on the light themes those are `#F4F0E8` and
- * `#FFFFFF` — a whole step apart, with the panel the harder of the two.
+ * `#FFFFFF` — a whole step apart, with the cream `--bg` the harder of the two,
+ * since it sits closer in luminance to a mid-tone hue than white does.
  *
- * It fails immediately on four of the five, which is the point. The worst is
- * `--s-day` at **1.90:1 on Household and 2.78 on Almanac**, painted as *text*
- * on what `display.css` calls the single most important element on the wall —
- * and Almanac is the theme scheduled for daylight, so that ratio is what a
- * household reads all day. Fixing them is RFC 009 Phase 6b; this is the
- * assertion that makes the fix provable and stops a sixth theme shipping with
- * the same fault.
+ * It failed immediately on four of the five, which was the point. The worst
+ * was `--s-day` at **1.90:1 on Household and 2.78 on Almanac**, painted as
+ * *text* on what `display.css` calls the single most important element on the
+ * wall — and Almanac is the theme scheduled for daylight, so that ratio was
+ * what a household read all day. RFC 009 Phase 6 darkened every shift hue
+ * (`--s-day`, `--s-night`, `--s-break`, `--s-straight`) on the three light
+ * themes until each cleared 4.5:1 on both grounds; `--accent` and `--muted`
+ * on those same themes, and Panels' own three misses, are still Phase 6b's.
+ * This is the assertion that made the fix provable and stops a sixth theme
+ * shipping with the same fault.
  */
 
 const luminance = (hex: string): number => {
@@ -176,15 +180,16 @@ const GROUNDS = ['--bg', '--panel'] as const;
 /**
  * What fails today, with the ratio each one actually measures.
  *
- * Four of five themes are in here and the shape of the list is the finding:
- * **the three light themes fail almost everywhere and the dark ones barely at
- * all.** Household and Blueprint miss on ten of fourteen pairs each; Almanac,
- * the theme scheduled for daylight, on eight; Panels on three; Swiss on none,
- * because Swiss is the only one anything was ever checking.
+ * RFC 009 Phase 6 darkened the shift hues (`--s-day`, `--s-night`,
+ * `--s-break`, `--s-straight`) on the three light themes until each cleared
+ * 4.5:1 on both grounds — the RFC's own two named token changes — so every
+ * line that named one of those pairs went stale and was deleted here. What is
+ * left is Phase 6b's: `--accent` and `--muted` on the same three light
+ * themes, and Panels' own three misses, none of them shift hues.
  *
  * The ratios are recorded rather than just the pairs. A change to a hue that
  * moves a number without clearing the bar has to come back through this list,
- * so a half-fix cannot land as a silent pass — and when 6b darkens these, the
+ * so a half-fix cannot land as a silent pass — and when 6b fixes these, the
  * lines it fixes go stale and fail, which is how the list gets deleted.
  */
 const UNREADABLE: readonly string[] = [
@@ -192,34 +197,15 @@ const UNREADABLE: readonly string[] = [
   'household --accent on --panel = 4.33',
   'household --muted on --bg = 3.28',
   'household --muted on --panel = 3.73',
-  'household --s-break on --bg = 3.42',
-  'household --s-break on --panel = 3.88',
-  'household --s-day on --bg = 1.90',
-  'household --s-day on --panel = 2.16',
-  'household --s-night on --bg = 3.51',
-  'household --s-night on --panel = 3.99',
-  'household --s-straight on --bg = 4.06',
   'blueprint --accent on --bg = 3.71',
   'blueprint --accent on --panel = 4.15',
   'blueprint --muted on --bg = 3.47',
   'blueprint --muted on --panel = 3.88',
-  'blueprint --s-break on --bg = 3.93',
-  'blueprint --s-break on --panel = 4.39',
-  'blueprint --s-day on --bg = 2.63',
-  'blueprint --s-day on --panel = 2.95',
-  'blueprint --s-straight on --bg = 3.27',
-  'blueprint --s-straight on --panel = 3.66',
   'panels --s-break on --panel = 4.17',
   'panels --s-straight on --bg = 3.86',
   'panels --s-straight on --panel = 3.51',
   'almanac --muted on --bg = 3.51',
   'almanac --muted on --panel = 3.73',
-  'almanac --s-break on --bg = 4.14',
-  'almanac --s-break on --panel = 4.39',
-  'almanac --s-day on --bg = 2.78',
-  'almanac --s-day on --panel = 2.95',
-  'almanac --s-straight on --bg = 3.45',
-  'almanac --s-straight on --panel = 3.66',
 ];
 
 /** Every pair one theme fails today, measured. */

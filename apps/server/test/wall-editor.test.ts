@@ -459,8 +459,13 @@ describe('the Default display is the same editor without the hardware', () => {
 describe('the stylesheet the editor is drawn with', () => {
   it('takes the closed widget sheet away from the keyboard, not merely off screen', async () => {
     const h = await ready();
-    // The admin stylesheet is inline in every page.
-    const style = await (await h.call('/admin/walls/default')).text();
+    // The authenticated shell links its stylesheet rather than inlining it
+    // (RFC 009 Phase 6) — fetch it through the same session.
+    const html = await (await h.call('/admin/walls/default')).text();
+    const link = /<link rel="stylesheet" href="([^"]+)">/.exec(html);
+    expect(link, 'the page must link the admin stylesheet').not.toBeNull();
+    const href = (link as RegExpExecArray)[1] as string;
+    const style = await (await h.call(href.startsWith('/') ? href : `/${href}`)).text();
 
     // Translated away *and* invisible: a sheet that is only translated still
     // hands every control in it to the keyboard.

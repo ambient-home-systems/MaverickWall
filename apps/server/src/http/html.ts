@@ -14,6 +14,7 @@
 
 import { ADMIN_SCHEMES, adminColorVars, adminTypeVars } from './design-tokens.js';
 import { SAVED_MESSAGES, type Saved } from './saved.js';
+import { contentEtag } from './static.js';
 
 /** Escape for HTML text and quoted attributes. Everything echoed back goes through this. */
 export function escapeHtml(value: string): string {
@@ -210,18 +211,18 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
   border-right:1px solid var(--mw-line);
   display:flex;flex-direction:column;min-height:100vh;position:sticky;top:0;
   max-height:100vh;overflow:hidden}
-.side .brand{display:flex;align-items:center;gap:11px;padding:20px 20px 16px;
+.side .brand{display:flex;align-items:center;gap:12px;padding:20px 20px 16px;
   text-decoration:none;color:inherit}
 .side .brand svg{width:34px;height:34px;flex:0 0 auto;border-radius:8px}
-.side .brand b{font-family:var(--wordmark);font-weight:700;font-size:19px;
+.side .brand b{font-family:var(--wordmark);font-weight:700;font-size:var(--mw-t-h2-size);
   letter-spacing:.02em;line-height:1;display:block}
 .side .brand small{display:block;color:var(--faint);font-size:11px;
-  letter-spacing:.16em;text-transform:uppercase;margin-top:3px}
-.nav{flex:1;overflow-y:auto;padding:6px 12px 12px}
+  letter-spacing:.16em;text-transform:uppercase;margin-top:4px}
+.nav{flex:1;overflow-y:auto;padding:8px 12px 12px}
 .nav-group{margin-top:16px}
 /* Drawer section headers: the eyebrow role, in caps. A group of navigation
  * links needs its heading to be unmistakably not a link. */
-.nav-group>span{display:block;padding:0 10px 6px;text-transform:uppercase;
+.nav-group>span{display:block;padding:0 12px 8px;text-transform:uppercase;
   font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-ink-3)}
@@ -259,14 +260,14 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-ink-2);
   background:var(--mw-surface-3);
-  border-radius:var(--mw-r-1);padding:2px 8px}
-.side-foot{border-top:1px solid var(--rule);padding:14px 16px;display:flex;
+  border-radius:var(--mw-r-1);padding:4px 8px}
+.side-foot{border-top:1px solid var(--rule);padding:16px 16px;display:flex;
   flex-direction:column;gap:12px}
-.side-foot-id{display:flex;align-items:center;gap:10px}
+.side-foot-id{display:flex;align-items:center;gap:12px}
 .side-foot .fmark{width:32px;height:32px;flex:0 0 auto}
 .side-foot .fmark svg{width:32px;height:32px;border-radius:7px;display:block}
 .side-foot .who{min-width:0;flex:1}
-.side-foot .who b{font-size:13px;font-weight:600;display:block;line-height:1.2}
+.side-foot .who b{font-size:var(--mw-t-label-size);font-weight:600;display:block;line-height:1.2}
 .side-foot .who small{font-size:11px;color:var(--faint)}
 .side-foot form{margin:0;flex:0 0 auto}
 /* An icon button: 40px visual, 4px corner, and a 48px pointer target from the
@@ -292,10 +293,10 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
   background:var(--mw-surface)}
 .topbar .crumb{font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
-  color:var(--mw-ink-2);margin:0 0 2px}
+  color:var(--mw-ink-2);margin:0 0 4px}
 /* The same crumb as a real link back up a level, with the arrow that says so.
  * Its pointer target is stretched the way every sub-48px control here is. */
-.crumb-back{position:relative;display:inline-flex;align-items:center;gap:5px;
+.crumb-back{position:relative;display:inline-flex;align-items:center;gap:4px;
   color:var(--mw-accent);text-decoration:none}
 .crumb-back::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;
   height:44px;transform:translateY(-50%)}
@@ -390,23 +391,23 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
   .navbtn:active{background:color-mix(in srgb,
     var(--mw-ink-2) var(--mw-wash-press),transparent)}
   .topbar{padding:8px 20px 8px 12px;gap:8px}
-  .content{padding:22px 20px 48px}
+  .content{padding:20px 20px 48px}
 }
 
 /* ---- Wizard / sign-in: a centred column, no sidebar --------------------- */
 body.wiz{display:flex;align-items:flex-start;justify-content:center;
   padding:40px 20px;min-height:100vh}
 .wizbox{width:100%;max-width:520px}
-.wizbox .brand{display:flex;align-items:center;gap:11px;text-decoration:none;
+.wizbox .brand{display:flex;align-items:center;gap:12px;text-decoration:none;
   color:inherit;margin:0 0 4px}
 .wizbox .brand svg{width:34px;height:34px;border-radius:8px}
-.wizbox .brand b{font-family:var(--wordmark);font-weight:700;font-size:19px}
+.wizbox .brand b{font-family:var(--wordmark);font-weight:700;font-size:var(--mw-t-h2-size)}
 /* The step indicator as a plain linear measure: a 4px square-ended
  * track per step on surface-container-highest, filled primary once a step is
  * reached. Captions are label-medium mixed case, coloured by state — the
  * current step primary, done steps on-surface-variant, upcoming ones
  * outline. */
-.steps{display:flex;gap:8px;margin:22px 0 26px;padding:0;list-style:none}
+.steps{display:flex;gap:8px;margin:24px 0 28px;padding:0;list-style:none}
 .steps .step{flex:1;text-align:center}
 .steps .step .bar{height:4px;border-radius:var(--mw-r-0);
   background:var(--mw-surface-3)}
@@ -418,7 +419,7 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
 .steps .step.on span{color:var(--mw-accent)}
 .steps .step.done span{color:var(--mw-ink-2)}
 .wizbox .card{margin:0}
-.wizbox>form,.wizbox>.error{margin-top:18px}
+.wizbox>form,.wizbox>.error{margin-top:20px}
 
 /* ---- Typography ----------------------------------------------------------
  * Mapped onto the M3 scale: page titles are headline roles, section heads are
@@ -443,15 +444,15 @@ a.link:hover{text-decoration:underline}
   color:var(--mw-ink-2)}
 /* overflow-wrap so a pasted URL or long code wraps instead of widening the
  * page — a phone must never scroll sideways for a release address. */
-.code{font-family:var(--mono);font-size:1rem;letter-spacing:.08em;
-  background:var(--panel2);padding:.15rem .4rem;border-radius:.25rem;color:var(--accent);
+.code{font-family:var(--mono);font-size:16px;letter-spacing:.08em;
+  background:var(--panel2);padding:0.25rem 0.5rem;border-radius:.25rem;color:var(--accent);
   overflow-wrap:anywhere}
 
 /* ---- Forms --------------------------------------------------------------- */
-form{margin:1.4rem 0 0}
+form{margin:1.5rem 0 0}
 /* Bare labels outside the .field system (bundle-built rows, specialist
  * controls). Mixed case: the uppercase kicker treatment is retired. */
-label{display:block;margin:1rem 0 .35rem;
+label{display:block;margin:1rem 0 0.25rem;
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);color:var(--muted)}
 /* The generic input skin stays for inputs the display bundle builds at
@@ -460,18 +461,18 @@ label{display:block;margin:1rem 0 .35rem;
  * are body-large: the one place the M3 spec names a role outright. */
 input[type=text],input[type=email],input[type=password],input[type=number],
 input[type=time],select,textarea{
-  width:100%;padding:.62rem .7rem;border-radius:var(--mw-r-1);
+  width:100%;padding:0.5rem 0.75rem;border-radius:var(--mw-r-1);
   border:1px solid var(--mw-ink-3);
   background:transparent;color:var(--mw-ink);font-family:inherit;
   font-size:var(--mw-t-body-lg-size)}
 textarea{resize:vertical;line-height:1.45}
 input::placeholder,textarea::placeholder{color:var(--mw-ink-2)}
-input[type=color]{width:100%;height:2.6rem;padding:.2rem;
+input[type=color]{width:100%;height:2.6rem;padding:0.25rem;
   border-radius:var(--mw-r-1);
   border:1px solid var(--mw-ink-3);background:transparent}
-input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
+input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
   border:1px solid var(--mw-ink-3);background:transparent;
-  color:var(--mw-ink-2);font-size:.95rem}
+  color:var(--mw-ink-2);font-size:var(--mw-t-body-size)}
 
 /* ---- Text fields: a label above a bordered input --------------------------
  * This replaced Material's outlined field with the floating label. The label
@@ -502,7 +503,7 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
 .field{position:relative;display:block;margin:var(--mw-s-4) 0 0;color:var(--mw-ink)}
 .field-label{display:block;margin:0 0 var(--mw-s-1);color:var(--mw-ink-2);
   font:var(--mw-t-label);letter-spacing:var(--mw-t-label-tracking)}
-.field .field-input{width:100%;height:40px;padding:0 11px;
+.field .field-input{width:100%;height:40px;padding:0 12px;
   border:1px solid var(--mw-ink-3);border-radius:var(--mw-r-2);
   background:transparent;
   color:var(--mw-ink);caret-color:var(--mw-accent);
@@ -511,11 +512,14 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
   letter-spacing:var(--mw-t-body-tracking)}
 .field .field-input::placeholder{color:var(--mw-ink-3)}
 .field:hover .field-input{border-color:var(--mw-ink-2)}
-/* The 1px the border gains comes out of the padding, so the text does not
- * jump. The shared focus ring stands down inside a .field — the border is the
- * focus affordance here, and two rings on one control reads as a fault. */
+/* The border grows by 1px on focus; padding used to shrink by the same
+ * amount so the text held still, but that 1px offset has no representation on
+ * the 4px spacing grid, so both states now share one padding value and the
+ * text shifts by the border's 1px alone. The shared focus ring stands down
+ * inside a .field — the border is the focus affordance here, and two rings on
+ * one control reads as a fault. */
 .field .field-input:focus,.field .field-input:focus-visible{outline:none;
-  border:2px solid var(--mw-accent);padding:0 10px}
+  border:2px solid var(--mw-accent);padding:0 12px}
 .field:focus-within .field-label{color:var(--mw-accent)}
 /* The error variant, for pages that re-render with a field at fault. */
 .field.field-error .field-input{border-color:var(--mw-danger)}
@@ -525,16 +529,16 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
 /* Selects hide the native chrome and get a drawn caret in the wrapper. The
  * caret is offset by the label's height so it lands on the control, not on
  * the label above it. */
-.field select.field-input{appearance:none;-webkit-appearance:none;padding-right:34px}
+.field select.field-input{appearance:none;-webkit-appearance:none;padding-right:36px}
 .field-select::after{content:"";position:absolute;right:14px;bottom:16px;width:7px;height:7px;
   border-right:2px solid var(--mw-ink-2);
   border-bottom:2px solid var(--mw-ink-2);
   transform:rotate(45deg);pointer-events:none}
-.field textarea.field-input{height:auto;min-height:80px;padding:10px 11px;resize:vertical;
+.field textarea.field-input{height:auto;min-height:80px;padding:8px 12px;resize:vertical;
   line-height:var(--mw-t-body-lh)}
-.field textarea.field-input:focus{padding:9px 10px}
-.field input[type=color].field-input{padding:5px 6px}
-.field input[type=file].field-input{padding:9px 11px;height:auto;
+.field textarea.field-input:focus{padding:8px 12px}
+.field input[type=color].field-input{padding:4px 8px}
+.field input[type=file].field-input{padding:8px 12px;height:auto;
   color:var(--mw-ink-2)}
 /* Supporting text, aligned to the field edge rather than indented — there is
  * no 16px inset to line up with any more. */
@@ -603,7 +607,7 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
    in the heading is what says so; this only stops it competing with the ones
    that are actually running. */
 .card.is-paused>*:not(.row){opacity:.62}
-.card.is-paused h2 .tag{margin-left:10px;vertical-align:middle}
+.card.is-paused h2 .tag{margin-left:12px;vertical-align:middle}
 /* The action row keeps full contrast. Dimming the whole card also dimmed
    *Resume*, which is the one control somebody opens a paused chore to press —
    quieting the content is the point, quieting the way back out is not. */
@@ -631,8 +635,8 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
  * from 16px (outline colour) to 24px (on-primary) when checked. The row is
  * 48px tall, which is the pointer target. */
 .switch{display:flex;align-items:center;justify-content:space-between;gap:16px;
-  min-height:48px;margin:.35rem 0;cursor:pointer;
-  font:400 14px/20px var(--sans);
+  min-height:48px;margin:0.25rem 0;cursor:pointer;
+  font:var(--mw-t-body);
   letter-spacing:var(--mw-t-body-tracking);text-transform:none}
 .switch .switch-text{min-width:0}
 .switch .switch-text b{display:block;font-weight:500;font-size:14px;
@@ -656,7 +660,7 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
 
 .row-fields{display:flex;gap:1rem;flex-wrap:wrap}
 .row-fields span,.row-fields .field{flex:1 1 12rem}
-.row-fields .field{margin-top:1.1rem}
+.row-fields .field{margin-top:1rem}
 
 /* ---- Buttons ---------------------------------------------------------------
  * The default is a filled button: 40px container, 4px corner, 20px of side
@@ -671,7 +675,7 @@ input[type=file]{width:100%;padding:.55rem;border-radius:var(--mw-r-1);
  * variant is the same anatomy at 32px, and every control smaller than 48px
  * extends its pointer target with an ::after pseudo, never its visual. */
 button,.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
-  gap:8px;margin-top:1.4rem;height:40px;padding:0 24px;
+  gap:8px;margin-top:1.5rem;height:40px;padding:0 24px;
   border-radius:var(--mw-r-2);border:1px solid transparent;
   background:var(--mw-accent);color:var(--mw-accent-ink);
   font-family:var(--sans);
@@ -758,13 +762,13 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 /* The selected segment's leading check, drawn rather than fetched: a small box
  * with two borders, rotated into a tick. */
 .seg button.on::before,.le-orient-btn.is-on::before,.themebtn[data-active="true"]::before{
-  content:"";width:9px;height:5px;margin-top:-3px;flex:0 0 auto;
+  content:"";width:9px;height:5px;margin-top:-4px;flex:0 0 auto;
   border-left:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(-45deg)}
 /* The sidebar's theme toggle fills its row, and its segments carry short
  * labels in a tight column, so they trade the 16px padding for 10px. */
 .themebar{display:flex}
-.themebtn{padding:0 10px}
+.themebtn{padding:0 12px}
 .seg button::after,.le-orient-btn::after,.themebtn::after{content:"";position:absolute;
   left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
 
@@ -776,10 +780,10 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * on-error-container role too — not just the strong/span children below. */
 .error{background:var(--mw-danger-soft);
   color:var(--mw-danger);
-  padding:.9rem 1.1rem;border-radius:var(--mw-r-3);margin:1rem 0}
+  padding:1rem 1rem;border-radius:var(--mw-r-3);margin:1rem 0}
 .error strong{color:var(--mw-danger);display:block;
-  font-size:14px;font-weight:600;margin-bottom:2px}
-.error span{color:var(--mw-danger);font-size:13px;line-height:1.5}
+  font-size:14px;font-weight:600;margin-bottom:4px}
+.error span{color:var(--mw-danger);font-size:var(--mw-t-label-size);line-height:1.5}
 
 /* ---- The confirmation strip (RFC 009 Phase 3.1) --------------------------
  * The .error box's calm twin: the same tinted container and 6px corner, on the
@@ -794,7 +798,7 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * (see test/admin-button-states.test.ts). */
 .saved{display:flex;align-items:center;gap:.75rem;
   background:var(--mw-ok-soft);color:var(--mw-ok);
-  padding:.7rem .75rem .7rem 1.1rem;border-radius:var(--mw-r-3);margin:0 0 1rem}
+  padding:0.75rem 0.75rem 0.75rem 1rem;border-radius:var(--mw-r-3);margin:0 0 1rem}
 .saved-text{flex:1;font-size:14px;font-weight:600;line-height:1.4}
 .saved-x{display:inline-flex;align-items:center;justify-content:center;
   flex:none;width:32px;height:32px;background:none;border:0;padding:0;
@@ -821,7 +825,7 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * [hidden], because what a non-rendered submit does on implicit submission
  * varies by browser, and the whole point of this element is that it is not in
  * any doubt. Proven by pressing Enter in a real one (browser-admin.test.ts). */
-.formdefault{position:absolute;width:1px;height:1px;min-height:0;padding:0;margin:-1px;
+.formdefault{position:absolute;width:1px;height:1px;min-height:0;padding:0;margin:0px;
   border:0;overflow:hidden;clip-path:inset(50%)}
 .saverow{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
 .saverow>button{margin-top:0}
@@ -843,16 +847,16 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 .card h2{font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);margin:0;
   display:flex;align-items:center;gap:.5rem}
-.card p{margin:.4rem 0}
+.card p{margin:0.5rem 0}
 .card .host,.host{color:var(--faint);font-size:12.5px;font-family:var(--mono);
-  margin:.35rem 0}
+  margin:0.25rem 0}
 .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
 .row form{margin:.75rem 0 0}
 .row button{margin-top:0}
 h2.add{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
   margin:2rem 0 0;padding-top:1.5rem;border-top:1px solid var(--rule)}
-p.hint,.hint{font-size:12.5px;color:var(--faint);margin:.35rem 0 0;line-height:1.5}
+p.hint,.hint{font-size:12.5px;color:var(--mw-ink-2);margin:0.25rem 0 0;line-height:1.5}
 
 /* ---- Grids and section headers ------------------------------------------ */
 .grid{display:grid;gap:16px;margin:1rem 0}
@@ -860,10 +864,10 @@ p.hint,.hint{font-size:12.5px;color:var(--faint);margin:.35rem 0 0;line-height:1
 .g2{grid-template-columns:repeat(2,1fr)}
 @media(max-width:1040px){.g3{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.g3,.g2{grid-template-columns:1fr}}
-.sect{margin-top:30px}
+.sect{margin-top:32px}
 .sect:first-child{margin-top:0}
 .sect-head{display:flex;align-items:baseline;justify-content:space-between;
-  gap:1rem;margin-bottom:14px}
+  gap:1rem;margin-bottom:16px}
 .sect-head h2{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);margin:0}
 
@@ -871,7 +875,7 @@ p.hint,.hint{font-size:12.5px;color:var(--faint);margin:.35rem 0 0;line-height:1
 a.card{display:block;text-decoration:none;color:inherit}
 a.card:hover{background:var(--mw-surface-2);border-color:var(--mw-line-strong)}
 a.card:active{background:var(--mw-surface-3)}
-.stat .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.stat .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .stat .subrow .link{display:inline-flex;align-items:center;gap:4px}
 .stat .subrow .link svg{width:13px;height:13px}
 .ic{width:34px;height:34px;border-radius:var(--mw-r-2);display:grid;place-items:center;
@@ -892,12 +896,12 @@ a.card:active{background:var(--mw-surface-3)}
 /* line-height guards: body's role line-height is a px length, which inherits
  * as-is into any larger text that does not set its own. */
 .today-big{font:var(--mw-t-h2);
-  letter-spacing:var(--mw-t-h2-tracking);margin:6px 0 2px}
+  letter-spacing:var(--mw-t-h2-tracking);margin:8px 0 4px}
 .stat .ic{width:34px;height:34px;border-radius:var(--mw-r-2);display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--rule);color:var(--accent)}
 .stat .ic svg{width:18px;height:18px}
 .stat .big{font:var(--mw-t-h1);
-  letter-spacing:var(--mw-t-h1-tracking);margin:12px 0 2px}
+  letter-spacing:var(--mw-t-h1-tracking);margin:12px 0 4px}
 .stat .lab{color:var(--muted);font-size:13.5px}
 .stat .subrow{margin-top:12px;padding-top:12px;border-top:1px solid var(--ruleSoft);
   font-size:12.5px;color:var(--faint);display:flex;align-items:center;
@@ -917,10 +921,10 @@ a.card:active{background:var(--mw-surface-3)}
  * Set in the eyebrow role, which is small and tracked out — mixed case, not
  * caps: "On, working out your zones" is a sentence, and a sentence in caps on
  * a settings page reads as an alarm. */
-.tag{display:inline-flex;align-items:center;gap:6px;
+.tag{display:inline-flex;align-items:center;gap:8px;
   font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
-  padding:4px 10px;border-radius:var(--mw-r-2);
+  padding:4px 12px;border-radius:var(--mw-r-2);
   background:var(--mw-surface-3);
   color:var(--mw-ink-2)}
 .tag-ok{background:var(--mw-ok-soft);
@@ -932,14 +936,14 @@ a.card:active{background:var(--mw-surface-3)}
 .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;
   background:var(--swatch);flex:0 0 auto;vertical-align:baseline}
 img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
-  margin-right:.4rem;vertical-align:-.4rem;background:var(--panel2)}
+  margin-right:0.5rem;vertical-align:-.4rem;background:var(--panel2)}
 
 /* ---- Sub-view switcher (per-wall Appearance | Layout) -------------------- */
 /* ---- Store card glyph preview ("screenshot" spelled out in glyphs) -------- */
 /* A little inset tile beside the icon, styled like a wall stat panel: a big
  * headline line then a caption or two. First-party glyphs only, no image. */
 .cpreview{flex:0 0 auto;width:118px;min-height:64px;display:flex;flex-direction:column;
-  justify-content:center;gap:2px;padding:9px 11px;border-radius:var(--mw-r-2);
+  justify-content:center;gap:4px;padding:8px 12px;border-radius:var(--mw-r-2);
   background:var(--panel2);border:1px solid var(--rule);overflow:hidden}
 .cpreview b{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
@@ -954,12 +958,12 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
  * the controls beside the 264px drawer. */
 @media(max-width:1000px){.theme-builder{grid-template-columns:1fr}}
 .tb-controls{min-width:0}
-.tb-controls>.tb-group{display:block;margin:1.6rem 0 .2rem;
+.tb-controls>.tb-group{display:block;margin:1.5rem 0 0.25rem;
   font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);
   color:var(--mw-ink-2)}
-.tf-row{display:flex;align-items:center;gap:12px;margin:9px 0}
-.tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:2px;margin:0}
+.tf-row{display:flex;align-items:center;gap:12px;margin:8px 0}
+.tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:4px;margin:0}
 .tf-row b{display:block;font-size:14px;font-weight:600}
 .tf-row small{display:block;color:var(--faint);font-size:12px;line-height:1.35}
 .tb-preview{position:sticky;top:88px}
@@ -968,7 +972,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 #theme-contrast{margin-top:12px}
 
 /* ---- Theme picker cards (Display) ---------------------------------------- */
-.themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:.6rem}
+.themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:0.5rem}
 @media(max-width:560px){.themegrid{grid-template-columns:1fr}}
 /* A selectable filled card: the swatch strip bleeds to the corner, the chosen
  * one carries a 2px primary ring (a shadow, so nothing shifts). */
@@ -978,42 +982,42 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .themecard input{position:absolute;opacity:0;pointer-events:none}
 .themecard .sw{height:60px;display:flex}
 .themecard .sw i{flex:1}
-.themecard .cap{padding:10px 14px}
+.themecard .cap{padding:12px 16px}
 .themecard .cap b{
   font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);display:block;
   color:var(--mw-ink)}
-.themecard .cap small{color:var(--mw-ink-2);font-size:11.5px}
+.themecard .cap small{color:var(--mw-ink-2);font-size:var(--mw-t-label-xs-size)}
 .themecard:hover .cap{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .themecard:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
 
 /* ---- Preview panel (calendar test, update-available, shift preview) ------ */
 .preview{position:relative;border:1px solid var(--rule);border-radius:var(--mw-r-2);
-  padding:16px 18px;margin:1rem 0;background:var(--panel2)}
+  padding:16px 20px;margin:1rem 0;background:var(--panel2)}
 .preview h3{font:var(--mw-t-h3);
-  letter-spacing:var(--mw-t-h3-tracking);margin:0 0 .3rem}
-.preview ul{list-style:none;margin:.6rem 0 0;padding:0}
-.preview li{display:flex;gap:.9rem;padding:.5rem 0;font-size:14px;
+  letter-spacing:var(--mw-t-h3-tracking);margin:0 0 0.25rem}
+.preview ul{list-style:none;margin:0.5rem 0 0;padding:0}
+.preview li{display:flex;gap:1rem;padding:.5rem 0;font-size:14px;
   border-top:1px solid var(--ruleSoft)}
 .preview li:first-child{border-top:0}
 .preview .when{color:var(--faint);flex:0 0 12rem;font-family:var(--mono);font-size:12.5px}
-.preview .warn{color:var(--warn);font-size:.9rem;margin-top:.6rem}
-ul.plain{margin:.6rem 0 .6rem 1.1rem;color:var(--muted)}
-ul.plain li{margin:.45rem 0}
+.preview .warn{color:var(--warn);font-size:var(--mw-t-body-size);margin-top:0.5rem}
+ul.plain{margin:0.5rem 0 0.5rem 1rem;color:var(--muted)}
+ul.plain li{margin:0.5rem 0}
 ul.plain strong{color:var(--ink)}
 /* The log block on the inverse roles: the one deliberately inverted surface,
  * which is what makes it read as a terminal in either scheme. */
 pre.log{background:var(--mw-ink);
-  border-radius:var(--mw-r-2);padding:.8rem 1rem;
-  font:12px/1.55 var(--mono);color:var(--mw-bg);
+  border-radius:var(--mw-r-2);padding:0.75rem 1rem;
+  font-family:var(--mono);font-size:var(--mw-t-body-sm-size);line-height:var(--mw-t-body-sm-lh);color:var(--mw-bg);
   max-height:22rem;overflow:auto;white-space:pre-wrap;word-break:break-word}
 
 /* ---- QR + short code (pairing) ------------------------------------------ */
 /* Deliberately white in both schemes: a QR needs its quiet zone on a light
  * plate, or half the phones in the house refuse to read it. */
-.qr{background:#fff;padding:.8rem;border-radius:var(--mw-r-3);
-  display:inline-block;margin:.6rem 0}
+.qr{background:#fff;padding:0.75rem;border-radius:var(--mw-r-3);
+  display:inline-block;margin:0.5rem 0}
 .qr svg{display:block}
 /* The e-paper preview stands on the same argument as the QR plate: the
  * physical panel is white paper in either scheme, so its frame is shown on
@@ -1026,20 +1030,20 @@ pre.log{background:var(--mw-ink);
  * an editor, not terminal output. */
 pre.code{background:var(--mw-surface-2);
   border-radius:var(--mw-r-2);padding:12px;
-  font:12px/1.5 var(--mono);color:var(--mw-ink);
+  font-family:var(--mono);font-size:var(--mw-t-body-sm-size);line-height:var(--mw-t-body-sm-lh);color:var(--mw-ink);
   overflow-x:auto;white-space:pre}
 
 /* ---- Shift slot pickers -------------------------------------------------- */
 .slots{display:flex;flex-wrap:wrap;gap:.5rem}
 .slots span{flex:0 0 6.2rem}
-.slots label{margin:.4rem 0 .2rem;font-size:.7rem;color:var(--faint);
+.slots label{margin:0.5rem 0 0.25rem;font-size:var(--mw-t-label-xs-size);color:var(--faint);
   font-weight:600;letter-spacing:.04em}
-.slots select{padding:.4rem .3rem;font-size:.9rem}
+.slots select{padding:0.5rem 0.25rem;font-size:var(--mw-t-body-size)}
 .title-cell{display:flex;align-items:center;font-weight:600;min-width:0;
   overflow-wrap:anywhere}
 
 /* ---- Shift preview / cycle grid ------------------------------------------ */
-.pv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:.7rem}
+.pv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:0.75rem}
 .pv-cell{background:var(--panel2);border-radius:5px;padding:8px 4px;text-align:center;
   border-top:3px solid var(--accent)}
 .pv-cell.pv-off{border-top-color:var(--ok);
@@ -1048,7 +1052,7 @@ pre.code{background:var(--mw-surface-2);
 .pv-dow{display:block;font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);color:var(--faint)}
 .pv-num{display:block;font:var(--mw-t-h3);
-  letter-spacing:var(--mw-t-h3-tracking);margin:2px 0}
+  letter-spacing:var(--mw-t-h3-tracking);margin:4px 0}
 .pv-code{display:block;font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);color:var(--accent)}
 .pv-off .pv-code{color:var(--ok)}
@@ -1057,7 +1061,7 @@ pre.code{background:var(--mw-surface-2);
 /* ---- Wall switcher above the layout editor ------------------------------- */
 /* The wall switcher is a row of filter chips: the current wall is the
  * selected chip. Same anatomy as .hep-chip above. */
-.walls{display:flex;flex-wrap:wrap;gap:8px;margin:.4rem 0 1rem}
+.walls{display:flex;flex-wrap:wrap;gap:8px;margin:0.5rem 0 1rem}
 .walls a{position:relative;height:32px;display:inline-flex;align-items:center;gap:8px;
   padding:0 16px;border-radius:var(--mw-r-2);
   font-family:var(--sans);
@@ -1072,7 +1076,7 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-ink-2) var(--mw-wash-hover),transparent)}
 .walls a.active{color:var(--mw-accent-soft-ink);
   background:var(--mw-accent-soft);border-color:transparent}
-.walls a.active::before{content:"";width:9px;height:5px;margin-top:-3px;flex:0 0 auto;
+.walls a.active::before{content:"";width:9px;height:5px;margin-top:-4px;flex:0 0 auto;
   border-left:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(-45deg)}
 
@@ -1080,13 +1084,13 @@ pre.code{background:var(--mw-surface-2);
 /* position:relative so a popover can never anchor on <body> and float over
  * the settings pane; the row inside is what they actually anchor to. */
 .le-toolbar{position:relative;display:flex;flex-direction:column;align-items:stretch;
-  gap:10px;margin:0 0 12px}
+  gap:12px;margin:0 0 12px}
 /* One row (RFC 009 Phase 5): which canvas, add a widget, undo, the layers
  * list, and the canvas's own settings behind one button. It was two rows and
  * four clusters, two of whose items duplicated the page overflow menu a few
  * pixels above — 124px of an 844px phone before the canvas began.
  * position:relative so the Layers and Layout popovers anchor to the row. */
-.le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 /* The canvas's shape, on the Layout button. Hidden on a phone (below), where
  * the row has to fit and the popover states it anyway. */
 .le-tool-note{color:var(--mw-ink-2)}
@@ -1101,7 +1105,7 @@ pre.code{background:var(--mw-surface-2);
   font-weight:var(--mw-t-label-weight);
   letter-spacing:var(--mw-t-label-tracking);
   cursor:pointer;text-decoration:none;display:inline-flex;
-  align-items:center;gap:6px;line-height:1}
+  align-items:center;gap:8px;line-height:1}
 .le-tool-link::after,.le-tool-btn::after,.le-layers-btn::after{content:"";position:absolute;
   left:50%;top:50%;width:max(100%,48px);height:48px;transform:translate(-50%,-50%)}
 .le-tool-link:hover,.le-tool-btn:hover,.le-layers-btn:hover{background:color-mix(in srgb,
@@ -1132,21 +1136,21 @@ pre.code{background:var(--mw-surface-2);
 .le-layers-head{padding:12px 16px;border-bottom:1px solid var(--ruleSoft)}
 .le-layers-title{font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);color:var(--ink)}
-.le-layers-sub{font-size:12px;color:var(--faint);margin-top:2px}
-.le-layers-empty{padding:14px 16px;font-size:13px;color:var(--faint)}
+.le-layers-sub{font-size:12px;color:var(--faint);margin-top:4px}
+.le-layers-empty{padding:16px 16px;font-size:var(--mw-t-label-size);color:var(--faint)}
 .le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
 /* Deliberately under the 48px target rule: the editor toolbar is compact
  * density (32px buttons whose pointer targets stretch via ::after), and a
  * select is a replaced element that cannot carry a pseudo target — stretching
  * the control itself to 48px would break the toolbar's rhythm. The written
  * exception the target audit allows. */
-.le-aspect{width:auto;padding:.42rem .6rem;background:var(--panel2);color:var(--ink);
+.le-aspect{width:auto;padding:0.5rem 0.5rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
 /* Portrait | Landscape: styled with the segmented buttons above. */
 /* The palette sits inline in the toolbar (the display bundle builds it there),
    so it is a row of dashed add-chips rather than the mockup's side column. */
-.le-palette{display:flex;flex-wrap:wrap;gap:6px}
-.le-add{position:relative;display:inline-flex;align-items:center;gap:6px;margin:0;
+.le-palette{display:flex;flex-wrap:wrap;gap:8px}
+.le-add{position:relative;display:inline-flex;align-items:center;gap:8px;margin:0;
   height:32px;padding:0 16px;border:1px solid var(--mw-ink-3);
   border-radius:var(--mw-r-2);background:none;
   color:var(--mw-accent);
@@ -1187,12 +1191,12 @@ pre.code{background:var(--mw-surface-2);
 .le-modal-close{position:relative;margin:0;padding:0;width:40px;height:40px;
   display:grid;place-items:center;background:none;border:0;
   border-radius:var(--mw-r-2);
-  color:var(--mw-ink-2);font-size:22px;line-height:1;cursor:pointer}
+  color:var(--mw-ink-2);font-size:var(--mw-t-h2-size);line-height:1;cursor:pointer}
 .le-modal-close::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
   transform:translate(-50%,-50%)}
 .le-modal-close:hover{color:var(--mw-ink);background:color-mix(in srgb,
   var(--mw-ink-2) var(--mw-wash-hover),transparent)}
-.le-modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px}
+.le-modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px}
 @media(max-width:520px){.le-modal-grid{grid-template-columns:repeat(2,1fr)}}
 .le-modal-item{display:flex;align-items:center;justify-content:center;text-align:center;
   min-height:64px;padding:12px;background:var(--mw-surface-3);
@@ -1210,21 +1214,21 @@ pre.code{background:var(--mw-surface-2);
  * outlined buttons for each gave a canvas control the same weight as "add a
  * widget", which is the whole complaint the redesign answers. */
 .le-canvas-pop{position:absolute;top:calc(100% + 6px);right:0;width:min(340px,92vw);z-index:30;
-  padding:14px 16px 16px;background:var(--mw-surface);
+  padding:16px 16px 16px;background:var(--mw-surface);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1)}
 .le-canvas-pop[hidden]{display:none}
 .le-pop-title{
   font:var(--mw-t-h3);
-  letter-spacing:var(--mw-t-h3-tracking);color:var(--ink);margin-bottom:2px}
+  letter-spacing:var(--mw-t-h3-tracking);color:var(--ink);margin-bottom:4px}
 .le-pop-sub{font-size:12px;color:var(--mw-ink-2);margin-bottom:12px}
 .le-pop-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  min-height:44px;font-size:13px;color:var(--mw-ink)}
+  min-height:44px;font-size:var(--mw-t-label-size);color:var(--mw-ink)}
 .le-pop-row>span:first-child{flex:1;min-width:0}
 .le-pop-row select{width:auto;max-width:60%}
 .le-pop-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;
   border-top:1px solid var(--ruleSoft)}
-.le-pop-sep{height:1px;margin:10px 0;background:var(--ruleSoft)}
+.le-pop-sep{height:1px;margin:12px 0;background:var(--ruleSoft)}
 /* The tools row's own switch, at the row density the popover uses. */
 .le-pop-row .switch{flex:1;margin:0;min-height:44px}
 /* The state of the canvas, stated once on the preview header rather than
@@ -1282,10 +1286,10 @@ pre.code{background:var(--mw-surface-2);
   box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);
   background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .le-widget-label{position:absolute;top:0;left:0;
-  font:var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans);
+  font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-bg);
-  background:var(--mw-ink-2);padding:2px 6px;border-radius:0 0 var(--mw-r-2) 0;
+  background:var(--mw-ink-2);padding:4px 8px;border-radius:0 0 var(--mw-r-2) 0;
   pointer-events:none;user-select:none}
 .le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
 /* On a panel the frame underneath already says what each box is — it draws the
@@ -1312,14 +1316,14 @@ pre.code{background:var(--mw-surface-2);
  * Classic's shift and weather — where a second chip on that row paints over it.
  * Bottom-right is the resize handle, so the remaining corner is the free one. */
 .le-widget-flag{position:absolute;left:0;bottom:0;
-  font:var(--mw-t-label-xs-weight) 10px/var(--mw-t-label-xs-lh) var(--sans);
+  font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-bg);background:var(--mw-ink-2);opacity:.85;
-  padding:2px 6px;border-radius:0 var(--mw-r-2) 0 0;
+  padding:4px 8px;border-radius:0 var(--mw-r-2) 0 0;
   pointer-events:none;user-select:none}
 /* The reason, at the head of the inspector — read before any of its options,
  * because none of them matter while nothing draws the widget. */
-.le-not-drawn{margin:0 0 12px;padding:10px 12px;border-radius:var(--mw-r-2);
+.le-not-drawn{margin:0 0 12px;padding:12px 12px;border-radius:var(--mw-r-2);
   background:var(--mw-surface-2);border:1px solid var(--mw-line);
   font:var(--mw-t-body-sm);color:var(--mw-ink-2)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
@@ -1339,34 +1343,34 @@ pre.code{background:var(--mw-surface-2);
  * test measures what is actually reachable rather than trusting this line. */
 .le-handle::before{content:"";position:absolute;inset:-16px}
 /* The canvas background control — none / solid / gradient, per canvas. */
-.le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 0}
+.le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:12px 0 0}
 .le-bg-label{
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
   color:var(--mw-ink-2)}
-.le-bg select{width:auto;padding:.42rem .6rem;background:var(--panel2);color:var(--ink);
+.le-bg select{width:auto;padding:0.5rem 0.5rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
-.le-bg input[type=color]{width:36px;height:32px;padding:2px;border:1px solid var(--rule);
+.le-bg input[type=color]{width:36px;height:32px;padding:4px;border:1px solid var(--rule);
   border-radius:7px;background:var(--panel2)}
-.le-bg input[type=number]{width:5rem;padding:.42rem .5rem;background:var(--panel2);color:var(--ink);
+.le-bg input[type=number]{width:5rem;padding:0.5rem 0.5rem;background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:7px}
 .le-bg .le-media{flex-basis:100%}
 
 /* The image picker — a grid of uploaded pictures plus an upload input. */
-.le-media{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.le-media{display:flex;flex-direction:column;gap:12px;margin-top:4px}
 .le-media-grid{display:flex;flex-wrap:wrap;gap:8px}
 .le-media-item{width:64px;height:64px;padding:0;margin:0;border-radius:var(--mw-r-2);cursor:pointer;
   border:2px solid var(--rule);background-size:cover;background-position:center}
 .le-media-item:hover{border-color:var(--faint)}
 .le-media-item.is-on{border-color:var(--accent)}
-.le-media-upload{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.le-media-upload{display:inline-flex;align-items:center;gap:8px;font-size:var(--mw-t-label-size);color:var(--muted)}
 .le-media-upload input{font-size:12px}
 .le-media-status{font-family:var(--mono);font-size:12px;color:var(--faint)}
 
 /* The layers list — every widget, front on top; drag a row to restack. It is
    the body of the anchored popover above. */
-.le-layers{max-height:340px;overflow:auto;padding:6px}
-.le-layer{display:flex;align-items:center;gap:10px;padding:8px 12px;
+.le-layers{max-height:340px;overflow:auto;padding:8px}
+.le-layer{display:flex;align-items:center;gap:12px;padding:8px 12px;
   border-radius:var(--mw-r-1);
   cursor:pointer;user-select:none}
 .le-layer:hover{background:color-mix(in srgb,
@@ -1374,7 +1378,7 @@ pre.code{background:var(--mw-surface-2);
 .le-layer.is-selected{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
 .le-layer-grip{flex:0 0 auto;color:var(--faint);cursor:grab;letter-spacing:-2px;
-  font-size:14px;touch-action:none;padding:0 2px}
+  font-size:14px;touch-action:none;padding:0 4px}
 .le-layer-name{flex:1;min-width:0;
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
@@ -1391,17 +1395,17 @@ pre.code{background:var(--mw-surface-2);
  * opinions about what fits. (No backticks in here: this stylesheet lives in a
  * template literal, and one would end it.)
  */
-.le-ladder{display:flex;flex-direction:column;gap:2px;
+.le-ladder{display:flex;flex-direction:column;gap:4px;
   border:1px solid var(--mw-line);
   border-radius:var(--mw-r-2);padding:4px}
-.le-ladder-row{display:flex;align-items:center;gap:8px;padding:6px 8px;
+.le-ladder-row{display:flex;align-items:center;gap:8px;padding:8px 8px;
   border-radius:var(--mw-r-1);min-height:40px}
 .le-ladder-row.is-off{opacity:.55}
 .le-ladder-row.is-off .le-ladder-eg{visibility:hidden}
 /* Dashed, not hidden: the row is still on the ladder and comes back the moment
    the box grows. Struck through says "not drawn here" without saying "gone". */
 .le-ladder-row.is-cut{opacity:.6;
-  border:1px dashed var(--mw-ink-3);padding:5px 7px}
+  border:1px dashed var(--mw-ink-3);padding:4px 8px}
 .le-ladder-row.is-cut .le-ladder-name{text-decoration:line-through}
 .le-ladder-name{flex:0 0 auto;
   font-size:var(--mw-t-label-size);
@@ -1420,7 +1424,7 @@ pre.code{background:var(--mw-surface-2);
   border-radius:var(--mw-r-3);background:var(--panel)}
 .le-inspect-card .insp-head{background:var(--panel);
   border-radius:var(--mw-r-3) var(--mw-r-3) 0 0}
-.le-inspect-card .insp-empty{padding:16px 18px}
+.le-inspect-card .insp-empty{padding:16px 20px}
 /* A segmented control inside the inspector fills the column rather than
  * hugging its labels — the boxes are the target, and the column is narrow.
  *
@@ -1447,13 +1451,13 @@ pre.code{background:var(--mw-surface-2);
 .le-cfg-field>span{display:block;
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
-  color:var(--mw-ink-2);margin-bottom:6px}
+  color:var(--mw-ink-2);margin-bottom:8px}
 .le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
 /* Position and size, in per cent of the canvas — the unit that is stored, so
  * what is typed is what is saved. Four across on a column inspector, two by two
  * when the inspector is a phone's sheet. */
 .le-box-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.le-box-cell{display:flex;flex-direction:column;gap:3px;margin:0;min-width:0}
+.le-box-cell{display:flex;flex-direction:column;gap:4px;margin:0;min-width:0}
 .le-box-cell span{font-size:11px;color:var(--mw-ink-2);letter-spacing:.02em}
 /* 16px, like every other field here: below that iOS Safari zooms the page on
  * focus, and a settings screen that jumps on every tap is its own bug. */
@@ -1463,21 +1467,21 @@ pre.code{background:var(--mw-surface-2);
   border:1px solid var(--rule);border-radius:var(--mw-r-1)}
 /* A view a widget cannot change: stated, not offered as a dropdown of one. */
 .le-cfg-fact{font-size:14px;line-height:1.4;color:var(--mw-ink)}
-.le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;
+.le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 12px;
   border:1px solid var(--rule);border-radius:var(--mw-r-1);background:var(--panel2);color:var(--ink);
   resize:vertical;line-height:1.4}
-.le-cfg-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:2px}
-.le-cfg-check{display:inline-flex;align-items:center;gap:.55rem;font-size:14px;
+.le-cfg-checks{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:4px}
+.le-cfg-check{display:inline-flex;align-items:center;gap:0.5rem;font-size:14px;
   color:var(--mw-ink);cursor:pointer;margin:0}
 
 /* ---- Home Assistant entity picker (first-party JS) ----------------------- */
-#ha-entity-picker{margin-top:.6rem}
+#ha-entity-picker{margin-top:0.5rem}
 /* 48px pointer targets: the picker's search box and its "show as" row are
  * script-built bare controls (no .field construction), so the height that the
  * 56px fields get from their anatomy is set here directly. */
 .hep-search{width:100%;margin-bottom:12px;min-height:48px}
 #ha-entity-picker select{min-height:48px}
-.hep-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.hep-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 /* Filter chips: 32px, 4px corner, outlined at rest; selected fills with
  * secondary-container and gains a drawn leading check. The pointer target is
  * stretched to 48px tall by a pseudo-element. */
@@ -1496,17 +1500,17 @@ pre.code{background:var(--mw-surface-2);
   color:var(--mw-ink)}
 .hep-chip.active{background:var(--mw-accent-soft);border-color:transparent;
   color:var(--mw-accent-soft-ink)}
-.hep-chip.active::before{content:"";width:9px;height:5px;margin-top:-3px;flex:0 0 auto;
+.hep-chip.active::before{content:"";width:9px;height:5px;margin-top:-4px;flex:0 0 auto;
   border-left:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(-45deg)}
 .hep-chip.active:hover{background:color-mix(in srgb,
   var(--mw-accent-soft-ink) var(--mw-wash-hover),
   var(--mw-accent-soft))}
-.hep-selected{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:1.4rem}
+.hep-selected{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:1.4rem}
 /* Input chips: outlined, 32px, a trailing remove icon button whose pointer
  * target is 48px even though the visual glyph is 18px. */
-.hep-pill{display:inline-flex;align-items:center;gap:.4rem;height:32px;
-  padding:0 6px 0 12px;border-radius:var(--mw-r-2);
+.hep-pill{display:inline-flex;align-items:center;gap:0.5rem;height:32px;
+  padding:0 8px 0 12px;border-radius:var(--mw-r-2);
   background:transparent;border:1px solid var(--mw-ink-3);
   color:var(--mw-ink);font-size:var(--mw-t-label-size)}
 .hep-pill-x{position:relative;margin:0;padding:0;width:18px;height:18px;
@@ -1520,19 +1524,19 @@ pre.code{background:var(--mw-surface-2);
   color:var(--mw-ink)}
 .hep-list{border:1px solid var(--rule);border-radius:8px;background:var(--panel2);
   max-height:22rem;overflow-y:auto}
-.hep-row{display:flex;align-items:center;gap:12px;padding:.6rem .8rem;cursor:pointer;
+.hep-row{display:flex;align-items:center;gap:12px;padding:0.5rem 0.75rem;cursor:pointer;
   border-top:1px solid var(--ruleSoft);margin:0}
 .hep-row:first-child{border-top:0}
 .hep-row:hover{background:var(--panel)}
 /* The row's checkbox takes the shared checkbox styling above. */
 .hep-main{flex:1;min-width:0}
 .hep-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hep-id{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap;
+.hep-id{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--faint);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .hep-state{font-family:var(--mono);font-size:12.5px;color:var(--muted);flex:0 0 auto;
   max-width:10rem;overflow:hidden;text-overflow:ellipsis;text-align:right}
-.hep-footer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin-top:14px}
-.hep-field{display:flex;flex-direction:column;gap:6px;margin:0}
+.hep-footer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-top:16px}
+.hep-field{display:flex;flex-direction:column;gap:8px;margin:0}
 .hep-field>span{
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
@@ -1546,10 +1550,10 @@ pre.code{background:var(--mw-surface-2);
 .tpl-cat{
   font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);
-  color:var(--mw-ink-2);margin:26px 0 14px}
-.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px}
+  color:var(--mw-ink-2);margin:28px 0 16px}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px}
 /* Template cards are ordinary cards: a flat panel with a hairline border. */
-.tpl-card{position:relative;display:flex;flex-direction:column;gap:14px;
+.tpl-card{position:relative;display:flex;flex-direction:column;gap:16px;
   background:var(--mw-surface);border:1px solid var(--mw-line);
   border-radius:var(--mw-r-3);padding:var(--mw-s-4)}
 .tpl-thumb{position:relative;width:100%;aspect-ratio:3/4;background:var(--panel2);
@@ -1562,9 +1566,9 @@ pre.code{background:var(--mw-surface-2);
   letter-spacing:var(--mw-t-h2-tracking)}
 .tpl-blurb{font-size:13.5px;color:var(--muted);line-height:1.45;flex:1;margin:0}
 .tpl-card form{margin:0}
-.tpl-card .btn-sm{align-self:flex-start;margin-top:2px}
-.tpl-copy{margin-top:34px;padding-top:22px;border-top:1px solid var(--rule)}
-.tpl-copy .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.tpl-card .btn-sm{align-self:flex-start;margin-top:4px}
+.tpl-copy{margin-top:36px;padding-top:24px;border-top:1px solid var(--rule)}
+.tpl-copy .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
 
 /* ---- Wall editor: local header, two modes, canvas + inspector -----------
  * The editor used to be one continuous page: status and pairing, the canvas,
@@ -1580,7 +1584,7 @@ pre.code{background:var(--mw-surface-2);
  * heading is the wall's name, so the page adds no second header and no second
  * hamburger. What it does add is one row — what you are editing, whether the
  * screen is up, and an overflow for the infrequent and the destructive. */
-.wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:7px;
+.wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:8px;
   font-size:12.5px;color:var(--mw-ink-2);min-width:0}
 .wall-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wall-status b{color:var(--mw-ink);font-weight:500}
@@ -1620,7 +1624,7 @@ pre.code{background:var(--mw-surface-2);
 
 /* Layout | Wall settings. Two contexts, one control, and it is the segmented
  * button the rest of the admin already uses. */
-.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:10px 12px;margin:0 0 18px}
+.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 16px}
 .modeswitch{flex:1 1 260px;max-width:440px;display:flex}
 .modebar .ovf{margin-left:auto}
 .mode[hidden]{display:none}
@@ -1633,7 +1637,7 @@ pre.code{background:var(--mw-surface-2);
 .lay-canvas{min-width:0}
 /* Said once, here — it used to be repeated under every widget panel. */
 .prev-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
-  flex-wrap:wrap;margin:0 0 10px}
+  flex-wrap:wrap;margin:0 0 12px}
 .prev-head b{font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);color:var(--ink)}
 .prev-head small{font-size:12px;color:var(--mw-ink-2)}
@@ -1641,12 +1645,12 @@ pre.code{background:var(--mw-surface-2);
   background:var(--panel);border:1px solid var(--rule);
   border-radius:var(--mw-r-3);
   max-height:calc(100vh - 150px);overflow:auto}
-.insp-empty{padding:22px 18px;font-size:13px;
+.insp-empty{padding:24px 20px;font-size:var(--mw-t-label-size);
   color:var(--mw-ink-2);line-height:1.55}
 .insp-empty[hidden],.insp-head[hidden],.insp-body[hidden]{display:none}
 /* The inspector's own header: which widget this is, and the way out. */
-.insp-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:10px;
-  padding:12px 8px 12px 18px;background:var(--panel);
+.insp-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;
+  padding:12px 8px 12px 20px;background:var(--panel);
   border-bottom:1px solid var(--ruleSoft)}
 .insp-title{flex:1;min-width:0;
   font:var(--mw-t-h3);
@@ -1660,7 +1664,7 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-ink-2) var(--mw-wash-hover),transparent);
   color:var(--mw-ink)}
 .insp-close svg{width:20px;height:20px}
-.insp-body{padding:4px 18px 18px}
+.insp-body{padding:4px 20px 20px}
 /* The two lanes: the wall's settings, and what the widget says on ink.
  *
  * Above the tabs rather than beside them, because it does not choose a tab —
@@ -1671,8 +1675,8 @@ pre.code{background:var(--mw-surface-2);
  * admin-button-states.test.ts, which derives that requirement from this
  * stylesheet rather than from a list somebody remembers to update. */
 .insp-lanes[hidden]{display:none}
-.insp-lanes{display:flex;gap:6px;margin:8px 0 10px}
-.insp-lane{position:relative;margin:0;height:36px;padding:0 14px;background:none;border:0;
+.insp-lanes{display:flex;gap:8px;margin:8px 0 12px}
+.insp-lane{position:relative;margin:0;height:36px;padding:0 16px;background:none;border:0;
   border-radius:18px;color:var(--mw-ink-2);cursor:pointer;
   font-family:var(--sans);
   font-size:var(--mw-t-label-size);
@@ -1696,16 +1700,16 @@ pre.code{background:var(--mw-surface-2);
 .insp-ink-frame{display:block;width:100%;height:auto;margin:0 0 12px;background:#fff;
   border:1px solid var(--mw-line);border-radius:8px;
   image-rendering:pixelated}
-.insp-ink-note{margin:14px 0 4px}
-.insp-ink-list{margin:0 0 4px;padding-left:18px;
+.insp-ink-note{margin:16px 0 4px}
+.insp-ink-list{margin:0 0 4px;padding-left:20px;
   color:var(--mw-ink-2);
   font-size:var(--mw-t-body-sm-size);line-height:1.45}
 .insp-ink-reset{margin-top:12px;width:100%}
 /* Content | Style, inside the inspector. Only drawn when both apply. */
 .insp-tabs[hidden]{display:none}
 .insp-tabs{display:flex;gap:0;border-bottom:1px solid var(--mw-line);
-  margin:0 0 6px}
-.insp-tab{position:relative;margin:0;height:44px;padding:0 14px;background:none;border:0;
+  margin:0 0 8px}
+.insp-tab{position:relative;margin:0;height:44px;padding:0 16px;background:none;border:0;
   border-radius:0;color:var(--mw-ink-2);cursor:pointer;
   font-family:var(--sans);
   font-size:var(--mw-t-label-size);
@@ -1724,7 +1728,7 @@ pre.code{background:var(--mw-surface-2);
 .insp-actions .le-add{width:100%;justify-content:center}
 /* Removing the selected widget lives with the widget, not in the toolbar —
  * a disabled "Remove selected" beside the everyday tools said nothing. */
-.insp-danger{margin-top:18px;padding-top:14px;border-top:1px solid var(--ruleSoft)}
+.insp-danger{margin-top:20px;padding-top:16px;border-top:1px solid var(--ruleSoft)}
 .insp-remove{margin:0;width:100%;height:44px;background:transparent;
   color:var(--mw-danger);border:1px solid var(--mw-ink-3)}
 .insp-remove:hover{background:color-mix(in srgb,
@@ -1734,8 +1738,8 @@ pre.code{background:var(--mw-surface-2);
 /* Categories, not one long form. A rail beside the panel on a wide screen; a
  * list that opens one focused screen on a phone. */
 .wset{display:grid;grid-template-columns:minmax(230px,290px) minmax(0,1fr);
-  gap:26px;align-items:start}
-.wset-nav{display:flex;flex-direction:column;gap:2px;position:sticky;top:96px}
+  gap:28px;align-items:start}
+.wset-nav{display:flex;flex-direction:column;gap:4px;position:sticky;top:96px}
 .wset-nav[hidden]{display:none}
 .wset-navrow{position:relative;display:flex;align-items:center;gap:12px;width:100%;
   min-height:56px;margin:0;padding:8px 16px;background:none;border:0;
@@ -1764,9 +1768,9 @@ pre.code{background:var(--mw-surface-2);
   letter-spacing:var(--mw-t-h2-tracking)}
 .wset-panel>form{margin:0}
 .wset-back{display:none}
-.wset-lead{margin:0 0 14px;font-size:13px;line-height:1.55;color:var(--muted)}
-.wset-group{position:relative;margin:22px 0 0}
-.wset-group:first-of-type{margin-top:14px}
+.wset-lead{margin:0 0 16px;font-size:var(--mw-t-label-size);line-height:1.55;color:var(--muted)}
+.wset-group{position:relative;margin:24px 0 0}
+.wset-group:first-of-type{margin-top:16px}
 .wset-group>.kick{margin:0 0 8px}
 
 /* ---- Compact settings rows ---------------------------------------------- */
@@ -1776,22 +1780,22 @@ pre.code{background:var(--mw-surface-2);
 .rows>*+*{border-top:1px solid var(--ruleSoft)}
 .rows>.field,.rows>.field-hint{border-top:0}
 .rows .switch{margin:0;padding:8px 16px;min-height:56px}
-.rows .field{margin:14px 16px}
-.rows .field-hint{margin:-6px 16px 12px}
+.rows .field{margin:16px 16px}
+.rows .field-hint{margin:-4px 16px 12px}
 .rows>.rowsub{padding:0 16px 12px}
-.rows>.rowsub>.field{margin:6px 0 0}
+.rows>.rowsub>.field{margin:8px 0 0}
 .rows>.rowsub>.field-hint{margin:4px 0 0}
 .rows>.rowsub[hidden]{display:none}
-.srow{display:flex;align-items:center;gap:12px;min-height:56px;margin:0;padding:6px 16px;
+.srow{display:flex;align-items:center;gap:12px;min-height:56px;margin:0;padding:8px 16px;
   cursor:pointer;text-transform:none;letter-spacing:normal}
 .srow:hover{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .srow-text{flex:1;min-width:0}
-.srow-text b{display:block;font-weight:500;font-size:15px;line-height:1.35;
+.srow-text b{display:block;font-weight:500;font-size:var(--mw-t-body-size);line-height:1.35;
   color:var(--mw-ink)}
 .srow-text small{display:block;font-size:12px;line-height:1.4;
   color:var(--mw-ink-2)}
-.srow-value{display:flex;align-items:center;gap:2px;min-width:0;max-width:56%}
+.srow-value{display:flex;align-items:center;gap:4px;min-width:0;max-width:56%}
 /* A native select wearing the row: no box, the value right-aligned beside the
  * chevron. It keeps its name, its options and its platform picker. */
 /* 16px, not 14: below 16px iOS Safari zooms the page when a form control takes
@@ -1804,7 +1808,7 @@ pre.code{background:var(--mw-surface-2);
 .srow-chev svg{width:18px;height:18px}
 /* A row that opens something rather than choosing a value (Advanced actions). */
 .arow{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;margin:0;
-  padding:6px 16px;background:none;border:0;border-radius:0;color:var(--ink);
+  padding:8px 16px;background:none;border:0;border-radius:0;color:var(--ink);
   text-align:left;justify-content:flex-start;cursor:pointer;text-decoration:none;
   font-family:inherit;font-size:14px;font-weight:500;letter-spacing:normal}
 .arow::after{content:none}
@@ -1825,7 +1829,7 @@ pre.code{background:var(--mw-surface-2);
 /* ---- Tabs (kept for the widget inspector's Content/Style pair) ----------- */
 .tabpanel[hidden]{display:none}
 .tabpanel>form{margin:0}
-.two-up{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.two-up{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 /* A single-line hint replaces the old multi-line grey prose. On the
  * on-surface-variant role rather than the faint token: measured, faint came
  * out at 3.87:1 on a card in the light scheme, which is under AA for text. */
@@ -1846,14 +1850,14 @@ pre.code{background:var(--mw-surface-2);
 .fieldhelp svg{width:16px;height:16px}
 /* A menu surface, like the layers popover. */
 .helppop{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:min(320px,80vw);
-  padding:12px 14px;background:var(--mw-surface);
+  padding:12px 16px;background:var(--mw-surface);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1);
   font-size:var(--mw-t-body-sm-size);line-height:1.5;
   color:var(--mw-ink-2);
   text-transform:none;font-weight:400;letter-spacing:0}
 .helppop[hidden]{display:none}
-.helppop p{margin:.35rem 0}
+.helppop p{margin:0.25rem 0}
 .helppop p:first-child{margin-top:0}
 
 /* ---- The one sticky save bar -------------------------------------------- */
@@ -1861,7 +1865,7 @@ pre.code{background:var(--mw-surface-2);
  * is a token because the widget sheet has to sit exactly on top of it. */
 :root{--savebar-h:64px}
 .savebar{position:fixed;left:264px;right:0;bottom:0;z-index:40;display:flex;align-items:center;
-  justify-content:flex-end;gap:14px;padding:12px 28px;
+  justify-content:flex-end;gap:16px;padding:12px 28px;
   padding-bottom:calc(12px + env(safe-area-inset-bottom));
   background:var(--mw-surface)}
 .savebar-flag{margin-right:auto;
@@ -1910,7 +1914,7 @@ pre.code{background:var(--mw-surface-2);
   .le-box-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   /* A long value takes the line under its label rather than being clipped to
    * the half that says nothing. */
-  .srow.is-wide{flex-wrap:wrap;align-items:flex-start;padding-top:10px;padding-bottom:10px}
+  .srow.is-wide{flex-wrap:wrap;align-items:flex-start;padding-top:12px;padding-bottom:12px}
   .srow.is-wide .srow-value{max-width:100%;width:100%;justify-content:space-between}
   .srow.is-wide .srow-select{flex:1;text-align:left;text-align-last:left}
 }
@@ -1931,8 +1935,8 @@ pre.code{background:var(--mw-surface-2);
   /* One screen at a time: the list, or the category you opened. */
   .wset:not(.is-drilled) .wset-panels{display:none}
   .wset.is-drilled .wset-nav{display:none}
-  .wset-back{display:inline-flex;align-items:center;gap:6px;height:44px;margin:0 0 4px;
-    padding:0 12px 0 6px;background:none;border:0;border-radius:var(--mw-r-2);
+  .wset-back{display:inline-flex;align-items:center;gap:8px;height:44px;margin:0 0 4px;
+    padding:0 12px 0 8px;background:none;border:0;border-radius:var(--mw-r-2);
     color:var(--mw-accent);cursor:pointer;
     font-family:var(--sans);
     font-size:var(--mw-t-label-size);
@@ -2143,6 +2147,38 @@ pre.code{background:var(--mw-surface-2);
   }
 }
 `;
+
+/**
+ * The authenticated shell's stylesheet, served as a cached file rather than
+ * inlined.
+ *
+ * Every server-rendered page used to carry all 110KB of `STYLE` inline, 36%
+ * of it developer commentary, in an application that is page-per-navigation
+ * by design — about 1.3MB of byte-identical CSS across a twelve-page session.
+ * The wizard and sign-in keep the inline `<style>` (`wizard-noscript.test.ts`
+ * fences them off, and they must work before anything else does, including a
+ * second request succeeding); everything past them links this instead.
+ *
+ * Comments are stripped from the *served* copy only — `STYLE` itself, which a
+ * maintainer reads, is untouched. Computed once at module load: the sheet is
+ * a constant for the life of the process, so there is nothing to invalidate
+ * beyond a restart, which is exactly when the version in the URL changes too.
+ */
+export const ADMIN_STYLESHEET = STYLE.replace(/\/\*[\s\S]*?\*\//g, '');
+
+/**
+ * One hash, read two ways: the `etag` header value, and — with its quotes
+ * and length trimmed — the `?v=` query on the stylesheet link. Computed once
+ * via the same `contentEtag` every other served file uses, rather than a
+ * second ad-hoc hash for the same job living beside it and free to drift.
+ *
+ * The query string is what makes a new build fetch a new file instead of the
+ * browser's old copy, since the link carries `Cache-Control: immutable` — the
+ * ETag alone would only save bytes on the *next* request, after a client had
+ * already served a stale one from cache.
+ */
+export const ADMIN_STYLESHEET_ETAG = contentEtag(Buffer.from(ADMIN_STYLESHEET, 'utf8'));
+export const ADMIN_STYLESHEET_VERSION = ADMIN_STYLESHEET_ETAG.replace(/"/g, '').slice(0, 12);
 
 /**
  * The admin theme, applied before the first paint and toggled from the sidebar.
@@ -2576,6 +2612,9 @@ function stepProgress(step: string): string {
 }
 
 function head(title: string, shell = false): string {
+  const styleTag = shell
+    ? `<link rel="stylesheet" href="assets/admin.css?v=${ADMIN_STYLESHEET_VERSION}">`
+    : `<style>${STYLE}</style>`;
   return (
     `<!doctype html><html lang="en"><head>` +
     /*
@@ -2597,7 +2636,7 @@ function head(title: string, shell = false): string {
     // The ripple only ever ships to the shell: the wizard and sign-in are
     // deliberately script-free beyond the theme script, and a census test
     // holds them to it.
-    `<title>${escapeHtml(title)}</title><style>${STYLE}</style>` +
+    `<title>${escapeHtml(title)}</title>${styleTag}` +
     `${THEME_SCRIPT}${shell ? RIPPLE_SCRIPT : ''}</head>`
   );
 }

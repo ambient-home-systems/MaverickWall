@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -39,6 +40,13 @@ function contentTypeFor(name: string): string {
 export interface StaticFile {
   readonly body: Buffer;
   readonly contentType: string;
+  /** Content-derived, so a rebuild changes it and a byte-identical file does not. */
+  readonly etag: string;
+}
+
+/** Same construction as `manifestEtag`: a short, quoted content hash. */
+export function contentEtag(body: Buffer): string {
+  return `"${createHash('sha256').update(body).digest('hex').slice(0, 32)}"`;
 }
 
 export interface StaticFiles {
@@ -88,16 +96,29 @@ export function defaultFontsDir(): string {
 }
 
 export function createStaticFiles(directory: string): StaticFiles {
+  // Keyed on name, invalidated by mtime and size rather than time: the point
+  // of Cache-Control: no-cache is that a rebuild must be visible on the very
+  // next request with no restart, so this may never serve a body or an ETag
+  // older than what is on disk right now — it only skips redoing the hash
+  // when the file provably has not changed since the last read.
+  const cache = new Map<string, { readonly mtimeMs: number; readonly size: number; readonly file: StaticFile }>();
+
   return {
     directory,
 
     read(name: string): StaticFile | undefined {
       if (!SAFE_NAME.test(name)) return undefined;
+      const path = join(directory, name);
       try {
-        // No cache. The bundle is small, the reader is one tablet on a LAN,
-        // and a stale file surviving a rebuild is the kind of confusion that
-        // costs an hour. Revisit when there is a hashed filename scheme.
-        return { body: readFileSync(join(directory, name)), contentType: contentTypeFor(name) };
+        const stat = statSync(path);
+        const cached = cache.get(name);
+        if (cached !== undefined && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+          return cached.file;
+        }
+        const body = readFileSync(path);
+        const file = { body, contentType: contentTypeFor(name), etag: contentEtag(body) };
+        cache.set(name, { mtimeMs: stat.mtimeMs, size: stat.size, file });
+        return file;
       } catch {
         return undefined;
       }

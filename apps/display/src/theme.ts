@@ -47,10 +47,15 @@ const HOUSEHOLD: ThemeTokens = {
   '--muted': '#8A8474',
   '--faint': '#A49C88',
   '--accent': '#B5651F',
-  '--s-day': '#E8A33D',
-  '--s-night': '#4C7FD1',
-  '--s-break': '#35916A',
-  '--s-straight': '#6B7684',
+  // Darkened from the Panels values (#E8A33D / #4C7FD1 / #35916A / #6B7684)
+  // until each clears 4.5:1 on both this theme's grounds (RFC 009 Phase 6):
+  // on a cream ground the same hues that read fine on a dark one sat as low
+  // as 1.90:1, painted as text on what display.css calls the single most
+  // important element on the wall.
+  '--s-day': '#906526',
+  '--s-night': '#426DB4',
+  '--s-break': '#2D7A5A',
+  '--s-straight': '#646E7C',
   '--radius': '0.35rem',
 };
 
@@ -63,10 +68,12 @@ const BLUEPRINT: ThemeTokens = {
   '--muted': '#7C8288',
   '--faint': '#9AA0A6',
   '--accent': '#5980A6',
-  '--s-day': '#C98A16',
+  // Darkened (RFC 009 Phase 6) until day, break and straight clear 4.5:1 on
+  // both grounds; night already cleared it unchanged.
+  '--s-day': '#946510',
   '--s-night': '#2F5D8C',
-  '--s-break': '#4A8556',
-  '--s-straight': '#8C8578',
+  '--s-break': '#447A4F',
+  '--s-straight': '#736E63',
   '--radius': '0',
 };
 
@@ -95,10 +102,13 @@ const ALMANAC: ThemeTokens = {
   '--muted': '#8A8474',
   '--faint': '#A89F8B',
   '--accent': '#B3372B',
-  '--s-day': '#C98A16',
+  // Darkened (RFC 009 Phase 6) until day, break and straight clear 4.5:1 on
+  // both grounds; night already cleared it unchanged. Almanac is the theme
+  // scheduled for daylight, so this is the ratio a household reads all day.
+  '--s-day': '#986911',
   '--s-night': '#2F5D8C',
-  '--s-break': '#4A8556',
-  '--s-straight': '#8C8578',
+  '--s-break': '#467E52',
+  '--s-straight': '#777166',
   '--radius': '0',
 };
 
