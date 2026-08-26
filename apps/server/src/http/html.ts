@@ -240,6 +240,41 @@ body{margin:0;background:var(--bg);color:var(--ink);
  * than by a different ground: one fewer surface in play, and the rule reads at
  * a glance in both schemes where a 4-point luminance step does not. */
 body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
+
+/* ---- Skip to content -----------------------------------------------------
+ * The first tab stop on every shell page, and the only way past the sixteen
+ * navigation stops in front of the content (WCAG 2.4.1, Level A).
+ *
+ * Off the top edge until it takes focus, by *transform* rather than by
+ * display:none or [hidden]: a link that is not rendered is not focusable,
+ * and then there is nothing to Tab to at all — which is the shape of the bug,
+ * not a smaller version of the fix.
+ *
+ * Above everything, the layout editor's modal (50) included. That outranking
+ * is deliberate and costs nothing: this is only ever reached from the very top
+ * of the document, and a focused skip link drawn behind something is the same
+ * failure it exists to end.
+ *
+ * 56px from the left rather than flush with it, which is not decoration: at
+ * compact width the app bar's menu button and the invisible 48px checkbox
+ * behind it both live in that corner, and a focused skip link drawn over them
+ * eats the tap that would open the navigation. Measured — the overlap is only
+ * visible as a tap that does nothing.
+ *
+ * The ring is declared here because the shell's single focus rule lists the
+ * controls it covers and a bare anchor is not one of them — same 3px accent
+ * and same offset, so it is one treatment rather than a second one. :focus
+ * and not :focus-visible: this is reached by keyboard by definition, and
+ * :focus-visible computes to nothing after a tap or a switch press. */
+.skip{position:fixed;top:0;left:56px;z-index:60;margin:8px;
+  display:inline-flex;align-items:center;height:40px;padding:0 16px;
+  border-radius:var(--mw-r-2);border:1px solid var(--mw-line-strong);
+  background:var(--mw-surface-3);color:var(--mw-ink);box-shadow:var(--mw-shadow-2);
+  font-family:var(--sans);font-size:var(--mw-t-label-size);
+  font-weight:var(--mw-t-label-weight);letter-spacing:var(--mw-t-label-tracking);
+  line-height:1;text-decoration:none;white-space:nowrap;
+  transform:translateY(-200%)}
+.skip:focus{transform:none;outline:3px solid var(--mw-accent);outline-offset:2px}
 .side{background:var(--mw-surface);
   border-right:1px solid var(--mw-line);
   display:flex;flex-direction:column;min-height:100vh;position:sticky;top:0;
@@ -2604,18 +2639,55 @@ function navBar(active: string, modules: readonly NavModule[]): string {
   return `<nav class="nav" aria-label="Admin">${groups}</nav>`;
 }
 
-export interface PageOptions {
+/**
+ * What every page needs, whichever shape it is.
+ *
+ * `PageOptions` below is a union of the two, discriminated on `nav`, because
+ * the shell and the wizard genuinely need different things and one optional
+ * bag could not say so. The skip link is what forced it: it is required on the
+ * shell — a page that forgets it is a compile error rather than a page that
+ * silently keeps sixteen navigation stops in front of its content — and it
+ * would be meaningless on the wizard, which has no navigation to skip and no
+ * request-shaped value to hand it.
+ */
+interface CommonPageOptions {
   readonly title: string;
   /** Rendered above the heading in the wizard, e.g. "Step 2 of 4". */
   readonly step?: string;
   readonly heading: string;
-  readonly intro?: string;
+  readonly intro?: string | undefined;
+  /** Already-escaped markup. */
+  readonly body: string;
+}
+
+/**
+ * The wizard and sign-in: a centred column, no sidebar.
+ *
+ * `nav?: undefined` rather than an omitted field — that is what lets `page()`
+ * narrow on it, and what stops a shell page losing its skip link by being
+ * read as a wizard.
+ */
+export interface WizardPageOptions extends CommonPageOptions {
+  readonly nav?: undefined;
+}
+
+/** The app shell: the sidebar, the app bar, and everything that hangs off them. */
+export interface ShellPageOptions extends CommonPageOptions {
   /**
    * The current admin section, e.g. `screens` — draws the sidebar with it
-   * marked, inside the app shell. Absent on the wizard and sign-in, which have
-   * no sidebar; those render a centred column instead. `home` is the overview.
+   * marked. `home` is the overview.
    */
-  readonly nav?: string;
+  readonly nav: string;
+  /**
+   * This document's own URL, relative — `selfHref(c)`.
+   *
+   * The skip link is the only thing that reads it, and it cannot be derived
+   * from anything else here: `nav` is a section key, and `/admin/walls` and
+   * `/admin/walls/:id` share one. A bare `href="#mw-main"` would resolve
+   * against the `<base>` and leave the page entirely (see `self.ts`), so the
+   * link has to name the document it is on.
+   */
+  readonly self: string;
   /**
    * A primary action for the top-right of the shell's topbar, where a page has
    * one — e.g. "Add a calendar" linking to the add form. Already-escaped label;
@@ -2632,8 +2704,8 @@ export interface PageOptions {
   /**
    * The installed modules to list in the sidebar's Modules group. Read live per
    * request (see `navModules` in `admin.ts`) and passed in, because this file
-   * never touches the database. Absent on the wizard/sign-in, which have no
-   * sidebar; empty is fine and just draws the built-in modules and the Store.
+   * never touches the database. Empty is fine and just draws the built-in
+   * modules and the Store.
    */
   readonly modules?: readonly NavModule[];
   /**
@@ -2647,9 +2719,9 @@ export interface PageOptions {
    * lot of ceremony to make a screen say "Saved."
    */
   readonly saved?: Saved | undefined;
-  /** Already-escaped markup. */
-  readonly body: string;
 }
+
+export type PageOptions = WizardPageOptions | ShellPageOptions;
 
 /**
  * Does this page hold a form the dirty-state script should wire?
@@ -2781,6 +2853,26 @@ export function page(options: PageOptions): string {
     head(options.title, true) +
     `<body class="shell">` +
     /*
+     * Bypass blocks (WCAG 2.4.1, Level A), and the reason it is *first*.
+     *
+     * Measured on `/admin/calendars`: sixteen tab stops — the brand link,
+     * eleven nav links, sign-out and the three theme buttons — stand between
+     * the top of the document and its first control. Every admin screen is a
+     * fresh document load, so a keyboard or switch user paid all sixteen on
+     * every navigation rather than once per session.
+     *
+     * It goes above the drawer's checkbox rather than below it because the tab
+     * order is the document order and this has to be the first stop; the
+     * checkbox only requires that it precede the drawer and the scrim it
+     * selects with `~`, which an element in front of it does not disturb.
+     *
+     * The href is the document's own URL and not a bare fragment: see
+     * `self.ts`. Invisible until focused, which is geometry (`.skip` is
+     * translated off the top edge) rather than `display:none` — a link that is
+     * not rendered is not focusable, and then there is nothing to Tab to.
+     */
+    `<a class="skip" href="${escapeHtml(options.self)}#mw-main">Skip to content</a>` +
+    /*
      * The compact-width drawer's whole mechanism, and it is a checkbox.
      *
      * It holds the open state where CSS can read it, so the modal drawer needs
@@ -2823,7 +2915,11 @@ export function page(options: PageOptions): string {
     // same checkbox, drawn as the scrim. Hidden from assistive technology —
     // it is a surface to dismiss with, and the control is already named.
     `<label class="nav-scrim" for="mw-nav" aria-hidden="true"></label>` +
-    `<main class="main">` +
+    // `tabindex="-1"` so the fragment can land: a browser scrolls to an element
+    // that cannot hold focus and leaves focus where it was, so the next Tab
+    // resumes from the top of the navigation — the skip link would move the
+    // viewport and nothing else.
+    `<main class="main" id="mw-main" tabindex="-1">` +
     `<header class="topbar">` +
     // The app bar's leading icon, and the only way to the navigation below
     // 900px. It sits in the sticky bar rather than at the top of the document
@@ -2889,6 +2985,8 @@ export function page(options: PageOptions): string {
 export interface ConfirmDestroyOptions {
   readonly modules: readonly NavModule[];
   readonly nav: string;
+  /** This document's own URL, relative — `selfHref(c)`, for the skip link. */
+  readonly self: string;
   readonly title: string;
   readonly heading: string;
   readonly intro: string;
@@ -2908,6 +3006,7 @@ export function confirmDestroyPage(options: ConfirmDestroyOptions): string {
     modules: options.modules,
     title: options.title,
     nav: options.nav,
+    self: options.self,
     heading: options.heading,
     intro: options.intro,
     body:

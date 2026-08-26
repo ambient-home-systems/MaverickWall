@@ -18,6 +18,7 @@ import {
 import { colour, oneOf, parse, text } from '../validation.js';
 import { generateThemeTokens } from '../api/theme-generator.js';
 import { readSaved, savedRedirect } from './saved.js';
+import { selfHref } from './self.js';
 
 /**
  * The custom-theme builder (system settings).
@@ -147,6 +148,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     ];
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Remove theme',
         nav: 'themes',
@@ -216,6 +218,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       `</div></article>`;
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Themes — Maverick Wall',
       nav: 'themes',
@@ -256,9 +259,9 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   function builderPage(
     theme: ThemeRow | null,
-    values?: Record<string, unknown>,
-    error?: string,
-    c?: Context,
+    values: Record<string, unknown> | undefined,
+    error: string | undefined,
+    c: Context,
   ): string {
     const editing = theme !== null;
     // Prefer a rejected submission's own values, then the stored theme, then the
@@ -299,6 +302,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const action = editing ? `admin/themes/${encodeURIComponent(theme.id)}` : 'admin/themes';
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: `${editing ? 'Edit theme' : 'New theme'} — Maverick Wall`,
       nav: 'themes',

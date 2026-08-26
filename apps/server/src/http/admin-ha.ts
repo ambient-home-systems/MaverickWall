@@ -41,6 +41,7 @@ import { randomBytes } from 'node:crypto';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { ago, navModules, type AdminDeps } from './admin.js';
+import { selfHref } from './self.js';
 
 /** One schema per form on this screen. */
 const connectBody = z.object({
@@ -376,6 +377,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     if (!readHaSettings(deps.db).hasToken) return c.redirect('/admin/home-assistant', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Disconnect Home Assistant',
         nav: 'homeassistant',
@@ -482,6 +484,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     if (watched === undefined) return c.redirect('/admin/home-assistant', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Remove reading',
         nav: 'homeassistant',
@@ -593,6 +596,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     if (row === undefined) return c.redirect('/admin/home-assistant', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Delete rule',
         nav: 'homeassistant',
@@ -626,6 +630,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const connected = live.mode !== null;
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Home Assistant — Maverick Wall',
       nav: 'homeassistant',

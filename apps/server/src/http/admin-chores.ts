@@ -24,6 +24,7 @@ import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { escapeHtml, errorBlock, page, selectField, textField } from './html.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
+import { selfHref } from './self.js';
 
 /**
  * The Chores screen — where a chore is *defined* (RFC 008 phase 1).
@@ -257,6 +258,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
     const record = recentRecord(deps.db, chore, today(), readHousehold(deps.db).timezone);
     return c.html(
       page({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Remove chore',
         nav: 'chores',
@@ -525,6 +527,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
     const people = readPeople(deps.db);
 
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Chores — Maverick Wall',
       nav: 'chores',

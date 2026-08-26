@@ -11,6 +11,7 @@ import {
 import { checkbox, colour, optionalText, parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
+import { selfHref } from './self.js';
 
 /**
  * The Shift Types editor — the flexible half of the Work Schedule.
@@ -129,6 +130,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
     if (type === undefined) return c.redirect('/admin/shifts/types', 302);
     return c.html(
       confirmDestroyPage({
+        self: selfHref(c),
         modules: navModules(deps.db),
         title: 'Remove shift type',
         nav: 'shifts',
@@ -200,6 +202,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
   function typesPage(c: Context, error?: string): string {
     const types = readShiftTypes(deps.db);
     return page({
+      self: selfHref(c),
       modules: navModules(deps.db),
       title: 'Shift types — Maverick Wall',
       nav: 'shifts',
