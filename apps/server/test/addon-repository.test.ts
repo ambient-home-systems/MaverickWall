@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -179,5 +179,16 @@ describe('the working tree', () => {
      */
     const collisions = tracked().filter((f) => / \d+(\.[^/]+)?$/.test(f.split('/').pop() ?? ''));
     expect(collisions).toEqual([]);
+  });
+
+  it('has no tracked zero-byte files', () => {
+    /*
+     * `pnpm` and `maverick-wall@` were committed at the repository root with
+     * nothing in them — the same class of invisible mistake as the collision
+     * duplicates above: a plausible name, no diff to read, and nothing that
+     * looks for it. A stray empty file is never intentional content.
+     */
+    const empty = tracked().filter((f) => statSync(join(ROOT, f)).size === 0);
+    expect(empty).toEqual([]);
   });
 });
