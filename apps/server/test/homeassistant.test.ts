@@ -1172,8 +1172,11 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
     expect(page).toContain('Home Assistant · calendar.family');
     expect(page).not.toContain('unknown host');
     // Its events arrive through the Home Assistant connection, never the
-    // guarded fetcher, so there is no outbound rule to relax.
-    expect(page).not.toContain('Allow a local network address');
+    // guarded fetcher, so there is no outbound rule to relax. Scoped to this
+    // calendar's own row: the add form at the foot of the page carries the
+    // same network-access disclosure for an ordinary feed, and it should.
+    const row = page.slice(page.indexOf('Home Assistant · calendar.family'), page.indexOf('Add a calendar'));
+    expect(row).not.toContain('Network access');
   });
 
   it('draws no Home Assistant section when there is no Home Assistant', async () => {

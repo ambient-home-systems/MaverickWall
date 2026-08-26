@@ -662,6 +662,8 @@ export interface SourceSettings {
   readonly personId: string | null;
   readonly enabled: boolean;
   readonly allowPrivateNetwork: boolean;
+  readonly allowLoopback: boolean;
+  readonly allowHttp: boolean;
 }
 
 export function updateSource(db: SqliteDatabase, id: string, settings: SourceSettings): boolean {
@@ -670,7 +672,7 @@ export function updateSource(db: SqliteDatabase, id: string, settings: SourceSet
       .prepare(
         `UPDATE calendar_sources
             SET name = ?, color = ?, person_id = ?, enabled = ?, allow_private_network = ?,
-                updated_at = ?
+                allow_loopback = ?, allow_http = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -679,6 +681,8 @@ export function updateSource(db: SqliteDatabase, id: string, settings: SourceSet
         settings.personId,
         settings.enabled ? 1 : 0,
         settings.allowPrivateNetwork ? 1 : 0,
+        settings.allowLoopback ? 1 : 0,
+        settings.allowHttp ? 1 : 0,
         Date.now(),
         id,
       ).changes > 0

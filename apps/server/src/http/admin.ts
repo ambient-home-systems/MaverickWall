@@ -118,7 +118,68 @@ const sourceSettingsBody = z.object({
   person_id: optionalText(40),
   enabled: checkbox(),
   allow_lan: checkbox(),
+  allow_loopback: checkbox(),
+  allow_http: checkbox(),
 });
+
+/**
+ * The three SSRF opt-ins, stated once so the add form and a calendar's own
+ * settings show the same labels and the same wording (RFC 009 Phase 7).
+ *
+ * Before this, the add form drew three bare checkboxes with no explanation,
+ * the edit form drew only one of the three — as a switch, with a different
+ * label — and the other two were unchangeable once a calendar existed. All
+ * three now render the same way in both places, folded behind one
+ * `<details>` because a household adding an ordinary public feed should never
+ * have to read past "Add" to get there.
+ */
+const NETWORK_ACCESS_FIELDS: readonly { readonly name: string; readonly label: string; readonly hint: string }[] = [
+  {
+    name: 'allow_lan',
+    label: 'Allow a local network address',
+    hint:
+      'Local network access lets this feed reach devices inside your home. ' +
+      'Only turn it on for a calendar you host yourself.',
+  },
+  {
+    name: 'allow_loopback',
+    label: 'Allow this machine itself',
+    hint:
+      'Lets this feed reach the machine Maverick Wall is running on. Only turn ' +
+      'it on for a calendar hosted on this same box.',
+  },
+  {
+    name: 'allow_http',
+    label: 'Allow plain http',
+    hint:
+      'This address would not be encrypted. Calendar addresses are passwords in ' +
+      'effect, so only turn this on for a feed you trust on your own network.',
+  },
+];
+
+function networkAccessDisclosure(values: {
+  allowPrivateNetwork: boolean;
+  allowLoopback: boolean;
+  allowHttp: boolean;
+}): string {
+  const checked: Readonly<Record<string, boolean>> = {
+    allow_lan: values.allowPrivateNetwork,
+    allow_loopback: values.allowLoopback,
+    allow_http: values.allowHttp,
+  };
+  return (
+    `<details class="disclose"><summary>Network access</summary>` +
+    NETWORK_ACCESS_FIELDS.map((field) =>
+      switchRow({
+        label: field.label,
+        name: field.name,
+        checked: checked[field.name] === true,
+        hint: field.hint,
+      }),
+    ).join('') +
+    `</details>`
+  );
+}
 
 /**
  * One calendar's settings as the household left them, for a page that comes
@@ -141,6 +202,8 @@ interface SourceEcho {
   readonly personId: string;
   readonly enabled: boolean;
   readonly allowLan: boolean;
+  readonly allowLoopback: boolean;
+  readonly allowHttp: boolean;
 }
 
 /** The echo, read off the raw body — before any schema has had an opinion. */
@@ -153,6 +216,8 @@ function sourceEchoOf(sourceId: string, body: Record<string, unknown>): SourceEc
     personId: str('person_id'),
     enabled: typeof body['enabled'] === 'string',
     allowLan: typeof body['allow_lan'] === 'string',
+    allowLoopback: typeof body['allow_loopback'] === 'string',
+    allowHttp: typeof body['allow_http'] === 'string',
   };
 }
 
@@ -965,6 +1030,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       personId: personId ?? null,
       enabled: shaped.value.enabled,
       allowPrivateNetwork: shaped.value.allow_lan,
+      allowLoopback: shaped.value.allow_loopback,
+      allowHttp: shaped.value.allow_http,
     });
     return saved
       ? savedRedirect(c, '/admin/calendars', 'calendar-settings')
@@ -4504,6 +4571,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             : null,
       enabled: echo?.enabled ?? source.enabled === 1,
       allowLan: echo?.allowLan ?? source.allowPrivateNetwork === 1,
+      allowLoopback: echo?.allowLoopback ?? source.allowLoopback === 1,
+      allowHttp: echo?.allowHttp ?? source.allowHttp === 1,
     };
     const personOptions =
       `<option value=""${shown.personId === null ? ' selected' : ''}>Everyone</option>` +
@@ -4566,13 +4635,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // the control would do nothing whichever way it was set.
       (source.kind === 'homeassistant'
         ? ''
-        : switchRow({
-            label: 'Allow a local network address',
-            name: 'allow_lan',
-            checked: shown.allowLan,
-            hint:
-              'Local network access lets this feed reach devices inside your home. ' +
-              'Only turn it on for a calendar you host yourself.',
+        : networkAccessDisclosure({
+            allowPrivateNetwork: shown.allowLan,
+            allowLoopback: shown.allowLoopback,
+            allowHttp: shown.allowHttp,
           })) +
       saveRow('admin/calendars') +
       `</form>` +
@@ -4705,8 +4771,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const at = now();
     const sources = readAdminSources(deps.db);
     const people = readPeopleAdmin(deps.db);
-    const box = (id: string, label: string, on: boolean): string =>
-      `<label><input type="checkbox" name="${id}" value="1"${on ? ' checked' : ''}> ${escapeHtml(label)}</label>`;
 
     return page({
       modules: navModules(deps.db),
@@ -4771,11 +4835,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
                   )
                   .join(''),
             })) +
-        `<div class="checks">` +
-        box('allow_lan', 'This feed is on my local network', values.allowPrivateNetwork === true) +
-        box('allow_loopback', 'This feed is on this machine', values.allowLoopback === true) +
-        box('allow_http', 'Allow plain http for this feed', values.allowHttp === true) +
-        `</div>` +
+        networkAccessDisclosure({
+          allowPrivateNetwork: values.allowPrivateNetwork === true,
+          allowLoopback: values.allowLoopback === true,
+          allowHttp: values.allowHttp === true,
+        }) +
         // Two buttons, one form. Testing first is the cheap habit this screen
         // exists to encourage, so it is the one on the left.
         `<div class="row">` +
