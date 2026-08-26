@@ -26,7 +26,7 @@ import { readSaved, savedRedirect } from './saved.js';
  * is where a household builds its own. The form is server-rendered and saves
  * with a plain POST — it works with no scripting — and `assets/theme-editor.js`
  * enhances it with a live preview and contrast guidance. A custom theme is
- * selectable on the Displays screen exactly like a built-in.
+ * selectable on the Walls page exactly like a built-in.
  */
 
 /** A new theme starts from Board's palette — a known-legible dark default. */
@@ -224,13 +224,13 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       action: { label: 'New theme', href: 'admin/themes/new' },
       intro:
         'Build your own colours for the wall. A theme you make here is selectable on ' +
-        'the Displays screen, as the default or for one screen, beside the four built in.',
+        'the Walls page, as the default or for one wall, beside the four built in.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
         (custom.length === 0
           ? `<p class="hint">No custom themes yet. The four built-in directions (Board, ` +
-            `Kitchen Slate, Paper Almanac, Glance) are always available on the Displays ` +
-            `screen. Make your own with “New theme”.</p>`
+            `Kitchen Slate, Paper Almanac, Glance) are always available on the Walls ` +
+            `page. Make your own with “New theme”.</p>`
           : `<div class="grid g2">${custom.map(card).join('')}</div>`) +
 
         `<h2 class="add">Generate from a colour</h2>` +

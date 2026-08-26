@@ -2312,49 +2312,48 @@ export interface NavModule {
   readonly enabled: boolean;
 }
 
-/** The Overview item sits above the groups, in none of them. */
-const OVERVIEW: NavItem = { key: 'home', label: 'Overview', href: 'admin', icon: 'overview' };
-
 const GROUPS: readonly { readonly key: string; readonly label: string; readonly items: readonly NavItem[] }[] = [
   {
-    key: 'modules',
-    label: 'Modules',
+    key: 'calendar',
+    label: 'Calendar',
     items: [
+      // Overview used to sit above every group, in none of them; it is the
+      // first thing a household about their calendar wants, so it is the
+      // first item of the first group rather than a special case in navBar.
+      { key: 'home', label: 'Overview', href: 'admin', icon: 'overview' },
       { key: 'calendars', label: 'Calendars', href: 'admin/calendars', icon: 'calendars' },
+      { key: 'people', label: 'People', href: 'admin/people', icon: 'people' },
       { key: 'shifts', label: 'Work Schedule', href: 'admin/shifts', icon: 'shifts' },
       // Defining a chore is admin work; ticking one off is the wall's, and
       // deliberately not here (RFC 008).
       { key: 'chores', label: 'Chores', href: 'admin/chores', icon: 'chores' },
-      { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
-      { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
-      { key: 'modules', label: 'Store', href: 'admin/modules', icon: 'addons' },
     ],
   },
   {
     key: 'walls',
     label: 'Walls',
     items: [
-      // Screens (pairing) and Layout were two sections for one thing; a display
-      // is now a single place — its status, pairing, settings and layout.
-      { key: 'displays', label: 'Displays', href: 'admin/displays', icon: 'screens' },
-      // The e-paper panels are their own kind — server-rendered, pulled by a
-      // device or pushed by Home Assistant — so they get one door of their own
-      // rather than sitting in the browser-wall list (RFC 006).
-      { key: 'epaper', label: 'eInk Displays', href: 'admin/epaper', icon: 'screens' },
+      // One list, one nav item, for every screen kind — browser and e-paper
+      // alike carry a kind chip on their row rather than a nav entry each
+      // (RFC 009 Phase 4). `/admin/walls` is canonical; the old `/admin/displays`
+      // and `/admin/epaper` routes redirect into it.
+      { key: 'walls', label: 'Walls', href: 'admin/walls', icon: 'screens' },
+      { key: 'themes', label: 'Themes', href: 'admin/themes', icon: 'palette' },
     ],
   },
   {
-    key: 'settings',
-    label: 'Settings',
+    key: 'extras',
+    label: 'Extras',
     items: [
-      // The old global "Display" page is gone: appearance and layout are now
-      // per wall (the Default included), on the Displays screen. What is left
-      // here is the household's own themes, its people, and the box's
-      // housekeeping.
-      { key: 'themes', label: 'Themes', href: 'admin/themes', icon: 'palette' },
-      { key: 'people', label: 'People', href: 'admin/people', icon: 'people' },
-      { key: 'system', label: 'System', href: 'admin/system', icon: 'system' },
+      { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
+      { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
+      { key: 'modules', label: 'Store', href: 'admin/modules', icon: 'addons' },
     ],
+  },
+  {
+    key: 'system',
+    label: 'System',
+    items: [{ key: 'system', label: 'System', href: 'admin/system', icon: 'system' }],
   },
 ];
 
@@ -2389,7 +2388,10 @@ function navBar(active: string, modules: readonly NavModule[]): string {
   const groups = GROUPS.map((g) => {
     let body: string;
     const store = g.items[g.items.length - 1];
-    if (g.key === 'modules' && modules.length > 0 && store !== undefined) {
+    // Installed modules attach to whichever group holds the Store item, found
+    // by item key rather than group key — the Store moved into Extras and a
+    // group-key check would silently stop finding it.
+    if (modules.length > 0 && store !== undefined && store.key === 'modules') {
       // Built-ins, then one entry per installed module, then the Store — which
       // is the last item in the group by construction.
       const builtins = g.items.slice(0, -1).map(item).join('');
@@ -2400,7 +2402,7 @@ function navBar(active: string, modules: readonly NavModule[]): string {
     return `<div class="nav-group"><span>${escapeHtml(g.label)}</span>${body}</div>`;
   }).join('');
 
-  return `<nav class="nav" aria-label="Admin">${item(OVERVIEW)}${groups}</nav>`;
+  return `<nav class="nav" aria-label="Admin">${groups}</nav>`;
 }
 
 export interface PageOptions {

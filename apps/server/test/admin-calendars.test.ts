@@ -375,7 +375,7 @@ describe('display settings', () => {
     const h = await harness();
     // The default appearance form lives on the Default display now, not the
     // retired global Display page.
-    const body = await (await h.call('/admin/displays/default')).text();
+    const body = await (await h.call('/admin/walls/default')).text();
     for (const theme of ['household', 'blueprint', 'panels', 'almanac']) {
       expect(body).toContain(`value="${theme}"`);
     }
@@ -513,10 +513,10 @@ describe('screens', () => {
   it('lists paired screens behind the session gate', async () => {
     const h = await harness();
     pair(h.db, 'Kitchen');
-    expect(await (await h.call('/admin/displays')).text()).toContain('Kitchen');
+    expect(await (await h.call('/admin/walls')).text()).toContain('Kitchen');
 
     h.jar.clear();
-    expect((await h.call('/admin/displays')).status).toBe(302);
+    expect((await h.call('/admin/walls')).status).toBe(302);
   });
 
   it('carries orientation and rotation to that screen and no other', async () => {
@@ -559,7 +559,7 @@ describe('screens', () => {
     await h.form(`/admin/screens/${screen.id}`, {
       name: 'Living room', orientation: 'auto', rotation: '0',
     });
-    expect(await (await h.call('/admin/displays')).text()).toContain('Living room');
+    expect(await (await h.call('/admin/walls')).text()).toContain('Living room');
   });
 
   it('refuses a rotation that is not a quarter turn', async () => {

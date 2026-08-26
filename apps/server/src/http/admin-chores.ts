@@ -524,7 +524,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       action: { label: 'Add a chore', href: 'admin/chores#add' },
       intro:
         'What gets done around the house, and when. Chores are set up here and ' +
-        'shown on the wall — this is the screen you come back to twice a year, ' +
+        'shown on the wall — this is the page you come back to twice a year, ' +
         'not the one anybody uses to say a chore is done.',
       body:
         (error === undefined ? '' : errorBlock(error)) +

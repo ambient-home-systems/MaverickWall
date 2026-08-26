@@ -95,7 +95,7 @@ export const SAVED_MESSAGES = {
   'layout-copied': 'Layout copied.',
   'layout-reset': 'Layout reset.',
   // eInk (e-paper)
-  'epaper-screen-removed': 'eInk screen removed.',
+  'epaper-screen-removed': 'eInk wall removed.',
   'epaper-source-saved': 'Panel layout source saved.',
   // Home Assistant
   'ha-connected': 'Connected to Home Assistant.',

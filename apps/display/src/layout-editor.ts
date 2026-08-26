@@ -201,7 +201,7 @@ function boot(): void {
     };
   };
 
-  // The viewport this screen last reported, for the "match screen" button.
+  // The viewport this wall last reported, for the "match this wall" button.
   // Editor-only, so it lives beside the state rather than in it.
   let report: { readonly w: number; readonly h: number } | undefined;
 
@@ -441,7 +441,7 @@ function boot(): void {
   const orientToggle = document.createElement('div');
   orientToggle.className = 'le-orient seg';
   orientToggle.setAttribute('role', 'group');
-  orientToggle.setAttribute('aria-label', 'Which canvas you are arranging');
+  orientToggle.setAttribute('aria-label', 'Which layout you are arranging');
   const orientButtons: Record<'portrait' | 'landscape', HTMLButtonElement> = {
     portrait: document.createElement('button'),
     landscape: document.createElement('button'),
@@ -476,7 +476,7 @@ function boot(): void {
 
   const aspectSelect = document.createElement('select');
   aspectSelect.className = 'le-aspect';
-  aspectSelect.setAttribute('aria-label', 'Canvas size');
+  aspectSelect.setAttribute('aria-label', 'Layout size');
   for (const a of ASPECTS) {
     const opt = document.createElement('option');
     opt.value = String(a.value);
@@ -485,8 +485,8 @@ function boot(): void {
     aspectSelect.appendChild(opt);
   }
 
-  // "Match screen" — set the active canvas's aspect to this screen's real
-  // reported size, for the orientation being edited. Only a paired screen that
+  // "Match this wall" — set the active canvas's aspect to this wall's real
+  // reported size, for the orientation being edited. Only a paired wall that
   // has checked in reports one; the shared Default has no single size to match.
   const matchButton = document.createElement('button');
   matchButton.type = 'button';
@@ -494,7 +494,7 @@ function boot(): void {
   if (report !== undefined) {
     const big = Math.max(report.w, report.h);
     const small = Math.min(report.w, report.h);
-    matchButton.textContent = `Match this screen (${report.w}×${report.h})`;
+    matchButton.textContent = `Match this wall (${report.w}×${report.h})`;
     matchButton.addEventListener('click', () => {
       // Wide for landscape, tall for portrait, from the same reported pixels.
       state.aspect = round3(state.orientation === 'landscape' ? big / small : small / big);
@@ -625,7 +625,7 @@ function boot(): void {
     // screen — "Reset" on its own never said what it would take.
     const question = epaperHost
       ? 'Reset this panel to its built-in layout? Your current arrangement is removed.'
-      : 'Reset both the portrait and landscape layouts of this display to the Classic ' +
+      : 'Reset both the portrait and landscape layouts of this wall to the Classic ' +
         'layout? Everything arranged here is replaced.';
     if (!window.confirm(question)) {
       event.preventDefault();
@@ -654,18 +654,18 @@ function boot(): void {
   {
     const title = document.createElement('div');
     title.className = 'le-pop-title';
-    title.textContent = 'Canvas';
+    title.textContent = 'Layout';
     const sub = document.createElement('div');
     sub.className = 'le-pop-sub';
     sub.textContent = epaperHost
       ? 'The panel’s own shape. It is fixed by the hardware.'
-      : 'The shape you are arranging. The wall fits it to the screen it is on.';
+      : 'The shape you are arranging. The wall fits it to the device it is on.';
     canvasPopover.append(title, sub);
     if (!epaperHost) {
       const sizeRow = document.createElement('div');
       sizeRow.className = 'le-pop-row';
       const sizeLabel = document.createElement('span');
-      sizeLabel.textContent = 'Canvas size';
+      sizeLabel.textContent = 'Layout size';
       sizeRow.append(sizeLabel, aspectSelect);
       canvasPopover.appendChild(sizeRow);
       if (report !== undefined) {
@@ -765,7 +765,7 @@ function boot(): void {
   barTools.append(canvasButton, canvasPopover, layersButton, layersPopover);
 
   /**
-   * What the canvas currently is, in words — on the "Canvas" button and on the
+   * What the canvas currently is, in words — on the "Layout" button and on the
    * preview header, which is the one place the wall's size and its update
    * cadence are stated. They used to be repeated under every widget panel.
    */
@@ -775,14 +775,14 @@ function boot(): void {
       const big = Math.max(report.w, report.h);
       const small = Math.min(report.w, report.h);
       const matched = state.orientation === 'landscape' ? big / small : small / big;
-      if (Math.abs(matched - state.aspect) < 0.01) return `Match screen · ${report.w}×${report.h}`;
+      if (Math.abs(matched - state.aspect) < 0.01) return `Match wall · ${report.w}×${report.h}`;
     }
     const preset = ASPECTS.find((a) => Math.abs(a.value - state.aspect) < 0.01);
     return preset?.label ?? `Custom · ${round3(state.aspect)}`;
   }
 
   function updateCanvasLabel(): void {
-    canvasButton.textContent = `Canvas — ${canvasSizeLabel()}`;
+    canvasButton.textContent = `Layout — ${canvasSizeLabel()}`;
     const dims = document.querySelector<HTMLElement>('[data-preview-dims]');
     if (dims !== null) dims.textContent = `${canvasSizeLabel()} · updates within a minute`;
   }
@@ -929,7 +929,7 @@ function boot(): void {
   const inspectorEmpty = document.createElement('p');
   inspectorEmpty.className = 'insp-empty';
   inspectorEmpty.textContent =
-    'Nothing selected. Tap a widget on the canvas to change what it shows and how it looks.';
+    'Nothing selected. Tap a widget on the layout to change what it shows and how it looks.';
   inspectorHost.appendChild(inspectorEmpty);
 
   // Escape closes the inspector wherever focus is inside it, and hands focus
@@ -1241,7 +1241,7 @@ function boot(): void {
    * manifest uses, so this is not a second opinion about *which* widgets. The
    * one thing decided here is the never-empty guard, and it is the same rule
    * for the same reason (rule nine): a canvas that filtered away to nothing
-   * would draw "Nothing on this display yet" — a lie about a canvas somebody is
+   * would draw "Nothing on this wall yet" — a lie about a canvas somebody is
    * looking at while they arrange it.
    */
   function drawnWidgets(): Widget[] {
@@ -1261,7 +1261,7 @@ function boot(): void {
    *
    * The type is not enough. Omission is per canvas, not per widget: a canvas
    * that filtered away to nothing keeps everything (rule nine — a wall somebody
-   * arranged must not read as "nothing on this display yet"), so on a canvas of
+   * arranged must not read as "nothing on this wall yet"), so on a canvas of
    * only unconfigured widgets every one of them *is* drawn. Flagging by type
    * alone would then label a box "not on the wall" while the wall and the
    * preview beside it both drew it — the same contradiction the preview filter
@@ -1922,8 +1922,8 @@ function boot(): void {
       note.className = 'hint';
       note.textContent =
         other === undefined
-          ? 'No panel is drawing this canvas.'
-          : `${other.name} draws the ${other.orientation} canvas. Switch the canvas above to ` +
+          ? 'No panel is drawing this layout.'
+          : `${other.name} draws the ${other.orientation} layout. Switch the layout above to ` +
             `${other.orientation === 'landscape' ? 'Landscape' : 'Portrait'} to change what it says there.`;
       configPanel.appendChild(note);
       return;
@@ -1948,7 +1948,7 @@ function boot(): void {
      */
     const frame = document.createElement('img');
     frame.className = 'insp-ink-frame';
-    frame.alt = `${panel.name} as it will draw this canvas`;
+    frame.alt = `${panel.name} as it will draw this layout`;
     if (inkObjectUrl !== undefined) frame.src = inkObjectUrl;
     inkImage = frame;
     configPanel.appendChild(frame);
@@ -2025,7 +2025,7 @@ function boot(): void {
     if (state.modules.length === 0) {
       const note = document.createElement('p');
       note.className = 'hint';
-      note.textContent = 'No modules yet — add one on the Add-ons screen first.';
+      note.textContent = 'No modules yet — add one on the Store page first.';
       field.appendChild(note);
       configPanel.appendChild(field);
       return;
@@ -2221,7 +2221,7 @@ function boot(): void {
         state.people.map((person) => ({ value: person.id, label: person.name })),
         Array.isArray(cfg['people']) ? (cfg['people'] as string[]) : [],
         (values) => setConfig(widget, 'people', values),
-        'No people yet — add them on the People screen.',
+        'No people yet — add them on the People page.',
       ),
     );
     configPanel.appendChild(which);
@@ -2456,7 +2456,7 @@ function boot(): void {
           state.calendars.map((c) => ({ value: c.id, label: c.name })),
           Array.isArray(cfg['calendars']) ? (cfg['calendars'] as string[]) : [],
           (values) => setConfig(widget, 'calendars', values),
-          'No calendars yet — add one on the Calendars screen.',
+          'No calendars yet — add one on the Calendars page.',
         ),
       );
       configPanel.appendChild(which);
@@ -2475,7 +2475,7 @@ function boot(): void {
           state.calendars.map((c) => ({ value: c.id, label: c.name })),
           Array.isArray(cfg['calendars']) ? (cfg['calendars'] as string[]) : [],
           (values) => setConfig(widget, 'calendars', values),
-          'No calendars yet — add one on the Calendars screen.',
+          'No calendars yet — add one on the Calendars page.',
         ),
       );
       configPanel.appendChild(which);
@@ -2599,7 +2599,7 @@ function boot(): void {
         state.people.map((person) => ({ value: person.id, label: person.name })),
         Array.isArray(cfg['people']) ? (cfg['people'] as string[]) : [],
         (values) => setConfig(widget, 'people', values),
-        'Nobody has a rota yet — set one up on the Shifts screen.',
+        'Nobody has a rota yet — set one up on the Work Schedule page.',
       ),
     );
     configPanel.appendChild(who);
@@ -2768,7 +2768,7 @@ function boot(): void {
     note.textContent =
       widget.type === 'homeassistant'
         ? 'Each reading follows the shape you set it on the Home Assistant ' +
-          'screen. Change this list and every reading in this widget uses it ' +
+          'page. Change this list and every reading in this widget uses it ' +
           'instead — one shape for all of them.'
         : 'First is drawn first, and given up last. When the box is too small ' +
           'the bottom of the list goes first — so put what matters at the top.';
@@ -2951,7 +2951,7 @@ function boot(): void {
     const widget = state.widgets.find((w) => w.id === selected);
     if (widget === undefined) return;
     const question =
-      `Remove the ${labelFor(widget.type)} widget from this canvas? ` +
+      `Remove the ${labelFor(widget.type)} widget from this layout? ` +
       'Nothing is written until you press Save wall, so Discard changes brings it back.';
     if (!window.confirm(question)) return;
     state.widgets = state.widgets.filter((w) => w.id !== widget.id);

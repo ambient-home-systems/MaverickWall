@@ -558,7 +558,7 @@ export function createApp(deps: AppDeps): Hono {
     const screen = authenticateScreen(c, screens);
     if (!screen) {
       return c.json(
-        { error: 'unauthorized', message: 'This screen is not paired.' },
+        { error: 'unauthorized', message: 'This wall is not paired.' },
         401,
       );
     }
@@ -665,7 +665,7 @@ export function createApp(deps: AppDeps): Hono {
     const screen = c.get('screen') as ScreenRow;
     if (screen.allowChores !== 1) {
       return c.json(
-        { error: 'not-allowed', message: 'This screen cannot tick chores off.' },
+        { error: 'not-allowed', message: 'This wall cannot tick chores off.' },
         403,
       );
     }
@@ -1010,7 +1010,7 @@ export function createApp(deps: AppDeps): Hono {
 
   const unauthorized = (c: Context): Response => {
     stamped(c);
-    return c.json({ error: 'unauthorized', message: 'This screen is not paired.' }, 401);
+    return c.json({ error: 'unauthorized', message: 'This wall is not paired.' }, 401);
   };
 
   const unavailable = (c: Context): Response => {
@@ -1018,7 +1018,7 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(
       {
         error: 'unavailable',
-        message: 'This wall could not be built just now. The screen will try again shortly.',
+        message: 'This wall could not be built just now. It will try again shortly.',
       },
       503,
     );
@@ -1525,11 +1525,11 @@ export function createApp(deps: AppDeps): Hono {
     // rather than fail the screen; polling and manual entry are both still there.
     if (started === undefined) {
       return c.json(
-        { error: 'busy', message: 'Too many screens are pairing right now. Try again shortly.' },
+        { error: 'busy', message: 'Too many walls are pairing right now. Try again shortly.' },
         503,
       );
     }
-    // The household approves at the Screens page; the code is pre-filled so a
+    // The household approves at the Walls page; the code is pre-filled so a
     // scanned QR lands ready to confirm. Built with the display's own short-code
     // spacing so the code on the wall and the code in the link read the same.
     const origin = reachableOrigin(c);

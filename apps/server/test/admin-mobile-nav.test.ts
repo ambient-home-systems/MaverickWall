@@ -138,7 +138,7 @@ function compactShellBlock(css: string): string {
   throw new Error('unbalanced braces in the compact-width block');
 }
 
-const PAGES = ['/admin', '/admin/calendars', '/admin/displays', '/admin/system'];
+const PAGES = ['/admin', '/admin/calendars', '/admin/walls', '/admin/system'];
 
 describe('the admin navigation at compact width', () => {
   it('carries the drawer toggle, its scrim and the app bar button, in that order', async () => {

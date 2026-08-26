@@ -1047,7 +1047,7 @@ function choreRow(item: ChoreItemModel, withPerson: boolean, tickable = false): 
 function renderChoresWidget(model: DisplayModel, config?: unknown): HTMLElement {
   const board = model.chores;
   if (board === undefined) {
-    return el('div', 'cd-empty', 'No chores yet — add some on the Chores screen.');
+    return el('div', 'cd-empty', 'No chores yet — add some on the Chores page.');
   }
 
   const cfg = widgetConfig(config);
@@ -1704,7 +1704,7 @@ export function renderFreeform(
   // being a blank rectangle nobody can explain from the kitchen (rule nine). It
   // is the whole-canvas twin of the per-widget "nothing to show yet" note.
   if (layout.widgets.length === 0) {
-    canvas.appendChild(el('div', 'canvas-empty', 'Nothing on this display yet.'));
+    canvas.appendChild(el('div', 'canvas-empty', 'Nothing on this wall yet.'));
   }
 
   screen.appendChild(canvas);
@@ -2109,12 +2109,12 @@ export function renderPairing(
 ): void {
   const screen = el('div', 'screen screen-message');
   const panel = el('section', 'message pairing');
-  panel.appendChild(el('h1', undefined, 'Pair this screen'));
+  panel.appendChild(el('h1', undefined, 'Pair this wall'));
   panel.appendChild(
     el(
       'p',
       undefined,
-      'On another device, open Maverick Wall, add this screen under Screens, ' +
+      'On another device, open Maverick Wall, add this wall under Walls, ' +
         'and type the pairing code it shows.',
     ),
   );

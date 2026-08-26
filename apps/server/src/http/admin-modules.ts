@@ -379,7 +379,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       seg('takeover', 'Take over') +
       `</form></div>` +
       `<p class="hint" style="margin-top:6px">${escapeHtml(status)} A module can raise ` +
-      `a banner or cover the wall, but never wake a screen that has gone dark for ` +
+      `a banner or cover the wall, but never wake a wall that has gone dark for ` +
       `the night, and you can always clear it from the wall.</p>`
     );
   }

@@ -115,7 +115,7 @@ describe('adding a screen from the admin UI', () => {
     const h = await harness();
     const html = await (await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Hall' })).text();
     expect(pairUrl(html)).toBe(extractToken(html, 'http://192.168.1.10:8080'));
-    expect(html).not.toContain('nowhere from a wall screen');
+    expect(html).not.toContain('nowhere from a wall');
   });
 
   it('the token it prints actually works over the port it names', async () => {
@@ -166,7 +166,7 @@ describe('pairing through Home Assistant ingress', () => {
 
     expect(pairUrl(html)).toContain('http://192.168.1.50:8080/pair?token=');
     expect(pairUrl(html)).not.toContain('a0d7b954-maverick-wall');
-    expect(html).not.toContain('nowhere from a wall screen');
+    expect(html).not.toContain('nowhere from a wall');
   });
 
   it('says so plainly when base_url is still localhost', async () => {
@@ -181,7 +181,7 @@ describe('pairing through Home Assistant ingress', () => {
       )
     ).text();
 
-    expect(html).toContain('nowhere from a wall screen');
+    expect(html).toContain('nowhere from a wall');
     expect(html).toContain('base_url');
   });
 });
@@ -241,7 +241,7 @@ describe('when the supervisor knows the port state', () => {
     ).text();
 
     expect(html).toContain('mapped to 8090');
-    expect(html).toContain('nowhere from a wall screen');
+    expect(html).toContain('nowhere from a wall');
   });
 });
 

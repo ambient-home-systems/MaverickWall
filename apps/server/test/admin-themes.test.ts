@@ -119,7 +119,7 @@ describe('the theme builder', () => {
     await h.form('/admin/themes', themeFields('Sunset'));
     const id = readThemes(h.db)[0]?.id ?? '';
 
-    const appearance = await (await h.call('/admin/displays/default')).text();
+    const appearance = await (await h.call('/admin/walls/default')).text();
     expect(appearance).toContain(`custom:${id}`);
     expect(appearance).toContain('Sunset');
 

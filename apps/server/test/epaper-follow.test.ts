@@ -308,12 +308,12 @@ describe('the ink lane in a wall’s editor', () => {
     ).id;
 
     // No panel following: no lane, and not one control that would do nothing.
-    expect(await (await h.call(`${B}/admin/displays/${wallId}`)).text()).not.toContain('&quot;ink&quot;');
+    expect(await (await h.call(`${B}/admin/walls/${wallId}`)).text()).not.toContain('&quot;ink&quot;');
 
     const p = await panel(h, 'Porch');
     await h.post(`${B}/admin/epaper/${p.id}/source`, { source: `follow:${wallId}` });
 
-    const withPanel = await (await h.call(`${B}/admin/displays/${wallId}`)).text();
+    const withPanel = await (await h.call(`${B}/admin/walls/${wallId}`)).text();
     expect(withPanel).toContain('&quot;ink&quot;');
     // The tables travel with it: what the lane offers, and what a panel cannot
     // draw at all.
@@ -322,14 +322,14 @@ describe('the ink lane in a wall’s editor', () => {
     expect(withPanel).toContain('Drop shadow');
 
     // And it is on the canvas the panel actually follows, not on every wall.
-    expect(await (await h.call(`${B}/admin/displays/default`)).text()).not.toContain('&quot;ink&quot;');
+    expect(await (await h.call(`${B}/admin/walls/default`)).text()).not.toContain('&quot;ink&quot;');
   });
 
   it('follows the Default display’s editor when that is what is followed', async () => {
     const h = await harness();
     const p = await panel(h, 'Porch');
     await h.post(`${B}/admin/epaper/${p.id}/source`, { source: 'follow:default' });
-    expect(await (await h.call(`${B}/admin/displays/default`)).text()).toContain('&quot;ink&quot;');
+    expect(await (await h.call(`${B}/admin/walls/default`)).text()).toContain('&quot;ink&quot;');
   });
 });
 

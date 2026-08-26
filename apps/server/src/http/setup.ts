@@ -752,7 +752,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         `<span>${escapeHtml(LIFE_SAFETY_DISCLAIMER)}</span></div>` +
         `<p class="hint">National Weather Service alerts are shown in the United ` +
         `States. You can change what each level does, or switch them off, on the ` +
-        `Weather alerts screen.</p>`,
+        `Weather page.</p>`,
     });
   }
 
@@ -881,11 +881,11 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       heading: 'That is everything',
       intro:
         sourceCount === 0
-          ? 'No calendars yet — you can add one from the Calendars screen whenever you like.'
+          ? 'No calendars yet — you can add one from the Calendars page whenever you like.'
           : 'Your calendar will sync within a few seconds.',
       body:
-        `<p>Pair a wall display from the <a class="link" href="admin/displays">Displays</a> ` +
-        `screen — it gives you a QR code and a link to open on the screen itself.</p>` +
+        `<p>Pair a wall from the <a class="link" href="admin/walls">Walls</a> ` +
+        `page — it gives you a QR code and a link to open on the wall itself.</p>` +
         `<p><a class="link" href="admin">Go to the admin →</a></p>`,
     });
   }
