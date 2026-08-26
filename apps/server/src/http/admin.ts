@@ -3227,6 +3227,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         : `${person.sourceCount} calendar${person.sourceCount === 1 ? '' : 's'}`) +
       (person.hasShiftRotation === 1 ? ' · has a shift rotation' : '') +
       `</p>` +
+
+      /*
+       * Folded away, same idiom as `choreCard` and the calendar row: the name,
+       * colour and picture are set once and rarely revisited, so a household
+       * with several people should see a list of people, not a stack of two
+       * open forms per person.
+       */
+      `<details class="disclose"><summary>Edit ${escapeHtml(person.name)}</summary>` +
       `<form method="post" action="admin/people/${encodeURIComponent(person.id)}">` +
       `<div class="row-fields">` +
       textField({ label: 'Name', name: 'name', required: true, value: person.name }) +
@@ -3247,6 +3255,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       }) +
       `<button class="secondary" type="submit">` +
       `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
+      `</details>` +
 
       // Up/Down reorder the wall's legend and its shift order; the ends drop
       // the button that would do nothing, the way the shift-type card does.
@@ -4619,6 +4628,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       )}</p>` +
       status +
 
+      /*
+       * Folded away, because a list of calendars has to read as a list.
+       *
+       * Expanded, one card is a name, a colour, an owner, a sync switch and the
+       * network-access disclosure — the same weight the chore editor used to
+       * carry per chore, for something looked at once at setup and rarely
+       * again. The facts that matter for a glance (name, host, sync status)
+       * stay above the fold; the `<details>` is the script-free split, same as
+       * `admin-chores.ts`'s `choreCard`. Open by default when there is an
+       * echo — a rejected save's edits and the reason for it must not be
+       * hidden behind a tap the household has no reason to make.
+       */
+      `<details class="disclose"${echo === undefined ? '' : ' open'}>` +
+      `<summary>Edit ${escapeHtml(source.name)}</summary>` +
+
       // When a calendar belongs to someone, their colour wins on the wall — so
       // the picker becomes a dead control. Show it as owned rather than let a
       // household set a colour that silently does nothing; the hidden field
@@ -4662,6 +4686,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           })) +
       saveRow('admin/calendars') +
       `</form>` +
+      `</details>` +
 
       `<div class="row">` +
       /*
