@@ -529,7 +529,7 @@ describe('per-type shift colour and times', () => {
 });
 
 /*
- * Week numbers (RFC 007 phase 4).
+ * Week numbers (RFC 010 phase 4).
  *
  * The expected values come from GNU coreutils (`date +%V` for ISO, `date +%U`
  * for the Sunday-start count, which numbers from the first Sunday and so runs

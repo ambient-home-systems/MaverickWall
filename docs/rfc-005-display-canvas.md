@@ -10,7 +10,7 @@ first-party `WIDGET_TYPES` allowlist where [RFC 001](./rfc-001-module-framework.
 > Part C below describes it under its original name. The options and the stored
 > `mode` key are unchanged; only the label moved, so that the control groups with
 > the panel's other appearance settings instead of with its content filters. The
-> reasoning is in [RFC 007](./rfc-007-agenda-design.md#phase-0--show-as-becomes-style).
+> reasoning is in [RFC 010](./rfc-010-agenda-design.md#phase-0--show-as-becomes-style).
 
 ## Summary
 

@@ -426,7 +426,7 @@ export interface ManifestDay {
   readonly shifts: readonly ManifestPersonShift[];
   readonly events: readonly ManifestEvent[];
   /**
-   * Which week of the year this day is in (RFC 007 phase 4).
+   * Which week of the year this day is in (RFC 010 phase 4).
    *
    * Computed here rather than on the wall for two reasons: `packages/core` owns
    * the definition and the display deliberately depends on nothing, and the

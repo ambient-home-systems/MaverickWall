@@ -1,4 +1,4 @@
-# RFC 007 — The agenda, redrawn (what to take from Calendar Card Pro)
+# RFC 010 — The agenda, redrawn (what to take from Calendar Card Pro)
 
 Status: **proposed, nothing built** · Owner: — · First drafted 2026-08-21 ·
 Builds on the display's widget model (`renderWidget`, `viewmodel.ts`,
