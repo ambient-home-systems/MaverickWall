@@ -94,6 +94,21 @@ const MIN_HEX_RUN = 32;
 const MAX_NAME_CHUNK = 6;
 /** A word flips case where a new word starts; base64 flips wherever bytes fall. */
 const CHARS_PER_CASE_FLIP = 5;
+/**
+ * A word carries a vowel every few letters; random letters carry 5 in 26.
+ *
+ * One in four is the line, and it was measured rather than picked. Every
+ * letters-only chunk this rule inspects, taken off every identifier and log
+ * string in `apps/server/src`, `apps/display/src` and `packages/*` — 180 of
+ * them — sits at **or above** exactly one in four: `SNAPSHOT`, `MATCHERS`,
+ * `starting` and `brotliDecompressSync` are all 0.250, and nothing real is
+ * below. The median chunk of a real base64url token is 0.176.
+ *
+ * So the comparison is `<`, not `<=`, and it is written as `vowels * 4 <
+ * letters` rather than as a ratio: `2/8` and `5/20` are the values it turns on
+ * and integers cannot round them the wrong way.
+ */
+const MIN_VOWELS_PER_WORD = 4;
 
 /**
  * A run of the characters an encoder emits — deliberately *without* `/`.
@@ -137,18 +152,49 @@ function caseTransitions(chunk: string): number {
  * `maverick-2026-08-26T09-00-00-000Z`. Letters with at most a short numeric
  * tail, digits alone, or anything short enough to be a date field.
  *
- * The last clause is the one that was measured rather than reasoned. Without
- * it, "letters with a numeric tail" admitted `XUhHXrUpjNnJZUllwBYOJb` — which
- * is not a word, it is twenty-two characters off the front of a real display
- * token — and about one real setup token in a hundred survived this file
- * untouched. A word changes case where a new word begins, so `MaverickWall`
- * flips once in twelve characters; base64 flips wherever the bytes fall.
+ * The last two clauses were measured rather than reasoned, and each closed a
+ * hole the one before it left.
+ *
+ * **Case flips.** Without them, "letters with a numeric tail" admitted
+ * `XUhHXrUpjNnJZUllwBYOJb` — which is not a word, it is twenty-two characters
+ * off the front of a real display token — and about one real setup token in a
+ * hundred survived this file untouched. A word changes case where a new word
+ * begins, so `MaverickWall` flips once in twelve characters; base64 flips
+ * wherever the bytes fall.
+ *
+ * **Vowels.** Case flips alone still let one token in 446 through, because a
+ * random run that happens to change case gently reads as one long word. That
+ * number is not hypothetical: it is why `redact.test.ts` failed on roughly one
+ * CI run in five, and the failing assertion was right — the rule was the thing
+ * that was wrong. Every length cap that would have closed it was measured
+ * first and rejected: at 24 characters it redacts `MaverickWallDisplayEditor`
+ * and `AndroidTVWebViewKioskShell`, which are precisely the names this
+ * function exists to protect. Vowel density separates them where length
+ * cannot, and it does so with room to spare — one real token in 1,818 now
+ * survives, and **not one** of the 304 real identifiers in this repository
+ * changed side.
+ *
+ * The order matters: the cheap shape tests come first, and vowels before case
+ * flips only because a starved chunk is the commoner miss.
  */
 function isNameChunk(chunk: string): boolean {
   if (chunk.length <= MAX_NAME_CHUNK) return true;
   if (/^[0-9]+$/.test(chunk)) return true;
   if (!/^[A-Za-z]+[0-9]{0,4}$/.test(chunk)) return false;
+  if (vowelStarved(chunk)) return false;
   return !isChaoticCase(chunk);
+}
+
+/**
+ * Whether a chunk has too few vowels to be a word somebody wrote.
+ *
+ * Digits are not counted either way: a numeric tail is not evidence about the
+ * letters in front of it.
+ */
+function vowelStarved(chunk: string): boolean {
+  const letters = chunk.replace(/[^A-Za-z]/g, '');
+  if (letters.length === 0) return false;
+  return (letters.match(/[aeiouAEIOU]/g) ?? []).length * MIN_VOWELS_PER_WORD < letters.length;
 }
 
 /** How many of lowercase, uppercase and digits a run draws on. */
@@ -167,12 +213,14 @@ function alphabets(run: string): number {
  * fail to read as a name, whether the name is read as one string or as
  * separated words.
  *
- * Measured against fifty thousand tokens from this repository's own
- * generators, about one in five hundred still reads as a word and survives.
- * That is the honest bar for this rule and it is not the defence: it is the
- * backstop for a credential nobody labelled. Everything this codebase actually
- * prints is caught by the labelled rules above, deterministically, whatever
- * the random bytes happen to be.
+ * Measured against two hundred thousand tokens from this repository's own
+ * generators, about one in 1,818 still reads as a word and survives. That is
+ * the honest bar for this rule and it is deliberately not the defence: it is
+ * the backstop for a credential nobody labelled. Everything this codebase
+ * actually prints is caught by the labelled rules above, deterministically,
+ * whatever the random bytes happen to be — `redact.test.ts` drives the real
+ * boot lines through `redactLogText` to say so, which is the assertion that
+ * can honestly be made at 100%.
  */
 export function looksLikeSecret(run: string): boolean {
   if (run.length < MIN_RUN) return false;

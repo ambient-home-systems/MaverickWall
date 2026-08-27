@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **seventy-one real bugs**, and the pattern in how is the most
+This project has found **seventy-two real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -149,6 +149,7 @@ useful thing in this document:
 | A cell with room for one row spending it on "+2" and drawing neither event | The same measurement, one wall size down |
 | An assertion for "all-day events draw first" that no edit could turn red | Deleting both things that could have caused it, twice |
 | A month grid measured on a widget nobody ships, not on the wall that does | Merging, and watching somebody else's colour test go red |
+| **One real setup token in 446 walked straight out in the diagnostics export** | A test that failed one CI run in five, and was right |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -1931,6 +1932,34 @@ forgets what it found, because a version number on the page from a request
 somebody has since withdrawn consent for is not theirs to keep. The job is
 registered always and checks the setting when it fires; a job registered by the
 switch would leave a stale one making requests after it was turned off.
+
+**A flaky test was right and the code was wrong, which is the way round nobody
+checks.** `redact.test.ts` asserted that `looksLikeSecret` reads every token the
+generators produce as a secret, and failed about one CI run in five — the shape
+that gets quarantined as a flake. It was not one. Measured over two hundred
+thousand real tokens, **one in 446 read as a word and survived the redactor**,
+so a household's setup or display token could appear verbatim in the export
+they are told is safe to hand over (rule six). The failure rate *was* the bug
+rate, sampled a hundred draws at a time.
+
+The fix is one clause, and what makes it the right one is what it beat. Every
+length cap closes the hole and redacts `MaverickWallDisplayEditor` and
+`AndroidTVWebViewKioskShell` — the exact names the function exists to protect —
+and raising the case-flip bar takes `AndroidTVWebViewKioskShell` too. **Vowel
+density separates them where length cannot**: every letters-only chunk in this
+repository's own identifiers sits at or above one vowel in four (`SNAPSHOT`,
+`MATCHERS`, `starting` and `brotliDecompressSync` are all exactly 0.250), while
+the median chunk of a real base64url token is 0.176. One token in 1,818 now
+survives instead of one in 446, and not one of the 304 real identifiers swept
+changed side.
+
+The test changed too, because it had been asserting something the rule never
+claimed — its own docstring has always quoted a miss rate. **The 100% assertion
+now belongs to the property that is actually 100%**: real tokens in the real
+boot lines, through the real `redactLogText`, which the *labelled* rules take
+apart deterministically whatever the bytes are. The backstop keeps a floor and
+five literal tokens that escaped the old rule, so a revert turns red at once
+where a rate over random draws never could.
 
 **Backup and diagnostics are two different things, deliberately.** The backup
 is the database plus the key, offered as two downloads so the credential is
