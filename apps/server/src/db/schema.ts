@@ -608,6 +608,30 @@ export const calendarSources = sqliteTable(
     visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
 
     /**
+     * Whether this calendar's events are drawn on the calendar grid — the month
+     * squares and the week columns — as opposed to the upcoming list.
+     *
+     * This exists because a *high-frequency* recurring event is the least
+     * informative thing on a wall and takes the most room saying it. One
+     * weekday standup in a work feed drew 17 identical cells reading "Stan…" —
+     * the majority of every name in the visible month — while the grid treats a
+     * once-a-year birthday and a daily meeting as equally worth a row. The
+     * household's own sentence is "I do not need work on the family wall", and
+     * this is that sentence: a per-calendar switch rather than a ranking model
+     * the manifest has no frequency data to feed.
+     *
+     * Deliberately not `visible`, which is a different request: `visible = 0`
+     * takes a feed off the wall entirely. This one keeps every event in the
+     * agenda, where a list has room to say what and when, and only declines the
+     * grid, where a cell has room for one line.
+     *
+     * Defaults to true, so an upgrading database changes nothing: every wall
+     * already hanging draws exactly what it drew before, and the household opts
+     * one calendar out when it starts crowding.
+     */
+    showInGrid: integer('show_in_grid', { mode: 'boolean' }).notNull().default(true),
+
+    /**
      * Deliberate opt-in to reach a LAN address. Off by default, and never a
      * global setting: a household legitimately needs to fetch from their own
      * Nextcloud, but that must not silently widen every other feed's reach.

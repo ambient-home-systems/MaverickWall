@@ -141,6 +141,7 @@ async function harness() {
   ): Promise<{
     theme: { active: string; daytime?: string; daytimeStartsAt?: string };
     display?: { todayEvents: number; nextDays: number; horizonWeeks: number; blocks: string[]; clock24: boolean; weekStart: string };
+    days?: { date: string; events: { title: string; sourceId: string; showInGrid?: false }[] }[];
   }> => {
     const issued = issueDisplayToken();
     const stamp2 = Date.now();
@@ -252,6 +253,117 @@ describe('the calendars screen', () => {
     const body = await (await h.call('/admin/calendars')).text();
     expect(body).toContain('ECONNREFUSED');
     expect(body).toContain('4 failures in a row');
+  });
+});
+
+/**
+ * Keeping a busy calendar out of the month squares.
+ *
+ * One weekday standup in a work feed drew 17 identical cells reading "Stan…" —
+ * the majority of every event name in the visible month — because a grid cell
+ * treats a once-a-year birthday and a daily meeting as equally worth a row.
+ * This walks the household's whole path: the switch is on when the calendar is
+ * added, the form turns it off, and the document a paired screen polls says so
+ * while still carrying the events.
+ */
+describe('showing a calendar on the grid', () => {
+  /** Everything the settings form sends, so one field can be varied honestly. */
+  const settings = (over: Record<string, string> = {}): Record<string, string> => ({
+    name: 'Work',
+    color: '#4C7FD1',
+    person_id: '',
+    enabled: '1',
+    show_in_grid: '1',
+    ...over,
+  });
+
+  it('is on for a calendar that has just been added', async () => {
+    const h = await harness();
+    await h.addFeed('Work');
+    expect(h.db.prepare('SELECT show_in_grid AS g FROM calendar_sources').get()).toEqual({ g: 1 });
+  });
+
+  it('offers the switch on the calendar’s own settings, worded for a household', async () => {
+    const h = await harness();
+    await h.addFeed('Work');
+    const body = await (await h.call('/admin/calendars')).text();
+    expect(body).toContain('name="show_in_grid"');
+    expect(body).toContain('Show on the calendar grid');
+    // The hint names where the events still are. A switch that reads like
+    // "hide this calendar" is one nobody turns on.
+    expect(body).toContain('upcoming list');
+  });
+
+  it('turns off when the box is left unticked, which sends nothing at all', async () => {
+    /*
+     * The bug this project has shipped twice: a browser does not send an
+     * unticked checkbox, so "off" arrives as an absent key. The body below is
+     * byte-for-byte what a real form submission looks like with the box clear —
+     * `show_in_grid` is simply not in it.
+     */
+    const h = await harness();
+    await h.addFeed('Work');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+
+    const off = settings();
+    delete off['show_in_grid'];
+    expect(await h.form(`/admin/calendars/${id}/settings`, off)).toMatchObject({ status: 302 });
+    expect(h.db.prepare('SELECT show_in_grid AS g FROM calendar_sources').get()).toEqual({ g: 0 });
+
+    // And back on, because a switch that only goes one way is half a control.
+    await h.form(`/admin/calendars/${id}/settings`, settings());
+    expect(h.db.prepare('SELECT show_in_grid AS g FROM calendar_sources').get()).toEqual({ g: 1 });
+  });
+
+  it('comes back ticked or clear on the page it saved from', async () => {
+    // Persistence a household can see: the screen has to agree with the row.
+    const h = await harness();
+    await h.addFeed('Work');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+    const boxOf = (body: string): string =>
+      /<input[^>]*name="show_in_grid"[^>]*>/.exec(body)?.[0] ?? '';
+
+    expect(boxOf(await (await h.call('/admin/calendars')).text())).toContain('checked');
+    const off = settings();
+    delete off['show_in_grid'];
+    await h.form(`/admin/calendars/${id}/settings`, off);
+    expect(boxOf(await (await h.call('/admin/calendars')).text())).not.toContain('checked');
+  });
+
+  it('keeps the events in the manifest and marks them off the grid', async () => {
+    const h = await harness();
+    await h.addFeed('Work');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+
+    // One event, cached the way a sync writes it, dated today in UTC so it is
+    // inside the manifest window whenever this runs.
+    const today = new Date().toISOString().slice(0, 10);
+    const stamp = Date.now();
+    h.db.prepare(
+      `INSERT INTO calendar_events_cache
+         (id, source_id, uid, title, starts_at, ends_at, start_local_date,
+          end_local_date, source_tzid, synced_at)
+       VALUES ('e1', ?, 'uid-1', 'Standup', ?, ?, ?, ?, 'UTC', ?)`,
+    ).run(id, stamp, stamp + 900_000, today, today, stamp);
+
+    const seen = (m: { days?: { events: { title: string; sourceId: string; showInGrid?: false }[] }[] }) =>
+      (m.days ?? []).flatMap((day) => day.events).filter((event) => event.sourceId === id);
+
+    const before = seen(await h.manifestFor(h));
+    expect(before.map((event) => event.title)).toEqual(['Standup']);
+    // On by default: the field is absent, so a wall older than it, and one that
+    // has never been told otherwise, draw exactly what they drew before.
+    expect(before.every((event) => !('showInGrid' in event))).toBe(true);
+
+    const off = settings();
+    delete off['show_in_grid'];
+    await h.form(`/admin/calendars/${id}/settings`, off);
+
+    const after = seen(await h.manifestFor(h));
+    // Still there — the agenda keeps it — and stamped, so no renderer has to
+    // hold the rule. That pair is the whole contract.
+    expect(after.map((event) => event.title)).toEqual(['Standup']);
+    expect(after.map((event) => event.showInGrid)).toEqual([false]);
   });
 });
 

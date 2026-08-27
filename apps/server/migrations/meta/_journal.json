@@ -246,6 +246,13 @@
       "when": 1787594842446,
       "tag": "0034_short_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1787795266087,
+      "tag": "0035_tiresome_jack_flag",
+      "breakpoints": true
     }
   ]
 }

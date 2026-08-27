@@ -244,13 +244,23 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
     for (let d = 0; d < 7; d++) {
       const date = addDays(gridStart, w * 7 + d);
       const day = byDate.get(date);
+      /*
+       * Only the calendars the household keeps on the grid.
+       *
+       * The wall filters the same flag at the same seam (`viewmodel.ts` in
+       * `apps/display`), and it has to be the same answer: a panel following a
+       * wall that draws one arrangement must not draw a different month. The
+       * agenda and `upcoming` above are deliberately unfiltered — the switch
+       * takes a calendar out of the squares, not off the panel.
+       */
+      const gridEvents = (day?.events ?? []).filter((event) => event.showInGrid !== false);
       row.push({
         day: Number.parseInt(date.slice(8, 10), 10),
         date,
         isToday: date === today,
         inWindow: day !== undefined,
-        eventCount: day?.events.length ?? 0,
-        titles: [...(day?.events ?? [])]
+        eventCount: gridEvents.length,
+        titles: [...gridEvents]
           .sort(agendaOrder)
           .slice(0, EPAPER_CELL_TITLES)
           .map((event) => event.title),

@@ -1067,7 +1067,17 @@ export function buildModel(options: BuildOptions): DisplayModel {
     const day = byDate.get(date);
     // The first shift of the day, whether or not it is a working one.
     const shift = day?.shifts[0];
-    const events = day?.events ?? [];
+    /*
+     * The grid's own events, which are not always the day's.
+     *
+     * A calendar with "Show on the calendar grid" turned off keeps every event
+     * in the agenda and contributes none here — the server decided that and
+     * stamped each event, so this only honours it. Filtered before `eventCount`
+     * is taken, deliberately: the count is the true total a cell's "+N" reads
+     * from, so counting the day and drawing the grid's would put a "+3" on a
+     * cell whose three events are a standup nobody asked to see.
+     */
+    const events = (day?.events ?? []).filter((event) => event.showInGrid !== false);
     cells.push({
       date,
       // Short weekday for the week-columns header (Mon, Tue, …).

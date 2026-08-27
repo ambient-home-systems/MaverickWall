@@ -37,8 +37,8 @@ const HOUSEHOLD: HouseholdRow = {
 };
 
 const SOURCES: SourceRow[] = [
-  { id: 's1', name: 'Family', color: '#E8A33D', visible: 1, personId: null, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 2 },
-  { id: 's2', name: 'School', color: '#4C7FD1', visible: 1, personId: null, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 1 },
+  { id: 's1', name: 'Family', color: '#E8A33D', visible: 1, showInGrid: 1, personId: null, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 2 },
+  { id: 's2', name: 'School', color: '#4C7FD1', visible: 1, showInGrid: 1, personId: null, lastSuccessAt: NOW - 60_000, lastError: null, consecutiveFailures: 0, eventCount: 1 },
 ];
 
 const EVENTS: EventCacheRow[] = [
@@ -176,6 +176,53 @@ describe('events', () => {
     });
     expect(manifest.days.flatMap((d) => d.events).some((e) => e.sourceId === 's1')).toBe(false);
     expect(manifest.sources).toHaveLength(2);
+  });
+});
+
+/**
+ * A calendar the household keeps out of the squares.
+ *
+ * The reported fault: one weekday standup drew 17 identical cut-off pills
+ * across the visible month, the majority of every name on the wall, because a
+ * grid cell treats a once-a-year birthday and a daily meeting as equally worth
+ * a row. This is the whole of the server's part — one filter, stamped per
+ * event, so no renderer has to hold the rule.
+ */
+describe('a calendar kept off the grid', () => {
+  const offGrid = (): ReturnType<typeof buildManifest> =>
+    buildManifest({ ...BASE, sources: [{ ...SOURCES[0]!, showInGrid: 0 }, SOURCES[1]!] });
+
+  it('stamps every one of that calendar’s events and nobody else’s', () => {
+    const events = offGrid().days.flatMap((day) => day.events);
+    const mine = events.filter((event) => event.sourceId === 's1');
+    expect(mine.length).toBeGreaterThan(0);
+    for (const event of mine) expect(event.showInGrid).toBe(false);
+    for (const event of events.filter((e) => e.sourceId !== 's1')) {
+      expect(event.showInGrid).toBeUndefined();
+    }
+  });
+
+  it('keeps the events themselves, which is the difference from hiding it', () => {
+    // `visible = 0` takes a feed off the wall. This one only declines the grid,
+    // so the agenda still carries every event — the sentence the switch's hint
+    // makes to the household, asserted rather than promised.
+    const manifest = offGrid();
+    expect(dayOf(manifest, '2026-09-10')?.events.map((e) => e.title)).toEqual([
+      'Disney Trip',
+      'Dentist',
+    ]);
+  });
+
+  it('says nothing at all when every calendar is on the grid', () => {
+    /*
+     * Absence is the default, and the manifest a household who never touched
+     * the switch receives has to be byte-identical to the one they got before
+     * the field existed — otherwise every display older than it, and every
+     * stored ETag, is churned for a setting nobody used.
+     */
+    const events = buildManifest(BASE).days.flatMap((day) => day.events);
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) expect('showInGrid' in event).toBe(false);
   });
 });
 
