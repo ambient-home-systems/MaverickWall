@@ -870,6 +870,48 @@ installed. The bootstrap code is printed to stdout at boot, re-issued when it
 expires, and is the only way to create the first account; before it existed the
 first sign-up was open to anyone who could reach the port.
 
+**Three timezone defaults disagreed, and the wizard reported the container as a
+finding.** `household_settings.timezone` defaulted to `America/New_York`, the
+manifest's no-row fallback said `America/New_York`, and step 2 preselected
+`Etc/UTC` — so a fresh `docker run` logged "scheduler started, timezone
+America/New_York" at boot and then offered a different zone on the one screen
+whose entire job is choosing it. There is one now, `src/timezone.ts`, and it is
+`Etc/UTC` rather than `America/New_York` because a fallback is used *precisely
+when detection failed*, where a named city is a claim about where the wall is —
+wrong everywhere but one seaboard, and wrong in the way this setting is always
+wrong: every all-day event still draws, it just draws on the wrong day, so
+nothing on the wall ever looks broken. The wizard's own copy says as much
+("Getting it wrong puts birthdays on the wrong day"), which is why this is worth
+a paragraph and a switch of default is not. Migration `0036` moves the column
+default, and on SQLite that is a **table recreate** — the `0009` shape — so the
+guard sits beside the change rather than in `migration-upgrade.test.ts`, which
+seeds no household row and would not have seen it: a household with settings all
+over the table, carried through that one migration, asserted whole.
+
+The step also said `Detected: UTC`, which is the *container's* zone reported as
+a finding about the household. Detection runs server-side because the wizard is
+script-free, so on `docker run` it can only ever read the image. It admits it
+now, and the three cases are worth writing down: `TZ` set is somebody having
+said so and is believed; `Etc/Unknown` is ICU saying it does not know and is
+never a detection however emphatically `TZ` states it; and a bare `UTC` with no
+`TZ` is the image's own default, so the line says it could not work out where
+the wall is and that the box below is a placeholder. **A household genuinely on
+UTC pays one click, which is the side to be wrong on.** The `Etc/Unknown` case
+was not reasoned to — `process.env.TZ = ''` in a test resolves to it rather than
+to `UTC`, so the simulation of `docker run` is not `docker run`, and the
+predicate is pure and unit-tested against both strings for exactly that reason.
+
+**What was deliberately not built is the obvious fix**: preselecting from
+`Intl.DateTimeFormat().resolvedOptions().timeZone` in the browser, which is the
+only place the answer actually lives. `wizard-noscript.test.ts` asserts the
+wizard serves *exactly one* script and that it is the theme script, and a
+preselect-only script is a second one. Weakening that test to widen the fence is
+not a fix, so the honest wording ships instead and the browser preselect stays a
+decision to take deliberately, against the no-script rule, rather than by drift.
+The browser test that does exist reads `select.value` rather than the `selected`
+attribute, because those are two different facts: what the server marked and
+what the browser will post.
+
 **The display is a zoom pyramid**: today in full, the next few days that have
 anything on them, then six weeks as colour. Every decision about what is shown
 lives in `viewmodel.ts`, which has no DOM in it, so density is argued about

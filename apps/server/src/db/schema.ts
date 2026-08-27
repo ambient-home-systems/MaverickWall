@@ -42,8 +42,21 @@ const timestamps = {
 export const householdSettings = sqliteTable('household_settings', {
   id: text('id').primaryKey().default('singleton'),
 
-  /** IANA zone. Anchors every all-day event and the whole shift rotation. */
-  timezone: text('timezone').notNull().default('America/New_York'),
+  /**
+   * IANA zone. Anchors every all-day event and the whole shift rotation.
+   *
+   * Must equal `DEFAULT_TIMEZONE` in `src/timezone.ts`. This column, the
+   * manifest's no-row fallback and the wizard's preselect are three answers to
+   * one question and they used to disagree — a fresh `docker run` booted on
+   * `America/New_York` and offered `Etc/UTC` on the screen that chooses it.
+   *
+   * Written as a literal rather than imported because drizzle-kit transpiles
+   * this file to CJS at generate time and cannot resolve an ESM `.js`
+   * specifier out of it. So the drift is caught by a test instead:
+   * `test/timezone-default.test.ts` runs the real migrations and reads the
+   * default straight back out of SQLite.
+   */
+  timezone: text('timezone').notNull().default('Etc/UTC'),
   locale: text('locale').notNull().default('en-US'),
 
   /** Theme key from the display bundle. */
