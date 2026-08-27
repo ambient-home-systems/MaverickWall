@@ -7,6 +7,7 @@ import {
   type Units,
 } from './open-meteo.js';
 import { alertSignals } from './alert-store.js';
+import { DEFAULT_TIMEZONE } from '../../timezone.js';
 
 /**
  * Weather, as the first panel module.
@@ -68,7 +69,10 @@ function settings(db: SqliteDatabase): HouseholdWeather {
     // default, rather than drawing nothing on a typo.
     provider: row?.provider === 'openmeteo' ? 'openmeteo' : 'nws',
     units: row?.units === 'metric' ? 'metric' : 'imperial',
-    timezone: row?.timezone ?? 'America/New_York',
+    // Same shared fallback the manifest and the column default use, so a
+    // household with no row cannot get a forecast labelled in one zone and a
+    // calendar anchored in another.
+    timezone: row?.timezone ?? DEFAULT_TIMEZONE,
   };
 }
 

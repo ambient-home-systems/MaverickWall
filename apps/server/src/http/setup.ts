@@ -16,6 +16,7 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { errorBlock, escapeHtml, noticeBlock, page, selectField, textField } from './html.js';
+import { DEFAULT_TIMEZONE } from '../timezone.js';
 import { ingressPath } from './ingress.js';
 import { checkbox, coordinate, optionalText, parse, text, z } from '../validation.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
@@ -210,12 +211,61 @@ function supportedTimezones(): string[] {
     'Europe/Berlin', 'Australia/Sydney'];
 }
 
-function serverTimezone(): string {
+/**
+ * What the *server* thinks its zone is, and whether that is worth believing.
+ *
+ * Detection runs here rather than in the browser because the wizard is
+ * deliberately script-free (`wizard-noscript.test.ts` pins that), so `Intl`
+ * resolves the **container's** zone and not the household's. On a plain
+ * `docker run` there is no `TZ` in the environment and `/etc/localtime` points
+ * at UTC, so this resolves `'UTC'` — which is a fact about the image, not an
+ * answer about where the wall is hanging.
+ *
+ * The step used to print that as `Detected: UTC`, which claims a detection that
+ * did not happen. A confident wrong answer is worse than an admitted gap here
+ * more than anywhere else in the product: an all-day event still draws, it just
+ * draws on the wrong day, so nothing on the wall ever looks broken.
+ */
+interface DetectedZone {
+  /** The zone to preselect. Always something the form can submit. */
+  readonly zone: string;
+  /** Whether this came from configuration rather than from the image default. */
+  readonly confident: boolean;
+}
+
+/**
+ * Whether a resolved zone is an answer about this household or a default.
+ *
+ * Pure, and exported, because the interesting cases cannot all be reached by
+ * setting `process.env.TZ` in a test — the two that matter most are what a real
+ * `docker run` and a real misconfiguration produce, and only one of them can be
+ * simulated in-process.
+ *
+ * `Etc/Unknown` is ICU saying so outright: it is what Node resolves when `TZ`
+ * is present but empty or names nothing, and it is never a detection however
+ * emphatically the environment states it. Bare `UTC` is what an unconfigured
+ * container resolves to, so it is a detection only when `TZ` says it on
+ * purpose. Anything else came from `TZ` or from a mounted `/etc/localtime`, and
+ * both are somebody having said so.
+ *
+ * A household genuinely on UTC with nothing configured is asked to choose,
+ * which costs them one click and is the side to be wrong on.
+ */
+export function timezoneIsDetected(zone: string, tzEnv: string | undefined): boolean {
+  if (zone === 'Etc/Unknown') return false;
+  const stated = (tzEnv ?? '').trim() !== '';
+  if (zone === 'UTC' || zone === UTC_FALLBACK) return stated;
+  return true;
+}
+
+function detectServerTimezone(): DetectedZone {
+  let zone: string;
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   } catch {
-    return 'UTC';
+    zone = 'UTC';
   }
+  return { zone, confident: timezoneIsDetected(zone, process.env['TZ']) };
 }
 
 /**
@@ -226,8 +276,13 @@ function serverTimezone(): string {
  * `docker run` leaves it) detects `'UTC'` and finds it nowhere in the list. A
  * zone the platform genuinely resolves has to be offered rather than silently
  * dropped.
+ *
+ * It is `DEFAULT_TIMEZONE` rather than a second literal: this is the value the
+ * wizard preselects when it cannot tell, and the column default and the
+ * manifest's no-row fallback are the same question asked elsewhere. They used
+ * to be three different answers.
  */
-const UTC_FALLBACK = 'Etc/UTC';
+const UTC_FALLBACK = DEFAULT_TIMEZONE;
 
 /**
  * The zones offered, always including a zone the platform always accepts.
@@ -320,7 +375,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     // An account exists, so the bootstrap token is spent and this is the
     // household's own session or nothing.
     if (!(await signedIn(c))) return c.redirect('/admin/sign-in', 302);
-    return c.html(timezoneForm(serverTimezone()));
+    return c.html(timezoneForm(detectServerTimezone()));
   });
 
   // -------------------------------------------------------------------------
@@ -435,7 +490,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       body['timezone'],
     );
     if (!shapedZone.ok) {
-      return c.html(timezoneForm(serverTimezone(), shapedZone.message), 400);
+      return c.html(timezoneForm(detectServerTimezone(), shapedZone.message), 400);
     }
     const timezone = shapedZone.value;
 
@@ -704,9 +759,9 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     });
   }
 
-  function timezoneForm(detected: string, error?: string): string {
+  function timezoneForm(detected: DetectedZone, error?: string): string {
     const zones = offeredTimezones();
-    const effective = detectedTimezoneOption(zones, detected);
+    const effective = detectedTimezoneOption(zones, detected.zone);
     const options = zones
       .map(
         (zone) =>
@@ -728,8 +783,19 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
           name: 'timezone',
           optionsHtml: options,
           attrs: 'required',
-          // A preselected value with no explanation is a value nobody checks.
-          hint: `Detected: ${detected}. Change it if this wall is somewhere else.`,
+          /*
+           * A preselected value with no explanation is a value nobody checks —
+           * and one explained by a detection that never ran is worse, because
+           * it invites the household to accept it. Something is always
+           * selected (see `detectedTimezoneOption`, and the test that pins it),
+           * so when detection failed the line has to say the selection is a
+           * placeholder rather than a finding.
+           */
+          hint: detected.confident
+            ? `Detected: ${detected.zone}. Change it if this wall is somewhere else.`
+            : 'Could not work out where this wall is — nothing here sets a ' +
+              'timezone, so the zone above is only a placeholder. Please choose ' +
+              'the one this wall lives in.',
         }) +
         `<button type="submit">Save and continue</button></form>` +
 

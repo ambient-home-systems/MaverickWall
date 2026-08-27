@@ -253,6 +253,13 @@
       "when": 1787795266087,
       "tag": "0035_tiresome_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1787807697464,
+      "tag": "0036_quick_arclight",
+      "breakpoints": true
     }
   ]
 }

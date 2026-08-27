@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { ShiftOverride, ShiftPlan, ShiftType } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
+import { DEFAULT_TIMEZONE } from '../timezone.js';
 import { nextPersonColor } from './palette.js';
 import type { SetupState } from '../auth/session.js';
 import type {
@@ -20,7 +21,10 @@ import type {
  */
 
 const HOUSEHOLD_DEFAULTS: HouseholdRow = {
-  timezone: 'America/New_York',
+  // The shared fallback, not a literal. This used to say `America/New_York`
+  // while the wizard preselected `Etc/UTC`, so the boot log and the screen that
+  // chooses the zone disagreed on a fresh install. See `src/timezone.ts`.
+  timezone: DEFAULT_TIMEZONE,
   // Panels is the new dark default. The stored column default is still `board`
   // (changing it would need a table-recreate migration for no gain), which the
   // display resolves to Panels — so a fresh install and this fallback agree.
