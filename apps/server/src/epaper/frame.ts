@@ -31,8 +31,14 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * 2: the ink lane, and the empty-state notes sized to their box rather than to
  * their own sentence — which is a pixel change on any panel whose canvas has a
  * narrow column.
+ *
+ * 3: the month grid's default cell treatment. `cellEvents` unset used to mean
+ * dots and now means names, on the wall and therefore here — so a panel whose
+ * calendar widget never named the setting draws event titles where it drew
+ * marks. No code in this file changed, which is exactly why this bump is easy
+ * to miss: the pixels moved because the *meaning of an absent value* did.
  */
-export const EPAPER_RENDERER_VERSION = 2;
+export const EPAPER_RENDERER_VERSION = 3;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

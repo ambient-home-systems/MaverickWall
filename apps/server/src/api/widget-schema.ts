@@ -47,12 +47,18 @@ const widgetConfigFields = z
     // across. One key for every type's view, because the editor's View picker is
     // generic and writes this for all of them.
     mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people']).optional(),
-    // How a month cell draws its events: quiet dots (default), Skylight-style
-    // labelled pills, or `swiss` — flat rows of plain text under an oversized
-    // date, one small category dot each, cut to what the cell can hold with a
-    // muted +N for the rest. Absent means dots, so an existing wall is
-    // unchanged.
-    cellEvents: z.enum(['dots', 'pills', 'swiss']).optional(),
+    // How a month cell draws its events: flat names (`text`, the default),
+    // quiet `dots`, Skylight-style labelled `pills`, or `swiss` — the same flat
+    // names inside the full Swiss typographic grid. `text` and `swiss` wrap to
+    // two lines, draw a title whole or not at all, and put a muted +N under
+    // what is left out.
+    //
+    // **Absent means `text`**, and that is a change of meaning rather than a
+    // new option: it used to mean `dots`. Measured on a 1080x1920 wall with
+    // three ordinary family calendars, pills clipped 32 of 37 event names, so
+    // the default became the treatment that can show one. `dots` is stored
+    // explicitly now, which is what keeps it choosable.
+    cellEvents: z.enum(['dots', 'pills', 'swiss', 'text']).optional(),
     count: z.number().int().min(1).max(50).optional(),
     // The day's high and low beside its date in the agenda (RFC 010 phase 3).
     // Absent means off, so a wall that already carries a weather strip does not

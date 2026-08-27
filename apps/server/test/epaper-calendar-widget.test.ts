@@ -94,27 +94,43 @@ describe('the calendar widget on a panel', () => {
     expect(month).not.toEqual(list);
   });
 
-  it('names the events in the cells when asked for pills, and only then', () => {
+  it('names the events in the cells unless asked for dots, and dots is the only silent one', () => {
+    /*
+     * The default moved, and the panel had to move with it.
+     *
+     * `cellEvents` unset used to mean dots — a cell that says a day is busy and
+     * never says what is on it — and now means flat names, because on a
+     * 1080x1920 wall the pill treatment clipped 32 of 37 event titles and the
+     * flat one clips none. A panel reads the same stored value, so the absence
+     * has to mean names here too: one value must not give two renderers two
+     * answers, which is the fault this file was written for.
+     */
     const manifest = manifestOf(busy);
-    const dots = frameOf(manifest, { mode: 'month' });
+    const dots = frameOf(manifest, { mode: 'month', cellEvents: 'dots' });
+    const byDefault = frameOf(manifest, { mode: 'month' });
     const pills = frameOf(manifest, { mode: 'month', cellEvents: 'pills' });
-    expect(bytesOf(pills)).not.toEqual(bytesOf(dots));
+    const swiss = frameOf(manifest, { mode: 'month', cellEvents: 'swiss' });
+    expect(bytesOf(byDefault)).not.toEqual(bytesOf(dots));
+    // One bit has no ground and no dot, so every naming treatment resolves to
+    // the same question and must draw the same answer.
+    expect(bytesOf(pills)).toEqual(bytesOf(byDefault));
+    expect(bytesOf(swiss)).toEqual(bytesOf(byDefault));
 
     // The proof that it *names* them rather than merely drawing differently:
     // two months with the same events on the same days under different titles.
     // Density shading depends only on the count, so under dots these are the
-    // same frame; under pills they cannot be, because the words are on the wall.
+    // same frame; under names they cannot be, because the words are on the wall.
     const renamed = manifestOf(
       busy.map((day) => ({ ...day, events: day.events.map((e) => ({ ...e, title: `Zzz ${e.id}` })) })),
     );
-    expect(bytesOf(frameOf(renamed, { mode: 'month' }))).toEqual(bytesOf(dots));
-    expect(bytesOf(frameOf(renamed, { mode: 'month', cellEvents: 'pills' }))).not.toEqual(bytesOf(pills));
+    expect(bytesOf(frameOf(renamed, { mode: 'month', cellEvents: 'dots' }))).toEqual(bytesOf(dots));
+    expect(bytesOf(frameOf(renamed, { mode: 'month' }))).not.toEqual(bytesOf(byDefault));
 
     // …and the difference comes from the events rather than from a restyled
     // grid: with nothing on any day, the two settings draw the same frame.
     const empty = manifestOf(quiet);
-    expect(bytesOf(frameOf(empty, { mode: 'month', cellEvents: 'pills' }))).toEqual(
-      bytesOf(frameOf(empty, { mode: 'month' })),
+    expect(bytesOf(frameOf(empty, { mode: 'month' }))).toEqual(
+      bytesOf(frameOf(empty, { mode: 'month', cellEvents: 'dots' })),
     );
   });
 

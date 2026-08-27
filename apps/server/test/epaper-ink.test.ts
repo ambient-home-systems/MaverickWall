@@ -143,7 +143,14 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   align: ['center', 'right'],
   calendars: [['s1']],
   mode: ['list', 'week', 'month', 'skyweek'],
-  cellEvents: ['pills'],
+  /*
+   * Both directions, because the default moved. `cellEvents` unset means flat
+   * names now, so probing `pills` alone compares names against names and finds
+   * nothing — which is how a key that genuinely stopped being read would look.
+   * `dots` is the value that changes the frame, and probing both keeps this
+   * honest whichever way the default goes next.
+   */
+  cellEvents: ['dots', 'pills'],
   count: [1, 2],
   showWeather: [true],
   showWeekNumbers: [true],

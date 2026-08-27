@@ -2990,27 +2990,30 @@ function boot(): void {
       );
     }
 
-    // Month cells: quiet dots, Skylight-style labelled pills, or Swiss — flat
-    // rows of plain text under an oversized date, cut to what the cell holds.
+    // Month cells: flat names (the default), quiet dots, Skylight-style
+    // labelled pills, or Swiss — the same flat names in the typographic grid.
     if (currentMode === 'month') {
-      const cellStyles = ['dots', 'pills', 'swiss'] as const;
+      const cellStyles = ['dots', 'pills', 'swiss', 'text'] as const;
       const stored = cfg['cellEvents'];
-      const current = cellStyles.find((key) => key === stored) ?? 'dots';
+      const current = cellStyles.find((key) => key === stored) ?? 'text';
       configPanel.appendChild(
         segControl(
           'Events in a day',
           [
+            ['text', 'Names'],
             ['dots', 'Dots'],
             ['pills', 'Labelled pills'],
             ['swiss', 'Swiss rows'],
           ],
           current,
           (value) => {
-            // Dots is the default and the default is stored as an *absence*,
-            // which is what keeps an existing wall unchanged when a new value
-            // is added here.
+            /*
+             * The default is stored as an *absence*, and the default is now
+             * `text`. `dots` is therefore written out in full: it used to be
+             * the absence, so leaving it unwritten would silently mean names.
+             */
             const next = cellStyles.find((key) => key === value);
-            setConfig(widget, 'cellEvents', next === undefined || next === 'dots' ? undefined : next);
+            setConfig(widget, 'cellEvents', next === undefined || next === 'text' ? undefined : next);
           },
           'cellEvents',
         ),

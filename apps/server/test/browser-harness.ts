@@ -189,6 +189,34 @@ export interface InstallOptions {
   readonly feed?: boolean;
   /** The zone the wizard is told. Ignored when `wizard` is false. */
   readonly timezone?: string;
+  /**
+   * Extra calendars, each served on its own loopback port and added through the
+   * admin form the way a household adds one.
+   *
+   * A household wall is not one feed. The month grid's whole problem is what
+   * three of them look like in one 139px cell, and a single ten-event calendar
+   * cannot pose that question — so a test that needs a busy month says so here
+   * rather than inserting rows behind the sync's back.
+   */
+  readonly calendars?: readonly NamedFeed[];
+}
+
+/** A named calendar to serve and add: a feed somebody in the house owns. */
+export interface NamedFeed {
+  readonly name: string;
+  readonly events: readonly FeedEvent[];
+}
+
+/**
+ * One event as a feed writes it: a title, a day offset from today, and either a
+ * clock pair or nothing at all, which is an all-day event.
+ */
+export interface FeedEvent {
+  readonly title: string;
+  readonly day: number;
+  /** `HHMM`, or absent for an all-day event. */
+  readonly from?: string;
+  readonly to?: string;
 }
 
 export interface Installation {
@@ -226,7 +254,7 @@ export interface Installation {
 }
 
 export async function install(options: InstallOptions = {}): Promise<Installation> {
-  const { wizard = true, feed = false, timezone = 'Europe/London' } = options;
+  const { wizard = true, feed = false, timezone = 'Europe/London', calendars = [] } = options;
   const address = `10.44.0.${(clientNumber++ % 250) + 1}`;
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-browser-'));
 
@@ -235,6 +263,11 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
   seedBoot(db);
 
   const feedServer = feed ? await startFeed() : undefined;
+  const extraFeeds: { readonly name: string; readonly url: string; readonly stop: () => void }[] = [];
+  for (const calendar of calendars) {
+    const served = await startFeed(calendar.events);
+    extraFeeds.push({ name: calendar.name, url: served.url, stop: served.stop });
+  }
 
   const setupToken = createSetupTokenHolder(() => {});
   const keyring = createKeyring(randomBytes(32));
@@ -302,6 +335,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
      */
     await kill();
     feedServer?.stop();
+    for (const extra of extraFeeds) extra.stop();
     rmSync(dataDir, { recursive: true, force: true });
     throw reason;
   }
@@ -316,7 +350,28 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     });
     await post('/setup/household', { timezone });
 
-    if (feedServer === undefined) return;
+    for (const extra of extraFeeds) {
+      /*
+       * The admin form, not an INSERT: the address goes through the same SSRF
+       * guard, the same feed test and the same encrypted write a household's
+       * does. A row inserted behind it would be a calendar this server has
+       * never actually fetched.
+       */
+      const stored = await post('/admin/calendars', {
+        name: extra.name,
+        url: extra.url,
+        allow_loopback: '1',
+        allow_http: '1',
+      });
+      if (stored.status !== 302) {
+        throw new Error(`the admin refused ${extra.name} (${stored.status}): ${await stored.text()}`);
+      }
+    }
+
+    if (feedServer === undefined) {
+      if (extraFeeds.length > 0) await syncEveryFeed(db, keyring);
+      return;
+    }
     const added = await post('/setup/calendar', {
       name: 'Family',
       url: feedServer.url,
@@ -363,6 +418,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     async dispose(): Promise<void> {
       await kill();
       feedServer?.stop();
+      for (const extra of extraFeeds) extra.stop();
       rmSync(dataDir, { recursive: true, force: true });
     },
   };
@@ -452,29 +508,31 @@ async function syncEveryFeed(db: SqliteDatabase, keyring: ReturnType<typeof crea
  * store, build a manifest, draw — is the path under test. Dated from today so
  * the events land inside the sync and manifest windows wherever this runs.
  */
-const FEED_EVENTS: readonly (readonly [string, number, string | null, string | null])[] = [
-  ['Dentist', 1, '0900', '1000'],
-  ['Football practice', 1, '1730', '1900'],
-  ['Parents evening', 2, '1800', '2000'],
-  ['Bin day', 3, null, null],
-  ['Swimming lesson', 4, '0730', '0830'],
-  ['Book club', 5, '1930', '2130'],
-  ['Dad works late', 6, '1600', '2300'],
-  ['School trip to the aquarium', 7, '0830', '1600'],
-  ['Grandma visiting', 9, null, null],
-  ['Car service', 11, '0800', '1200'],
+const DEFAULT_FEED: readonly FeedEvent[] = [
+  { title: 'Dentist', day: 1, from: '0900', to: '1000' },
+  { title: 'Football practice', day: 1, from: '1730', to: '1900' },
+  { title: 'Parents evening', day: 2, from: '1800', to: '2000' },
+  { title: 'Bin day', day: 3 },
+  { title: 'Swimming lesson', day: 4, from: '0730', to: '0830' },
+  { title: 'Book club', day: 5, from: '1930', to: '2130' },
+  { title: 'Dad works late', day: 6, from: '1600', to: '2300' },
+  { title: 'School trip to the aquarium', day: 7, from: '0830', to: '1600' },
+  { title: 'Grandma visiting', day: 9 },
+  { title: 'Car service', day: 11, from: '0800', to: '1200' },
 ];
 
-function icsBody(): string {
+function icsBody(events: readonly FeedEvent[], salt = ''): string {
   const pad = (value: number): string => String(value).padStart(2, '0');
   const stamp = (days: number): string => {
     const date = new Date(Date.now() + days * 86_400_000);
     return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}`;
   };
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Maverick Wall tests//EN'];
-  FEED_EVENTS.forEach(([title, day, from, to], index) => {
-    lines.push('BEGIN:VEVENT', `UID:e${index}@browser-test`, `SUMMARY:${title}`);
-    if (from === null || to === null) {
+  events.forEach(({ title, day, from, to }, index) => {
+    // Unique per feed as well as per event: two calendars sharing a UID is one
+    // calendar as far as any deduplication downstream is concerned.
+    lines.push('BEGIN:VEVENT', `UID:e${index}${salt}@browser-test`, `SUMMARY:${title}`);
+    if (from === undefined || to === undefined) {
       // DTEND is exclusive: a one-day all-day event ends on the following day.
       lines.push(`DTSTART;VALUE=DATE:${stamp(day)}`, `DTEND;VALUE=DATE:${stamp(day + 1)}`);
     } else {
@@ -489,8 +547,10 @@ function icsBody(): string {
   return lines.join('\r\n');
 }
 
-async function startFeed(): Promise<{ url: string; stop: () => void }> {
-  const body = icsBody();
+let feedNumber = 0;
+
+async function startFeed(events: readonly FeedEvent[] = DEFAULT_FEED): Promise<{ url: string; stop: () => void }> {
+  const body = icsBody(events, `-f${feedNumber++}`);
   const server: HttpServer = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/calendar; charset=utf-8' });
     response.end(body);
@@ -760,6 +820,278 @@ export async function measureWall(page: Page): Promise<WallMeasurement> {
     }
 
     return { remPx, viewport: glass, overflowing, outsideViewport, canvasFit, runs };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The month grid, cell by cell
+// ---------------------------------------------------------------------------
+
+/** One run of text inside a month cell, and whether all of it is on the glass. */
+export interface CellText {
+  /** The words themselves, so a failure names what a household would read. */
+  readonly text: string;
+  /** Tag plus classes, enough to find the element again. */
+  readonly where: string;
+  /** `font-size` as drawn — the cascade's value times every ancestor scale. */
+  readonly fontPx: number;
+  /**
+   * Whether any of it is cut off: an ellipsis, a clipped edge, or a line the
+   * element's own box does not have room for.
+   *
+   * Read from `scrollWidth`/`scrollHeight` against `clientWidth`/`clientHeight`
+   * rather than from the presence of `text-overflow`, because a declaration is
+   * not a measurement — `.wi-seg`'s ellipsis was inert for months and the
+   * markup said otherwise the whole time.
+   */
+  readonly truncated: boolean;
+  /** How much of the string is on the glass, 0–1. The brief's "worst fit". */
+  readonly fit: number;
+  /**
+   * How many lines the words took.
+   *
+   * The wrap allowance is the difference between "Grandma's 80th birthday" and
+   * "+1", so it needs its own number: a grid that had quietly gone back to one
+   * line would cut nothing and say much less, which every other measurement
+   * here would pass.
+   */
+  readonly lines: number;
+  /** The element's own content width, and the width the string wants. */
+  readonly widthPx: number;
+  readonly neededPx: number;
+  /** How wide this run's own box is, as a fraction of the cell's content. */
+  readonly ofCell: number;
+  /**
+   * How wide the *row* carrying it is, as a fraction of the cell's content.
+   *
+   * Kept apart from `ofCell` because the two claims are different: the row is
+   * the banner, the run inside it is the words. Worth knowing that on its own
+   * this distinguishes nothing — every row is a stretched flex item and spans
+   * the cell — which is why `markerPx` and `ofCell` are the numbers an all-day
+   * claim is actually made against.
+   */
+  readonly rowOfCell: number;
+  /**
+   * The width of the colour dot ahead of the words, or 0 where there is none.
+   *
+   * This is what "an all-day event takes the whole cell" comes down to in
+   * pixels: a timed event spends a column on its dot, and an all-day one does
+   * not, because it carries its colour as a rule down the row's own edge. A
+   * measurement rather than a class, so the assertion fails when the dot comes
+   * back rather than when the markup is renamed.
+   */
+  readonly markerPx: number;
+  /** Where the row sits in the viewport, for "all-day events are drawn first". */
+  readonly topPx: number;
+  /** Whether this run belongs to an all-day event. */
+  readonly allDay: boolean;
+}
+
+/** One day of the month grid, as drawn. */
+export interface MonthCell {
+  /** The date number, so a failure can name the day. */
+  readonly day: string;
+  /** The day's real total, which the renderer stamps from the model. */
+  readonly total: number;
+  /** The titles actually on the glass. */
+  readonly shown: readonly CellText[];
+  /** Rows the trim pass hid. */
+  readonly hidden: number;
+  /** What the overflow counter says: `+3`, or empty when it says nothing. */
+  readonly more: string;
+  /** The counter as a number, or 0 when there is none. */
+  readonly moreCount: number;
+  readonly contentWidth: number;
+}
+
+export interface MonthGrid {
+  readonly remPx: number;
+  readonly viewport: { readonly width: number; readonly height: number };
+  readonly cells: readonly MonthCell[];
+  /** Every text run inside the grid, cells and furniture alike. */
+  readonly texts: readonly CellText[];
+  /**
+   * Only the event names, across every cell.
+   *
+   * Kept apart from `texts` because the two questions are different. The type
+   * floor is a claim about *everything* in the grid — a weekday header nobody
+   * can read is as absent as a title. Clipping is a claim about the *titles*,
+   * because they are the only runs whose whole meaning is the string: a day
+   * number cannot be truncated and a "+3" is already a summary.
+   */
+  readonly titles: readonly CellText[];
+}
+
+/**
+ * The month grid as a household sees it: every cell, every title, and how much
+ * of each title is actually on the glass.
+ *
+ * This is the measurement the brief is written from, and it exists because the
+ * two obvious readings are both wrong. Counting `.hz-row` elements reports rows
+ * the trim pass has hidden; reading `font-size` reports the size the stylesheet
+ * asked for rather than the size drawn. Neither notices that "Year 6 trip to
+ * the Science Museum" and "Year 6 sports day" are the same five characters on
+ * the wall.
+ */
+export async function measureMonthGrid(page: Page): Promise<MonthGrid> {
+  return page.evaluate(() => {
+    const describe = (element: Element): string =>
+      element.tagName.toLowerCase() +
+      (String(element.className).trim() === ''
+        ? ''
+        : `.${String(element.className).trim().split(/\s+/).join('.')}`);
+
+    const scaleOf = (element: Element): number => {
+      let scale = 1;
+      for (
+        let node: Element | null = element;
+        node !== null && node !== document.documentElement;
+        node = node.parentElement
+      ) {
+        const transform = getComputedStyle(node).transform;
+        if (transform === '' || transform === 'none') continue;
+        const numbers = /matrix\(([^)]+)\)/.exec(transform);
+        if (numbers === null) continue;
+        const [a, b, c, d] = numbers[1]!.split(',').map(Number) as [number, number, number, number];
+        const determinant = Math.abs(a * d - b * c);
+        if (determinant > 0) scale *= Math.sqrt(determinant);
+      }
+      return scale;
+    };
+
+    const grid = document.querySelector('#wall .horizon, #wall .sky');
+
+    /**
+     * The cell's *content* width — what a row actually has to lay out in.
+     *
+     * `clientWidth` is the padding box, so measuring against it reports a row
+     * that fills the cell completely as 0.86 of it, which reads as a bug in the
+     * row rather than as padding on the cell.
+     */
+    const contentWidthOf = (cell: Element | null): number => {
+      if (!(cell instanceof HTMLElement)) return 0;
+      const style = getComputedStyle(cell);
+      return cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    };
+
+    const runFor = (
+      element: HTMLElement,
+      cellWidth: number,
+      row?: HTMLElement,
+    ): {
+      text: string; where: string; fontPx: number; truncated: boolean;
+      fit: number; lines: number; widthPx: number; neededPx: number; ofCell: number;
+      rowOfCell: number; markerPx: number; topPx: number; allDay: boolean;
+    } => {
+      const style = getComputedStyle(element);
+      const scale = scaleOf(element);
+      /*
+       * A pixel of slack across, half a line down.
+       *
+       * Across is straightforward: `scrollWidth` past `clientWidth` is an
+       * ellipsis or a clipped edge, and a pixel covers sub-pixel rounding.
+       *
+       * Down is the trap this project has already paid for. A block whose
+       * `line-height` is under 1 — `.hz-num` is `line-height: 1`, and the
+       * font's own ascent and descent are taller than that — reports a
+       * `scrollHeight` past its `clientHeight` by the leading alone, with
+       * nothing hidden at all. Measured, that flagged all 35 day numbers as
+       * truncated. Text can only actually be lost a *line* at a time, so half
+       * a line is the bar: negative leading never reaches it and a dropped
+       * line always does.
+       */
+      const lineHeight = parseFloat(style.lineHeight);
+      const slack = Number.isFinite(lineHeight) ? Math.max(1, lineHeight / 2) : 1;
+      const overWide = element.scrollWidth > element.clientWidth + 1;
+      const overTall = element.scrollHeight > element.clientHeight + slack;
+      const needed = Math.max(element.scrollWidth, element.clientWidth);
+      const rect = element.getBoundingClientRect();
+      return {
+        text: (element.textContent ?? '').trim(),
+        where: describe(element),
+        fontPx: parseFloat(style.fontSize) * scale,
+        truncated: overWide || overTall,
+        fit: needed > 0 ? Math.min(1, element.clientWidth / needed) : 1,
+        lines:
+          Number.isFinite(lineHeight) && lineHeight > 0
+            ? Math.max(1, Math.round(element.scrollHeight / lineHeight))
+            : 1,
+        widthPx: element.clientWidth,
+        neededPx: needed,
+        ofCell: cellWidth > 0 ? rect.width / cellWidth : 0,
+        rowOfCell:
+          row !== undefined && cellWidth > 0 ? row.getBoundingClientRect().width / cellWidth : 0,
+        markerPx: row?.querySelector('.hz-rowdot')?.getBoundingClientRect().width ?? 0,
+        topPx: (row ?? element).getBoundingClientRect().top,
+        allDay: element.closest('.allday') !== null || element.classList.contains('allday'),
+      };
+    };
+
+    const cells: {
+      day: string; total: number; shown: ReturnType<typeof runFor>[];
+      hidden: number; more: string; moreCount: number; contentWidth: number;
+    }[] = [];
+    const texts: ReturnType<typeof runFor>[] = [];
+
+    if (grid !== null) {
+      // Every text node in the grid, furniture included: the floor is a claim
+      // about the whole grid, not only about the titles.
+      const walker = document.createTreeWalker(grid, NodeFilter.SHOW_TEXT);
+      const counted = new Set<Element>();
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if ((node.nodeValue ?? '').trim() === '') continue;
+        const element = node.parentElement;
+        if (element === null || counted.has(element)) continue;
+        counted.add(element);
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        texts.push(runFor(element, contentWidthOf(element.closest('.hz-cell, .sk-cell'))));
+      }
+
+      for (const cell of grid.querySelectorAll('.hz-cell, .sk-cell')) {
+        if (!(cell instanceof HTMLElement)) continue;
+        const titles: ReturnType<typeof runFor>[] = [];
+        let hidden = 0;
+        // Every treatment's title element: a flat row, a pill, a sky bar.
+        for (const row of cell.querySelectorAll('.hz-row, .hz-pill, .sk-ev, .sk-bar')) {
+          if (!(row instanceof HTMLElement)) continue;
+          if (row.classList.contains('hz-pill-more')) continue;
+          if (getComputedStyle(row).display === 'none') {
+            hidden++;
+            continue;
+          }
+          // The text element inside a flat row; the row itself otherwise. The
+          // row's own width travels with it, because "an all-day event takes
+          // the whole cell" is a claim about the row and "its title gets more
+          // of the cell" is a claim about the text — two different numbers.
+          const inner = row.querySelector('.hz-rowtext');
+          titles.push(runFor(inner instanceof HTMLElement ? inner : row, contentWidthOf(cell), row));
+        }
+        const counter = cell.querySelector('.hz-more, .hz-pill-more, .sk-more');
+        const more =
+          counter instanceof HTMLElement && getComputedStyle(counter).display !== 'none'
+            ? (counter.textContent ?? '').trim()
+            : '';
+        const number = cell.querySelector('.hz-num, .sk-mnum');
+        cells.push({
+          day: (number?.textContent ?? '').trim(),
+          total: Number(cell.getAttribute('data-count') ?? '0'),
+          shown: titles,
+          hidden,
+          more,
+          moreCount: /^\+(\d+)$/.test(more) ? Number(/^\+(\d+)$/.exec(more)![1]) : 0,
+          contentWidth: contentWidthOf(cell),
+        });
+      }
+    }
+
+    return {
+      remPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      cells,
+      texts,
+      titles: cells.flatMap((cell) => cell.shown),
+    };
   });
 }
 
