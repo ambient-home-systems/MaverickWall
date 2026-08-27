@@ -912,6 +912,36 @@ The browser test that does exist reads `select.value` rather than the `selected`
 attribute, because those are two different facts: what the server marked and
 what the browser will post.
 
+**Two of the wizard's four chips claimed the same subject, and nothing could
+have said so.** The bar read `2 · Timezone` over a page headed "Where is this
+wall?", and step 4 was `Where & who` — so "where" was the subject of two steps,
+and the one chip a household reads before choosing a zone contradicted the
+heading directly under it. The labels lived in `stepProgress` in `html.ts` and
+the headings in `setup.ts`, with nothing comparing them: `shifts[0]` again, one
+screen along, and the same cure — one exported `WIZARD_STEP_LABELS`, and a test
+that reads the *rendered* pages against it. Step 2 is now "What timezone is this
+wall in?" (the reason it matters stayed in the intro, which is where a reason
+belongs) and step 4 is `Location & people` over "Your location, and the people
+who live here".
+
+The invariant is worth more than the wording: **every chip's own words appear in
+the heading it leads to, and no other step's do.** The second half is what
+catches a heading that is silent about its own step while answering somebody
+else's, which is exactly what "Where is this wall?" was — and it goes red when
+the fix is removed either way round, which was checked four ways.
+
+**And the step 4 those chips advertise is reachable on a clean first run**,
+which an audit reported it was not. It was, and the audit was not wrong about
+what it saw: setup is marked complete after the *timezone*, so a session that
+re-enters the wizard partway through is sent by `GET /setup` straight to
+`/setup/done` with steps 3 and 4 behind it. A first run is not that journey, and
+there was no test that could tell the two apart —
+`browser-setup-walk.test.ts` walks the clean one in a browser now, over **both**
+ways out of step 3 (Skip, and a real loopback feed added through the form's own
+two submissions), and it presses `.btn-text` rather than selecting a button by
+the action it carries: a skip wired to the wrong screen must fail as a walk that
+ended somewhere else, not as thirty seconds hunting for an element that moved.
+
 **The display is a zoom pyramid**: today in full, the next few days that have
 anything on them, then six weeks as colour. Every decision about what is shown
 lives in `viewmodel.ts`, which has no DOM in it, so density is argued about

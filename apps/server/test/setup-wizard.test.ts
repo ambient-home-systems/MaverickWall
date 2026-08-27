@@ -230,7 +230,7 @@ describe('step 1 — the account', () => {
 
     // Signed in already: sending somebody to a sign-in form seconds after
     // choosing a password would be its own small insult.
-    expect(await (await call('/setup')).text()).toContain('Where is this wall?');
+    expect(await (await call('/setup')).text()).toContain('What timezone is this wall in?');
   });
 
   it('rejects a short password and a mismatch without losing what was typed', async () => {
