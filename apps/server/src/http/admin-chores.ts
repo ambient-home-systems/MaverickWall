@@ -451,7 +451,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       `${escapeHtml(chore.name)}` +
       (chore.paused ? `<span class="tag">Paused</span>` : '') +
       `</h2>` +
-      `<p class="host">${escapeHtml(describeSchedule(chore.schedule))}` +
+      `<p class="sub">${escapeHtml(describeSchedule(chore.schedule))}` +
       (chore.dueTime === null ? '' : ` · by ${escapeHtml(chore.dueTime)}`) +
       ` · ${escapeHtml(chore.personName ?? 'Anyone in the house')}</p>` +
       `<p class="hint">${escapeHtml(nextDue(chore, from))}</p>` +

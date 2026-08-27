@@ -579,7 +579,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       preview +
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
-      `<div class="host">by ${escapeHtml(entry.author)}</div>` +
+      `<div class="sub">by ${escapeHtml(entry.author)}</div>` +
       `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div>` +
       `<span class="tag" style="align-self:flex-start">${entry.kind === 'recipe' ? 'Recipe' : 'Service'}</span>` +
       `</div>` +

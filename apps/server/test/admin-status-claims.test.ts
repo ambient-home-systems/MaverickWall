@@ -216,9 +216,13 @@ describe('the "Today on the wall" card', () => {
       expect(big).toBe(today);
 
       // And the zone is still stated, on the line the other facts live on.
+      // That line is `.sub` rather than `.host`: `.host` was one class doing
+      // two jobs and now means machine identity only, so a sentence counting
+      // calendars and naming a zone moved to the prose half of the split.
       const card = /<div class="card today-card">([\s\S]*?)<\/div><\/div>/.exec(html)?.[1] ?? '';
-      const host = /<div class="host">([^<]*)<\/div>/.exec(card)?.[1];
-      expect(host).toContain('Europe/London');
+      const sub = /<div class="sub">([^<]*)<\/div>/.exec(card)?.[1];
+      expect(sub, 'the supporting line is missing from the card entirely').toBeDefined();
+      expect(sub).toContain('Europe/London');
     },
     SLOW,
   );

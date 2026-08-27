@@ -194,6 +194,9 @@ const STYLE_BODY = `
   --ruleSoft:var(--mw-line);
   --ink:var(--mw-ink);
   --muted:var(--mw-ink-2);
+  /* --faint is down to two uses, both objects: the idle status dot and a
+     media tile's hover border. It is ink-3, which no text is set in any
+     more — see the .host/.sub split below. */
   --faint:var(--mw-ink-3);
   --accent:var(--mw-accent);
   --accentInk:var(--mw-accent-ink);
@@ -285,7 +288,7 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 .side .brand svg{width:34px;height:34px;flex:0 0 auto;border-radius:8px}
 .side .brand b{font-family:var(--wordmark);font-weight:700;font-size:var(--mw-t-h2-size);
   letter-spacing:.02em;line-height:1;display:block}
-.side .brand small{display:block;color:var(--faint);font-size:11px;
+.side .brand small{display:block;color:var(--mw-ink-muted);font-size:11px;
   letter-spacing:.16em;text-transform:uppercase;margin-top:4px}
 .nav{flex:1;overflow-y:auto;padding:8px 12px 12px}
 .nav-group{margin-top:16px}
@@ -294,7 +297,7 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 .nav-group>span{display:block;padding:0 12px 8px;text-transform:uppercase;
   font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
-  color:var(--mw-ink-3)}
+  color:var(--mw-ink-muted)}
 /* Drawer items: a 48px row with a 4px corner and 20px icons. 48 is the touch
  * minimum and 8px denser than the 56px pill this replaced, which bought back
  * most of a nav item on a phone. The active row is a tinted ground with a 2px
@@ -337,7 +340,7 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 .side-foot .fmark svg{width:32px;height:32px;border-radius:7px;display:block}
 .side-foot .who{min-width:0;flex:1}
 .side-foot .who b{font-size:var(--mw-t-label-size);font-weight:600;display:block;line-height:1.2}
-.side-foot .who small{font-size:11px;color:var(--faint)}
+.side-foot .who small{font-size:11px;color:var(--mw-ink-muted)}
 .side-foot form{margin:0;flex:0 0 auto}
 /* An icon button: 40px visual, 4px corner, and a 48px pointer target from the
  * shared ::after extension. */
@@ -484,7 +487,7 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
 .steps .step span{display:block;margin-top:8px;
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
-  color:var(--mw-ink-3)}
+  color:var(--mw-ink-muted)}
 .steps .step.on span{color:var(--mw-accent)}
 .steps .step.done span{color:var(--mw-ink-2)}
 .wizbox .card{margin:0}
@@ -579,7 +582,19 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
   font-family:var(--sans);
   font-size:var(--mw-t-body-size);
   letter-spacing:var(--mw-t-body-tracking)}
-.field .field-input::placeholder{color:var(--mw-ink-3)}
+/* Placeholder text is ink-muted, not ink-3.
+ *
+ * These placeholders are not decoration: the wizard's are "e.g. 38.8894" and
+ * "https://…/basic.ics", which state the *format* a household has to match, on
+ * the one screen that has to work for everybody. At ink-3 that guidance was
+ * 3.25:1 in the light scheme. What a placeholder has to be distinguishable
+ * from is the entered value, and that is ink at 16:1 — so nothing is lost by
+ * making it readable.
+ *
+ * This was ink-3's last text use, which leaves it a pure boundary role: the
+ * field border below, the segmented control, a chip's outline. That is the job
+ * it clears 3:1 for, and now the only one it has. */
+.field .field-input::placeholder{color:var(--mw-ink-muted)}
 .field:hover .field-input{border-color:var(--mw-ink-2)}
 /* The border grows by 1px on focus; padding used to shrink by the same
  * amount so the text held still, but that 1px offset has no representation on
@@ -933,8 +948,35 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
   letter-spacing:var(--mw-t-h3-tracking);margin:0;
   display:flex;align-items:center;gap:.5rem}
 .card p{margin:0.5rem 0}
-.card .host,.host{color:var(--faint);font-size:12.5px;font-family:var(--mono);
+/* Two classes, because .host used to be one class doing two jobs.
+ *
+ * It was built for hostnames, where a quiet monospace line is exactly right,
+ * and then became the generic "second line" — so the alert ladder's
+ * explanations, "Last seen 2 minutes ago" and every nav group head were set in
+ * 12.5px grey *monospace*, in ink-3, which is 3.25:1 in the light scheme. Most
+ * of the product's secondary information layer, below the readable bar, in a
+ * face chosen for machine output.
+ *
+ * .host keeps the monospace face and now means machine identity only: a
+ * hostname, an entity id, a version string, a schema number, a panel's pixel
+ * geometry. .sub is the prose one — body face, same size, same quiet — and the
+ * test is whether a person reads the line as a sentence.
+ *
+ * Both are ink-muted rather than ink-3: a hostname is text somebody has to
+ * read too, so the split is about the *face*, and the colour was wrong for
+ * both. */
+.card .host,.host{color:var(--mw-ink-muted);font-size:12.5px;font-family:var(--mono);
   margin:0.25rem 0}
+.card .sub,.sub{color:var(--mw-ink-muted);font-size:12.5px;line-height:1.5;
+  margin:0.25rem 0}
+/* A machine token inside a sentence — "800×480 · rotated 90° · last seen 2
+ * minutes ago", or a hostname before a count. It keeps the mono face, which is
+ * the whole of what .host means, and nothing else: a block's margin on an
+ * inline run does nothing, and its colour is the same ink-muted the sentence
+ * around it is set in. The size is not re-stated because both classes are
+ * 12.5px by declaration — an inherit here would be off the type scale, which
+ * admin-design-drift.test.ts is right to refuse. */
+.sub .host{margin:0}
 .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
 .row form{margin:.75rem 0 0}
 .row button{margin-top:0}
@@ -991,7 +1033,7 @@ a.card:active{background:var(--mw-surface-3)}
   letter-spacing:var(--mw-t-h1-tracking);margin:12px 0 4px}
 .stat .lab{color:var(--muted);font-size:13.5px}
 .stat .subrow{margin-top:12px;padding-top:12px;border-top:1px solid var(--ruleSoft);
-  font-size:12.5px;color:var(--faint);display:flex;align-items:center;
+  font-size:12.5px;color:var(--mw-ink-muted);display:flex;align-items:center;
   justify-content:space-between;gap:.5rem}
 
 /* ---- Status dots and tags ------------------------------------------------ */
@@ -1064,7 +1106,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .tf-row{display:flex;align-items:center;gap:12px;margin:8px 0}
 .tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:4px;margin:0}
 .tf-row b{display:block;font-size:14px;font-weight:600}
-.tf-row small{display:block;color:var(--faint);font-size:12px;line-height:1.35}
+.tf-row small{display:block;color:var(--mw-ink-muted);font-size:12px;line-height:1.35}
 .tb-preview{position:sticky;top:88px}
 #theme-preview{width:300px;max-width:100%;min-height:220px;border:1px solid var(--rule);
   border-radius:var(--mw-r-2);overflow:hidden;background:var(--panel2)}
@@ -1100,7 +1142,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .preview li{display:flex;gap:1rem;padding:.5rem 0;font-size:14px;
   border-top:1px solid var(--ruleSoft)}
 .preview li:first-child{border-top:0}
-.preview .when{color:var(--faint);flex:0 0 12rem;font-family:var(--mono);font-size:12.5px}
+.preview .when{color:var(--mw-ink-muted);flex:0 0 12rem;font-family:var(--mono);font-size:12.5px}
 .preview .warn{color:var(--warn);font-size:var(--mw-t-body-size);margin-top:0.5rem}
 ul.plain{margin:0.5rem 0 0.5rem 1rem;color:var(--muted)}
 ul.plain li{margin:0.5rem 0}
@@ -1135,7 +1177,7 @@ pre.code{background:var(--mw-surface-2);
 /* ---- Shift slot pickers -------------------------------------------------- */
 .slots{display:flex;flex-wrap:wrap;gap:.5rem}
 .slots span{flex:0 0 6.2rem}
-.slots label{margin:0.5rem 0 0.25rem;font-size:var(--mw-t-label-xs-size);color:var(--faint);
+.slots label{margin:0.5rem 0 0.25rem;font-size:var(--mw-t-label-xs-size);color:var(--mw-ink-muted);
   font-weight:600;letter-spacing:.04em}
 .slots select{padding:0.5rem 0.25rem;font-size:var(--mw-t-body-size)}
 .title-cell{display:flex;align-items:center;font-weight:600;min-width:0;
@@ -1149,13 +1191,13 @@ pre.code{background:var(--mw-surface-2);
   background:color-mix(in srgb,var(--ok) 8%,var(--panel2))}
 .pv-cell.pv-unknown{border-top-color:var(--rule);background:var(--panel2);opacity:.6}
 .pv-dow{display:block;font:var(--mw-t-label-xs);
-  letter-spacing:var(--mw-t-label-xs-tracking);color:var(--faint)}
+  letter-spacing:var(--mw-t-label-xs-tracking);color:var(--mw-ink-muted)}
 .pv-num{display:block;font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);margin:4px 0}
 .pv-code{display:block;font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);color:var(--accent)}
 .pv-off .pv-code{color:var(--ok)}
-.pv-unknown .pv-code{color:var(--faint)}
+.pv-unknown .pv-code{color:var(--mw-ink-muted)}
 
 /* ---- Wall switcher above the layout editor ------------------------------- */
 /* The wall switcher is a row of filter chips: the current wall is the
@@ -1235,8 +1277,8 @@ pre.code{background:var(--mw-surface-2);
 .le-layers-head{padding:12px 16px;border-bottom:1px solid var(--ruleSoft)}
 .le-layers-title{font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);color:var(--ink)}
-.le-layers-sub{font-size:12px;color:var(--faint);margin-top:4px}
-.le-layers-empty{padding:16px 16px;font-size:var(--mw-t-label-size);color:var(--faint)}
+.le-layers-sub{font-size:12px;color:var(--mw-ink-muted);margin-top:4px}
+.le-layers-empty{padding:16px 16px;font-size:var(--mw-t-label-size);color:var(--mw-ink-muted)}
 .le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
 /* Deliberately under the 48px target rule: the editor toolbar is compact
  * density (32px buttons whose pointer targets stretch via ::after), and a
@@ -1464,7 +1506,7 @@ pre.code{background:var(--mw-surface-2);
 .le-media-item.is-on{border-color:var(--accent)}
 .le-media-upload{display:inline-flex;align-items:center;gap:8px;font-size:var(--mw-t-label-size);color:var(--muted)}
 .le-media-upload input{font-size:12px}
-.le-media-status{font-family:var(--mono);font-size:12px;color:var(--faint)}
+.le-media-status{font-family:var(--mono);font-size:12px;color:var(--mw-ink-muted)}
 
 /* The layers list — every widget, front on top; drag a row to restack. It is
    the body of the anchored popover above. */
@@ -1476,7 +1518,7 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .le-layer.is-selected{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
-.le-layer-grip{flex:0 0 auto;color:var(--faint);cursor:grab;letter-spacing:-2px;
+.le-layer-grip{flex:0 0 auto;color:var(--mw-ink-muted);cursor:grab;letter-spacing:-2px;
   font-size:14px;touch-action:none;padding:0 4px}
 .le-layer-name{flex:1;min-width:0;
   font-size:var(--mw-t-label-size);
@@ -1510,7 +1552,7 @@ pre.code{background:var(--mw-surface-2);
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
   letter-spacing:var(--mw-t-label-tracking)}
-.le-ladder-eg{flex:1;min-width:0;text-align:right;color:var(--faint);
+.le-ladder-eg{flex:1;min-width:0;text-align:right;color:var(--mw-ink-muted);
   font-size:var(--mw-t-body-sm-size);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
@@ -1630,7 +1672,7 @@ pre.code{background:var(--mw-surface-2);
 /* The row's checkbox takes the shared checkbox styling above. */
 .hep-main{flex:1;min-width:0}
 .hep-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hep-id{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--faint);white-space:nowrap;
+.hep-id{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .hep-state{font-family:var(--mono);font-size:12.5px;color:var(--muted);flex:0 0 auto;
   max-width:10rem;overflow:hidden;text-overflow:ellipsis;text-align:right}
@@ -1642,7 +1684,7 @@ pre.code{background:var(--mw-surface-2);
   color:var(--mw-ink-2)}
 .hep-field select,.hep-field input{width:auto;min-width:14rem}
 .hep-footer .btn-primary{margin-top:0}
-.hep-status{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+.hep-status{font-family:var(--mono);font-size:12.5px;color:var(--mw-ink-muted)}
 .hep-status.is-error{color:var(--danger)}
 
 /* ---- Template gallery (RFC 005) — blueprint cards ----------------------- */
@@ -1659,7 +1701,7 @@ pre.code{background:var(--mw-surface-2);
   overflow:hidden;border-radius:var(--mw-r-2);
   display:flex;align-items:center;justify-content:center}
 .tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  padding:12px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--faint)}
+  padding:12px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--mw-ink-muted)}
 .tpl-body{padding:0;display:flex;flex-direction:column;gap:8px;flex:1}
 .tpl-name{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking)}
@@ -1858,7 +1900,7 @@ pre.code{background:var(--mw-surface-2);
 .wset-navrow.is-on{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
 .wset-navrow.is-on small{color:var(--mw-accent-soft-ink);opacity:.8}
-.wset-navrow .rowchev{display:none;flex:0 0 auto;color:var(--faint)}
+.wset-navrow .rowchev{display:none;flex:0 0 auto;color:var(--mw-ink-muted)}
 .wset-navrow .rowchev svg{width:20px;height:20px}
 .wset-panels{min-width:0;max-width:720px}
 .wset-panel[hidden]{display:none}
@@ -1903,7 +1945,7 @@ pre.code{background:var(--mw-surface-2);
   color:var(--mw-ink-2);font-family:inherit;font-size:16px;
   text-align:right;text-align-last:right;text-overflow:ellipsis;cursor:pointer;
   appearance:none;-webkit-appearance:none}
-.srow-chev{display:inline-flex;flex:0 0 auto;color:var(--faint)}
+.srow-chev{display:inline-flex;flex:0 0 auto;color:var(--mw-ink-muted)}
 .srow-chev svg{width:18px;height:18px}
 /* A row that opens something rather than choosing a value (Advanced actions). */
 .arow{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;margin:0;
