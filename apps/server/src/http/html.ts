@@ -2774,18 +2774,39 @@ function savedStrip(saved: Saved): string {
 }
 
 /**
+ * The four chips the wizard's progress bar draws, in order.
+ *
+ * Exported because a chip is a *promise about the screen it leads to*, and the
+ * headings live a file away in `setup.ts` — two places holding one set of facts
+ * is this project's most repeated bug, and it had already happened here: the
+ * chip said "2 · Timezone" over a page headed "Where is this wall?", while step
+ * 4 was labelled "Where & who". Two steps claiming "where", and a chip
+ * contradicting the heading under it, on the one screen every household walks
+ * through exactly once and cannot re-read later.
+ *
+ * `test/browser-setup-walk.test.ts` reads this list against the headings the real
+ * server serves, so a label changed here and nowhere else fails rather than
+ * shipping.
+ */
+export const WIZARD_STEP_LABELS: readonly string[] = [
+  'Account',
+  'Timezone',
+  'Calendar',
+  'Location & people',
+];
+
+/**
  * The wizard's four-step progress bar, derived from a "Step N of 4" string.
  *
- * The wizard is always Account → Timezone → Calendar → Where & who, so the
- * labels are fixed; a total other than four just draws unlabelled bars rather
- * than guessing.
+ * The labels are fixed (`WIZARD_STEP_LABELS`); a total other than four just
+ * draws unlabelled bars rather than guessing.
  */
 function stepProgress(step: string): string {
   const match = /Step\s+(\d+)\s+of\s+(\d+)/i.exec(step);
   if (match === null) return `<p class="kick" style="margin-bottom:22px">${escapeHtml(step)}</p>`;
   const current = Number(match[1]);
   const total = Number(match[2]);
-  const labels = total === 4 ? ['Account', 'Timezone', 'Calendar', 'Where & who'] : [];
+  const labels = total === WIZARD_STEP_LABELS.length ? WIZARD_STEP_LABELS : [];
   let out = '<ol class="steps">';
   for (let n = 1; n <= total; n++) {
     const state = n < current ? ' done' : n === current ? ' on' : '';

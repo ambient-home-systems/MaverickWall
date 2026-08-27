@@ -33,8 +33,8 @@ expires — restart the container if you missed it.
 3. **A calendar.** Optional, and skippable — a feed can fail for reasons you do
    not control, and a wizard you cannot finish because Google is having a bad
    morning would leave a wall blank on the evening you installed it.
-4. **Your location, and who lives here.** Also optional. A latitude and
-   longitude for the forecast strip — and, in the United States, for working
+4. **Your location, and the people who live here.** Also optional. A latitude
+   and longitude for the forecast strip — and, in the United States, for working
    out which National Weather Service zones to watch — and the name of one
    person. A person is somebody for the wall to know about: their colour marks
    their events once a calendar is assigned to them, and a rota once one

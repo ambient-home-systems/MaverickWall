@@ -781,7 +781,15 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     return page({
       title: 'Set up Maverick Wall',
       step: 'Step 2 of 4',
-      heading: 'Where is this wall?',
+      /*
+       * Named for the thing being chosen, not for the reason it matters.
+       *
+       * "Where is this wall?" read as a question about a place — which is step
+       * 4's question, asked with the chip above this one saying "Timezone".
+       * Two steps claiming "where", and a heading its own chip contradicted.
+       * The intro below still carries the why, which is where the why belongs.
+       */
+      heading: 'What timezone is this wall in?',
       intro:
         'Every all-day event and the whole shift rotation are anchored to this ' +
         'zone. Getting it wrong puts birthdays on the wrong day.',
@@ -923,7 +931,9 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     return page({
       title: 'Set up Maverick Wall',
       step: 'Step 4 of 4',
-      heading: 'Your location, and who lives here',
+      // "people", so the chip above ("Location & people") says the same thing
+      // this heading does. "who lives here" was true and shared no word with it.
+      heading: 'Your location, and the people who live here',
       /*
        * The forecast and the person are not the same promise, and saying they
        * are would be a wizard that lies about its own next screen. Two numbers
