@@ -55,7 +55,11 @@ import { queryOf, selfHref } from './self.js';
  */
 export const SAVED_MESSAGES = {
   // Calendars
-  'calendar-added': 'Calendar added.',
+  // Says what happens next, because it is asynchronous and the row the
+  // household lands on cannot yet show a count. Only sent after
+  // `addCalendarSource` has both stored the row and scheduled its sync, so the
+  // second clause is a claim about a branch that has already happened.
+  'calendar-added': 'Calendar added — fetching events now.',
   'calendar-settings': 'Calendar settings saved.',
   'calendar-sync': 'Syncing now — it will show as synced within a minute.',
   'calendar-removed': 'Calendar removed.',

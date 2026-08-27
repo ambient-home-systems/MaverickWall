@@ -631,6 +631,45 @@ export function ago(from: number | null, now: number): string {
 }
 
 /**
+ * How long after a calendar is added its first sync is still in flight.
+ *
+ * `addCalendarSource` schedules the job three seconds out and the scheduler
+ * ticks every thirty, with a ten-second fetch timeout on top — so under a
+ * minute covers it, and two is generous without letting "Syncing…" become a
+ * claim of its own. Past the window the row falls back to the honest "synced
+ * never", which is what a household needs to see if the sync never ran.
+ */
+export const FIRST_SYNC_WINDOW_MS = 2 * 60_000;
+
+/**
+ * Whether this calendar's *first* sync has not happened yet.
+ *
+ * Measured: adding a working feed showed "0 events · synced never" for about
+ * twenty seconds, then "12 events · synced 1 minute ago" with no user action.
+ * The first sentence is exactly what a dead feed says, so the household's first
+ * impression of a calendar that works was a failure state.
+ *
+ * Four conditions, and each one is a branch this must not claim:
+ *   - never succeeded, or there is a real time to report instead;
+ *   - no error, or the error block is the truth and this would bury it;
+ *   - enabled, because `ics-sync` skips a disabled source outright and would
+ *     never arrive — the same guard "Sync now" already carries;
+ *   - added recently, because a source that has sat unsynced for an hour is
+ *     not syncing, it is stuck, and saying otherwise is the lie one screen on.
+ */
+export function firstSyncPending(
+  source: Pick<AdminSourceRow, 'lastSuccessAt' | 'lastError' | 'enabled' | 'createdAt'>,
+  at: number,
+): boolean {
+  return (
+    source.lastSuccessAt === null &&
+    source.lastError === null &&
+    source.enabled === 1 &&
+    at - source.createdAt < FIRST_SYNC_WINDOW_MS
+  );
+}
+
+/**
  * The installed modules for the sidebar's Modules group, read live.
  *
  * Every shell page passes this so the nav is a mirror of what is installed:
@@ -748,10 +787,39 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // nested anchor is invalid HTML the browser hoists out of the card.
     const manage = (): string => `<span class="link">Manage ${icon('arrow')}</span>`;
 
+    /*
+     * Zero calendars is its own branch, and it needs one.
+     *
+     * `failing === 0` is true of a household with nothing connected, so the
+     * card read "0 Calendars connected" under a green "All syncing" — a claim
+     * about a set that is empty, in the colour that means everything is well.
+     * The neutral pill is the same shape "None paired" already uses for
+     * screens, and the card beneath it is a link to go and fix it.
+     */
     const calTag =
-      failing === 0
-        ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>All syncing</span>`
-        : `<span class="tag tag-bad"><span class="dot dot-bad"></span>${failing} failing</span>`;
+      sources.length === 0
+        ? `<span class="tag">None yet</span>`
+        : failing === 0
+          ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>All syncing</span>`
+          : `<span class="tag tag-bad"><span class="dot dot-bad"></span>${failing} failing</span>`;
+
+    /*
+     * Today, in the household's own zone.
+     *
+     * The card headlined `household.timezone` in h2 type, which reads as the
+     * wall's *name* — "Etc/UTC" is the largest thing on the Overview and says
+     * nothing about today. The zone is still worth stating, because getting it
+     * wrong puts birthdays on the wrong day, so it moves down to the line the
+     * other facts already live on. en-GB for the same reason every other
+     * formatter here uses it: the admin is one language and a stamp that
+     * changes shape with the server's locale is a stamp nobody can test.
+     */
+    const todayLine = new Intl.DateTimeFormat('en-GB', {
+      timeZone: household.timezone,
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date(at));
     const scrTag =
       screens.length === 0
         ? `<span class="tag">None paired</span>`
@@ -831,8 +899,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `</div>` +
           `<div class="card today-card">` +
           `<div class="kick">Today on the wall</div>` +
-          `<div class="today-big">${escapeHtml(household.timezone)}</div>` +
-          `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'}</div>` +
+          `<div class="today-big">${escapeHtml(todayLine)}</div>` +
+          `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'} · ${escapeHtml(household.timezone)}</div>` +
           `<div class="row" style="margin-top:auto;padding-top:16px">` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
@@ -4579,8 +4647,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               ? `${source.consecutiveFailures} failures in a row. It keeps retrying, further apart each time.`
               : undefined,
           )
-        : `<p>${source.eventCount} event${source.eventCount === 1 ? '' : 's'} · ` +
-          `synced ${escapeHtml(ago(source.lastSuccessAt, at))}</p>`;
+        : firstSyncPending(source, at)
+          ? // Deliberately no event count beside it: zero is what this row
+            // reports before the first fetch lands, and "0 events" next to
+            // "Syncing…" is the failure sentence back again in a quieter voice.
+            `<p><strong>Syncing…</strong> ` +
+            `<span class="host">fetching this calendar for the first time</span></p>`
+          : `<p>${source.eventCount} event${source.eventCount === 1 ? '' : 's'} · ` +
+            `synced ${escapeHtml(ago(source.lastSuccessAt, at))}</p>`;
 
     const id = encodeURIComponent(source.id);
     // The echo wins wherever there is one; with none, the stored row is the form.
