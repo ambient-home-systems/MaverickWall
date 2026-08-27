@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **seventy-two real bugs**, and the pattern in how is the most
+This project has found **seventy-five real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -152,6 +152,8 @@ useful thing in this document:
 | **One real setup token in 446 walked straight out in the diagnostics export** | A test that failed one CI run in five, and was right |
 | **The default wall's agenda drawn below the legibility floor, and the month the only widget that could not be** | Measuring every text run on the shipped Classic wall, not just the clipped ones |
 | A month grid that names 2, 6 or 13 of its cells from one unchanged layout | Drawing the same wall three times and getting three answers |
+| A week-number switch on two views that draw no week number | Splitting a density out of a view, which made the guard say what it meant |
+| **An assertion for a legacy calendar view that no edit could turn red** | Removing the fix, watching it stay green, and picking a value the browser's own fallback does not happen to match |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -1090,6 +1092,54 @@ It filters the week columns as well as the month squares, and the label says so
 templates draw from it — and a daily meeting floods a week column for the same
 reason. Splitting them would mean a second list and a second count on every
 cell, which is one stored value meaning two things on two widgets.
+
+**Five calendar views were three views and a density.** `month`, `week`,
+`list`, `skyweek`, `skymonth` — and the last two were not views at all:
+`skymonth` drew the month grid and `skyweek` the week columns, edge to edge with
+hairline rules instead of gaps and cards. So a household picked between "Month
+grid" and "Sky month" with nothing on screen saying that one shows more and the
+other shows it bigger. Measured on a 1080x1920 wall with three ordinary family
+calendars filling the canvas: the dense month draws 25 words against 23 at
+**19.2px median against 22.1px**, and the dense week 14 against 11 at
+**18.2px** — under this project's own 22px floor, which is the trade, and it
+was hidden inside a name. It is a **Density** control now (Comfortable /
+Compact) beside a three-entry View picker, and it is the same renderers and the
+same pixels: `month` + `compact` *is* `renderSkyMonth`.
+
+**The old values are mapped at the read boundary and no migration touches a
+stored canvas.** `calendarView` (in `apps/display/src/widget-views.ts`,
+transcribed to `epaper/calendar-view.ts`) is the one place a config becomes a
+(view, density) pair, and `calendar-view-parity.test.ts` reads both files and
+compares the tables *and the two function bodies*, which are written to be
+character-identical. A legacy `mode` answers **both** halves and ignores a
+`density` beside it: the old value is already a pair, and taking the view from
+one key and the density from another is exactly how two readers come to
+disagree. Rewriting somebody's arrangement while they are not looking can only
+be got wrong once, so nothing rewrites it — a household's `skymonth` leaves
+their canvas when *they* edit the widget, and never before.
+
+Three things in it are worth keeping. The narrow-box week fallback stays on the
+**comfortable** week alone: `MIN_WEEK_COLUMN_REM` is 5rem measured against
+columns that have gaps and padding, and the dense week gives those up precisely
+to fit in less room — applying an unmeasured floor to it would have swapped an
+agenda in on the walls already hanging. `showWeekNumbers` was a *dead control*
+on both dense views and had been since they shipped, because its guard was
+`mode !== 'list'` and `skymonth` is not `list`; splitting the axes is what made
+that visible. And the ink lane reads the density as **comfortable regardless**,
+because a panel has none (`PANEL_IGNORES`) and still reads `cellEvents` — gating
+the lane on the wall's density would have hidden a control the renderer honours,
+which is the "option that does nothing" rule pointing the other way and is
+invisible to `epaper-ink.test.ts`, which checks the tables against the renderer
+and never the editor against the tables.
+
+**One assertion in that work passed with the fix removed**, which is the part
+worth reading twice. The check that a legacy widget opens the picker on the
+right view was written with `skymonth` — which resolves to Month, which is also
+the *first* option, which is what a browser preselects when nothing matches. A
+picker reading the raw `mode` finds no `skymonth` option, falls back to the
+first, and passes. `skyweek` is the value that proves it: it resolves to Week,
+so the same bug lands on Month and the assertion fails. Every assertion here was
+checked by breaking its own fix; that one was checked, found green, and rewritten.
 
 **The panel had to be told, and that is the same bug as `shifts[0]`.**
 `epaper/honours.ts` declares `cellEvents` honoured and the panel read it as

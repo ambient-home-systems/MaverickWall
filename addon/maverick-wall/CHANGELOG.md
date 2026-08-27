@@ -16,6 +16,27 @@
 
 ## Unreleased
 
+**The calendar widget offered five ways to show a month and a week; it now
+offers three, plus how densely to draw them.** "Sky month" and "Sky week" were
+never different views — they were the same month grid and the same week
+columns, drawn edge to edge to fit more in. So choosing between "Month grid"
+and "Sky month" was really choosing how much a day is allowed to say against
+how big the words are, with nothing on the screen saying so. There are three
+views now — **Month grid**, **Week columns** and **Upcoming list** — and a
+**Density** setting beside them: *Comfortable*, which is what Month grid and
+Week columns always drew, and *Compact*, which is what the Sky pair drew.
+Density is not offered on the upcoming list, which has only one.
+Measured on a kitchen wall, Compact puts a couple more events on each grid and
+draws every word about a fifth smaller — below the size this wall is meant to
+be read at from across a room. That is a fair trade to offer, and it is now a
+trade you can see.
+
+**Nothing on a wall you have already arranged changes.** A widget set to Sky
+month keeps drawing exactly what it drew — it simply reads as Month + Compact
+when you open it, which is what it always was. Settings that never did anything
+on the dense views have stopped being offered there: "Events in a day" and
+"Show week numbers" are drawn only where the calendar actually reads them.
+
 **A busy work calendar no longer takes over the month grid.** One daily meeting
 in a work feed put the same event in nearly every square — measured on a real
 wall, 31 of the 35 event names on the grid were the same standup, each cut short
