@@ -15,6 +15,7 @@ import {
   type FetchRejectionCode,
   type FetchRequest,
   type Fetcher,
+  type NetworkOption,
   type UrlPolicy,
   type ValidatedUrl,
 } from '@maverick-wall/core';
@@ -60,8 +61,17 @@ interface ResolvedAddress {
   readonly family: 4 | 6;
 }
 
-function rejected(code: FetchRejectionCode, message: string): FetchOutcome {
-  return { status: 'rejected', code, message };
+function rejected(
+  code: FetchRejectionCode,
+  message: string,
+  networkOptions: readonly NetworkOption[] = [],
+): FetchOutcome {
+  return {
+    status: 'rejected',
+    code,
+    message,
+    ...(networkOptions.length > 0 ? { networkOptions } : {}),
+  };
 }
 
 interface FailureExtras {
@@ -184,6 +194,14 @@ async function resolveAndCheck(
               : kind === 'loopback'
                 ? 'Turn on "allow loopback" for this source if that is intended.'
                 : 'That is not a reachable public address.'),
+          // The URL gate could not have known this: the name looks public and
+          // only the resolver says otherwise. Naming the switch here is what
+          // lets the form that shows this message also show the control.
+          isLocalNetwork(ip)
+            ? ['allowPrivateNetwork']
+            : kind === 'loopback'
+              ? ['allowLoopback']
+              : [],
         ),
       };
     }

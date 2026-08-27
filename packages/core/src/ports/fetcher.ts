@@ -1,4 +1,4 @@
-import type { UrlPolicy } from '../net/url.js';
+import type { NetworkOption, UrlPolicy } from '../net/url.js';
 
 /**
  * The outbound HTTP boundary.
@@ -70,7 +70,19 @@ export type FetchOutcome =
    * Refused by policy. Distinct from a failure: this is not retryable and
    * usually means a misconfigured source rather than a broken network.
    */
-  | { readonly status: 'rejected'; readonly code: FetchRejectionCode; readonly message: string }
+  | {
+      readonly status: 'rejected';
+      readonly code: FetchRejectionCode;
+      readonly message: string;
+      /**
+       * The opt-ins that would let this destination through, when there are
+       * any. Only DNS can answer for a name that *resolves* somewhere private,
+       * so the adapter that resolved it is the only thing that can say — and a
+       * form is otherwise left naming a remedy it cannot point at. Absent means
+       * no switch would help; it never means the address was acceptable.
+       */
+      readonly networkOptions?: readonly NetworkOption[];
+    }
   /** The attempt was legitimate and did not work. Retryable with backoff. */
   | {
       readonly status: 'failed';

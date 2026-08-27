@@ -87,12 +87,13 @@ import {
 } from './shifts.js';
 import { testFeed, type TestFeedResult } from '../api/test-feed.js';
 import { currentUser } from '../auth/session.js';
-import type { Fetcher, ShiftPlan } from '@maverick-wall/core';
+import type { Fetcher, NetworkOption, ShiftPlan } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, icon, page, saveRow,
+import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, icon,
+  networkAccessDisclosure, networkAccessSuggestion, page, saveRow,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
@@ -127,83 +128,6 @@ const sourceSettingsBody = z.object({
   allow_loopback: checkbox(),
   allow_http: checkbox(),
 });
-
-/**
- * The three SSRF opt-ins, stated once so the add form and a calendar's own
- * settings show the same labels and the same wording (RFC 009 Phase 7).
- *
- * Before this, the add form drew three bare checkboxes with no explanation,
- * the edit form drew only one of the three — as a switch, with a different
- * label — and the other two were unchangeable once a calendar existed. All
- * three now render the same way in both places, folded behind one
- * `<details>` because a household adding an ordinary public feed should never
- * have to read past "Add" to get there.
- */
-const NETWORK_ACCESS_FIELDS: readonly {
-  readonly name: string;
-  readonly label: string;
-  /** The short form for the collapsed summary — see `networkAccessDisclosure`. */
-  readonly short: string;
-  readonly hint: string;
-}[] = [
-  {
-    name: 'allow_lan',
-    label: 'Allow a local network address',
-    short: 'local network',
-    hint:
-      'Local network access lets this feed reach devices inside your home. ' +
-      'Only turn it on for a calendar you host yourself.',
-  },
-  {
-    name: 'allow_loopback',
-    label: 'Allow this machine itself',
-    short: 'this machine',
-    hint:
-      'Lets this feed reach the machine Maverick Wall is running on. Only turn ' +
-      'it on for a calendar hosted on this same box.',
-  },
-  {
-    name: 'allow_http',
-    label: 'Allow plain http',
-    short: 'plain http',
-    hint:
-      'This address would not be encrypted. Calendar addresses are passwords in ' +
-      'effect, so only turn this on for a feed you trust on your own network.',
-  },
-];
-
-function networkAccessDisclosure(values: {
-  allowPrivateNetwork: boolean;
-  allowLoopback: boolean;
-  allowHttp: boolean;
-}): string {
-  const checked: Readonly<Record<string, boolean>> = {
-    allow_lan: values.allowPrivateNetwork,
-    allow_loopback: values.allowLoopback,
-    allow_http: values.allowHttp,
-  };
-  /*
-   * The summary names what is on, and the whole thing opens by default when
-   * anything is — a switch relaxing an SSRF guard is not something a
-   * household should have to remember to click open to notice is on. A
-   * closed "Network access" with nothing to say gives the common case (an
-   * ordinary public feed) one line rather than three.
-   */
-  const on = NETWORK_ACCESS_FIELDS.filter((field) => checked[field.name] === true);
-  const summary = on.length === 0 ? 'Network access' : `Network access — ${on.map((f) => f.short).join(', ')} on`;
-  return (
-    `<details class="disclose"${on.length > 0 ? ' open' : ''}><summary>${escapeHtml(summary)}</summary>` +
-    NETWORK_ACCESS_FIELDS.map((field) =>
-      switchRow({
-        label: field.label,
-        name: field.name,
-        checked: checked[field.name] === true,
-        hint: field.hint,
-      }),
-    ).join('') +
-    `</details>`
-  );
-}
 
 /**
  * One calendar's settings as the household left them, for a page that comes
@@ -998,6 +922,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         calendarsPage(c, values, {
           message: tested.message,
           ...(tested.suggestion !== undefined ? { suggestion: tested.suggestion } : {}),
+          networkOptions: tested.networkOptions,
         }),
         400,
       );
@@ -4899,7 +4824,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowLoopback?: boolean;
       allowHttp?: boolean;
     } = {},
-    error?: { message: string; suggestion?: string },
+    error?: {
+      message: string;
+      suggestion?: string;
+      /**
+       * The network opt-ins this address still needs, when it was refused for
+       * one. Named all at once and used to open the disclosure they live in:
+       * an error pointing at a control folded shut is an error nobody can act
+       * on, and it took three submissions to add a loopback http feed.
+       */
+      networkOptions?: readonly NetworkOption[];
+    },
     tested?: TestFeedResult,
     /**
      * The Home Assistant calendars on offer, when there are any.
@@ -4916,6 +4851,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const at = now();
     const sources = readAdminSources(deps.db);
     const people = readPeopleAdmin(deps.db);
+
+    const networkOptions = error?.networkOptions ?? [];
+    // The aggregate sentence when there is one, the per-code suggestion when
+    // there is not. `testFeed` never supplies both.
+    const networkSuggestion = networkAccessSuggestion(networkOptions);
+    const suggestion =
+      error?.suggestion ?? (networkSuggestion === '' ? undefined : networkSuggestion);
+    const errorHtml = error === undefined ? '' : errorBlock(error.message, suggestion);
 
     return page({
       self: selfHref(c),
@@ -4941,13 +4884,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * which reads as a save that worked. The echo is what tells the two
          * apart, because it is only ever set by a row's own handler.
          */
-        (echo === undefined || error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        (echo === undefined || error === undefined ? '' : errorHtml) +
         sources
           .map((source) => sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined))
           .join('') +
         haCalendarSection(haCalendars, sources) +
         `<h2 class="add" id="add">Add a calendar</h2>` +
-        (echo !== undefined || error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        (echo !== undefined || error === undefined ? '' : errorHtml) +
         (tested === undefined ? '' : previewPanel(tested)) +
         `<form method="post" action="admin/calendars">` +
         textField({
@@ -4985,6 +4928,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           allowPrivateNetwork: values.allowPrivateNetwork === true,
           allowLoopback: values.allowLoopback === true,
           allowHttp: values.allowHttp === true,
+          // Only for the add form's own refusal. A rejected row save is echoed
+          // at the top of the page and has nothing to do with these controls.
+          open: echo === undefined && networkOptions.length > 0,
         }) +
         // Two buttons, one form. Testing first is the cheap habit this screen
         // exists to encourage, so it is the one on the left.

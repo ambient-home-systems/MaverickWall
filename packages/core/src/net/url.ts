@@ -332,3 +332,59 @@ export function validateRedirect(
 export function isCrossOrigin(from: ValidatedUrl, to: ValidatedUrl): boolean {
   return from.protocol !== to.protocol || from.hostname !== to.hostname || from.port !== to.port;
 }
+
+/**
+ * The three per-source opt-ins, named as they are on `UrlPolicy`.
+ *
+ * A machine-readable answer rather than a sentence: core says which switches an
+ * address would need, and the layer with the household in front of it decides
+ * what to call them. Naming them here in the words a form uses would put the
+ * label in two places, which is how a message ends up pointing at a control
+ * that has since been renamed.
+ */
+export type NetworkOption = 'allowPrivateNetwork' | 'allowLoopback' | 'allowHttp';
+
+/** Form order, so a caller listing them matches the order they are shown in. */
+const NETWORK_OPTIONS: readonly NetworkOption[] = [
+  'allowPrivateNetwork',
+  'allowLoopback',
+  'allowHttp',
+];
+
+/**
+ * Which network opt-ins this address needs, all of them, in one pass.
+ *
+ * `validateOutboundUrl` answers with the *first* thing wrong, which is right
+ * for a guard and wrong for a form: `http://127.0.0.1/cal.ics` took three
+ * submissions to add, each one revealing a single further switch, because
+ * every round refused at the earliest rule and said nothing about the rest.
+ * This asks the same question three more times with one switch removed each
+ * time, so a household is told everything that needs ticking at once.
+ *
+ * It re-runs the validator rather than re-deriving its rules: which addresses
+ * count as loopback, as local, or as neither is decided in exactly one place,
+ * and a second copy of that reasoning here would be a copy that drifts. The
+ * cost is four passes over a string, which is nothing next to the fetch that
+ * follows.
+ *
+ * Empty means no switch would help — either the address is already acceptable,
+ * or it is refused for a reason no opt-in reaches (a reserved name, a
+ * credential in the userinfo, link-local). A caller must not read an empty
+ * list as "this URL is fine".
+ */
+export function requiredNetworkOptions(raw: string, policy: UrlPolicy = {}): readonly NetworkOption[] {
+  const permissive: UrlPolicy = {
+    ...policy,
+    allowPrivateNetwork: true,
+    allowLoopback: true,
+    allowHttp: true,
+  };
+  if (!validateOutboundUrl(raw, permissive).ok) return [];
+
+  return NETWORK_OPTIONS.filter(
+    (option) =>
+      // Already on is already answered: naming it would tell a household to
+      // tick a box that is ticked.
+      policy[option] !== true && !validateOutboundUrl(raw, { ...permissive, [option]: false }).ok,
+  );
+}

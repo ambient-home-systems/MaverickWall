@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isCrossOrigin,
+  requiredNetworkOptions,
   validateOutboundUrl,
   validateRedirect,
   type UrlPolicy,
@@ -216,5 +217,64 @@ describe('malformed input', () => {
 
   it('refuses an absurdly long URL before parsing it', () => {
     expect(code(`https://${'a'.repeat(3000)}.com/`)).toBe('too-long');
+  });
+});
+
+describe('requiredNetworkOptions', () => {
+  /*
+   * The guard answers with the first thing wrong, which made adding
+   * `http://127.0.0.1:9911/cal.ics` a three-round conversation: plain http,
+   * then loopback, then done. A form needs the whole answer in one round.
+   */
+  it('names every opt-in a loopback http address needs, in one pass', () => {
+    expect(requiredNetworkOptions('http://127.0.0.1:9911/cal.ics')).toEqual([
+      'allowLoopback',
+      'allowHttp',
+    ]);
+  });
+
+  it('does not ask for local network access to reach this machine', () => {
+    // The two flags are deliberately separate, and loopback is not a LAN
+    // address — asking for both would teach a household to tick everything.
+    expect(requiredNetworkOptions('http://localhost/cal.ics')).toEqual([
+      'allowLoopback',
+      'allowHttp',
+    ]);
+    expect(requiredNetworkOptions('https://localhost/cal.ics')).toEqual(['allowLoopback']);
+  });
+
+  it('names both for a plain-http address on the local network', () => {
+    expect(requiredNetworkOptions('http://192.168.1.5/cal.ics')).toEqual([
+      'allowPrivateNetwork',
+      'allowHttp',
+    ]);
+    expect(requiredNetworkOptions('http://nas/cal.ics')).toEqual([
+      'allowPrivateNetwork',
+      'allowHttp',
+    ]);
+  });
+
+  it('asks for nothing when the address is already acceptable', () => {
+    expect(requiredNetworkOptions('https://calendar.google.com/basic.ics')).toEqual([]);
+    // Already permitted by the policy in force, so there is nothing to tick.
+    expect(
+      requiredNetworkOptions('http://127.0.0.1/cal.ics', { allowLoopback: true, allowHttp: true }),
+    ).toEqual([]);
+  });
+
+  it('asks for nothing when no switch would help', () => {
+    // Link-local is refused under every policy — 169.254.169.254 is the cloud
+    // metadata endpoint — so a form must not offer a control that would not
+    // work. Same for a reserved name, which resolves nowhere at all.
+    expect(requiredNetworkOptions('http://169.254.169.254/latest/')).toEqual([]);
+    expect(requiredNetworkOptions('https://example.test/cal.ics')).toEqual([]);
+    expect(requiredNetworkOptions('https://user:pw@example.com/cal.ics')).toEqual([]);
+    expect(requiredNetworkOptions('not a url')).toEqual([]);
+  });
+
+  it('never throws', () => {
+    for (const bad of ['', '   ', 'https://', '://x', 'ftp://example.com/']) {
+      expect(() => requiredNetworkOptions(bad)).not.toThrow();
+    }
   });
 });
