@@ -16,6 +16,22 @@
 
 ## Unreleased
 
+**What's coming up is now the biggest thing on a new wall.** The standard
+kitchen layout gave most of its room to the month grid and squeezed the list of
+what's next into a fifth of the screen — which meant the times, the dates and
+the rota labels beside each event were being drawn too small to read from across
+the room. That list is now half as big again and every word on it clears the
+size this wall is meant to be read at, while the month grid keeps its space and
+its colours. On a television the change is bigger still: the clock, forecast and
+rota move to a strip along the top, and what's coming up gets a proper column
+instead of being cut off at the bottom of a narrow one — event names were losing
+two thirds of themselves there.
+
+This only applies to walls added from now on. **A wall you have already arranged
+is left exactly as it is** — nothing is moved, and no screen you have set up
+changes. If you would like the new arrangement on an existing wall, Walls ›
+(your wall) › Reset layout applies it.
+
 **The version on the System page is the version you are running.** A build made
 from a checkout rather than from a release reported `0.0.0` everywhere — on the
 page whose whole job is to say what you are running, in the diagnostics you

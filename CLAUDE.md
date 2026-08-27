@@ -150,6 +150,8 @@ useful thing in this document:
 | An assertion for "all-day events draw first" that no edit could turn red | Deleting both things that could have caused it, twice |
 | A month grid measured on a widget nobody ships, not on the wall that does | Merging, and watching somebody else's colour test go red |
 | **One real setup token in 446 walked straight out in the diagnostics export** | A test that failed one CI run in five, and was right |
+| **The default wall's agenda drawn below the legibility floor, and the month the only widget that could not be** | Measuring every text run on the shipped Classic wall, not just the clipped ones |
+| A month grid that names 2, 6 or 13 of its cells from one unchanged layout | Drawing the same wall three times and getting three answers |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -992,6 +994,46 @@ while three pills per cell were always drawn and stopped being fine the moment a
 cell could hold one row. It has three calendars' worth of different events now,
 which is both the realistic case and the only one where "do I see three
 different things?" means anything.
+
+**Classic's own proportions were the wrong way round, and finding out why took
+measuring the runs nobody had measured.** The default wall gave the month 45% of
+the portrait height and the whole right-hand column in landscape, and the agenda
+20% and 7.8% — the most space to the view that reads worst. The clipping story
+above is only half of it: measured on a paired wall with three family calendars,
+a rota and a forecast, **17 of the agenda's 28 text runs sat below the 22px
+floor** (the rota chip at 13.8px), and 19 of 21 in landscape with three titles
+cut to about a third of their strings. The mechanism is invisible in the CSS and
+is the part worth keeping: every widget reusing a section from the stacked layout
+is `transform: scale()`d to fill its box, and **a transform multiplies straight
+through `max(…, var(--t-floor))`**. The month is the one widget that *fills* its
+box rather than being scaled, so it is the only thing on the wall that cannot go
+under the floor — which is exactly why it looked fine at every size while
+everything beside it quietly did not.
+
+The fix is the template, since the box is the only lever a template has. What it
+could *not* be is the obvious one. Below about 0.40 of the portrait height a
+month cell has no room for a row under its date number, and a row is where the
+calendar's **colour** lives — so shrinking the month to feed the agenda takes the
+grid from "which day is busy" to nothing but a date and a "+N", and
+`browser-source-colours.test.ts` goes red, correctly, because it measures the
+shipped wall rather than a widget nobody has. So the month gives up 0.45→0.435
+and the agenda's extra height comes almost entirely out of **slack**: roughly
+0.09 of that wall was sitting in gaps and margins. The agenda goes 0.20→0.305,
+every run clears the floor, and nothing else shrinks by more than a rounding
+error. Landscape had width to spare and inverts outright — the utility widgets
+move to a strip across the top, where a forecast is a horizontal strip and stops
+being starved in a 26%-wide column (15 runs under the floor to 5), and the agenda
+takes 37.4% of the canvas against the month's 28.8%.
+
+Two things came out of it that are not about this layout. **The grid trims once,
+at first draw**, against whatever font metrics have arrived — so the same wall,
+same data, same size, names 2 or 6 or 13 of its 17 busy cells depending on
+whether the fonts beat the render, and never re-trims. That is why the month is
+not tuned to its cliff but two notches above it, and why the measurement holds
+the first manifest back until the fonts are in. And the agenda's type is set by
+how many **days** it spans rather than how many events it shows: four, five and
+six events scale identically in a given box, so `count` is a legibility lever
+only up to the point where it stops removing a day header.
 
 **What did not change: a wall that already stores `pills`.** Every household
 backfilled onto Classic before this has `cellEvents: 'pills'` in its
