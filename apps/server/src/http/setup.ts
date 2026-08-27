@@ -12,10 +12,19 @@ import {
   writeWeatherSettings,
 } from '../api/queries.js';
 import { testFeed } from '../api/test-feed.js';
-import type { Fetcher } from '@maverick-wall/core';
+import type { Fetcher, NetworkOption } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { errorBlock, escapeHtml, noticeBlock, page, selectField, textField } from './html.js';
+import {
+  errorBlock,
+  escapeHtml,
+  networkAccessDisclosure,
+  networkAccessSuggestion,
+  noticeBlock,
+  page,
+  selectField,
+  textField,
+} from './html.js';
 import { DEFAULT_TIMEZONE } from '../timezone.js';
 import { ingressPath } from './ingress.js';
 import { checkbox, coordinate, optionalText, parse, text, z } from '../validation.js';
@@ -568,6 +577,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         calendarForm(values, {
           message: tested.message,
           ...(tested.suggestion !== undefined ? { suggestion: tested.suggestion } : {}),
+          networkOptions: tested.networkOptions,
         }),
         400,
       );
@@ -815,6 +825,22 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     });
   }
 
+  /**
+   * Step 3 — a calendar, and nothing else asked.
+   *
+   * The three SSRF opt-ins are not drawn here at all until something needs
+   * them. They used to sit under the two fields as three flat checkboxes at
+   * equal weight, taking more of the screen than the name and the address, and
+   * asking a household in their third minute of ownership to make three
+   * security decisions they cannot evaluate — for a hosted feed the answer to
+   * all three is no, and it is no by simply not appearing.
+   *
+   * The moment the question is worth putting is the moment an address is
+   * refused for one of them, and then it is put open, with everything that
+   * needs ticking named at once. Anything already ticked keeps them on screen
+   * too: a switch that vanishes on the next 400 is a switch silently turned
+   * back off.
+   */
   function calendarForm(
     values: {
       name?: string;
@@ -823,10 +849,20 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       allowLoopback?: boolean;
       allowHttp?: boolean;
     } = {},
-    error?: { message: string; suggestion?: string },
+    error?: {
+      message: string;
+      suggestion?: string;
+      networkOptions?: readonly NetworkOption[];
+    },
   ): string {
-    const box = (id: string, label: string, on: boolean): string =>
-      `<label><input type="checkbox" name="${id}" value="1"${on ? ' checked' : ''}> ${escapeHtml(label)}</label>`;
+    const networkOptions = error?.networkOptions ?? [];
+    const networkSuggestion = networkAccessSuggestion(networkOptions);
+    const suggestion =
+      error?.suggestion ?? (networkSuggestion === '' ? undefined : networkSuggestion);
+    const anyOn =
+      values.allowPrivateNetwork === true ||
+      values.allowLoopback === true ||
+      values.allowHttp === true;
     return page({
       title: 'Set up Maverick Wall',
       step: 'Step 3 of 4',
@@ -836,7 +872,7 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         '"Secret address in iCal format", ending in .ics. You can skip this ' +
         'and add calendars later.',
       body:
-        (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        (error === undefined ? '' : errorBlock(error.message, suggestion)) +
         `<form method="post" action="setup/calendar">` +
         textField({
           label: 'Name',
@@ -852,11 +888,14 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
           placeholder: 'https://…/basic.ics',
           value: values.url ?? '',
         }) +
-        `<div class="checks">` +
-        box('allow_lan', 'This feed is on my local network', values.allowPrivateNetwork === true) +
-        box('allow_loopback', 'This feed is on this machine', values.allowLoopback === true) +
-        box('allow_http', 'Allow plain http for this feed', values.allowHttp === true) +
-        `</div>` +
+        (networkOptions.length === 0 && !anyOn
+          ? ''
+          : networkAccessDisclosure({
+              allowPrivateNetwork: values.allowPrivateNetwork === true,
+              allowLoopback: values.allowLoopback === true,
+              allowHttp: values.allowHttp === true,
+              open: true,
+            })) +
         `<button type="submit">Test and add</button></form>` +
         `<form method="get" action="setup/place">` +
         // A text button: skipping is the lowest-emphasis choice on the page.

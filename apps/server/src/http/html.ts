@@ -15,6 +15,7 @@
 import { ADMIN_SCHEMES, adminColorVars, adminTypeVars } from './design-tokens.js';
 import { SAVED_MESSAGES, type Saved } from './saved.js';
 import { contentEtag } from './static.js';
+import type { NetworkOption } from '@maverick-wall/core';
 
 /** Escape for HTML text and quoted attributes. Everything echoed back goes through this. */
 export function escapeHtml(value: string): string {
@@ -3196,6 +3197,131 @@ export function switchRow(options: SwitchRowOptions): string {
     (options.attrs === undefined ? '' : ` ${options.attrs}`) +
     `></label>`
   );
+}
+
+/**
+ * The three SSRF opt-ins, stated once so the add form and a calendar's own
+ * settings show the same labels and the same wording (RFC 009 Phase 7).
+ *
+ * Before this, the add form drew three bare checkboxes with no explanation,
+ * the edit form drew only one of the three — as a switch, with a different
+ * label — and the other two were unchangeable once a calendar existed. All
+ * three now render the same way in both places, folded behind one
+ * `<details>` because a household adding an ordinary public feed should never
+ * have to read past "Add" to get there.
+ *
+ * It lives here rather than in `admin.ts` because the wizard asks the same
+ * question on its third step and was asking it a second way — three bare
+ * checkboxes, at equal weight with the two fields that matter, on the screen a
+ * household reaches in their first three minutes. One table, one renderer, one
+ * set of words, wherever the question is put.
+ */
+const NETWORK_ACCESS_FIELDS: readonly {
+  readonly name: string;
+  /** The `UrlPolicy` flag this control sets, so `core` can name it. */
+  readonly option: NetworkOption;
+  readonly label: string;
+  /** The short form for the collapsed summary — see `networkAccessDisclosure`. */
+  readonly short: string;
+  readonly hint: string;
+}[] = [
+  {
+    name: 'allow_lan',
+    option: 'allowPrivateNetwork',
+    label: 'Allow a local network address',
+    short: 'local network',
+    hint:
+      'Local network access lets this feed reach devices inside your home. ' +
+      'Only turn it on for a calendar you host yourself.',
+  },
+  {
+    name: 'allow_loopback',
+    option: 'allowLoopback',
+    label: 'Allow this machine itself',
+    short: 'this machine',
+    hint:
+      'Lets this feed reach the machine Maverick Wall is running on. Only turn ' +
+      'it on for a calendar hosted on this same box.',
+  },
+  {
+    name: 'allow_http',
+    option: 'allowHttp',
+    label: 'Allow plain http',
+    short: 'plain http',
+    hint:
+      'This address would not be encrypted. Calendar addresses are passwords in ' +
+      'effect, so only turn this on for a feed you trust on your own network.',
+  },
+];
+
+export function networkAccessDisclosure(values: {
+  allowPrivateNetwork: boolean;
+  allowLoopback: boolean;
+  allowHttp: boolean;
+  /**
+   * Force it open, for a submission refused because one of these is off.
+   *
+   * An error naming a remedy the household cannot see is not a remedy: adding
+   * `http://127.0.0.1:9911/cal.ics` said plain http had to be turned on
+   * deliberately, with the control that turns it on folded shut underneath.
+   * One attribute on the re-render, and no script — a `<details>` a server can
+   * open is the whole reason this is a `<details>`.
+   */
+  open?: boolean;
+}): string {
+  const checked: Readonly<Record<string, boolean>> = {
+    allow_lan: values.allowPrivateNetwork,
+    allow_loopback: values.allowLoopback,
+    allow_http: values.allowHttp,
+  };
+  /*
+   * The summary names what is on, and the whole thing opens by default when
+   * anything is — a switch relaxing an SSRF guard is not something a
+   * household should have to remember to click open to notice is on. A
+   * closed "Network access" with nothing to say gives the common case (an
+   * ordinary public feed) one line rather than three.
+   */
+  const on = NETWORK_ACCESS_FIELDS.filter((field) => checked[field.name] === true);
+  const summary = on.length === 0 ? 'Network access' : `Network access — ${on.map((f) => f.short).join(', ')} on`;
+  return (
+    `<details class="disclose"${on.length > 0 || values.open === true ? ' open' : ''}><summary>${escapeHtml(summary)}</summary>` +
+    NETWORK_ACCESS_FIELDS.map((field) =>
+      switchRow({
+        label: field.label,
+        name: field.name,
+        checked: checked[field.name] === true,
+        hint: field.hint,
+      }),
+    ).join('') +
+    `</details>`
+  );
+}
+
+/**
+ * "Turn on X and Y." — every switch this address needs, in one sentence.
+ *
+ * The guard answers with the first thing wrong, so a refusal used to reveal one
+ * switch per round: plain http, then this machine, then the feed. `core`'s
+ * `requiredNetworkOptions` asks about all three at once and answers in the
+ * names on `UrlPolicy`; this is where those become the words on the control,
+ * read out of the same table that renders it. A sentence naming a label from
+ * its own copy of the list is a sentence that goes stale the day the label is
+ * reworded.
+ *
+ * Empty options give an empty string, because there is no honest sentence to
+ * write: the address is refused for something no switch reaches.
+ */
+export function networkAccessSuggestion(options: readonly NetworkOption[]): string {
+  const labels = options
+    .map((option) => NETWORK_ACCESS_FIELDS.find((field) => field.option === option)?.label)
+    .filter((label): label is string => label !== undefined)
+    .map((label) => `“${label}”`);
+  if (labels.length === 0) return '';
+  const named =
+    labels.length === 1
+      ? labels[0]
+      : `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+  return `Turn on ${named} under Network access below.`;
 }
 
 /**

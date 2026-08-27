@@ -1,5 +1,5 @@
 import { expandCalendar } from '@maverick-wall/calendar';
-import { analyseTitles, FETCH_LIMITS, validateOutboundUrl, type Fetcher, type TitleObservation } from '@maverick-wall/core';
+import { analyseTitles, FETCH_LIMITS, requiredNetworkOptions, validateOutboundUrl, type Fetcher, type NetworkOption, type TitleObservation } from '@maverick-wall/core';
 
 /**
  * Try a calendar URL before anything is saved.
@@ -59,6 +59,16 @@ export type TestFeedResult =
       readonly message: string;
       /** Something the person can actually do. Absent when there is nothing. */
       readonly suggestion?: string;
+      /**
+       * Every network opt-in this address still needs, evaluated together.
+       *
+       * The guard stops at the first rule that refuses, which made adding a
+       * loopback http feed a three-round conversation — one switch revealed
+       * per submission. A form gets the whole answer here and can say it once,
+       * with the controls in view. Empty means no switch would help; it never
+       * means the address was acceptable.
+       */
+      readonly networkOptions: readonly NetworkOption[];
     };
 
 /**
@@ -114,12 +124,20 @@ export async function testFeed(
 
   const validated = validateOutboundUrl(request.url, policy);
   if (!validated.ok) {
-    const suggestion = suggestionFor(validated.error.code);
+    /*
+     * The aggregate wins where it has anything to say. Two remedies for one
+     * refusal is one too many, and the per-code suggestion is the narrower of
+     * them — it names the first rule that refused, and for a loopback address
+     * literal it named the wrong control entirely.
+     */
+    const networkOptions = requiredNetworkOptions(request.url, policy);
+    const suggestion = networkOptions.length > 0 ? undefined : suggestionFor(validated.error.code);
     return {
       ok: false,
       stage: 'url',
       message: validated.error.message,
       ...(suggestion !== undefined ? { suggestion } : {}),
+      networkOptions,
     };
   }
 
@@ -133,18 +151,28 @@ export async function testFeed(
   });
 
   if (response.status === 'rejected' || response.status === 'failed') {
-    const suggestion = suggestionFor(response.code);
+    // Only the resolver knows a public-looking name landed on a LAN address,
+    // so the answer comes from the outcome rather than from the URL.
+    const networkOptions =
+      response.status === 'rejected' ? (response.networkOptions ?? []) : [];
+    const suggestion = networkOptions.length > 0 ? undefined : suggestionFor(response.code);
     return {
       ok: false,
       stage: 'fetch',
       message: response.message,
       ...(suggestion !== undefined ? { suggestion } : {}),
+      networkOptions,
     };
   }
 
   if (response.status === 'not-modified') {
     // No conditional headers were sent, so this should not happen.
-    return { ok: false, stage: 'fetch', message: 'The server returned no content.' };
+    return {
+      ok: false,
+      stage: 'fetch',
+      message: 'The server returned no content.',
+      networkOptions: [],
+    };
   }
 
   const now = Date.now();
@@ -165,6 +193,7 @@ export async function testFeed(
         ? `${expanded.error.message} (${expanded.error.detail})`
         : expanded.error.message,
       ...(suggestion !== undefined ? { suggestion } : {}),
+      networkOptions: [],
     };
   }
 
