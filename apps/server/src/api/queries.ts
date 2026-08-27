@@ -1392,6 +1392,13 @@ export interface AdminSourceRow {
   readonly personId: string | null;
   readonly kind: string;
   readonly haEntityId: string | null;
+  /**
+   * When the household added it. Read so the row can tell a calendar that has
+   * *not yet* had its first sync from one that has been failing to sync since
+   * it was added — the two are identical in every other column, and the admin
+   * reported both as "synced never".
+   */
+  readonly createdAt: number;
 }
 
 /**
@@ -1411,7 +1418,8 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
               allow_private_network AS allowPrivateNetwork,
               allow_loopback AS allowLoopback, allow_http AS allowHttp,
               show_in_grid AS showInGrid,
-              color, person_id AS personId, kind, ha_entity_id AS haEntityId
+              color, person_id AS personId, kind, ha_entity_id AS haEntityId,
+              created_at AS createdAt
          FROM calendar_sources
         ORDER BY name`,
     )

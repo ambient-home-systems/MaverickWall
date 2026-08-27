@@ -447,7 +447,10 @@ describe('the confirmation strip', () => {
     // after the strip is dismissed.
     const page = await (await h.call('/admin/calendars?saved=calendar-added&sort=name')).text();
     const strip = stripOf(page) ?? '';
-    expect(strip).toContain('Calendar added.');
+    // The sentence out of the table rather than a copy of it: this test is
+    // about the dismiss link keeping the rest of the query, and pinning the
+    // wording here made rewording the confirmation fail a query-string test.
+    expect(strip).toContain(SAVED_MESSAGES['calendar-added']);
     expect(strip).toContain('href="admin/calendars?sort=name"');
   });
 
