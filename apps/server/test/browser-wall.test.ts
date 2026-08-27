@@ -46,6 +46,8 @@ import {
   type Installation,
   type TextRun,
 } from './browser-harness.js';
+import { applyTemplate } from '../src/api/templates.js';
+import { CLASSIC_TEMPLATE } from '../src/templates/index.js';
 import { readRules } from '../src/api/rules.js';
 
 /*
@@ -890,6 +892,17 @@ describe('3 · the wizard, clicked through', () => {
 describe('4 · the editor, driven', () => {
   /** Sign in the way a household does, then open the default display's editor. */
   async function editorPage(wall: Installation, page: Page): Promise<void> {
+    /*
+     * Classic's full canvas, stated rather than seeded.
+     *
+     * A wall is now seeded with the Classic variant matching what the household
+     * has set up, so an install with no location and no rota is given neither
+     * box — which is the whole of that fix and leaves this test nothing to
+     * flag. The case the flag exists for survives it exactly as its own comment
+     * describes it: **a household who put a Weather box on a wall with no
+     * location**, which is what applying Classic here is.
+     */
+    applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
     await wall.signIn(page);
     await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
     await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });

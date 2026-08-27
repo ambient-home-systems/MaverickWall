@@ -10,7 +10,8 @@ import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
-import { backfillClassic } from './api/templates.js';
+import { backfillClassic, reseedClassicForSetUp } from './api/templates.js';
+import { householdSetUp } from './modules/index.js';
 import { createApp, MODULES } from './http/app.js';
 import { defaultDisplayDir } from './http/static.js';
 import { existsSync } from 'node:fs';
@@ -232,7 +233,19 @@ async function main(): Promise<void> {
    * household that has already been migrated (or has arranged its own canvas) is
    * left alone. Reuses `applyTemplate`, the tested transactional writer.
    */
-  backfillClassic(db);
+  const setUp = householdSetUp(db);
+  backfillClassic(db, setUp);
+  /*
+   * And move a wall that is *still exactly the one we seeded* onto the variant
+   * matching what the household has set up now.
+   *
+   * A canvas is chosen once, at seeding, and a fresh install is seeded before
+   * anybody has configured anything — so a location added a week later has
+   * nowhere to be drawn, because the box was never placed. This re-makes that
+   * choice, and only for a canvas that prints byte-identical to one this build
+   * seeds. A wall somebody arranged matches nothing and is never written to.
+   */
+  reseedClassicForSetUp(db, setUp);
 
   const fetcher = createFetcher();
   const household = readHousehold(db);

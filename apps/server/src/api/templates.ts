@@ -10,7 +10,9 @@ import {
   type LayoutWidgetInput,
 } from './queries.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { TEMPLATES, CLASSIC_TEMPLATE } from '../templates/index.js';
+import { TEMPLATES } from '../templates/index.js';
+import { CLASSIC_VARIANTS, classicFor } from '../templates/classic.js';
+import type { HouseholdSetUp } from './manifest.js';
 
 /**
  * A starting layout a household picks from (RFC 005).
@@ -131,18 +133,21 @@ export function applyTemplate(
  * this codebase (rewriting every household's layout) goes through code that is
  * already tested and clamps every value.
  */
-export function backfillClassic(db: SqliteDatabase): void {
+export function backfillClassic(db: SqliteDatabase, setUp: HouseholdSetUp): void {
   const row = db
     .prepare(`SELECT layout_backfilled AS done FROM household_settings WHERE id = 'singleton'`)
     .get() as { done: number } | undefined;
   // No settings row yet (setup has not run) or already backfilled: nothing to do.
   if (row === undefined || row.done === 1) return;
 
+  // Classic for *this* household, not the fully-equipped one (`classicFor`).
+  // A wall seeded with boxes the manifest will drop is a wall with holes in it.
+  const seed = classicFor(setUp);
   const seedIfEmpty = (owner: string | null): void => {
     const hasWidgets =
       readLayoutWidgets(db, owner, 'portrait').length > 0 ||
       readLayoutWidgets(db, owner, 'landscape').length > 0;
-    if (!hasWidgets) applyTemplate(db, owner, CLASSIC_TEMPLATE);
+    if (!hasWidgets) applyTemplate(db, owner, seed);
   };
 
   seedIfEmpty(null);
@@ -153,6 +158,182 @@ export function backfillClassic(db: SqliteDatabase): void {
   db.prepare(`UPDATE household_settings SET layout_backfilled = 1, updated_at = ? WHERE id = 'singleton'`).run(
     Date.now(),
   );
+}
+
+/**
+ * Six decimal places, as a string. Far finer than any control that writes these
+ * — the editor snaps to a twenty-fourth (0.041667) and its number fields take
+ * whole percent — and coarse enough that no float noise can make a canvas look
+ * like one somebody moved.
+ */
+const six = (value: number): string => (Number.isFinite(value) ? value.toFixed(6) : 'x');
+
+/** JSON with object keys in a fixed order, so two equal configs print equal. */
+function canonical(value: unknown): string {
+  if (value === undefined) return 'null';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+}
+
+/**
+ * One canvas as a single comparable string: its aspect, its background and
+ * every box.
+ *
+ * Sorted, so it says nothing about the order rows came back in — two canvases
+ * print the same exactly when they would draw the same. `z` is inside a box's
+ * own print, so stacking is still compared; only the *read* order is discarded.
+ */
+function canvasPrint(
+  aspect: number,
+  background: string | null,
+  widgets: readonly {
+    readonly type: string;
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+    readonly z?: number | undefined;
+    readonly config?: unknown;
+  }[],
+): string {
+  const boxes = widgets
+    .map((widget, index) =>
+      [
+        widget.type,
+        six(widget.x),
+        six(widget.y),
+        six(widget.w),
+        six(widget.h),
+        String(Math.trunc(widget.z ?? index)),
+        canonical(widget.config),
+      ].join('|'),
+    )
+    .sort();
+  return [six(aspect), background ?? '', ...boxes].join('\n');
+}
+
+/** Both canvases of a template, printed the way a stored layout prints. */
+function templatePrint(template: DisplayTemplate): string {
+  return ORIENTATIONS.map((orientation) => {
+    const canvas = template[orientation];
+    const background = canvas.background !== undefined ? JSON.stringify(canvas.background) : null;
+    return canvasPrint(canvas.aspect, background, canvas.widgets);
+  }).join('\n==\n');
+}
+
+/**
+ * What this owner has stored, printed the same way — or `undefined` when it is
+ * not a canvas of its own at all.
+ *
+ * Its **own** columns, never the household's. `ownerLayout` resolves a screen's
+ * nulls against the household because that is what a *drawing* screen follows;
+ * here the question is whether anybody has touched this particular canvas, and
+ * an inherited value would answer for somebody else's.
+ */
+function ownerPrint(db: SqliteDatabase, owner: string | null): string | undefined {
+  const row =
+    owner === null
+      ? (db
+          .prepare(
+            `SELECT layout_mode AS mode, layout_aspect AS portraitAspect,
+                    layout_landscape_aspect AS landscapeAspect,
+                    layout_background AS portraitBackground,
+                    layout_landscape_background AS landscapeBackground
+               FROM household_settings WHERE id = 'singleton'`,
+          )
+          .get() as OwnLayoutRow | undefined)
+      : (db
+          .prepare(
+            `SELECT layout_mode AS mode, layout_aspect AS portraitAspect,
+                    layout_landscape_aspect AS landscapeAspect,
+                    layout_background AS portraitBackground,
+                    layout_landscape_background AS landscapeBackground
+               FROM screens WHERE id = ? AND revoked_at IS NULL`,
+          )
+          .get(owner) as OwnLayoutRow | undefined);
+  // A screen with no canvas of its own draws the household's, and a panel set
+  // to `follow` draws a wall's. Neither is this owner's to re-seed.
+  if (row === undefined || row.mode !== 'freeform') return undefined;
+  if (row.portraitAspect === null || row.landscapeAspect === null) return undefined;
+  return [
+    canvasPrint(row.portraitAspect, row.portraitBackground, readLayoutWidgets(db, owner, 'portrait')),
+    canvasPrint(row.landscapeAspect, row.landscapeBackground, readLayoutWidgets(db, owner, 'landscape')),
+  ].join('\n==\n');
+}
+
+interface OwnLayoutRow {
+  readonly mode: string | null;
+  readonly portraitAspect: number | null;
+  readonly landscapeAspect: number | null;
+  readonly portraitBackground: string | null;
+  readonly landscapeBackground: string | null;
+}
+
+/**
+ * Every arrangement this build seeds, as prints. A canvas equal to one of these
+ * is a canvas nobody has arranged.
+ *
+ * It reaches back one release as well as forward, and that is not luck: the
+ * Classic that every earlier build seeded *is* the `ws` variant, unchanged, so
+ * a wall backfilled by an earlier release and never touched since prints as one
+ * of these and is adapted. A wall carrying an *older* Classic than that — the
+ * pre-rebalance proportions, or the `cellEvents: 'pills'` a pre-0.53 backfill
+ * stored — prints as none of them and is left exactly where it is. That is the
+ * same line this repository already draws around a stored canvas: correcting a
+ * default is one decision and rewriting somebody's arrangement is another.
+ */
+const SEEDED_PRINTS: readonly string[] = CLASSIC_VARIANTS.map(templatePrint);
+
+/**
+ * Move a still-seeded wall onto the Classic variant matching what the household
+ * has set up now.
+ *
+ * The problem this closes: a canvas is chosen once, at seeding, and a fresh
+ * install is seeded before the household has configured anything. Add a
+ * location a week later and the forecast has nowhere to go, because the box
+ * that would have held it was never placed. So the choice is re-made on boot —
+ * but only for a wall that is *provably still the one we seeded*.
+ *
+ * **The gate is the whole of this function, and it is a proof rather than a
+ * marker.** A stored canvas is ours only if it prints byte-identical to one of
+ * `CLASSIC_VARIANTS` — same aspect, same background, same boxes to six decimal
+ * places, same configs, same stacking. Drag one box a pixel, change the aspect,
+ * set a background, add or remove a widget, apply any other template, or empty
+ * the canvas, and it matches nothing and is never written to again. There is no
+ * "probably untouched": when in doubt, do nothing.
+ *
+ * It runs only after `layout_backfilled` — the one-shot marker that says this
+ * database has been seeded at all. Before that, seeding is `backfillClassic`'s
+ * job and this must not run ahead of it.
+ *
+ * Boot is the moment, deliberately. A household changing a setting is looking
+ * at an admin screen, not at the wall, and rewriting a canvas under somebody
+ * mid-edit is the one thing worse than a hole; `POST /admin/screens` and Reset
+ * layout already seed from the current set-up, so the ordinary path never waits
+ * for a restart.
+ */
+export function reseedClassicForSetUp(db: SqliteDatabase, setUp: HouseholdSetUp): void {
+  const flag = db
+    .prepare(`SELECT layout_backfilled AS done FROM household_settings WHERE id = 'singleton'`)
+    .get() as { done: number } | undefined;
+  if (flag === undefined || flag.done !== 1) return;
+
+  const want = classicFor(setUp);
+  const wantPrint = templatePrint(want);
+  const owners: (string | null)[] = [null, ...readScreens(db).map((screen) => screen.id)];
+  for (const owner of owners) {
+    const current = ownerPrint(db, owner);
+    if (current === undefined) continue;
+    // Already the right arrangement: nothing to write, and a write would mint
+    // fresh widget ids for no reason.
+    if (current === wantPrint) continue;
+    if (!SEEDED_PRINTS.includes(current)) continue;
+    applyTemplate(db, owner, want);
+  }
 }
 
 /** The mode, per-orientation aspect and background a display owns, for copy. */
