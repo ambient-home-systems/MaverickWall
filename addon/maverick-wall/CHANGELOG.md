@@ -35,7 +35,9 @@ trade you can see.
 month keeps drawing exactly what it drew — it simply reads as Month + Compact
 when you open it, which is what it always was. Settings that never did anything
 on the dense views have stopped being offered there: "Events in a day" and
-"Show week numbers" are drawn only where the calendar actually reads them.
+"Show week numbers" are drawn only where the calendar actually reads them. So
+is "Show work schedules", which the week columns have never drawn — turning it
+off there did nothing, at either density.
 
 **A busy work calendar no longer takes over the month grid.** One daily meeting
 in a work feed put the same event in nearly every square — measured on a real

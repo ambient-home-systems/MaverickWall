@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **seventy-five real bugs**, and the pattern in how is the most
+This project has found **seventy-six real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -153,6 +153,7 @@ useful thing in this document:
 | **The default wall's agenda drawn below the legibility floor, and the month the only widget that could not be** | Measuring every text run on the shipped Classic wall, not just the clipped ones |
 | A month grid that names 2, 6 or 13 of its cells from one unchanged layout | Drawing the same wall three times and getting three answers |
 | A week-number switch on two views that draw no week number | Splitting a density out of a view, which made the guard say what it meant |
+| Two rota-colour switches that no week column has ever drawn | Reading the two week renderers for the only three things that could paint one |
 | **An assertion for a legacy calendar view that no edit could turn red** | Removing the fix, watching it stay green, and picking a value the browser's own fallback does not happen to match |
 
 None of those were found by typechecking. Several were found *while tests were
@@ -1125,7 +1126,13 @@ to fit in less room — applying an unmeasured floor to it would have swapped an
 agenda in on the walls already hanging. `showWeekNumbers` was a *dead control*
 on both dense views and had been since they shipped, because its guard was
 `mode !== 'list'` and `skymonth` is not `list`; splitting the axes is what made
-that visible. And the ink lane reads the density as **comfortable regardless**,
+that visible. `showShifts` was the same on **both** week densities and for a
+different reason — `renderWeekColumns` and `renderSkyWeek` contain no
+`paintShift` and no `shiftToken`, so there was never anything to gate; it is
+hidden there now, which is the honest answer for today and not a decision
+against drawing a rota on a week. That would be a real feature and a separate
+one: `showShifts`'s absence means *on*, so a week renderer that started
+painting would light up rota colours on every week wall already hanging. And the ink lane reads the density as **comfortable regardless**,
 because a panel has none (`PANEL_IGNORES`) and still reads `cellEvents` — gating
 the lane on the wall's density would have hidden a control the renderer honours,
 which is the "option that does nothing" rule pointing the other way and is

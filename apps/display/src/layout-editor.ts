@@ -3092,20 +3092,31 @@ function boot(): void {
     }
 
     /*
-     * The rota's colours, on every style that draws them.
+     * The rota's colours, on the views that draw them.
      *
      * The only toggle in this panel whose *unticked* state is what gets
      * stored: it has been on since the wall was first drawn, so a household
      * who arranged a canvas around those colours keeps them by default.
+     *
+     * **Not the week columns, at either density.** `renderWeekColumns` and
+     * `renderSkyWeek` paint no rota — no `paintShift`, no `shiftToken`, nothing
+     * that could — so the switch has done nothing there since the week view
+     * shipped. Hiding it is the honest answer for today and nothing more: a
+     * week column *is* a day and the tint is per-day, so drawing the rota there
+     * is a reasonable thing to build. It is a separate decision, because
+     * `showShifts`'s absence means *on* — a week renderer that started painting
+     * would light up rota colours on every week wall already hanging.
      */
-    configPanel.appendChild(
-      switchRow(
-        'Show work schedules',
-        'Colours the days a rota covers.',
-        cfg['showShifts'] !== false,
-        (checked) => setConfig(widget, 'showShifts', checked ? undefined : false),
-      ),
-    );
+    if (view !== 'week') {
+      configPanel.appendChild(
+        switchRow(
+          'Show work schedules',
+          'Colours the days a rota covers.',
+          cfg['showShifts'] !== false,
+          (checked) => setConfig(widget, 'showShifts', checked ? undefined : false),
+        ),
+      );
+    }
 
     /*
      * The week of the year, on either comfortable grid.

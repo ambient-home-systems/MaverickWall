@@ -540,6 +540,16 @@ describe('the inspector', () => {
           'a legacy widget opened on the wrong density',
         ).toBe('Compact');
 
+        /*
+         * Neither week renderer paints a rota — no `paintShift`, no
+         * `shiftToken`, nothing that could — so "Show work schedules" has done
+         * nothing on a week since the view shipped. It is not offered there.
+         */
+        expect(
+          await editor.locator('.switch:has-text("Show work schedules")').count(),
+          'the week columns were offered a rota colour they do not draw',
+        ).toBe(0);
+
         seedOneCalendar({ mode: 'skymonth' });
         await editor.goto(`${wall.base}/admin/walls/${screenId}`, { waitUntil: 'load' });
         await openInspector(editor);
@@ -551,6 +561,13 @@ describe('the inspector', () => {
         // Compact reads neither, so neither is offered.
         expect(await editor.locator('.le-cfg-field[data-cfg-key="cellEvents"]').count()).toBe(0);
         expect(await editor.locator('.switch:has-text("Show week numbers")').count()).toBe(0);
+        /*
+         * The rota *is* drawn on both months and on the agenda, so it stays
+         * offered there. Asserted alongside the absence above, because a gate
+         * that hid it everywhere would satisfy "not on the week" and quietly
+         * remove a working control from the two views that honour it.
+         */
+        expect(await editor.locator('.switch:has-text("Show work schedules")').count()).toBe(1);
 
         // Comfortable reads both, so both come back.
         await editor.click('.le-cfg-field[data-cfg-key="density"] .seg button:has-text("Comfortable")');
@@ -566,6 +583,8 @@ describe('the inspector', () => {
           'the agenda offers a density it cannot draw',
         ).toBe(0);
         expect(await editor.locator('.le-cfg-field[data-cfg-key="cellEvents"]').count()).toBe(0);
+        // The agenda draws a rota rule down each row, so it keeps the switch.
+        expect(await editor.locator('.switch:has-text("Show work schedules")').count()).toBe(1);
       } finally {
         await context.close();
       }
