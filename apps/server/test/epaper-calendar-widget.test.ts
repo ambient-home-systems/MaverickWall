@@ -84,7 +84,42 @@ describe('the calendar widget on a panel', () => {
     expect(bytesOf(frameOf(manifest, {}))).not.toEqual(bytesOf(frameOf(manifest, { mode: 'list' })));
   });
 
-  it('draws three different things for the three modes it offers', () => {
+  it('draws a canvas written before the split exactly as it always drew it', () => {
+    /*
+     * The compatibility promise, on the panel side.
+     *
+     * `skymonth` and `skyweek` were the month and the week drawn edge to edge —
+     * a *density* choice offered as two extra views. They are (month, compact)
+     * and (week, compact) now, and no migration rewrites the canvases that hold
+     * the old spelling; a wall hung before the split keeps them for ever. So
+     * the old value and the new pair have to be the same frame, and the old
+     * value has to be the same frame it was *before* this change: a panel is
+     * already edge to edge with hairline rules, so it has never drawn the dense
+     * pair any differently.
+     *
+     * Written as equivalences rather than as "it still draws something",
+     * because a renderer that quietly dropped `skyweek` into the month grid
+     * would satisfy the weaker claim and is precisely the 0.33.2 bug.
+     */
+    const manifest = manifestOf(busy);
+    const month = bytesOf(frameOf(manifest, { mode: 'month' }));
+    const week = bytesOf(frameOf(manifest, { mode: 'week' }));
+
+    expect(bytesOf(frameOf(manifest, { mode: 'skymonth' }))).toEqual(month);
+    expect(bytesOf(frameOf(manifest, { mode: 'month', density: 'compact' }))).toEqual(month);
+    expect(bytesOf(frameOf(manifest, { mode: 'skyweek' }))).toEqual(week);
+    expect(bytesOf(frameOf(manifest, { mode: 'week', density: 'compact' }))).toEqual(week);
+
+    // …and a `skyweek` is still a *week*, not a month that fell through a
+    // fallthrough — which is the half an equality against the month would miss.
+    expect(bytesOf(frameOf(manifest, { mode: 'skyweek' }))).not.toEqual(month);
+
+    // The density beside a legacy value is a contradiction and the old value
+    // wins; either way the panel draws one frame, so all four agree.
+    expect(bytesOf(frameOf(manifest, { mode: 'skymonth', density: 'comfortable' }))).toEqual(month);
+  });
+
+  it('draws three different things for the three views it offers', () => {
     const manifest = manifestOf(busy);
     const month = bytesOf(frameOf(manifest, { mode: 'month' }));
     const week = bytesOf(frameOf(manifest, { mode: 'week' }));

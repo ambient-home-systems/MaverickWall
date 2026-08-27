@@ -65,6 +65,7 @@ const SHELL = [
   '/assets/viewmodel.js',
   '/assets/watchdog.js',
   '/assets/widget-options.js',
+  '/assets/widget-views.js',
 ];
 
 worker.addEventListener('install', (event) => {

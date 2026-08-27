@@ -38,15 +38,38 @@ const widgetConfigFields = z
   .object({
     // Calendar
     calendars: z.array(z.string().max(64)).max(50).optional(),
-    // month (grid), week (day columns), or list (agenda). RFC 005 added week.
-    // `skyweek` and `skymonth` are the same two shapes drawn edge to edge, with
-    // hairline dividers instead of gaps and cards — every pixel spent on the
-    // calendar rather than on the space around it.
-    // `people` is the Chores widget's by-person board; `week` is shared with the
-    // calendar's day columns and means the same thing on both — seven days
-    // across. One key for every type's view, because the editor's View picker is
-    // generic and writes this for all of them.
+    /*
+     * Which renderer draws the widget: month (grid), week (day columns) or list
+     * (agenda) for a calendar. RFC 005 added week.
+     *
+     * `people` is the Chores widget's by-person board; `week` is shared with the
+     * calendar's day columns and means the same thing on both — seven days
+     * across. One key for every type's view, because the editor's View picker is
+     * generic and writes this for all of them.
+     *
+     * **`skyweek` and `skymonth` are accepted and never written.** They were the
+     * same week and the same month drawn edge to edge, offered as two more
+     * views — which made a density choice look like a fourth and fifth thing to
+     * draw. `density` below is that choice on its own axis now, and the old
+     * values map to (view, compact) at the read boundary: `calendarView`, in
+     * `apps/display/src/widget-views.ts` and transcribed into
+     * `epaper/calendar-view.ts`. They stay in this enum for ever, because a
+     * canvas hanging in somebody's kitchen holds one and must keep validating
+     * — no migration rewrites a stored arrangement.
+     */
     mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people']).optional(),
+    /*
+     * How much room the calendar spends on itself: `comfortable` (cards, gaps,
+     * breathing room) or `compact` (hairlines, edge to edge, more of the week
+     * in the same box). **Absent means comfortable**, the way every default in
+     * this schema is an absence — so a wall saved before this key existed sends
+     * a byte-identical config and no stored ETag churns.
+     *
+     * Read only by the wall. A 1-bit panel is already edge to edge and has no
+     * padding to reclaim, so it draws one density; `PANEL_IGNORES` is where a
+     * household is told that, beside the control they set.
+     */
+    density: z.enum(['comfortable', 'compact']).optional(),
     // How a month cell draws its events: flat names (`text`, the default),
     // quiet `dots`, Skylight-style labelled `pills`, or `swiss` — the same flat
     // names inside the full Swiss typographic grid. `text` and `swiss` wrap to

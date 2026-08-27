@@ -45,6 +45,7 @@ import {
   type ShiftField,
   type WeatherField,
 } from './ladder.js';
+import { calendarView } from './calendar-view.js';
 import { withInk } from './honours.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 
@@ -657,28 +658,34 @@ function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string, row
 /**
  * A calendar widget, drawn the way the household asked.
  *
- * The mode is read *exactly* as `renderCalendarWidget` reads it on the wall,
+ * The view is read *exactly* as `renderCalendarWidget` reads it on the wall,
  * and that is the whole of one bug: the editor stores the default (`month`) as
  * an absence, and this tested `=== 'month'` — so the commonest setting, the one
  * nobody changes, drew the agenda on every panel. Two renderers reading one
  * stored value opposite ways is the same fault as two renderers drawing one
- * canvas, and the cure is the same: one reading, written down.
+ * canvas, and the cure is the same: one reading, written down. It is written
+ * down in `calendar-view.ts` now, rather than in a matching pair of `if`
+ * statements two packages apart that somebody has to notice are a pair.
  *
  * Every option the designer offers is answered here, because an option that
  * does nothing is a worse answer than an option that is not offered.
  */
 function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
-  const mode = str(config, 'mode');
   /*
-   * `skyweek`/`skymonth` are a browser-side density choice, not a different
-   * calendar: a 1-bit panel is already edge to edge with hairline rules and has
-   * no padding to reclaim. So they draw the same week and month a panel already
-   * draws, named explicitly rather than left to the `!== 'list'` fallthrough —
-   * which is what silently turned every mode into the month grid before 0.33.2,
-   * and would have turned `skyweek` into a month here.
+   * The view, resolved by the transcription of the wall's own reading — never
+   * by testing `mode` against a string here. `calendar-view.ts` carries why.
+   *
+   * The *density* half is read and then deliberately dropped: `compact` buys
+   * its room back from gaps, cards and padding, and a 1-bit panel is already
+   * edge to edge with hairline rules and has none of the three to give up. So
+   * both densities draw the same frame, and `PANEL_IGNORES` says so where the
+   * household set it rather than leaving it to be discovered on a panel bolted
+   * to a wall in the hall. That is also what keeps a canvas storing `skymonth`
+   * drawing exactly what it drew before the split.
    */
-  if (mode === 'week' || mode === 'skyweek') return drawWeekBox(fb, model, box);
-  if (mode !== 'list') {
+  const { view } = calendarView(config);
+  if (view === 'week') return drawWeekBox(fb, model, box);
+  if (view === 'month') {
     /*
      * `text`, `swiss` and `pills` all draw names here, and that is not a
      * shortcut.
@@ -699,6 +706,7 @@ function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, confi
     const cellEvents = str(config, 'cellEvents');
     return drawMonthBox(fb, model, box, { pills: cellEvents !== 'dots' });
   }
+
   const calendars = strings(config, 'calendars');
   const count = num(config, 'count');
   return drawUpcomingBox(fb, model, box, {

@@ -114,6 +114,11 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     why: 'a panel has one colour, so a card is drawn as a hairline outline instead.',
   },
   { key: 'opacity', label: 'Opacity', why: 'ink is either there or it is not — there is no half.' },
+  {
+    key: 'density',
+    label: 'Density',
+    why: 'compact buys its room from gaps and cards, and a panel is already edge to edge.',
+  },
   { key: 'corners', label: 'Rounded corners', why: 'the outline is drawn square at this size.' },
   { key: 'shadow', label: 'Drop shadow', why: 'a shadow needs a grey the panel does not have.' },
   {
