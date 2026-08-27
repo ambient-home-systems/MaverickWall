@@ -1043,6 +1043,54 @@ default — but reaching the walls already hanging needs a migration that rewrit
 somebody's stored canvas, which is a different decision from correcting a
 default and has not been taken.
 
+**And a grid that draws every title still cannot draw a daily meeting.** One
+weekday standup in a work feed put the same event in nearly every square:
+measured on a paired 1080x1920 Classic wall with two family calendars beside it,
+**31 of the 35 event names in the grid were "Standup"**, leaving four names
+between the other two feeds. That is not a legibility fault — every one of those
+names was drawn whole — it is a *selection* fault, and it is the one thing the
+type floor and the wrap allowance cannot reach. A high-frequency recurring event
+is the least informative thing a wall can draw, because its whole point is that
+it is always there, and it costs a row in every cell to say so.
+
+The fix is `calendar_sources.show_in_grid` (migration `0035`, additive,
+defaulting on so no wall already hanging changes), a switch on the calendar's
+own settings, and **one filter, in `buildManifest`**. Ranking inside the cell —
+drop the most frequent series first when a cell overflows — is the better idea
+in the abstract and was declined: the manifest carries occurrences and no
+frequency model at all, so it would have needed one built to serve a rule
+nobody can explain standing at a fridge, where "I do not need work on the family
+wall" is a sentence a household already says. The switch is deliberately not
+`visible`, which is a different request: `visible = 0` takes a feed off the wall
+entirely, and this one keeps every event in the agenda, where a list has room to
+say what and when. Measured after: none on the grid, and the other calendars go
+from four names to six — the room comes *back*, which is the assertion worth
+having, since a switch that only emptied cells would pass "no standups" and
+leave the wall worse.
+
+Three things in it are worth keeping. The flag is stamped **per event** rather
+than shipped as a list of source ids the wall would apply, because two renderers
+holding one rule is this project's most repeated bug (`shifts[0]`,
+`display_mode`, `cellEvents`) and the cure each time was to resolve it once and
+hand over the answer — `apps/display`'s viewmodel and `epaper/viewmodel.ts`
+filter at the same seam and get the same month, which is what a panel *following*
+a wall needs. **Absence means shown**, so a household who never touches it sends
+a manifest byte-identical to the one before the field existed, an older bundle
+ignores it, and no stored ETag churns; both renderers read `!== false` and a test
+pins that reading `=== true` empties every wall. And the filter runs **before**
+`eventCount` is taken, which is the half that would have been missed: the count
+is the true total a cell's "+N" and its dots are drawn from, so a cell drawing
+one event and claiming two would put a "+1" on the glass for a meeting the
+household has just asked not to see — the "+6 and none of its six events" fault,
+inverted.
+
+It filters the week columns as well as the month squares, and the label says so
+("Show on the calendar grid", hinting "the month squares and the week view").
+`HorizonCell` is one model for both — the shipped Sky Week and Team Week
+templates draw from it — and a daily meeting floods a week column for the same
+reason. Splitting them would mean a second list and a second count on every
+cell, which is one stored value meaning two things on two widgets.
+
 **The panel had to be told, and that is the same bug as `shifts[0]`.**
 `epaper/honours.ts` declares `cellEvents` honoured and the panel read it as
 `=== 'pills'`, so `swiss` would have fallen through to dots while the wall it

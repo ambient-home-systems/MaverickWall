@@ -31,6 +31,15 @@ export interface ManifestEvent {
   readonly color: string;
   readonly status: string;
   readonly continues: boolean;
+  /**
+   * `false` when this event's calendar is kept off the grid — the month squares
+   * and the week columns — and drawn only in the upcoming list.
+   *
+   * **Absent means shown.** A server older than the field never sends it, and a
+   * household that has never touched the switch never sends it either, so the
+   * wall must read `!== false` and never `=== true`.
+   */
+  readonly showInGrid?: false;
   /** Whose event this is, when its calendar has an owner. Looked up in `people`. */
   readonly personId?: string;
 }

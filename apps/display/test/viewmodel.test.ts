@@ -32,6 +32,9 @@ function event(partial: Partial<ManifestEvent> & { title: string; startsAt: numb
     continues: partial.continues ?? false,
     ...(partial.location !== undefined ? { location: partial.location } : {}),
     ...(partial.personId !== undefined ? { personId: partial.personId } : {}),
+    // Absent unless the fixture asks for it — which is exactly how the server
+    // sends it, and the reason the wall must read `!== false`.
+    ...(partial.showInGrid === false ? { showInGrid: false as const } : {}),
   };
 }
 
@@ -345,6 +348,54 @@ describe('the horizon', () => {
     const cell = model([day('2026-07-15', many)]).horizon.flat().find((c) => c.isToday);
     expect(cell?.eventCount).toBe(6); // the "+N" and the dots read from this
     expect(cell?.events).toHaveLength(6);
+  });
+
+  /**
+   * A calendar kept off the grid.
+   *
+   * The reported fault: one weekday standup in a work feed drew 17 identical
+   * cut-off pills across the visible month — the majority of every name on the
+   * wall — because the grid treats a once-a-year birthday and a daily meeting
+   * as equally worth a row. The switch is per calendar and the server stamps
+   * each event; all the wall does is honour it, at the one seam where a cell is
+   * built.
+   */
+  it('leaves a calendar the household kept off the grid out of every cell', () => {
+    const built = model([
+      day('2026-07-15', [
+        event({ title: 'Dentist', startsAt: Date.parse('2026-07-15T09:00:00Z') }),
+        event({ title: 'Standup', startsAt: Date.parse('2026-07-15T08:30:00Z'), showInGrid: false }),
+      ]),
+    ]);
+    const cell = built.horizon.flat().find((c) => c.date === '2026-07-15');
+    expect(cell?.events.map((e) => e.title)).toEqual(['Dentist']);
+    /*
+     * The count as well as the list, and this is the half that would have been
+     * missed. `eventCount` is the true total a "+N" and the dots read from, so
+     * a cell that drew one event and claimed two would say "+1" for a standup
+     * the household has asked not to see — the "+6 and none of its six events"
+     * fault, inverted.
+     */
+    expect(cell?.eventCount).toBe(1);
+    /*
+     * And the other half of the claim, which is what makes the switch usable:
+     * the events are not gone, they are in the list. A control that reads
+     * "hide this calendar" is one nobody turns on, so the hint says where they
+     * still are and this asserts that it is true.
+     */
+    expect(built.today?.events.map((e) => e.title)).toEqual(['Dentist', 'Standup']);
+  });
+
+  it('still draws a calendar whose events say nothing about the grid', () => {
+    // Absence is the default and has to stay it: a server older than the field
+    // never sends it, and neither does a household that never touched the
+    // switch. Reading `=== true` here would empty every wall already hanging.
+    const built = model([
+      day('2026-07-15', [event({ title: 'Dentist', startsAt: Date.parse('2026-07-15T09:00:00Z') })]),
+    ]);
+    const cell = built.horizon.flat().find((c) => c.date === '2026-07-15');
+    expect(cell?.events.map((e) => e.title)).toEqual(['Dentist']);
+    expect(cell?.eventCount).toBe(1);
   });
 
   it('gives each cell its weekday, for the week-columns header', () => {

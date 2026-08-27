@@ -115,6 +115,35 @@ describe('the month grid', () => {
     expect(fourteenth.inWindow).toBe(true);
     expect(fourteenth.eventCount).toBe(0);
   });
+
+  /**
+   * The panel has to reach the same answer the wall does.
+   *
+   * Two renderers reading one stored value and disagreeing is this project's
+   * most repeated bug — `shifts[0]`, `display_mode`, `cellEvents` — and a panel
+   * that follows a wall has to draw the wall's month, not a fuller one. The
+   * server stamps the event and both viewmodels filter at the same seam.
+   */
+  it('leaves a calendar the household kept off the grid out of the cells', () => {
+    const off = buildEpaperModel(
+      fakeManifest([
+        day('2026-08-13', [
+          event({ title: 'Dentist', startsAt: at(9, 0) }),
+          event({ title: 'Standup', startsAt: at(9, 30), sourceId: 'work', showInGrid: false }),
+        ]),
+      ]),
+    );
+    const today = off.weeks.flat().find((cell) => cell.isToday)!;
+    expect(today.titles).toEqual(['Dentist']);
+    // The count as well as the names: `drawMonthBox` shades a cell by it and
+    // draws "+N" from it, so a cell claiming two and naming one would report a
+    // meeting the household asked not to see.
+    expect(today.eventCount).toBe(1);
+    // And the panel's own lists keep it — the switch takes a calendar out of
+    // the squares, not off the panel.
+    expect(off.agenda.map((item) => item.title)).toEqual(['Dentist', 'Standup']);
+    expect(off.upcoming.map((item) => item.title)).toEqual(['Dentist', 'Standup']);
+  });
 });
 
 describe('the header', () => {

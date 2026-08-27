@@ -349,6 +349,17 @@ export interface ManifestEvent {
   /** True when the event covers more than the day it is listed under. */
   readonly continues: boolean;
   /**
+   * `false` when this event's calendar is kept off the grid — the month squares
+   * and the week columns — and drawn only in the upcoming list.
+   *
+   * **Absent means shown**, which is the whole reason it is optional rather
+   * than a plain boolean. Every household that has never touched the switch
+   * sends a manifest byte-identical to the one they got before it existed, and
+   * a display bundle older than this field ignores it and draws what it always
+   * drew. The renderers read `!== false`, never `=== true`.
+   */
+  readonly showInGrid?: false;
+  /**
    * Whose event this is, when its calendar has an owner. The display looks the
    * id up in `people` for the avatar and name — the per-event owner cue. Absent
    * for an "Everyone" calendar, which belongs to nobody in particular.
@@ -599,6 +610,13 @@ export interface SourceRow {
   readonly name: string;
   readonly color: string;
   readonly visible: number;
+  /**
+   * 1 when this calendar draws on the calendar grid — the month squares and the
+   * week columns — as well as in the upcoming list. 0 keeps it in the list and
+   * out of the grid; see `calendar_sources.show_in_grid` for why that is a
+   * different request from `visible`.
+   */
+  readonly showInGrid: number;
   readonly lastSuccessAt: number | null;
   readonly lastError: string | null;
   readonly consecutiveFailures: number;
@@ -895,6 +913,19 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   const visible = new Set(
     input.sources.filter((source) => source.visible === 1).map((source) => source.id),
   );
+  /*
+   * The calendars kept out of the grid — one filter, decided here.
+   *
+   * Stamped per event rather than shipped as a list of source ids the display
+   * would have to apply, because then the rule lives in one place and every
+   * renderer only has to honour a flag. Two renderers reading one stored value
+   * and reaching different answers is this project's most repeated bug
+   * (`shifts[0]`, `display_mode`, `cellEvents`), and the cure each time was to
+   * resolve it once and hand over the answer.
+   */
+  const gridHidden = new Set(
+    input.sources.filter((source) => source.showInGrid === 0).map((source) => source.id),
+  );
   // Owner colour wins. A calendar that belongs to a person draws in that
   // person's colour, not its own, so their events read the same everywhere —
   // the wall's version of Skylight's colour-per-person. An owner whose colour
@@ -1059,6 +1090,9 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         color: colours.get(row.sourceId) ?? '#888888',
         status: row.status,
         continues: multiDay,
+        // Only when it is off: absence is the default, so an untouched
+        // household's manifest is unchanged and an older display is unaffected.
+        ...(gridHidden.has(row.sourceId) ? { showInGrid: false as const } : {}),
         ...(ownerOf.get(row.sourceId) != null ? { personId: ownerOf.get(row.sourceId)! } : {}),
       });
       byDate.set(date, bucket);

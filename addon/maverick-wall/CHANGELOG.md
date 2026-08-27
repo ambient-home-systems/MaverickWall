@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**A busy work calendar no longer takes over the month grid.** One daily meeting
+in a work feed put the same event in nearly every square — measured on a real
+wall, 31 of the 35 event names on the grid were the same standup, each cut short
+to a few letters, with only four names left between two family calendars. Each
+calendar now has its own **Show on the calendar grid** switch on Calendars ›
+(your calendar) › Edit. Turn it off for a calendar like that and its events come
+off the month squares and the week view while staying in the list of what's
+coming up, where there is room to say what and when. Every calendar you already
+have is switched on, so nothing on your wall changes until you turn one off.
+
 **What's coming up is now the biggest thing on a new wall.** The standard
 kitchen layout gave most of its room to the month grid and squeezed the list of
 what's next into a fifth of the screen — which meant the times, the dates and

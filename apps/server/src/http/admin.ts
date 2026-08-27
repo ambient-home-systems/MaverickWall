@@ -119,6 +119,10 @@ const sourceSettingsBody = z.object({
   color: colour(),
   person_id: optionalText(40),
   enabled: checkbox(),
+  // `checkbox()` and not `.optional()`: a browser sends nothing at all for an
+  // unticked box, and every other spelling either refuses the body or reads the
+  // absence as a value. This form's other four switches are the same shape.
+  show_in_grid: checkbox(),
   allow_lan: checkbox(),
   allow_loopback: checkbox(),
   allow_http: checkbox(),
@@ -221,6 +225,7 @@ interface SourceEcho {
   readonly color: string;
   readonly personId: string;
   readonly enabled: boolean;
+  readonly showInGrid: boolean;
   readonly allowLan: boolean;
   readonly allowLoopback: boolean;
   readonly allowHttp: boolean;
@@ -235,6 +240,7 @@ function sourceEchoOf(sourceId: string, body: Record<string, unknown>): SourceEc
     color: str('color'),
     personId: str('person_id'),
     enabled: typeof body['enabled'] === 'string',
+    showInGrid: typeof body['show_in_grid'] === 'string',
     allowLan: typeof body['allow_lan'] === 'string',
     allowLoopback: typeof body['allow_loopback'] === 'string',
     allowHttp: typeof body['allow_http'] === 'string',
@@ -1051,6 +1057,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       color: shaped.value.color,
       personId: personId ?? null,
       enabled: shaped.value.enabled,
+      showInGrid: shaped.value.show_in_grid,
       allowPrivateNetwork: shaped.value.allow_lan,
       allowLoopback: shaped.value.allow_loopback,
       allowHttp: shaped.value.allow_http,
@@ -4653,6 +4660,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             ? echo.personId
             : null,
       enabled: echo?.enabled ?? source.enabled === 1,
+      showInGrid: echo?.showInGrid ?? source.showInGrid === 1,
       allowLan: echo?.allowLan ?? source.allowPrivateNetwork === 1,
       allowLoopback: echo?.allowLoopback ?? source.allowLoopback === 1,
       allowHttp: echo?.allowHttp ?? source.allowHttp === 1,
@@ -4725,6 +4733,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         label: 'Sync this calendar',
         name: 'enabled',
         checked: shown.enabled,
+      }) +
+      /*
+       * The answer to one calendar flooding the squares.
+       *
+       * A daily standup is the least informative thing a wall can draw and it
+       * takes a row in every cell to say it: one weekday meeting filled 17 of
+       * the visible month's cells with the same cut-off word. Worded as the
+       * household's own sentence — "I do not need work on the family wall" —
+       * rather than as a filter or a rule, and it names the *other* place the
+       * events still are, because a switch that reads like "hide this calendar"
+       * is one nobody turns on.
+       */
+      switchRow({
+        label: 'Show on the calendar grid',
+        name: 'show_in_grid',
+        checked: shown.showInGrid,
+        hint:
+          'The month squares and the week view. Turn this off for a busy work ' +
+          'calendar that would otherwise fill every day — its events still ' +
+          'appear in the upcoming list.',
       }) +
       // Named as a risk rather than as a feature, because it is one — and not
       // drawn at all for a Home Assistant calendar, which is not fetched from

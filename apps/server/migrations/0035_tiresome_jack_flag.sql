@@ -1,0 +1,1 @@
+ALTER TABLE `calendar_sources` ADD `show_in_grid` integer DEFAULT true NOT NULL;

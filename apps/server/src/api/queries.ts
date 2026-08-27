@@ -344,7 +344,7 @@ export function effectiveDisplay(
 export function readSources(db: SqliteDatabase): SourceRow[] {
   return db
     .prepare(
-      `SELECT id, name, color, visible, person_id AS personId,
+      `SELECT id, name, color, visible, show_in_grid AS showInGrid, person_id AS personId,
               last_success_at AS lastSuccessAt, last_error AS lastError,
               consecutive_failures AS consecutiveFailures, event_count AS eventCount
          FROM calendar_sources
@@ -672,6 +672,7 @@ export interface SourceSettings {
   readonly color: string;
   readonly personId: string | null;
   readonly enabled: boolean;
+  readonly showInGrid: boolean;
   readonly allowPrivateNetwork: boolean;
   readonly allowLoopback: boolean;
   readonly allowHttp: boolean;
@@ -682,8 +683,8 @@ export function updateSource(db: SqliteDatabase, id: string, settings: SourceSet
     db
       .prepare(
         `UPDATE calendar_sources
-            SET name = ?, color = ?, person_id = ?, enabled = ?, allow_private_network = ?,
-                allow_loopback = ?, allow_http = ?, updated_at = ?
+            SET name = ?, color = ?, person_id = ?, enabled = ?, show_in_grid = ?,
+                allow_private_network = ?, allow_loopback = ?, allow_http = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -691,6 +692,7 @@ export function updateSource(db: SqliteDatabase, id: string, settings: SourceSet
         settings.color,
         settings.personId,
         settings.enabled ? 1 : 0,
+        settings.showInGrid ? 1 : 0,
         settings.allowPrivateNetwork ? 1 : 0,
         settings.allowLoopback ? 1 : 0,
         settings.allowHttp ? 1 : 0,
@@ -1380,6 +1382,8 @@ export interface AdminSourceRow {
   readonly allowPrivateNetwork: number;
   readonly allowLoopback: number;
   readonly allowHttp: number;
+  /** 1 when this calendar draws on the month grid and the week columns. */
+  readonly showInGrid: number;
   readonly color: string;
   readonly personId: string | null;
   readonly kind: string;
@@ -1402,6 +1406,7 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
               event_count AS eventCount,
               allow_private_network AS allowPrivateNetwork,
               allow_loopback AS allowLoopback, allow_http AS allowHttp,
+              show_in_grid AS showInGrid,
               color, person_id AS personId, kind, ha_entity_id AS haEntityId
          FROM calendar_sources
         ORDER BY name`,

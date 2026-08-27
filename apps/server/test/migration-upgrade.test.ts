@@ -106,7 +106,8 @@ describe('upgrading a database that is already in use', () => {
     const source = db
       .prepare(
         `SELECT name, kind, url_encrypted AS url, url_host AS host, color,
-                event_count AS eventCount, ha_entity_id AS entityId
+                event_count AS eventCount, ha_entity_id AS entityId,
+                show_in_grid AS showInGrid
            FROM calendar_sources WHERE id = 'src-1'`,
       )
       .get() as Record<string, unknown>;
@@ -120,6 +121,17 @@ describe('upgrading a database that is already in use', () => {
       color: '#AA3311',
       eventCount: 2,
       entityId: null,
+      /*
+       * 1, on a row inserted long before the column existed (0035).
+       *
+       * The whole promise of the switch is that nobody's wall changes at
+       * upgrade — the calendar that drew on the month grid last night draws on
+       * it this morning. A `DEFAULT true` that reached existing rows as NULL
+       * would take every calendar off every grid in one image pull, which is
+       * exactly the shape of the `kind = 'kind'` near miss this file exists
+       * for, and no test starting from an empty database can see it.
+       */
+      showInGrid: 1,
     });
 
     const events = db
