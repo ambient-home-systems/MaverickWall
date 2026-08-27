@@ -49,6 +49,7 @@ import { createIcsSyncHandler } from '../src/jobs/ics-sync.js';
 import { seedDefaultRules } from '../src/api/rules.js';
 import { backfillClassic } from '../src/api/templates.js';
 import { readHousehold } from '../src/api/queries.js';
+import { householdSetUp } from '../src/modules/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = join(HERE, '..', 'migrations');
@@ -469,7 +470,7 @@ function seedBoot(db: SqliteDatabase): void {
     );
   });
   seedDefaultRules(db);
-  backfillClassic(db);
+  backfillClassic(db, householdSetUp(db));
 }
 
 /** Run the real sync job over every source, exactly as the scheduler would. */

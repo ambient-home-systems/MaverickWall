@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**A new wall no longer has a hole in the middle of it.** A wall that has just
+been set up shows a clock, what is coming up and the month — and until now it
+left a gap where the weather and the work rota would have gone, whether or not
+you had told it where you live or set a rota up. On a kitchen tablet that was a
+blank strip about a fifth of the screen, sitting between the clock and the
+calendar, for as long as those things were unconfigured.
+
+A new wall is now laid out from what you have actually set up, so a household
+with just a calendar gets a calendar wall, with the clock across the top and a
+noticeably larger month grid. Add a location later and the forecast takes its
+place the next time Maverick Wall restarts — or straight away, if you press
+**Reset layout** on the wall's page.
+
+**A wall you have arranged yourself is never rearranged.** Move one box, resize
+one, change the canvas shape, set a background, or start from any other
+template, and Maverick Wall leaves that wall alone for good — including a wall
+you deliberately emptied.
+
 **The calendar widget offered five ways to show a month and a week; it now
 offers three, plus how densely to draw them.** "Sky month" and "Sky week" were
 never different views — they were the same month grid and the same week

@@ -7,6 +7,7 @@ import { openDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { readLayoutWidgets, replaceLayout } from '../src/api/queries.js';
 import { backfillClassic } from '../src/api/templates.js';
+import { householdSetUp } from '../src/modules/index.js';
 
 /**
  * The one-shot migration of every "auto" wall onto the Classic template.
@@ -54,7 +55,7 @@ function seeded() {
 describe('backfillClassic', () => {
   it('seeds Classic onto every auto wall, leaves an arranged one alone, and runs once', () => {
     const db = seeded();
-    backfillClassic(db);
+    backfillClassic(db, householdSetUp(db));
 
     // The default (owner null) and the auto screen both get Classic on both sides.
     for (const owner of [null, 'auto-screen'] as const) {
@@ -81,7 +82,7 @@ describe('backfillClassic', () => {
     // arranged wall is still its one widget. (If it re-ran, applyTemplate would
     // mint fresh ids and replace the canvas.)
     const idsBefore = readLayoutWidgets(db, null, 'portrait').map((w) => w.id);
-    backfillClassic(db);
+    backfillClassic(db, householdSetUp(db));
     const idsAfter = readLayoutWidgets(db, null, 'portrait').map((w) => w.id);
     expect(idsAfter).toEqual(idsBefore);
     expect(readLayoutWidgets(db, 'custom-screen', 'portrait').map((w) => w.id)).toEqual(['kept-1']);
@@ -93,7 +94,7 @@ describe('backfillClassic', () => {
     const { db } = openDatabase({ dataDir });
     runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
     // No household_settings insert: a fresh box before the wizard.
-    expect(() => backfillClassic(db)).not.toThrow();
+    expect(() => backfillClassic(db, householdSetUp(db))).not.toThrow();
     expect(readLayoutWidgets(db, null, 'portrait')).toHaveLength(0);
   });
 });

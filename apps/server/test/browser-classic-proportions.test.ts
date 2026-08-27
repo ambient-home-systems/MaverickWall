@@ -42,6 +42,7 @@ import type { Page } from 'playwright-core';
 import { browser, install, settleWall, shutDownBrowser, type Installation, type NamedFeed } from './browser-harness.js';
 import { backfillClassic } from '../src/api/templates.js';
 import { readLayoutWidgets } from '../src/api/queries.js';
+import { householdSetUp } from '../src/modules/index.js';
 
 /* A container installs with no `TZ` and the wizard is told Europe/London. */
 process.env['TZ'] = 'UTC';
@@ -408,12 +409,12 @@ describe('the Classic seed', () => {
       .run(emptied, 'Spare', `hash-${emptied}`, at, at, at);
 
     const before = dump();
-    backfillClassic(wall.db);
+    backfillClassic(wall.db, householdSetUp(wall.db));
     expect(dump(), 'with the flag set the backfill writes nothing at all').toBe(before);
     expect(readLayoutWidgets(wall.db, emptied, 'portrait'), 'a cleared wall stays cleared').toHaveLength(0);
 
     wall.db.prepare(`UPDATE household_settings SET layout_backfilled = 0 WHERE id = 'singleton'`).run();
-    backfillClassic(wall.db);
+    backfillClassic(wall.db, householdSetUp(wall.db));
     const arranged = JSON.parse(dump()) as { screen_id: string | null }[];
     expect(
       JSON.stringify(arranged.filter((row) => row.screen_id !== emptied)),

@@ -25,6 +25,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { applyTemplate } from '../src/api/templates.js';
+import { CLASSIC_TEMPLATE } from '../src/templates/index.js';
 
 process.env['TZ'] = 'UTC';
 
@@ -59,6 +61,19 @@ interface EditorBox {
 
 /** Sign in the way a household does, then open a wall's editor. */
 async function openEditor(wall: Installation, page: Page): Promise<void> {
+  /*
+   * On Classic's full canvas, always.
+   *
+   * A new wall is now seeded with the Classic *variant* matching what the
+   * household has set up, so a fresh install with nothing configured has no
+   * Shift box and a full-width clock (see `templates/classic.ts`). These tests
+   * are about the editor rather than about the seed, and two of them need what
+   * that canvas no longer has: a Shift widget to open a ladder on, and a box
+   * narrow enough that typing an x of 37 is not clamped to what a 90%-wide box
+   * can take. Stating the canvas is also what stops a future change to the
+   * seed silently re-answering an editor question.
+   */
+  applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
   await wall.signIn(page);
   await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
   await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });

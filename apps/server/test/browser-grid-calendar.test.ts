@@ -153,6 +153,25 @@ describe('a work calendar that fills the month grid', () => {
     'is taken off the grid by the switch, and stays in the upcoming list',
     async () => {
       const home = await install({ calendars: FEEDS });
+      /*
+       * A household with a location and a rota, so the wall under measurement
+       * is the full Classic canvas — which is the wall the numbers in this
+       * file's header were taken on.
+       *
+       * A new wall is now seeded with the Classic variant matching what the
+       * household has set up, and a household with neither gets a **taller**
+       * month: measured, its cells hold every event this fixture has, standups
+       * included, so the meeting crowds nothing out and "the room comes back"
+       * has no room to come back. That is the grid being roomy rather than the
+       * switch being useless, and the honest way to keep asking the question is
+       * to ask it on a grid where the room is scarce.
+       */
+      home.db
+        .prepare(
+          `UPDATE household_settings SET weather_enabled = 1, latitude = ?, longitude = ?,
+             shift_enabled = 1, updated_at = ? WHERE id = 'singleton'`,
+        )
+        .run(51.5074, -0.1278, Date.now());
       const link = await home.pairLink();
       const work = home.db
         .prepare(`SELECT id FROM calendar_sources WHERE name = 'Work'`)
