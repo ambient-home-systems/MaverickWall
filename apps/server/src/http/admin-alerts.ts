@@ -444,7 +444,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             .join('');
           forecastBlock =
             `<div class="preview"><h3>On the wall now</h3>` +
-            `<p class="host">${escapeHtml(providerName)} · updated ${escapeHtml(ago(row.fetchedAt, now()))}</p>` +
+            `<p class="sub">${escapeHtml(providerName)} · updated ${escapeHtml(ago(row.fetchedAt, now()))}</p>` +
             `<ul>${strip}</ul></div>`;
         }
       } catch {
@@ -695,7 +695,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
               .map(
                 (zone) =>
                   `<article class="card"><h2>${escapeHtml(zone.code)}</h2>` +
-                  `<p class="host">${zone.kind === 'county' ? 'County' : 'Forecast zone'}` +
+                  `<p class="sub">${zone.kind === 'county' ? 'County' : 'Forecast zone'}` +
                   `${zone.lastPolledAt === null ? '' : ' · checked ' + escapeHtml(ago(zone.lastPolledAt, now()))}</p>` +
                   (zone.lastError === null ? '' : errorBlock(zone.lastError)) +
                   `</article>`,
@@ -712,7 +712,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
               .map(
                 (alert) =>
                   `<article class="card"><h2>${escapeHtml(alert.event)}</h2>` +
-                  `<p class="host">${escapeHtml(alert.severity ?? 'Unknown')}` +
+                  `<p class="sub">${escapeHtml(alert.severity ?? 'Unknown')}` +
                   `${alert.areaDesc === null ? '' : ' · ' + escapeHtml(alert.areaDesc)}</p></article>`,
               )
               .join('')) +
@@ -758,9 +758,9 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         return (
           `<tr>` +
           `<td><div class="rname">${escapeHtml(row.name)}</div>` +
-          `<div class="host">${escapeHtml(severity)} or worse` +
+          `<div class="sub">${escapeHtml(severity)} or worse` +
           `${urgency === undefined ? '' : `, and ${escapeHtml(urgency)}`}</div>` +
-          `<div class="host">${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +
+          `<div class="sub">${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +
           `${row.piercesNightMode === 1 ? ' · may wake a dark wall' : ''}` +
           `${row.dismissible === 0 ? ' · cannot be cleared from the wall' : ''}</div></td>` +
           `<td><span class="${stateClass}"${stateTitle}>${stateLabel}</span></td>` +

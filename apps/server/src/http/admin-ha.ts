@@ -681,7 +681,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         `<div class="card"><h2>Connected — running as an add-on</h2>` +
         `<p>Home Assistant is reached through the supervisor. There is nothing to ` +
         `configure and no token to manage.</p>` +
-        `<p class="host">${live.entities.length} readable entities · ` +
+        `<p class="sub">${live.entities.length} readable entities · ` +
         `${live.calendars.length} calendars${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(ago(lastSyncAt, now()))}</p>` +
         `</div>`
       );
@@ -689,7 +689,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     if (live.mode === 'manual') {
       return (
         `<div class="card"><h2>Connected</h2>` +
-        `<p class="host">${escapeHtml(live.host ?? '')} · ${live.entities.length} readable ` +
+        `<p class="sub"><span class="host">${escapeHtml(live.host ?? '')}</span> · ${live.entities.length} readable ` +
         `entities · ${live.calendars.length} calendars` +
         `${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(ago(lastSyncAt, now()))}</p>` +
         `<form method="get" action="admin/home-assistant/disconnect">` +

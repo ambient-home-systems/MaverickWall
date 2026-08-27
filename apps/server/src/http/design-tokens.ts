@@ -15,7 +15,7 @@
  * contrast it needs, so a future adjustment cannot quietly go unreadable.
  *
  * This is a much smaller vocabulary than the thirty-odd roles it replaced —
- * three surfaces, three inks, two rules, one accent and the status hues. A role
+ * three surfaces, four inks, two rules, one accent and the status hues. A role
  * exists here only where the design paints one thing on another; the sprawl of
  * M3 container/on-container pairs mostly encoded distinctions this admin never
  * drew.
@@ -54,11 +54,23 @@ const DARK: AdminScheme = {
     'surface': '#1A1D22',
     'surface-2': '#22262C',
     'surface-3': '#2A2F36',
-    // Text, in descending importance. `ink-3` is placeholder and disabled text
-    // only — it is deliberately the one role below 4.5:1, and nothing
-    // essential is ever set in it.
+    // Text, in descending importance.
+    //
+    // `ink-muted` is the quietest role a *sentence* may be set in: it clears
+    // 4.5:1 on all four grounds (worst case 4.56 on `surface-3`) while sitting
+    // visibly below `ink-2`. It exists because the admin's secondary layer —
+    // "Last seen 2 minutes ago", the alert ladder's explanations, the nav
+    // group heads — had been reaching for `ink-3` instead, which is a third of
+    // the product's prose set below the readable bar.
+    //
+    // `ink-3` is now the control-boundary role and nothing else — the text
+    // field's border, the segmented control's, a chip's outline. It is
+    // deliberately the one role below 4.5:1, so no text is set in it at all:
+    // the placeholder that used to be its one legitimate text job carries
+    // format guidance ("e.g. 38.8894") and moved to `ink-muted` with the rest.
     'ink': '#E9EBEE',
     'ink-2': '#A9B0B9',
+    'ink-muted': '#8E97A3',
     'ink-3': '#7C848E',
     // Two rules, because a divider inside a card and a border around a control
     // are different jobs: the first must not be seen, the second must.
@@ -111,6 +123,11 @@ const LIGHT: AdminScheme = {
     'surface-3': '#E7E4E0',
     'ink': '#1A1C1F',
     'ink-2': '#5A6169',
+    // 4.50:1 on `surface-3` — the tightest pair in either scheme, and the
+    // reason `surface-3` cannot be lightened without re-deriving this. Light
+    // is the harder side: `ink-2` itself is only 4.95 there, so a muted role
+    // that clears AA has barely a step of room beneath it.
+    'ink-muted': '#62676D',
     'ink-3': '#7E858D',
     'line': '#E2DFDA',
     'line-strong': '#CBC7C1',

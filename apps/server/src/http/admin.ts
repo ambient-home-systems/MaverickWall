@@ -900,7 +900,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="card today-card">` +
           `<div class="kick">Today on the wall</div>` +
           `<div class="today-big">${escapeHtml(todayLine)}</div>` +
-          `<div class="host">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'} · ${escapeHtml(household.timezone)}</div>` +
+          `<div class="sub">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'} · ${escapeHtml(household.timezone)}</div>` +
           `<div class="row" style="margin-top:auto;padding-top:16px">` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
@@ -2968,7 +2968,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const card = (plan: typeof plans[number]): string =>
       `<article class="card">` +
       `<h2>${escapeHtml(plan.personName ?? 'Nobody')}</h2>` +
-      `<p class="host">` +
+      `<p class="sub">` +
       (plan.kind === 'pattern'
         ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
         : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
@@ -3081,7 +3081,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
         `<article class="card">` +
         `<h2>Version ${escapeHtml(deps.appVersion)}</h2>` +
-        `<p class="host">Running ${escapeHtml(uptimeText)} · schema ` +
+        `<p class="sub">Running ${escapeHtml(uptimeText)} · schema ` +
         `${readSchemaVersionSafe()} · database ${formatBytes(size)}</p>` +
         `<p>${integrity.ok ? 'The database checks out.' : `Database problem: ${escapeHtml(integrity.detail)}`}</p>` +
         `</article>` +
@@ -3282,7 +3282,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? `<span class="swatch" style="--swatch:${escapeHtml(person.color)}"></span>`
         : `<img class="avatar" alt="" src="/admin/media/${escapeHtml(person.avatarPath)}">`) +
       `${escapeHtml(person.name)}</h2>` +
-      `<p class="host">` +
+      `<p class="sub">` +
       (person.sourceCount === 0
         ? 'No calendars assigned'
         : `${person.sourceCount} calendar${person.sourceCount === 1 ? '' : 's'}`) +
@@ -3910,7 +3910,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
       `<span class="tag">Browser</span></div>` +
-      `<div class="host">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
+      `<div class="sub">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
       (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
       `</div></div>` +
       `<span class="link">Open ${icon('arrow')}</span>` +
@@ -3933,7 +3933,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
       `<span class="tag">E-paper</span></div>` +
-      `<div class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
+      `<div class="sub"><span class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}</span>` +
       `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen}</div>` +
       `</div></div>` +
       `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">` +
@@ -4036,7 +4036,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="ic">${icon('layout')}</div>` +
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">Default</div>` +
-      `<div class="host">What every wall shows until it has its own layout</div></div>` +
+      `<div class="sub">What every wall shows until it has its own layout</div></div>` +
       `<span class="link">Open ${icon('arrow')}</span>` +
       `</div></a>`;
 
@@ -4652,7 +4652,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             // reports before the first fetch lands, and "0 events" next to
             // "Syncing…" is the failure sentence back again in a quieter voice.
             `<p><strong>Syncing…</strong> ` +
-            `<span class="host">fetching this calendar for the first time</span></p>`
+            `<span class="sub">fetching this calendar for the first time</span></p>`
           : `<p>${source.eventCount} event${source.eventCount === 1 ? '' : 's'} · ` +
             `synced ${escapeHtml(ago(source.lastSuccessAt, at))}</p>`;
 
@@ -4835,7 +4835,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<div class="preview">` +
       `<h3>${escapeHtml(result.calendarName ?? 'That address works')}</h3>` +
-      `<p class="host">${escapeHtml(result.host)} · ${result.totalEvents} event` +
+      `<p class="sub"><span class="host">${escapeHtml(result.host)}</span> · ${result.totalEvents} event` +
       `${result.totalEvents === 1 ? '' : 's'} found</p>` +
       `<ul>${rows}</ul>` +
       result.warnings

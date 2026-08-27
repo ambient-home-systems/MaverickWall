@@ -59,9 +59,14 @@ function contrast(a: string, b: string): number {
  * The three grounds are listed against each ink because the stylesheet really
  * does put all of them everywhere: a card is `surface`, an input and the
  * compact settings rows are `surface-2`, a tag and a nav badge are `surface-3`.
+ *
+ * `ink-muted` is here for the reason it exists: it is the quietest role a
+ * sentence may be set in, so it has to clear the *text* bar on every ground —
+ * which is the whole difference between it and `ink-3`, and the only thing
+ * stopping the admin's secondary layer sliding back down there.
  */
 const TEXT_PAIRS: readonly (readonly [string, string])[] = [
-  ...['ink', 'ink-2', 'accent'].flatMap((ink) =>
+  ...['ink', 'ink-2', 'ink-muted', 'accent'].flatMap((ink) =>
     ['bg', 'surface', 'surface-2', 'surface-3'].map((ground) => [ink, ground] as const),
   ),
   // Filled and tinted containers, each with the text that lands on it.
@@ -278,14 +283,26 @@ const NOT_AN_OBJECT = new Set(['line', 'line-strong']);
 /**
  * Pairs the stylesheet paints that do not clear their bar today.
  *
- * `ink-3` as text is the finding this assertion was written for and is the
- * larger half of the list. `ok` on `surface-3` is the same class, one hue
- * along. The `accent-ink` entries are a limitation of the derivation rather
- * than a defect: they are the checkmark drawn inside a *checked* checkbox, so
- * its ground is the accent fill on the parent rule and not any of the four
- * page grounds — the fan-out cannot see that, and narrowing the fan-out to
- * avoid it would lose the `ink-3` border finding beside it, which is worth
- * more.
+ * This list was seventeen entries and is ten. The seven that went were
+ * `ink-3` set as *text*, which is the finding the derivation was written for:
+ * `.host` had grown from a hostname class into the generic second line, so the
+ * alert ladder's explanations, "Last seen 2 minutes ago", every nav group head
+ * and the field placeholders were all set in a role that is 3.25:1 in the
+ * light scheme. They are `ink-muted` now, and the assertion below pins that
+ * `ink-3` is never set as text again.
+ *
+ * What is left is three classes, none of them prose:
+ *
+ * - `ink-3` on `surface-3` as an *object*, at 2.95 against a 3 bar. Real, and
+ *   narrow: it is the switch's checkbox border, the one control that sits on
+ *   the third ground. Fixing it means moving either the border or that ground,
+ *   which is a change to a shape rather than to a colour.
+ * - `ok` on `surface-3` in the light scheme, at 4.21. A status hue on a tag.
+ * - The `accent-ink` entries, which are a limitation of the derivation rather
+ *   than a defect: they are the checkmark drawn inside a *checked* checkbox,
+ *   so its ground is the accent fill on the parent rule and not any of the
+ *   four page grounds. The fan-out cannot see that, and narrowing it to avoid
+ *   them would lose the `ink-3` border finding beside it, which is worth more.
  *
  * Ratios are recorded so a change to a scheme shows up as a moved number
  * rather than as a line that silently still passes.
@@ -295,18 +312,11 @@ const UNMET_PAIRS: readonly string[] = [
   'dark object: accent-ink on surface = 1.04 (needs 3)',
   'dark object: accent-ink on surface-2 = 1.15 (needs 3)',
   'dark object: accent-ink on surface-3 = 1.30 (needs 3)',
-  'dark text: ink-3 on surface = 4.46 (needs 4.5)',
-  'dark text: ink-3 on surface-2 = 4.02 (needs 4.5)',
-  'dark text: ink-3 on surface-3 = 3.56 (needs 4.5)',
   'light object: accent-ink on bg = 1.08 (needs 3)',
   'light object: accent-ink on surface = 1.00 (needs 3)',
   'light object: accent-ink on surface-2 = 1.15 (needs 3)',
   'light object: accent-ink on surface-3 = 1.27 (needs 3)',
   'light object: ink-3 on surface-3 = 2.95 (needs 3)',
-  'light text: ink-3 on bg = 3.46 (needs 4.5)',
-  'light text: ink-3 on surface = 3.73 (needs 4.5)',
-  'light text: ink-3 on surface-2 = 3.25 (needs 4.5)',
-  'light text: ink-3 on surface-3 = 2.95 (needs 4.5)',
   'light text: ok on surface-3 = 4.21 (needs 4.5)',
 ];
 
@@ -423,22 +433,39 @@ describe('the pairs the stylesheet actually paints', () => {
     ).toEqual([]);
   });
 
-  it('sees `ink-3` set as text, which is the gap it was written for', async () => {
+  it('sees the quiet prose role set as text, and never `ink-3`', async () => {
     /*
-     * Pinned so a future narrowing of the derivation cannot quietly close it.
-     * `ink-3` is declared "placeholder and disabled text only" and appears in
-     * `OBJECT_PAIRS` at the 3:1 border bar; the stylesheet sets it as `color`
-     * on twenty-three rules all the same, and this is what notices.
+     * This assertion used to read `ink-3|` rather than `ink-muted|`, and the
+     * change is worth reading rather than skimming.
      *
-     * Only the positive half is asserted. "`ink-3` is absent from `TEXT_PAIRS`"
-     * was the other half and it was a trap: it holds today and would fail on
-     * the exact fix Phase 6b is expected to make — raising the contrast and
-     * listing the pair as a legitimate one — with a message naming nothing.
-     * An assertion that goes red when somebody does the right thing teaches
-     * people to delete assertions.
+     * It was pinned so that a future *narrowing of the derivation* could not
+     * quietly close the finding — at the time, `ink-3` was set as `color` on
+     * twenty-two rules, and this was what noticed. The finding is now closed
+     * at source instead: `.host` was one class doing two jobs, and the whole
+     * secondary layer it had accumulated — the alert ladder's explanations,
+     * "Last seen 2 minutes ago", the nav group heads, the field placeholders —
+     * moved to `ink-muted`, which clears 4.5:1 on every ground.
+     *
+     * So the canary is re-pointed rather than retired. Its job was never
+     * "`ink-3` specifically"; it was "the derivation must still see a rule
+     * that sets only a colour". `ink-muted` is the role that carries that job
+     * now, and pinning it there is strictly stronger, because those pairs also
+     * have to *pass* in the assertion above — where the old pin could only
+     * confirm the failure was still visible.
+     *
+     * The second half is new and is the regression that matters: `ink-3` must
+     * not be set as text again. It could not be asserted before because it was
+     * false; it is the fix, so it is what a future edit would undo.
      */
     const { text } = await painted();
+    const prose = [...text].filter((pair) => pair.startsWith('ink-muted|'));
+    expect(prose.length, 'the derivation no longer sees ink-muted as text').toBeGreaterThan(0);
+
     const asText = [...text].filter((pair) => pair.startsWith('ink-3|'));
-    expect(asText.length, 'the derivation no longer sees ink-3 as text').toBeGreaterThan(0);
+    expect(
+      asText,
+      'ink-3 is the control-boundary role and is below 4.5:1 on every ground — ' +
+        'text set in it is unreadable. Use ink-muted for anything a person reads.',
+    ).toEqual([]);
   });
 });
