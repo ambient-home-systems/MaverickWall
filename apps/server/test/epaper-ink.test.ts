@@ -144,6 +144,15 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   calendars: [['s1']],
   mode: ['list', 'week', 'month', 'skyweek'],
   /*
+   * `compact` is the value that would move ink if a panel read density at all.
+   * It must not: a panel is already edge to edge with hairline rules and has no
+   * gaps, cards or padding to give up, so both densities draw one frame — which
+   * is also what keeps a canvas storing `skymonth` drawing what it always did.
+   * Probed against a month base *and* a week base, since those are the two
+   * views density means anything on.
+   */
+  density: ['compact'],
+  /*
    * Both directions, because the default moved. `cellEvents` unset means flat
    * names now, so probing `pills` alone compares names against names and finds
    * nothing — which is how a key that genuinely stopped being read would look.

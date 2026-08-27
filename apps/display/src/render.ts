@@ -36,6 +36,7 @@ import {
   weatherWidgetView,
   type ShiftWidgetView,
 } from './widget-options.js';
+import { calendarView } from './widget-views.js';
 
 /**
  * The DOM, and no decisions.
@@ -1241,7 +1242,7 @@ function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
 }
 
 /**
- * The Calendar widget, in one of three modes.
+ * The Calendar widget: one of three views, at one of two densities.
  *
  * `month` (the default) is the same grid the responsive layout draws — flat
  * event names by default, quiet `dots`, or Skylight-style event `pills`. `week`
@@ -1250,19 +1251,27 @@ function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
  * limited to some calendars (`calendars`, by source id — already in the
  * manifest, so filtering here leaks nothing) and to a number of events. A
  * calendar the household did not select is simply not counted.
+ *
+ * **Density is the second axis, and it used to be two more views.** `compact`
+ * draws the same month and the same week edge to edge — hairline rules instead
+ * of gaps and cards — and it is what a canvas storing `skymonth` or `skyweek`
+ * has always drawn. Those values are still read, for ever, and nothing rewrites
+ * them: `calendarView` is the one place a stored config becomes a (view,
+ * density) pair, and `epaper/widgets.ts` asks it the same question. The agenda
+ * has one density, so there is nothing to choose there and the editor offers
+ * nothing — an option that does nothing is worse than an option not offered.
  */
 function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
   const c = widgetConfig(config);
-  const mode = c['mode'];
+  const { view, density } = calendarView(config);
   // Absence means on: the rota's colours predate this option (see the schema).
   // Read before the dispatch, because every style below consults it.
   const showShifts = c['showShifts'] !== false;
-  // Named before the `!== 'list'` fallthrough below, which would otherwise draw
-  // a month grid for either of them — the 0.33.2 bug, one mode along.
-  if (mode === 'skyweek') return renderSkyWeek(model, config);
-  if (mode === 'skymonth') return renderSkyMonth(model, config);
-  if (mode === 'week') return renderWeekColumns(model, config);
-  if (mode !== 'list') {
+  if (view === 'week') {
+    return density === 'compact' ? renderSkyWeek(model, config) : renderWeekColumns(model, config);
+  }
+  if (view === 'month') {
+    if (density === 'compact') return renderSkyMonth(model, config);
     /*
      * Absence is `text`, and that is the change worth reading twice.
      *
@@ -1919,7 +1928,20 @@ export function renderFreeform(
       // labelled event pills.
       box.classList.add('fw-fill');
       box.appendChild(contentWithTitle(body, widget.config));
-      if (widgetConfig(widget.config)['mode'] === 'week') weekBoxes.push({ box, widget });
+      /*
+       * Only the *comfortable* week gets the narrow-box fallback below.
+       *
+       * `MIN_WEEK_COLUMN_REM` is 5rem and it was measured against these
+       * columns — the ones with gaps, cards and padding in them. The dense week
+       * gives all three up precisely so it fits in less room, so its floor is a
+       * different number and nobody has measured it. Applying this one to it
+       * would substitute an agenda for a week that is still perfectly readable,
+       * on the walls already hanging that store `skyweek`.
+       */
+      const shape = calendarView(widget.config);
+      if (shape.view === 'week' && shape.density === 'comfortable') {
+        weekBoxes.push({ box, widget });
+      }
     } else {
       /*
        * Everything else reuses a section built for a full-width strip or grid,
@@ -2090,13 +2112,19 @@ export function renderFreeform(
 }
 
 /**
- * Whether a calendar widget's mode is a grid that should fill its box (month or
- * week columns) rather than an agenda list that scales to fit. The month grid's
- * cells and the week columns are built to reflow into whatever space they get;
- * the list's rows are fixed rem and want scaling like the other strips.
+ * Whether a calendar widget's view is a grid that should fill its box (month or
+ * week columns, at either density) rather than an agenda list that scales to
+ * fit. The month grid's cells and the week columns are built to reflow into
+ * whatever space they get; the list's rows are fixed rem and want scaling like
+ * the other strips.
+ *
+ * Through `calendarView` rather than off `mode`, so this and the dispatch
+ * cannot disagree about what a stored value means — `mode !== 'list'` happened
+ * to give the right answer for `skymonth`, and a second reading that is right
+ * by luck is the shape of every bug in this file's history.
  */
 function calendarGridFills(config: unknown): boolean {
-  return widgetConfig(config)['mode'] !== 'list';
+  return calendarView(config).view !== 'list';
 }
 
 /* ------------------------------------------------------- SKY (dense) ---- */

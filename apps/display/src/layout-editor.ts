@@ -20,7 +20,14 @@ import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import type { Manifest } from './manifest.js';
-import { WIDGET_VIEWS, viewLabel } from './widget-views.js';
+import {
+  CALENDAR_DENSITIES,
+  WIDGET_VIEWS,
+  calendarView,
+  viewLabel,
+  type CalendarDensity,
+  type CalendarView,
+} from './widget-views.js';
 import { clearLaneKeys, inkOf, mergeInk, setLaneValue } from './ink.js';
 import { createHistory, type History } from './history.js';
 import { MIN_SIZE, moveTo, nudge, resizeTo, setDimension, type Box } from './placement.js';
@@ -172,7 +179,7 @@ function labelFor(type: string): string {
  */
 function describeWidget(widget: Widget): string {
   const base = labelFor(widget.type);
-  const view = viewLabel(widget.type, (widget.config ?? {})['mode']);
+  const view = viewLabel(widget.type, widget.config);
   return view === undefined ? base : `${base} \u2014 ${view}`;
 }
 
@@ -2210,7 +2217,24 @@ function boot(): void {
     }
 
     const field = cfgField('View', 'mode');
-    const current = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : first.value;
+    /*
+     * A calendar's view is not the string in `mode`.
+     *
+     * A canvas holding `skyweek` is a *Week columns* widget drawn compactly,
+     * and `calendarView` is the one place that is decided — so the picker asks
+     * it rather than reading the raw value, and writes the whole pair back
+     * through `setCalendarShape`. Reading `mode` here would have shown "Month
+     * grid" for `skymonth` by the accident of the unknown-means-default
+     * fallback below, and then written a view beside a legacy value that
+     * already carried one.
+     */
+    const shape = widget.type === 'calendar' ? calendarView(cfg) : undefined;
+    const current =
+      shape !== undefined
+        ? shape.view
+        : typeof cfg['mode'] === 'string'
+          ? (cfg['mode'] as string)
+          : first.value;
     const select = document.createElement('select');
     for (const view of views) {
       const option = document.createElement('option');
@@ -2221,12 +2245,49 @@ function boot(): void {
     }
     select.addEventListener('change', () => {
       // The default view is stored as an absence, exactly as `mode` always was.
-      setConfig(widget, 'mode', select.value === first.value ? undefined : select.value);
+      if (shape !== undefined) setCalendarShape(widget, select.value as CalendarView, shape.density);
+      else setConfig(widget, 'mode', select.value === first.value ? undefined : select.value);
       // Which options apply depends on the view, so the panel is rebuilt.
       renderConfigPanel();
     });
     field.appendChild(select);
     configPanel.appendChild(field);
+  }
+
+  /**
+   * Write a calendar's view and its density together, as the one pair they are.
+   *
+   * Both keys or neither, and each stored as an *absence* at its default
+   * (`month`, `comfortable`). That is what stops a half-written config existing
+   * at all: a widget holding a legacy `skymonth` already carries both halves in
+   * one string, so writing only the density beside it would leave `skymonth`
+   * winning and the control springing back — and writing only the view would
+   * leave a compact widget that had quietly become comfortable. Touch either
+   * control and the pair is written canonically, which is also how the legacy
+   * value leaves a canvas: when the household edits it, and never behind their
+   * back.
+   *
+   * One `recordRun` key for the pair, so one press is one step back rather
+   * than two.
+   */
+  function setCalendarShape(widget: Widget, view: CalendarView, density: CalendarDensity): void {
+    recordRun(`cfg:${lane}:${widget.id}:calendar-shape`);
+    let next = setLaneValue(widget.config, lane, 'mode', view === 'month' ? undefined : view);
+    /*
+     * The density is a wall setting and the ink lane may not carry it: it is
+     * not in `INK_KEYS`, so `inkOverrideBody` would reject the save outright.
+     * The lane offers the View picker and no Density control, and this is the
+     * other half of that — a panel draws one density because it has no gaps or
+     * cards to give up (`PANEL_IGNORES`).
+     */
+    if (lane !== 'ink') {
+      next = setLaneValue(next, lane, 'density', density === 'comfortable' ? undefined : density);
+    }
+    if (next !== undefined) widget.config = next;
+    else delete widget.config;
+    refreshLabels();
+    markDirty();
+    renderPreview();
   }
 
   /** True where the inspector is the phone's bottom sheet rather than a column. */
@@ -2961,8 +3022,74 @@ function boot(): void {
     boxFields = { id: widget.id, inputs };
   }
 
+  /**
+   * The Calendar's options, which depend on the view *and* the density.
+   *
+   * Both axes gate, and that is the point of splitting them. The dense month
+   * draws its own flat rows and reads no `cellEvents`; neither dense view draws
+   * a week number. Offering either there would be a control that does nothing —
+   * which this project has shipped before, and which the household reports as
+   * "the calendar settings have no impact". The old `skymonth` showed the week
+   * number switch for exactly that reason: the guard was `mode !== 'list'`, and
+   * `skymonth` is not `list`.
+   */
   function buildCalendarConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const currentMode = typeof cfg['mode'] === 'string' ? (cfg['mode'] as string) : 'month';
+    const shape = calendarView(cfg);
+    const view = shape.view;
+
+    /*
+     * **The density axis does not exist on a panel**, so on the ink lane the
+     * controls a dense wall gives up are exactly the ones a panel still reads.
+     *
+     * `PANEL_IGNORES` carries the reason: compact buys its room from gaps and
+     * cards, and a 1-bit panel is already edge to edge with none to give up. So
+     * a panel draws the month grid at one density whatever the wall does — and
+     * it *does* read `cellEvents` there, which `INK_LANE` offers. Reading the
+     * wall's density here would hide that control on the lane for every
+     * household whose wall is compact, which is the same fault as offering one
+     * the panel cannot honour, in the other direction.
+     */
+    const density = lane === 'ink' ? 'comfortable' : shape.density;
+
+    /*
+     * Density: how much room the calendar spends on itself.
+     *
+     * Not offered on the agenda, which has one. A segmented control rather than
+     * two more entries in the View list, because that is what it was before —
+     * "Sky month" beside "Month grid" made a density choice look like a
+     * different thing to draw, and hid that the dense pair trades type size for
+     * events a day. Named where the trade is, in the hint.
+     *
+     * Not offered on the ink lane either, for the reason just above.
+     * `pruneToLane` would drop it regardless — that is its job, and the safe
+     * default — but a control built to be thrown away reads as an oversight.
+     */
+    if (view !== 'list' && lane !== 'ink') {
+      configPanel.appendChild(
+        segControl(
+          'Density',
+          [
+            ['comfortable', 'Comfortable'],
+            ['compact', 'Compact'],
+          ],
+          density,
+          (value) => {
+            const next = CALENDAR_DENSITIES.find((one) => one === value) ?? 'comfortable';
+            setCalendarShape(widget, view, next);
+            renderConfigPanel();
+          },
+          'density',
+        ),
+      );
+      const trade = document.createElement('p');
+      trade.className = 'hint';
+      trade.dataset['cfgKey'] = 'density';
+      trade.textContent =
+        density === 'compact'
+          ? 'Hairlines instead of cards: more of the week in the same box, drawn smaller.'
+          : 'Cards and gaps. Compact fits more in the same box, drawn smaller.';
+      configPanel.appendChild(trade);
+    }
 
     /*
      * The rota's colours, on every style that draws them.
@@ -2980,9 +3107,16 @@ function boot(): void {
       ),
     );
 
-    // The week of the year, on either grid style — not on the agenda, where a
-    // number per day group would repeat itself down the wall.
-    if (currentMode !== 'list') {
+    /*
+     * The week of the year, on either comfortable grid.
+     *
+     * Not on the agenda, where a number per day group would repeat itself down
+     * the wall — and not on either dense view, which draws no week number at
+     * all. That last half is a bug this split found rather than one it caused:
+     * the guard was `mode !== 'list'`, so `skymonth` and `skyweek` have been
+     * offering a switch that does nothing since they shipped.
+     */
+    if (view !== 'list' && density === 'comfortable') {
       configPanel.appendChild(
         switchRow('Show week numbers', '', cfg['showWeekNumbers'] === true, (checked) =>
           setConfig(widget, 'showWeekNumbers', checked ? true : undefined),
@@ -2992,7 +3126,8 @@ function boot(): void {
 
     // Month cells: flat names (the default), quiet dots, Skylight-style
     // labelled pills, or Swiss — the same flat names in the typographic grid.
-    if (currentMode === 'month') {
+    // The dense month draws its own flat rows and reads none of these.
+    if (view === 'month' && density === 'comfortable') {
       const cellStyles = ['dots', 'pills', 'swiss', 'text'] as const;
       const stored = cfg['cellEvents'];
       const current = cellStyles.find((key) => key === stored) ?? 'text';
@@ -3022,7 +3157,7 @@ function boot(): void {
 
     // Which calendars to show — for the week columns and the agenda, where
     // filtering means something; the month grid is a whole month at a glance.
-    if (currentMode === 'week') {
+    if (view === 'week') {
       const which = cfgField('Calendars to show', 'calendars');
       which.appendChild(
         checkList(
@@ -3041,7 +3176,7 @@ function boot(): void {
     }
 
     // Filtering plus a count for the list — the agenda.
-    if (currentMode === 'list') {
+    if (view === 'list') {
       const which = cfgField('Calendars to show', 'calendars');
       which.appendChild(
         checkList(
