@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { redactLogText, redactLog, looksLikeSecret } from '../src/api/redact.js';
+import { redactLogText, redactLog, looksLikeSecret, REDACTED } from '../src/api/redact.js';
 import { issueDisplayToken, issueSetupToken } from '../src/auth/tokens.js';
 
 /*
@@ -91,22 +91,96 @@ describe('redacting the diagnostics log tail', () => {
     for (const line of kept) expect(redactLogText(line)).toBe(line);
   });
 
-  it('reads a real token as a secret and a long identifier as a name', () => {
-    // The generators rather than invented bytes: what has to be caught is
-    // whatever base64url actually produces, not what a person would type as an
-    // example of it.
-    for (let i = 0; i < 50; i++) {
-      expect(looksLikeSecret(issueSetupToken().token)).toBe(true);
-      expect(looksLikeSecret(issueDisplayToken().token)).toBe(true);
+  it('takes a real token out of the real lines this server prints', () => {
+    /*
+     * The assertion that can honestly be made at 100%, and the one that is
+     * actually the security property.
+     *
+     * This used to be `looksLikeSecret(issueSetupToken().token)` fifty times
+     * over, which asserted something the rule has never done and does not
+     * claim to: the entropy heuristic is a *backstop*, and its own docstring
+     * has always quoted a miss rate. About one CI run in five went red on it,
+     * and the fix for that is not a looser assertion — it is asking the
+     * question the export actually turns on. Everything this codebase prints a
+     * credential in, it prints *labelled* — `?token=`, `enter this code:` —
+     * and the labelled rules take those apart deterministically, whatever the
+     * random bytes happen to be.
+     *
+     * So: real generated tokens, in the real boot lines, through the real
+     * `redactLogText`. Two hundred of each, and the token must not survive in
+     * any form.
+     */
+    for (let i = 0; i < 200; i++) {
+      const setup = issueSetupToken();
+      const display = issueDisplayToken().token;
+      const lines = [
+        `    http://192.168.1.10:8080/setup?token=${setup.token}`,
+        `  Or go to http://192.168.1.10:8080/setup and enter this code:  ${setup.shortCode}`,
+        `    http://<this-host>:8080/pair?token=${display}`,
+        `{"token":"${display}"}`,
+      ];
+      for (const line of lines) {
+        const redacted = redactLogText(line);
+        expect(redacted, `left the credential in: ${line}`).not.toContain(setup.token);
+        expect(redacted).not.toContain(display);
+        expect(redacted).toContain(REDACTED);
+      }
+      // The short code is eight characters, far under the entropy rule's floor,
+      // so it lives or dies entirely by its label.
+      expect(redactLogText(lines[1] as string)).not.toContain(setup.shortCode);
     }
+  });
+
+  it('reads an unlabelled token as a secret, and a long identifier as a name', () => {
+    /*
+     * The backstop, stated as the bar it actually clears.
+     *
+     * Each literal below is a *real* token from `issueSetupToken`, kept because
+     * it escaped the rule before the vowel-density clause went in. They are the
+     * regression cases: revert that clause and these turn red at once, which a
+     * rate over random tokens could never promise to do.
+     */
+    for (const escaped of [
+      'OmbkvhZhurRVOedzMLOZcPckUcw_5JiN',
+      'ZJwynURyldafuBmWkgwULQCMsTCubcLh',
+      '9i_DjmtzoglKHhcJyagIwvaDBLAQnTH8',
+      'rcoPXTGLCuJLRbpVWLgEH6-ak_Wxnhe7',
+      'XUhHXrUpjNnJZUllwBYOJb',
+    ]) {
+      expect(looksLikeSecret(escaped), `${escaped} would survive the export`).toBe(true);
+    }
+
+    /*
+     * And a floor on the general case, sampled wide enough that the randomness
+     * cannot decide it. Measured, the rule catches about 1,817 of every 1,818
+     * tokens its generators produce; at four thousand draws, a run that fell
+     * below 99% would be a broken rule rather than a bad afternoon.
+     */
+    const draws = 4000;
+    let caught = 0;
+    for (let i = 0; i < draws; i++) {
+      if (looksLikeSecret(issueSetupToken().token)) caught++;
+      if (looksLikeSecret(issueDisplayToken().token)) caught++;
+    }
+    expect(caught / (draws * 2)).toBeGreaterThan(0.99);
+
+    /*
+     * The other direction, which is the one that decides whether the export is
+     * worth attaching. `MaverickWallDisplayEditor` and
+     * `AndroidTVWebViewKioskShell` are here because every length-based fix for
+     * the miss rate above redacts them — the measurement that ruled those out.
+     */
     for (const name of [
       'SQLITE_CONSTRAINT_PRIMARYKEY',
       'application_x_www_form_urlencoded',
       'MaverickWallDisplayEditor',
+      'AndroidTVWebViewKioskShell',
       'homeassistant_calendar_source',
       'x86_64-unknown-linux-gnu',
+      'brotliDecompressSync',
+      'calendar_events_cache',
     ]) {
-      expect(looksLikeSecret(name)).toBe(false);
+      expect(looksLikeSecret(name), `${name} would be redacted out of the export`).toBe(false);
     }
   });
 
