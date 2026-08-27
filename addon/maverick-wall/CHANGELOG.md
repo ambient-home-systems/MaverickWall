@@ -25,6 +25,20 @@ installed. Such a build now says what it is (`0.54.2-dev`) and the update check
 stays quiet until you are on a released version. Nothing changes for the add-on
 or the published image, which have always known their own version.
 
+**Every calendar and every person no longer comes out the same blue.** New
+calendars and new people were all given one fixed colour, so a household who
+added three feeds saw three identical pills on the wall and had to recolour
+each one by hand before it could say whose event was whose. That matters most
+where the wall has least room: a month cell cuts long titles off, and
+"School trip to the aq…" tells you nothing unless its colour differs from the
+one under it. Each new calendar and each new person now takes the next unused
+colour from the same set the work-schedule rota uses — picked to stay apart
+from across a kitchen — and wraps once they are all in use.
+
+Your existing calendars and people keep exactly the colours they have; nothing
+is repainted. You can still change any of them whenever you like, and a colour
+you have already chosen is skipped rather than handed out twice.
+
 **The settings pages are back in the product's own typeface.** Since 0.54.0
 every screen behind the login had quietly rendered in whatever font your
 device happened to supply. Nothing looked broken — that is how it went

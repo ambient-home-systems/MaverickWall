@@ -1496,14 +1496,15 @@ export function trimCellRows(root: HTMLElement): void {
     readonly cell: HTMLElement;
     readonly more: HTMLElement;
     readonly rows: readonly HTMLElement[];
+    /** The day's true total, stamped by the renderer from the model. */
+    readonly total: number;
+    /** The room the cell has, measured once. */
+    readonly limit: number;
     /** The rows whose whole title is on the glass, after the pass across. */
     visible: HTMLElement[];
-    /** The same set, for the hide loop, which asks about every row. */
-    readonly keep: Set<HTMLElement>;
   }
   const pending: Pending[] = [];
 
-  // ---- across: read every row, then hide the ones that cannot say it all ----
   for (let index = 0; index < cells.length; index++) {
     const cell = cells[index] as HTMLElement;
     const list = cell.querySelector('.hz-rows') as HTMLElement | null;
@@ -1514,66 +1515,47 @@ export function trimCellRows(root: HTMLElement): void {
     for (let r = 0; r < list.children.length; r++) rows.push(list.children[r] as HTMLElement);
     if (rows.length === 0) continue;
 
-    // Start from a clean slate: this runs again on every redraw, and a row left
-    // hidden from the last pass would shrink the cell a little further each
-    // time the wall refreshed.
-    for (const row of rows) row.style.display = '';
-    more.textContent = '';
-    pending.push({ cell, more, rows, visible: [], keep: new Set() });
+    const style = getComputedStyle(cell);
+    /*
+     * The room the cell has, measured rather than added up.
+     *
+     * Summing row heights was the first approach and it was short by exactly
+     * the things that are not heights: the flex `gap` between rows, and the
+     * counter's own top margin. That left today's cell overflowing by 2px on
+     * two of three screen sizes — small enough to look like a rounding error
+     * and big enough to clip the last row's descenders. `offsetTop` already
+     * carries the gaps, the margins and the date number above, so reading it
+     * removes the arithmetic instead of correcting it.
+     *
+     * `clientHeight` is the padding box and a child's `offsetTop` is measured
+     * from that box's top edge — the cell is `position:relative`, so it is the
+     * offsetParent — which is what lets the two be compared directly.
+     */
+    pending.push({
+      cell,
+      more,
+      rows,
+      total: Number(cell.getAttribute('data-count') ?? rows.length),
+      limit: cell.clientHeight - parseFloat(style.paddingBottom),
+      visible: [],
+    });
   }
+  if (pending.length === 0) return;
 
-  for (const entry of pending) {
-    for (const row of entry.rows) {
-      const text = row.querySelector('.hz-rowtext') as HTMLElement | null;
-      if (text === null) {
-        entry.visible.push(row);
-        continue;
-      }
-      /*
-       * How many lines the words actually took, against how many they are
-       * allowed. `scrollHeight` is the content's own height whatever the box
-       * was clamped to, so this reads the same whether or not the stylesheet's
-       * `max-height` belt is in force.
-       *
-       * Half a line of slack, never a whole one: a line either happened or it
-       * did not, and sub-pixel rounding on a wrapped box is worth less than
-       * that. A pixel of slack would make a 2.02-line title read as three.
-       */
-      const style = getComputedStyle(text);
-      const lineHeight = parseFloat(style.lineHeight);
-      const line = Number.isFinite(lineHeight) && lineHeight > 0
-        ? lineHeight
-        : parseFloat(style.fontSize) * 1.25;
-      const allowed = Math.max(1, Math.round(parseFloat(style.getPropertyValue('--cell-lines')) || 2));
-      const fitsAcross =
-        text.scrollHeight <= line * allowed + line / 2 &&
-        // A word wider than the column on its own. `overflow-wrap` breaks those
-        // rather than letting them overhang, so this is the belt — but a belt
-        // that costs nothing and catches the case where it cannot.
-        text.scrollWidth <= text.clientWidth + 1;
-      if (fitsAcross) {
-        entry.visible.push(row);
-        entry.keep.add(row);
-      }
-    }
-  }
+  const bottomOf = (node: HTMLElement): number => node.offsetTop + node.offsetHeight;
+  /** How many of a cell's rows are actually on the glass right now. */
+  const shownIn = (entry: Pending): number =>
+    entry.visible.filter((row) => row.style.display !== 'none').length;
 
-  for (const entry of pending) {
-    for (const row of entry.rows) {
-      if (!entry.keep.has(row)) row.style.display = 'none';
-    }
-  }
-
-  // ---- down: keep what the box has room for -------------------------------
-  /*
-   * Rows are no longer a uniform height — a title may take one line or two —
-   * and that breaks the walk this pass used to do. "Stop at the first row that
-   * does not fit" is only correct when every row is the same size: with mixed
-   * heights, a two-line title that does not fit says nothing at all about the
-   * one-line one under it. Measured on a 1280x720 wall, that cost six cells
-   * every name they had — each showing "+2" and not one of its two events,
-   * which is the exact fault `CLAUDE.md` records the month grid paying for
-   * before ("+6 and not one of its six").
+  /**
+   * Hide, from the top down, every row whose bottom is past the budget.
+   *
+   * Rows are not a uniform height — a title may take one line or two — and that
+   * breaks the walk this used to do. "Stop at the first row that does not fit"
+   * is only correct when every row is the same size: with mixed heights, a
+   * two-line title that does not fit says nothing at all about the one-line one
+   * under it. Measured on a 1280x720 wall, that cost six cells every name they
+   * had, each showing "+2" and not one of its two events.
    *
    * So a row that does not fit is hidden and the walk *continues*. Hiding one
    * pulls everything under it up, and this project does not do that arithmetic
@@ -1581,14 +1563,7 @@ export function trimCellRows(root: HTMLElement): void {
    * let the browser lay out again, look again. Reads are batched across every
    * cell and so are the writes, so a round is two layouts for the whole grid
    * rather than two per cell.
-   *
-   * The cost, stated rather than hidden: a cell too small for a two-line
-   * all-day title will draw a one-line timed one instead, so the "all-day
-   * first" ordering is a preference rather than a guarantee at the smallest
-   * sizes. Against showing neither, that is the right way round.
    */
-  const bottomOf = (node: HTMLElement): number => node.offsetTop + node.offsetHeight;
-
   const pack = (entries: readonly Pending[], budgetOf: (entry: Pending) => number): void => {
     let working = entries.slice();
     // Bounded by the model's own cap on how many events a cell can carry, so
@@ -1611,71 +1586,132 @@ export function trimCellRows(root: HTMLElement): void {
     }
   };
 
-  const limits = new Map<Pending, number>();
-  for (const entry of pending) {
-    const style = getComputedStyle(entry.cell);
+  /**
+   * The pass across: a row survives only if its whole title is on the glass.
+   *
+   * `allowed` is how many lines the words may take. A title that needs more is
+   * *hidden* rather than cut, because "Year 6…" is a different string from
+   * "Year 6 trip to the Science Museum" and two events can share it — where
+   * "+1" is simply true.
+   */
+  const across = (entries: readonly Pending[], allowed: number): void => {
+    const keeping: Set<HTMLElement>[] = [];
+    for (const entry of entries) {
+      const keep = new Set<HTMLElement>();
+      for (const row of entry.rows) {
+        const text = row.querySelector('.hz-rowtext') as HTMLElement | null;
+        if (text === null) {
+          keep.add(row);
+          continue;
+        }
+        /*
+         * How many lines the words actually took. `scrollHeight` is the
+         * content's own height whatever the box was clamped to, so this reads
+         * the same whether or not the stylesheet's `max-height` belt is in
+         * force.
+         *
+         * Half a line of slack, never a whole one: a line either happened or it
+         * did not, and sub-pixel rounding on a wrapped box is worth less than
+         * that. A pixel of slack would make a 2.02-line title read as three.
+         */
+        const style = getComputedStyle(text);
+        const lineHeight = parseFloat(style.lineHeight);
+        const line =
+          Number.isFinite(lineHeight) && lineHeight > 0
+            ? lineHeight
+            : parseFloat(style.fontSize) * 1.25;
+        const fits =
+          text.scrollHeight <= line * allowed + line / 2 &&
+          // A word wider than the column on its own. `overflow-wrap` breaks
+          // those rather than letting them overhang, so this is the belt — but
+          // a belt that costs nothing and catches the case where it cannot.
+          text.scrollWidth <= text.clientWidth + 1;
+        if (fits) keep.add(row);
+      }
+      keeping.push(keep);
+    }
+    entries.forEach((entry, index) => {
+      const keep = keeping[index] as Set<HTMLElement>;
+      entry.visible = entry.rows.filter((row) => keep.has(row));
+      for (const row of entry.rows) row.style.display = keep.has(row) ? '' : 'none';
+    });
+  };
+
+  /** Across, then down, then the counter, then down again underneath it. */
+  const settle = (entries: readonly Pending[], allowed: number): void => {
+    for (const entry of entries) {
+      for (const row of entry.rows) row.style.display = '';
+      entry.more.textContent = '';
+    }
+    across(entries, allowed);
+
+    // First without a counter: a cell that holds everything owes nobody a "+N".
+    pack(entries, (entry) => entry.limit);
+
+    const counted = entries.filter((entry) => shownIn(entry) < entry.total);
     /*
-     * The room the cell has, measured rather than added up.
+     * The counter is a line and has to be paid for out of the same budget, so a
+     * cell that shows one shows one fewer event. It is `display:none` while
+     * empty, so it needs content before it has a height to measure — and the
+     * packing has to run again underneath it, because reserving the room can be
+     * what pushes the last row out.
      *
-     * Summing row heights was the first approach and it was short by exactly
-     * the things that are not heights: the flex `gap` between rows, and the
-     * counter's own top margin. That left today's cell overflowing by 2px on
-     * two of three screen sizes — small enough to look like a rounding error
-     * and big enough to clip the last row's descenders. `offsetTop` already
-     * carries the gaps, the margins and the date number above, so reading it
-     * removes the arithmetic instead of correcting it.
-     *
-     * `clientHeight` is the padding box and a child's `offsetTop` is measured
-     * from that box's top edge — the cell is `position:relative`, so it is the
-     * offsetParent — which is what lets the two be compared directly.
+     * **From the across pass's state, not from the first packing's.** That is
+     * the whole of a bug this introduced and only a measurement found: a cell
+     * holding a two-line title and a one-line one packed as [two-line] with the
+     * one-line row dropped, then re-packed for the counter, dropped the
+     * two-line row as well — and never looked at the one-line row again,
+     * because the first pass had already hidden it. Measured on a 1280x720
+     * wall, that cell drew "+2" and neither of its two events while there was
+     * room for the second all along.
      */
-    limits.set(entry, entry.cell.clientHeight - parseFloat(style.paddingBottom));
-  }
+    for (const entry of counted) {
+      for (const row of entry.visible) row.style.display = '';
+      entry.more.textContent = '+0';
+    }
+    pack(counted, (entry) => {
+      const style = getComputedStyle(entry.more);
+      return entry.limit - entry.more.offsetHeight - parseFloat(style.marginTop);
+    });
 
-  // First without a counter: a cell that holds everything owes nobody a "+N".
-  pack(pending, (entry) => limits.get(entry) ?? 0);
+    for (const entry of counted) {
+      const hidden = entry.total - shownIn(entry);
+      entry.more.textContent = hidden > 0 ? `+${hidden}` : '';
+    }
+  };
 
-  const counted: Pending[] = [];
-  for (const entry of pending) {
-    const total = Number(entry.cell.getAttribute('data-count') ?? entry.rows.length);
-    let shown = 0;
-    for (const row of entry.visible) if (row.style.display !== 'none') shown++;
-    // Something is being left out if a row could not say its whole title, if a
-    // row did not fit the box, or if the model never sent them all — its slim
-    // list stops at twelve.
-    if (shown < total) counted.push(entry);
-  }
+  const allowed = (): number => {
+    const first = pending[0]?.rows[0]?.querySelector('.hz-rowtext');
+    if (!(first instanceof HTMLElement)) return 2;
+    const declared = parseFloat(getComputedStyle(first).getPropertyValue('--cell-lines'));
+    return Number.isFinite(declared) && declared >= 1 ? Math.round(declared) : 2;
+  };
+
+  settle(pending, allowed());
 
   /*
-   * The counter is a line and has to be paid for out of the same budget, so a
-   * cell that shows one shows one fewer event. It is `display:none` while
-   * empty, so it needs content before it has a height to measure — and the
-   * packing has to run again underneath it, because reserving the room can be
-   * what pushes the last row out.
+   * And a cell that ended up saying nothing gets one more go, on one line.
    *
-   * **From the across pass's state, not from the first packing's.** That is the
-   * whole of a bug this introduced and only a measurement found: a cell holding
-   * a two-line title and a one-line one packed as [two-line] with the one-line
-   * row dropped, then re-packed for the counter, dropped the two-line row as
-   * well — and never looked at the one-line row again, because the first pass
-   * had already hidden it. Measured on a 1280x720 wall, that cell drew "+2" and
-   * neither of its two events while there was room for the second all along.
+   * The wrap allowance is a *maximum*, not a promise, and this is where that
+   * matters. Measured on the shipped Classic wall in portrait — a month box
+   * 972x864, so cells of 114x129 — a 22px two-line row is 55px and the counter
+   * another 26, which does not fit under a 22px date number. Seven of nine
+   * cells with events drew "+3" and not one name: truthful, and a month grid
+   * that has stopped saying what is on, which is the exact failure this whole
+   * change exists to end.
+   *
+   * On one line those same cells hold "Dentist" and "Bin day" — a short title
+   * whole, which is worth more than a number. A title that needs two lines is
+   * hidden here as it always was, so nothing is cut; the cell just stops
+   * reserving room it cannot use. Only cells that would otherwise be silent pay
+   * for this pass, so a wall with room is untouched.
+   *
+   * The same shape as the shift ladder dropping a rung and asking again, and
+   * the same rule: a drawing decision, never a saved one.
    */
-  for (const entry of counted) {
-    for (const row of entry.visible) row.style.display = '';
-    entry.more.textContent = '+0';
-  }
-  pack(counted, (entry) => {
-    const style = getComputedStyle(entry.more);
-    return (limits.get(entry) ?? 0) - entry.more.offsetHeight - parseFloat(style.marginTop);
-  });
-
-  for (const entry of counted) {
-    const total = Number(entry.cell.getAttribute('data-count') ?? entry.rows.length);
-    let shown = 0;
-    for (const row of entry.visible) if (row.style.display !== 'none') shown++;
-    const hidden = total - shown;
-    entry.more.textContent = hidden > 0 ? `+${hidden}` : '';
+  if (allowed() > 1) {
+    const silent = pending.filter((entry) => entry.total > 0 && shownIn(entry) === 0);
+    if (silent.length > 0) settle(silent, 1);
   }
 }
 

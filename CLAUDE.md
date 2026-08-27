@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **sixty-nine real bugs**, and the pattern in how is the most
+This project has found **seventy-one real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -144,9 +144,11 @@ useful thing in this document:
 | A modal scrim leaving a live 16px strip across the app bar | Measuring a fixed `inset:0` element and reading back `y:16` |
 | **Sixteen tab stops in front of every admin page's content** | Counting them, on a page nobody had ever tabbed through |
 | A skip link that resolved against the `<base>` and left the page | Reading the anchor's `.href`, which disagreed with its markup |
+| **Every calendar and every person given the same colour** | Adding three calendars and reading the stored rows back |
 | **Not one event name in the whole month grid was legible** | Measuring every text node in the cells against three real calendars |
 | A cell with room for one row spending it on "+2" and drawing neither event | The same measurement, one wall size down |
 | An assertion for "all-day events draw first" that no edit could turn red | Deleting both things that could have caused it, twice |
+| A month grid measured on a widget nobody ships, not on the wall that does | Merging, and watching somebody else's colour test go red |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -963,6 +965,32 @@ well — so the renderer's own third copy of that decision was deleted rather th
 kept. The assertion for it stays, labelled as a guard on what a household sees
 rather than as a test of a change, because removing either of the other two does
 not turn it red and pretending otherwise would be worse than saying so.
+
+**The measurements above were taken on a widget nobody ships, and the shipped
+wall is tighter.** They used a calendar filling 96% of the canvas — 325px cells
+— because that is the treatment under test. Classic's month is `h: 0.45`, which
+on a 1080x1920 portrait wall is a 972x864 box and **114x129 cells**, and there
+the arithmetic is unforgiving: a 35.5px date number, a 22px counter and 22px
+type at 1.25 line-height leave room for **one line of text**. A two-line title
+cannot be drawn there at all, so on that wall a cell shows one short name or a
+count — measured with three realistic calendars, 12 of 15 busy cells show a
+name in portrait and 14 of 15 in landscape, against 45 pills of which none was
+legible. Better, and not the 23-of-23 the full-canvas measurement reports. The
+levers are Classic's month height and the floor itself, and neither was touched
+here: changing the default wall's layout is a different decision from
+correcting a cell treatment.
+
+Two things came out of finding that late. A cell that would otherwise say
+*nothing* gets one more pass at a one-line allowance, so a 129px cell draws
+"Dentist" rather than "+3" — the wrap allowance is a maximum, not a promise,
+which is the shift ladder's rule one widget along. And a neighbouring test on
+`main` caught it first: three calendars pointing at **one** feed give every cell
+three identical rows, the cell has room for one, and the same source wins every
+time — so exactly one of three colours reached the glass. That fixture was fine
+while three pills per cell were always drawn and stopped being fine the moment a
+cell could hold one row. It has three calendars' worth of different events now,
+which is both the realistic case and the only one where "do I see three
+different things?" means anything.
 
 **What did not change: a wall that already stores `pills`.** Every household
 backfilled onto Classic before this has `cellEvents: 'pills'` in its
