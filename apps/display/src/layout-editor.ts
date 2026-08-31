@@ -1532,7 +1532,16 @@ function boot(): void {
       const cs = getComputedStyle(stage);
       return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
     })();
-    const maxW = Math.min(Math.max(120, (stage.clientWidth || 360) - stagePad), 720);
+    /*
+     * The stage is the whole width budget: it is already bounded by the pane
+     * the page gives it, so a constant on top of it is a second opinion about
+     * the same thing. There used to be one — `Math.min(…, 720)`, the width
+     * twin of the old 720px height cap — and it was invisible only because the
+     * 1180px content column could never hand this stage more than 685px. It
+     * would have swallowed the wider column whole: a landscape wall would have
+     * gone from 685px to 720px on a 1920px monitor and stopped there.
+     */
+    const maxW = Math.max(120, (stage.clientWidth || 360) - stagePad);
     // With the inspector open as a sheet, the canvas keeps the top third of
     // the viewport rather than running underneath it — a preview you cannot
     // see is not a preview.
@@ -1552,6 +1561,28 @@ function boot(): void {
       const above = canvas.getBoundingClientRect().top + window.scrollY;
       const bar = document.getElementById('savebar')?.getBoundingClientRect().height ?? 64;
       return Math.round(window.innerHeight - above - bar - 12);
+    };
+    /*
+     * What a desktop viewport can show of the canvas *at once*, which is a
+     * different question from `roomBelowChrome()`.
+     *
+     * The chrome above the canvas scrolls away; the app bar and the fixed save
+     * bar do not. So the tallest canvas that is still whole on screen — once
+     * the household has scrolled the toolbar up under the app bar — is the
+     * viewport less those two, and that is the budget here. Measured for the
+     * same reason as `roomBelowChrome()`: a second copy of the bar heights in
+     * this file would drift from the stylesheet that sets them.
+     *
+     * It replaces a constant 720, which is what stopped this editor using a
+     * large screen: a portrait wall came out 383px wide at 1280 *and* at 1440,
+     * and 405px at 1920 — 21% of the monitor, with the canvas the smallest
+     * thing on a page that exists to arrange it. A constant cannot know the
+     * viewport, so this scales with it instead of being a larger constant.
+     */
+    const roomOnScreen = (): number => {
+      const bar = document.getElementById('savebar')?.getBoundingClientRect().height ?? 64;
+      const top = document.querySelector('.topbar')?.getBoundingClientRect().height ?? 64;
+      return Math.round(window.innerHeight - top - bar - 24);
     };
     // Measured against the sheet rather than guessed at a fraction of the
     // viewport: the sheet's own height is a min() of two values in the
@@ -1583,7 +1614,7 @@ function boot(): void {
               Math.max(roomBelowChrome(), Math.round(window.innerHeight * 0.46)),
             ),
           )
-        : Math.min(720, Math.max(360, window.innerHeight - 220));
+        : Math.max(360, roomOnScreen());
     let w = maxW;
     let h = w / state.aspect;
     if (h > maxH) {

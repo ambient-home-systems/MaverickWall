@@ -905,6 +905,218 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   );
 
   /**
+   * And the canvas scales with a desktop viewport instead of stopping at 720px.
+   *
+   * Measured before this change, on a portrait 1080x1920 wall: the canvas was
+   * 383px wide at 1280 **and at 1440** — the same to the pixel, because the
+   * height was clamped to a constant 720 and the width follows from the aspect
+   * — and 405px at 1920, which is 21% of the monitor with about 500px of empty
+   * page beside the inspector. The thing the page exists to arrange was the
+   * smallest thing on it.
+   *
+   * A **landscape** wall is the half the height could not reach: a 16:9 canvas
+   * is bound by its width, and that width came from a pane inside the admin's
+   * 1180px content column, a measure chosen for a readable line of text. 683px
+   * at 1440 and 685px at 1920 — two pixels for 480 more of monitor. So both
+   * orientations are measured here, on the same page load, and three fixes
+   * have to hold together: the height budget, the wider column, and
+   * `sizeCanvas`'s *other* 720, the one on the width.
+   *
+   * The properties, and the second is the one that would be lost by replacing
+   * a constant with a larger constant:
+   *
+   *  - it *grows* between 1280 and 1920 in both orientations, rather than the
+   *    viewport arriving at whichever step happens to cross a cap;
+   *  - it uses nearly all of the height the viewport can actually show — the
+   *    screen less the app bar and the fixed save bar, both of which stay put
+   *    when the page is scrolled;
+   *  - and it is still *whole* between those two bars at some scroll position,
+   *    which is what stops "bigger" becoming a canvas nobody can see at once;
+   *  - and the wider column is the editor's alone, with the settings beside
+   *    the canvas keeping their own measure.
+   *
+   * The small end is asserted rather than assumed: the phone widths run through
+   * the compact branch, which is deliberately untouched, and are what a change
+   * to the other branch would quietly cost.
+   *
+   * One page load per width, both orientations measured from it. This file
+   * shares a CI runner with fifteen other browser suites, and a wall test on
+   * that runner is already racing its own feed sync — so a test that reloads
+   * for each half of its question buys nothing and spends somebody else's
+   * margin.
+   */
+  it(
+    'sizes the canvas from the viewport, in both orientations, from 320 to 1920',
+    async () => {
+      const wall = await fresh();
+      /*
+       * One signed-in context, resized and reloaded, rather than eight — each
+       * measurement is still a fresh load at that viewport, which is the
+       * journey, and eight sign-ups against one in-memory rate-limit bucket is
+       * not.
+       */
+      const context = await (await browser()).newContext({ viewport: { width: 1280, height: 900 } });
+      try {
+        const page = await context.newPage();
+        await wall.signIn(page);
+        applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
+
+        /** The canvas as drawn now, and the room the viewport can show it in. */
+        const read = async () =>
+          await page.evaluate(() => {
+            const canvas = document.querySelector('.le-canvas')!.getBoundingClientRect();
+            const content = document.querySelector('.content')!.getBoundingClientRect();
+            const bar = document.getElementById('savebar')?.getBoundingClientRect();
+            const top = document.querySelector('.topbar')?.getBoundingClientRect();
+            return {
+              width: Math.round(canvas.width),
+              height: Math.round(canvas.height),
+              content: Math.round(content.width),
+              // What the viewport can show at once: the screen less the two
+              // things that do not scroll away.
+              room: Math.round(window.innerHeight - (top?.height ?? 0) - (bar?.height ?? 0)),
+              scrollWidth: document.documentElement.scrollWidth,
+            };
+          });
+
+        const portrait = new Map<number, Awaited<ReturnType<typeof read>>>();
+        const landscape = new Map<number, Awaited<ReturnType<typeof read>>>();
+
+        for (const [width, height] of [
+          [320, 700],
+          [375, 812],
+          [390, 844],
+          [768, 1000],
+          [1024, 768],
+          [1280, 900],
+          [1440, 900],
+          [1920, 1080],
+        ] as const) {
+          await page.setViewportSize({ width, height });
+          await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+          await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+
+          /*
+           * Stated, not inherited. The editor reopens on the orientation it was
+           * left on, so without this the first width measures the seed and
+           * every later one measures whatever the previous width chose.
+           */
+          await page.click('.le-orient-btn:has-text("Portrait")');
+          await page.waitForTimeout(250);
+          const seen = await read();
+          portrait.set(width, seen);
+
+          expect(
+            seen.scrollWidth,
+            `at ${width}px the editor scrolls sideways`,
+          ).toBeLessThanOrEqual(width);
+
+          // Scrolled to the foot of the page, the bottom row of resize handles
+          // is still reachable — the save bar is fixed and cannot be scrolled
+          // out of the way.
+          const foot = await page.evaluate(async () => {
+            window.scrollTo(0, document.documentElement.scrollHeight);
+            await new Promise((settle) => setTimeout(settle, 150));
+            const canvas = document.querySelector('.le-canvas')!.getBoundingClientRect();
+            const bar = document.getElementById('savebar')!.getBoundingClientRect();
+            return { canvasBottom: Math.round(canvas.bottom), barTop: Math.round(bar.top) };
+          });
+          expect(
+            foot.canvasBottom,
+            `at ${width}px the canvas runs under the fixed save bar at the foot of the page`,
+          ).toBeLessThanOrEqual(foot.barTop);
+
+          if (width >= 900) {
+            /*
+             * A desktop canvas fills that room without exceeding it: nearly all
+             * of it, so a big monitor is spent on the wall, and never more than
+             * all of it, or "bigger" becomes a canvas that is whole at no
+             * scroll position. The old constant cap fails the floor at 1920 and
+             * only there, because 720px is most of a 900px screen and
+             * three-quarters of a 1080px one.
+             */
+            expect(
+              seen.height,
+              `at ${width}px the canvas is ${seen.height}px in ${seen.room}px of ` +
+                'un-scrollable-away room, so it can never be seen at once',
+            ).toBeLessThanOrEqual(seen.room);
+            expect(
+              seen.height / seen.room,
+              `at ${width}px the canvas is ${seen.height}px of ${seen.room}px of usable height`,
+            ).toBeGreaterThan(0.85);
+
+            await page.evaluate(() => window.scrollTo(0, 0));
+            await page.click('.le-orient-btn:has-text("Landscape")');
+            await page.waitForTimeout(250);
+            landscape.set(width, await read());
+          }
+        }
+
+        const phone = portrait.get(390)!;
+        expect(
+          phone.height,
+          `the phone canvas is ${phone.height}px, below the 455px the compact branch was tuned to`,
+        ).toBeGreaterThanOrEqual(455);
+
+        const small = portrait.get(1280)!;
+        const large = portrait.get(1920)!;
+        expect(
+          large.width,
+          `a portrait wall is ${small.width}px at 1280 and ${large.width}px at 1920 — ` +
+            'it should track the viewport, which is 1.2x the height here',
+        ).toBeGreaterThan(small.width * 1.2);
+
+        const wideL = landscape.get(1920)!;
+        const narrowL = landscape.get(1440)!;
+        expect(
+          wideL.width,
+          `a landscape wall is ${narrowL.width}px at 1440 and ${wideL.width}px at 1920 — ` +
+            'the extra monitor reaches the page and stops at the canvas',
+        ).toBeGreaterThan(narrowL.width * 1.25);
+
+        /*
+         * And the column is the editor's alone. Measured against another admin
+         * screen at the same viewport rather than against the literal, because
+         * what matters is that widening this page did not widen the measure
+         * every other page was designed with.
+         */
+        await page.goto(`${wall.base}/admin/calendars`, { waitUntil: 'load' });
+        const ordinary = await page.evaluate(() =>
+          Math.round(document.querySelector('.content')!.getBoundingClientRect().width),
+        );
+        expect(
+          large.content,
+          `the editor column is ${large.content}px and every other admin screen is ${ordinary}px`,
+        ).toBeGreaterThan(ordinary);
+        expect(
+          ordinary,
+          'widening the editor widened the whole admin, and its lines with it',
+        ).toBeLessThanOrEqual(1180);
+
+        /*
+         * And the settings *beside* the canvas keep their own measure: a wider
+         * page must not become wider rows of settings to read, which is the one
+         * thing the 1180px column was protecting.
+         */
+        await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        const settings = await page.evaluate(async () => {
+          (document.querySelector('#mode-tab-settings') as HTMLElement | null)?.click();
+          await new Promise((settle) => setTimeout(settle, 300));
+          const panels = document.querySelector('.wset-panels')?.getBoundingClientRect();
+          return Math.round(panels?.width ?? -1);
+        });
+        expect(
+          settings,
+          `the wall's settings rows are ${settings}px wide on the widened page`,
+        ).toBeLessThanOrEqual(720);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+  /**
    * Each toolbar popover opens under the button that opened it.
    *
    * They used to anchor to a tools row whose first item was that button, so
