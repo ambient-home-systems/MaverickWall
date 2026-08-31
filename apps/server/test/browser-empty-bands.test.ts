@@ -19,6 +19,7 @@
  * a class name, because the boxes were always in the DOM and always in the right
  * place. What was wrong was which boxes existed at all.
  */
+import { appendFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import { browser, install, settleWall, shutDownBrowser, type Installation, type NamedFeed } from './browser-harness.js';
@@ -183,23 +184,40 @@ async function measure(size: { readonly width: number; readonly height: number }
 async function measureRuns(size: {
   readonly width: number;
   readonly height: number;
-}): Promise<readonly { readonly where: string; readonly text: string; readonly font: number; readonly fit: number }[]> {
+}): Promise<readonly { readonly where: string; readonly text: string; readonly font: number; readonly fit: number; readonly raw: number; readonly scale: number }[]> {
   const context = await (await browser()).newContext({ viewport: size });
   const page: Page = await context.newPage();
   try {
     /*
-     * Hold the first manifest back, then reload. `fitToBox` measures once, as
-     * its section is appended, and nothing re-runs it — so on a cold context
-     * whose fonts have not arrived the wall keeps a fit computed against
-     * fallback metrics. The second load has them in the HTTP cache, which is
-     * the steady state a wall that has been hanging for a minute is in.
+     * Hold *every* manifest back until the fonts are in, then reload.
+     * `fitToBox` measures once, as its section is appended, and nothing re-runs
+     * it — so a wall that draws before its faces have arrived keeps a fit
+     * computed against fallback metrics for the life of the page.
+     *
+     * Two things here were each wrong once, and both read as correct.
+     *
+     * It was `setTimeout(…, 750)`, and a sleep is not a barrier: it fails
+     * exactly when the machine is busy, which under a full suite is often.
+     * And the hold was `if (!held)` — the *first* manifest only — while the
+     * render that is measured is the one after `page.reload()`. Gating the
+     * first load alone was measured against a control and changed nothing:
+     * 27 readings to 1 either way, across fourteen full suite runs each.
+     *
+     * The faces have to be *forced*, not merely awaited: they are fetched
+     * lazily on first use, so a bare `document.fonts.ready` resolves at once
+     * having loaded nothing.
      */
-    let held = false;
     await page.route('**/d/manifest*', async (route) => {
-      if (!held) {
-        held = true;
-        await new Promise((resolve) => setTimeout(resolve, 750));
-      }
+      await page
+        .evaluate(async () => {
+          const faces: FontFace[] = [];
+          document.fonts.forEach((face) => faces.push(face));
+          await Promise.all(faces.map(async (face) => face.load().catch(() => undefined)));
+          await document.fonts.ready;
+        })
+        // A context destroyed mid-navigation degrades to "draw now" rather than
+        // failing the run outright.
+        .catch(() => undefined);
       await route.continue();
     });
     await page.goto(link, { waitUntil: 'load' });
@@ -219,7 +237,7 @@ async function measureRuns(size: {
         }
         return scale;
       };
-      const out: { where: string; text: string; font: number; fit: number }[] = [];
+      const out: { where: string; text: string; font: number; fit: number; raw: number; scale: number }[] = [];
       const seen = new Set<Element>();
       const walker = document.createTreeWalker(
         document.querySelector('.canvas') as Node,
@@ -233,11 +251,15 @@ async function measureRuns(size: {
         const style = getComputedStyle(element);
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         const needed = Math.max(element.scrollWidth, element.clientWidth);
+        const rawSize = parseFloat(style.fontSize);
+        const elementScale = scaleOf(element);
         out.push({
           where: String(element.className).trim().split(/\s+/)[0] ?? element.tagName,
           text: (element.textContent ?? '').trim().slice(0, 60),
-          font: parseFloat(style.fontSize) * scaleOf(element),
+          font: rawSize * elementScale,
           fit: needed > 0 ? Math.min(1, element.clientWidth / needed) : 1,
+          raw: rawSize,
+          scale: elementScale,
         });
       }
       return out;
@@ -414,6 +436,15 @@ describe('the calendar-only wall, read from across a kitchen', () => {
 
       const asClassic = await smallestByClass(classicFor({ modules: ['weather'], shift: true }));
       const asSeeded = await smallestByClass(classicFor({ modules: [], shift: false }));
+
+      if (process.env['MW_BANDS_LOG'] !== undefined) {
+        const runsOf = (m: ReadonlyMap<string, number>): string =>
+          [...m].map(([w, v]) => `${w}=${v.toFixed(6)}`).join(';');
+        appendFileSync(
+          process.env['MW_BANDS_LOG'] as string,
+          `${new Date().toISOString()} CLASSIC ${runsOf(asClassic)} SEEDED ${runsOf(asSeeded)}\n`,
+        );
+      }
 
       for (const [where, was] of asClassic) {
         const now = asSeeded.get(where);
