@@ -693,24 +693,24 @@ describe('destructive actions ask first', () => {
     );
   });
 
-  it('the Calendars list draws Remove and Sync now at different visual weights', async () => {
+  /*
+   * The add form's own hierarchy: Add is the goal, Test feed is the diagnostic.
+   *
+   * They were the other way round — Test feed filled, Add outlined — so the
+   * optional step was styled as the goal. The row assertion that used to live
+   * here (Remove and Sync now at different weights) moved to
+   * admin-calendars.test.ts, which has a real feed to draw a real row from, and
+   * became an assertion about *containment*: Remove is behind the overflow now,
+   * which is a stronger claim than a class pair.
+   */
+  it('draws Add as the one filled button on the Calendars page', async () => {
     const h = await harness();
-    const added = await h.form('/admin/calendars', {
-      action: 'save',
-      name: 'Family',
-      url: 'https://example.invalid/calendar.ics',
-    });
-    // A bad address is fine here — this is only checking the two buttons'
-    // classes, and both are drawn whether or not the calendar tested well.
-    expect([200, 302, 400]).toContain(added.status);
-
     const page = await (await h.call('/admin/calendars')).text();
-    if (page.includes('Sync now')) {
-      const syncButton = /<button class="([^"]*)"[^>]*>Sync now/.exec(page)?.[1] ?? '';
-      const removeButton = /<button class="([^"]*)"[^>]*>Remove/.exec(page)?.[1] ?? '';
-      expect(syncButton).not.toBe(removeButton);
-      expect(removeButton).toContain('btn-danger');
-    }
+    expect(page).toContain('<button class="secondary" type="submit" name="action" value="test">');
+    expect(page).toContain('<button type="submit" name="action" value="save">Add</button>');
+    // And no second primary in the app bar competing with it while the form
+    // it would scroll to is already on screen.
+    expect(page).not.toContain('admin/calendars#add');
   });
 });
 

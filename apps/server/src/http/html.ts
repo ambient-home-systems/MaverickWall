@@ -948,6 +948,18 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
   letter-spacing:var(--mw-t-h3-tracking);margin:0;
   display:flex;align-items:center;gap:.5rem}
 .card p{margin:0.5rem 0}
+/* A card that carries an overflow menu (a calendar row): the name and its
+ * host on the left, the ⋮ at the top right. The menu is where the destructive
+ * action lives, so it is deliberately *not* in the row of buttons at the foot
+ * — Remove beside Sync now at the same weight is one mis-tap apart. Nothing
+ * here clears a background or sets a cursor, so it adds no control to the set
+ * admin-button-states.test.ts derives; .ovf already declares its own states. */
+.card-head{display:flex;align-items:flex-start;gap:8px}
+.card-head>.card-head-main{flex:1 1 auto;min-width:0}
+/* Pulled up and out so the 48px hit area sits against the card's own padding
+ * rather than pushing the heading down a row. On the 4px grid, which
+ * admin-design-drift.test.ts is right to insist on. */
+.card-head>.ovf{margin:-8px -8px 0 0}
 /* Two classes, because .host used to be one class doing two jobs.
  *
  * It was built for hostnames, where a quiet monospace line is exactly right,
