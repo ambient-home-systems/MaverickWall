@@ -26,6 +26,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import {
+  TEARDOWN,
   browser,
   install,
   settleWall,
@@ -40,7 +41,7 @@ const SLOW = 180_000;
 
 afterAll(async () => {
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /**
  * Three calendars, and the third is the problem.

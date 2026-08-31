@@ -34,6 +34,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import {
+  TEARDOWN,
   browser,
   install,
   measureWall,
@@ -134,7 +135,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await wall?.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /** Put one calendar widget on the screen's canvas, filling it, with this config. */
 function canvasOf(config: Record<string, unknown>): void {

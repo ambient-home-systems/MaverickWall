@@ -26,7 +26,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 
 /** Long, because each of these boots a server and a browser context. */
 const SLOW = 60_000;
@@ -41,7 +41,7 @@ async function fresh(): Promise<Installation> {
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /** What has focus right now, in the terms these assertions are written in. */
 async function focused(page: Page): Promise<{

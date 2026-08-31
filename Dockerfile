@@ -66,6 +66,63 @@ RUN pnpm --filter @maverick-wall/server deploy --prod /out \
  # of it is read at runtime and all of it ends up in a layer somebody pulls.
  && rm -rf /out/src /out/test /out/tsconfig*.json /out/vitest.config.ts /out/drizzle.config.ts
 
+# Then remove what nothing in it can import.
+#
+# `deploy --prod` drops the dev *roots* — there is no vitest and no drizzle-kit
+# in /out — but it leaves their whole dependency closures behind: vite, four
+# copies of esbuild, rollup, tsx, postcss, nanoid, chai, every `@vitest/*`.
+# They arrive because better-auth declares vitest and drizzle-kit as optional
+# peers and pnpm resolves peers into the tree, and then nothing links to them.
+#
+# It matters even though none of it is reachable, because a vulnerability
+# scanner does not do reachability: Trivy, Grype and docker scout walk the
+# filesystem for package.json files, so an unreachable copy of vitest is
+# reported exactly as loudly as a linked one. The audience for this product
+# scans what they self-host, and a CRITICAL on the published image is an
+# install blocker whether or not a line of it ever runs.
+#
+# The script computes reachability from the tree's own symlinks rather than
+# carrying a list of package names. A name list goes stale the first time a
+# dependency changes and its failure mode is deleting something the wall needs,
+# which is rule nine. See docker/prune-orphans.mjs for why the symlink graph is
+# the resolution graph and not an approximation of it.
+COPY docker/prune-orphans.mjs /prune-orphans.mjs
+RUN node /prune-orphans.mjs /out
+
+# The prune is only safe if the application still boots, so boot it.
+#
+# Nothing weaker is worth much here. A module missing from the tree is not a
+# type error and not a lint failure — it is an exception on the first import
+# that reaches it, which is a container that exits on its first line. This runs
+# the real entrypoint against a throwaway directory and waits for the real
+# /healthz, so the whole import graph, the migrations and better-auth's drizzle
+# adapter all have to work before the layer is allowed to exist.
+#
+# It runs *here* rather than only in CI because CI builds one architecture and
+# a release builds two, each on a machine that speaks it. A prune that broke
+# arm64 alone would otherwise ship.
+#
+# The output is captured and printed only on failure: a boot prints a setup
+# code, and rule six holds even for a database that is deleted three lines
+# later and even in a build log.
+RUN set -e; \
+    mkdir -p /tmp/prune-check; \
+    DATA_DIR=/tmp/prune-check DISPLAY_DIR=/out/display FONTS_DIR=/out/fonts \
+    PORT=8099 MDNS_DISABLE=1 node /out/dist/main.js > /tmp/prune-check.log 2>&1 & \
+    pid=$!; \
+    ok=0; \
+    for _ in $(seq 1 60); do \
+      if node -e "fetch('http://127.0.0.1:8099/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then ok=1; break; fi; \
+      kill -0 "$pid" 2>/dev/null || break; \
+      sleep 0.5; \
+    done; \
+    kill "$pid" 2>/dev/null || true; \
+    if [ "$ok" != 1 ]; then \
+      echo "[prune] the pruned tree did not boot:"; cat /tmp/prune-check.log; exit 1; \
+    fi; \
+    echo "[prune] the pruned tree boots and answers /healthz"; \
+    rm -rf /tmp/prune-check /tmp/prune-check.log
+
 # ---------------------------------------------------------------------------
 # Runtime
 # ---------------------------------------------------------------------------

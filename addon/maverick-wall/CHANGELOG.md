@@ -16,6 +16,21 @@
 
 ## Unreleased
 
+**Maverick Wall is smaller, and a security scanner has nothing to say about
+it.** If you run Trivy, Dependabot or Docker Scout over what you self-host —
+and a good number of people who install this do — the published image used to
+come back with findings. None of them was reachable: they were in test and
+build tools that pnpm had packed into the image alongside the application and
+that nothing ever ran. But an unreachable finding still stops an install, and
+"it is not actually a problem" is a poor thing to ask somebody to take on
+trust.
+
+The image now carries only what the application can actually load — 86
+packages instead of 149, and about 55MB smaller — and every one of the
+thirteen advisories is gone, either removed with the tools that carried them
+or fixed by an update. Nothing about how the wall behaves has changed, and
+nothing needs doing at your end beyond taking the update.
+
 **A new wall no longer has a hole in the middle of it.** A wall that has just
 been set up shows a clock, what is coming up and the month — and until now it
 left a gap where the weather and the work rota would have gone, whether or not

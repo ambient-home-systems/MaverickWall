@@ -22,7 +22,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 
 const SLOW = 60_000;
 
@@ -36,7 +36,7 @@ async function fresh(options: Parameters<typeof install>[0] = {}): Promise<Insta
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 async function pageFor(home: Installation): Promise<Page> {
   const ctx = await (await browser()).newContext({ viewport: { width: 1280, height: 900 } });

@@ -24,7 +24,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 import { applyTemplate } from '../src/api/templates.js';
 import { CLASSIC_TEMPLATE } from '../src/templates/index.js';
 
@@ -43,7 +43,7 @@ async function fresh(options?: Parameters<typeof install>[0]): Promise<Installat
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 // ---------------------------------------------------------------------------
 // Driving the editor

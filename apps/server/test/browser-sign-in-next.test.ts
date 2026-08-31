@@ -14,7 +14,7 @@
  * on, and only a browser can be asked that.
  */
 import { afterAll, describe, expect, it } from 'vitest';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 
 /** Long, because each of these boots a server and a browser context. */
 const SLOW = 60_000;
@@ -29,7 +29,7 @@ async function fresh(): Promise<Installation> {
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 describe('signing in returns to where you were going', () => {
   it(

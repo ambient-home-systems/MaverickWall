@@ -30,10 +30,11 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import {
+  LEGIBILITY_FLOOR_REM,
+  TEARDOWN,
   browser,
   install,
   largestBareRegion,
-  LEGIBILITY_FLOOR_REM,
   measureCanvasInk,
   measureDayStacks,
   measureWall,
@@ -73,7 +74,7 @@ async function fresh(options?: Parameters<typeof install>[0]): Promise<Installat
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /** Everything a failure needs to be actionable, smallest first. */
 function report(runs: readonly TextRun[], remPx: number): string {

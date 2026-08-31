@@ -34,6 +34,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import {
+  TEARDOWN,
   browser,
   install,
   measureMonthGrid,
@@ -205,7 +206,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await wall?.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /** Put one calendar widget on the wall, filling the canvas, in this treatment. */
 function canvasOf(cellEvents?: string): void {
