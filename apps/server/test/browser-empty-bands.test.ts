@@ -206,17 +206,42 @@ async function measureRuns(size: {
   const page: Page = await context.newPage();
   try {
     /*
-     * Hold the first manifest back, then reload. `fitToBox` measures once, as
-     * its section is appended, and nothing re-runs it — so on a cold context
-     * whose fonts have not arrived the wall keeps a fit computed against
-     * fallback metrics. The second load has them in the HTTP cache, which is
-     * the steady state a wall that has been hanging for a minute is in.
+     * Hold the first manifest back until the fonts are actually in, then
+     * reload. `fitToBox` measures once, as its section is appended, and nothing
+     * re-runs it — so a wall that draws before its faces have arrived keeps a
+     * fit computed against fallback metrics for the life of the page.
+     *
+     * This barrier used to be `setTimeout(…, 750)`, and a sleep is not a
+     * barrier: it fails exactly when the machine is busy, which under a full
+     * suite is often. Measured over 24 readings, the fit came out at one of
+     * *two* values — 0.652255 or 0.655468, 0.49% apart, with nothing in
+     * between — because `display.css` serves its own woff2 with
+     * `font-display: swap`, so the browser lays out in a fallback face and
+     * swaps when the real one lands. Whichever of the two walls lost that race
+     * measured larger, and the comparison below is one-sided, so half of those
+     * surfaced as a failure and half passed silently.
+     *
+     * The faces have to be *forced*, not merely awaited: they are fetched
+     * lazily on first use, and while the manifest is held nothing is drawn
+     * that uses them, so a bare `document.fonts.ready` here resolves
+     * immediately having loaded nothing. Loading them is what makes the reload
+     * below serve from cache, which is the steady state a wall that has been
+     * hanging for a minute is in.
      */
     let held = false;
     await page.route('**/d/manifest*', async (route) => {
       if (!held) {
         held = true;
-        await new Promise((resolve) => setTimeout(resolve, 750));
+        await page
+          .evaluate(async () => {
+            const faces: FontFace[] = [];
+            document.fonts.forEach((face) => faces.push(face));
+            await Promise.all(faces.map(async (face) => face.load().catch(() => undefined)));
+            await document.fonts.ready;
+          })
+          // Degrading to "draw now" keeps a browser that cannot do this
+          // honest-but-flaky rather than failing outright on every run.
+          .catch(() => undefined);
       }
       await route.continue();
     });
