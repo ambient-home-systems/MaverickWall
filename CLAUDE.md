@@ -2713,10 +2713,31 @@ branch below 900px is untouched, and the 390px numbers above are asserted
 rather than assumed, because they are what a change to the other branch would
 quietly cost.
 
-The one thing this does not reach is a **landscape** wall on a wide monitor:
-there the canvas is width-bound at ~685px by `.content`'s 1180px cap, and the
-height it is now allowed never binds. Widening the admin's content column is a
-decision about every admin screen, not about this one.
+**The height could not reach a landscape wall, and the column is why.** A 16:9
+canvas is width-bound, and its width came from a pane inside the admin's 1180px
+content column — a measure chosen for a readable line of text, which is right
+for every other screen here and wrong for a picture of a wall: 683px at 1440 and
+**685px at 1920**, two pixels for 480 more of monitor. `wide` on
+`ShellPageOptions` widens that column to 1600px for the wall editor and nothing
+else, which is where a 1920px monitor runs out of page beside the inspector; it
+stops there rather than filling a 2560px screen, because past that the canvas is
+bound by the height the viewport can show anyway and the settings beside it would
+only be getting longer rows to read. A flag rather than a `:has(.disp-editor)`
+rule, so a page asks for the wider measure instead of inheriting it by sitting
+next to something.
+
+The half that would have made it look done and change almost nothing is
+`sizeCanvas`'s **other** 720, on the *width* — the twin of the height cap, and
+invisible for as long as the 1180px column could never hand the stage more than
+685px. Left in place it caps a widened column at 720px. It is gone: the stage is
+already bounded by the pane the page gives it, so a constant on top of it is a
+second opinion about one thing. Measured after, landscape: 683px at 1440
+(unchanged), 787px at 1600, 960px at 1920. Portrait is unchanged everywhere
+except 2560, where it is the height that finally lets go. The test reverts each
+half separately and both turn it red — either one alone holds the canvas within
+35px of where it started — and it pins what the widening must not do: another
+admin screen measured at the same viewport is still 1180px, and the wall's own
+settings rows beside the canvas are still capped at 720px.
 
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody

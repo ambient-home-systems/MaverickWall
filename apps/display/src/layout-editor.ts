@@ -1532,7 +1532,16 @@ function boot(): void {
       const cs = getComputedStyle(stage);
       return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
     })();
-    const maxW = Math.min(Math.max(120, (stage.clientWidth || 360) - stagePad), 720);
+    /*
+     * The stage is the whole width budget: it is already bounded by the pane
+     * the page gives it, so a constant on top of it is a second opinion about
+     * the same thing. There used to be one — `Math.min(…, 720)`, the width
+     * twin of the old 720px height cap — and it was invisible only because the
+     * 1180px content column could never hand this stage more than 685px. It
+     * would have swallowed the wider column whole: a landscape wall would have
+     * gone from 685px to 720px on a 1920px monitor and stopped there.
+     */
+    const maxW = Math.max(120, (stage.clientWidth || 360) - stagePad);
     // With the inspector open as a sheet, the canvas keeps the top third of
     // the viewport rather than running underneath it — a preview you cannot
     // see is not a preview.

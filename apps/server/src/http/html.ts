@@ -386,6 +386,14 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
  * of them drawn at this width, where the drawer is in flow and always there. */
 .nav-toggle,.nav-scrim,.navbtn{display:none}
 .content{padding:24px 28px 52px;max-width:1180px;width:100%}
+/* The wall editor's column, and only it -- see the wide flag on
+ * ShellPageOptions. 1600px is where a 1920px monitor, which is the common
+ * desktop, runs out of page beside the inspector, rather than a taste number;
+ * and it stops there rather than filling a 2560px screen, because past that
+ * the canvas is bound by the height the viewport can show anyway and the
+ * settings beside it would only be getting longer rows to read.
+ * (No backticks in this file's CSS -- the stylesheet is a template literal.) */
+.content.is-wide{max-width:1600px}
 .content>form:first-child,.content>.card:first-child,.content>.note:first-child{margin-top:0}
 /* The page's lead line. Used to sit in the topbar as .sub; moved into the
  * content so the sticky bar stays a compact kicker+title and gives ~40px back. */
@@ -2800,6 +2808,20 @@ export interface ShellPageOptions extends CommonPageOptions {
    * lot of ceremony to make a screen say "Saved."
    */
   readonly saved?: Saved | undefined;
+  /**
+   * Widen the content column past the 1180px every other admin screen uses.
+   *
+   * That measure is a line-length decision, and it is the right one for a
+   * column of settings rows and prose. The wall editor is not one: its content
+   * is a *picture* of the wall, and the canvas is sized from the room its pane
+   * gives it — so on a 1920px monitor the 1180px column left about 500px of
+   * empty page beside the inspector and drew a landscape wall at 685px, the
+   * same width it draws at 1440.
+   *
+   * One flag rather than a `:has(.disp-editor)` rule, so the page that wants it
+   * asks for it and every other screen keeps the measure it was designed with.
+   */
+  readonly wide?: boolean;
 }
 
 export type PageOptions = WizardPageOptions | ShellPageOptions;
@@ -3040,7 +3062,7 @@ export function page(options: PageOptions): string {
     `</div>${action}</header>` +
     // The intro leads the content now, not the sticky bar — one lead line kept
     // out of the permanent header so the bar stays compact.
-    `<div class="content">` +
+    `<div class="content${options.wide === true ? ' is-wide' : ''}">` +
     /*
      * The confirmation, above the lead line and above everything it is about.
      *

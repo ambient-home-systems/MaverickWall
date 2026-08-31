@@ -4355,6 +4355,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       heading: owner ? owner.name : 'Default wall',
       saved: readSaved(c),
       back: { label: 'Walls', href: 'admin/walls' },
+      // The canvas is sized from the room its pane gives it, so this screen is
+      // the one place the admin's 1180px measure costs a picture rather than
+      // buying a readable line.
+      wide: true,
       body:
         `<div class="disp-editor" data-wall-editor>` +
         (error === undefined ? '' : errorBlock(error)) +

@@ -1040,6 +1040,116 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   );
 
   /**
+   * And a landscape wall gets the width of a wide monitor.
+   *
+   * Raising the height budget could not reach this one: a 16:9 canvas is bound
+   * by its *width*, and that came from a pane inside the admin's 1180px content
+   * column — a measure chosen for a readable line of text, which is the right
+   * decision for every other screen here and the wrong one for a picture of a
+   * wall. Measured before: 683px at 1440 and **685px at 1920**, two pixels for
+   * 480 more of monitor, with the empty page beside the inspector.
+   *
+   * Two things had to move together, which is why they are asserted together:
+   * the column (`wide` on the page) and `sizeCanvas`'s own `min(…, 720)` width
+   * cap, the twin of the height cap this file's previous test is about. Either
+   * one left in place holds the canvas within ~35px of where it already was, so
+   * either one reverted turns this red.
+   */
+  it(
+    'widens the editor column, so a landscape wall uses a wide monitor',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 900 } });
+      try {
+        const page = await context.newPage();
+        await wall.signIn(page);
+        applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
+
+        /** The landscape canvas and the column it is drawn in, at one width. */
+        const at = async (width: number, height: number) => {
+          await page.setViewportSize({ width, height });
+          await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+          await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+          // The editor reopens on the orientation it was left on, so this is
+          // idempotent rather than a toggle.
+          await page.click('.le-orient-btn:has-text("Landscape")');
+          await page.waitForTimeout(250);
+          return await page.evaluate(() => {
+            const canvas = document.querySelector('.le-canvas')!.getBoundingClientRect();
+            const content = document.querySelector('.content')!.getBoundingClientRect();
+            return {
+              canvas: Math.round(canvas.width),
+              content: Math.round(content.width),
+              scrollWidth: document.documentElement.scrollWidth,
+            };
+          });
+        };
+
+        const narrower = await at(1440, 900);
+        const wide = await at(1920, 1080);
+        const widest = await at(2560, 1440);
+
+        expect(
+          wide.canvas,
+          `a landscape wall is ${narrower.canvas}px at 1440 and ${wide.canvas}px at 1920 — ` +
+            'the extra monitor reaches the page and stops at the canvas',
+        ).toBeGreaterThan(narrower.canvas * 1.25);
+
+        for (const [width, seen] of [
+          [1440, narrower],
+          [1920, wide],
+          [2560, widest],
+        ] as const) {
+          expect(
+            seen.scrollWidth,
+            `at ${width}px the widened editor scrolls sideways`,
+          ).toBeLessThanOrEqual(width);
+        }
+
+        /*
+         * And the column is the editor's alone. Measured against another admin
+         * screen at the same viewport rather than against the literal, because
+         * what matters is that widening this page did not widen the measure
+         * every other page was designed with.
+         */
+        await page.goto(`${wall.base}/admin/calendars`, { waitUntil: 'load' });
+        const ordinary = await page.evaluate(() =>
+          Math.round(document.querySelector('.content')!.getBoundingClientRect().width),
+        );
+        expect(
+          wide.content,
+          `the editor column is ${wide.content}px and every other admin screen is ${ordinary}px`,
+        ).toBeGreaterThan(ordinary);
+        expect(
+          ordinary,
+          'widening the editor widened the whole admin, and its lines with it',
+        ).toBeLessThanOrEqual(1180);
+
+        /*
+         * And the settings *beside* the canvas keep their own measure: a wider
+         * page must not become wider rows of settings to read, which is the one
+         * thing the 1180px column was protecting.
+         */
+        await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        const settings = await page.evaluate(async () => {
+          (document.querySelector('#mode-tab-settings') as HTMLElement | null)?.click();
+          await new Promise((settle) => setTimeout(settle, 300));
+          const panels = document.querySelector('.wset-panels')?.getBoundingClientRect();
+          return Math.round(panels?.width ?? -1);
+        });
+        expect(
+          settings,
+          `the wall's settings rows are ${settings}px wide on the widened page`,
+        ).toBeLessThanOrEqual(720);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
    * Each toolbar popover opens under the button that opened it.
    *
    * They used to anchor to a tools row whose first item was that button, so
