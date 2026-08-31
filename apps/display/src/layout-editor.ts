@@ -1656,6 +1656,24 @@ function boot(): void {
     overlay.textContent = '';
     const ordered = [...state.widgets].sort((a, b) => a.z - b.z);
     for (const widget of ordered) overlay.appendChild(overlayNode(widget));
+    /*
+     * Place the name chips again now the boxes are in the document.
+     *
+     * `placeLabel` reads the chip's own height and the canvas's, and neither
+     * exists for a node that has not been laid out yet — so the pass inside
+     * `overlayNode` is the cheap one that gets the width cap right, and this is
+     * the one that can measure. Skipped when the overlay has no height of its
+     * own yet (the first draw of a hidden orientation), where the first pass's
+     * answer stands until something moves.
+     */
+    if (overlay.clientHeight > 0) {
+      for (const widget of ordered) {
+        const label = overlay.querySelector<HTMLElement>(
+          `.le-widget[data-id="${widget.id}"] > .le-widget-label`,
+        );
+        if (label !== null) placeLabel(label, widget);
+      }
+    }
     hint.style.display = state.widgets.length === 0 ? '' : 'none';
     renderConfigPanel();
   }
@@ -1712,10 +1730,16 @@ function boot(): void {
       schedulePreview();
     });
 
+    /*
+     * The name chip, appended before the flag and the handle so it is the
+     * child `positionBox` finds — and placed only once it is in the document,
+     * because placing it reads its own height.
+     */
     const label = document.createElement('span');
     label.className = 'le-widget-label';
     label.textContent = describeWidget(widget);
     box.appendChild(label);
+    placeLabel(label, widget);
 
     /*
      * A box the wall will not draw, said on the box.
@@ -1798,6 +1822,49 @@ function boot(): void {
     box.style.top = `${widget.y * 100}%`;
     box.style.width = `${widget.w * 100}%`;
     box.style.height = `${widget.h * 100}%`;
+    const label = box.querySelector<HTMLElement>('.le-widget-label');
+    if (label !== null) placeLabel(label, widget);
+  }
+
+  /*
+   * The chip's own height, measured once and kept.
+   *
+   * `placeLabel` runs on every pointer move of a drag, and reading offsetHeight
+   * there is a layout flush per move. The height is a fact about the stylesheet
+   * — one font, one padding — so it is read from the first chip that has one
+   * and reused. Zero until a chip has been laid out, which `placeLabel` treats
+   * as "no measurement yet" rather than as "no room anywhere".
+   */
+  let chipHeight = 0;
+
+  /**
+   * Put the name chip on the side of the box that has room for it.
+   *
+   * Above by default, because a name reads as a caption over the thing it names
+   * and the box's own bottom-right corner is the resize handle. A widget
+   * against the top of the canvas has nothing above it and `.le-canvas` is
+   * `overflow:hidden`, so a chip left there is cut off rather than tight — it
+   * goes below instead. When neither side has room (a widget filling the
+   * canvas) it takes the roomier one and is clipped; Layers and the inspector
+   * still name it, and there is nowhere outside the box left to go.
+   *
+   * The width cap is the same argument sideways: the chip is left-aligned with
+   * the box, so on a box near the right edge a long name would run off the
+   * canvas and be cut mid-word. Capped to what is left of the canvas, it
+   * ellipsises instead — a shortened name, not a sliced one.
+   */
+  function placeLabel(label: HTMLElement, widget: Widget): void {
+    // A percentage max-width resolves against the *box*, not the canvas, so the
+    // canvas fraction to the right of the box's left edge is converted into
+    // one. w is at least 0.02 by schema, so this cannot divide by zero.
+    label.style.maxWidth = `${((1 - widget.x) / widget.w) * 100}%`;
+    if (chipHeight === 0) chipHeight = label.offsetHeight;
+    const canvasHeight = overlay.clientHeight;
+    // 2px of clearance, matching the calc() in the stylesheet.
+    const needed = chipHeight + 2;
+    const above = widget.y * canvasHeight;
+    const below = (1 - widget.y - widget.h) * canvasHeight;
+    label.classList.toggle('is-below', above < needed && below > above);
   }
 
   /**

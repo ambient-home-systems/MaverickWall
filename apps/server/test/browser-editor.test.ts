@@ -640,13 +640,16 @@ describe('3 · the resize handle', () => {
    * rather than dragging the whole widget.
    *
    * The reachable size is **measured rather than taken from the stylesheet**,
-   * and it is not the 44px the declaration reads as: `.le-widget` is
-   * `overflow:hidden`, which clips hit-testing as well as painting, so the half
-   * that reaches outside the box cannot be pressed. What is reachable is about
-   * 30×30 in from the corner, against 12×12 before. Growing it further inward
-   * would reach 44 and swallow a small widget's whole drag area — a 5% box on a
-   * phone canvas is about 20px — and dropping the clip would let a long name
-   * chip paint over the neighbouring box.
+   * and it is not the 44px a symmetric inset reads as: what is reachable is
+   * about 30×30 in from the corner, against 12×12 before. Growing it further
+   * inward would reach 44 and swallow a small widget's whole drag area — a 5%
+   * box on a phone canvas is about 20px.
+   *
+   * That ceiling used to be an accident of `.le-widget`'s `overflow:hidden`,
+   * which clips hit-testing as well as painting. The clip is gone — the widget
+   * name chip hangs outside the box now, and a clip would take it away — so the
+   * inset stops at the box's own edges instead, and the second measurement
+   * below is what holds it there.
    */
   it(
     'takes a press well inside its corner, while the drawn mark stays 12px',
@@ -688,6 +691,41 @@ describe('3 · the resize handle', () => {
         ).toEqual([expect.any(Number), expect.any(Number)]);
         expect(reach.wide).toBeGreaterThanOrEqual(22);
         expect(reach.tall).toBeGreaterThanOrEqual(22);
+
+        /*
+         * And it stops at the box's own edge.
+         *
+         * The ceiling used to be free: `.le-widget` was `overflow:hidden`, so
+         * the outward half of a symmetric inset was clipped away. The clip is
+         * gone — the name chip hangs outside the box now — so the inset is
+         * asymmetric and this is what holds it to that. Unpinned, the target
+         * reaches 16px past the bottom-right corner and takes presses meant for
+         * the neighbour there: a drag that grabs the widget you are not
+         * pointing at.
+         */
+        const boxRect = await first.boundingBox();
+        if (boxRect === null) throw new Error('no widget box');
+        const outside = await page.evaluate(
+          ([right, bottom, midY, midX]) => {
+            const name = (x: number, y: number): string =>
+              (document.elementFromPoint(x, y)?.className ?? '').toString();
+            return {
+              past: name((right as number) + 6, midY as number),
+              under: name(midX as number, (bottom as number) + 6),
+            };
+          },
+          [
+            boxRect.x + boxRect.width,
+            boxRect.y + boxRect.height,
+            rect.y + rect.height / 2,
+            rect.x + rect.width / 2,
+          ],
+        );
+        expect(
+          [outside.past.includes('le-handle'), outside.under.includes('le-handle')],
+          `the resize target reaches outside its own widget (right: ${outside.past}, ` +
+            `below: ${outside.under}), where it takes presses meant for the neighbour`,
+        ).toEqual([false, false]);
 
         const before = (await boxes(page)).find((one) => one.id === id);
         await page.mouse.move(rect.x - 12, rect.y - 12);
@@ -979,6 +1017,430 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         // a longer way of writing "Clock", and the chip is 10px in a box that
         // is narrow by construction.
         expect((await boxes(page)).some((one) => one.label === 'Clock')).toBe(true);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});
+
+// ===========================================================================
+// 7 · The name chip, and the artwork underneath it
+// ===========================================================================
+
+/**
+ * Every box's rect, its chip's rect, and whether the chip is painting.
+ *
+ * Read from the browser rather than from the markup, because the whole fault
+ * was a chip whose class was right and whose pixels were on top of the widget.
+ * `visibility` is the computed value, not the class that sets it.
+ */
+interface ChipReading {
+  readonly id: string;
+  readonly label: string;
+  readonly visible: boolean;
+  readonly box: { x: number; y: number; w: number; h: number };
+  readonly chip: { x: number; y: number; w: number; h: number };
+}
+
+const chips = (page: Page): Promise<ChipReading[]> =>
+  page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('.le-overlay .le-widget')].map((el) => {
+      const chip = el.querySelector<HTMLElement>('.le-widget-label');
+      const boxRect = el.getBoundingClientRect();
+      const chipRect = chip?.getBoundingClientRect();
+      return {
+        id: el.dataset['id'] ?? '',
+        label: (chip?.textContent ?? '').trim(),
+        visible: chip !== null && getComputedStyle(chip).visibility === 'visible',
+        box: { x: boxRect.x, y: boxRect.y, w: boxRect.width, h: boxRect.height },
+        chip: {
+          x: chipRect?.x ?? 0,
+          y: chipRect?.y ?? 0,
+          w: chipRect?.width ?? 0,
+          h: chipRect?.height ?? 0,
+        },
+      };
+    }),
+  );
+
+/** Do two rectangles share any pixels? A shared edge is not an overlap. */
+const overlaps = (
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean =>
+  a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5;
+
+/**
+ * Put a widget exactly where the test needs it, through the editor's own
+ * Position and size fields.
+ *
+ * x and y are written twice, either side of the width and height: every field
+ * is clamped against the others as it is typed, so a box still at x=60 refuses
+ * a width of 50 and a box still 90% wide refuses an x of 50. Setting the origin
+ * to zero first, then the size, then the origin again is the order that lands
+ * where it was asked to.
+ */
+async function placeByField(
+  page: Page,
+  id: string,
+  at: { x: number; y: number; w: number; h: number },
+): Promise<void> {
+  await page.locator(`.le-overlay .le-widget[data-id="${id}"]`).click();
+  await page.click('.insp-tab:has-text("Style")');
+  const fields = page.locator('.le-box-grid input[type=number]');
+  const write = async (index: number, value: number): Promise<void> => {
+    const input = fields.nth(index);
+    await input.fill(String(value));
+    await input.press('Enter');
+  };
+  await write(0, 0);
+  await write(1, 0);
+  await write(2, at.w);
+  await write(3, at.h);
+  await write(0, at.x);
+  await write(1, at.y);
+  await page.waitForTimeout(60);
+}
+
+/**
+ * Nothing selected, nothing focused, the pointer off every box.
+ *
+ * All three light a chip, each of them correctly — so "at rest" has to mean all
+ * three are false, and Escape alone does not get there: it hands focus back to
+ * the box it came from, which is a tab stop on the canvas.
+ */
+async function restToIdle(page: Page): Promise<void> {
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.mouse.move(4, 4);
+  await page.waitForTimeout(150);
+}
+
+describe('7 · the widget name chip', () => {
+  /**
+   * The chip names the widget from outside it, and never over it.
+   *
+   * It used to be `position:absolute;top:0;left:0` *inside* a box that is
+   * `overflow:hidden` — so it lay on the artwork it was naming. Measured on the
+   * default wall: 22px of chip over a 68px Clock is a third of the widget, the
+   * Shift box lost 27% of its height, and on the month grid the chip covered
+   * the weekday header row exactly, hiding "MON TUE WED" behind a label reading
+   * "Calendar — Month grid". The live preview is the entire value of this
+   * editor; obscuring the most identifying part of every widget defeats it, and
+   * the smallest widgets paid the most.
+   *
+   * Two properties, and both are measured with the chip *showing*, because a
+   * hidden element's rectangle proves nothing about paint. Every widget is
+   * hovered in turn: the chip has to become visible (or it is a name nobody can
+   * read) and its rectangle has to clear its own box entirely.
+   */
+  it(
+    'draws every name outside the widget it names, at every size on the default wall',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+
+        const ids = (await chips(page)).map((one) => one.id);
+        expect(ids.length, 'the default wall drew no widgets to label').toBeGreaterThanOrEqual(4);
+
+        const faults: string[] = [];
+        for (const id of ids) {
+          const selector = `.le-overlay .le-widget[data-id="${id}"]`;
+          await page.locator(selector).hover();
+          await page.waitForTimeout(40);
+          const one = (await chips(page)).find((each) => each.id === id);
+          if (one === undefined) {
+            faults.push(`${id} vanished while being pointed at`);
+            continue;
+          }
+          if (!one.visible) {
+            faults.push(`${one.label || id} shows no name when it is pointed at`);
+            continue;
+          }
+          if (overlaps(one.chip, one.box)) {
+            const covered = Math.round((one.chip.h / one.box.h) * 100);
+            faults.push(
+              `${one.label} — the chip lies over its own widget: chip ` +
+                `${Math.round(one.chip.y)}..${Math.round(one.chip.y + one.chip.h)} inside a box ` +
+                `${Math.round(one.box.y)}..${Math.round(one.box.y + one.box.h)} ` +
+                `(${covered}% of a ${Math.round(one.box.h)}px widget)`,
+            );
+          }
+        }
+        expect(
+          faults,
+          'a widget name is drawn on top of the widget it names. The preview is ' +
+            'what this editor is for.',
+        ).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * The month grid's weekday header row, specifically.
+   *
+   * It is the row the old chip covered exactly — same height, same corner — so
+   * it is the one measured by name rather than by the general rule above. Read
+   * through the shadow root the live preview lives in, which is the only way to
+   * see the artwork at all.
+   */
+  it(
+    'leaves the month grid’s MON TUE WED row uncovered while naming it',
+    async () => {
+      const wall = await fresh({ feed: true });
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        await page.waitForTimeout(400);
+
+        const month = (await chips(page)).find((one) => one.label.includes('Month'));
+        expect(month, 'the default wall has no month grid to measure').toBeDefined();
+        await page.locator(`.le-overlay .le-widget[data-id="${month?.id ?? ''}"]`).hover();
+        await page.waitForTimeout(60);
+
+        const header = await page.evaluate(() => {
+          const root = document.querySelector<HTMLElement>('.le-preview')?.shadowRoot;
+          const cells = [...(root?.querySelectorAll('.hz-head') ?? [])];
+          if (cells.length === 0) return null;
+          const rects = cells.map((cell) => cell.getBoundingClientRect());
+          const top = Math.min(...rects.map((r) => r.top));
+          const left = Math.min(...rects.map((r) => r.left));
+          return {
+            words: cells.map((cell) => (cell.textContent ?? '').trim()),
+            x: left,
+            y: top,
+            w: Math.max(...rects.map((r) => r.right)) - left,
+            h: Math.max(...rects.map((r) => r.bottom)) - top,
+          };
+        });
+        expect(header, 'the preview drew no weekday header to be covered').not.toBeNull();
+        expect(
+          (header?.words ?? []).length,
+          `the weekday row read ${(header?.words ?? []).join(' ')}`,
+        ).toBe(7);
+
+        const shown = (await chips(page)).find((one) => one.id === month?.id);
+        expect(shown?.visible, 'the month grid shows no name when pointed at').toBe(true);
+        expect(
+          overlaps(
+            shown?.chip ?? { x: 0, y: 0, w: 0, h: 0 },
+            header ?? { x: 0, y: 0, w: 0, h: 0 },
+          ),
+          `the chip "${shown?.label ?? ''}" is drawn over the weekday header row ` +
+            `(${(header?.words ?? []).join(' ')}), which is the row that says what the ` +
+            'grid is.',
+        ).toBe(false);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * At rest the canvas is artwork, and a dense one carries no chips at all.
+   *
+   * This is the half that makes "outside the box" safe rather than merely
+   * different: a chip hanging above its widget hangs over whatever is above it,
+   * and on a canvas with no gaps that is always another widget. So none of them
+   * paints until it is asked for. Pointing at one shows exactly one — the one
+   * being pointed at — which is the only ink over a neighbour anywhere on the
+   * canvas, and it is the widget the household is asking about.
+   *
+   * Dense on purpose: eight widgets tiled edge to edge with no gap for a chip
+   * to sit in, which is the arrangement that would make an always-on chip
+   * unsurvivable.
+   */
+  it(
+    'paints no name over a neighbour on a canvas with no gaps',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+
+        // Tile what is there into a grid with no gaps, through the editor's own
+        // numeric fields so the canvas is one the editor could really hold.
+        const placed = await boxes(page);
+        const rows = Math.ceil(placed.length / 2);
+        for (const [index, one] of placed.entries()) {
+          await placeByField(page, one.id, {
+            x: (index % 2) * 50,
+            y: Math.floor(index / 2) * Math.floor(100 / rows),
+            w: 50,
+            h: Math.floor(100 / rows),
+          });
+        }
+        // Nothing selected and nothing focused: both show a chip, correctly,
+        // and neither is what this test is about.
+        await restToIdle(page);
+
+        const atRest = await chips(page);
+        expect(atRest.length, 'the tiling lost the widgets').toBeGreaterThanOrEqual(4);
+        expect(
+          atRest.filter((one) => one.visible).map((one) => one.label),
+          'a name chip is painting on a canvas nobody is pointing at. On a dense ' +
+            'canvas every chip lies over a neighbour, so at rest there must be none.',
+        ).toEqual([]);
+
+        // And pointing at one shows that one alone.
+        const target = atRest[3];
+        await page.locator(`.le-overlay .le-widget[data-id="${target?.id ?? ''}"]`).hover();
+        await page.waitForTimeout(60);
+        const pointed = await chips(page);
+        expect(
+          pointed.filter((one) => one.visible).map((one) => one.id),
+          'pointing at one widget lit up more than one name',
+        ).toEqual([target?.id]);
+
+        const shown = pointed.find((one) => one.id === target?.id);
+        expect(
+          overlaps(shown?.chip ?? { x: 0, y: 0, w: 0, h: 0 }, shown?.box ?? { x: 0, y: 0, w: 0, h: 0 }),
+          'even tiled edge to edge the chip must clear its own widget',
+        ).toBe(false);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * A widget against the top of the canvas puts its name below itself.
+   *
+   * `.le-canvas` is `overflow:hidden`, so a chip placed above a box at y=0 is
+   * not merely tight — it is cut off and gone, which is the same silent
+   * disappearance the clip inside the box used to cause one level down. Driven
+   * by dragging a widget to the top, then measured: the chip has to still clear
+   * its own box, and it has to still be inside the canvas.
+   */
+  it(
+    'flips the name below a widget that has nothing above it',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+
+        const first = (await boxes(page))[0];
+        const selector = `.le-overlay .le-widget[data-id="${first?.id ?? ''}"]`;
+        await placeByField(page, first?.id ?? '', { x: 0, y: 0, w: 40, h: 12 });
+        await restToIdle(page);
+
+        await page.locator(selector).hover();
+        await page.waitForTimeout(60);
+        const one = (await chips(page)).find((each) => each.id === first?.id);
+        expect(one?.visible, 'a widget at the top of the canvas shows no name at all').toBe(true);
+        expect(
+          overlaps(one?.chip ?? { x: 0, y: 0, w: 0, h: 0 }, one?.box ?? { x: 0, y: 0, w: 0, h: 0 }),
+          'the chip fell back onto the widget it names rather than below it',
+        ).toBe(false);
+        expect(
+          (one?.chip.y ?? 0) > (one?.box.y ?? 0),
+          `the chip is still above a widget at the top of the canvas (chip y ` +
+            `${Math.round(one?.chip.y ?? 0)}, box y ${Math.round(one?.box.y ?? 0)}), ` +
+            'where the canvas clip removes it entirely',
+        ).toBe(true);
+
+        const canvas = await page.locator('.le-canvas').boundingBox();
+        expect(canvas, 'no canvas to measure against').not.toBeNull();
+        expect(
+          (one?.chip.y ?? 0) >= (canvas?.y ?? 0) &&
+            (one?.chip.y ?? 0) + (one?.chip.h ?? 0) <= (canvas?.y ?? 0) + (canvas?.height ?? 0) + 0.5 &&
+            (one?.chip.x ?? 0) + (one?.chip.w ?? 0) <= (canvas?.x ?? 0) + (canvas?.width ?? 0) + 0.5,
+          'the chip hangs outside the canvas, which is overflow:hidden — so it is cut off',
+        ).toBe(true);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * The chip takes no presses, and its own box is what proves it.
+   *
+   * It hangs over the neighbouring widget now, so a chip that answered a press
+   * would make the box above it unusable along its bottom edge. And because the
+   * chip is a child of the box it names, a press it *did* take would bubble
+   * straight into that box's own drag — so grabbing a name would move the
+   * widget under the name, from outside it, which is a drag nobody aimed. Driven
+   * rather than read off `pointer-events`: press in the middle of the chip,
+   * drag, and the widget it belongs to must not have moved a pixel.
+   */
+  it(
+    'is not in the way of a press',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+
+        /*
+         * One widget alone under its chip, with everything else tucked into a
+         * corner. That arrangement is the whole test: on the default canvas a
+         * chip lands under a neighbouring box with a higher z, so the browser
+         * answers a press there with the neighbour whatever the chip is set to
+         * — and the bug would sail through. Clear the band above the widget and
+         * the chip is the topmost thing at that point, which is where a chip
+         * that took presses would take one.
+         */
+        const all = await boxes(page);
+        const id = all[0]?.id ?? '';
+        for (const other of all.slice(1)) {
+          await placeByField(page, other.id, { x: 0, y: 0, w: 5, h: 5 });
+        }
+        await placeByField(page, id, { x: 30, y: 50, w: 30, h: 20 });
+
+        /*
+         * Selected rather than hovered, and that is the case that can actually
+         * go wrong: moving the pointer onto a chip shown by :hover takes the
+         * pointer off the box and hides the chip on the way, so a hovered chip
+         * cannot be pressed however permissive it is. A selected one stays put
+         * under the pointer, which is where a press would land on it.
+         */
+        await page.locator(`.le-overlay .le-widget[data-id="${id}"]`).click();
+        await page.waitForTimeout(80);
+        const shown = (await chips(page)).find((each) => each.id === id);
+        expect(shown?.visible, 'nothing to press through').toBe(true);
+
+        const cx = (shown?.chip.x ?? 0) + (shown?.chip.w ?? 0) / 2;
+        const cy = (shown?.chip.y ?? 0) + (shown?.chip.h ?? 0) / 2;
+        const hit = await page.evaluate(
+          ([x, y]) => (document.elementFromPoint(x as number, y as number)?.className ?? '').toString(),
+          [cx, cy],
+        );
+        expect(
+          hit,
+          `a press in the middle of the name chip lands on the chip (${hit}), so the ` +
+            'chip is in front of whatever it hangs over',
+        ).not.toContain('le-widget-label');
+
+        const before = (await boxes(page)).find((each) => each.id === id);
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        await page.mouse.move(cx + 90, cy + 70, { steps: 6 });
+        await page.mouse.up();
+        await page.waitForTimeout(150);
+        const after = (await boxes(page)).find((each) => each.id === id);
+
+        expect(
+          [after?.x, after?.y],
+          'dragging a widget’s name moved the widget it names, from ' +
+            'outside the widget. The chip has to be inert.',
+        ).toEqual([before?.x, before?.y]);
       } finally {
         await context.close();
       }
