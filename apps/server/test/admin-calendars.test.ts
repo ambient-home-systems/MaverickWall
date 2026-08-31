@@ -166,7 +166,10 @@ describe('the calendars screen', () => {
     h.jar.clear();
     const response = await h.call('/admin/calendars');
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/sign-in');
+    // Carrying the destination back, so signing in finishes the journey.
+    expect(response.headers.get('location')).toBe(
+      '/admin/sign-in?next=' + encodeURIComponent('/admin/calendars'),
+    );
   });
 
   it('says so plainly when there are no calendars', async () => {
