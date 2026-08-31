@@ -243,12 +243,21 @@ describe('the emitted custom properties', () => {
  *
  * Everything above validates a token against the job it was *designed* for.
  * That is worth having and it is not enough, and `--mw-ink-3` is the proof:
- * it is declared "placeholder and disabled text only", certified above at 3:1
- * as the control-boundary role — 3.73:1 on `surface`, comfortably clear — and
- * then set as the `color` of twenty-three rules, `.hint` among them, where the
- * bar is 4.5:1 and it does not reach it on any ground in either scheme. Both
- * statements were true at once. Nothing was wrong with the table; the table
- * was answering a different question from the one the browser asks.
+ * it *was* declared "placeholder and disabled text only", certified above at
+ * 3:1 as the control-boundary role — 3.73:1 on `surface`, comfortably clear —
+ * and then set as the `color` of twenty-three rules, `.hint` among them, where
+ * the bar is 4.5:1 and it does not reach it on any ground in either scheme.
+ * Both statements were true at once. Nothing was wrong with the table; the
+ * table was answering a different question from the one the browser asks.
+ *
+ * The tense is deliberate: that finding is closed at source. `ink-3` no longer
+ * declares itself the placeholder role and no longer paints any text — the
+ * prose moved to `ink-muted` and the placeholder went with it, which the last
+ * assertion in this file pins. What is kept is the *method*, because it is the
+ * part that generalises: a hand-written table cannot see what a stylesheet
+ * does with a role, so the next role to drift will drift the same way and this
+ * block is what notices. Reading the paragraph as a live description of `ink-3`
+ * is the one way to take the wrong thing from it.
  *
  * So this block asks the browser's question: for every rule in the served
  * stylesheet, what does it paint on what? A rule that sets both a `color` and
