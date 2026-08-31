@@ -19,6 +19,7 @@
  * a class name, because the boxes were always in the DOM and always in the right
  * place. What was wrong was which boxes existed at all.
  */
+import { appendFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import { browser, install, settleWall, shutDownBrowser, type Installation, type NamedFeed } from './browser-harness.js';
@@ -257,28 +258,20 @@ async function measureRuns(size: {
         const style = getComputedStyle(element);
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         const needed = Math.max(element.scrollWidth, element.clientWidth);
+        // One walk, reused — a second `scaleOf` call per element is measurable
+        // work inside the very page whose timing is under suspicion.
+        const raw = parseFloat(style.fontSize);
+        const scale = scaleOf(element);
         out.push({
           where: String(element.className).trim().split(/\s+/)[0] ?? element.tagName,
           text: (element.textContent ?? '').trim().slice(0, 60),
-          font: parseFloat(style.fontSize) * scaleOf(element),
+          font: raw * scale,
           fit: needed > 0 ? Math.min(1, element.clientWidth / needed) : 1,
-          raw: parseFloat(style.fontSize),
-          scale: scaleOf(element),
+          raw,
+          scale,
         });
       }
-      const label = document.querySelector('.canvas .section-label');
-      const family =
-        label === null ? 'no .section-label' : getComputedStyle(label).fontFamily.slice(0, 40);
-      const loaded: string[] = [];
-      document.fonts.forEach((face) => {
-        if (face.status === 'loaded') loaded.push(face.family);
-      });
-      return {
-        runs: out,
-        diag:
-          `fonts.status=${document.fonts.status} loaded=[${[...new Set(loaded)].join('|')}] ` +
-          `label-family=${family} dpr=${window.devicePixelRatio}`,
-      };
+      return { runs: out, diag: `fonts.status=${document.fonts.status}` };
     });
   } finally {
     await context.close();
@@ -418,6 +411,24 @@ describe('the calendar-only wall, read from across a kitchen', () => {
 
       const classic = await smallestByClass(classicFor({ modules: ['weather'], shift: true }));
       const seeded = await smallestByClass(classicFor({ modules: [], shift: false }));
+
+      // Recorded from Node, on every run rather than on a failure, so the
+      // distribution is visible and the recording cannot sit inside the race.
+      if (process.env['MW_BANDS_LOG'] !== undefined) {
+        const line = [...classic.smallest]
+          .map(([where, was]) => {
+            const now = seeded.smallest.get(where);
+            return now === undefined
+              ? `${where}=absent`
+              : `${where} classic(${was.raw}x${was.scale.toFixed(6)}=${was.font.toFixed(4)}) ` +
+                  `seeded(${now.raw}x${now.scale.toFixed(6)}=${now.font.toFixed(4)})`;
+          })
+          .join('; ');
+        appendFileSync(
+          process.env['MW_BANDS_LOG'] as string,
+          `${new Date().toISOString()} ${classic.diag}/${seeded.diag} ${line}\n`,
+        );
+      }
 
       for (const [where, was] of classic.smallest) {
         const now = seeded.smallest.get(where);
