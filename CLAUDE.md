@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **seventy-seven real bugs**, and the pattern in how is the most
+This project has found **eighty-one real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -156,6 +156,10 @@ useful thing in this document:
 | Two rota-colour switches that no week column has ever drawn | Reading the two week renderers for the only three things that could paint one |
 | **An assertion for a legacy calendar view that no edit could turn red** | Removing the fix, watching it stay green, and picking a value the browser's own fallback does not happen to match |
 | Signing in threw away the page you had asked for | Being signed out on `/admin/system`, signing in, and reading the address bar |
+| **A CRITICAL reported against the image that was never in it** | Listing every `package.json` in the image, instead of reading `pnpm audit` |
+| The two HIGHs that *were* in the image, three hops under the names | The same listing — no name anybody would write down reached them |
+| **Sixteen browser files gave teardown no budget at all** | One suite failing in three runs with every test in it passing |
+| better-auth 1.7 wants a column the schema has not got | A vitest bump that could not move without re-resolving better-auth |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -289,7 +293,7 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2145 tests passing.** calendar 153 · core 314 · display 272 · server 1406. CI
+**2152 tests passing.** calendar 153 · core 314 · display 272 · server 1413. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -803,12 +807,48 @@ HEALTHCHECK failed for ever while the application served every request
 correctly. `docker ps` said unhealthy and `curl` said 200. It probes with
 `node` now — already present, nothing to install and nothing to keep patched.
 
-**The image is ~482MB uncompressed**, of which about 50MB is `esbuild` and
-`vitest` pulled into the *production* tree because `better-auth` declares
-`drizzle-kit` and `vitest` as peer dependencies and pnpm resolves peers into a
-`deploy --prod` tree. `peerDependencyRules.ignoreMissing` does not remove them;
-it was tried and reverted rather than left in place implying a fix it did not
-make. Worth another look, and not worth blocking on.
+**The image is 435MB and `pnpm audit --prod` is clean**, and the way that was
+reached is worth more than either number. It used to be ~482MB with about 50MB
+of `esbuild` and `vitest` in the *production* tree, because `better-auth`
+declares `drizzle-kit` and `vitest` as peer dependencies and pnpm resolves
+peers into a `deploy --prod` tree. `peerDependencyRules.ignoreMissing` does not
+remove them; it was tried and reverted rather than left in place implying a fix
+it did not make.
+
+**The premise was wrong, and measuring the image is what said so.** `vitest`
+and `drizzle-kit` were never in it — `deploy --prod` already drops the *roots*.
+What shipped was their orphaned dependency *closures*: 149 packages on disk, of
+which `vite` carried a HIGH and two MODERATEs, `nanoid` a HIGH and `esbuild` a
+MODERATE, while the CRITICAL everybody was looking at (vitest) was in the
+lockfile and nowhere else. So the advisory that reads as the install blocker
+was a fact about the repository and the ones actually in the artifact were
+three hops below any name somebody would have written on a list.
+
+That is why `docker/prune-orphans.mjs` computes reachability instead of
+carrying names. It walks the tree's own symlinks — in pnpm's isolated layout
+those *are* Node's resolution graph rather than a model of one — from two root
+sets: the top level, which in a deployed tree is exactly the prod dependency
+set, and pnpm's hoisted `.pnpm/node_modules`, which anything in the tree
+reaches by walking up. **Missing that second set is the trap**: it sweeps a
+package a sloppy `require` still finds, and that breaks in production and
+nowhere else. It proved its own worth within the week by adapting unchanged to
+vitest 4's completely different closure — `rolldown`, `lightningcss`,
+`@oxc-project/types` — none of which a list would have named.
+
+Its failure mode is rule nine, so it is checked twice. The Dockerfile boots the
+pruned tree and waits for the real `/healthz` **in the build stage**, because
+CI builds one architecture and a release builds two and a prune that broke
+arm64 alone would otherwise ship. And `test/prune-orphans.test.ts` builds a
+real pnpm-shaped tree of real symlinks in a temp directory rather than mocking
+a filesystem, because what makes the sweep correct is the symlinks.
+
+**Why bother, when none of it was reachable?** A scanner does not do
+reachability. Trivy, Grype and docker scout walk the filesystem for
+`package.json` files, so an unreachable copy of vitest is reported exactly as
+loudly as a linked one — and this product's audience scans what they
+self-host. The lesson generalises past this change: **`pnpm audit` and the
+image answer different questions**, the audit reads the lockfile graph, and the
+lockfile is not the artifact anybody installs. Assert against the image.
 
 **v0.1.0 was cut, published, and then withdrawn**, and the reason is worth
 keeping. It was tagged on a feature branch before that branch was finished —
@@ -2851,11 +2891,18 @@ destination it carries now.
   writes (the weather payload, Home Assistant attributes, shift plan columns)
   are boundaries at all. They are reads of what this process wrote, so today
   they are treated as internal.
-- **The image is ~482MB.** About 50MB of it is `esbuild` and `vitest` in the
-  production tree, pulled in because `better-auth` declares `drizzle-kit` and
-  `vitest` as peer dependencies. Fixing it means changing peer resolution,
-  which is a dependency-graph change to verify on its own rather than tack on
-  to something else.
+- ~~The image is ~482MB~~ **is closed.** 435MB, 86 packages instead of 149, and
+  `pnpm audit --prod` reports nothing. It was not a peer-resolution change in
+  the end — it was a reachability sweep over the deployed tree, which is the
+  paragraph above.
+- **better-auth is pinned to `~1.6.25`, and 1.7 needs a migration.** 1.7.2
+  fails every auth test with `The field "issuer" does not exist in the
+  "account" Drizzle schema` — it wants a column this schema has not got, so
+  moving to it means a shipped migration, a `migration-upgrade.test.ts` run
+  against a database with data already in it, and rule seven's whole
+  apparatus. The pin takes 1.6 patches and stops at that minor. This is the
+  next dependency decision, and it is deliberately not folded into anything
+  else.
 
 ---
 
