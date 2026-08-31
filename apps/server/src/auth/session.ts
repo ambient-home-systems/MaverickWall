@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono';
+import { signInUrl } from './next-path.js';
 
 /**
  * Who is asking, and are they allowed to.
@@ -134,9 +135,23 @@ export function requireSession(deps: GateDeps) {
         await next();
         return;
       }
-      return c.req.path.startsWith('/api/')
-        ? c.json({ error: 'unauthorized', message: 'Sign in to continue.' }, 401)
-        : c.redirect('/admin/sign-in', 302);
+      if (c.req.path.startsWith('/api/')) {
+        return c.json({ error: 'unauthorized', message: 'Sign in to continue.' }, 401);
+      }
+      /*
+       * Carry where they were going, so signing in finishes the journey rather
+       * than depositing everybody on the index. Only for a GET: a POST's
+       * destination expects a body this redirect cannot carry, so replaying it
+       * as a GET after sign-in would land on a page that reads as broken.
+       *
+       * The query goes too, because plenty of admin destinations are only a
+       * particular screen with one — a wall's editor on its Style tab, a
+       * filtered list. `c.req.path` drops it, so the URL is what is read.
+       */
+      const method = c.req.method;
+      if (method !== 'GET' && method !== 'HEAD') return c.redirect('/admin/sign-in', 302);
+      const url = new URL(c.req.url);
+      return c.redirect(signInUrl(`${url.pathname}${url.search}`), 302);
     }
 
     c.set('user', user);

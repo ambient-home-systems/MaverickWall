@@ -25,6 +25,7 @@ import {
   requireSetupComplete,
   type GateDeps,
 } from '../auth/session.js';
+import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.js';
@@ -1348,12 +1349,17 @@ export function createApp(deps: AppDeps): Hono {
    * expects JSON — and a form that needs script to submit is one that fails on
    * exactly the locked-down browser most likely to be pointed at a wall.
    */
-  app.get('/admin/sign-in', (c: Context) => c.html(signInPage()));
+  app.get('/admin/sign-in', (c: Context) =>
+    c.html(signInPage(undefined, '', safeNextPath(c.req.query('next')))),
+  );
 
   app.post('/admin/sign-in', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const email = typeof body['email'] === 'string' ? body['email'].trim() : '';
     const password = typeof body['password'] === 'string' ? body['password'] : '';
+    // Validated on the way in, so neither the redirect below nor the page
+    // re-rendered on a failure can carry anything but a path under `/admin`.
+    const next = safeNextPath(body['next']);
 
     const response = await authApi(c, '/api/auth/sign-in/email', { email, password });
 
@@ -1365,13 +1371,13 @@ export function createApp(deps: AppDeps): Hono {
         response.status === 429
           ? 'Too many attempts. Wait a minute and try again.'
           : 'That email address and password do not match.';
-      return c.html(signInPage(message, email), response.status === 429 ? 429 : 401);
+      return c.html(signInPage(message, email, next), response.status === 429 ? 429 : 401);
     }
 
     for (const cookie of response.headers.getSetCookie()) {
       c.header('set-cookie', cookie, { append: true });
     }
-    return c.redirect('/admin', 302);
+    return c.redirect(next, 302);
   });
 
   protectPrefix(app, '/api', gateDeps);
@@ -1724,13 +1730,27 @@ export function createApp(deps: AppDeps): Hono {
   return app;
 }
 
-function signInPage(error?: string, email = ''): string {
+function signInPage(error?: string, email = '', next = DEFAULT_AFTER_SIGN_IN): string {
+  /*
+   * The destination rides in the form rather than in its action.
+   *
+   * A form POST sends its fields and not the action's query string, and the
+   * action has to stay relative for ingress — so a hidden field is the one
+   * spelling that survives both. `next` has already been through
+   * `safeNextPath`, and the default is written out rather than echoed, so a
+   * refused value never reaches the page even escaped.
+   */
+  const carry =
+    next === DEFAULT_AFTER_SIGN_IN
+      ? ''
+      : `<input type="hidden" name="next" value="${escapeHtml(next)}">`;
   return page({
     title: 'Sign in — Maverick Wall',
     heading: 'Sign in',
     body:
       (error === undefined ? '' : errorBlock(error)) +
       `<form method="post" action="admin/sign-in">` +
+      carry +
       textField({
         label: 'Email address',
         name: 'email',
