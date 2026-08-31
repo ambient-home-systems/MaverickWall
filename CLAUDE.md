@@ -2216,7 +2216,7 @@ a notch in it — and land at 12.5px, the smallest text in a form, on a product
 whose brief is glanceability.
 
 **What replaced it is hand-picked and much smaller.** `http/design-tokens.ts`
-holds two schemes as literal hex — three surfaces, three inks, two rules, one
+holds two schemes as literal hex — three surfaces, four inks, two rules, one
 accent, the status hues each with a soft ground — in place of thirty-odd
 generated roles. Hand-picked means these are facts rather than outputs: nothing
 regenerates them, and changing one is a diff a person can review.
