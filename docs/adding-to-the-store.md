@@ -73,3 +73,5 @@ export const STORE_ENTRIES: readonly CatalogEntry[] = [tideTimes, /* … */];
 `test/catalog.test.ts` validates every entry against the schema, so `pnpm test`
 fails on a malformed one — never a household's wall. Open the PR; once it merges
 it is in the store for everyone.
+
+<!-- CI control run: this branch is main plus this inert line. Delete after. -->
