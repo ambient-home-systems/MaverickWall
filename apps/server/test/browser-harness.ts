@@ -164,6 +164,23 @@ export async function browser(): Promise<Browser> {
   );
 }
 
+/**
+ * How long a browser file's `afterAll` gets.
+ *
+ * Every one of them had the default ten seconds, while its `beforeAll` was
+ * given a named `SLOW` running to minutes — so the files declared that
+ * *building* a server, a browser and several walls is slow and then gave
+ * *tearing the same thing down* no budget at all. Under a full parallel run
+ * that is marginal rather than wrong, which is why it surfaced as one suite
+ * in five failing with every test in it passing: the tests were finished and
+ * the close was not.
+ *
+ * One constant rather than each file's own `SLOW`, because teardown does not
+ * scale with how much a file set up — it closes one browser and one server
+ * however many walls were measured through them.
+ */
+export const TEARDOWN = 60_000;
+
 export async function shutDownBrowser(): Promise<void> {
   await shared?.close();
   shared = undefined;

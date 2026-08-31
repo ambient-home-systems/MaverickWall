@@ -25,7 +25,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 import { WIZARD_STEP_LABELS } from '../src/http/html.js';
 
 /** Long: a server, a feed, a browser and four full page loads. */
@@ -36,7 +36,7 @@ const installations: Installation[] = [];
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /**
  * Wait for whatever document the last press produced.

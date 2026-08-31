@@ -21,7 +21,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, settleWall, shutDownBrowser, type Installation, type NamedFeed } from './browser-harness.js';
+import { TEARDOWN, browser, install, settleWall, shutDownBrowser, type Installation, type NamedFeed } from './browser-harness.js';
 import { applyTemplate, reseedClassicForSetUp, type DisplayTemplate } from '../src/api/templates.js';
 import { classicFor } from '../src/templates/classic.js';
 import { householdSetUp } from '../src/modules/index.js';
@@ -77,7 +77,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await wall?.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 interface Measured {
   readonly canvas: { readonly w: number; readonly h: number };

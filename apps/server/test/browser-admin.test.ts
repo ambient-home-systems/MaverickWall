@@ -17,7 +17,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 import { readWeatherSettings } from '../src/api/queries.js';
 import { seedDefaultRules } from '../src/api/rules.js';
 
@@ -34,7 +34,7 @@ async function fresh(options?: Parameters<typeof install>[0]): Promise<Installat
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /** A signed-in page on a fresh installation, the way a household arrives. */
 async function signedIn(): Promise<{ page: Page; home: Installation }> {

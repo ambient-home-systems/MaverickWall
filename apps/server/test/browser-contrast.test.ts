@@ -26,7 +26,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 
 const SLOW = 90_000;
 
@@ -43,7 +43,7 @@ async function fresh(): Promise<Installation> {
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 interface Finding {
   readonly where: string;

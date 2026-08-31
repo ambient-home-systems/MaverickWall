@@ -20,7 +20,7 @@
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 import { DEFAULT_TIMEZONE } from '../src/timezone.js';
 
 /** Long, because this boots a server and a browser context. */
@@ -31,7 +31,7 @@ const installations: Installation[] = [];
 afterAll(async () => {
   for (const one of installations) await one.dispose();
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /**
  * `process.env.TZ = undefined` stores the *string* `'undefined'`. Restore by

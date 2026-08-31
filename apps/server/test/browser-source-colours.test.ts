@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { browser, install, settleWall, shutDownBrowser, type NamedFeed } from './browser-harness.js';
+import { TEARDOWN, browser, install, settleWall, shutDownBrowser, type NamedFeed } from './browser-harness.js';
 import { replaceLayout } from '../src/api/queries.js';
 
 /**
@@ -31,7 +31,7 @@ import { replaceLayout } from '../src/api/queries.js';
 
 afterAll(async () => {
   await shutDownBrowser();
-});
+}, TEARDOWN);
 
 /** `rgb(76, 127, 209)` → `#4C7FD1`, so a failure names a colour a person knows. */
 function toHex(computed: string): string {
