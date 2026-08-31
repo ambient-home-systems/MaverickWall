@@ -905,6 +905,141 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   );
 
   /**
+   * And the canvas scales with a desktop viewport instead of stopping at 720px.
+   *
+   * Measured before this change, on a portrait 1080x1920 wall: the canvas was
+   * 383px wide at 1280 **and at 1440** — the same to the pixel, because the
+   * height was clamped to a constant 720 and the width follows from the aspect
+   * — and 405px at 1920, which is 21% of the monitor with about 500px of empty
+   * page beside the inspector. The thing the page exists to arrange was the
+   * smallest thing on it.
+   *
+   * Three properties, and the middle one is the one that would be lost by
+   * replacing the constant with a larger constant:
+   *
+   *  - it *grows* between 1280 and 1920, rather than the viewport arriving at
+   *    whichever step happens to cross the cap;
+   *  - it uses nearly all of the height the viewport can actually show — the
+   *    screen less the app bar and the fixed save bar, both of which stay put
+   *    when the page is scrolled;
+   *  - and it is still *whole* between those two bars at some scroll position,
+   *    which is what stops "bigger" becoming a canvas nobody can see at once.
+   *
+   * The small end is asserted here rather than assumed: the phone widths run
+   * through the compact branch, which is deliberately untouched.
+   */
+  it(
+    'grows the canvas with the viewport from 320 to 1920',
+    async () => {
+      const wall = await fresh();
+      /*
+       * One signed-in context, resized and reloaded, rather than eight — each
+       * measurement is a fresh load at that viewport, which is the journey, and
+       * eight sign-ups against one in-memory rate-limit bucket is not.
+       */
+      const context = await (await browser()).newContext({ viewport: { width: 1280, height: 900 } });
+      try {
+        const page = await context.newPage();
+        await wall.signIn(page);
+        applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
+
+        const seen = new Map<number, { width: number; height: number; room: number }>();
+        for (const [width, height] of [
+          [320, 700],
+          [375, 812],
+          [390, 844],
+          [768, 1000],
+          [1024, 768],
+          [1280, 900],
+          [1440, 900],
+          [1920, 1080],
+        ] as const) {
+          await page.setViewportSize({ width, height });
+          await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+          await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+
+          const at = await page.evaluate(() => {
+            const canvas = document.querySelector('.le-canvas') as HTMLElement;
+            const box = canvas.getBoundingClientRect();
+            const bar = document.getElementById('savebar')?.getBoundingClientRect();
+            const top = document.querySelector('.topbar')?.getBoundingClientRect();
+            return {
+              width: Math.round(box.width),
+              height: Math.round(box.height),
+              // What the viewport can show of it at once: the screen less the
+              // two things that do not scroll away.
+              room: Math.round(
+                window.innerHeight - (top?.height ?? 0) - (bar?.height ?? 0),
+              ),
+              scrollWidth: document.documentElement.scrollWidth,
+            };
+          });
+          seen.set(width, { width: at.width, height: at.height, room: at.room });
+
+          expect(
+            at.scrollWidth,
+            `at ${width}px the editor scrolls sideways`,
+          ).toBeLessThanOrEqual(width);
+
+          // Scrolled to the foot of the page, the bottom row of resize handles
+          // is still reachable — the save bar is fixed and cannot be scrolled
+          // out of the way.
+          const foot = await page.evaluate(async () => {
+            window.scrollTo(0, document.documentElement.scrollHeight);
+            await new Promise((settle) => setTimeout(settle, 150));
+            const canvas = document.querySelector('.le-canvas')!.getBoundingClientRect();
+            const bar = document.getElementById('savebar')!.getBoundingClientRect();
+            return { canvasBottom: Math.round(canvas.bottom), barTop: Math.round(bar.top) };
+          });
+          expect(
+            foot.canvasBottom,
+            `at ${width}px the canvas runs under the fixed save bar at the foot of the page`,
+          ).toBeLessThanOrEqual(foot.barTop);
+
+          /*
+           * And a desktop canvas fills that room without exceeding it: nearly
+           * all of it, so a big monitor is spent on the wall, and never more
+           * than all of it, or "bigger" becomes a canvas that is whole at no
+           * scroll position — which is what the app bar and the save bar
+           * staying put means. The old constant cap fails the floor at 1920
+           * and only there, because 720px is most of a 900px screen and
+           * three-quarters of a 1080px one.
+           */
+          if (width >= 900) {
+            expect(
+              at.height,
+              `at ${width}px the canvas is ${at.height}px in ${at.room}px of ` +
+                'un-scrollable-away room, so it can never be seen at once',
+            ).toBeLessThanOrEqual(at.room);
+            expect(
+              at.height / at.room,
+              `at ${width}px the canvas is ${at.height}px of ${at.room}px of usable height`,
+            ).toBeGreaterThan(0.85);
+          }
+        }
+
+        const phone = seen.get(390)!;
+        expect(
+          phone.height,
+          `the phone canvas is ${phone.height}px, below the 455px the compact branch was tuned to`,
+        ).toBeGreaterThanOrEqual(455);
+
+        const small = seen.get(1280)!;
+        const large = seen.get(1920)!;
+        expect(
+          large.width,
+          `the canvas is ${small.width}px at 1280 and ${large.width}px at 1920 — ` +
+            'a wider monitor buys the wall nothing — it should track the viewport, ' +
+            'which is 1.2x the height here',
+        ).toBeGreaterThan(small.width * 1.2);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
    * Each toolbar popover opens under the button that opened it.
    *
    * They used to anchor to a tools row whose first item was that button, so

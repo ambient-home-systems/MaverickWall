@@ -2695,6 +2695,29 @@ Measured on a 390×844 phone: the canvas was 388px starting 386px down and is
 clear of the fixed save bar, which is where the bottom row of resize handles
 lives.
 
+**And that phone measurement left the desktop paying for it.** The canvas's
+height was clamped to a constant 720px and its width follows from the wall's
+aspect, so a portrait 1080x1920 wall came out **383px wide at 1280 and at 1440
+— identical to the pixel** — and 405px at 1920: 21% of the monitor, with about
+500px of empty page beside the inspector and the thing the screen exists to
+arrange the smallest thing on it. A constant cannot know the viewport, and the
+cure is not a larger constant. The desktop budget is measured like the phone's
+`roomBelowChrome()` and asks a different question: not what is left *below* the
+chrome, which scrolls away, but what the viewport can show *at once* — the
+screen less the sticky app bar and the fixed save bar, which do not. Measured
+after: 421px at 1280, 522px at 1920 and 685px at 2560, where the pane's own
+width finally binds. The band is the assertion, in both directions — a desktop
+canvas fills more than 85% of that room, and never more than all of it, since a
+canvas that is whole at no scroll position is not a bigger canvas. The compact
+branch below 900px is untouched, and the 390px numbers above are asserted
+rather than assumed, because they are what a change to the other branch would
+quietly cost.
+
+The one thing this does not reach is a **landscape** wall on a wide monitor:
+there the canvas is width-bound at ~685px by `.content`'s 1180px cap, and the
+height it is now allowed never binds. Widening the admin's content column is a
+decision about every admin screen, not about this one.
+
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody
 already signed in to Home Assistant, so asking for a second login in the

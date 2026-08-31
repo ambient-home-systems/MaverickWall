@@ -1553,6 +1553,28 @@ function boot(): void {
       const bar = document.getElementById('savebar')?.getBoundingClientRect().height ?? 64;
       return Math.round(window.innerHeight - above - bar - 12);
     };
+    /*
+     * What a desktop viewport can show of the canvas *at once*, which is a
+     * different question from `roomBelowChrome()`.
+     *
+     * The chrome above the canvas scrolls away; the app bar and the fixed save
+     * bar do not. So the tallest canvas that is still whole on screen — once
+     * the household has scrolled the toolbar up under the app bar — is the
+     * viewport less those two, and that is the budget here. Measured for the
+     * same reason as `roomBelowChrome()`: a second copy of the bar heights in
+     * this file would drift from the stylesheet that sets them.
+     *
+     * It replaces a constant 720, which is what stopped this editor using a
+     * large screen: a portrait wall came out 383px wide at 1280 *and* at 1440,
+     * and 405px at 1920 — 21% of the monitor, with the canvas the smallest
+     * thing on a page that exists to arrange it. A constant cannot know the
+     * viewport, so this scales with it instead of being a larger constant.
+     */
+    const roomOnScreen = (): number => {
+      const bar = document.getElementById('savebar')?.getBoundingClientRect().height ?? 64;
+      const top = document.querySelector('.topbar')?.getBoundingClientRect().height ?? 64;
+      return Math.round(window.innerHeight - top - bar - 24);
+    };
     // Measured against the sheet rather than guessed at a fraction of the
     // viewport: the sheet's own height is a min() of two values in the
     // stylesheet, and a second copy of that sum here would drift.
@@ -1583,7 +1605,7 @@ function boot(): void {
               Math.max(roomBelowChrome(), Math.round(window.innerHeight * 0.46)),
             ),
           )
-        : Math.min(720, Math.max(360, window.innerHeight - 220));
+        : Math.max(360, roomOnScreen());
     let w = maxW;
     let h = w / state.aspect;
     if (h > maxH) {
