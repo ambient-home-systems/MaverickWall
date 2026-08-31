@@ -207,12 +207,17 @@ async function measureRuns(size: {
      * lazily on first use, so a bare `document.fonts.ready` resolves at once
      * having loaded nothing.
      */
-    let held = false;
     await page.route('**/d/manifest*', async (route) => {
-      if (!held) {
-        held = true;
-        await new Promise((resolve) => setTimeout(resolve, 750));
-      }
+      await page
+        .evaluate(async () => {
+          const faces: FontFace[] = [];
+          document.fonts.forEach((face) => faces.push(face));
+          await Promise.all(faces.map(async (face) => face.load().catch(() => undefined)));
+          await document.fonts.ready;
+        })
+        // A context destroyed mid-navigation degrades to "draw now" rather than
+        // failing the run outright.
+        .catch(() => undefined);
       await route.continue();
     });
     await page.goto(link, { waitUntil: 'load' });
