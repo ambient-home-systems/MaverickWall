@@ -19,7 +19,6 @@
  * a class name, because the boxes were always in the DOM and always in the right
  * place. What was wrong was which boxes existed at all.
  */
-import { appendFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import { browser, install, settleWall, shutDownBrowser, type Installation, type NamedFeed } from './browser-harness.js';
@@ -181,67 +180,25 @@ async function measure(size: { readonly width: number; readonly height: number }
  * one. `browser-classic-proportions.test.ts` measures the fully-equipped wall;
  * nothing measured this one, which is the wall most households have.
  */
-interface FontRun {
-  readonly where: string;
-  readonly text: string;
-  readonly font: number;
-  readonly fit: number;
-  /** The cascade's own size, before any transform. */
-  readonly raw: number;
-  /** The product of every transform above it. */
-  readonly scale: number;
-}
-
-interface RunReading {
-  readonly runs: readonly FontRun[];
-  /** Font state at measure time, to tell a lost font race from a scale drift. */
-  readonly diag: string;
-}
-
 async function measureRuns(size: {
   readonly width: number;
   readonly height: number;
-}): Promise<RunReading> {
+}): Promise<readonly { readonly where: string; readonly text: string; readonly font: number; readonly fit: number }[]> {
   const context = await (await browser()).newContext({ viewport: size });
   const page: Page = await context.newPage();
   try {
     /*
-     * Hold the first manifest back until the fonts are actually in, then
-     * reload. `fitToBox` measures once, as its section is appended, and nothing
-     * re-runs it — so a wall that draws before its faces have arrived keeps a
-     * fit computed against fallback metrics for the life of the page.
-     *
-     * This barrier used to be `setTimeout(…, 750)`, and a sleep is not a
-     * barrier: it fails exactly when the machine is busy, which under a full
-     * suite is often. Measured over 24 readings, the fit came out at one of
-     * *two* values — 0.652255 or 0.655468, 0.49% apart, with nothing in
-     * between — because `display.css` serves its own woff2 with
-     * `font-display: swap`, so the browser lays out in a fallback face and
-     * swaps when the real one lands. Whichever of the two walls lost that race
-     * measured larger, and the comparison below is one-sided, so half of those
-     * surfaced as a failure and half passed silently.
-     *
-     * The faces have to be *forced*, not merely awaited: they are fetched
-     * lazily on first use, and while the manifest is held nothing is drawn
-     * that uses them, so a bare `document.fonts.ready` here resolves
-     * immediately having loaded nothing. Loading them is what makes the reload
-     * below serve from cache, which is the steady state a wall that has been
-     * hanging for a minute is in.
+     * Hold the first manifest back, then reload. `fitToBox` measures once, as
+     * its section is appended, and nothing re-runs it — so on a cold context
+     * whose fonts have not arrived the wall keeps a fit computed against
+     * fallback metrics. The second load has them in the HTTP cache, which is
+     * the steady state a wall that has been hanging for a minute is in.
      */
     let held = false;
     await page.route('**/d/manifest*', async (route) => {
       if (!held) {
         held = true;
-        await page
-          .evaluate(async () => {
-            const faces: FontFace[] = [];
-            document.fonts.forEach((face) => faces.push(face));
-            await Promise.all(faces.map(async (face) => face.load().catch(() => undefined)));
-            await document.fonts.ready;
-          })
-          // Degrading to "draw now" keeps a browser that cannot do this
-          // honest-but-flaky rather than failing outright on every run.
-          .catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, 750));
       }
       await route.continue();
     });
@@ -262,14 +219,7 @@ async function measureRuns(size: {
         }
         return scale;
       };
-      const out: {
-        where: string;
-        text: string;
-        font: number;
-        fit: number;
-        raw: number;
-        scale: number;
-      }[] = [];
+      const out: { where: string; text: string; font: number; fit: number }[] = [];
       const seen = new Set<Element>();
       const walker = document.createTreeWalker(
         document.querySelector('.canvas') as Node,
@@ -283,20 +233,14 @@ async function measureRuns(size: {
         const style = getComputedStyle(element);
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         const needed = Math.max(element.scrollWidth, element.clientWidth);
-        // One walk, reused — a second `scaleOf` call per element is measurable
-        // work inside the very page whose timing is under suspicion.
-        const raw = parseFloat(style.fontSize);
-        const scale = scaleOf(element);
         out.push({
           where: String(element.className).trim().split(/\s+/)[0] ?? element.tagName,
           text: (element.textContent ?? '').trim().slice(0, 60),
-          font: raw * scale,
+          font: parseFloat(style.fontSize) * scaleOf(element),
           fit: needed > 0 ? Math.min(1, element.clientWidth / needed) : 1,
-          raw,
-          scale,
         });
       }
-      return { runs: out, diag: `fonts.status=${document.fonts.status}` };
+      return out;
     });
   } finally {
     await context.close();
@@ -418,57 +362,69 @@ describe('the calendar-only wall, read from across a kitchen', () => {
        * gave the agenda the reclaimed height and failed it — 15.7px to 15.2px,
        * because a taller box at the same width re-flows the section narrower
        * and its rows wrap.
+       *
+       * KNOWN FLAKY, about one full-suite run in six, and unfixed. What is
+       * measured is written down here because the measuring cost far more than
+       * the reading of it will, and two plausible causes are already dead.
+       *
+       * Recorded from Node, outside the page, over 56 readings: the cascade's
+       * own `font-size` was 24px every single time, and the fit came out at one
+       * of exactly *two* values — 0.652255 or 0.655468, 0.49% apart, with
+       * nothing in between. So this is not the type scale and it is not float
+       * noise; it is a two-state race in `fitToBox`, which measures once as a
+       * section is appended and never re-runs.
+       *
+       * **Do not widen the 0.05.** The two states are 0.077 apart, so a
+       * tolerance that hid them would also hide the 0.5px regression above,
+       * which is the whole reason the assertion exists.
+       *
+       * The comparison is one-sided — whichever wall loses the race measures
+       * *larger*, and only a `classic` loss can fail `now >= was - 0.05`. So
+       * roughly half of all races pass silently, and counting red runs
+       * understates the rate by about double. Any future attempt has to be
+       * judged on the distribution of the fit, never on a green suite.
+       *
+       * Eliminated, each by measurement rather than by reading:
+       *  - *Slowness.* It never reproduces with this file run alone, nor under
+       *    six spinning CPU hogs. It needs the suite's own parallelism.
+       *  - *The 750ms hold below, and forcing the faces before it.* Holding the
+       *    first manifest until every `document.fonts` face had loaded left the
+       *    distribution unchanged — 27/1 either way across 14 runs each. The
+       *    reason is structural and is the clue: the render that is *measured*
+       *    is the one after `page.reload()`, which no barrier here touches.
+       *
+       * Fonts are still the likeliest binary — `display.css` serves its own
+       * woff2 with `font-display: swap`, which lays out in a fallback face and
+       * swaps — but the barrier has to gate the reload, not the first load, and
+       * that is untested.
        */
       const screen = (wall.db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;
 
       const smallestByClass = async (
         variant: DisplayTemplate,
-      ): Promise<{ smallest: ReadonlyMap<string, FontRun>; diag: string }> => {
+      ): Promise<ReadonlyMap<string, number>> => {
         applyTemplate(wall.db, screen, variant);
-        const { runs, diag } = await measureRuns({ width: 1080, height: 1920 });
-        const smallest = new Map<string, FontRun>();
+        const runs = await measureRuns({ width: 1080, height: 1920 });
+        const smallest = new Map<string, number>();
         for (const run of runs) {
-          const held = smallest.get(run.where);
-          if (held === undefined || run.font < held.font) smallest.set(run.where, run);
+          smallest.set(run.where, Math.min(smallest.get(run.where) ?? Infinity, run.font));
         }
-        return { smallest, diag };
+        return smallest;
       };
 
-      const classic = await smallestByClass(classicFor({ modules: ['weather'], shift: true }));
-      const seeded = await smallestByClass(classicFor({ modules: [], shift: false }));
+      const asClassic = await smallestByClass(classicFor({ modules: ['weather'], shift: true }));
+      const asSeeded = await smallestByClass(classicFor({ modules: [], shift: false }));
 
-      // Recorded from Node, on every run rather than on a failure, so the
-      // distribution is visible and the recording cannot sit inside the race.
-      if (process.env['MW_BANDS_LOG'] !== undefined) {
-        const line = [...classic.smallest]
-          .map(([where, was]) => {
-            const now = seeded.smallest.get(where);
-            return now === undefined
-              ? `${where}=absent`
-              : `${where} classic(${was.raw}x${was.scale.toFixed(6)}=${was.font.toFixed(4)}) ` +
-                  `seeded(${now.raw}x${now.scale.toFixed(6)}=${now.font.toFixed(4)})`;
-          })
-          .join('; ');
-        appendFileSync(
-          process.env['MW_BANDS_LOG'] as string,
-          `${new Date().toISOString()} ${classic.diag}/${seeded.diag} ${line}\n`,
-        );
-      }
-
-      for (const [where, was] of classic.smallest) {
-        const now = seeded.smallest.get(where);
+      for (const [where, was] of asClassic) {
+        const now = asSeeded.get(where);
         // A class Classic drew and this variant does not is the forecast's and
         // the badge's own text, which is the whole point — it has nowhere to be.
         if (now === undefined) continue;
         expect(
-          now.font,
-          `"${where}" is ${now.font.toFixed(4)}px on the calendar-only wall, ` +
-            `${was.font.toFixed(4)}px on the wall Classic was measured on\n` +
-            `  calendar-only: raw=${now.raw} scale=${now.scale.toFixed(6)} text="${now.text}"\n` +
-            `        classic: raw=${was.raw} scale=${was.scale.toFixed(6)} text="${was.text}"\n` +
-            `  calendar-only ${seeded.diag}\n` +
-            `        classic ${classic.diag}`,
-        ).toBeGreaterThanOrEqual(was.font - 0.05);
+          now,
+          `"${where}" is ${now.toFixed(1)}px on the calendar-only wall, ` +
+            `${was.toFixed(1)}px on the wall Classic was measured on`,
+        ).toBeGreaterThanOrEqual(was - 0.05);
       }
 
       /*
