@@ -180,10 +180,27 @@ async function measure(size: { readonly width: number; readonly height: number }
  * one. `browser-classic-proportions.test.ts` measures the fully-equipped wall;
  * nothing measured this one, which is the wall most households have.
  */
+interface FontRun {
+  readonly where: string;
+  readonly text: string;
+  readonly font: number;
+  readonly fit: number;
+  /** The cascade's own size, before any transform. */
+  readonly raw: number;
+  /** The product of every transform above it. */
+  readonly scale: number;
+}
+
+interface RunReading {
+  readonly runs: readonly FontRun[];
+  /** Font state at measure time, to tell a lost font race from a scale drift. */
+  readonly diag: string;
+}
+
 async function measureRuns(size: {
   readonly width: number;
   readonly height: number;
-}): Promise<readonly { readonly where: string; readonly text: string; readonly font: number; readonly fit: number }[]> {
+}): Promise<RunReading> {
   const context = await (await browser()).newContext({ viewport: size });
   const page: Page = await context.newPage();
   try {
@@ -219,7 +236,14 @@ async function measureRuns(size: {
         }
         return scale;
       };
-      const out: { where: string; text: string; font: number; fit: number }[] = [];
+      const out: {
+        where: string;
+        text: string;
+        font: number;
+        fit: number;
+        raw: number;
+        scale: number;
+      }[] = [];
       const seen = new Set<Element>();
       const walker = document.createTreeWalker(
         document.querySelector('.canvas') as Node,
@@ -238,9 +262,23 @@ async function measureRuns(size: {
           text: (element.textContent ?? '').trim().slice(0, 60),
           font: parseFloat(style.fontSize) * scaleOf(element),
           fit: needed > 0 ? Math.min(1, element.clientWidth / needed) : 1,
+          raw: parseFloat(style.fontSize),
+          scale: scaleOf(element),
         });
       }
-      return out;
+      const label = document.querySelector('.canvas .section-label');
+      const family =
+        label === null ? 'no .section-label' : getComputedStyle(label).fontFamily.slice(0, 40);
+      const loaded: string[] = [];
+      document.fonts.forEach((face) => {
+        if (face.status === 'loaded') loaded.push(face.family);
+      });
+      return {
+        runs: out,
+        diag:
+          `fonts.status=${document.fonts.status} loaded=[${[...new Set(loaded)].join('|')}] ` +
+          `label-family=${family} dpr=${window.devicePixelRatio}`,
+      };
     });
   } finally {
     await context.close();
@@ -367,29 +405,34 @@ describe('the calendar-only wall, read from across a kitchen', () => {
 
       const smallestByClass = async (
         variant: DisplayTemplate,
-      ): Promise<ReadonlyMap<string, number>> => {
+      ): Promise<{ smallest: ReadonlyMap<string, FontRun>; diag: string }> => {
         applyTemplate(wall.db, screen, variant);
-        const runs = await measureRuns({ width: 1080, height: 1920 });
-        const smallest = new Map<string, number>();
+        const { runs, diag } = await measureRuns({ width: 1080, height: 1920 });
+        const smallest = new Map<string, FontRun>();
         for (const run of runs) {
-          smallest.set(run.where, Math.min(smallest.get(run.where) ?? Infinity, run.font));
+          const held = smallest.get(run.where);
+          if (held === undefined || run.font < held.font) smallest.set(run.where, run);
         }
-        return smallest;
+        return { smallest, diag };
       };
 
-      const asClassic = await smallestByClass(classicFor({ modules: ['weather'], shift: true }));
-      const asSeeded = await smallestByClass(classicFor({ modules: [], shift: false }));
+      const classic = await smallestByClass(classicFor({ modules: ['weather'], shift: true }));
+      const seeded = await smallestByClass(classicFor({ modules: [], shift: false }));
 
-      for (const [where, was] of asClassic) {
-        const now = asSeeded.get(where);
+      for (const [where, was] of classic.smallest) {
+        const now = seeded.smallest.get(where);
         // A class Classic drew and this variant does not is the forecast's and
         // the badge's own text, which is the whole point — it has nowhere to be.
         if (now === undefined) continue;
         expect(
-          now,
-          `"${where}" is ${now.toFixed(1)}px on the calendar-only wall, ` +
-            `${was.toFixed(1)}px on the wall Classic was measured on`,
-        ).toBeGreaterThanOrEqual(was - 0.05);
+          now.font,
+          `"${where}" is ${now.font.toFixed(4)}px on the calendar-only wall, ` +
+            `${was.font.toFixed(4)}px on the wall Classic was measured on\n` +
+            `  calendar-only: raw=${now.raw} scale=${now.scale.toFixed(6)} text="${now.text}"\n` +
+            `        classic: raw=${was.raw} scale=${was.scale.toFixed(6)} text="${was.text}"\n` +
+            `  calendar-only ${seeded.diag}\n` +
+            `        classic ${classic.diag}`,
+        ).toBeGreaterThanOrEqual(was.font - 0.05);
       }
 
       /*
