@@ -2532,11 +2532,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         name: 'source',
         optionsHtml:
           sourceOption('builtin', 'Its built-in layout') +
-          sourceOption('own', "Its own arrangement") +
-          sourceOption('follow:default', "The Default wall's arrangement") +
-          walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s arrangement`)).join(''),
+          sourceOption('own', 'Its own layout') +
+          sourceOption('follow:default', "The Default wall's layout") +
+          walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s layout`)).join(''),
         hint:
-          'Following a wall draws that arrangement in black &amp; white — move a box there ' +
+          // Escaped by `fieldWrap`, so the ampersand is written plainly here:
+          // an `&amp;` in a hint reaches the page as a literal `&amp;`.
+          'Following a wall draws that layout in black & white — move a box there ' +
           'and this panel moves with it. Each widget can say less on ink without changing the wall.',
       }) +
       `<button class="secondary" type="submit">Use this</button></div></form>`;
@@ -2584,7 +2586,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<span class="msg" role="alert"></span>` +
           `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
           `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
-          `<button type="button" class="btn" data-action="save">Save this panel</button>` +
+          `<button type="button" class="btn" data-action="save">Save layout</button>` +
           `</div>` +
           `<script type="module" src="assets/display-editor.js"></script>` +
           `<script type="module" src="assets/layout-editor.js"></script>`),
@@ -4035,8 +4037,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div style="display:flex;align-items:center;gap:12px">` +
       `<div class="ic">${icon('layout')}</div>` +
       `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">Default</div>` +
-      `<div class="sub">What every wall shows until it has its own layout</div></div>` +
+      `<div class="rname" style="font-size:16px">Default wall</div>` +
+      `<div class="sub">The layout every wall shows until it has one of its own</div></div>` +
       `<span class="link">Open ${icon('arrow')}</span>` +
       `</div></a>`;
 
@@ -4063,7 +4065,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       saved: readSaved(c),
       action: { label: 'Pair a new wall', href: 'admin/walls#add' },
       ...(active.length === 0
-        ? { intro: 'No walls paired yet. The Default below is what a wall shows until you pair one and give it its own layout.' }
+        ? { intro: 'No walls paired yet. The Default wall below holds the layout a wall shows until you pair one and give it a layout of its own.' }
         : {}),
       body:
         (error === undefined ? '' : errorBlock(error)) +
@@ -4267,7 +4269,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const online = owner !== null && owner.lastSeenAt !== null && at - owner.lastSeenAt < 5 * 60_000;
     const statusLine =
       owner === null
-        ? `<b>Shared default</b> · every wall starts from this`
+        ? `<b>Shared default</b> · the layout and settings every wall starts from`
         : owner.lastSeenAt === null
           ? `<b>Never connected</b> · open its pairing link on the wall`
           : online
@@ -4427,7 +4429,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     ];
     const copyFrom = others.length === 0
       ? ''
-      : `<div class="tpl-copy"><div class="tpl-cat">Or copy another wall</div>` +
+      : `<div class="tpl-copy"><div class="tpl-cat">Or copy another wall's layout</div>` +
         `<form method="post" action="admin/displays/${ownerParam}/copy-from" ` +
         `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with a copy?"><div class="row">` +
         selectField({
@@ -4617,7 +4619,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<small>${escapeHtml(household.timezone)} — set on the System page.</small></span>` +
           `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
           `<form method="post" action="admin/displays/default/reset-layout" ` +
-          `data-confirm="Reset both the portrait and landscape default layouts to the Classic layout? ` +
+          `data-confirm="Reset both the portrait and landscape layouts of the Default wall ` +
+          `to the Classic layout? ` +
           `Everything arranged here is replaced.">` +
           `<button class="arow is-danger" type="submit"><span class="arow-text">Reset layout` +
           `<small>Both orientations, back to the Classic layout.</small></span></button></form>` +
