@@ -866,6 +866,45 @@ describe('testing a feed before saving it', () => {
     ).toEqual(['']);
   });
 
+  /*
+   * Remove is reached from the overflow, not from the row beside Sync now.
+   *
+   * A destructive action drawn as a sibling of a safe one, at the same size, is
+   * one mis-tap apart however it is coloured — and a list of calendars read two
+   * equally-weighted buttons per row. It moves to the ⋮ the wall header and the
+   * alert rule rows already use. What must not change is the confirmation: the
+   * menu item is still a GET to a page that names what is destroyed, and the
+   * destroy is still the POST underneath it. Both halves are asserted here, and
+   * the *geometry* — that the menu is closed at rest, that Remove is not on
+   * screen until it is opened — is measured in browser-calendars.test.ts.
+   */
+  it('puts Remove behind the overflow and leaves Sync now in the row', async () => {
+    const h = await harness();
+    await h.addFeed('Family');
+    const id = (h.db.prepare('SELECT id FROM calendar_sources').get() as { id: string }).id;
+    const page = await (await h.call('/admin/calendars')).text();
+
+    const menu = /<div class="ovf-menu" role="menu">([\s\S]*?)<\/div><\/details>/.exec(page)?.[1];
+    expect(menu, 'the calendar row carries an overflow menu').toBeTruthy();
+    expect(menu).toContain(`admin/calendars/${id}/delete`);
+    expect(menu).toContain('Remove');
+
+    // The foot row holds the safe action and nothing destructive.
+    const row = /<div class="row">([\s\S]*?)<\/div>/.exec(page)?.[1] ?? '';
+    expect(row).toContain(`admin/calendars/${id}/sync`);
+    expect(row, 'no destructive sibling one mis-tap away').not.toContain('/delete');
+
+    // Reachable, and it still asks: the GET names the calendar, destroys
+    // nothing, and the POST is what performs it.
+    const confirm = await h.call(`/admin/calendars/${id}/delete`);
+    expect(confirm.status).toBe(200);
+    expect(await confirm.text()).toContain('Family');
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM calendar_sources').get()).toEqual({ n: 1 });
+    const done = await h.form(`/admin/calendars/${id}/delete`, {});
+    expect(done.headers.get('location')).toBe('/admin/calendars?saved=calendar-removed');
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM calendar_sources').get()).toEqual({ n: 0 });
+  });
+
   it('does not offer Sync now on a calendar whose sync is off', async () => {
     /*
      * `ics-sync` skips a source whose switch is off, so the button would report

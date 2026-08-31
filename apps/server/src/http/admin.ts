@@ -4698,6 +4698,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     return (
       `<article class="card">` +
+      /*
+       * The name, the host, and an overflow for the destructive one.
+       *
+       * Remove used to sit in the row at the foot of the card, beside Sync now,
+       * at the same visual weight — a destructive action one mis-tap from a
+       * safe one, and a household scanning a list of calendars reads two
+       * equally-weighted buttons per row. It moves to the ⋮ every wall header
+       * and every alert rule row already uses: a `<details>`, so it opens with
+       * no script at all, which matters here because the Calendars page ships
+       * none. What it does *not* change is the confirmation — Remove is still a
+       * GET to a page that names what is destroyed, and still a POST to perform
+       * it. This moves where it is reached from, not how it works.
+       */
+      `<div class="card-head"><div class="card-head-main">` +
       `<h2><span class="swatch" style="--swatch:${escapeHtml(source.color)}"></span>` +
       `${escapeHtml(source.name)}${source.enabled === 1 ? '' : ' (off)'}</h2>` +
       // The host and never the path. The path is the credential. A Home
@@ -4708,6 +4722,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? `Home Assistant · ${source.haEntityId ?? 'calendar entity'}`
           : source.urlHost ?? 'unknown host',
       )}</p>` +
+      `</div>` +
+      `<details class="ovf" data-overflow>` +
+      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+      `aria-label="More actions for ${escapeHtml(source.name)}" title="More">${icon('more')}</summary>` +
+      `<div class="ovf-menu" role="menu">` +
+      // The ellipsis is the promise that a tap here is not the end of it — the
+      // same wording the wall header's "Reset layout…" and "Unpair wall…" use
+      // for the two other actions that ask before they act.
+      `<form method="get" action="admin/calendars/${id}/delete">` +
+      `<button class="ovf-item is-danger" type="submit">Remove…</button></form>` +
+      `</div></details></div>` +
       status +
 
       /*
@@ -4790,7 +4815,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</form>` +
       `</details>` +
 
-      `<div class="row">` +
       /*
        * Not drawn while sync is off: `ics-sync` skips a disabled source, so the
        * button would report a fetch that never happens. A control that can do
@@ -4801,14 +4825,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * off the echo, a 400 re-render would draw the button for a calendar the
        * database still has disabled (press it and nothing happens) or hide it
        * for one that is enabled.
+       *
+       * The row is drawn only when there is something in it. With Remove moved
+       * to the overflow, a disabled calendar's foot would otherwise be an empty
+       * flex container carrying its own margins.
        */
       (source.enabled === 1
-        ? `<form method="post" action="admin/calendars/${id}/sync">` +
-          `<button class="secondary" type="submit">Sync now</button></form>`
+        ? `<div class="row">` +
+          `<form method="post" action="admin/calendars/${id}/sync">` +
+          `<button class="secondary" type="submit">Sync now</button></form>` +
+          `</div>`
         : '') +
-      `<form method="get" action="admin/calendars/${id}/delete">` +
-      `<button class="btn-danger" type="submit">Remove</button></form>` +
-      `</div></article>`
+      `</article>`
     );
   }
 
@@ -4949,7 +4977,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'calendars',
       heading: 'Calendars',
       saved: readSaved(c),
-      action: { label: 'Add a calendar', href: 'admin/calendars#add' },
+      /*
+       * No app-bar action, deliberately.
+       *
+       * `page()`'s action is a *filled* button for the top-right of the shell,
+       * and it read "Add a calendar" while the add form was already on screen
+       * further down the same page — a second primary competing with the real
+       * one, whose whole effect was to scroll. One primary per screen, and on
+       * this screen it is the Add at the foot of the form.
+       */
       ...(sources.length === 0
         ? { intro: 'No calendars yet. Add the iCal address of one below.' }
         : {}),
@@ -5014,11 +5050,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           // at the top of the page and has nothing to do with these controls.
           open: echo === undefined && networkOptions.length > 0,
         }) +
-        // Two buttons, one form. Testing first is the cheap habit this screen
-        // exists to encourage, so it is the one on the left.
+        /*
+         * Two buttons, one form — and the emphasis was the wrong way round.
+         *
+         * Test feed was the filled primary and Add the outlined secondary, so
+         * the optional diagnostic was styled as the goal and the goal as
+         * optional. Add is the one thing this screen exists to do, so it is
+         * the filled button and the only one on the page. Testing first is
+         * still the cheap habit worth encouraging, so it keeps the left-hand
+         * position — order says "do this first", weight says "this is what you
+         * came for", and they are different sentences.
+         */
         `<div class="row">` +
-        `<button type="submit" name="action" value="test">Test feed</button>` +
-        `<button class="secondary" type="submit" name="action" value="save">Add</button>` +
+        `<button class="secondary" type="submit" name="action" value="test">Test feed</button>` +
+        `<button type="submit" name="action" value="save">Add</button>` +
         `</div></form>`,
     });
   }
