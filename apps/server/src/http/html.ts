@@ -1425,9 +1425,15 @@ pre.code{background:var(--mw-surface-2);
  * Neutral also keeps the artwork underneath legible, which is the whole job of
  * a live preview: the boxes say where the widgets are, the wall says what they
  * look like. Selection is the only thing that takes a colour. */
+/* Not overflow:hidden, and that is deliberate rather than an omission — the
+ * name chip hangs *outside* this box (see .le-widget-label below) and a clip
+ * here would take it away entirely. What the clip used to buy is bought
+ * explicitly instead: the resize handle's target is anchored inward at its own
+ * declaration, and the chip is capped to the canvas and hidden until pointed
+ * at. Restoring the clip re-hides every name. */
 .le-widget{position:absolute;background:color-mix(in srgb,var(--mw-ink) 7%,transparent);
   border:1px solid color-mix(in srgb,var(--mw-ink-2) 70%,transparent);border-radius:var(--mw-r-2);
-  cursor:move;touch-action:none;overflow:hidden;user-select:none}
+  cursor:move;touch-action:none;user-select:none}
 .le-widget:hover{background:color-mix(in srgb,var(--mw-ink) 14%,transparent)}
 /* Over an e-paper frame the fill would tint the 1-bit art it is meant to show,
  * and the panel already draws each widget's own border underneath — so the box
@@ -1438,21 +1444,39 @@ pre.code{background:var(--mw-surface-2);
 .le-widget.is-selected{border-color:var(--accent);
   box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);
   background:color-mix(in srgb,var(--accent) 12%,transparent)}
-.le-widget-label{position:absolute;top:0;left:0;
+/* The widget's name, ABOVE the box rather than inside its top-left corner.
+ *
+ * Inside, it sat on the artwork it names: a 22px chip over a 68px Clock is a
+ * third of the widget, and on the month grid it covered the MON TUE WED header
+ * row exactly. The live preview is the whole value of this editor — a label
+ * that hides the most identifying part of each widget defeats it, and the
+ * smallest widgets paid the most.
+ *
+ * Two rules keep it out of the way. It hangs outside the box, so it cannot
+ * cover its own widget at any size; and it is hidden until the box is pointed
+ * at, focused or selected, so a canvas at rest is artwork with no chips on it
+ * at all. That is not a loss of information — Layers names every widget one
+ * click away, and the inspector's own head names the selected one.
+ *
+ * visibility rather than display: an element with no box has no height to
+ * measure, and placeLabel() reads this chip's own height to decide which side
+ * of the box it goes on. Hidden is still hidden — it paints nothing.
+ *
+ * The is-below class is that decision, written by script: a widget against the top of
+ * the canvas has no room above it, and .le-canvas is overflow:hidden, so a chip
+ * placed there would be cut off rather than merely tight. */
+.le-widget-label{position:absolute;bottom:calc(100% + 2px);left:0;
   font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-bg);
-  background:var(--mw-ink-2);padding:4px 8px;border-radius:0 0 var(--mw-r-2) 0;
-  pointer-events:none;user-select:none}
-.le-widget.is-selected .le-widget-label{background:var(--accent);color:var(--accentInk)}
-/* On a panel the frame underneath already says what each box is — it draws the
- * widget. So the name steps back out of the artwork until you point at it or
- * select it, which is the same argument as the transparent fill above. It is
- * dimmed rather than removed: a widget with nothing to draw yet (an empty note)
- * would otherwise be an unlabelled outline. */
-.le-overlay.is-epaper .le-widget-label{opacity:.45}
-.le-overlay.is-epaper .le-widget:hover .le-widget-label,
-.le-overlay.is-epaper .le-widget.is-selected .le-widget-label{opacity:1}
+  background:var(--mw-ink-2);padding:4px 8px;border-radius:var(--mw-r-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  visibility:hidden;pointer-events:none;user-select:none}
+.le-widget-label.is-below{bottom:auto;top:calc(100% + 2px)}
+.le-widget:hover > .le-widget-label,
+.le-widget:focus > .le-widget-label,
+.le-widget.is-selected > .le-widget-label{visibility:visible}
+.le-widget.is-selected > .le-widget-label{background:var(--accent);color:var(--accentInk)}
 /* A widget the wall will not draw (RFC 009 Phase 2): the household has nothing
  * set up behind it, so the manifest omits it. The box stays here — it has to be
  * grabbable, and this is the screen where they find out why — but it says so.
@@ -1464,9 +1488,9 @@ pre.code{background:var(--mw-surface-2);
  * still promises that selection keeps its accent regardless. A dash reads
  * against either colour. */
 .le-widget.is-not-drawn{border-style:dashed}
-/* Bottom-left, not top-right: the top strip is the widget's own name, and the
- * boxes that are actually flagged on a fresh install are the narrow ones —
- * Classic's shift and weather — where a second chip on that row paints over it.
+/* Bottom-left. The name chip has left the box entirely, so the top strip is
+ * free again — but this one stays where it is, because it is a fact about the
+ * widget rather than a name for it and belongs in the artwork it is about.
  * Bottom-right is the resize handle, so the remaining corner is the free one. */
 .le-widget-flag{position:absolute;left:0;bottom:0;
   font:var(--mw-t-label-xs);
@@ -1486,15 +1510,17 @@ pre.code{background:var(--mw-surface-2);
  * 12px and the *target* grows around it, which moves nothing and paints
  * nothing: the chore tick's idiom, one screen along.
  *
- * It does not reach the full 44px, and the reason is worth stating rather
- * than discovering: .le-widget above is overflow:hidden, which clips
- * hit-testing as well as painting, so the half of this that reaches outside
- * the box is not reachable — about 30x30 inside the corner, up from 12x12.
- * Growing it further inward would reach 44 and swallow a small widget's own
- * drag area whole (a 5% box on a phone canvas is about 20px), and removing
- * the clip would let a long name chip paint over the neighbouring box. The
- * test measures what is actually reachable rather than trusting this line. */
-.le-handle::before{content:"";position:absolute;inset:-16px}
+ * It does not reach the full 44px, and the asymmetric inset is what holds it
+ * to about 30x30 in from the corner. That used to be an accident of
+ * .le-widget's overflow:hidden, which clips hit-testing as well as painting;
+ * the clip is gone (the name chip hangs outside the box now), so the same
+ * target is declared instead of inherited — right and bottom stop on the
+ * box's own edge, 2px out, exactly where the clip used to cut. A symmetric
+ * -16px now really would be 44px, which swallows a small widget's whole drag
+ * area (a 5% box on a phone canvas is about 20px) and steals presses from the
+ * neighbour below and to the right. The test measures what is actually
+ * reachable rather than trusting this line. */
+.le-handle::before{content:"";position:absolute;inset:-16px -2px -2px -16px}
 /* The canvas background control — none / solid / gradient, per canvas. */
 .le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:12px 0 0}
 .le-bg-label{

@@ -1067,13 +1067,13 @@ describe('4 · the editor, driven', () => {
          * And the flag keeps out of the row the widget's own name is in.
          *
          * Measured, and asserted as *rows* rather than as rectangles that
-         * happen not to touch. On the default wall the two chips clear each
-         * other by 23px in a 154px box with the flag in the top-right corner —
-         * so a check for overlap passes today and would keep passing until a
-         * slightly longer name or a slightly narrower box closed that gap,
-         * which is the wrong moment to find out. The boxes that carry this flag
-         * are the narrow ones by construction (Classic's shift and weather), so
-         * the rule is the strong one: the flag has its own band.
+         * happen not to touch. It has room to spare now — the name chip has
+         * left the box altogether and hangs above it, while the flag stayed in
+         * the artwork it is about — but the rule is what it always was and is
+         * the one that has to survive the name coming back inside for any
+         * reason: the flag has its own band. The boxes that carry it are the
+         * narrow ones by construction (Classic's shift and weather), where two
+         * chips sharing a row means one painted over the other.
          */
         const sharingARow = await page.evaluate(() =>
           [...document.querySelectorAll('.le-overlay .le-widget.is-not-drawn')]
