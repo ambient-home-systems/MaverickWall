@@ -160,6 +160,7 @@ useful thing in this document:
 | The two HIGHs that *were* in the image, three hops under the names | The same listing — no name anybody would write down reached them |
 | **Sixteen browser files gave teardown no budget at all** | One suite failing in three runs with every test in it passing |
 | better-auth 1.7 wants a column the schema has not got | A vitest bump that could not move without re-resolving better-auth |
+| **Two wall tests that failed for one hour every night** | Running them at 23:32, then remembering they had passed at 22:36 |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -2738,6 +2739,43 @@ half separately and both turn it red — either one alone holds the canvas withi
 35px of where it started — and it pins what the widening must not do: another
 admin screen measured at the same viewport is still 1180px, and the wall's own
 settings rows beside the canvas are still capped at 720px.
+
+**The suite failed for one hour every night, and it read exactly like a
+flake.** `browser-classic-proportions` and `browser-grid-calendar` went red on
+a pull request with the same two assertions and the same numbers every time — a
+shift chip at **20.6px** against the 22px floor, and today's cell counting
+**1** event where the test seeds 2 — while `main`'s own push runs stayed green.
+Four things were measured before the cause was found, and three of them were
+the wrong question: the display bundle is byte-identical apart from the admin
+editor module, `main` reproduces both failures, halving the added browser load
+changed nothing, and unmodified `main` run *as a pull request* failed
+identically. All true, all pointing at "not this branch", and none of them
+pointing at why.
+
+The clock did. The same two tests passed on the same machine at 22:36 and
+failed at 23:32. `browser-harness` dated every fixture with
+`Date.now()` read through `getUTCDate()`, while the household it seeds is on
+`Europe/London` — so from 23:00 UTC through British Summer Time the wall's
+today is already tomorrow, and `day: 0` stamped *yesterday's* London date. An
+all-day Bin day slid off today's cell while the timed Standup beside it did
+not, which is the count of 1; and an agenda holding a different day's events
+settles at a different `fitToBox` scale, which is the 20.6px. One hour in
+twenty-four, every night for half the year, and green the rest of the day.
+
+`fixtureDate(zone, days, now)` is the fix: today's civil date **in the
+household's zone**, then plus a number of days, on a UTC anchor with no zone
+and no daylight saving in it. `Date.now() + days * 86_400_000` is the version
+that cannot be right — it adds 24 hours, and the 25th of October is 25 of them.
+The timed events carry the household's zone as their `TZID` too, rather than a
+hard-coded `Europe/London` that would describe a wall nobody has.
+
+Two things about the test for it are the point. It takes `now` as a parameter
+and every case names an instant, because **a test that can only fail between
+23:00 and midnight reports the truth once a day and passes twenty-three times
+over it** — which is exactly how this survived. And the wall tests it repairs
+were the proof it was right: run in the failing hour, they went green with the
+fix and back to the identical CI numbers without it.
+
 
 **Under ingress the settings trust Home Assistant's login, and the socket is
 what makes that safe.** The supervisor only forwards a request from somebody

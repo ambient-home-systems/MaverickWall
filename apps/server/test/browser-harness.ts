@@ -280,10 +280,12 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
   runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 2000 });
   seedBoot(db);
 
-  const feedServer = feed ? await startFeed() : undefined;
+  // The zone this installation's wall is set to, so `day: 0` is the day that
+  // wall calls today rather than the day the runner's UTC clock does.
+  const feedServer = feed ? await startFeed(DEFAULT_FEED, timezone) : undefined;
   const extraFeeds: { readonly name: string; readonly url: string; readonly stop: () => void }[] = [];
   for (const calendar of calendars) {
-    const served = await startFeed(calendar.events);
+    const served = await startFeed(calendar.events, timezone);
     extraFeeds.push({ name: calendar.name, url: served.url, stop: served.stop });
   }
 
@@ -539,12 +541,50 @@ const DEFAULT_FEED: readonly FeedEvent[] = [
   { title: 'Car service', day: 11, from: '0800', to: '1200' },
 ];
 
-function icsBody(events: readonly FeedEvent[], salt = ''): string {
+/**
+ * The date `days` from *the wall's* today, as an ICS `YYYYMMDD` stamp.
+ *
+ * Every fixture in this suite means "today" by `day: 0` — today as the
+ * household reads it off the glass, which is a civil date in the household's
+ * timezone. This used to read the runner's clock in UTC, and those are two
+ * different days for part of every day: at 23:30 UTC in British Summer Time it
+ * is already tomorrow in London, so `day: 0` stamped *yesterday's* London date
+ * and every fixture in the suite slid one day earlier than the wall's today.
+ *
+ * That is not a subtle failure. `browser-grid-calendar` seeds today's cell with
+ * an all-day Bin day and a Standup and asserts the cell counts two; in that
+ * hour the all-day event lands on yesterday, the timed one is still today, and
+ * the cell counts one. `browser-classic-proportions` measures the agenda's fit,
+ * and an agenda holding a different day's events settles at a different scale —
+ * a shift chip at 20.6px against a 22px floor. Both fail every night between
+ * 23:00 and 00:00 UTC through British Summer Time, and pass the rest of the
+ * day, which reads exactly like a flake and is not one: it is the clock, and it
+ * is the same two assertions with the same numbers every time.
+ *
+ * The arithmetic is civil and deliberately not an instant: today's date *in the
+ * zone*, then plus a number of days, on a UTC anchor that has no zone and no
+ * daylight saving in it. `Date.now() + days * 86_400_000` is the version that
+ * cannot be right — it adds 24 hours, and a day is not always 24 hours.
+ *
+ * `now` is a parameter so this can be asserted at an instant rather than at
+ * whatever o'clock the suite happens to run (see `harness-fixture-dates`).
+ */
+export function fixtureDate(zone: string, days: number, now: Date = new Date()): string {
   const pad = (value: number): string => String(value).padStart(2, '0');
-  const stamp = (days: number): string => {
-    const date = new Date(Date.now() + days * 86_400_000);
-    return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}`;
-  };
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const field = (type: string): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
+  const shifted = new Date(Date.UTC(field('year'), field('month') - 1, field('day') + days));
+  return `${shifted.getUTCFullYear()}${pad(shifted.getUTCMonth() + 1)}${pad(shifted.getUTCDate())}`;
+}
+
+function icsBody(events: readonly FeedEvent[], salt = '', zone = 'Europe/London'): string {
+  const stamp = (days: number): string => fixtureDate(zone, days);
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Maverick Wall tests//EN'];
   events.forEach(({ title, day, from, to }, index) => {
     // Unique per feed as well as per event: two calendars sharing a UID is one
@@ -554,9 +594,12 @@ function icsBody(events: readonly FeedEvent[], salt = ''): string {
       // DTEND is exclusive: a one-day all-day event ends on the following day.
       lines.push(`DTSTART;VALUE=DATE:${stamp(day)}`, `DTEND;VALUE=DATE:${stamp(day + 1)}`);
     } else {
+      // The household's zone, not a literal: an event written in London time
+      // on a wall set to New York is an event at a different hour of a
+      // different day, which is a fixture describing a wall nobody has.
       lines.push(
-        `DTSTART;TZID=Europe/London:${stamp(day)}T${from}00`,
-        `DTEND;TZID=Europe/London:${stamp(day)}T${to}00`,
+        `DTSTART;TZID=${zone}:${stamp(day)}T${from}00`,
+        `DTEND;TZID=${zone}:${stamp(day)}T${to}00`,
       );
     }
     lines.push('END:VEVENT');
@@ -567,8 +610,11 @@ function icsBody(events: readonly FeedEvent[], salt = ''): string {
 
 let feedNumber = 0;
 
-async function startFeed(events: readonly FeedEvent[] = DEFAULT_FEED): Promise<{ url: string; stop: () => void }> {
-  const body = icsBody(events, `-f${feedNumber++}`);
+async function startFeed(
+  events: readonly FeedEvent[] = DEFAULT_FEED,
+  zone = 'Europe/London',
+): Promise<{ url: string; stop: () => void }> {
+  const body = icsBody(events, `-f${feedNumber++}`, zone);
   const server: HttpServer = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/calendar; charset=utf-8' });
     response.end(body);
