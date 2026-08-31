@@ -4927,11 +4927,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const people = readPeopleAdmin(deps.db);
 
     const networkOptions = error?.networkOptions ?? [];
-    // The aggregate sentence when there is one, the per-code suggestion when
-    // there is not. `testFeed` never supplies both.
+    /*
+     * The switch-naming sentence wins wherever there is one.
+     *
+     * It is the only sentence composed from the table the checkboxes are drawn
+     * from, so it is the only one that can quote the label the household is
+     * looking at. `testFeed`'s per-code advice fills in underneath, for the
+     * refusals no switch reaches.
+     */
     const networkSuggestion = networkAccessSuggestion(networkOptions);
-    const suggestion =
-      error?.suggestion ?? (networkSuggestion === '' ? undefined : networkSuggestion);
+    const suggestion = networkSuggestion !== '' ? networkSuggestion : error?.suggestion;
     const errorHtml = error === undefined ? '' : errorBlock(error.message, suggestion);
 
     return page({

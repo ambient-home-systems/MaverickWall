@@ -76,20 +76,30 @@ export type TestFeedResult =
  *
  * Every branch here corresponds to a mistake somebody actually makes. A message
  * that only names the error leaves them stuck; one that names the fix does not.
+ *
+ * **Nothing here may name a control.** This module is one layer below the forms
+ * and does not know what any switch is called, so the five branches that used to
+ * try were wrong in all three directions at once: `bare-hostname`,
+ * `loopback-name` and a LAN `ip-literal` never reached here at all (an opt-in
+ * exists for each, so `networkOptions` is never empty for them and the
+ * aggregate wins); `internal-suffix` and a *public* `ip-literal` did reach here
+ * and told the household to turn on local-network access, which opens neither;
+ * and all five quoted labels — "allow local network", "allow loopback" — that
+ * have never appeared on a checkbox anywhere in the product. The sentence that
+ * names a switch is composed in `http/html.ts` from the table that renders it.
  */
 function suggestionFor(code: string): string | undefined {
   switch (code) {
-    case 'http-not-allowed':
-      return 'Use https:// if the server supports it, or turn on plain http for this feed.';
-    case 'bare-hostname':
-    case 'ip-literal':
     case 'internal-suffix':
-      return 'This address is on your local network. Turn on "allow local network" for this feed if that is intended.';
-    case 'loopback-name':
-      return 'That address points back at the machine running Maverick Wall. Turn on "allow loopback" for this feed if that is intended.';
+      // The one local-network code with a remedy worth stating, and it is not a
+      // switch: these suffixes are refused under *every* policy, so the address
+      // itself has to change. It names no control, and is therefore true on the
+      // Home Assistant screen as well as on this one. The message beside it
+      // already names the suffix, so this does not repeat it.
+      return 'That kind of name is resolved by the device you are browsing from rather than by this server. Use the numeric address of the machine instead.';
     case 'reserved-name':
-      // No suggestion here on purpose: unlike the local-network codes above,
-      // there is no flag that would make one of these resolve.
+      // No suggestion here on purpose: unlike .local above, there is no other
+      // address to reach for — one of these never resolves to anything.
       return undefined;
     case 'userinfo-present':
       return 'Remove the username and password from the address.';

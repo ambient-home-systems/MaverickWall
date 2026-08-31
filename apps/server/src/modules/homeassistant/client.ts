@@ -1,4 +1,4 @@
-import { FETCH_LIMITS, validateOutboundUrl, type Fetcher, type UrlPolicy } from '@maverick-wall/core';
+import { FETCH_LIMITS, validateOutboundUrl, type Fetcher, type NetworkOption, type UrlPolicy } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { Keyring } from '../../secrets/keyring.js';
 
@@ -181,7 +181,25 @@ export function resolveConnection(
 
 export type CallResult =
   | { readonly ok: true; readonly body: string }
-  | { readonly ok: false; readonly message: string; readonly suggestion?: string };
+  | {
+      readonly ok: false;
+      readonly message: string;
+      readonly suggestion?: string;
+      /**
+       * The opt-ins that would open this address, in the flag names on
+       * `UrlPolicy` — never in the words on the checkbox.
+       *
+       * This module cannot see the admin's label table (it is a module, and the
+       * table is one layer up in `http/`), and when it tried to name the control
+       * anyway it produced the product's *fifth* name for the same switch:
+       * `Turn on "Home Assistant is on my local network"`. The screen composes
+       * the sentence; this says which control it is about.
+       *
+       * Only the resolver knows a public-looking name landed on a LAN address,
+       * so the URL gate cannot answer this one — it comes off the outcome.
+       */
+      readonly networkOptions?: readonly NetworkOption[];
+    };
 
 /**
  * One GET against Home Assistant.
@@ -224,10 +242,15 @@ export async function call(
  */
 function describe(
   response:
-    | { status: 'rejected'; code: string; message: string }
+    | {
+        status: 'rejected';
+        code: string;
+        message: string;
+        networkOptions?: readonly NetworkOption[];
+      }
     | { status: 'failed'; code: string; message: string; httpStatus?: number },
   connection: Connection,
-): { message: string; suggestion?: string } {
+): { message: string; suggestion?: string; networkOptions?: readonly NetworkOption[] } {
   if (response.status === 'failed' && response.code === 'http-error') {
     if (response.httpStatus === 401 || response.httpStatus === 403) {
       return {
@@ -264,8 +287,21 @@ function describe(
       case 'address-rejected':
       case 'url-rejected':
         return {
+          /*
+           * Written here, never passed through — for the reason spelled out
+           * below: this string is stored on `ha_settings.last_error`, which the
+           * panel carries to the wall as a note, and the guard's own message
+           * names the hostname *and* the address it resolved to. That is the
+           * household's Home Assistant on a screen in their hallway.
+           *
+           * What changed is only the sentence after it: the remedy used to read
+           * `Turn on "Home Assistant is on my local network"` and is now the
+           * screen's to compose, from the table the checkbox is drawn from.
+           */
           message: 'That address was refused by the outbound guard.',
-          suggestion: 'Turn on "Home Assistant is on my local network" if it is.',
+          ...(response.networkOptions !== undefined && response.networkOptions.length > 0
+            ? { networkOptions: response.networkOptions }
+            : {}),
         };
       default:
         return { message: response.message };

@@ -458,7 +458,10 @@ describe('step 3 — the calendar', () => {
     const response = await h.form('/setup/calendar', { name: 'Family', url, allow_http: '1' });
     expect(response.status).toBe(400);
     const body = await response.text();
-    expect(body).toContain('allow loopback');
+    // The label on the wizard's own checkbox. It used to assert "allow
+    // loopback", which is a string that has never appeared on a control.
+    expect(body).toContain('Allow this machine itself');
+    expect(body).not.toContain('allow loopback');
     // Nothing stored on a failure. A source that exists but has never worked
     // is worse than none: the wizard claims success and the wall stays empty.
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM calendar_sources').get()).toEqual({ n: 0 });

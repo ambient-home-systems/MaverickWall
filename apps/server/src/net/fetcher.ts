@@ -188,12 +188,13 @@ async function resolveAndCheck(
         ok: false,
         outcome: rejected(
           'address-rejected',
-          `${hostname} resolves to ${formatIp(ip)}, which is ${kind}. ` +
-            (isLocalNetwork(ip)
-              ? 'Turn on "allow local network" for this source if that is intended.'
-              : kind === 'loopback'
-                ? 'Turn on "allow loopback" for this source if that is intended.'
-                : 'That is not a reachable public address.'),
+          // The diagnosis only. The remedy names a checkbox, and this file has
+          // no idea what that checkbox is called — `http/html.ts` composes it
+          // from `networkOptions` below, out of the same table that renders it.
+          `${hostname} resolves to ${formatIp(ip)}, which is ${kind}.` +
+            (isLocalNetwork(ip) || kind === 'loopback'
+              ? ''
+              : ' That is not a reachable public address.'),
           // The URL gate could not have known this: the name looks public and
           // only the resolver says otherwise. Naming the switch here is what
           // lets the form that shows this message also show the control.

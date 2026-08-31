@@ -31,7 +31,18 @@ export type UrlRejectionCode =
 
 export interface UrlRejection {
   readonly code: UrlRejectionCode;
-  /** Safe to show a user. Says what is wrong and, where useful, what to do. */
+  /**
+   * Safe to show a user, and deliberately a *diagnosis* rather than a remedy.
+   *
+   * Rule one keeps this package away from the admin's label table, so a remedy
+   * written here can only guess at what the control is called — and it guessed
+   * wrong for a year: it told households to turn on `allow loopback`, and no
+   * checkbox anywhere has ever carried that name — the one they were looking at
+   * read `Allow this machine itself`, and they were left mapping one to the
+   * other by inference. The `code` above is the
+   * machine-readable half; the layer that owns the controls composes the
+   * sentence that names one. See `requiredNetworkOptions` below.
+   */
   readonly message: string;
 }
 
@@ -103,8 +114,8 @@ const INTERNAL_SUFFIXES = [
 
 /**
  * RFC 6761 names reserved for documentation and testing. They never resolve
- * to anything, anywhere — not just on this network, so "turn on allow local
- * network" is a suggestion that would not help. They get their own message.
+ * to anything, anywhere — not just on this network, so no opt-in reaches one
+ * and `requiredNetworkOptions` answers empty. They get their own message.
  */
 const RESERVED_SUFFIXES = ['.test', '.example', '.invalid'];
 
@@ -155,8 +166,8 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
   if (url.protocol === 'http:' && policy.allowHttp !== true) {
     return reject(
       'http-not-allowed',
-      'This address is not encrypted. Calendar addresses are passwords in ' +
-        'effect, so plain http has to be turned on for this feed deliberately.',
+      'This address is not encrypted. A calendar address is a password in ' +
+        'effect, and plain http sends it across your network in clear.',
     );
   }
 
@@ -198,8 +209,7 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
     }
     return reject(
       'loopback-name',
-      'That address points back at the machine running Maverick Wall. Turn on ' +
-        '"allow loopback" for this source if that is really what you meant.',
+      'That address points back at the machine running Maverick Wall.',
     );
   }
 
@@ -207,8 +217,11 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
     if (hostname.endsWith(suffix)) {
       return reject(
         'internal-suffix',
+        // Not "a public calendar service": this validator is also what refuses
+        // `homeassistant.local` on the Home Assistant screen, which is the
+        // likeliest thing anybody types there.
         `Addresses ending in ${suffix} name something on the local network ` +
-          'rather than a public calendar service.',
+          'rather than a service on the internet.',
       );
     }
   }
@@ -246,13 +259,13 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
     const kind = classifyIp(ip);
 
     // Checked before the reserved branch below: loopback has its own opt-in,
-    // so the message should point at that rather than say "unreachable".
+    // so this must not come out as the flat "reserved and unreachable" that
+    // branch answers with — there is a switch for it, and `allowLoopback` in
+    // `requiredNetworkOptions` is how a form finds that out.
     if (kind === 'loopback') {
-      return reject(
-        'ip-literal',
-        'That address points back at this machine. Turn on "allow loopback" ' +
-          'for this source if that is really what you meant.',
-      );
+      // Worded exactly as the `loopback-name` branch above: one fact about the
+      // address, said one way, whichever spelling of it arrived.
+      return reject('ip-literal', 'That address points back at the machine running Maverick Wall.');
     }
 
     if (!isLocalNetwork(ip) && kind !== 'public') {
@@ -266,8 +279,7 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
     return reject(
       'ip-literal',
       isLocalNetwork(ip)
-        ? 'That is an address on your local network. Turn on "allow local ' +
-          'network" for this feed if that is what you meant.'
+        ? 'That is an address on your local network.'
         : 'Use the server name rather than its numeric address.',
     );
   }
@@ -289,8 +301,7 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
     }
     return reject(
       'bare-hostname',
-      `"${hostname}" is a name on your local network. Turn on "allow local ` +
-        'network" for this feed if that is what you meant.',
+      `"${hostname}" is a name on your local network rather than a public one.`,
     );
   }
 

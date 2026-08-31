@@ -239,7 +239,11 @@ describe('the calendars screen', () => {
     expect(response.status).toBe(400);
 
     const body = await response.text();
-    expect(body).toContain('allow loopback');
+    // The words on the checkbox, not the words the domain used to invent. The
+    // exact-label property is proven against the rendered control itself in
+    // `network-access-labels.test.ts`; this pins the sentence a household reads.
+    expect(body).toContain('Allow this machine itself');
+    expect(body).not.toContain('allow loopback');
     expect(body).toContain('value="Family"');
   });
 

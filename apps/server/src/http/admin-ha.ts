@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, errorBlock, escapeHtml, page, selectField, textField } from './html.js';
+import { confirmDestroyPage, errorBlock, escapeHtml, networkAccessLabel, page, selectField, textField } from './html.js';
 import { call, resolveConnection, testConnection, type ConnectionMode } from '../modules/homeassistant/client.js';
 import {
   DISPLAY_MODES,
@@ -42,6 +42,30 @@ import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { ago, navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
+import { requiredNetworkOptions, type NetworkOption } from '@maverick-wall/core';
+
+/**
+ * "Turn on “X” below." — the calendar screens' remedy, in the shape this screen
+ * can honour.
+ *
+ * `networkAccessSuggestion` is not reused verbatim because it ends "under
+ * Network access below", and there is no Network access disclosure here: this
+ * screen asks the question as one plain checkbox. What *is* reused is the only
+ * part that matters — the label, read out of the table that renders it, so the
+ * sentence quotes the words the household is looking at.
+ *
+ * Two options collapse to one sentence because one checkbox sets both flags:
+ * `resolveConnection` reads `allow_lan` into `allowPrivateNetwork` *and*
+ * `allowLoopback`, since a Home Assistant on this machine and a Home Assistant
+ * on this network are one decision to a household. `allowHttp` never reaches
+ * here — the plain-http consent is its own gate, several lines earlier — and is
+ * dropped rather than mentioned, because a sentence naming a box that is not
+ * the one being asked about is the fault this whole change is about.
+ */
+function networkRemedy(options: readonly NetworkOption[]): string | undefined {
+  if (options.every((option) => option === 'allowHttp')) return undefined;
+  return `If Home Assistant is inside your house, turn on “${networkAccessLabel('allowPrivateNetwork')}” below.`;
+}
 
 /** One schema per form on this screen. */
 const connectBody = z.object({
@@ -303,8 +327,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           message: 'That address is not encrypted.',
           suggestion:
             'A Home Assistant token controls your whole house and is sent with every ' +
-            'request. Over plain http anything on your network can read it. Tick the box ' +
-            'below to use it anyway on a network you trust.',
+            'request. Over plain http anything on your network can read it. Turn on ' +
+            `“${networkAccessLabel('allowHttp')}” below to use it anyway on a network you trust.`,
         },
         400,
       );
@@ -330,10 +354,33 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
 
     const resolved = resolveConnection(deps.db, deps.keyring);
     if (!resolved.ok) {
+      /*
+       * `resolveConnection` hands back `validateOutboundUrl`'s message, which is
+       * a diagnosis and nothing more. The remedy names a checkbox, and only this
+       * layer knows what that checkbox is called — see `networkRemedy`.
+       *
+       * Asked against the policy the household just submitted, so a switch they
+       * have already ticked is never named: `requiredNetworkOptions` reports
+       * what is still missing rather than what the address needs in the
+       * abstract.
+       */
+      const suggestion =
+        (resolved.code === 'bad-address'
+          ? // Only for the address. `key-lost` is the other way this fails, and
+            // its own suggestion — restore the backup's key, make a new token —
+            // is the last thing that should be swapped for a checkbox.
+            networkRemedy(
+              requiredNetworkOptions(baseUrl, {
+                allowHttp: true,
+                allowPrivateNetwork: shaped.value.allow_lan,
+                allowLoopback: shaped.value.allow_lan,
+              }),
+            )
+          : undefined) ?? resolved.suggestion;
       return render(c,
         {
           message: resolved.message,
-          ...(resolved.suggestion !== undefined ? { suggestion: resolved.suggestion } : {}),
+          ...(suggestion !== undefined ? { suggestion } : {}),
         },
         400,
       );
@@ -353,10 +400,14 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `UPDATE ha_settings SET last_error = ?, updated_at = ? WHERE id = 'singleton'`,
         )
         .run(proved.message, now());
+      // The URL gate could not have answered this one: the name looks public
+      // and only the resolver says otherwise, so the options come off the
+      // outcome rather than off the address.
+      const suggestion = networkRemedy(proved.networkOptions ?? []) ?? proved.suggestion;
       return render(c,
         {
           message: proved.message,
-          ...(proved.suggestion !== undefined ? { suggestion: proved.suggestion } : {}),
+          ...(suggestion !== undefined ? { suggestion } : {}),
         },
         400,
       );
@@ -727,11 +778,27 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         attrs: 'autocomplete="off"',
       }) +
 
+      /*
+       * Two of the same three switches the calendar screens ask about, so they
+       * carry the same names — read out of the table that renders them there
+       * rather than restated, because a control this screen calls something
+       * else is a control an error message cannot point at.
+       *
+       * What stays different is the *consequence*, which genuinely is: a
+       * calendar address over http is a feed URL, and this one is a token that
+       * controls a house. That clause is the reason the box exists, so it is
+       * kept word for word and the label is prefixed to it.
+       *
+       * One box for two flags on purpose: `resolveConnection` opens loopback
+       * with the same setting, because a Home Assistant on this machine and a
+       * Home Assistant on this network are one decision to a household.
+       */
       `<div class="checks">` +
       `<label><input type="checkbox" name="allow_lan" value="1"` +
-      `${settings.allowPrivateNetwork ? ' checked' : ''}> Home Assistant is on my local network</label>` +
+      `${settings.allowPrivateNetwork ? ' checked' : ''}> ` +
+      `${escapeHtml(networkAccessLabel('allowPrivateNetwork'))} — Home Assistant is inside your house</label>` +
       `<label><input type="checkbox" name="accept_http" value="1"> ` +
-      `Use plain http — I understand the token crosses my network unencrypted</label>` +
+      `${escapeHtml(networkAccessLabel('allowHttp'))} — I understand the token crosses my network unencrypted</label>` +
       `</div>` +
       `<button type="submit">Connect</button></form>`
     );
