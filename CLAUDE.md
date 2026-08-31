@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **seventy-six real bugs**, and the pattern in how is the most
+This project has found **seventy-seven real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -155,6 +155,7 @@ useful thing in this document:
 | A week-number switch on two views that draw no week number | Splitting a density out of a view, which made the guard say what it meant |
 | Two rota-colour switches that no week column has ever drawn | Reading the two week renderers for the only three things that could paint one |
 | **An assertion for a legacy calendar view that no edit could turn red** | Removing the fix, watching it stay green, and picking a value the browser's own fallback does not happen to match |
+| Signing in threw away the page you had asked for | Being signed out on `/admin/system`, signing in, and reading the address bar |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -288,7 +289,7 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**1913 tests passing.** calendar 153 · core 308 · display 261 · server 1191. CI
+**2145 tests passing.** calendar 153 · core 314 · display 272 · server 1406. CI
 runs the whole suite and then the README's one-liner against a clean volume on
 Linux, which is the only place the install has ever been wrong.
 
@@ -2733,6 +2734,67 @@ shares one rate-limit bucket and one busy screen can lock the household out.
 Those counters live in module-global memory, so they outlive an auth instance
 and even its database; tests stay independent by giving each harness a
 distinct address.
+
+**Signing in finishes the journey, and the destination is a boundary because of
+it.** `/admin/system` while signed out redirected to `/admin/sign-in`, and
+signing in landed on `/admin` — the destination was dropped twice over, by a
+gate that did not send it and a handler that always redirected to the index. So
+every deep link into the admin cost a second navigation the household made
+themselves, and there was nothing in either file to notice, because each half is
+correct on its own.
+
+Carrying it back is what makes it dangerous: the destination now arrives *from a
+browser*. Rule ten says to assume somebody exposes this box to the internet
+badly, and a sign-in page that forwards to any URL a link names is a phishing
+primitive with the household's own address bar vouching for the trip. So the
+whole rule is one pure function — `safeNextPath` in `auth/next-path.ts` — for
+the reason `widget-options.ts` and `ink.ts` are pure: a policy that lives inside
+a handler is a policy a test can only reach through a server, one case at a
+time.
+
+**It is an allowlist by construction**, which is the part worth keeping: an
+absolute path under `/admin`, with `/admin` ending a path segment. That refuses
+a scheme, a protocol-relative `//evil.example` and everything outside the admin
+without a clause for any of them — the denylist version of this is where the
+bypass nobody thought of lives. **Percent-encoding needs no clause either, and
+adding one is what would open the hole**: a query parameter is decoded *once* by
+URL parsing, so `%2f%2fevil.example` arrives already as `//evil.example` and
+dies on the same line, while `%252f%252f…` arrives still encoded and does not
+begin with `/admin` at all. Decoding a second time here would hand the first
+form straight through. Control characters and the backslash are refused
+outright: a newline in a `Location` is response splitting, and engines have
+normalised `/\host` to `//host` *before* deciding whether it names an origin.
+
+Three details are load-bearing and none is visible in the diff's shape. **The
+destination rides in a hidden field rather than in the form's action** — a POST
+sends its fields and not its action's query string, and the action has to stay
+relative for the single `<base>` to carry it through ingress, so a field is the
+one spelling that survives both; it survives the 400 re-render too, which is the
+branch where a `next` living only in the URL would be silently lost, and that is
+the Weather screen's lesson one form along. **A refused value is never echoed
+back** — the default is written out rather than rendered, so a stranger's URL
+cannot reach the page even escaped, because a form that hands it back is a
+redirector one submission later. And **only a GET carries a destination**: a
+refused POST expects a body this redirect cannot carry, so replaying it as a GET
+after sign-in lands on a page that reads as broken.
+
+`ALWAYS_OPEN` is untouched, and has to be — `/admin/sign-in` still lives under
+the prefix it unlocks.
+
+The verification is the ordinary discipline and is only worth recording for one
+result. Twenty bypasses are enumerated as a table against the pure function,
+where the whole policy can be read down at once, and the round trip is driven
+through the real app with a real cookie because both auth bugs this project has
+already found were in that seam rather than in either piece. Each fix was
+reverted in turn — the gate reddens three assertions, the handler two, the
+validation twenty-one. **The browser test measures the origin of the address bar
+after a real sign-in**, not a class and not a header, because the origin the
+household ends up on is the only thing an open redirect is actually about.
+
+And the two existing `is behind the session gate` assertions had to change,
+which is the case where changing a test is not weakening one: they pinned the
+exact `Location`, so they went red on a gate that now says *more*. They name the
+destination it carries now.
 
 ---
 
