@@ -914,28 +914,46 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
    * page beside the inspector. The thing the page exists to arrange was the
    * smallest thing on it.
    *
-   * Three properties, and the middle one is the one that would be lost by
-   * replacing the constant with a larger constant:
+   * A **landscape** wall is the half the height could not reach: a 16:9 canvas
+   * is bound by its width, and that width came from a pane inside the admin's
+   * 1180px content column, a measure chosen for a readable line of text. 683px
+   * at 1440 and 685px at 1920 — two pixels for 480 more of monitor. So both
+   * orientations are measured here, on the same page load, and three fixes
+   * have to hold together: the height budget, the wider column, and
+   * `sizeCanvas`'s *other* 720, the one on the width.
    *
-   *  - it *grows* between 1280 and 1920, rather than the viewport arriving at
-   *    whichever step happens to cross the cap;
+   * The properties, and the second is the one that would be lost by replacing
+   * a constant with a larger constant:
+   *
+   *  - it *grows* between 1280 and 1920 in both orientations, rather than the
+   *    viewport arriving at whichever step happens to cross a cap;
    *  - it uses nearly all of the height the viewport can actually show — the
    *    screen less the app bar and the fixed save bar, both of which stay put
    *    when the page is scrolled;
    *  - and it is still *whole* between those two bars at some scroll position,
-   *    which is what stops "bigger" becoming a canvas nobody can see at once.
+   *    which is what stops "bigger" becoming a canvas nobody can see at once;
+   *  - and the wider column is the editor's alone, with the settings beside
+   *    the canvas keeping their own measure.
    *
-   * The small end is asserted here rather than assumed: the phone widths run
-   * through the compact branch, which is deliberately untouched.
+   * The small end is asserted rather than assumed: the phone widths run through
+   * the compact branch, which is deliberately untouched, and are what a change
+   * to the other branch would quietly cost.
+   *
+   * One page load per width, both orientations measured from it. This file
+   * shares a CI runner with fifteen other browser suites, and a wall test on
+   * that runner is already racing its own feed sync — so a test that reloads
+   * for each half of its question buys nothing and spends somebody else's
+   * margin.
    */
   it(
-    'grows the canvas with the viewport from 320 to 1920',
+    'sizes the canvas from the viewport, in both orientations, from 320 to 1920',
     async () => {
       const wall = await fresh();
       /*
        * One signed-in context, resized and reloaded, rather than eight — each
-       * measurement is a fresh load at that viewport, which is the journey, and
-       * eight sign-ups against one in-memory rate-limit bucket is not.
+       * measurement is still a fresh load at that viewport, which is the
+       * journey, and eight sign-ups against one in-memory rate-limit bucket is
+       * not.
        */
       const context = await (await browser()).newContext({ viewport: { width: 1280, height: 900 } });
       try {
@@ -943,7 +961,27 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         await wall.signIn(page);
         applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
 
-        const seen = new Map<number, { width: number; height: number; room: number }>();
+        /** The canvas as drawn now, and the room the viewport can show it in. */
+        const read = async () =>
+          await page.evaluate(() => {
+            const canvas = document.querySelector('.le-canvas')!.getBoundingClientRect();
+            const content = document.querySelector('.content')!.getBoundingClientRect();
+            const bar = document.getElementById('savebar')?.getBoundingClientRect();
+            const top = document.querySelector('.topbar')?.getBoundingClientRect();
+            return {
+              width: Math.round(canvas.width),
+              height: Math.round(canvas.height),
+              content: Math.round(content.width),
+              // What the viewport can show at once: the screen less the two
+              // things that do not scroll away.
+              room: Math.round(window.innerHeight - (top?.height ?? 0) - (bar?.height ?? 0)),
+              scrollWidth: document.documentElement.scrollWidth,
+            };
+          });
+
+        const portrait = new Map<number, Awaited<ReturnType<typeof read>>>();
+        const landscape = new Map<number, Awaited<ReturnType<typeof read>>>();
+
         for (const [width, height] of [
           [320, 700],
           [375, 812],
@@ -958,26 +996,18 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
           await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
           await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
 
-          const at = await page.evaluate(() => {
-            const canvas = document.querySelector('.le-canvas') as HTMLElement;
-            const box = canvas.getBoundingClientRect();
-            const bar = document.getElementById('savebar')?.getBoundingClientRect();
-            const top = document.querySelector('.topbar')?.getBoundingClientRect();
-            return {
-              width: Math.round(box.width),
-              height: Math.round(box.height),
-              // What the viewport can show of it at once: the screen less the
-              // two things that do not scroll away.
-              room: Math.round(
-                window.innerHeight - (top?.height ?? 0) - (bar?.height ?? 0),
-              ),
-              scrollWidth: document.documentElement.scrollWidth,
-            };
-          });
-          seen.set(width, { width: at.width, height: at.height, room: at.room });
+          /*
+           * Stated, not inherited. The editor reopens on the orientation it was
+           * left on, so without this the first width measures the seed and
+           * every later one measures whatever the previous width chose.
+           */
+          await page.click('.le-orient-btn:has-text("Portrait")');
+          await page.waitForTimeout(250);
+          const seen = await read();
+          portrait.set(width, seen);
 
           expect(
-            at.scrollWidth,
+            seen.scrollWidth,
             `at ${width}px the editor scrolls sideways`,
           ).toBeLessThanOrEqual(width);
 
@@ -996,115 +1026,53 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
             `at ${width}px the canvas runs under the fixed save bar at the foot of the page`,
           ).toBeLessThanOrEqual(foot.barTop);
 
-          /*
-           * And a desktop canvas fills that room without exceeding it: nearly
-           * all of it, so a big monitor is spent on the wall, and never more
-           * than all of it, or "bigger" becomes a canvas that is whole at no
-           * scroll position — which is what the app bar and the save bar
-           * staying put means. The old constant cap fails the floor at 1920
-           * and only there, because 720px is most of a 900px screen and
-           * three-quarters of a 1080px one.
-           */
           if (width >= 900) {
+            /*
+             * A desktop canvas fills that room without exceeding it: nearly all
+             * of it, so a big monitor is spent on the wall, and never more than
+             * all of it, or "bigger" becomes a canvas that is whole at no
+             * scroll position. The old constant cap fails the floor at 1920 and
+             * only there, because 720px is most of a 900px screen and
+             * three-quarters of a 1080px one.
+             */
             expect(
-              at.height,
-              `at ${width}px the canvas is ${at.height}px in ${at.room}px of ` +
+              seen.height,
+              `at ${width}px the canvas is ${seen.height}px in ${seen.room}px of ` +
                 'un-scrollable-away room, so it can never be seen at once',
-            ).toBeLessThanOrEqual(at.room);
+            ).toBeLessThanOrEqual(seen.room);
             expect(
-              at.height / at.room,
-              `at ${width}px the canvas is ${at.height}px of ${at.room}px of usable height`,
+              seen.height / seen.room,
+              `at ${width}px the canvas is ${seen.height}px of ${seen.room}px of usable height`,
             ).toBeGreaterThan(0.85);
+
+            await page.evaluate(() => window.scrollTo(0, 0));
+            await page.click('.le-orient-btn:has-text("Landscape")');
+            await page.waitForTimeout(250);
+            landscape.set(width, await read());
           }
         }
 
-        const phone = seen.get(390)!;
+        const phone = portrait.get(390)!;
         expect(
           phone.height,
           `the phone canvas is ${phone.height}px, below the 455px the compact branch was tuned to`,
         ).toBeGreaterThanOrEqual(455);
 
-        const small = seen.get(1280)!;
-        const large = seen.get(1920)!;
+        const small = portrait.get(1280)!;
+        const large = portrait.get(1920)!;
         expect(
           large.width,
-          `the canvas is ${small.width}px at 1280 and ${large.width}px at 1920 — ` +
-            'a wider monitor buys the wall nothing — it should track the viewport, ' +
-            'which is 1.2x the height here',
+          `a portrait wall is ${small.width}px at 1280 and ${large.width}px at 1920 — ` +
+            'it should track the viewport, which is 1.2x the height here',
         ).toBeGreaterThan(small.width * 1.2);
-      } finally {
-        await context.close();
-      }
-    },
-    SLOW,
-  );
 
-  /**
-   * And a landscape wall gets the width of a wide monitor.
-   *
-   * Raising the height budget could not reach this one: a 16:9 canvas is bound
-   * by its *width*, and that came from a pane inside the admin's 1180px content
-   * column — a measure chosen for a readable line of text, which is the right
-   * decision for every other screen here and the wrong one for a picture of a
-   * wall. Measured before: 683px at 1440 and **685px at 1920**, two pixels for
-   * 480 more of monitor, with the empty page beside the inspector.
-   *
-   * Two things had to move together, which is why they are asserted together:
-   * the column (`wide` on the page) and `sizeCanvas`'s own `min(…, 720)` width
-   * cap, the twin of the height cap this file's previous test is about. Either
-   * one left in place holds the canvas within ~35px of where it already was, so
-   * either one reverted turns this red.
-   */
-  it(
-    'widens the editor column, so a landscape wall uses a wide monitor',
-    async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 900 } });
-      try {
-        const page = await context.newPage();
-        await wall.signIn(page);
-        applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
-
-        /** The landscape canvas and the column it is drawn in, at one width. */
-        const at = async (width: number, height: number) => {
-          await page.setViewportSize({ width, height });
-          await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
-          await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
-          // The editor reopens on the orientation it was left on, so this is
-          // idempotent rather than a toggle.
-          await page.click('.le-orient-btn:has-text("Landscape")');
-          await page.waitForTimeout(250);
-          return await page.evaluate(() => {
-            const canvas = document.querySelector('.le-canvas')!.getBoundingClientRect();
-            const content = document.querySelector('.content')!.getBoundingClientRect();
-            return {
-              canvas: Math.round(canvas.width),
-              content: Math.round(content.width),
-              scrollWidth: document.documentElement.scrollWidth,
-            };
-          });
-        };
-
-        const narrower = await at(1440, 900);
-        const wide = await at(1920, 1080);
-        const widest = await at(2560, 1440);
-
+        const wideL = landscape.get(1920)!;
+        const narrowL = landscape.get(1440)!;
         expect(
-          wide.canvas,
-          `a landscape wall is ${narrower.canvas}px at 1440 and ${wide.canvas}px at 1920 — ` +
+          wideL.width,
+          `a landscape wall is ${narrowL.width}px at 1440 and ${wideL.width}px at 1920 — ` +
             'the extra monitor reaches the page and stops at the canvas',
-        ).toBeGreaterThan(narrower.canvas * 1.25);
-
-        for (const [width, seen] of [
-          [1440, narrower],
-          [1920, wide],
-          [2560, widest],
-        ] as const) {
-          expect(
-            seen.scrollWidth,
-            `at ${width}px the widened editor scrolls sideways`,
-          ).toBeLessThanOrEqual(width);
-        }
+        ).toBeGreaterThan(narrowL.width * 1.25);
 
         /*
          * And the column is the editor's alone. Measured against another admin
@@ -1117,8 +1085,8 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
           Math.round(document.querySelector('.content')!.getBoundingClientRect().width),
         );
         expect(
-          wide.content,
-          `the editor column is ${wide.content}px and every other admin screen is ${ordinary}px`,
+          large.content,
+          `the editor column is ${large.content}px and every other admin screen is ${ordinary}px`,
         ).toBeGreaterThan(ordinary);
         expect(
           ordinary,
@@ -1148,7 +1116,6 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
     },
     SLOW,
   );
-
   /**
    * Each toolbar popover opens under the button that opened it.
    *
