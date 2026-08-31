@@ -864,9 +864,10 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     },
   ): string {
     const networkOptions = error?.networkOptions ?? [];
+    // The switch-naming sentence wins wherever there is one — see the same
+    // seam in `calendarsPage`. Only it can quote the label on the checkbox.
     const networkSuggestion = networkAccessSuggestion(networkOptions);
-    const suggestion =
-      error?.suggestion ?? (networkSuggestion === '' ? undefined : networkSuggestion);
+    const suggestion = networkSuggestion !== '' ? networkSuggestion : error?.suggestion;
     const anyOn =
       values.allowPrivateNetwork === true ||
       values.allowLoopback === true ||

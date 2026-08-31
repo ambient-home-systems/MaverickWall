@@ -114,8 +114,9 @@ describe('names that mean somewhere internal', () => {
     'https://calendar.example/c.ics',
     'https://calendar.invalid/c.ics',
   ])('%s is a reserved name, not a local-network one', (url) => {
-    // RFC 6761: these never resolve anywhere, on any network, so "turn on
-    // allow local network" is not a suggestion that would help.
+    // RFC 6761: these never resolve anywhere, on any network, so no opt-in
+    // reaches one and `requiredNetworkOptions` answers empty — which is what
+    // stops a form offering a switch that would not help.
     expect(code(url)).toBe('reserved-name');
   });
 

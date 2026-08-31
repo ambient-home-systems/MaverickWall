@@ -3278,6 +3278,18 @@ export function switchRow(options: SwitchRowOptions): string {
  * checkboxes, at equal weight with the two fields that matter, on the screen a
  * household reaches in their first three minutes. One table, one renderer, one
  * set of words, wherever the question is put.
+ *
+ * **This is the only place in the product that may name one of these controls.**
+ * Four names for three switches is what the rest of the codebase had: the
+ * wizard said "This feed is on my local network", the admin "Allow a local
+ * network address", the Home Assistant screen "Home Assistant is on my local
+ * network", and `packages/core` — which by rule one cannot see this table and
+ * so wrote its own prose — told a household to turn on "allow loopback", a
+ * string that has never been on a checkbox anywhere. Submitting a loopback feed
+ * left them mapping an error to a control by inference. So the domain keeps its
+ * `UrlRejectionCode` and a neutral diagnosis, `requiredNetworkOptions` answers
+ * in the flag names on `UrlPolicy`, and every sentence a household reads that
+ * names a switch is composed here, from these labels.
  */
 const NETWORK_ACCESS_FIELDS: readonly {
   readonly name: string;
@@ -3358,6 +3370,22 @@ export function networkAccessDisclosure(values: {
     ).join('') +
     `</details>`
   );
+}
+
+/**
+ * One control's label, by the `UrlPolicy` flag it sets.
+ *
+ * For a sentence composed somewhere the trailing "under Network access below"
+ * would be a lie. The Home Assistant screen asks the same question with one
+ * checkbox and no disclosure to point at, so it writes its own sentence — and
+ * reads the words for it out of this table rather than restating them, which is
+ * how the product came to have four names for three controls.
+ */
+export function networkAccessLabel(option: NetworkOption): string {
+  const found = NETWORK_ACCESS_FIELDS.find((field) => field.option === option);
+  /* c8 ignore next -- the type makes this unreachable; the fallback is so a
+     fourth option added to `NetworkOption` cannot render "undefined". */
+  return found?.label ?? 'Network access';
 }
 
 /**
