@@ -144,6 +144,39 @@ jobs:
           docker logs wall 2>&1 | grep -q "Nobody has set this up yet" \
             || { echo "no setup code in the log"; docker logs wall; exit 1; }
 
+      # A scanner does not do reachability, so what matters is what is on
+      # disk. `pnpm deploy --prod` leaves the whole dependency closure of
+      # better-auth's optional vitest and drizzle-kit peers in the tree — vite,
+      # esbuild, nanoid, rollup, postcss, every `@vitest/*` — and Trivy, Grype
+      # and docker scout report every one of them. The audience for this
+      # product scans what they self-host.
+      #
+      # Asserted against the *image* rather than against `pnpm audit`, because
+      # those two answer different questions: the audit reads the lockfile
+      # graph, and the lockfile is not the artifact anybody installs.
+      - name: The image carries no dev tooling
+        run: |
+          set -e
+          docker run --rm --entrypoint sh maverick-wall:ci -c '
+            find /app -name package.json -path "*/node_modules/*" \
+              | sed "s|.*/node_modules/||;s|/package.json||" | sort -u
+          ' > /tmp/shipped.txt
+          echo "$(wc -l < /tmp/shipped.txt) packages in the image"
+
+          for p in vitest vite esbuild nanoid drizzle-kit rollup postcss tsx chai; do
+            grep -qx "$p" /tmp/shipped.txt \
+              && { echo "$p is in the published image"; exit 1; } || true
+          done
+          grep -qE '^@(vitest|esbuild)([/+]|$)' /tmp/shipped.txt \
+            && { echo "a scoped dev-tooling package is in the published image"; exit 1; } || true
+
+          # The other half: the sweep must not have taken the application with
+          # it. A pass that ships an empty tree is not a pass.
+          for p in hono drizzle-orm better-auth better-sqlite3 zod ical.js ws; do
+            grep -qx "$p" /tmp/shipped.txt \
+              || { echo "$p is missing from the image"; cat /tmp/shipped.txt; exit 1; }
+          done
+
       # `docker exec` runs as the image's USER, which is root — there is no
       # USER line, deliberately, so the entrypoint can adopt a volume it does
       # not own. That says nothing about the application, which is the thing
