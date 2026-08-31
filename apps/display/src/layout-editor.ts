@@ -2999,7 +2999,7 @@ function boot(): void {
       input.step = '1';
       input.inputMode = 'numeric';
       input.value = String(Math.round(widget[field] * 100));
-      input.setAttribute('aria-label', `${name}, per cent of the canvas`);
+      input.setAttribute('aria-label', `${name}, per cent of the layout`);
       input.addEventListener('input', () => {
         const typed = Number(input.value);
         // An empty field is a number half-typed, not a widget at zero.
