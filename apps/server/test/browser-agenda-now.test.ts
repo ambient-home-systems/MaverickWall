@@ -17,10 +17,20 @@
  * that reports the truth for most of the day and something else at midnight,
  * which is the fault this suite has already shipped once and spent an
  * afternoon finding.
+ *
+ * **The wall's clock is pinned now**, and that does not retire the rule above
+ * so much as make one more assertion possible. `browser-harness` draws every
+ * wall at `HARNESS_HOUR` in the household's own zone, so where the rule falls
+ * in this fixture is a fixed answer rather than a fact about what o'clock CI
+ * started — and the first case below asserts exactly that, because this is the
+ * only file in the suite that reads the wall clock at all and so the only place
+ * the pinning can be seen end to end. Every case after it is still written
+ * about order, and would still hold with the pinning taken out.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import {
+  HARNESS_HOUR,
   TEARDOWN,
   browser,
   install,
@@ -44,6 +54,10 @@ const WALL = { width: 1080, height: 1920 } as const;
  * the suite runs, some of today's events have been and some have not — and the
  * assertions below hold even in the two five-minute windows where they have
  * not, because they are about *order* rather than about count.
+ *
+ * That spread still earns its place now the hour is pinned, for a second
+ * reason: it is what puts events on both sides of `HARNESS_HOUR`, so the rule
+ * has somewhere to fall and moving that hour visibly moves it.
  */
 const CALENDARS: readonly NamedFeed[] = [
   {
@@ -163,7 +177,7 @@ async function measure(calendars?: readonly string[]): Promise<AgendaShape> {
   try {
     await page.goto(link, { waitUntil: 'load' });
     await settleWall(page);
-    return await page.evaluate(() => {
+    return await page.evaluate((wallNow: number) => {
       const rows = [...document.querySelectorAll('#wall .day-row')];
       const todayRow = rows.find((row) => row.classList.contains('is-today'));
       const events = todayRow?.querySelector('.dr-events');
@@ -178,12 +192,24 @@ async function measure(calendars?: readonly string[]): Promise<AgendaShape> {
         rule: node.querySelector('.dr-now') !== null,
         atEnd: node.querySelector('.dr-now.at-end') !== null,
       }));
+      /*
+       * The *wall's* clock, handed in, never this browser's.
+       *
+       * The wall draws from `clock.now()`, which `clock.ts` corrects to the
+       * server's time on every poll — and the harness pins the server to
+       * `HARNESS_HOUR` in the household's zone. So the device clock under
+       * Playwright is the runner's real one and disagrees with the hour the
+       * rule was actually placed at, by however long it is since 11:00. Reading
+       * `new Date()` here compares where the rule *is* against an hour the wall
+       * never drew, which is a test failing for reasons the product does not
+       * have.
+       */
       const clock = new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Europe/London',
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
-      }).format(new Date());
+      }).format(new Date(wallNow));
       const all = [...document.querySelectorAll('#wall .dr-now')];
       const inToday = todayRow?.querySelectorAll('.dr-now').length ?? 0;
       const first = all[0];
@@ -221,13 +247,50 @@ async function measure(calendars?: readonly string[]): Promise<AgendaShape> {
         placeholders,
         emptyDays,
       };
-    });
+    }, wall.now());
   } finally {
     await context.close();
   }
 }
 
 describe('rule 4 — where the day has got to', () => {
+  /**
+   * The wall draws at the harness's pinned hour, not at the runner's.
+   *
+   * This is the only assertion in the suite that can see the pinning end to
+   * end, and it is worth its own case because the mechanism is indirect and
+   * invisible: nothing in `apps/display` is told an hour. `clock.ts` sets
+   * `offset = serverTime - deviceNow()` from the `x-server-time` header on
+   * every poll, so pinning `createApp`'s `now` pins the browser's wall clock —
+   * and every decision this bundle takes from the clock, today and past/next
+   * and whether an event is running, follows it.
+   *
+   * Asserted as a *position among the events*, because that is the only form
+   * of it a browser can be held to: at eleven, Early swim, Breakfast club and
+   * Standup have been and Lunch with Sam has not, so the rule hangs above
+   * Lunch. Read `HARNESS_HOUR` and this fixture together — moving either moves
+   * this, which is the point of it.
+   */
+  it(
+    'places the rule at the pinned hour, not at the hour the suite is run at',
+    async () => {
+      const shape = await measure();
+      const at = shape.today.findIndex((row) => row.rule);
+      expect(shape.today[at]?.text ?? '(none)').toContain('Lunch with Sam');
+      /*
+       * And the clock it was placed from reads eleven in the household's zone,
+       * whatever o'clock this machine says.
+       *
+       * The hour rather than the minute: the harness pins the *offset* and lets
+       * time run on from it, so a wall installed at 11:00 and measured ninety
+       * seconds later reads 11:01 — pinning the minute would be a new flake in
+       * place of the one being removed.
+       */
+      expect(Math.floor(shape.nowMinutes / 60)).toBe(HARNESS_HOUR);
+    },
+    SLOW,
+  );
+
   it(
     'draws exactly one rule, in today\'s row and nowhere else',
     async () => {

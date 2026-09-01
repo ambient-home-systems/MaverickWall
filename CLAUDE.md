@@ -92,7 +92,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and seven real bugs**, and the pattern in how is the most
+This project has found **one hundred and ten real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -180,6 +180,9 @@ useful thing in this document:
 | **Sixteen browser files gave teardown no budget at all** | One suite failing in three runs with every test in it passing |
 | better-auth 1.7 wants a column the schema has not got | A vitest bump that could not move without re-resolving better-auth |
 | **Two wall tests that failed for one hour every night** | Running them at 23:32, then remembering they had passed at 22:36 |
+| **A rota chip under the type floor for as long as an event was running** | Widening a fixture event until it was live, then reverting four candidate fixes in turn |
+| A bootstrap code stamped by one clock and read by another | Moving the harness's pinned hour six hours forward, to prove the pinning worked |
+| A test for a two-pass correction that passed with one pass deleted | Scanning all 418 zones `Intl` knows, and finding the one day in 2026 it matters |
 | **A widget with nothing behind it leaves a hole no wall closes** | Retiring the layout that used to absorb it, and looking at a fresh wall |
 | **This document, describing at length a layout the product had retired** | Reading it against `db/schema.ts`, which says so in a comment |
 | **A wall that lost the race to its own fonts kept the wrong arithmetic** | A test failing one run in thirty, and being right |
@@ -354,27 +357,39 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2405 tests passing and two red.** calendar 153 (plus 1 skipped) · core 314 ·
-display 372 · server 1568, of which two fail. CI runs the whole suite and then
-the README's one-liner against a clean volume on Linux, which is the only place
-the install has ever been wrong.
+**2414 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 372 · server 1575. CI runs the whole suite and then the README's
+one-liner against a clean volume on Linux, which is the only place the install
+has ever been wrong.
 
-**The two red ones are the density ratchets, and they are red on `main`.**
-`wall-density` reports 9 of 107 runs under the 22px floor against a recorded 7,
-and `browser-classic-proportions` reports the rota chip at **21.7px** — which is
-the same chip, one tenth of a pixel along, that the table above already records
-being fixed at 21.6px. Established the way that table says to: `main`'s own
-`apps/display/src` *and* `apps/server/src` checked out over a branch, the
-display rebuilt, and the identical two assertions with the identical numbers.
-Recorded here rather than fixed, because the lever is Classic's own proportions
-and moving those is a decision rather than a repair — but a ratchet nobody has
-looked at since it went red is a ratchet that stops ratcheting.
+**The two red ones were the density ratchets, and the paragraph that used to
+sit here diagnosed them wrongly — which is the useful part.** It said
+`wall-density` reporting 9 of 107 runs under the 22px floor against a recorded
+7, and `browser-classic-proportions` reporting the rota chip at **21.7px**, were
+red on `main`; that the lever was Classic's own proportions; and that moving
+those is a decision rather than a repair. The first clause was true and the
+other two were not. They are red on `main` *for part of the day*, and green on
+the same tree the rest of it: the cause is a fixture event that happens to be
+**running** when the wall is drawn, which draws a progress bar, and `.dr-ev-bar`
+is an in-flow grid item whose row track and gap cost 1.88% of the agenda's
+scale — enough to take a 22.08px chip to 21.7. Established by the clock rather
+than by a checkout: the same tree passed at 08:48 London and failed at 09:16,
+when the fixture's Assembly had started.
 
-**140 of the server's tests fail without a real Chromium and say so**, across
-21 files, which is worth knowing before reading a red suite as a regression —
-and 138 of those are the whole of it, because the other two are the density
-ratchets above, which are red with a browser as well. So a correct run on this
-tree is those two and nothing else. Both numbers are **measured** — the server
+So "red on `main`" was right about where to look and wrong about what it would
+find, and the honest reading is that a checkout comparison cannot tell a
+property of the code from a property of the hour. `browser-harness` pins the
+hour now (see the `HARNESS_HOUR` paragraphs below), so neither ratchet takes the
+clock as an input any more, and both are green with **every recorded baseline
+unmoved** — which is what says this was a measurement fault rather than a
+regression somebody had blessed by raising a number. The
+21.7px itself is a real product fault and is still not fixed; it is written up
+below and filed, because no one-line cure survives the geometry.
+
+**141 of the server's tests fail without a real Chromium and say so**, across
+21 files, which is worth knowing before reading a red suite as a regression. A
+correct run on this tree with a browser present is **green**, which the sentence
+here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
 carried forward and incremented, which is the only way this pair has ever been
 right: it read 148 over 20 files while the truth was 140 over 21, and the
@@ -3385,6 +3400,72 @@ and every case names an instant, because **a test that can only fail between
 over it** — which is exactly how this survived. And the wall tests it repairs
 were the proof it was right: run in the failing hour, they went green with the
 fix and back to the identical CI numbers without it.
+
+**And that fault had a second half the fix for the first one could not
+reach.** Dating the fixtures from the wall's day settled *which day* they land
+on and left the suite depending on what **hour** it ran at.
+`browser-classic-proportions` went red on a pull request with a rota chip at
+21.7px against the 22px floor, and the same tree had passed forty minutes
+earlier. The mechanism is one grid row: an event that is *running* when the wall
+is drawn gets a progress bar, `.dr-ev-bar` is an in-flow grid item, and the
+track plus the row gap it costs is 15.2px of an 816px agenda — 1.88%, which
+takes `fitToBox`'s scale to 0.983. `.dr-shift` is `var(--t-micro)`, 22.08px,
+which has 0.36% of headroom over the floor, and 22.08 x 0.983 is 21.7. The green
+run was at 08:48 London with nothing live and the red one at 09:16, when the
+fixture's Assembly had just started.
+
+So `browser-harness` pins the hour as well as the day. `fixtureNow(zone)` is
+today in the household's own zone at `HARNESS_HOUR` — eleven in the morning, an
+hour clear at both ends of every `day: 0` fixture in the suite — and `install()`
+runs `createApp`'s `now` on from there at the ordinary rate. **Pinned rather
+than frozen**, so anything that depends on time *passing* still does; and the
+date still moves with the calendar, so the month grid goes on meeting whatever
+shape of month it actually has. Only the hour is fixed.
+
+**The display follows for free, and that is the half worth knowing.** Nothing
+in `apps/display` is told an hour: `clock.ts` sets
+`offset = serverTime - deviceNow()` from the `x-server-time` header on every
+poll, so pinning the server pins the *browser's* wall clock — today, past and
+next, and whether an event is running. `browser-agenda-now` asserts that end to
+end and by position rather than by a class, because position is the only form a
+browser can be held to: at eleven the current-time rule hangs above "Lunch with
+Sam", and moving `HARNESS_HOUR` to 18:00 moves it to "Book club". It also had to
+stop reading `new Date()` for the hour it compares against — the device clock
+under Playwright is the runner's, and the wall is not drawn from it any more.
+
+**Moving it to 18:00 is what found the trap in it.** The harness built its
+setup-token holder on `Date.now()` while `setup.ts` checks that token against
+the app's `now`, so the bootstrap code was stamped by one clock and read by
+another. At eleven against a runner at midday the pinned clock is *behind* and
+nothing shows; six hours ahead the code is already expired, the wizard never
+completes, there is no account, and the first thing needing one fails as "the
+pairing page printed no link". A CI machine starting the suite before eleven
+would have met the identical failure — so the pinning that removes an hourly
+flake would have introduced a daily one. One clock, everywhere in the harness.
+
+**And the 21.7px is a product fault written down rather than fixed.** It is
+real: a household whose rota chip sits at 22.08px loses it to the floor for as
+long as an event is running, on the one run in the agenda that carries a colour.
+Every one-line cure was measured and none survives the geometry — column one has
+2.9px of spare height against the bar's 8.5px, because the row is baseline
+aligned; the 9.6px inter-entry gap works but exists only *between* entries, so a
+running event that is the last of the day has nowhere to put it; and `:has()` is
+banned by rule two, so CSS cannot select the entry on the bar's presence. Taking
+the bar out of flow the way `.dr-now` already is means re-deciding where a
+progress bar belongs, which is a change to the widget rather than a fix to a
+ratchet. What is fixed here is the *measurement*, and the reason to fix that
+first is the ratchet's own: a baseline that changes with the wall clock is not a
+baseline.
+
+**One assertion written for this passed with its own fix deleted**, and finding
+that out took measuring rather than reasoning. `fixtureNow` corrects its guess
+**twice**, because a correction can itself cross a daylight-saving change; the
+case written to prove that was Auckland, reasoned out at a desk, and it was
+green with the second pass removed. Scanned across all 418 zones `Intl` knows
+for every day of 2026, one pass differs from two on **one zone and one day** —
+America/Adak on 8 March, where the guess lands at 01:00 at -10 and the single
+correction overshoots to 12:00 at -9 — and two never differs from three. The
+named case is Adak now, and it goes red.
 
 
 **Under ingress the settings trust Home Assistant's login, and the socket is
