@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **eighty-one real bugs**, and the pattern in how is the most
+This project has found **ninety real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -165,6 +165,9 @@ useful thing in this document:
 | **This document, describing at length a layout the product had retired** | Reading it against `db/schema.ts`, which says so in a comment |
 | **A wall that lost the race to its own fonts kept the wrong arithmetic** | A test failing one run in thirty, and being right |
 | A control in the test for that, which the fix itself was propping up | Reverting the fix and watching the file go red on its premise |
+| **Half a 13.3" panel left white, and six agenda rows on every panel in a 3.7x range** | Rendering the same frame at six panel sizes and finding the last inked row |
+| A portrait split whose every assertion stayed green when it was reverted | Reverting each of six fixes in turn, and finding the one that reddened nothing |
+| A test sitting at 98% of its five-second budget for a release | Timing the test that had just started failing, on an idle machine, where it passed |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -280,7 +283,7 @@ day. This is the single most common ICS bug.
 > about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
-**0.54.2 is the current release.** `main`, the tag and the published image
+**0.55.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
 signed, pulled anonymously and verified.
@@ -315,13 +318,13 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2228 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
-server 1429. CI runs the whole suite and then the README's one-liner against a
+**2255 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
+server 1456. CI runs the whole suite and then the README's one-liner against a
 clean volume on Linux, which is the only place the install has ever been wrong.
 
-**111 of the server's tests need a real Chromium and say so when they cannot
+**112 of the server's tests need a real Chromium and say so when they cannot
 find one**, which is worth knowing before reading a red suite as a regression:
-16 files fail with "No Chromium to drive" and nothing else is wrong. That is the
+17 files fail with "No Chromium to drive" and nothing else is wrong. That is the
 right failure — these measure layout, and a browser test that silently skips is
 this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
@@ -490,8 +493,11 @@ or an OpenDisplay BLE tag (Home
 Assistant pushes, core `opendisplay.upload_image`). The whole rendering path is
 a new backend behind the existing `viewmodel`, in `apps/server/src/epaper/`: a
 pure 1-bit framebuffer, a `node:zlib` PNG encoder, an embedded font, Bayer
-dither, and a landscape/portrait renderer — no headless browser, no image
-library, the same "draw what nobody else supplies" as `http/qr.ts`. Migration
+dither, a landscape/portrait renderer and `metrics.ts`, which is every layout
+number as arithmetic on the panel rather than as a constant (see below — the
+constants were tuned for one 800x480 and left half of a 13.3" panel white) — no
+headless browser, no image library, the same "draw what nobody else supplies" as
+`http/qr.ts`. Migration
 `0029` adds `kind` + panel geometry to `screens` (additive, no rebuild). The
 endpoint mirrors `/d/manifest` but takes its token in the *path* (a dumb device
 holds no cookie) and derives its ETag from the inputs — including the civil-date
@@ -519,8 +525,9 @@ answers with the exact frame the panel would draw, debounced, nothing stored.
 The shape is fixed by making the canvas a fact about the hardware: the design
 page sends the panel's own ratio and its one orientation, **ignoring any stored
 aspect** (on a wall the household may set one, because nobody measured that
-television; a panel is 800x480 and that is the end of it), and the editor hides
-the orientation tabs and the aspect list behind a chip that states the geometry.
+television; a panel's resolution is a fact about the hardware and that is the
+end of it), and the editor hides the orientation tabs and the aspect list behind
+a chip that states the geometry.
 Two traps, both live: the POST must render the posted canvas as `freeform`
 whatever the row says, because a panel that has never been saved has
 `layout_mode` NULL and `renderScreenFrame` gates the canvas on it — read
@@ -557,6 +564,88 @@ naming them must. Looking at the live frame is what caught the one this
 introduced: today's cell is solid ink, so its names were drawn black on black
 and today was the only day with nothing on it — they are knocked out now, like
 its number.
+
+**Every pixel in the eInk layout used to be tuned for one 800x480 panel, and
+that is what an honest measurement of one panel looks like applied to a 3.7x
+range.** `MARGIN = 16`, `HEADER_H = 54`, `rowH = 34`, `headH = 26`,
+`PILL_MIN_CELL = 34`, `EPAPER_TODAY_LIMIT = 6`, `EPAPER_CELL_TITLES = 4` — good
+numbers, from real output, which is more than most numbers in a renderer can
+say. Rendered across the supported range with thirty days of events on it, they
+drew **six agenda rows on every panel** and left the bottom of the biggest one
+white: 69px blank at 640x384, 140px at 800x480, 479px at 1304x984, **714px — 51%
+— at 1872x1404**. On a 13.3" panel the renderer stopped drawing halfway down.
+
+`epaper/metrics.ts` is where those constants come back as expressions: pure,
+geometry in and integers out, the seam `widget-options.ts`, `ink.ts` and
+`ladder.ts` exist at. Three things in it are the whole design. **It is anchored
+rather than invented** — 800x480 is the fixed point and every metric reproduces
+the value it replaced there *exactly*, which is the test that fails first if a
+derivation is wrong. **It reads the short side, never the height**, because a
+panel hung sideways is the same hardware and `min(w, h)` is the one number a
+quarter turn cannot change; deriving from height would make one 13.3" panel draw
+32px type landscape and 48px portrait. And **type grows sub-linearly**, at
+`(shortSide / 480) ** 0.6`: at 1.0 a bigger panel shows what a smaller one shows
+only larger, which is not what a 13.3" panel was bought for, and at 0.0 it shows
+more at a size nobody reads across a kitchen. The ladder that buys is 8, 11, 15
+and 17 agenda rows at 16, 16, 24 and 32px of type. Every value is an integer
+because a 1-bit raster has no half-lit line — a fractional row boundary is a
+grey smear that survives until the next full refresh — and they round to
+*nearest* rather than flooring, because a body is a header plus a gap plus a
+rule plus rows and a downward bias compounds down the stack. A **count** floors:
+a row that does not fit must not be drawn.
+
+The content caps moved to where the box is, which `EPAPER_UPCOMING_LIMIT` had
+already been doing and saying for a release. The viewmodel carries a working set
+(24 agenda rows, 12 cell names) with the household's own density still binding
+first, and the renderer cuts. That is why `agendaOverflow` became
+`agendaTotal`: the model no longer knows what was left out, so the day's count
+travels and the renderer subtracts what it drew.
+
+**Scaling the constants does not on its own fill a panel, and the two layout
+changes that finish it are where the argument is.** The month grid was one
+*square* cell, `min(box.w / 7, available / weeks)`, so on every landscape panel
+it was bound by the width of its column and stopped — 580px of grid in an 1178px
+column at 1872x1404. It fills both directions now, and the cells stretch, to
+2.03:1 at the top of the range. That is the honest cost of two columns on a 4:3
+panel and not a thing to fix later: square cells there need the month 1694px of
+1872, which leaves the agenda seven characters for a title. The rounding
+remainder goes **above** the first row, where it lands under the weekday letters
+and nobody sees it, rather than below the last, where it is the bug. And a
+*portrait* panel sizes its split from the grid rather than at a flat 42%, so it
+keeps square cells **and** reaches its own bottom edge — stacked, that is a
+solvable problem landscape does not have. Measured after: 1.9–3.3% of the height
+blank at all six sizes, and **on a quiet day too**, because a frame that only
+fills when today happens to be busy has moved the fault rather than fixed it.
+
+`EPAPER_RENDERER_VERSION` is **4**. Every paired panel's pixels move, 800x480
+included.
+
+Two things about the verification are worth more than the change. **The pinning
+test was written first and committed red** — eleven of sixteen assertions
+failing, with the three 800x480 baselines passing against the unchanged
+renderer, which is what makes them a baseline rather than a guess. And every fix
+was checked by reverting it: square cells reddens nine assertions, the six-row
+cap two, the rounding remainder two, `2.25x` against the specified `2.2x` three,
+the four-name cap one. **The portrait split reddened nothing.** The grid fills
+either way, so the blank-bottom assertions cannot see it — only the *shape* of
+what it fills with can, and until the cells were measured for squareness that
+change was an edit no test could contradict. The 2.25 is worth its own line: the
+brief said clamp the header band between 2.2 and 3.2 times its own line of ink,
+and 2.2 x 24 is 53 where the shipped band is 54. A pixel there moves every row
+under it, so the anchor won — which is exactly the rule the brief itself set,
+that a derivation which misses the tuned constant is wrong and the constant was
+right.
+
+The remaining absolute pixels are in `epaper/widgets.ts` — `drawFrame`'s 8px
+pad and 20px title bar, `drawChores`' 22px row, `drawPanel`'s `box.h / 24` —
+and they are *stated* rather than fixed here. Most widget draws already size
+themselves to their box through `scaleToFit`; those four do not, and on a 13.3"
+panel they are the next thing that will look wrong.
+
+**Still unproven where it counts:** none of this has been photographed on real
+hardware. The measurements are `renderEpaper` decoded, which is the right way to
+check a 1-bit frame and is not the same as a household looking at a 13.3" panel
+on a wall.
 
 **The add-on now installs and starts on a real Home Assistant supervisor.**
 That was the highest-value unproven thing in the project for a long time, and
