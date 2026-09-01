@@ -24,14 +24,38 @@ import {
   CALENDAR_DENSITIES,
   WIDGET_VIEWS,
   calendarView,
-  viewLabel,
   type CalendarDensity,
   type CalendarView,
 } from './widget-views.js';
 import { clearLaneKeys, inkOf, mergeInk, setLaneValue } from './ink.js';
 import { createHistory, type History } from './history.js';
-import { MIN_SIZE, moveTo, nudge, resizeTo, setDimension, type Box } from './placement.js';
+import {
+  SNAP,
+  moveTo,
+  nextZ,
+  nudge,
+  resolveDrag,
+  setDimension,
+  type Box,
+} from './placement.js';
 import { markTabs, wireTabs } from './tabs.js';
+import {
+  canvasSnapshot,
+  isCanvasDirty,
+  postedBackground,
+  widgetsForSave,
+  type CanvasBackground,
+  type EditorWidget,
+} from './canvas-state.js';
+import {
+  boxAriaLabel,
+  drawnWidgets as drawnOf,
+  omissionFlag,
+  omittedReason as omittedReasonOf,
+  type Surface,
+} from './omission.js';
+import { inspectorView } from './inspector.js';
+import { PALETTE, SWATCH, describeWidget } from './widget-labels.js';
 import {
   HOUSE_FIELDS,
   SHIFT_FIELDS,
@@ -41,22 +65,15 @@ import {
   weatherLadder,
 } from './ladder.js';
 
-interface Widget {
-  id: string;
-  type: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  z: number;
-  /** The widget's own options. Shape validated server-side (widgetConfigBody). */
-  config?: Record<string, unknown>;
-}
-
-type Background =
-  | { type: 'solid'; color: string }
-  | { type: 'gradient'; from: string; to: string; angle: number }
-  | { type: 'image'; image: string };
+/*
+ * The widget, the background and the canvas as one shape, defined in
+ * `canvas-state.ts` — which is also where they are serialised for the save and
+ * for the string dirtiness is measured against. One definition, because two
+ * readings of one stored value is the shape of half the faults in this
+ * project's own list.
+ */
+type Widget = EditorWidget;
+type Background = CanvasBackground;
 
 interface Canvas {
   aspect: number;
@@ -87,42 +104,8 @@ interface LayoutState {
   people: readonly { readonly id: string; readonly name: string }[];
 }
 
-/** The first-party palette. No web embed is offered — the wall cannot draw one. */
-const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
-  { type: 'clock', label: 'Clock' },
-  { type: 'calendar', label: 'Calendar' },
-  { type: 'weather', label: 'Weather' },
-  { type: 'homeassistant', label: 'Home Assistant' },
-  { type: 'shift', label: 'Shift' },
-  { type: 'countdown', label: 'Countdown' },
-  { type: 'notes', label: 'Notes' },
-  { type: 'todo', label: 'To-do' },
-  { type: 'chores', label: 'Chores' },
-  { type: 'image', label: 'Image' },
-  { type: 'external', label: 'Module' },
-];
-
 /** The editor is on the admin page, so its preview reads media behind the session. */
 const EDITOR_MEDIA_BASE = 'admin/media/';
-
-/**
- * A layers-list swatch colour per widget type, from the admin token set (so it
- * follows the admin theme). Only to tell the rows apart at a glance — no meaning
- * on the wall. Unknown types fall back to the muted token.
- */
-const SWATCH: Readonly<Record<string, string>> = {
-  clock: 'var(--accent)',
-  calendar: 'var(--night)',
-  weather: 'var(--ok)',
-  homeassistant: 'var(--warn)',
-  shift: 'var(--danger)',
-  countdown: 'var(--accent)',
-  notes: 'var(--muted)',
-  todo: 'var(--night)',
-  chores: 'var(--ok)',
-  image: 'var(--ok)',
-  external: 'var(--warn)',
-};
 
 /**
  * The editor lives on the admin page beside a settings form and one sticky save
@@ -151,37 +134,12 @@ const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 
 /**
- * The snap grid: 24 steps across each axis (a fraction of the canvas, so it is
- * the same relative grid at any resolution of the authored aspect). Fine enough
- * to place things where you mean, coarse enough to line them up.
- */
-const SNAP = 1 / 24;
-
-/**
  * What the canvas must leave clear above an open widget sheet: the sticky app
  * bar it must not slide under, the save bar the sheet sits on, and a little
  * air. Only the sheet's own height is measured — these three are chrome the
  * canvas never overlaps at any viewport.
  */
 const SHEET_CLEARANCE = 96 + 64 + 16;
-
-function labelFor(type: string): string {
-  return PALETTE.find((p) => p.type === type)?.label ?? type;
-}
-
-/**
- * What a box is called on the canvas and in the Layers list.
- *
- * The type's name, plus which view it is set to when the type has more than
- * one. Two Calendars used to be two boxes both reading "Calendar", and the one
- * showing a month and the one showing the next few events were told apart only
- * by selecting each and reading its Content tab.
- */
-function describeWidget(widget: Widget): string {
-  const base = labelFor(widget.type);
-  const view = viewLabel(widget.type, widget.config);
-  return view === undefined ? base : `${base} \u2014 ${view}`;
-}
 
 function randomId(): string {
   // Enough not to collide across a household's handful of widgets. Not a secret.
@@ -398,40 +356,10 @@ function boot(): void {
     }
   }
   /**
-   * The canvas as it would be saved, as one string.
-   *
-   * `widgetsForSave` is what the server is posted, so this is the canonical
-   * form of "what this canvas is" — which makes two questions the same
-   * comparison. **Is anything unsaved?** is this against what was last saved.
-   * **Did that drag change anything?** is this against what was remembered
-   * before it. A flag set by hand would answer both approximately, and this
-   * project has already had one that answered "saved" for a save that failed.
+   * The canvas as it would be saved, as one string — `canvas-state.ts`, which
+   * is also what builds the request body, so the two cannot disagree about a
+   * field and report a saved canvas as unsaved.
    */
-  function canvasSnapshot(canvas: {
-    readonly aspect: number;
-    readonly widgets: readonly Widget[];
-    readonly background?: Background | undefined;
-  }): string {
-    return JSON.stringify({
-      aspect: round3(canvas.aspect),
-      background: postedBackground(canvas.background),
-      widgets: widgetsForSave(canvas.widgets),
-    });
-  }
-
-  /**
-   * The background as it is *posted*, which is not quite the background as it
-   * is held: an image type with no picture chosen yet is "no background".
-   *
-   * One rule, read by the request body and by the snapshot dirtiness is
-   * measured with. Two readings of one value is how a canvas identical to the
-   * one the server holds comes to report unsaved changes — and it is the shape
-   * of half the faults in this project's own list.
-   */
-  const postedBackground = (background: Background | undefined): Background | null =>
-    background !== undefined && !(background.type === 'image' && background.image === '')
-      ? background
-      : null;
   const activeSnapshot = (): string => canvasSnapshot(state);
 
   /**
@@ -557,9 +485,8 @@ function boot(): void {
 
   // Snap to the grid while dragging. An editor affordance only — the stored
   // coordinates stay fractional, so snapping changes where a widget lands, never
-  // how it is saved.
+  // how it is saved. The arithmetic is `placement.ts`.
   let snap = false;
-  const snapv = (n: number): number => (snap ? round3(Math.round(n / SNAP) * SNAP) : round3(n));
 
   // The live preview, once it has loaded. Until then the overlay draws with
   // labels, which is a fine fallback and the whole editor if the fetch fails.
@@ -1507,7 +1434,7 @@ function boot(): void {
    * flag honestly, and the other orientation's unsaved work keeps it set.
    */
   function markDirty(): void {
-    setDirty(stashDirty || activeSnapshot() !== savedSnapshot[state.orientation]);
+    setDirty(isCanvasDirty(state, savedSnapshot[state.orientation], stashDirty));
     refreshUndo();
   }
 
@@ -1625,53 +1552,20 @@ function boot(): void {
     canvas.style.height = `${Math.round(h)}px`;
   }
 
-  /**
-   * What the wall will actually draw of this canvas.
+  /*
+   * What the wall will actually draw of this canvas, and why a box is left out.
    *
-   * The overlay keeps every box — one you cannot see is one you cannot move —
-   * but the *preview* is a claim about the glass, and a preview drawing
-   * "Nothing to show yet." underneath a box flagged "Not on the wall" is two
-   * sentences on one screen contradicting each other. The manifest omits those
-   * widgets and so does this.
-   *
-   * `notDrawn` comes from the server, derived from the same `widgetIsSetUp` the
-   * manifest uses, so this is not a second opinion about *which* widgets. The
-   * one thing decided here is the never-empty guard, and it is the same rule
-   * for the same reason (rule nine): a canvas that filtered away to nothing
-   * would draw "Nothing on this wall yet" — a lie about a canvas somebody is
-   * looking at while they arrange it.
+   * Both are `omission.ts`, which is also where the three sentences a household
+   * reads about it are composed — the flag on the box, the note in the
+   * inspector and the box's accessible name. The overlay keeps every box (one
+   * you cannot see is one you cannot move); the *preview* is a claim about the
+   * glass, and a preview drawing "Nothing to show yet." underneath a box
+   * flagged "Not on the wall" is two sentences on one screen contradicting each
+   * other.
    */
-  function drawnWidgets(): Widget[] {
-    /*
-     * Used by every *preview* and by no save. The overlay boxes are always the
-     * whole canvas — they are what you drag, and one that vanished under the
-     * pointer would be unusable — so filtering here removes the ink beneath a
-     * flagged box and nothing else, which is exactly what the flag on it says.
-     */
-    if (notDrawn.size === 0) return state.widgets;
-    const kept = state.widgets.filter((widget) => !notDrawn.has(widget.type));
-    return kept.length === 0 ? state.widgets : kept;
-  }
-
-  /**
-   * Why *this* box is not drawn, or nothing.
-   *
-   * The type is not enough. Omission is per canvas, not per widget: a canvas
-   * that filtered away to nothing keeps everything (rule nine — a wall somebody
-   * arranged must not read as "nothing on this wall yet"), so on a canvas of
-   * only unconfigured widgets every one of them *is* drawn. Flagging by type
-   * alone would then label a box "not on the wall" while the wall and the
-   * preview beside it both drew it — the same contradiction the preview filter
-   * fixed in the other direction.
-   *
-   * `notDrawn.has` first because it short-circuits: the scan below only runs
-   * for the handful of types that could be flagged at all.
-   */
-  function omittedReason(widget: Widget): string | undefined {
-    if (!notDrawn.has(widget.type)) return undefined;
-    if (drawnWidgets().some((one) => one.id === widget.id)) return undefined;
-    return notDrawn.get(widget.type);
-  }
+  const drawnWidgets = (): readonly Widget[] => drawnOf(state.widgets, notDrawn);
+  const omittedReason = (widget: Widget): string | undefined =>
+    omittedReasonOf(widget, state.widgets, notDrawn);
 
   /**
    * What this editor is arranging, in the household's word for it.
@@ -1680,7 +1574,7 @@ function boot(): void {
    * are different objects on two different pages. One noun for both would be
    * wrong on one of them every time.
    */
-  const surfaceWord = (): string => (epaperHost ? 'panel' : 'wall');
+  const surfaceWord = (): Surface => (epaperHost ? 'panel' : 'wall');
 
   /** Rebuild the overlay boxes from state. Cheap — a box is a div and a label. */
   function drawOverlay(): void {
@@ -1724,7 +1618,6 @@ function boot(): void {
      */
     box.tabIndex = 0;
     box.setAttribute('role', 'button');
-    box.setAttribute('aria-label', `${describeWidget(widget)} widget`);
     box.setAttribute('aria-pressed', widget.id === selected ? 'true' : 'false');
     box.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
@@ -1788,13 +1681,12 @@ function boot(): void {
       // The noun follows the host. This editor draws a panel's canvas as well
       // as a wall's, and "not on the wall" beside a 1-bit frame is the wrong
       // object — the same page carries the word "panel" everywhere else.
-      flag.textContent = `Not on the ${surfaceWord()}`;
+      flag.textContent = omissionFlag(surfaceWord());
       box.appendChild(flag);
-      box.setAttribute(
-        'aria-label',
-        `${describeWidget(widget)} widget — not on the ${surfaceWord()}. ${why}`,
-      );
     }
+    // Composed after the flag, and by the same function `refreshLabels` uses,
+    // so a flagged box whose name changes is renamed to a screen reader too.
+    box.setAttribute('aria-label', boxAriaLabel(describeWidget(widget), why, surfaceWord()));
 
     const handle = document.createElement('span');
     handle.className = 'le-handle';
@@ -2141,9 +2033,15 @@ function boot(): void {
       const name = describeWidget(widget);
       const label = box.querySelector('.le-widget-label');
       if (label !== null) label.textContent = name;
-      // A flagged box says more than its name; that label is composed where
-      // the flag is, and draw() rebuilds it when the flag changes.
-      if (!box.classList.contains('is-not-drawn')) box.setAttribute('aria-label', `${name} widget`);
+      /*
+       * The accessible name too, through the same `boxAriaLabel` the box was
+       * built with. It used to be skipped on a flagged box, because the longer
+       * sentence a flagged box carries was composed only where the flag is —
+       * so a Calendar the wall leaves out, switched from a month to an agenda,
+       * showed the new name on its chip and went on announcing the old one.
+       * The visible half updating is exactly what hid it.
+       */
+      box.setAttribute('aria-label', boxAriaLabel(name, omittedReason(widget), surfaceWord()));
     }
     for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
       const widget = state.widgets.find((one) => one.id === row.dataset['id']);
@@ -2454,18 +2352,38 @@ function boot(): void {
     configPanel.textContent = '';
     ladderPanels = [];
     boxFields = undefined;
-    const widget = state.widgets.find((w) => w.id === selected);
-    if (widget === undefined) {
+    /*
+     * What this panel should show, decided in `inspector.ts` and drawn here.
+     *
+     * Every question it answers used to be answered in the middle of building
+     * the DOM — whether there is anything to show, what the widget is called,
+     * whether the lane switch appears, which lane is actually in force,
+     * whether this box is one the wall leaves out, and which tab supplies the
+     * body. There is no DOM in this package's test suite, so none of them
+     * could be asked without a browser.
+     */
+    const view = inspectorView({
+      widgets: state.widgets,
+      selected,
+      lane,
+      inkAvailable: ink !== undefined,
+      tab: inspectorTab,
+      notDrawn,
+      surface: surfaceWord(),
+    });
+    if (view.kind === 'empty') {
       closeInspector();
       return;
     }
+    // The widget the view describes — the same object, because everything
+    // below mutates it. `inspectorView` found it in this very list.
+    const widget = state.widgets.find((w) => w.id === view.widgetId)!;
 
     // Which widget this is, said outright. The panel used to open with
     // "Clock options" buried under the canvas, with the wall's own settings
     // running on directly beneath it.
-    const name = labelFor(widget.type);
-    inspectorTitle.textContent = `${name} widget`;
-    removeButton.textContent = `Remove this ${name.toLowerCase()} widget`;
+    inspectorTitle.textContent = view.title;
+    removeButton.textContent = view.removeLabel;
 
     /*
      * The lane switch, when a panel follows this canvas.
@@ -2474,13 +2392,12 @@ function boot(): void {
      * keys and they are one short list, so two tabs over them would be two
      * mostly-empty tabs. The tabs come back with the wall lane.
      */
-    laneBar.hidden = ink === undefined;
-    if (ink === undefined) lane = 'wall';
+    laneBar.hidden = !view.laneBarVisible;
+    lane = view.lane;
     markTabs([laneButtons.wall, laneButtons.ink], (tab) => tab.dataset['lane'], lane, 'is-on');
-    const overrides = Object.keys(inkOf(widget.config));
-    laneButtons.ink.classList.toggle('has-override', overrides.length > 0);
+    laneButtons.ink.classList.toggle('has-override', view.hasInkOverrides);
 
-    if (lane === 'ink') {
+    if (view.lane === 'ink') {
       renderInkPanel(widget);
       openInspector(keepFocus);
       return;
@@ -2495,11 +2412,10 @@ function boot(): void {
      * On the wall lane only: the ink lane is about what a panel says
      * differently, and it rebuilds this panel for itself.
      */
-    const why = omittedReason(widget);
-    if (why !== undefined) {
+    if (view.note !== undefined) {
       const note = document.createElement('p');
       note.className = 'le-not-drawn';
-      note.textContent = `Not on the ${surfaceWord()} yet. ${why}`;
+      note.textContent = view.note;
       configPanel.appendChild(note);
     }
 
@@ -2518,7 +2434,7 @@ function boot(): void {
     // Layering moved to the Layers list (drag a row to restack); the
     // per-widget front/back buttons it replaces are gone.
     const cfg = widget.config ?? {};
-    if (inspectorTab === 'content') buildTypeConfig(widget, cfg);
+    if (view.tab === 'content') buildTypeConfig(widget, cfg);
     else {
       // Style is the same set of controls for every widget — one
       // implementation, writing the same per-widget keys it always has.
@@ -3735,7 +3651,7 @@ function boot(): void {
     const bringToFront = (): void => {
       if (raised) return;
       raised = true;
-      widget.z = Math.max(0, ...state.widgets.map((w) => w.z)) + 1;
+      widget.z = nextZ(state.widgets);
       box.style.zIndex = String(widget.z);
       drawLayers();
     };
@@ -3744,18 +3660,10 @@ function boot(): void {
       const dx = (moveEvent.clientX - startX) / rect.width;
       const dy = (moveEvent.clientY - startY) / rect.height;
       bringToFront();
-      /*
-       * Snap first, then clamp — and the clamping is `placement.ts`, the same
-       * arithmetic the arrow keys and the inspector's numeric fields use, so a
-       * drag and a nudge stop at the same edge. Snapping the other way round
-       * could round a box back over the edge it had just been held inside.
-       */
-      applyBox(
-        widget,
-        resizing
-          ? resizeTo(widget, snapv(origin.w + dx), snapv(origin.h + dy))
-          : moveTo(widget, snapv(origin.x + dx), snapv(origin.y + dy)),
-      );
+      // Where the box lands is `placement.ts` — snapped, then clamped by the
+      // same arithmetic the arrow keys and the inspector's numeric fields use,
+      // so a drag and a nudge stop at the same edge.
+      applyBox(widget, resolveDrag(origin, { dx, dy }, { resize: resizing, snap }));
       positionBox(box, widget);
       syncBoxFields(widget);
       markDirty();
@@ -3774,7 +3682,7 @@ function boot(): void {
 
   function addWidget(type: string): void {
     record();
-    const z = Math.max(0, ...state.widgets.map((w) => w.z), 0) + 1;
+    const z = nextZ(state.widgets);
     const n = state.widgets.length;
     state.widgets.push({
       id: randomId(),
@@ -3930,24 +3838,6 @@ function boot(): void {
   }
 
   // ---- save -------------------------------------------------------------
-
-  /** The widgets, sorted back-to-front and clamped, as the server wants them. */
-  function widgetsForSave(widgets: readonly Widget[]): unknown[] {
-    return [...widgets]
-      .sort((a, b) => a.z - b.z)
-      .map((w, index) => ({
-        id: w.id,
-        type: w.type,
-        x: round3(clamp01(w.x)),
-        y: round3(clamp01(w.y)),
-        w: round3(Math.max(MIN_SIZE, Math.min(1, w.w))),
-        h: round3(Math.max(MIN_SIZE, Math.min(1, w.h))),
-        z: index,
-        // Only when it holds something, so an untouched widget stores no config
-        // row and the server sees a clean absence rather than `{}`.
-        ...(w.config !== undefined && Object.keys(w.config).length > 0 ? { config: w.config } : {}),
-      }));
-  }
 
   /**
    * Save one orientation's canvas. Returns the outcome so the host save bar can

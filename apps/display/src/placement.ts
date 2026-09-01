@@ -98,3 +98,57 @@ export function nudge(
     ? resizeTo(box, box.w + along, box.h + down)
     : moveTo(box, box.x + along, box.y + down);
 }
+
+/**
+ * The snap grid: 24 steps across each axis (a fraction of the canvas, so it is
+ * the same relative grid at any resolution of the authored aspect). Fine enough
+ * to place things where you mean, coarse enough to line them up.
+ */
+export const SNAP = 1 / 24;
+
+/**
+ * One coordinate, snapped to the grid — or left alone when snapping is off.
+ *
+ * An editor affordance only: the stored coordinates stay fractional, so
+ * snapping changes where a widget lands and never how it is saved.
+ */
+export function snapValue(n: number, snap: boolean): number {
+  return snap ? round3(Math.round(n / SNAP) * SNAP) : round3(n);
+}
+
+/**
+ * What a pointer drag resolves to.
+ *
+ * The deltas are fractions of the canvas, measured from where the drag started,
+ * against the box as it was when it started — which is why one `origin` serves
+ * as both the base box and the base coordinates: a move never changes `w`/`h`
+ * and a resize never changes `x`/`y`, so the clamp has the same box to work
+ * against either way.
+ *
+ * Snap first, then clamp, and the clamping is `moveTo`/`resizeTo` — the same
+ * arithmetic the arrow keys and the inspector's numeric fields use, so a drag
+ * and a nudge stop at the same edge. Snapping the other way round could round a
+ * box back over the edge it had just been held inside.
+ */
+export function resolveDrag(
+  origin: Box,
+  delta: { readonly dx: number; readonly dy: number },
+  options: { readonly resize: boolean; readonly snap: boolean },
+): Box {
+  const { snap, resize } = options;
+  return resize
+    ? resizeTo(origin, snapValue(origin.w + delta.dx, snap), snapValue(origin.h + delta.dy, snap))
+    : moveTo(origin, snapValue(origin.x + delta.dx, snap), snapValue(origin.y + delta.dy, snap));
+}
+
+/**
+ * The stacking value that puts a box in front of every other.
+ *
+ * One rule for the two things that need it — a widget just added, and a widget
+ * being dragged — so a new box and a grabbed one cannot land on different
+ * rungs. An empty canvas answers 1 rather than 0, which leaves 0 free as the
+ * value a canvas from before stacking existed carries.
+ */
+export function nextZ(widgets: readonly { readonly z: number }[]): number {
+  return Math.max(0, ...widgets.map((w) => w.z)) + 1;
+}

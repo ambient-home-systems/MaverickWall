@@ -2648,6 +2648,43 @@ both editors instead of half-repeated in one — the layout editor set a roving
 `tabindex` with no arrow handler, so the Style tab and the whole ink lane were
 unreachable by keyboard and had no other route in).
 
+**Four more came out of it later, and the file is still not rewritten.** The
+same seam, applied to the decisions still being made in the middle of building
+the DOM: `canvas-state.ts` (the canvas as one comparable string — the *same*
+functions that build the request body, so the save bar cannot report a canvas
+identical to the server's as unsaved), `omission.ts` (which boxes the wall
+leaves out, and the three sentences a household reads about one — the flag, the
+inspector's note and the box's accessible name), `widget-labels.ts` (the
+palette, and what a box is called) and `inspector.ts` (what the panel should
+show, as a description rather than as a render). `placement.ts` gained the drag
+itself — `resolveDrag` snaps and then clamps through the same `moveTo`, and a
+test now drives a drag and a hundred arrow presses to the same box rather than
+trusting that they share the arithmetic.
+
+**What that bought was one bug, and it is the shape the extraction predicts.**
+A box's accessible name is composed twice — once where the box is built, once
+where `refreshLabels` re-reads every name *in place* when a view changes (which
+is what keeps focus on a box being nudged). The second copy only knew the short
+form, so it skipped flagged boxes entirely: a Chores widget the wall leaves out,
+switched from Today to By person, took the new name on its chip and went on
+announcing the old one for as long as the editor stayed open. **The visible half
+updating is exactly what hid it** — and it is the only flaggable type with more
+than one view, so it is the only widget in the product that could show it.
+`boxAriaLabel` is the one composition now, and `browser-editor.test.ts` §8 reads
+the attribute rather than the chip.
+
+The unit tests were each checked by breaking their own fix — nineteen mutations
+across the five modules, all red — and the four browser assertions the same way.
+One existing test had to change and it is worth saying why: `widget-views.test.ts`
+scraped the palette out of `layout-editor.ts` with a regular expression, because
+nothing could import it. It imports the array now, which answers about the value
+the editor renders rather than about the source text. `admin-vocabulary.test.ts`
+had the mirror problem and the mirror fix — its scan for retired nouns in
+accessible names matched `setAttribute` template literals, and would have gone
+quietly blind to the box names the moment they moved, so it reads `omission.ts`
+as well and its guard is a count that fails rather than a match that stops
+matching.
+
 **`selectWidget` toggles two classes rather than rebuilding the overlay, and
 that is what makes the keyboard work at all.** Selection destroyed the focused
 box by the act of choosing it, so an arrow key could move a widget once and the
