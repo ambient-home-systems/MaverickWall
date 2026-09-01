@@ -48,8 +48,19 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * matters most so far: without it a 13.3" panel would keep serving the frame
  * with 714px of white at the bottom until its calendar happened to change, and
  * "the update did nothing" is indistinguishable from "the update was wrong".
+ *
+ * 5: the same, for the *widgets* — which 4 did not reach and this comment did
+ * not say. Every widget on a household's own canvas was still drawn in pixels
+ * tuned on that one 800×480: an 8px inset, a title bar with 8px type in it,
+ * 24px to-do rows, 22px chore rows, and a dozen calls capping ordinary widget
+ * text at 16px. A `notes` widget drew 15% of the ink density on a 13.3" panel
+ * that it drew on a 7.5" one. The 800×480 frames are byte-identical here —
+ * checked, every type — with one deliberate exception: a module panel counts
+ * its rows at the line height it draws them with, so a short box shows one more
+ * reading than it did. That alone is a pixel change, so the bump is not
+ * optional even for the panel nothing else moved on.
  */
-export const EPAPER_RENDERER_VERSION = 4;
+export const EPAPER_RENDERER_VERSION = 5;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

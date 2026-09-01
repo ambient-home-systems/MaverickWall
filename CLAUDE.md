@@ -73,7 +73,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **ninety real bugs**, and the pattern in how is the most
+This project has found **ninety-three real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -168,6 +168,9 @@ useful thing in this document:
 | **Half a 13.3" panel left white, and six agenda rows on every panel in a 3.7x range** | Rendering the same frame at six panel sizes and finding the last inked row |
 | A portrait split whose every assertion stayed green when it was reverted | Reverting each of six fixes in turn, and finding the one that reddened nothing |
 | A test sitting at 98% of its five-second budget for a release | Timing the test that had just started failing, on an idle machine, where it passed |
+| **Every widget but one drawing 15% of its ink density on a 13.3" panel** | Measuring one widget's ink inside its own box at four sizes, and finding the calendar at 64% |
+| A chrome assertion that compared the frame against the arithmetic that drew it | Pinning the metric back to a constant, and watching the test agree with itself |
+| A forecast threshold no *tallest* run of text could see | Measuring the shortest run instead — the temperatures, not the day names |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -318,8 +321,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2255 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
-server 1456. CI runs the whole suite and then the README's one-liner against a
+**2280 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
+server 1481. CI runs the whole suite and then the README's one-liner against a
 clean volume on Linux, which is the only place the install has ever been wrong.
 
 **112 of the server's tests need a real Chromium and say so when they cannot
@@ -617,8 +620,9 @@ solvable problem landscape does not have. Measured after: 1.9–3.3% of the heig
 blank at all six sizes, and **on a quiet day too**, because a frame that only
 fills when today happens to be busy has moved the fault rather than fixed it.
 
-`EPAPER_RENDERER_VERSION` is **4**. Every paired panel's pixels move, 800x480
-included.
+`EPAPER_RENDERER_VERSION` is **5** — 4 for the built-in layout and 5 for the
+widgets. Every paired panel's pixels move at 4, 800x480 included; at 5 only the
+larger panels move, plus the one module-panel row described below.
 
 Two things about the verification are worth more than the change. **The pinning
 test was written first and committed red** — eleven of sixteen assertions
@@ -636,16 +640,62 @@ under it, so the anchor won — which is exactly the rule the brief itself set,
 that a derivation which misses the tuned constant is wrong and the constant was
 right.
 
-The remaining absolute pixels are in `epaper/widgets.ts` — `drawFrame`'s 8px
-pad and 20px title bar, `drawChores`' 22px row, `drawPanel`'s `box.h / 24` —
-and they are *stated* rather than fixed here. Most widget draws already size
-themselves to their box through `scaleToFit`; those four do not, and on a 13.3"
-panel they are the next thing that will look wrong.
+**And the widgets had the same fault one layer along, which the paragraph that
+used to end here got wrong in the most useful way.** It said the remaining
+absolute pixels were four — `drawFrame`'s pad and title bar, `drawChores`' row,
+`drawPanel`'s `box.h / 24` — and that most widget draws already sized themselves
+to their box through `scaleToFit`. The first half undercounted by about thirty.
+The second half was true and beside the point: `scaleToFit` sizes type to the
+box, but every call passed a *maximum* of `2`, so on a 13.3" panel a widget's
+text was capped at 16px however much room it had. A dozen of those, plus 24px
+to-do rows, 22px chore rows, a 20px title bar with 8px type in it, an 8px inset,
+and the forecast's 56px column threshold.
+
+Measured as ink inside one widget filling 90% of the panel, this is the fraction
+of density each drew at 1872×1404 against what it drew at 800×480:
+
+    clock 16%   shift 14%   countdown 14%   notes 15%   todo 15%
+    chores 15%  week 15%    people 15%      weather 30%
+    homeassistant 15%   external 14%   image 17%
+    …and calendar 64%, because that one had already been fixed.
+
+**64% against 15% is what said the rest were broken**, and it is the argument
+for fixing a class rather than a file: the calendar widget went through
+`drawMonthBox`, which the built-in layout's work had already made proportional,
+so it was carried along and nothing else was. Every one of those is now 57–59%
+— which is what the sub-linear ladder can actually reach, since a widget with
+three readings in it cannot fill a bigger box by drawing more, only by drawing
+bigger. `EpaperWidgetMetrics` is the table, `scaleRung` is the caps, and the
+factor stays at the call site (a clock at 4 rungs, a countdown at 4.5, a shift
+headline at 3.5) because that is a fact about the widget's shape rather than
+about the panel.
+
+**All sixteen 800×480 frames are byte-identical** — every widget type, plus a
+narrow column, a tiny box and two empty states — with one deliberate exception,
+and it is the `agendaRowsInBox` rule again: `drawPanel` capped its rows at
+`box.h / 24` and drew them at a line height of 20, so a box with room for five
+of a module's readings asked the module for four. A count and the loop that
+draws it have to be the same arithmetic. A 120px box shows five now.
+
+**Four of the nine assertions written for this passed with the fix reverted**,
+which is the part worth keeping. Two were *circular*: the title-bar test compared
+the measured offset against `m.widget.inset + m.widget.smallLine` — the
+arithmetic that drew it — so pinning either metric back to a constant moved the
+frame and the expectation together and the test stayed green. It reads literals
+off the ladder by hand now (20 and 40 for the rule, 28 and 56 for the content).
+Two more were *blind*: an ink-density check cannot see a row height left at 24
+while the type in it grew to 32, because overlapping rows are *more* ink rather
+than less — that needs the pitch between bands, and again against literals. And
+the last one was pointed at the wrong end: the forecast's column threshold was
+checked with the *tallest* run of text, which stays tall because the day names
+still fit, while the temperatures beside them — the thing a forecast is for —
+collapse to a single scale. Only the **shortest** run can see it. Ten mutations,
+all red now.
 
 **Still unproven where it counts:** none of this has been photographed on real
-hardware. The measurements are `renderEpaper` decoded, which is the right way to
-check a 1-bit frame and is not the same as a household looking at a 13.3" panel
-on a wall.
+hardware. The measurements are `renderEpaper` and `renderFreeformEpaper`
+decoded, which is the right way to check a 1-bit frame and is not the same as a
+household looking at a 13.3" panel on a wall.
 
 **The add-on now installs and starts on a real Home Assistant supervisor.**
 That was the highest-value unproven thing in the project for a long time, and

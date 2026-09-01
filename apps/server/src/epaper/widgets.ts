@@ -21,7 +21,7 @@ import type { Manifest } from '../api/manifest.js';
 
 import { drawText, GLYPH_SIZE, measureText } from './font.js';
 import { Framebuffer } from './framebuffer.js';
-import { panelMetrics, type EpaperMetrics, type PanelGeometry } from './metrics.js';
+import { panelMetrics, scaleRung, type EpaperMetrics, type PanelGeometry } from './metrics.js';
 import {
   asciiTitle,
   drawMonthBox,
@@ -61,8 +61,6 @@ export interface PlacedEpaperWidget {
 }
 
 type Config = Readonly<Record<string, unknown>>;
-
-const PAD = 8;
 
 const str = (c: Config, k: string): string | undefined => (typeof c[k] === 'string' ? (c[k] as string) : undefined);
 const list = (c: Config, k: string): unknown[] => (Array.isArray(c[k]) ? (c[k] as unknown[]) : []);
@@ -118,6 +116,7 @@ function scaleToFit(text: string, width: number, max: number): number {
  */
 function drawStack(
   fb: Framebuffer,
+  m: EpaperMetrics,
   box: Box,
   rows: readonly { readonly text: string; readonly scale: number }[],
   align: 'left' | 'center' | 'right',
@@ -127,14 +126,21 @@ function drawStack(
     if (row.text === '') continue;
     const h = GLYPH_SIZE * row.scale;
     if (y + h > box.y + box.h) break;
-    drawLines(fb, [row.text], { ...box, y, h }, row.scale, align);
-    y += h + 4;
+    drawLines(fb, m, [row.text], { ...box, y, h }, row.scale, align);
+    y += h + m.widget.linePad;
   }
 }
 
 /** Draw stacked lines within a box, clipped to its height and width, honouring align. */
-function drawLines(fb: Framebuffer, lines: readonly string[], box: Box, scale: number, align: 'left' | 'center' | 'right'): void {
-  const lineH = GLYPH_SIZE * scale + 4;
+function drawLines(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  lines: readonly string[],
+  box: Box,
+  scale: number,
+  align: 'left' | 'center' | 'right',
+): void {
+  const lineH = GLYPH_SIZE * scale + m.widget.linePad;
   let y = box.y;
   for (const raw of lines) {
     if (y + GLYPH_SIZE * scale > box.y + box.h) break;
@@ -149,15 +155,24 @@ function drawLines(fb: Framebuffer, lines: readonly string[], box: Box, scale: n
   }
 }
 
-/** A widget's border and optional title bar; returns the inner content box. */
-function drawFrame(fb: Framebuffer, box: Box, config: Config): Box {
+/**
+ * A widget's border and optional title bar; returns the inner content box.
+ *
+ * The one piece of chrome every widget shares, and the worst of the absolute
+ * pixels: an 8px inset and a title drawn at `scale: 1` — eight pixels of type
+ * under a hairline twelve down — which on a 13.3" panel is a label nobody can
+ * read from the other side of a kitchen. All three come off the ladder now.
+ */
+function drawFrame(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): Box {
+  const pad = m.widget.inset;
   fb.strokeRect(box.x, box.y, box.w, box.h, true);
-  let inner: Box = { x: box.x + PAD, y: box.y + PAD, w: box.w - PAD * 2, h: box.h - PAD * 2 };
+  let inner: Box = { x: box.x + pad, y: box.y + pad, w: box.w - pad * 2, h: box.h - pad * 2 };
   const title = str(config, 'title');
   if (config.showTitle === true && title !== undefined && title !== '') {
-    drawText(fb, inner.x, inner.y, asciiTitle(title).toUpperCase(), { scale: 1, tracking: 1 });
-    fb.hLine(inner.x, inner.x + inner.w, inner.y + 12, true);
-    inner = { x: inner.x, y: inner.y + 20, w: inner.w, h: inner.h - 20 };
+    drawText(fb, inner.x, inner.y, asciiTitle(title).toUpperCase(), { scale: m.smallScale, tracking: 1 });
+    fb.hLine(inner.x, inner.x + inner.w, inner.y + m.widget.smallLine, true);
+    const bar = m.widget.titleBarH;
+    inner = { x: inner.x, y: inner.y + bar, w: inner.w, h: inner.h - bar };
   }
   return inner;
 }
@@ -169,7 +184,7 @@ function drawFrame(fb: Framebuffer, box: Box, config: Config): Box {
  * string the viewmodel already built, which is the only way to change a clock
  * without parsing one. `showDate` is absence-means-on, matching the schema.
  */
-function drawClock(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   const format = str(config, 'clockFormat');
   const time =
     format === '12' || format === '24'
@@ -178,16 +193,20 @@ function drawClock(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
   // Bounded by the height it has *and* the width it has: a box taller than it
   // is wide used to pick a size the time could not fit, and lost its last
   // digit to the truncation in `drawLines`.
-  const byHeight = Math.max(2, Math.min(8, Math.floor(box.h / 18)));
+  // `box.h / 18` is a ratio and stays one — a taller box gets a bigger clock on
+  // any panel. The *cap* is what was absolute: eight rungs is 64px on a 7.5"
+  // panel and 64px on a 13.3" one, in a box six times the area.
+  const byHeight = Math.max(m.bodyScale, Math.min(scaleRung(m, 4), Math.floor(box.h / 18)));
   const timeScale = scaleToFit(time, box.w, byHeight);
   const align = alignOf(config);
-  drawLines(fb, [time], { ...box, h: GLYPH_SIZE * timeScale }, timeScale, align);
+  drawLines(fb, m, [time], { ...box, h: GLYPH_SIZE * timeScale }, timeScale, align);
   if (config['showDate'] === false) return;
-  const dateScale = Math.max(1, Math.min(3, Math.floor(timeScale / 2)));
+  const dateScale = Math.max(1, Math.min(scaleRung(m, 1.5), Math.floor(timeScale / 2)));
   const date = `${model.header.weekday} ${model.header.day} ${model.header.month}`;
-  const dateTop = box.y + GLYPH_SIZE * timeScale + 8;
+  const dateTop = box.y + GLYPH_SIZE * timeScale + m.widget.inset;
   drawLines(
     fb,
+    m,
     wrap(date, box.w, dateScale),
     // The remaining height, not the whole box: measuring from the box's top
     // let the wrapped date run past its foot and into the widget below.
@@ -197,7 +216,7 @@ function drawClock(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
   );
 }
 
-function drawCountdown(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   const target = str(config, 'target');
   const title = str(config, 'title') ?? '';
   let big = '--';
@@ -212,14 +231,15 @@ function drawCountdown(fb: Framebuffer, box: Box, model: EpaperModel, config: Co
   }
   // Same fitting as the clock: "365" in a narrow box must shrink, not lose its
   // last digit — a countdown that reads 36 is worse than a small one.
-  const scale = scaleToFit(big, box.w, Math.max(2, Math.min(9, Math.floor(box.h / 16))));
-  drawLines(fb, [big], { ...box, h: GLYPH_SIZE * scale }, scale, 'center');
-  const restTop = box.y + GLYPH_SIZE * scale + 6;
+  const scale = scaleToFit(big, box.w, Math.max(m.bodyScale, Math.min(scaleRung(m, 4.5), Math.floor(box.h / 16))));
+  drawLines(fb, m, [big], { ...box, h: GLYPH_SIZE * scale }, scale, 'center');
+  const restTop = box.y + GLYPH_SIZE * scale + m.widget.rowGap;
   drawLines(
     fb,
+    m,
     [unit, asciiTitle(title)].filter((l) => l !== ''),
     { x: box.x, y: restTop, w: box.w, h: Math.max(0, box.y + box.h - restTop) },
-    2,
+    m.bodyScale,
     'center',
   );
 }
@@ -236,7 +256,7 @@ function drawCountdown(fb: Framebuffer, box: Box, model: EpaperModel, config: Co
  * existing panel grow a row nobody asked for. It is the wall's option until the
  * panel has a row for it.
  */
-function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+function drawShift(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   // None chosen shows everyone, the same rule the wall's widget follows.
   const chosen = list(config, 'people').filter((p): p is string => typeof p === 'string');
   const shifts =
@@ -254,7 +274,7 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
   if (shifts.length === 0) {
     // Sized to the box: at a fixed scale this read "No shift t" in a narrow
     // column, which is not a smaller message but a broken one.
-    drawLines(fb, ['No shift today'], box, scaleToFit('No shift today', box.w, 2), 'left');
+    drawLines(fb, m, ['No shift today'], box, scaleToFit('No shift today', box.w, m.bodyScale), 'left');
     return;
   }
 
@@ -286,9 +306,9 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
      * outside this file could see, and one that decided the whole shape of the
      * widget at a threshold nobody chose.
      */
-    const ROW_GAP = 4;
+    const ROW_GAP = m.widget.linePad;
     const heightOf = (role: LadderRole): number =>
-      (role === 'headline' ? GLYPH_SIZE * 2 : GLYPH_SIZE) + ROW_GAP;
+      GLYPH_SIZE * (role === 'headline' ? m.bodyScale : m.smallScale) + ROW_GAP;
     const kept = dropToFit(rows, box.h, heightOf);
 
     /*
@@ -301,25 +321,27 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
      * can actually hold.
      */
     if (kept.length === 1 && rows.length > 1) {
-      drawLines(fb, [compactLine(rows)], box, scaleToFit(compactLine(rows), box.w, 2), 'left');
+      drawLines(fb, m, [compactLine(rows)], box, scaleToFit(compactLine(rows), box.w, m.bodyScale), 'left');
       return;
     }
 
     // The headline takes whatever the surviving rows did not need.
     const others = kept.filter((row) => row.role !== 'headline');
-    const headroom = Math.max(GLYPH_SIZE, box.h - others.length * (GLYPH_SIZE + ROW_GAP));
+    const small = GLYPH_SIZE * m.smallScale;
+    const headroom = Math.max(small, box.h - others.length * (small + ROW_GAP));
     const stack = kept.map((row) => {
-      if (row.role !== 'headline') return { text: row.text, scale: 1 };
+      if (row.role !== 'headline') return { text: row.text, scale: m.smallScale };
       const text = row.text.toUpperCase();
       return {
         text,
-        scale: scaleToFit(text, box.w, Math.max(2, Math.min(7, Math.floor(headroom / GLYPH_SIZE)))),
+        scale: scaleToFit(text, box.w, Math.max(m.bodyScale, Math.min(scaleRung(m, 3.5), Math.floor(headroom / GLYPH_SIZE)))),
       };
     });
     drawStack(
       fb,
+      m,
       box,
-      stack.map((row) => (row.scale === 1 ? { ...row, text: row.text.toUpperCase() } : row)),
+      stack.map((row) => (row.scale === m.smallScale ? { ...row, text: row.text.toUpperCase() } : row)),
       'left',
     );
     return;
@@ -329,8 +351,11 @@ function drawShift(fb: Framebuffer, box: Box, model: EpaperModel, config: Config
   // rather than being cut at the box edge. The ladder decides which parts are
   // on the line and in what order, exactly as it decides the rows above.
   const lines = shifts.map((s) => compactLine(ladderRows(ladder, valuesFor(s), SHIFT_ROLES)));
-  const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
-  drawLines(fb, lines, box, scale, 'left');
+  const scale = lines.reduce(
+    (smallest, line) => Math.min(smallest, scaleToFit(line, box.w, m.bodyScale)),
+    m.bodyScale,
+  );
+  drawLines(fb, m, lines, box, scale, 'left');
 }
 
 /**
@@ -349,29 +374,41 @@ function compactLine(rows: readonly LadderRow<ShiftField>[]): string {
   return asciiTitle(parts.join('  '));
 }
 
-function drawTodo(fb: Framebuffer, box: Box, config: Config): void {
+function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
   const items = list(config, 'items').filter((x): x is string => typeof x === 'string');
   if (items.length === 0) {
-    drawLines(fb, ['(nothing on the list)'], box, 2, 'left');
+    drawLines(fb, m, ['(nothing on the list)'], box, scaleToFit('(nothing on the list)', box.w, m.bodyScale), 'left');
     return;
   }
-  const rowH = 24;
+  const rowH = m.widget.listRowH;
+  const textX = m.bullet + m.bulletGap;
   let y = box.y;
   for (const item of items) {
-    if (y + 14 > box.y + box.h) break;
-    fb.strokeRect(box.x, y + 2, 12, 12, true);
-    drawText(fb, box.x + 20, y, fit(asciiTitle(item), box.w - 20, { scale: 2 }), { scale: 2 });
+    // The row is drawn when its *box* fits, which is the bullet's own bottom —
+    // the same guard the agenda uses, in the same terms.
+    if (y + m.bulletDrop + m.bullet > box.y + box.h) break;
+    fb.strokeRect(box.x, y + m.bulletDrop, m.bullet, m.bullet, true);
+    drawText(fb, box.x + textX, y, fit(asciiTitle(item), box.w - textX, { scale: m.bodyScale }), {
+      scale: m.bodyScale,
+    });
     y += rowH;
   }
 }
 
-function drawImage(fb: Framebuffer, box: Box, config: Config): void {
+function drawImage(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
   const name = str(config, 'image');
+  const scale = m.smallScale;
+  // Lifted a line, less half a gap, so the two-line block straddles the middle.
+  // Two pixels shy of a true centre at the anchor, and kept that way: it is
+  // what the panel draws today and this is a placeholder until there is a
+  // decoder to draw a real photograph.
+  const lift = m.widget.smallLine - Math.round(m.widget.linePad / 2);
   drawLines(
     fb,
-    ['[ photo ]', name !== undefined ? fit(name, box.w, { scale: 1 }) : 'not shown on eInk yet'],
-    { x: box.x, y: box.y + Math.max(0, Math.floor(box.h / 2) - 10), w: box.w, h: box.h },
-    1,
+    m,
+    ['[ photo ]', name !== undefined ? fit(name, box.w, { scale }) : 'not shown on eInk yet'],
+    { x: box.x, y: box.y + Math.max(0, Math.floor(box.h / 2) - lift), w: box.w, h: box.h },
+    scale,
     'center',
   );
 }
@@ -462,10 +499,10 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
   return out;
 }
 
-function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Config): void {
+function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manifest, config: Config): void {
   let days = forecastDays(manifest.panels['weather']);
   if (days.length === 0) {
-    drawLines(fb, ['No weather yet'], box, scaleToFit('No weather yet', box.w, 2), 'left');
+    drawLines(fb, m, ['No weather yet'], box, scaleToFit('No weather yet', box.w, m.bodyScale), 'left');
     return;
   }
   const wanted = config['count'];
@@ -517,15 +554,18 @@ function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Conf
    * narrow box and a strip of 20px columns is a smudge.
    */
   const columnWidth = Math.floor(box.w / days.length);
-  if (columnWidth >= 56 && box.h >= 40) {
-    const ROW_GAP = 6;
-    const heightOf = (role: LadderRole): number =>
-      (role === 'headline' ? GLYPH_SIZE * 3 : GLYPH_SIZE) + ROW_GAP;
+  if (columnWidth >= m.widget.columnMinW && box.h >= m.widget.columnMinH) {
+    const ROW_GAP = m.widget.rowGap;
     // Size comes from the *role*, never from the row's position. Putting the
     // temperatures above the day name must not make the day name enormous —
     // that is the ladder's own rule, and sizing by index broke it the moment a
     // household reordered anything. Found by rendering a reordered strip.
-    const maxScale = (role: LadderRole): number => (role === 'headline' ? 3 : 1);
+    const maxScale = (role: LadderRole): number =>
+      role === 'headline' ? scaleRung(m, 1.5) : m.smallScale;
+    // Predicted from `maxScale` rather than from its own literals, so the room
+    // reserved for a row and the size that row is allowed to reach cannot
+    // disagree — the count-and-loop rule one widget along.
+    const heightOf = (role: LadderRole): number => GLYPH_SIZE * maxScale(role) + ROW_GAP;
 
     const columns = days.map((day) => foldPairs(dropToFit(rowsFor(day), box.h, heightOf)));
     /*
@@ -543,16 +583,22 @@ function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Conf
       for (const rows of columns) {
         const cell = rows[row];
         if (cell === undefined) continue;
-        const fits = scaleToFit(cell.text, columnWidth - 4, maxScale(cell.role));
+        const fits = scaleToFit(cell.text, columnWidth - m.widget.linePad, maxScale(cell.role));
         scale = scale === 0 ? fits : Math.min(scale, fits);
       }
       scales.push(Math.max(1, scale));
     }
 
     columns.forEach((rows, index) => {
-      const column: Box = { x: box.x + columnWidth * index, y: box.y, w: columnWidth - 4, h: box.h };
+      const column: Box = {
+        x: box.x + columnWidth * index,
+        y: box.y,
+        w: columnWidth - m.widget.linePad,
+        h: box.h,
+      };
       drawStack(
         fb,
+        m,
         column,
         rows.map((cell, row) => ({ text: cell.text, scale: scales[row] ?? 1 })),
         'left',
@@ -562,8 +608,11 @@ function drawWeather(fb: Framebuffer, box: Box, manifest: Manifest, config: Conf
   }
 
   const lines = days.map((day) => foldPairs(rowsFor(day)).map((cell) => cell.text).join('  '));
-  const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
-  drawLines(fb, lines, box, scale, 'left');
+  const scale = lines.reduce(
+    (smallest, line) => Math.min(smallest, scaleToFit(line, box.w, m.bodyScale)),
+    m.bodyScale,
+  );
+  drawLines(fb, m, lines, box, scale, 'left');
 }
 
 /**
@@ -603,11 +652,14 @@ function houseReadings(panel: unknown): EpaperReading[] {
   return out;
 }
 
-function drawHouse(fb: Framebuffer, box: Box, manifest: Manifest, config: Config): void {
+function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manifest, config: Config): void {
   const panel = manifest.panels['home'] ?? manifest.panels['homeassistant'];
   let readings = houseReadings(panel);
+  const noReadings = (): void => {
+    drawLines(fb, m, ['No readings yet'], box, scaleToFit('No readings yet', box.w, m.bodyScale), 'left');
+  };
   if (readings.length === 0) {
-    drawLines(fb, ['No readings yet'], box, 2, 'left');
+    noReadings();
     return;
   }
   // Which readings, by the label the household sees — the manifest carries no
@@ -615,7 +667,7 @@ function drawHouse(fb: Framebuffer, box: Box, manifest: Manifest, config: Config
   const wanted = list(config, 'readings').filter((r): r is string => typeof r === 'string');
   if (wanted.length > 0) readings = readings.filter((r) => wanted.includes(r.label));
   if (readings.length === 0) {
-    drawLines(fb, ['No readings yet'], box, 2, 'left');
+    noReadings();
     return;
   }
   const cap = config['count'];
@@ -644,15 +696,33 @@ function drawHouse(fb: Framebuffer, box: Box, manifest: Manifest, config: Config
     return parts.join('  ');
   });
 
-  const scale = lines.reduce((smallest, line) => Math.min(smallest, scaleToFit(line, box.w, 2)), 2);
-  drawLines(fb, lines, box, scale, 'left');
+  const scale = lines.reduce(
+    (smallest, line) => Math.min(smallest, scaleToFit(line, box.w, m.bodyScale)),
+    m.bodyScale,
+  );
+  drawLines(fb, m, lines, box, scale, 'left');
 }
 
-function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string, rows?: number): void {
-  // The box's own limit, and then the household's if they set a smaller one.
-  const fits = Math.max(1, Math.floor(box.h / 24));
+function drawPanel(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  panel: unknown,
+  empty: string,
+  rows?: number,
+): void {
+  /*
+   * The box's own limit, and then the household's if they set a smaller one.
+   *
+   * Counted at the line height `drawLines` will actually use, not at a separate
+   * 24 — those disagreed, so a box with room for five readings asked the module
+   * for four and drew four. A count and the loop that draws it have to be the
+   * same arithmetic; `agendaRowsInBox` is the same rule in the built-in layout.
+   */
+  const lineH = GLYPH_SIZE * m.bodyScale + m.widget.linePad;
+  const fits = Math.max(1, Math.floor(box.h / lineH));
   const lines = panelLines(panel, rows === undefined ? fits : Math.min(fits, rows)).map(asciiTitle);
-  drawLines(fb, lines.length > 0 ? lines : [empty], box, 2, 'left');
+  drawLines(fb, m, lines.length > 0 ? lines : [empty], box, m.bodyScale, 'left');
 }
 
 /**
@@ -742,10 +812,13 @@ function drawCalendarWidget(
  * a lie in ink — the same reason battery panels are documented as a glance
  * class rather than an alert class.
  */
-function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): void {
+function drawChores(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
+  const note = (text: string): void => {
+    drawLines(fb, m, [text], box, scaleToFit(text, box.w, m.bodyScale), 'left');
+  };
   const board = readChorePanel(panel);
   if (board === undefined) {
-    drawLines(fb, ['(no chores yet)'], box, 2, 'left');
+    note('(no chores yet)');
     return;
   }
 
@@ -756,8 +829,12 @@ function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): 
       ? [...items]
       : items.filter((item) => item.personId !== undefined && wanted.includes(item.personId));
 
-  const rowH = 22;
+  const rowH = m.widget.choreRowH;
+  const tick = m.bullet;
+  const textX = tick + m.bulletGap;
   const bottom = box.y + box.h;
+  // A row is drawn when its tick fits, which is the tick's own bottom edge.
+  const rowFits = (at: number): boolean => at + m.widget.tickDrop + tick <= bottom;
   let y = box.y;
 
   /** One chore: an empty box, or a filled one when it is done, then its name. */
@@ -766,9 +843,12 @@ function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): 
     // Done is a *filled* box rather than a drawn tick: at 1-bit a 12px tick is
     // four pixels of ink that reads as a smudge from two metres, and solid
     // against empty is the strongest contrast the medium has.
-    fb.strokeRect(left, y + 3, 12, 12, true);
-    if (item.done) fb.fillRect(left + 3, y + 6, 6, 6, true);
-    const width = box.w - indent - 20;
+    fb.strokeRect(left, y + m.widget.tickDrop, tick, tick, true);
+    if (item.done) {
+      const inset = m.widget.tickInset;
+      fb.fillRect(left + inset, y + m.widget.tickDrop + inset, m.widget.tickDot, m.widget.tickDot, true);
+    }
+    const width = box.w - indent - textX;
     /*
      * The owner's name is dropped whole rather than truncated.
      *
@@ -781,8 +861,8 @@ function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): 
      */
     const name = asciiTitle(item.name);
     const withOwner = item.person === undefined ? name : `${name} (${asciiTitle(item.person)})`;
-    const label = measureText(withOwner, { scale: 2 }) <= width ? withOwner : name;
-    drawText(fb, left + 20, y, fit(label, width, { scale: 2 }), { scale: 2 });
+    const label = measureText(withOwner, { scale: m.bodyScale }) <= width ? withOwner : name;
+    drawText(fb, left + textX, y, fit(label, width, { scale: m.bodyScale }), { scale: m.bodyScale });
     y += rowH;
   };
 
@@ -793,23 +873,23 @@ function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): 
       // keeps them so a caller drawing a grid can line them up; neither of
       // these two draws a grid.
       if (items.length === 0) continue;
-      if (y + 14 > bottom) break;
+      if (!rowFits(y)) break;
       const heading = day.date === board.today ? 'TODAY' : weekdayOf(day.date).toUpperCase();
-      drawText(fb, box.x, y, fit(heading, box.w, { scale: 1 }), { scale: 1 });
-      y += 12;
+      drawText(fb, box.x, y, fit(heading, box.w, { scale: m.smallScale }), { scale: m.smallScale });
+      y += m.widget.smallLine;
       for (const item of items) {
-        if (y + 14 > bottom) break;
-        drawRow(item, 8);
+        if (!rowFits(y)) break;
+        drawRow(item, m.bulletGap);
       }
-      y += 6;
+      y += m.widget.rowGap;
     }
-    if (y === box.y) drawLines(fb, ['(nothing due this week)'], box, 2, 'left');
+    if (y === box.y) note('(nothing due this week)');
     return;
   }
 
   const today = keep(board.days[0]?.items ?? []);
   if (today.length === 0) {
-    drawLines(fb, ['(nothing due today)'], box, 2, 'left');
+    note('(nothing due today)');
     return;
   }
 
@@ -832,16 +912,18 @@ function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): 
     const loose = groups.get('');
     groups.delete('');
     const draw = (name: string, items: readonly ChoreLine[]): void => {
-      if (y + 14 > bottom) return;
-      drawText(fb, box.x, y, fit(asciiTitle(name).toUpperCase(), box.w, { scale: 1 }), { scale: 1 });
-      y += 12;
+      if (!rowFits(y)) return;
+      drawText(fb, box.x, y, fit(asciiTitle(name).toUpperCase(), box.w, { scale: m.smallScale }), {
+        scale: m.smallScale,
+      });
+      y += m.widget.smallLine;
       for (const item of items) {
-        if (y + 14 > bottom) break;
+        if (!rowFits(y)) break;
         // The name is already the heading; repeating it on every row would
         // spend a third of a narrow box saying it twice.
-        drawRow({ ...item, person: undefined }, 8);
+        drawRow({ ...item, person: undefined }, m.bulletGap);
       }
-      y += 6;
+      y += m.widget.rowGap;
     };
     for (const [name, items] of groups) draw(name, items);
     if (loose !== undefined) draw('Anyone', loose);
@@ -850,7 +932,7 @@ function drawChores(fb: Framebuffer, box: Box, panel: unknown, config: Config): 
 
   // Today, the default, and what an absent `mode` means — the wall's rule.
   for (const item of today) {
-    if (y + 14 > bottom) break;
+    if (!rowFits(y)) break;
     drawRow(item, 0);
   }
 }
@@ -931,28 +1013,36 @@ function drawWidget(
 ): void {
   switch (type) {
     case 'clock':
-      return drawClock(fb, box, model, config);
+      return drawClock(fb, m, box, model, config);
     case 'calendar':
       return drawCalendarWidget(fb, box, model, m, config);
     case 'shift':
-      return drawShift(fb, box, model, config);
+      return drawShift(fb, m, box, model, config);
     case 'countdown':
-      return drawCountdown(fb, box, model, config);
+      return drawCountdown(fb, m, box, model, config);
     case 'notes':
-      return drawLines(fb, wrap(str(config, 'text') ?? '', box.w, 2), box, 2, alignOf(config));
+      return drawLines(
+        fb,
+        m,
+        wrap(str(config, 'text') ?? '', box.w, m.bodyScale),
+        box,
+        m.bodyScale,
+        alignOf(config),
+      );
     case 'todo':
-      return drawTodo(fb, box, config);
+      return drawTodo(fb, m, box, config);
     case 'chores':
-      return drawChores(fb, box, manifest.panels['chores'], config);
+      return drawChores(fb, m, box, manifest.panels['chores'], config);
     case 'weather':
-      return drawWeather(fb, box, manifest, config);
+      return drawWeather(fb, m, box, manifest, config);
     case 'homeassistant':
-      return drawHouse(fb, box, manifest, config);
+      return drawHouse(fb, m, box, manifest, config);
     case 'external': {
       const mod = str(config, 'module');
       const rows = config['count'];
       return drawPanel(
         fb,
+        m,
         box,
         mod !== undefined ? manifest.panels[mod] : undefined,
         'No data yet',
@@ -960,9 +1050,9 @@ function drawWidget(
       );
     }
     case 'image':
-      return drawImage(fb, box, config);
+      return drawImage(fb, m, box, config);
     default:
-      return drawLines(fb, [asciiTitle(type)], box, 2, 'left');
+      return drawLines(fb, m, [asciiTitle(type)], box, m.bodyScale, 'left');
   }
 }
 
@@ -1006,7 +1096,7 @@ export function renderFreeformEpaper(
      * panel.
      */
     const config = withInk(widget.config);
-    const inner = drawFrame(fb, box, config);
+    const inner = drawFrame(fb, m, box, config);
     drawWidget(fb, widget.type, inner, model, manifest, m, config);
   }
   return fb;

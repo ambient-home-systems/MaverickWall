@@ -153,6 +153,53 @@ export interface EpaperMetrics {
   readonly cellTitleLineH: number;
   /** A week column's own title step, which is a line box rather than tighter. */
   readonly weekTitleLineH: number;
+
+  /** Everything the free-form widgets are drawn with. */
+  readonly widget: EpaperWidgetMetrics;
+}
+
+/**
+ * The widget chrome and its lists, which had the built-in layout's fault one
+ * layer along.
+ *
+ * `renderEpaper` was the whole of it for a release, and it was not: every
+ * widget on a household's own canvas was still drawn in pixels tuned on the
+ * same 800×480 — an 8px inset, a 20px title bar with 8px type in it, 24px
+ * to-do rows, 22px chore rows, and a dozen `scaleToFit(text, box.w, 2)` calls
+ * capping ordinary widget text at 16px on a 13.3" panel. Measured as ink inside
+ * one widget filling 90% of the panel, a note drew **15%** of the density at
+ * 1872×1404 that it drew at 800×480, and a clock 16%. The calendar widget read
+ * 64%, because that one had already been fixed — which is what said the rest
+ * were not.
+ *
+ * Same rule as everything above: each of these reproduces the constant it
+ * replaced at 800×480, exactly.
+ */
+export interface EpaperWidgetMetrics {
+  /** A widget's border to its content. `PAD`, 8 at 800×480. */
+  readonly inset: number;
+  /**
+   * One line of small type plus its leading — where a title's hairline sits,
+   * and how far a group heading drops. 12 at 800×480, which is both.
+   */
+  readonly smallLine: number;
+  /** The drop past a title bar to the content under it. 20 at 800×480. */
+  readonly titleBarH: number;
+  /** Leading under a line of any scale in a stack. 4 at 800×480. */
+  readonly linePad: number;
+  /** A bulleted list row — a to-do. 24 at 800×480. */
+  readonly listRowH: number;
+  /** A chore row, which is a body line box rather than a list row. 22. */
+  readonly choreRowH: number;
+  /** The chore tick: its drop into the row, its fill's inset, and the fill. */
+  readonly tickDrop: number;
+  readonly tickInset: number;
+  readonly tickDot: number;
+  /** After a chore group, and between the rows of a forecast column. 6. */
+  readonly rowGap: number;
+  /** The smallest forecast column drawn as a column rather than a line. 56×40. */
+  readonly columnMinW: number;
+  readonly columnMinH: number;
 }
 
 const clamp = (value: number, low: number, high: number): number => Math.min(high, Math.max(low, value));
@@ -223,6 +270,11 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
   // than being drawn through the edge of its own band.
   const headerScale = Math.max(1, Math.min(headerScaleWanted, Math.floor((headerHeight - 2) / GLYPH_SIZE)));
 
+  // Hoisted, because the widget metrics below are built from them too and one
+  // expression written twice is one expression that can drift.
+  const pad = Math.round(bodyGlyph * 0.25);
+  const bullet = Math.round(bodyGlyph * 0.75);
+
   return {
     panel: { width, height },
     bodyScale,
@@ -244,10 +296,10 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
     agendaRowH: Math.round(1.55 * bodyLine),
     agendaRuleY: bodyLine,
     agendaHeadH: bodyLine + Math.round(bodyGlyph * 0.875),
-    bullet: Math.round(bodyGlyph * 0.75),
+    bullet,
     bulletDrop: Math.round(bodyGlyph * 0.125),
     bulletGap: Math.round(bodyGlyph * 0.5),
-    pad: Math.round(bodyGlyph * 0.25),
+    pad,
     upcomingRowH: Math.round(1.36 * bodyLine),
     dateRuleY: GLYPH_SIZE * smallScale + 2 * smallScale,
     dateRuleH: 2 * GLYPH_SIZE * smallScale,
@@ -287,7 +339,63 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
     // leading rather than a full line box. 10 and 11 at 800×480 — both shipped.
     cellTitleLineH: GLYPH_SIZE * smallScale + Math.round((GLYPH_SIZE * smallScale) / 4),
     weekTitleLineH: lineBox(smallScale),
+    widget: widgetMetrics(bodyGlyph, smallScale, bodyLine, pad, bullet),
   };
+}
+
+/**
+ * The widget chrome, derived from the same primitives the built-in layout uses.
+ *
+ * Taken as arguments rather than off a half-built `EpaperMetrics`, so the
+ * derivations read as arithmetic on the ladder instead of as a second object
+ * that could disagree with the first.
+ */
+function widgetMetrics(
+  bodyGlyph: number,
+  smallScale: number,
+  bodyLine: number,
+  pad: number,
+  bullet: number,
+): EpaperWidgetMetrics {
+  const smallGlyph = GLYPH_SIZE * smallScale;
+  const smallLine = smallGlyph + pad;
+  const choreRowH = bodyLine;
+  const tickInset = Math.round(bullet / 4);
+  return {
+    inset: Math.round(bodyGlyph * 0.5),
+    smallLine,
+    titleBarH: smallLine + smallGlyph,
+    linePad: pad,
+    // A bullet's row: the glyph beside it, plus the gap that follows the bullet.
+    listRowH: bodyGlyph + Math.round(bodyGlyph * 0.5),
+    choreRowH,
+    // Centred in its own row rather than offset by a constant: the tick is
+    // `bullet` tall in a `choreRowH` row, so the drop is what is left over.
+    tickDrop: Math.round((choreRowH - bodyGlyph) / 2),
+    tickInset,
+    // What is left inside the box after the inset on both sides, so the fill
+    // can never reach its own border however the ladder moves.
+    tickDot: bullet - 2 * tickInset,
+    rowGap: Math.round(pad * 1.5),
+    // Below this a forecast is a list of lines rather than a strip of columns —
+    // the two-mode shape `drawShift` uses, and the threshold that decides it.
+    columnMinW: Math.round(bodyGlyph * 3.5),
+    columnMinH: Math.round(bodyGlyph * 2.5),
+  };
+}
+
+/**
+ * A type scale `factor` rungs off the panel's body scale.
+ *
+ * The widget draws cap their type — a clock at 8, a countdown at 9, a shift
+ * headline at 7, a forecast column's at 3 — and every one of those numbers was
+ * a literal, which is why a 13.3" panel drew a clock the size of a 7.5" panel's
+ * in six times the box. The *factor* stays at the call site because it is a
+ * fact about that widget's shape rather than about the panel; only the rung it
+ * is measured in belongs here. At the anchor these give back 8, 9, 7 and 3.
+ */
+export function scaleRung(m: EpaperMetrics, factor: number): number {
+  return Math.max(1, Math.round(m.bodyScale * factor));
 }
 
 /**
