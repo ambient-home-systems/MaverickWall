@@ -241,20 +241,32 @@ describe('what a panel cannot honour, and says so', () => {
     }
   });
 
-  it('draws none of them, on any widget', () => {
-    /*
-     * The sentence in the editor is "set on the wall, not drawn here" — so if
-     * one of these did move ink, a household would be told a setting is ignored
-     * while watching it work.
-     */
-    for (const entry of PANEL_IGNORES) {
-      for (const type of TYPES) {
+  /*
+   * One `it` per type rather than one loop over all of them: `movesInk` renders
+   * a frame and walks every one of its 156,000 pixels into a string, and
+   * `PANEL_IGNORES.length * TYPES.length` of those in a single test body sat
+   * right on the default 5000ms timeout — passing at ~4.9s in isolation and
+   * failing at ~5.2s under the load of the rest of the suite, which reads as a
+   * flake and is not one: the render cost is real and fixed, only the CPU
+   * headroom around it varies. Splitting by type is ten cheap, fast tests
+   * instead of one that is one bad scheduling tick from red, and it is the
+   * shape the "what a panel honours" describe above already uses for the same
+   * reason.
+   */
+  for (const type of TYPES) {
+    it(`draws none of them, on ${type}`, () => {
+      /*
+       * The sentence in the editor is "set on the wall, not drawn here" — so if
+       * one of these did move ink, a household would be told a setting is
+       * ignored while watching it work.
+       */
+      for (const entry of PANEL_IGNORES) {
         expect(movesInk(type, entry.key), `${type}.${entry.key} is ignored but moves ink`).toBe(
           false,
         );
       }
-    }
-  });
+    });
+  }
 
   it('accounts for every stored option, one way or the other', () => {
     // Derived from the schema rather than from a list here, so a new key has to

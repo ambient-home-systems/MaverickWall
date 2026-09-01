@@ -37,7 +37,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve, type ServerType } from '@hono/node-server';
-import { chromium, type Browser, type Page } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { DEFAULT_SHIFT_TYPES } from '@maverick-wall/core';
 import { openDatabase, type SqliteDatabase } from '../src/db/open.js';
 import { runMigrations } from '../src/db/migrate.js';
@@ -623,6 +623,145 @@ async function startFeed(
   const bound = server.address();
   const port = typeof bound === 'object' && bound !== null ? bound.port : 0;
   return { url: `http://127.0.0.1:${port}/family.ics`, stop: (): void => void server.close() };
+}
+
+// ---------------------------------------------------------------------------
+// A household with something to show
+// ---------------------------------------------------------------------------
+
+/**
+ * Three calendars an ordinary household has, with the titles people write.
+ *
+ * Extracted from `browser-classic-proportions.test.ts`, which is where this
+ * exact fixture was built and tuned: served over loopback rather than
+ * inserted as rows, so the whole path — fetch through the SSRF guard, parse,
+ * expand, store, manifest, draw — is what is measured. A single feed cannot
+ * pose the question either of the files reusing this asks: legibility and
+ * density are set by how much there is to say, and one quiet calendar is the
+ * easy case.
+ */
+export const HOUSEHOLD_CALENDARS: readonly NamedFeed[] = [
+  {
+    name: 'Family',
+    events: [
+      { title: 'Bin day', day: 2 },
+      { title: 'Bin day', day: 9 },
+      { title: "Grandma's 80th birthday", day: 4 },
+      { title: 'Dentist', day: 1, from: '0900', to: '1000' },
+      { title: 'Car service', day: 11, from: '0800', to: '1200' },
+      { title: 'Half term', day: 18 },
+      { title: 'Swimming lesson', day: 0, from: '0730', to: '0830' },
+      { title: 'Book club', day: 5, from: '1930', to: '2130' },
+    ],
+  },
+  {
+    name: 'School',
+    events: [
+      { title: 'Year 6 trip to the Science Museum', day: 3, from: '0830', to: '1600' },
+      { title: 'INSET day - school closed', day: 7 },
+      { title: 'Parents evening', day: 2, from: '1800', to: '2000' },
+      { title: 'Football practice', day: 1, from: '1730', to: '1900' },
+      { title: 'School photos', day: 6, from: '0900', to: '1100' },
+      { title: 'Assembly', day: 0, from: '0915', to: '1000' },
+      { title: 'Cake sale', day: 17, from: '1500', to: '1600' },
+    ],
+  },
+  {
+    name: 'Work',
+    events: [
+      { title: 'Standup', day: 0, from: '0930', to: '0945' },
+      { title: 'Standup', day: 1, from: '0930', to: '0945' },
+      { title: 'Standup', day: 2, from: '0930', to: '0945' },
+      { title: 'Design critique - wall renderer', day: 2, from: '1400', to: '1500' },
+      { title: 'Quarterly planning review', day: 8, from: '1000', to: '1200' },
+      { title: 'One to one', day: 5, from: '1130', to: '1200' },
+    ],
+  },
+];
+
+/**
+ * Give the household a location, a cached forecast and a rota.
+ *
+ * Without these three the Weather and Shift widgets are dropped from the
+ * manifest entirely (`keepWidgetsWithSomethingToSay`), so the wall under test
+ * would be a different wall from the one Classic is drawn for — and a
+ * household with no rota is precisely the case that hides the faults these
+ * measurements exist to catch (the rota chip is often the run that sits
+ * lowest in a box, or the last colour a busy month cell has room to paint).
+ */
+export function equipHousehold(db: SqliteDatabase): void {
+  const at = Date.now();
+  db.prepare(
+    `UPDATE household_settings SET weather_enabled = 1, latitude = ?, longitude = ?,
+       weather_provider = 'openmeteo', shift_enabled = 1, updated_at = ? WHERE id = 'singleton'`,
+  ).run(51.5074, -0.1278, at);
+  const iso = (offset: number): string =>
+    new Date(at + offset * 86_400_000).toISOString().slice(0, 10);
+  const days = ['Today', 'Tomorrow', 'Wednesday', 'Thursday', 'Friday'].map((name, index) => ({
+    name,
+    date: iso(index),
+    high: 18 - index,
+    low: 9 + index,
+    unit: 'C',
+    summary: ['Sunny', 'Light rain', 'Cloudy', 'Sunny', 'Showers'][index]!,
+    icon: '☀',
+  }));
+  db.prepare(
+    `INSERT INTO weather_cache (id, provider, cache_key, payload, fetched_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at`,
+  ).run('openmeteoforecast', 'openmeteo', 'openmeteo:forecast', JSON.stringify({ days, fetchedAt: at }), at, null);
+  db.prepare(
+    `INSERT INTO people (id, name, color, sort_order, has_shift_rotation, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, ?, ?) ON CONFLICT(id) DO NOTHING`,
+  ).run('p-amy', 'Amy', '#E8A33D', 0, at, at);
+  db.prepare(
+    `INSERT INTO shift_plans
+       (id, person_id, name, kind, effective_from, priority, anchor_date, cycle, consumes_events, created_at, updated_at)
+     VALUES (?, ?, ?, 'pattern', ?, 0, ?, ?, 0, ?, ?) ON CONFLICT(id) DO NOTHING`,
+  ).run(
+    'plan-amy', 'p-amy', 'Amy rota', iso(-30), iso(-30),
+    JSON.stringify(['day', 'day', 'night', 'night', null, null]), at, at,
+  );
+}
+
+/**
+ * Load a paired wall in a fresh browser context at `size`, past the font race.
+ *
+ * `fitToBox` and `trimCellRows` (`render.ts`) measure once, synchronously, as
+ * their section is appended, and nothing re-runs them — so on a cold context
+ * whose web fonts have not arrived the wall settles on a fit computed against
+ * fallback metrics and keeps it, which measured anywhere from 2 to 13 named
+ * month cells across runs of the identical wall. Holding the first manifest
+ * back gives the page time to fetch its fonts, and the reload is what proves
+ * it: the second load has them in the HTTP cache, which is the steady state a
+ * wall that has been hanging for a while is actually in, and it is
+ * repeatable. See `browser-font-race.test.ts` for the fault this avoids.
+ *
+ * Extracted from `browser-classic-proportions.test.ts`'s `measureWallBoxes`,
+ * which had this inline — every file measuring a real drawn wall needs the
+ * identical settle, so a second copy would be the next place this bug hides.
+ * The caller owns disposal via the returned `close`.
+ */
+export async function loadWallSettled(
+  link: string,
+  size: { readonly width: number; readonly height: number },
+): Promise<{ readonly page: Page; readonly context: BrowserContext; readonly close: () => Promise<void> }> {
+  const context = await (await browser()).newContext({ viewport: size });
+  const page: Page = await context.newPage();
+  let held = false;
+  await page.route('**/d/manifest*', async (route) => {
+    if (!held) {
+      held = true;
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+    await route.continue();
+  });
+  await page.goto(link, { waitUntil: 'load' });
+  await settleWall(page);
+  await page.reload({ waitUntil: 'load' });
+  await settleWall(page);
+  return { page, context, close: (): Promise<void> => context.close() };
 }
 
 // ---------------------------------------------------------------------------
@@ -1418,4 +1557,39 @@ export function largestBareRegion(ink: CanvasInk): { rect: Rect; fraction: numbe
     }
   }
   return best;
+}
+
+/**
+ * How much of the canvas a household's eye actually lands on: the union of
+ * every widget box, as a fraction of the canvas.
+ *
+ * The complement of `largestBareRegion` in spirit and the same exhaustive
+ * technique, because "the largest hole" and "how much is not a hole" are
+ * different questions — a canvas can have no single large bare region and
+ * still be mostly empty, spread thin across many small gaps.
+ */
+export function coveredFraction(ink: CanvasInk): number {
+  const width = ink.canvas.right;
+  const height = ink.canvas.bottom;
+  const area = width * height;
+  if (area <= 0) return 0;
+  const xs = [...new Set([0, width, ...ink.boxes.flatMap((b) => [b.left, b.right])])]
+    .filter((x) => x >= 0 && x <= width)
+    .sort((a, b) => a - b);
+  const ys = [...new Set([0, height, ...ink.boxes.flatMap((b) => [b.top, b.bottom])])]
+    .filter((y) => y >= 0 && y <= height)
+    .sort((a, b) => a - b);
+
+  let covered = 0;
+  for (let i = 0; i < xs.length - 1; i++) {
+    for (let k = 0; k < ys.length - 1; k++) {
+      const rect = { left: xs[i]!, right: xs[i + 1]!, top: ys[k]!, bottom: ys[k + 1]! };
+      const size = (rect.right - rect.left) * (rect.bottom - rect.top);
+      const isCovered = ink.boxes.some(
+        (box) => box.left < rect.right && box.right > rect.left && box.top < rect.bottom && box.bottom > rect.top,
+      );
+      if (isCovered) covered += size;
+    }
+  }
+  return covered / area;
 }
