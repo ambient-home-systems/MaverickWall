@@ -685,7 +685,7 @@ body {
    nothing useful about how wide this particular agenda ended up. */
 .next.narrow .dr-ev { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
 .next.narrow .dr-ev-time { text-align: left; }
-.next.narrow .dr-ev-span, .next.narrow .dr-ev-bar { grid-column: 1; }
+.next.narrow .dr-ev-span { grid-column: 1; }
 .dr-ev.allday .dr-ev-title { font-weight: 600; grid-column: 1 / -1; }
 
 /* "Day 2 of 4". Under the title, in the title's column, so it reads as part
@@ -697,17 +697,81 @@ body {
 }
 .dr-ev.allday .dr-ev-span { grid-column: 1 / -1; }
 
-/* How much of a running event is left. Only today's events ever carry one —
-   the viewmodel leaves `progress` absent otherwise — so this is at most a
-   handful of bars on the wall at a time, which is what keeps it a signal. */
+/*
+ * How much of a running event is left. Only today's events ever carry one —
+ * the viewmodel leaves `progress` absent otherwise — so this is at most a
+ * handful of bars on the wall at a time, which is what keeps it a signal.
+ *
+ * Out of flow, under the time, and both halves of that were measured rather
+ * than chosen.
+ *
+ * **Out of flow**, because in flow it is a grid item, and a grid item costs
+ * its own track *and* one more `row-gap`: measured on the shipped Classic
+ * wall, a running entry stood 53.8px against 40.1px for every other one, which
+ * takes `fitToBox`'s scale to 0.983 — and `.dr-shift` is `var(--t-micro)`,
+ * 22.08px, with 0.36% of headroom over the 22px floor. So one running event
+ * put the rota chip at 21.7px and under it. That is `.dr-now`'s lesson one
+ * element along, and it cost a word in the same way. Absolutely positioned it
+ * keeps its grid area — the column, the row, the gaps — and adds no track,
+ * which is the same trick the month grid's span bars use.
+ *
+ * **Under the time**, because that is the one band inside the entry with room
+ * to spare, and the two places that look free are not. The title's *text* box
+ * ends 0.83px above its line box, so a bar laid along the bottom of the title
+ * column clips descenders — a 'g' with a slice off it, at ten feet, which
+ * reads as a broken renderer rather than as a bar. And the 8.6px gap between
+ * entries is free but belongs to neither event, and on the last event of a day
+ * it is where `.dr-now.at-end` already hangs. Below the time there is 2.6px,
+ * the bar is its own entry's beyond doubt, and the time is `tabular-nums`
+ * digits and a colon — glyphs with **no descenders at all** — so this is the
+ * one place a hairline can run tight against the text above it and cost
+ * nothing visible even when a smaller wall closes the gap.
+ *
+ * 2px rather than a rem, for `.dr-now`'s reason: a hairline at every wall
+ * size, in the register this wall already uses for a rule, where a rule-of-
+ * thumb thickness would be a bar competing with the event beside it. The
+ * remainder is `--rule` and the elapsed part is the calendar's own colour, so
+ * it says whose event is running as well as how far through it is.
+ *
+ * An all-day event never carries one — `runningProgress` refuses them, because
+ * "73% through Tuesday" is true and useless — so the `.allday` override that
+ * used to sit here was a rule for markup no renderer emits, and is gone.
+ */
 .dr-ev-bar {
-  grid-column: 2;
-  height: 0.45rem;
-  border-radius: 999px;
+  position: absolute;
+  /*
+   * Both lines on both axes, or the grid area is not the containing block.
+   *
+   * An absolutely positioned grid child takes its area only when its position
+   * is *definite* — a start line **and** an end line. `grid-column: 1` leaves
+   * the end line `auto`, which for an out-of-flow box resolves to the padding
+   * edge, so the bar silently spanned the whole entry (under the title as well
+   * as the time) and on an entry with a second row dropped below it. That is
+   * `grid-row: 1 / -1` meaning the end of the *explicit* grid, one element
+   * along and with the opposite spelling: there the fix was to name the rows,
+   * and here naming both lines is enough, because line 2 is the end of the
+   * first implicit row and exists without a template. Making the rows explicit
+   * as well was tried and reverted — it turned no assertion red, and a line
+   * nothing can contradict is not a fix.
+   *
+   * None of that is visible on an ordinary entry, where the time's row and the
+   * whole entry are the same box. It takes a *second* row to tell them apart,
+   * which for a timed event means one thing: it ran past midnight.
+   */
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+  align-self: end;
+  /* Both insets, or nothing: an absolutely positioned grid item with auto
+     insets is statically positioned and shrink-to-fit, and an empty track
+     shrinks to *zero* — a bar that costs no row by not being drawn at all.
+     Naming both makes the grid area the containing block it stretches across,
+     which is the column the time is in. */
+  left: 0;
+  right: 0;
+  height: 2px;
   background: var(--rule);
   overflow: hidden;
 }
-.dr-ev.allday .dr-ev-bar { grid-column: 1 / -1; }
 .dr-ev-bar-fill { height: 100%; background: var(--ec, var(--accent)); }
 
 .dr-empty { font-size: 1.7rem; color: var(--faint); font-style: italic; }
