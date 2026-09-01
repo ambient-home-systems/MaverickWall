@@ -11,6 +11,7 @@ import {
   calendarView,
   viewLabel,
 } from '../src/widget-views.js';
+import { PALETTE } from '../src/widget-labels.js';
 
 /**
  * Every widget declares what it can draw, and the table agrees with the code.
@@ -44,11 +45,17 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 
 describe('the widget view table', () => {
   it('covers every type the palette can place', () => {
-    // The palette is the first-party allowlist (rule three), read from the
-    // editor rather than restated, so a widget added there must declare a view.
-    const editor = readFileSync(join(SRC, 'layout-editor.ts'), 'utf8');
-    const block = editor.slice(editor.indexOf('const PALETTE'), editor.indexOf('];', editor.indexOf('const PALETTE')));
-    const types = [...block.matchAll(/type:\s*'([a-z]+)'/g)].map((m) => m[1] as string);
+    /*
+     * The palette is the first-party allowlist (rule three), read from the
+     * editor rather than restated, so a widget added there must declare a view.
+     *
+     * It used to be scraped out of `layout-editor.ts` with a regular
+     * expression, because it lived inside the file's 4,000 lines and nothing
+     * could import it. It is `widget-labels.ts` now, so this reads the array
+     * itself — a scrape answers about the source text and this answers about
+     * the value the editor actually renders.
+     */
+    const types = PALETTE.map((entry) => entry.type);
 
     expect(types.length).toBeGreaterThan(5);
     for (const type of types) {

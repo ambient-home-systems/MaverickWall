@@ -1660,3 +1660,148 @@ describe('7 · the widget name chip', () => {
     SLOW,
   );
 });
+
+// ===========================================================================
+// 8 · A box the wall leaves out
+// ===========================================================================
+
+/** Add a widget the way a household does: the toolbar button, then the modal. */
+async function addWidget(page: Page, label: string): Promise<void> {
+  await page.locator('.le-add-primary').click();
+  await page.locator('.le-modal-item').filter({ hasText: new RegExp(`^${label}$`) }).click();
+  await page.waitForTimeout(200);
+}
+
+/** One overlay box, read for everything it says about itself. */
+async function saysAbout(page: Page, type: string): Promise<{
+  readonly id: string;
+  readonly label: string;
+  readonly aria: string;
+  readonly flag: string | null;
+  readonly flagged: boolean;
+  readonly note: string | null;
+  readonly inPreview: boolean;
+}> {
+  return page.evaluate((kind) => {
+    const overlay = [...document.querySelectorAll<HTMLElement>('.le-overlay .le-widget')];
+    const wanted = overlay.find((el) =>
+      (el.querySelector('.le-widget-label')?.textContent ?? '').trim().startsWith(kind),
+    );
+    const id = wanted?.dataset['id'] ?? '';
+    const shadow = document.querySelector<HTMLElement>('.le-preview')?.shadowRoot;
+    return {
+      id,
+      label: (wanted?.querySelector('.le-widget-label')?.textContent ?? '').trim(),
+      aria: wanted?.getAttribute('aria-label') ?? '',
+      flag: wanted?.querySelector('.le-widget-flag')?.textContent ?? null,
+      flagged: wanted?.classList.contains('is-not-drawn') ?? false,
+      note: document.querySelector('.le-config .le-not-drawn')?.textContent ?? null,
+      inPreview: shadow?.querySelector(`[data-widget-id="${id}"]`) != null,
+    };
+  }, type);
+}
+
+describe('8 · a box the wall leaves out', () => {
+  /**
+   * The three sentences and the preview, on one screen, agreeing.
+   *
+   * `omission.ts` decides all four — which boxes the preview draws, the flag on
+   * the box, the note in the inspector and the box's accessible name — and the
+   * unit tests hold them to each other. What they cannot see is whether any of
+   * it reaches the glass: a rule that resolves correctly and is then dropped on
+   * the way to an attribute is the class of bug this project keeps finding, and
+   * a class being applied has never been proof that the pixels are right.
+   *
+   * A Chores widget on an install with no chore board is the case, because it
+   * is the only flaggable type with more than one view — which the second test
+   * needs. The wall's own clock keeps the never-empty guard from standing down.
+   */
+  it(
+    'flags it, says why, and leaves it out of the preview — all four agreeing',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        await addWidget(page, 'Chores');
+        await page.waitForTimeout(500);
+
+        const chores = await saysAbout(page, 'Chores');
+        const clock = await saysAbout(page, 'Clock');
+
+        // The box says it, in the household's word for what this editor draws.
+        expect(chores.flagged, 'a chores box on a wall with no chore board is not flagged').toBe(true);
+        expect(chores.flag).toBe('Not on the wall');
+
+        // The inspector says why — the answer to "I put a Chores box on and my
+        // wall has not got one", which is the whole point of keeping the box.
+        expect(chores.note ?? '', 'the inspector offered no reason').toMatch(/^Not on the wall yet\. \S/);
+
+        // A screen reader hears both, in one name.
+        expect(chores.aria).toBe(
+          `${chores.label} widget — not on the wall. ${(chores.note ?? '').replace('Not on the wall yet. ', '')}`,
+        );
+
+        // And the preview agrees: this box draws no ink, and the one beside it
+        // that the wall is happy with does. Read out of the shadow root the
+        // live preview lives in, which is the wall's own renderer.
+        expect(chores.inPreview, 'the preview drew a widget its own box says is not on the wall').toBe(false);
+        expect(clock.flagged, 'the clock is flagged, so the guard has stood down').toBe(false);
+        expect(clock.inPreview, 'the preview drew nothing at all, so it proves nothing').toBe(true);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * Renaming a flagged box renames it for everybody.
+   *
+   * Changing a widget's view re-reads every name *in place* rather than
+   * rebuilding the overlay — that is what keeps focus on a box being nudged.
+   * The flagged sentence used to be composed only where a box is built, so
+   * `refreshLabels` skipped flagged boxes entirely: the chip took the new name
+   * and the accessible name kept the old one, for as long as the editor stayed
+   * open. The visible half updating is exactly what hid it, and it is why this
+   * is measured off the attribute rather than off the chip.
+   */
+  it(
+    'renames a flagged box in its accessible name, not only on its chip',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        await addWidget(page, 'Chores');
+        await page.waitForTimeout(400);
+
+        const before = await saysAbout(page, 'Chores');
+        expect(before.flagged, 'nothing is flagged, so there is no bug to catch').toBe(true);
+        expect(before.label).toBe('Chores — Today');
+
+        // The View picker, which is the control that renames the box.
+        const view = page.locator('.le-cfg-field[data-cfg-key="mode"] select');
+        await view.selectOption('people');
+        await page.waitForTimeout(300);
+
+        const after = await saysAbout(page, 'Chores');
+        expect(after.id, 'the box was rebuilt, so this proves nothing about renaming in place').toBe(
+          before.id,
+        );
+        expect(after.label, 'the chip did not follow the view').toBe('Chores — By person');
+        expect(
+          after.aria,
+          'the chip says one thing and the accessible name says another',
+        ).toBe(`Chores — By person widget — not on the wall. ${(after.note ?? '').replace('Not on the wall yet. ', '')}`);
+        expect(after.aria).toContain('By person');
+        expect(after.aria).not.toContain('Today');
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});

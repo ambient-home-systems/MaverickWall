@@ -335,14 +335,29 @@ describe('the admin, read out loud', () => {
        * any page's HTML. Read out of the bundle's source, the way
        * `epaper-ladder-parity.test.ts` reads two files rather than trusting one.
        */
-      const editor = readFileSync(
-        join(HERE, '..', '..', 'display', 'src', 'layout-editor.ts'),
-        'utf8',
-      );
+      const src = join(HERE, '..', '..', 'display', 'src');
+      const editor = readFileSync(join(src, 'layout-editor.ts'), 'utf8');
       const labels = [...editor.matchAll(/setAttribute\('aria-label', `([^`]+)`\)/g)].map(
         (m) => m[1] as string,
       );
       expect(labels.length, 'no accessible names found — has the call moved?').toBeGreaterThan(0);
+
+      /*
+       * The boxes' own names are composed in `omission.ts` now, not at the
+       * `setAttribute` call, so the scan above no longer sees them — and a
+       * regular expression that silently stops matching is how a guard passes
+       * over the thing it was written for. Every template literal in that
+       * module is a sentence a household reads (the flag on a box, the
+       * inspector's note, the box's accessible name), so all of them count.
+       * Comments go first: their prose is about the canvas, which is one of
+       * the retired nouns.
+       */
+      const omission = readFileSync(join(src, 'omission.ts'), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '');
+      const sentences = [...omission.matchAll(/`([^`]+)`/g)].map((m) => m[1] as string);
+      expect(sentences.length, 'omission.ts composes no sentences — has it moved?').toBeGreaterThan(3);
+      labels.push(...sentences);
       for (const label of labels) {
         expect(label, 'a retired noun in an accessible name').not.toMatch(
           /\b(canvas|screen|display|block)\b/i,
