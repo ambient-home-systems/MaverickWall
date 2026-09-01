@@ -163,9 +163,46 @@ afterAll(async () => {
   await shutDownBrowser();
 }, TEARDOWN);
 
+/**
+ * The agenda's and the clock's runs, at the size they are drawn on glass.
+ *
+ * `.clock` is read from the real widget rather than from a planted probe, and
+ * that is a correction rather than a preference: the only `.clock` a wall emits
+ * is inside `.fw-clock`, whose rule is box-relative, so a bare probe measures
+ * the stacked layout's retired rem rule and cannot go red for anything a
+ * household would see. The month grid keeps its probe below for the opposite
+ * reason — `trimCellRows` can hide every real title in a small cell.
+ */
+interface DrawnRuns {
+  readonly title: number;
+  readonly time: number;
+  readonly numeral: number;
+  readonly weekday: number;
+  readonly rota: number;
+  readonly label: number;
+  readonly clock: number;
+  /**
+   * What `fitToBox` did to the agenda: the drawn title over the declared one.
+   *
+   * The whole point of the fit ceiling, and the only way to see it. A section
+   * whose type is stated in arc-minutes and then scaled is not drawn at the
+   * angle it declares, and the scale is *self-cancelling* — smaller type means
+   * a shorter section means a larger factor — so without this the roles could
+   * move and the glass not move at all.
+   */
+  readonly agendaFit: number;
+}
+
 interface ViewportMeasurement {
   /** CSS pixels per arc-minute, or absent on a wall nobody has measured. */
   readonly pxArcmin: number | undefined;
+  readonly drawn: DrawnRuns;
+  /**
+   * Whether the agenda was drawn at its declared size rather than scaled down
+   * to fit — which is where "the role is the size" can be asserted as an
+   * equality rather than as a ceiling.
+   */
+  readonly agendaFitsWhole: boolean;
   /** Every text run inside the month grid, at the size it is drawn on glass. */
   readonly gridRuns: readonly { readonly where: string; readonly fontPx: number }[];
   readonly totalRuns: number;
@@ -246,6 +283,50 @@ async function measureViewport(
       await page.evaluate(() => document.documentElement.style.getPropertyValue('--px-arcmin')),
     );
 
+    const drawn = await page.evaluate(() => {
+      // The cascade size times every ancestor transform — `measureWall`'s own
+      // walker, spelled again here because these are agenda-specific runs no
+      // shared helper reaches into.
+      const scaleOf = (element: Element): number => {
+        let scale = 1;
+        for (
+          let node: Element | null = element;
+          node !== null && node !== document.documentElement;
+          node = node.parentElement
+        ) {
+          const transform = getComputedStyle(node).transform;
+          if (transform === '' || transform === 'none') continue;
+          const numbers = /matrix\(([^)]+)\)/.exec(transform);
+          if (numbers === null) continue;
+          const [a, b, c, d] = numbers[1]!.split(',').map(Number) as [number, number, number, number];
+          const determinant = Math.abs(a * d - b * c);
+          if (determinant > 0) scale *= Math.sqrt(determinant);
+        }
+        return scale;
+      };
+      const px = (selector: string): number => {
+        const node = document.querySelector(`#wall .canvas ${selector}`);
+        if (node === null) return 0;
+        return parseFloat(getComputedStyle(node).fontSize) * scaleOf(node);
+      };
+      const declared = (selector: string): number => {
+        const node = document.querySelector(`#wall .canvas ${selector}`);
+        return node === null ? 0 : parseFloat(getComputedStyle(node).fontSize);
+      };
+      const title = px('.dr-ev-title');
+      const declaredTitle = declared('.dr-ev-title');
+      return {
+        title,
+        time: px('.dr-ev-time'),
+        numeral: px('.dr-num'),
+        weekday: px('.dr-dow'),
+        rota: px('.dr-shift'),
+        label: px('.section-label'),
+        clock: px('.fw-clock .clock'),
+        agendaFit: declaredTitle > 0 ? title / declaredTitle : 0,
+      };
+    });
+
     const under = wallMeasurement.runs.filter((run) => run.effectivePx < FLOOR_PX);
     const plusN = grid.cells.filter((cell) => cell.more !== '');
     /*
@@ -266,6 +347,8 @@ async function measureViewport(
     const viewportArea = size.width * size.height;
 
     return {
+      drawn,
+      agendaFitsWhole: drawn.agendaFit >= 0.999,
       pxArcmin: Number.isFinite(pxArcmin) && pxArcmin > 0 ? pxArcmin : undefined,
       gridRuns: grid.texts.map((run) => ({ where: run.where, fontPx: run.fontPx })),
       totalRuns: wallMeasurement.runs.length,
@@ -447,6 +530,38 @@ export const BASELINE: Record<string, Baseline> = {
     canvasSharePercent: 99.5,
     contentSharePercent: 80,
   },
+};
+
+/** The runs `AGENDA_BASELINE` pins, in the order a failure reads best. */
+const DRAWN_RUNS = ['title', 'time', 'numeral', 'weekday', 'rota', 'label', 'clock'] as const;
+
+/**
+ * What an **unmeasured** wall draws for the agenda and the clock, in CSS
+ * pixels on the glass.
+ *
+ * Measured on this fixture, and recorded rather than derived: every one of
+ * these is a rem times whatever `fitToBox` did to the section it sits in, and
+ * that product is not something a reader can work out from the stylesheet.
+ * They are the rule-nine half of the arc-minute work — a household who has not
+ * opened the wall's size setting gets these numbers, and this file is what
+ * says so.
+ *
+ * Two of them are worth reading on their own. The clock at 1080x1920 is
+ * **99.8px against a 37.5px event name — 2.66x**, where this product's own
+ * design rule says a clock may not be more than 1.8x an event, and the
+ * portrait rule that was supposed to hold it (`calc(var(--t-event) * 1.8)`) is
+ * beaten by the widget's box sizing. And the date numeral is **59.7px against
+ * that same 37.5px — 1.59x**, the largest inversion left on the wall after the
+ * month grid's was fixed. Neither is repaired here, because repairing them
+ * would move a wall nobody measured; both are what the roles fix on a wall
+ * somebody did.
+ */
+const AGENDA_BASELINE: Record<string, Record<(typeof DRAWN_RUNS)[number], number>> = {
+  '480x800': { title: 15.4, time: 11.8, numeral: 24.4, weekday: 13.0, rota: 9.1, label: 9.8, clock: 41.6 },
+  '800x480': { title: 16.6, time: 12.7, numeral: 26.3, weekday: 14.0, rota: 9.8, label: 10.6, clock: 25.3 },
+  '1080x1920': { title: 37.5, time: 28.9, numeral: 59.7, weekday: 31.8, rota: 22.1, label: 24.1, clock: 99.8 },
+  '1920x1080': { title: 31.6, time: 24.3, numeral: 50.2, weekday: 26.7, rota: 18.6, label: 20.2, clock: 56.9 },
+  '2560x1440': { title: 42.1, time: 32.4, numeral: 66.9, weekday: 35.6, rota: 24.8, label: 27.0, clock: 75.8 },
 };
 
 describe('the Classic wall, measured for density', () => {
@@ -637,6 +752,38 @@ describe('the Classic wall, measured for density', () => {
         // And it reached none of the scale, which is what that identity is a
         // consequence of rather than a coincidence beside it.
         expect(measured.pxArcmin, `${key}: an unmeasured wall derived a scale`).toBeUndefined();
+
+        /*
+         * The agenda and the clock, at the size they are drawn, to within a
+         * percent.
+         *
+         * The counts above cannot see either: an agenda draws the same two
+         * days at any type size until it stops fitting, and the clock is not
+         * in the month grid at all. These are the numbers a household would
+         * notice first and the ones this phase moves on a measured wall, so
+         * pinning them here is what makes "nothing changed" mean it.
+         *
+         * It caught something real. Fixing the specificity accident on
+         * `:root[data-layout="landscape"] .clock` — which had been overriding
+         * the widget's own box sizing on every landscape wall — moves the
+         * unmeasured landscape clock from 25.3px to 37.4px unless the rule
+         * that replaces it restates the rem expression first, and it is these
+         * two sizes that say so rather than any count in the file.
+         */
+        const drawnBaseline = AGENDA_BASELINE[key];
+        if (drawnBaseline === undefined) throw new Error(`no agenda baseline for ${key}`);
+        for (const run of DRAWN_RUNS) {
+          const now = measured.drawn[run];
+          const before = drawnBaseline[run];
+          expect(
+            now,
+            `${key}: an unmeasured wall draws ${run} at ${now.toFixed(1)}px, not the recorded ${before}px`,
+          ).toBeGreaterThan(before * 0.99);
+          expect(
+            now,
+            `${key}: an unmeasured wall draws ${run} at ${now.toFixed(1)}px, not the recorded ${before}px`,
+          ).toBeLessThan(before * 1.01);
+        }
       },
       SLOW,
     );
@@ -688,6 +835,26 @@ const CAP_RATIO = 0.71;
  * wall to them, so moving a rung in `orientation.ts` turns this red rather
  * than agreeing with itself.
  */
+/**
+ * The agenda's and the clock's runs, in arc-minutes of cap height.
+ *
+ * The same transcription as `GRID_ROLE_ARCMIN` below and the same argument for
+ * it. `clock` is 39.6 rather than the table's 40 because the rung is capped at
+ * 1.8x the lede's 22' — the cap is the reason the ratio assertion further down
+ * can be an equality rather than a hope.
+ */
+const AGENDA_ROLE_ARCMIN: readonly { readonly run: (typeof DRAWN_RUNS)[number]; readonly arcmin: number }[] = [
+  { run: 'title', arcmin: 22 },
+  { run: 'time', arcmin: 12 },
+  { run: 'numeral', arcmin: 16 },
+  { run: 'weekday', arcmin: 11 },
+  { run: 'rota', arcmin: 11 },
+  { run: 'label', arcmin: 10 },
+];
+
+/** The clock's own rung, after its cap. */
+const CLOCK_ARCMIN = 39.6;
+
 const GRID_ROLE_ARCMIN: readonly { readonly cls: string; readonly arcmin: number }[] = [
   { cls: 'hz-rowtext', arcmin: 14 },
   { cls: 'hz-spantext', arcmin: 14 },
@@ -900,10 +1067,168 @@ describe('the same wall, once its household has measured it', () => {
           `${key}: widgets covered ${measured.contentSharePercent.toFixed(1)}% of the canvas, ` +
             `below the recorded ${baseline.contentSharePercent}%`,
         ).toBeGreaterThanOrEqual(baseline.contentSharePercent);
+
+        /*
+         * The agenda, at the reader's angle — **or smaller where its box
+         * cannot hold it, and never larger.**
+         *
+         * Both halves are the assertion. "Never larger" is the one that holds
+         * everywhere and is the one the fit ceiling exists for: `fitToBox`
+         * grows a section that fits (measured, 1.18x at 800x480 today), and a
+         * transform multiplies straight through a font size, so without the
+         * ceiling a role could move and the glass not move at all. "Equal" is
+         * asserted only where the fit came out at 1, because at 480x800 and
+         * 800x480 the household's Classic box genuinely cannot hold two days
+         * at 22' and the section shrinks to 0.62 and 0.88 — which is the
+         * existing shrink-then-trim behaviour and the right one: trimming
+         * instead would cost one of the two days to buy 13% of type.
+         */
+        const fitted = measured.agendaFitsWhole;
+        for (const { run, arcmin } of AGENDA_ROLE_ARCMIN) {
+          const drawnPx = measured.drawn[run];
+          const angle = (drawnPx * CAP_RATIO) / pxArcmin;
+          expect(
+            angle,
+            `${key}: the agenda's ${run} is drawn at ${drawnPx.toFixed(1)}px, which is ` +
+              `${angle.toFixed(2)}' of cap height — larger than the ${arcmin}' its role is`,
+          ).toBeLessThanOrEqual(arcmin + ARCMIN_SLACK);
+          if (fitted) {
+            expect(
+              angle,
+              `${key}: the agenda fits its box whole, so its ${run} should be exactly ` +
+                `${arcmin}' and is ${angle.toFixed(2)}'`,
+            ).toBeGreaterThanOrEqual(arcmin - ARCMIN_SLACK);
+          }
+        }
+
+        /*
+         * And the clock, which is not in that section and is not scaled at all
+         * — it sizes itself to its own box. So it has no "or smaller because
+         * the section shrank" case: it is the role, or the box, whichever is
+         * less.
+         */
+        const clockAngle = (measured.drawn.clock * CAP_RATIO) / pxArcmin;
+        expect(
+          clockAngle,
+          `${key}: the clock is drawn at ${measured.drawn.clock.toFixed(1)}px, which is ` +
+            `${clockAngle.toFixed(2)}' — larger than the ${CLOCK_ARCMIN}' its capped role is`,
+        ).toBeLessThanOrEqual(CLOCK_ARCMIN + ARCMIN_SLACK);
+
+        /*
+         * The ratio this whole line of work is named for, measured **on the
+         * glass** rather than in the cascade.
+         *
+         * The type-hierarchy pass could only assert the declared ratio and
+         * said so at the time: "`fitToBox` scales a whole section
+         * independently of its neighbours, so `.clock` and `.dr-ev-title`
+         * sitting in differently-sized boxes can carry the right ratio in
+         * their own `font-size` and still land nowhere near it on the glass —
+         * measured, the Classic seed alone puts them at 2.44x". On this
+         * fixture it is 2.66x, and `AGENDA_BASELINE` records that as what an
+         * unmeasured wall still draws. Measured, the two are 1.80.
+         *
+         * **Where the agenda does not fit whole, this is not a fact about
+         * either widget and is deliberately not asserted.** At 480x800 the
+         * measured ratio is 2.53 — and neither half is too large: the clock is
+         * drawn at 41.6px, which is its own *box* limit and under its 39.6'
+         * role, while the agenda is squeezed to 0.62 of a 22' lede by a box
+         * that cannot hold two days at that size. The ratio is broken by
+         * Classic's proportions on a 7.5" panel, which is a layout decision
+         * and a different change; what the roles can promise is that neither
+         * widget draws larger than the reader needs, and that is asserted
+         * unconditionally above.
+         */
+        if (fitted) {
+          const clockRatio = measured.drawn.clock / measured.drawn.title;
+          expect(
+            clockRatio,
+            `${key}: the clock is ${clockRatio.toFixed(2)}x the agenda's event name on the glass`,
+          ).toBeLessThanOrEqual(1.8 * RATIO_SLACK);
+        }
       },
       SLOW,
     );
   }
+});
+
+/**
+ * A clock may not overflow the box a household dragged it into.
+ *
+ * This is the assertion the first pass of this work did not have, and the gap
+ * was found the way this project finds them: by reverting a fix and watching
+ * the suite stay green. `:root[data-layout="landscape"] .clock` is (0,3,0) and
+ * `.fw-clock .clock` is (0,2,0), so on every landscape wall the clock widget
+ * has never been sized by its own box — it took the stacked layout's rem
+ * expression instead, and `--clock-chars` has been inert there since the day
+ * it was written. Give the clock an arc-minute role through that rule and it
+ * is a size with no box term beside it at all.
+ *
+ * **A 24-hour clock hides it and a 12-hour clock does not**, which is the
+ * whole reason `--clock-chars` exists: "20:26" is five characters and
+ * "08:26 pm" is eight, so the same type size that fits one runs a third of the
+ * way out of the box for the other. The measured wall is what makes it
+ * reachable — the role asks for 47.7px where the box's own eight-character
+ * term allows 28.6 — so this is a real fault of the change rather than a
+ * pre-existing one being tidied.
+ *
+ * Measured as `scrollWidth` past `clientWidth`, not as a rectangle past a
+ * rectangle — and that correction is the second half of the same lesson.
+ * `.clock` is a block, so its border box is the width its parent gives it
+ * whatever is inside; `white-space: nowrap` is on it precisely so an oversized
+ * clock *clips* rather than wrapping, which means neither its own rect nor a
+ * line break says anything at all. The first draft of this test held the rects
+ * against each other, passed with the fix reverted, and only went red for the
+ * wrong reason — because the broken revert also took `nowrap` with it. The
+ * overflow of the text inside the element is the only thing that can see this.
+ */
+describe('a 12-hour clock on a measured landscape wall', () => {
+  it('fits the box it was dragged into', async () => {
+    const panel = MEASURED['800x480'] as PanelFacts;
+    wall.db.prepare('UPDATE screens SET clock_24 = 0 WHERE id = ?').run(screenId);
+    try {
+      measureScreen(panel);
+      const { page, close } = await loadWallSettled(link, { width: 800, height: 480 });
+      try {
+        const clock = await page.evaluate(() => {
+          const face = document.querySelector('#wall .canvas .fw-clock .clock');
+          const box = face?.closest('.fw');
+          if (!(face instanceof HTMLElement) || !(box instanceof HTMLElement)) return undefined;
+          const style = getComputedStyle(box);
+          const rect = face.getBoundingClientRect();
+          const inner = box.getBoundingClientRect();
+          return {
+            text: (face.textContent ?? '').trim(),
+            fontPx: parseFloat(getComputedStyle(face).fontSize),
+            // The digits themselves, past the element that clips them.
+            overWide: face.scrollWidth - face.clientWidth,
+            // And the element past the box, which a taller clock still does.
+            overTall:
+              rect.bottom - (inner.bottom - parseFloat(style.paddingBottom || '0')),
+          };
+        });
+        expect(clock, 'no clock widget on the wall').toBeDefined();
+        if (clock === undefined) return;
+        // The setting reached the wall at all: without this the test would
+        // pass on a 24-hour clock, which is the case that cannot fail.
+        expect(clock.text, 'the wall is not drawing a 12-hour clock').toMatch(/[ap]m/i);
+        expect(
+          clock.overWide,
+          `the clock "${clock.text}" at ${clock.fontPx.toFixed(1)}px is ` +
+            `${clock.overWide.toFixed(1)}px wider than the box that clips it`,
+        ).toBeLessThanOrEqual(1);
+        expect(
+          clock.overTall,
+          `the clock "${clock.text}" at ${clock.fontPx.toFixed(1)}px runs ` +
+            `${clock.overTall.toFixed(1)}px below its box`,
+        ).toBeLessThanOrEqual(1);
+      } finally {
+        await close();
+      }
+    } finally {
+      wall.db.prepare('UPDATE screens SET clock_24 = 1 WHERE id = ?').run(screenId);
+      measureScreen(undefined);
+    }
+  }, SLOW);
 });
 
 /**

@@ -433,13 +433,16 @@ body {
 .clock {
   font-family: var(--disp);
   /*
-   * At most 1.8x the event size (`--t-event`) — a widget the household placed
-   * does not get to be the largest thing on the wall. Expressed against that
-   * token rather than a fixed rem for the same reason `.hz-num` is: the
-   * relationship has to survive whatever changes the event size next, not
-   * just today's number.
+   * At most 1.8x the event size — a widget the household placed does not get
+   * to be the largest thing on the wall. On a measured wall the clock role
+   * *is* that ratio: 40' capped to 1.8x the lede's 22', so the relationship is
+   * carried by the scale rather than by a multiplication here. The fallback is
+   * the multiplication, expressed against `--t-event` rather than a fixed rem
+   * for the reason `.hz-num`'s is: it has to survive whatever moves the event
+   * size next, not just today's number.
    */
   font-size: calc(var(--t-event) * 1.8);
+  font-size: var(--t-wall-clock, calc(var(--t-event) * 1.8));
   line-height: 0.82;
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -632,7 +635,10 @@ body {
 .next { display: grid; gap: 0; align-content: start; min-height: 0; overflow: hidden; }
 
 .section-label {
-  font-size: 1.25rem; letter-spacing: 0.24em; text-transform: uppercase;
+  /* The label role: 10 arc-minutes, the smallest rung there is. A section
+     label identifies a destination and is never what somebody walked over to
+     read — the same register as the month grid's weekday heads. */
+  font-size: var(--t-wall-label, 1.25rem); letter-spacing: 0.24em; text-transform: uppercase;
   color: var(--faint); margin-bottom: 1.1rem;
 }
 
@@ -651,19 +657,29 @@ body {
 
 .dr-dow {
   font-family: var(--disp);
-  font-size: 1.65rem; font-weight: 700; letter-spacing: 0.13em;
+  font-size: var(--t-wall-scaffold, 1.65rem); font-weight: 700; letter-spacing: 0.13em;
   text-transform: uppercase; color: var(--muted);
 }
 .dr-num {
-  font-family: var(--disp); font-size: 3.1rem; font-weight: 700; line-height: 0.95;
-  /* A date numeral is scaffolding, not the fact a household reads this row
-     for — the event beside it is. */
+  font-family: var(--disp);
+  /*
+   * The numeral role, which on a measured wall makes this **smaller** than the
+   * event title beside it rather than 1.59x it.
+   *
+   * `3.1rem` against `--t-event`'s 1.95 was the largest inversion left on the
+   * wall after the month grid's was fixed: measured on a 1080x1920 Classic
+   * seed, 59.7px of date against 37.5px of event name. The colour already said
+   * this is scaffolding (`--ink-scaffold`, since the type-hierarchy pass) and
+   * the size said the opposite. 16' against the lede's 22' is 0.73x, and the
+   * design rule it was breaking only ever set a ceiling.
+   */
+  font-size: var(--t-wall-numeral, 3.1rem); font-weight: 700; line-height: 0.95;
   color: var(--ink-scaffold);
 }
 :root[data-theme="almanac"] .dr-num { font-weight: 400; }
 .dr-mon {
   font-family: var(--disp);
-  font-size: 1.3rem; font-weight: 700; letter-spacing: 0.1em;
+  font-size: var(--t-wall-scaffold, 1.3rem); font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--ink-scaffold); margin-top: 0.15rem;
 }
 
@@ -677,19 +693,22 @@ body {
    reason the weather strip draws no images. */
 .dr-wx {
   display: flex; align-items: baseline; gap: 0.35rem;
-  font-family: var(--f-mono); font-size: 1.4rem; margin-top: 0.4rem;
+  font-family: var(--f-mono); font-size: var(--t-wall-time, 1.4rem); margin-top: 0.4rem;
   font-variant-numeric: tabular-nums;
 }
-.dr-wx-icon { font-family: var(--f-body, inherit); font-size: 1.5rem; }
+.dr-wx-icon { font-family: var(--f-body, inherit); font-size: var(--t-wall-time, 1.5rem); }
 .dr-wx-high { color: var(--ink); }
 .dr-wx-low { color: var(--muted); }
 
 .dr-shift {
-  font-size: var(--t-micro); letter-spacing: 0.13em; text-transform: uppercase;
+  /* Scaffold: the rota chip labels the day, and it is the run this project has
+     twice measured at 21.6 and 21.7px against a 22px floor — a floor it no
+     longer has to clear, because 11' is a size rather than a guess. */
+  font-size: var(--t-wall-scaffold, var(--t-micro)); letter-spacing: 0.13em; text-transform: uppercase;
   color: var(--sc); margin-top: 0.3rem; font-weight: 600;
 }
 .dr-when {
-  font-family: var(--f-mono); font-size: var(--t-micro); color: var(--muted);
+  font-family: var(--f-mono); font-size: var(--t-wall-time, var(--t-micro)); color: var(--muted);
   margin-top: 0.15rem; font-variant-numeric: tabular-nums;
 }
 
@@ -720,9 +739,18 @@ body {
 }
 .dr-ev-time {
   font-family: var(--f-mono);
-  font-size: 1.5rem; color: var(--muted); text-align: right; letter-spacing: -0.02em;
+  /* The time role, 12': a household reads the name and *checks* the time. */
+  font-size: var(--t-wall-time, 1.5rem); color: var(--muted); text-align: right; letter-spacing: -0.02em;
 }
-.dr-ev-title { font-size: var(--t-event); line-height: 1.2; min-width: 0; color: var(--ink-event); }
+/*
+ * The lede — 22 arc-minutes, the largest rung the scale carries besides the
+ * clock, and the one thing on this wall a household does not already know.
+ * Every other role in the agenda is stated against it.
+ */
+.dr-ev-title {
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.2; min-width: 0; color: var(--ink-event);
+}
 
 /* Too narrow to hold a time column: the time goes above its title instead of
    beside it. `.narrow` is set by the renderer from a measurement, not by a
@@ -738,7 +766,7 @@ body {
 .dr-ev-span {
   grid-column: 2;
   font-family: var(--f-mono);
-  font-size: 1.15rem; letter-spacing: 0.06em; color: var(--muted);
+  font-size: var(--t-wall-scaffold, 1.15rem); letter-spacing: 0.06em; color: var(--muted);
 }
 .dr-ev.allday .dr-ev-span { grid-column: 1 / -1; }
 
@@ -819,7 +847,9 @@ body {
 }
 .dr-ev-bar-fill { height: 100%; background: var(--ec, var(--accent)); }
 
-.dr-empty { font-size: 1.7rem; color: var(--faint); font-style: italic; }
+/* The event role rather than the lede: "Nothing coming up." stands where a
+   name would, and is a fact about the search rather than the day. */
+.dr-empty { font-size: var(--t-wall-event, 1.7rem); color: var(--faint); font-style: italic; }
 
 /*
  * Where the day has got to: a rule across the agenda column at the current
@@ -1845,8 +1875,12 @@ body {
 }
 
 /* Same 1.8x cap as the portrait rule — the ratio does not change with
-   orientation, only the rem basis it resolves against does. */
+   orientation, only the rem basis it resolves against does. Nor does the role,
+   which is an angle at the eye and knows nothing about which way up the wall
+   is; it is repeated here because this rule would otherwise win and put the
+   rem back. */
 :root[data-layout="landscape"] .clock { font-size: calc(var(--t-event) * 1.8); }
+:root[data-layout="landscape"] .clock { font-size: var(--t-wall-clock, calc(var(--t-event) * 1.8)); }
 :root[data-layout="landscape"] .shift-badge { min-width: 20rem; }
 
 /* Cells get the height the column gives them rather than a portrait floor. */
@@ -1969,11 +2003,72 @@ body {
     calc(var(--buw) * 130 / var(--clock-chars, 5)),
     calc(var(--buh) * 52)
   );
+  /*
+   * And on a measured wall, never larger than the clock role.
+   *
+   * The two box terms stay, and they are not the same kind of limit: they stop
+   * a clock *overflowing* a box the household dragged, which is a fact about
+   * the box and is still true. The role is what the reader needs, which is a
+   * fact about the room — 40' of cap height capped to 1.8x the agenda's lede,
+   * so a clock cannot be the largest thing on a wall whose job is the thing
+   * the household does not already know. Measured on a 1080x1920 Classic seed
+   * the clock drew 99.8px against a 37.5px event name: 2.66x, where the design
+   * rule says 1.8 and the box terms had no opinion at all.
+   *
+   * `100vh` is "no cap" for an unmeasured wall rather than a magic number: the
+   * viewport is larger than any clock this rule can produce, so the two box
+   * terms decide exactly as they did before. It is spelled as a `var()`
+   * fallback because that is the only thing an undefined custom property
+   * reaches — writing `min(var(--t-wall-clock), …)` bare would make the whole
+   * declaration invalid at computed-value time on every wall nobody has
+   * measured, and a clock that inherits `body`'s 14px is rule nine.
+   */
+  font-size: min(
+    var(--t-wall-clock, 100vh),
+    calc(var(--buw) * 130 / var(--clock-chars, 5)),
+    calc(var(--buh) * 52)
+  );
   line-height: 1;
   color: var(--ink);
   /* A belt: if anything is still too wide it clips at the box edge rather than
      wrapping, because a clock on two lines does not read as a clock. */
   white-space: nowrap;
+}
+/*
+ * The same clock, on a landscape wall — and the reason this rule has to exist
+ * is a specificity accident that has been governing every landscape wall
+ * silently.
+ *
+ * `:root[data-layout="landscape"] .clock` further up is (0,3,0) and
+ * `.fw-clock .clock` is (0,2,0), so on a landscape wall the *widget* clock has
+ * never been sized by its box at all: it takes the stacked layout's rem
+ * expression instead. Measured on an 800x480 Classic seed the clock draws
+ * 25.3px where its own box terms resolve to 45.8 and 37.4 — so `--clock-chars`,
+ * which exists precisely because a 12-hour clock in a box sized for a 24-hour
+ * one wrapped onto two lines, has been inert on half the walls this product
+ * draws since the day it was written.
+ *
+ * (0,4,0), so this wins in landscape and the two orientations finally size the
+ * widget the same way. What it must not do is *change* a landscape wall nobody
+ * has measured, and the first declaration is that promise written out: the rem
+ * expression, exactly the one that governs today. The second adds the role and
+ * the box terms, and on an unmeasured wall the rem is what the role's `var()`
+ * falls back to — so the `min()` resolves to the same 25.3px it draws now,
+ * with the box terms sitting harmlessly above it.
+ *
+ * On a measured wall the rem drops out (the fallback is not taken) and the box
+ * terms are what remains beside the role: a clock is the size the reader needs,
+ * or the size its box can hold, whichever is smaller. It may not overflow a box
+ * the household dragged, and it may not be the largest thing on a wall whose
+ * job is the thing they do not already know.
+ */
+:root[data-layout="landscape"] .fw-clock .clock {
+  font-size: calc(var(--t-event) * 1.8);
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buw) * 130 / var(--clock-chars, 5)),
+    calc(var(--buh) * 52)
+  );
 }
 .fw-clock .today-date {
   font-family: var(--f-sans);

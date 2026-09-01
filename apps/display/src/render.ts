@@ -2156,8 +2156,13 @@ function dayGroups(scale: HTMLElement): readonly HTMLElement[] {
  * A drawing decision, never a saved one. Nothing here writes to the model, so
  * widening the box brings the days straight back on the next draw.
  */
-function fitAndTrimToDays(box: HTMLElement, scale: HTMLElement, min: number): void {
-  fitToBox(box, scale, { min });
+function fitAndTrimToDays(
+  box: HTMLElement,
+  scale: HTMLElement,
+  min: number,
+  max?: number,
+): void {
+  fitToBox(box, scale, { min, ...(max === undefined ? {} : { max }) });
 
   const groups = dayGroups(scale);
   if (groups.length === 0) return;
@@ -2193,7 +2198,46 @@ function fitAndTrimToDays(box: HTMLElement, scale: HTMLElement, min: number): vo
     trimmed = true;
   }
 
-  if (trimmed) fitToBox(box, scale, { min });
+  if (trimmed) fitToBox(box, scale, { min, ...(max === undefined ? {} : { max }) });
+}
+
+/**
+ * The ceiling a scale-to-fit section may grow to, on a wall that knows how far
+ * away it is read from.
+ *
+ * **This is the half without which the roles do nothing**, and it is not a
+ * refinement of them. `fitToBox` writes a `transform: scale()`, and a
+ * transform multiplies straight through a font size — so a section whose type
+ * is stated in arc-minutes and then grown by 1.18 is not drawn at the angle it
+ * declares. Worse, the growth is *self-cancelling*: the factor is
+ * `available / natural` and the natural height is proportional to the type, so
+ * making the type smaller makes the factor larger by very nearly the same
+ * amount and the ink on the glass does not move at all. Measured on the
+ * shipped Classic seed at 800x480, the agenda is grown 1.18x today; without
+ * this the whole change would have been an option that does nothing, which is
+ * the fault this project has shipped more times than any other.
+ *
+ * So the arithmetic cannot be the lever, and the design rule already says what
+ * is: *a section that does not fit gives up content, not points*. Above the
+ * ceiling there is nothing to give up — the household asked for two days and
+ * two days is what there is — so the section is drawn at the size the reader
+ * needs and the slack stays slack. Below it, `fitAndTrimToDays` trims whole
+ * days and re-fits, which is the same rule pointing the other way and is
+ * already how this section behaves.
+ *
+ * `1` rather than a number, because the roles are already in the cascade: the
+ * ceiling's whole job is to stop the transform moving them. `undefined` on an
+ * unmeasured wall gives `fitToBox` its own default of 6, which is today's
+ * behaviour exactly.
+ *
+ * Asked of the box rather than of `document.documentElement`, because
+ * `--px-arcmin` is inherited and the layout editor draws this same renderer
+ * inside a shadow root on a page that has no wall measurement of its own —
+ * where the honest answer is "not measured" and reading the admin page's root
+ * would give it by accident rather than on purpose.
+ */
+function fitCeilingFor(box: HTMLElement): number | undefined {
+  return getComputedStyle(box).getPropertyValue('--px-arcmin').trim() === '' ? undefined : 1;
 }
 
 export function renderFreeform(
@@ -2366,9 +2410,19 @@ export function renderFreeform(
   // and scaling it first would measure rows that are about to be hidden.
   trimCellRows(root);
 
-  // Now that everything has a size, fit each reused section to its box.
+  /*
+   * Now that everything has a size, fit each reused section to its box.
+   *
+   * The ceiling is the agenda's alone, deliberately. Every other section here
+   * — the weather strip, the house readings, a shift badge — still states its
+   * type in canvas-relative rem, so clamping its growth would shrink it
+   * without putting anything in its place: the ceiling is only honest where
+   * the size under it is already the size the reader needs. Those move when
+   * their own roles do.
+   */
+  const agendaBoxes = new Set(agendas.map((entry) => entry.box));
   for (const { box, scale, min } of toFit) {
-    fitAndTrimToDays(box, scale, min);
+    fitAndTrimToDays(box, scale, min, agendaBoxes.has(box) ? fitCeilingFor(box) : undefined);
   }
 
   /*
@@ -2478,7 +2532,7 @@ export function renderFreeform(
      * One pass, like the week fallback that feeds it: `agendaTimeFitsBeside`
      * is asked once, of the layout the household's box actually produced.
      */
-    fitAndTrimToDays(box, scale, minScaleFor('calendar'));
+    fitAndTrimToDays(box, scale, minScaleFor('calendar'), fitCeilingFor(box));
   }
 }
 
