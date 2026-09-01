@@ -214,6 +214,9 @@ useful thing in this document:
 | **A performance budget that was 78% the cost of parsing 3.2 MB** | Timing a one-year window and a fourteen-year one and finding 214ms against 275 |
 | **Recurrence expansion costing 45ms per year of distance to the window** | Moving the window and not the feed — same events, 247ms at 2026 and 3492ms at 2100 |
 | **A type floor that made a small panel name nothing and a large one name half** | Measuring the same event text at five panel sizes and reading 22.0, 22.0 and 24.8px |
+| **The clock widget never box-sized on any landscape wall** | One selector at (0,3,0) beating another at (0,2,0), found by asking why a role reached the glass unclamped |
+| A clock rule split in half, its `nowrap` and colour left in the block below | A test that reads the rule's own text, on an edit that inserted a `}` |
+| An overflow assertion that passed with its fix reverted, then failed for the wrong reason | `getBoundingClientRect` on a block, which is its parent's width whatever is inside it |
 | A clock capped at 1.8x its lede and drawn at 1.8005x | Asserting the ratio at three screen sizes rather than reading the constant |
 | Every multi-day bar measured back out of both e-ink panels | A lane whose rem minimum outlived the type it was a minimum for |
 
@@ -366,8 +369,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2434 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 379 · server 1588. CI runs the whole suite and then the README's
+**2435 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 379 · server 1589. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -4033,6 +4036,97 @@ runs under the mechanism this phase retired, and on a 7.5" e-ink panel the
 *correct* event size is 16.9px, so the number is 88 of 92 and means nothing.
 Nine mutations were checked and all nine are red: each of the seven sites
 reverted in turn, the lane, and the two halves of `main.ts`.
+
+**Then the agenda and the clock took the remaining four rungs, and the half
+that made it real was not the roles.** `.dr-ev-title` became the lede (22'),
+`.dr-ev-time` the time (12'), `.dr-num` the numeral (16'), the weekday, month,
+rota chip and span line the scaffold (11'), `.section-label` the label (10')
+and `.fw-clock .clock` the capped clock (39.6'). Measured on the shipped
+Classic seed at 1080x1920, before → after: the event name 37.5 → 29.3px, the
+date numeral **59.7 → 21.3px**, the clock **99.8 → 52.8px**. The two ratios
+this line of work is named for land exactly: the numeral goes from **1.59x the
+event beside it to 0.73x**, and the clock from **2.66x to 1.80x** — *on the
+glass*, which is what the type-hierarchy pass could not deliver and said so at
+the time.
+
+**The roles alone would have done nothing at all, and that is the interesting
+part.** `fitToBox` writes a `transform: scale()` on the whole section and a
+transform multiplies straight through a font size — but worse than that, the
+growth is **self-cancelling**: the factor is `available / natural`, the natural
+height is proportional to the type, so making the type smaller makes the factor
+larger by very nearly the same amount. Measured, the agenda is grown 1.18x at
+800x480 today; with the roles in and no ceiling it grows 1.10x at 1080x1920 and
+draws the event name at 32.2px, which is 24.1 arc-minutes rather than 22 —
+about the size it was before anything changed. The arithmetic cannot be the
+lever. What can is the design rule that was already written down: *a section
+that does not fit gives up content, not points*. So a measured wall's agenda
+carries `max: 1` — it may shrink and trim days as it always has, and it may not
+grow. Above the ceiling there is nothing to give up (the household asked for
+two days) so the slack stays slack.
+
+**The ceiling is the agenda's alone, deliberately.** Every other reused section
+— the weather strip, the house readings, a shift badge — still states its type
+in canvas-relative rem, and clamping the growth of a section whose size is not
+yet the size the reader needs would shrink it and put nothing in its place. The
+ceiling is only honest where the size under it is already an angle.
+
+**Where the box cannot hold the role, the section shrinks rather than trimming,
+and that is the right way round.** At 800x480 the agenda draws at 0.88 of its
+role and at 480x800 at 0.62 — 19.4' and 13.7' against the lede's 22'. Trimming
+instead would cost one of the two days to buy 13% of type, which is the trade
+backwards; `minScaleFor`'s floor is where "give up content" actually starts,
+and nothing clips (measured, the last row sits 17-27px inside its box at every
+size). The assertion is therefore two-sided and says so: **at the role's angle
+where the section fits whole, never larger anywhere.**
+
+**And the clock turned out never to have been box-sized on a landscape wall.**
+`:root[data-layout="landscape"] .clock` is (0,3,0) and `.fw-clock .clock` is
+(0,2,0), so on every landscape wall the widget took the *stacked layout's* rem
+expression instead of its own box terms — measured, 25.3px where its box allows
+45.8 and 37.4. `--clock-chars` exists precisely because "08:26 pm" is eight
+characters where "20:26" is five, and it has been inert on half the walls this
+product draws since the day it was written. Giving the clock a role through
+that rule would have handed it a size with no box term beside it at all, so the
+fix is a (0,4,0) rule that restates today's rem expression first and adds the
+role and the box terms second — the clock is the size the reader needs, or the
+size its box can hold, whichever is less.
+
+**Four things about the verification are worth more than the change.**
+
+The **rule-nine identity grew teeth it did not have**: the counts in
+`wall-density.test.ts` cannot see either of these — an agenda draws the same two
+days at any type size until it stops fitting, and the clock is not in the month
+grid — so `AGENDA_BASELINE` pins seven drawn sizes at five viewports to within
+a percent. It earned that immediately: the landscape fix moves the *unmeasured*
+landscape clock from 25.3 to 37.4px unless the replacing rule restates the rem
+first, and nothing else in the file says so.
+
+**An assertion passed with its fix reverted, and then failed for the wrong
+reason.** Removing the landscape fix left the suite green, because nothing
+asserted the thing that fix protects: that a clock *fits*. The case that can
+see it is a 12-hour clock — the role asks 47.7px where the box's own
+eight-character term allows 28.6 — so there is a test for one now. Its first
+draft held the clock's rectangle against the box's and passed anyway: `.clock`
+is a block, so its border box is whatever width its parent gives it, and
+`white-space: nowrap` is on it exactly so an oversized clock clips rather than
+wrapping. Neither the rect nor a line break can see it. `scrollWidth` past
+`clientWidth` can.
+
+**A rule was split in half by the edit that documented it**, and an existing
+test caught it: inserting the landscape rule after the base one closed the
+block early, so `line-height`, `color` and `white-space: nowrap` ended up in
+the landscape rule and the portrait clock silently lost all three.
+`widget-options.test.ts` reads that rule's own text and asserts it carries
+`nowrap`, which is the only thing in the suite that could have.
+
+**And the ratio is not asserted where the agenda cannot reach its role**, which
+is a limit worth stating rather than hiding. At 480x800 the measured clock is
+2.53x the event name, and neither half is too large: the clock is at its own
+box limit and *under* its role, while the agenda is squeezed to 0.62 by a box
+that cannot hold two days at 22'. The ratio is broken by Classic's proportions
+on a 7.5" panel — a layout decision, and a different change. What the roles can
+promise is that neither widget draws larger than the reader needs, and that is
+asserted everywhere. Six mutations checked, all six red.
 
 ---
 
