@@ -245,6 +245,18 @@ export interface FeedEvent {
    * exists to catch it.
    */
   readonly days?: number;
+  /**
+   * The day `to` falls on, when a timed event runs past midnight. `day` by
+   * default.
+   *
+   * A night shift, a party, a flight. Nothing in this suite could draw one:
+   * `icsBody` stamped both ends from the same date, so every timed fixture
+   * began and ended on one day and the display's own "Day 2 of 4" row — the
+   * only thing that can give a timed entry a second grid row — was unreachable
+   * from here. It is a day *offset* like `day` rather than a count, so it reads
+   * the same way, and it is only meaningful beside `from`/`to`.
+   */
+  readonly toDay?: number;
 }
 
 export interface Installation {
@@ -734,7 +746,7 @@ function icsBody(
 ): string {
   const stamp = (days: number): string => fixtureDate(zone, days, new Date(at));
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Maverick Wall tests//EN'];
-  events.forEach(({ title, day, from, to, days }, index) => {
+  events.forEach(({ title, day, from, to, days, toDay }, index) => {
     // Unique per feed as well as per event: two calendars sharing a UID is one
     // calendar as far as any deduplication downstream is concerned.
     lines.push('BEGIN:VEVENT', `UID:e${index}${salt}@browser-test`, `SUMMARY:${title}`);
@@ -750,7 +762,7 @@ function icsBody(
       // different day, which is a fixture describing a wall nobody has.
       lines.push(
         `DTSTART;TZID=${zone}:${stamp(day)}T${from}00`,
-        `DTEND;TZID=${zone}:${stamp(day)}T${to}00`,
+        `DTEND;TZID=${zone}:${stamp(toDay ?? day)}T${to}00`,
       );
     }
     lines.push('END:VEVENT');

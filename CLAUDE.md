@@ -51,6 +51,7 @@ Violating any of these is a failed task.
 - The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
 - A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter.
 - An overflow count never costs a name. If a cell can draw one row, that row is an event, not "+3".
+- Nothing that annotates an event costs it a row. A progress bar, a current-time rule, a badge: out of flow, or it comes off the scale the whole section is drawn at and takes a word off the wall somewhere else. This has been shipped twice — a 2px hairline in flow cost the agenda its 22px floor, and so did an 8px bar.
 - A multi-day event is drawn once, spanning its days. Never repeated per cell.
 - No spacing value in the admin that is not a --mw-s-* token, and no new screen that builds a card, row, table, tag or empty state out of raw markup: use the component, or add one.
 - No icon beside a section heading, and no icon inside a tinted rounded square. Icons identify repeated destinations and nothing else.
@@ -92,7 +93,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and ten real bugs**, and the pattern in how is the most
+This project has found **one hundred and thirteen real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -207,6 +208,9 @@ useful thing in this document:
 | **A width guard that silently moved the arithmetic another rule was calibrated on** | Merging with that rule, and watching its own test go red at a cell of exactly `pillMinCell` |
 | **A ratchet's own header constant, counting a solid inverted band as body ink** | Deriving the split it transcribed, and finding 54 wrong at three of six sizes |
 | **A browser assertion that neither of its own fixes could turn red** | Mutating the display's source without rebuilding the bundle the server serves |
+| **A progress bar that spanned the whole entry, under the title as well as the time** | Naming only one grid line, and a fixture with a second row — the only thing that can tell the two apart |
+| A bar that cost no row by being drawn zero pixels wide | An abspos grid item with auto insets, which shrink-to-fits an empty track |
+| A fixture that answered a different question from the one it asked | Carrying the live event on a fourth calendar, and reading 20.2px where the bug reads 21.7 |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -357,8 +361,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2414 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 372 · server 1575. CI runs the whole suite and then the README's
+**2419 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 372 · server 1580. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -386,8 +390,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**141 of the server's tests fail without a real Chromium and say so**, across
-21 files, which is worth knowing before reading a red suite as a regression. A
+**146 of the server's tests fail without a real Chromium and say so**, across
+22 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the sentence
 here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -3443,19 +3447,20 @@ pairing page printed no link". A CI machine starting the suite before eleven
 would have met the identical failure — so the pinning that removes an hourly
 flake would have introduced a daily one. One clock, everywhere in the harness.
 
-**And the 21.7px is a product fault written down rather than fixed.** It is
-real: a household whose rota chip sits at 22.08px loses it to the floor for as
-long as an event is running, on the one run in the agenda that carries a colour.
-Every one-line cure was measured and none survives the geometry — column one has
-2.9px of spare height against the bar's 8.5px, because the row is baseline
-aligned; the 9.6px inter-entry gap works but exists only *between* entries, so a
-running event that is the last of the day has nowhere to put it; and `:has()` is
-banned by rule two, so CSS cannot select the entry on the bar's presence. Taking
-the bar out of flow the way `.dr-now` already is means re-deciding where a
-progress bar belongs, which is a change to the widget rather than a fix to a
-ratchet. What is fixed here is the *measurement*, and the reason to fix that
-first is the ratchet's own: a baseline that changes with the wall clock is not a
-baseline.
+**And the 21.7px was a product fault, written down rather than fixed at the
+time and fixed since.** It was real: a household whose rota chip sits at
+22.08px lost it to the floor for as long as an event was running, on the one run
+in the agenda that carries a colour. The paragraph that used to end here listed
+the one-line cures and why none survived the geometry, and it was right about
+every one of them — column one has 2.9px of spare height against the bar's
+8.5px, because the row is baseline aligned; the 9.6px inter-entry gap works but
+exists only *between* entries, so a running event that is the last of the day has
+nowhere to put it; and `:has()` is banned by rule two, so CSS cannot select the
+entry on the bar's presence. What it got wrong was the conclusion, that taking
+the bar out of flow "means re-deciding where a progress bar belongs". It does,
+and the deciding took one measurement: see the paragraphs below. What was fixed
+*there* was the measurement, and the reason to fix that first is the ratchet's
+own — a baseline that changes with the wall clock is not a baseline.
 
 **One assertion written for this passed with its own fix deleted**, and finding
 that out took measuring rather than reasoning. `fixtureNow` corrects its guess
@@ -3466,6 +3471,70 @@ for every day of 2026, one pass differs from two on **one zone and one day** —
 America/Adak on 8 March, where the guess lands at 01:00 at -10 and the single
 correction overshoots to 12:00 at -9 — and two never differs from three. The
 named case is Adak now, and it goes red.
+
+**And then the running event stopped costing a row, which took one measurement
+and not a redesign.** `.dr-ev-bar` is out of flow now, taking the grid area of
+the *time*: `grid-column: 1 / 2; grid-row: 1 / 2; align-self: end`, 2px, in the
+`.dr-now` register. Measured on the shipped Classic wall, a running entry stood
+53.8px against 40.1px for every other one and is now the same height as its
+neighbours; the rota chip goes 21.7px back to 22.1px, and every run in the
+agenda comes back with it — the whole section had been drawn 2.2% smaller, which
+is what a scale-to-fit costs when one row is added anywhere inside it.
+
+**Which of the three candidate places it went was decided by a Range, not by
+reading the CSS.** The obvious one is the bottom of the *title* column, where
+the bar already was: measured, the title's **text** box ends 0.83px above its
+line box, so a bar laid there slices the bottom off a descender — a 'g' with a
+piece missing, at ten feet, which reads as a broken renderer. The next is the
+8.6px gap between entries, which is genuinely free and belongs to neither event,
+and on the last event of a day is exactly where `.dr-now.at-end` already hangs.
+Under the time there is 2.6px, the bar is its own entry's beyond doubt, and the
+time is `tabular-nums` digits and a colon — **glyphs with no descenders at all**
+— so it is the one place a hairline can run tight against the text above it and
+cost nothing visible when a smaller wall closes the gap. That is a fact about
+the content rather than about the layout, and it is why 2px is safe at every
+wall size while everything around it scales.
+
+**Both grid lines, or the area is not the containing block**, and this is the
+half that shipped wrong for an hour without a single assertion noticing. An
+absolutely positioned grid child takes its grid area only when its position is
+*definite* — a start line **and** an end line — so `grid-column: 1` left the end
+line `auto`, which for an out-of-flow box resolves to the padding edge, and the
+bar silently spanned the whole entry, under the title as well as the time. It is
+`grid-row: 1 / -1` meaning the end of the *explicit* grid, one element along and
+with the opposite spelling: there the cure was to name the rows, and here naming
+both lines is enough, because line 2 ends the first implicit row and exists
+without a template. Making the rows explicit as well was tried, turned no
+assertion red, and was reverted — **a line nothing can contradict is not a fix**.
+
+**None of that is visible on an ordinary entry, and that is the test's whole
+problem.** The time's row and the entry are the same box until the entry has a
+*second* row, which for a timed event means one thing: it ran past midnight, so
+the display draws "Day 2 of 2" under its title — and "Day" carries a 'y'. So
+`browser-running-event.test.ts` seeds a night shift, and `FeedEvent` gained
+`toDay` to let it: `icsBody` stamped both ends from one date, so no timed
+fixture in this suite could cross midnight and the span row was unreachable from
+here. Six mutations, five red — the sixth is the `grid-template-rows` that came
+out.
+
+**Its own fixture had to be corrected before it measured anything.** The first
+draft carried the live event on a *fourth* calendar, and the rota chip came out
+at 20.2px with the fix applied: an agenda holding one more event is a smaller
+agenda whatever the bar does, so the measurement was answering a different
+question from the one it asked. It extends one of the household's own events
+instead — the time column renders `startsAt` alone, so not one glyph differs
+between the two walls and the only variable left is whether something is
+running. Both walls are drawn and compared, because an absolute floor test
+passes just as happily on a wall that shrank for some other reason and still
+cleared 22.
+
+**And the first version of the fix drew a bar zero pixels wide**, which passed
+every height assertion in the file: an absolutely positioned grid item with auto
+insets is shrink-to-fit, and an empty track shrinks to nothing. Costing no row
+by not being drawn is not the fix. `left: 0; right: 0` is what makes the area the
+box it stretches across, and the assertion that the bar has a width, a fill
+between a fifth and four fifths, and a right edge inside the time's column is
+what holds it there.
 
 
 **Under ingress the settings trust Home Assistant's login, and the socket is
