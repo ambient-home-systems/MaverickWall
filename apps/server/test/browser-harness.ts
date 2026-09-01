@@ -251,6 +251,17 @@ export interface Installation {
   readonly base: string;
   readonly db: SqliteDatabase;
   /**
+   * This wall's clock: today in its zone at `HARNESS_HOUR`, running on at the
+   * ordinary rate.
+   *
+   * Every fixture here is dated from it and the server draws from it, so
+   * anything a test seeds or expects *itself* — a forecast, a rota, where the
+   * current-time rule should fall — has to come from here rather than from
+   * `Date.now()`, or it is describing a different hour from the wall it is
+   * measured against.
+   */
+  now(): number;
+  /**
    * The household account — **present only when the wizard ran here.**
    *
    * `wizard: false` hands the wizard to the browser, which creates whatever
@@ -286,20 +297,51 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
   const address = `10.44.0.${(clientNumber++ % 250) + 1}`;
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-browser-'));
 
+  /*
+   * One clock, for the fixtures and for the server that draws them.
+   *
+   * `at` is today in this household's zone at `HARNESS_HOUR`, and `now` runs on
+   * from there at the ordinary rate — pinned rather than frozen, so anything
+   * depending on time *passing* (a second write sorting after a first, an age
+   * that grows) still does, while nothing depends on what o'clock the runner
+   * was started at.
+   *
+   * The display picks this up for free, and that is the half worth knowing:
+   * `clock.ts` sets `offset = serverTime - deviceNow()` from the
+   * `x-server-time` header on every poll, so the *browser's* wall clock — the
+   * one deciding today, past/next, and whether an event is running — follows
+   * this one. Pinning the server pins the wall.
+   */
+  const at = fixtureNow(timezone);
+  const skew = at - Date.now();
+  const now = (): number => Date.now() + skew;
+
   const { db } = openDatabase({ dataDir });
   runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 2000 });
-  seedBoot(db);
+  seedBoot(db, at);
 
   // The zone this installation's wall is set to, so `day: 0` is the day that
   // wall calls today rather than the day the runner's UTC clock does.
-  const feedServer = feed ? await startFeed(DEFAULT_FEED, timezone) : undefined;
+  const feedServer = feed ? await startFeed(DEFAULT_FEED, timezone, at) : undefined;
   const extraFeeds: { readonly name: string; readonly url: string; readonly stop: () => void }[] = [];
   for (const calendar of calendars) {
-    const served = await startFeed(calendar.events, timezone);
+    const served = await startFeed(calendar.events, timezone, at);
     extraFeeds.push({ name: calendar.name, url: served.url, stop: served.stop });
   }
 
-  const setupToken = createSetupTokenHolder(() => {});
+  /*
+   * The same clock as the app, and this is not a tidiness point.
+   *
+   * The holder stamps `expiresAt = now() + 30 minutes` and `setup.ts` checks it
+   * against `deps.now`. Left on `Date.now()` while the app runs on the pinned
+   * clock, the two disagree by however far the pinned hour is from the runner's
+   * — so a suite started before eleven finds its bootstrap code *already
+   * expired*, the wizard never completes, there is no account, and the first
+   * thing that needs one fails as "the pairing page printed no link". Which is
+   * how it was found: moving `HARNESS_HOUR` to 18:00 to prove the pinning
+   * works instead proved this.
+   */
+  const setupToken = createSetupTokenHolder(() => {}, now);
   const keyring = createKeyring(randomBytes(32));
   const app = createApp({
     db,
@@ -312,6 +354,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     setupToken,
     dataDir,
     displayDir: DISPLAY_DIR,
+    now,
   });
 
   let server: ServerType | undefined = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
@@ -399,7 +442,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     }
 
     if (feedServer === undefined) {
-      if (extraFeeds.length > 0) await syncEveryFeed(db, keyring);
+      if (extraFeeds.length > 0) await syncEveryFeed(db, keyring, now);
       return;
     }
     const added = await post('/setup/calendar', {
@@ -411,12 +454,13 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     if (added.status !== 302) {
       throw new Error(`the wizard refused the feed (${added.status}): ${await added.text()}`);
     }
-    await syncEveryFeed(db, keyring);
+    await syncEveryFeed(db, keyring, now);
   }
 
   return {
     base,
     db,
+    now,
     account: wizard ? account : undefined,
     setupToken: setupToken.current().token,
     call,
@@ -443,7 +487,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
       return link;
     },
     feedUrl: feedServer?.url,
-    sync: (): Promise<void> => syncEveryFeed(db, keyring),
+    sync: (): Promise<void> => syncEveryFeed(db, keyring, now),
     kill,
     async dispose(): Promise<void> {
       await kill();
@@ -482,8 +526,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
  * every admin page is a redirect back to `/setup` — which is a long way from
  * looking like a missing seed.
  */
-function seedBoot(db: SqliteDatabase): void {
-  const at = Date.now();
+function seedBoot(db: SqliteDatabase, at: number): void {
   db.prepare(
     `INSERT INTO household_settings (id, created_at, updated_at)
      VALUES ('singleton', ?, ?) ON CONFLICT(id) DO NOTHING`,
@@ -503,12 +546,20 @@ function seedBoot(db: SqliteDatabase): void {
 }
 
 /** Run the real sync job over every source, exactly as the scheduler would. */
-async function syncEveryFeed(db: SqliteDatabase, keyring: ReturnType<typeof createKeyring>): Promise<void> {
+async function syncEveryFeed(
+  db: SqliteDatabase,
+  keyring: ReturnType<typeof createKeyring>,
+  now: () => number,
+): Promise<void> {
   const handler = createIcsSyncHandler({
     db,
     fetcher: createFetcher(),
     keyring,
     timezone: () => readHousehold(db).timezone,
+    // The same clock the manifest is built against. An expansion window
+    // anchored to the runner while the wall is anchored to `fixtureNow` is two
+    // opinions about what today is, which is the fault this pinning removes.
+    now,
   });
   const sources = db.prepare('SELECT id FROM calendar_sources').all() as { id: string }[];
   for (const source of sources) {
@@ -517,7 +568,7 @@ async function syncEveryFeed(db: SqliteDatabase, keyring: ReturnType<typeof crea
       // `sourceIdFromJobKey` reads everything after the first colon, so the
       // key has to carry one — a bare id syncs nothing and says "skipped".
       key: `ics-sync:${source.id}`,
-      nextRunAt: Date.now(),
+      nextRunAt: now(),
       consecutiveFailures: 0,
     });
     if (result.status !== 'ok') {
@@ -593,8 +644,95 @@ export function fixtureDate(zone: string, days: number, now: Date = new Date()):
   return `${shifted.getUTCFullYear()}${pad(shifted.getUTCMonth() + 1)}${pad(shifted.getUTCDate())}`;
 }
 
-function icsBody(events: readonly FeedEvent[], salt = '', zone = 'Europe/London'): string {
-  const stamp = (days: number): string => fixtureDate(zone, days);
+/**
+ * The hour of the household's own day that every browser fixture is drawn at.
+ *
+ * Eleven in the morning, and why it is eleven matters more than the value: it
+ * has to be an hour with **nothing running in it**. A live event draws a
+ * progress bar, and `.dr-ev-bar` is an in-flow grid item — it costs the agenda
+ * a row track and a row gap, about 15px of an 816px section, which takes
+ * `fitToBox`'s scale down by 1.8%. `.dr-shift` is `var(--t-micro)`, 22.08px,
+ * which has 0.36% of headroom over this product's 22px legibility floor. So a
+ * running event lands it at 21.7px and `browser-classic-proportions` fails —
+ * for exactly as long as that event runs, on whatever machine happened to
+ * start the suite then. (That is a real product fault and it is written down
+ * in CLAUDE.md rather than fixed here; what is fixed here is a *ratchet* that
+ * reported it as an hourly flake.)
+ *
+ * The union of every `day: 0` fixture in this suite is busy 00:05-00:45,
+ * 07:30-10:00, 12:30-13:30, 17:30-19:00 and 23:30-23:55. Eleven sits a clear
+ * hour inside the widest gap, at both ends.
+ *
+ * What this gives up is stated rather than hidden: the ratchets now never
+ * measure a wall with an event running on it. That is the right trade — a
+ * baseline that changes with the wall clock is not a baseline — but a test
+ * that wants a live event has to seed one straddling this hour and say so.
+ */
+export const HARNESS_HOUR = 11;
+
+/**
+ * The instant an installation's wall is started at.
+ *
+ * Today **in the household's own zone**, at `HARNESS_HOUR`. The date still
+ * moves with the calendar, so the suite goes on meeting whatever weekday and
+ * whatever shape of month the month grid actually has; only the hour is
+ * pinned. Those are two different kinds of variation and only the second one
+ * is noise.
+ *
+ * Derived by asking the zone rather than by assuming its offset: guess the
+ * instant as though the zone were UTC, read what o'clock that guess really is
+ * there, and correct by the difference. **Twice**, because the correction can
+ * itself cross a daylight-saving change: on Adak, where the clocks go forward
+ * at 02:00 on 8 March 2026, the guess lands at 01:00 that morning at -10 and
+ * one correction lands at 12:00, by which time the zone is -9. That is the only
+ * day of 2026 in any of the 418 zones `Intl` knows where one pass differs from
+ * two, and there is none at all where two differs from three — measured, and
+ * named in `harness-fixture-dates` so the second pass can be deleted and seen
+ * to go red.
+ */
+export function fixtureNow(zone: string, now: Date = new Date()): number {
+  const day = fixtureDate(zone, 0, now);
+  const target = Date.UTC(
+    Number(day.slice(0, 4)),
+    Number(day.slice(4, 6)) - 1,
+    Number(day.slice(6, 8)),
+    HARNESS_HOUR,
+  );
+  let at = target;
+  at = target - (wallClockAsUtc(zone, at) - at);
+  at = target - (wallClockAsUtc(zone, at) - at);
+  return at;
+}
+
+/** What a zone's clock reads at an instant, re-read as though it were UTC. */
+function wallClockAsUtc(zone: string, at: number): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(at));
+  const field = (type: string): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
+  // `% 24` even under `h23`: engines have reported midnight as 24 here, and a
+  // 24 would move the answer a whole day rather than an hour.
+  return Date.UTC(
+    field('year'), field('month') - 1, field('day'),
+    field('hour') % 24, field('minute'), field('second'),
+  );
+}
+
+function icsBody(
+  events: readonly FeedEvent[],
+  salt = '',
+  zone = 'Europe/London',
+  at: number = Date.now(),
+): string {
+  const stamp = (days: number): string => fixtureDate(zone, days, new Date(at));
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Maverick Wall tests//EN'];
   events.forEach(({ title, day, from, to, days }, index) => {
     // Unique per feed as well as per event: two calendars sharing a UID is one
@@ -626,8 +764,9 @@ let feedNumber = 0;
 async function startFeed(
   events: readonly FeedEvent[] = DEFAULT_FEED,
   zone = 'Europe/London',
+  at: number = Date.now(),
 ): Promise<{ url: string; stop: () => void }> {
-  const body = icsBody(events, `-f${feedNumber++}`, zone);
+  const body = icsBody(events, `-f${feedNumber++}`, zone, at);
   const server: HttpServer = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/calendar; charset=utf-8' });
     response.end(body);
@@ -708,9 +847,12 @@ export const HOUSEHOLD_CALENDARS: readonly NamedFeed[] = [
  * household with no rota is precisely the case that hides the faults these
  * measurements exist to catch (the rota chip is often the run that sits
  * lowest in a box, or the last colour a busy month cell has room to paint).
+ *
+ * `at` is `Installation.now`, and is deliberately not defaulted: a forecast
+ * dated from the runner's clock beside a wall drawn from the pinned one is two
+ * opinions about what today is, and a default is how that comes back.
  */
-export function equipHousehold(db: SqliteDatabase): void {
-  const at = Date.now();
+export function equipHousehold(db: SqliteDatabase, at: number): void {
   db.prepare(
     `UPDATE household_settings SET weather_enabled = 1, latitude = ?, longitude = ?,
        weather_provider = 'openmeteo', shift_enabled = 1, updated_at = ? WHERE id = 'singleton'`,

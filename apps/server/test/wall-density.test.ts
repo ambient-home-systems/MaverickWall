@@ -76,7 +76,7 @@ let link: string;
 
 beforeAll(async () => {
   wall = await install({ calendars: HOUSEHOLD_CALENDARS });
-  equipHousehold(wall.db);
+  equipHousehold(wall.db, wall.now());
   // `pairLink` is the real `POST /admin/screens`, which is where a new
   // display is seeded with Classic — so this measures the seed a household
   // actually gets rather than a fixture built by hand.

@@ -66,7 +66,7 @@ let screenId: string;
 
 beforeAll(async () => {
   wall = await install({ calendars: HOUSEHOLD_CALENDARS });
-  equipHousehold(wall.db);
+  equipHousehold(wall.db, wall.now());
   // `pairLink` is the real `POST /admin/screens`, which is where a new display
   // is seeded with Classic — so this exercises the seed rather than asserting
   // on the constant.
