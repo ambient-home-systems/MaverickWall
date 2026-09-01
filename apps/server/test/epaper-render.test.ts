@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
-import { renderEpaper } from '../src/epaper/render.js';
+import { panelMetrics } from '../src/epaper/metrics.js';
+import { epaperBlocks, renderEpaper } from '../src/epaper/render.js';
 import { renderFreeformEpaper } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
@@ -44,8 +45,29 @@ const busyDay: ManifestDay = {
   events: [ev({ title: 'Bin day', allDay: true }), ev({ title: 'Dentist', startsAt: Date.UTC(2026, 7, 13, 9, 0) })],
 };
 
+/**
+ * The two blocks are asked for by name rather than guessed at from a fraction
+ * of the panel.
+ *
+ * These regions used to be literals — `0..380` for the agenda, `400..800` for
+ * the grid — which were right for the 800×480 panel they were written against
+ * and quietly stopped meaning anything the moment the layout could move. The
+ * portrait pair below was the sharper case: at a flat 42% split the boundary at
+ * y=400 sat on the seam, and once the split followed the grid the agenda ran to
+ * 430, so "the grid area has ink" was satisfied by the agenda's last row and
+ * would have passed with no month drawn at all.
+ */
+function measure(width: number, height: number): { fb: ReturnType<typeof renderEpaper>; agenda: number; month: number } {
+  const model = buildEpaperModel(fakeManifest([busyDay]));
+  const fb = renderEpaper(model, { width, height });
+  const blocks = epaperBlocks(model.weeks.length, panelMetrics({ width, height }));
+  const ink = (b: { x: number; y: number; w: number; h: number }): number =>
+    inkIn(fb, b.x, b.y, b.x + b.w, b.y + b.h);
+  return { fb, agenda: ink(blocks.agenda), month: ink(blocks.month) };
+}
+
 describe('landscape', () => {
-  const fb = renderEpaper(buildEpaperModel(fakeManifest([busyDay])), { width: 800, height: 480 });
+  const { fb, agenda, month } = measure(800, 480);
 
   it('is the size of the panel', () => {
     expect(fb.width).toBe(800);
@@ -53,25 +75,26 @@ describe('landscape', () => {
   });
 
   it('draws an inverted header with text knocked out', () => {
-    const inkInHeader = inkIn(fb, 0, 0, 800, 54);
-    const total = 800 * 54;
+    const band = panelMetrics({ width: 800, height: 480 }).headerHeight;
+    const inkInHeader = inkIn(fb, 0, 0, 800, band);
+    const total = 800 * band;
     expect(inkInHeader).toBeGreaterThan(total * 0.5); // mostly filled band
     expect(inkInHeader).toBeLessThan(total); // but text is knocked back out
   });
 
   it('draws both the agenda column and the grid column', () => {
-    expect(inkIn(fb, 0, 60, 380, 480)).toBeGreaterThan(0); // agenda
-    expect(inkIn(fb, 400, 60, 800, 480)).toBeGreaterThan(0); // grid
+    expect(agenda).toBeGreaterThan(0);
+    expect(month).toBeGreaterThan(0);
   });
 });
 
 describe('portrait', () => {
   it('renders without complaint and fills both regions', () => {
-    const fb = renderEpaper(buildEpaperModel(fakeManifest([busyDay])), { width: 480, height: 800 });
+    const { fb, agenda, month } = measure(480, 800);
     expect(fb.width).toBe(480);
     expect(fb.height).toBe(800);
-    expect(inkIn(fb, 0, 60, 480, 400)).toBeGreaterThan(0); // agenda area
-    expect(inkIn(fb, 0, 400, 480, 800)).toBeGreaterThan(0); // grid area
+    expect(agenda).toBeGreaterThan(0);
+    expect(month).toBeGreaterThan(0);
   });
 });
 
@@ -81,7 +104,8 @@ describe('an empty day', () => {
       width: 800,
       height: 480,
     });
-    expect(inkIn(fb, 0, 60, 380, 200)).toBeGreaterThan(0); // "Nothing on today"
+    const agenda = epaperBlocks(5, panelMetrics({ width: 800, height: 480 })).agenda;
+    expect(inkIn(fb, agenda.x, agenda.y, agenda.x + agenda.w, agenda.y + agenda.h)).toBeGreaterThan(0);
   });
 });
 
