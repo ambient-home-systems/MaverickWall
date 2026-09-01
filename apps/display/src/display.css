@@ -982,15 +982,15 @@ body {
  * is room for one row — so most cells, most weeks, can name one thing or
  * nothing. The mark is what the grid says to somebody standing in the doorway
  * rather than at the wall: which days are busy, and the shape of a span across
- * a week. Its *length* is the count (`densitySteps`, one quarter per event and
+ * a week. Its *length* is the count (`densitySteps`, one step per event and
  * saturating at four), which is why it is a bar rather than the dot row it
  * replaces — three dots and four dots are the same smudge at ten feet, and a
- * quarter-width bar and a full-width one are not.
+ * one-step bar and a four-step one are not.
  *
- * `--faint` rather than a scaffold token of its own: every colour on this wall
- * is a token written by `theme.ts`, and `--faint` is what this product already
- * calls its quietest ink — the week numbers, the counter and an out-of-month
- * numeral are all drawn in it, which is exactly the register wanted here.
+ * `--ink-scaffold` is the register: a demoted ink for the things that *label* a
+ * cell rather than being what a household reads it for, which is already what
+ * the date numeral, the weekday head and the week number are drawn in. A mark
+ * that says how much is there and never what is scaffolding by definition.
  *
  * **It shares the numeral's line, and that is a measurement rather than a
  * preference.** Under the numeral, in flow, it cost the shipped Classic wall

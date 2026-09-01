@@ -592,12 +592,16 @@ function renderCell(
      */
     const steps = densitySteps(cell.eventCount);
     /*
-     * `spans.lanes` is in the condition and not only `steps`, and it is
-     * load-bearing rather than defensive: the mark is what carries the lane
-     * reservation down the cell, so a cell crossed by a bar and drawing no
-     * mark would put its rows *under* the bar. A cell a bar crosses always has
-     * that event on it, so `steps` is already positive — this makes the
-     * invariant the code's rather than the reader's.
+     * `spans.lanes` is in the condition and not only `steps`, and it is now a
+     * belt rather than the load-bearing half it once was.
+     *
+     * The mark used to sit in the column between the numeral and the rows and
+     * carry the lane reservation down it, so a cell crossed by a bar and
+     * drawing no mark would have put its rows *under* the bar. The reservation
+     * moved to `.hz-rows` when the mark moved onto the numeral's line, which is
+     * where it costs nothing. What survives is the invariant it was written
+     * for: a cell a bar crosses has that event on it, so `steps` is already
+     * positive and this clause has nothing left to catch.
      */
     if (steps > 0 || spans.lanes > 0) {
       const mark = el('div', 'hz-mark');
