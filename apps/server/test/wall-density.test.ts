@@ -39,6 +39,7 @@
  *    hanging in a kitchen for a while is actually in.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Page } from 'playwright-core';
 import {
   TEARDOWN,
   coveredFraction,
@@ -346,6 +347,126 @@ describe('the Classic wall, measured for density', () => {
           `${key}: widgets covered ${measured.contentSharePercent.toFixed(1)}% of the canvas, ` +
             `below the recorded ${baseline.contentSharePercent}%`,
         ).toBeGreaterThanOrEqual(baseline.contentSharePercent);
+      },
+      SLOW,
+    );
+  }
+});
+
+/**
+ * The wall's type hierarchy, on the same paired wall (RFC — wall type
+ * hierarchy — see "Design rules: do not reintroduce" above).
+ *
+ * Measured on a paired 1920x1080 Classic wall with three ordinary family
+ * calendars, the clock drew at 137.7px and an actual event name at 31.6px —
+ * 4.4x. A month cell's date numeral drew at 1.4x the event in that same cell.
+ * The two largest things on the wall were the two facts a household already
+ * possesses; the one thing they do not — an event — was drawn smaller than
+ * either. The token changes hold two ratios: a month numeral (`.hz-num`) is at
+ * most 1.2x its cell's event text (`.hz-rowtext`), and the clock (`.clock`) is
+ * at most 1.8x an agenda event name (`.dr-ev-title`).
+ *
+ * This measures the *stylesheet's* ratio — `getComputedStyle` on each class,
+ * in the live document, so the real cascade resolves every `var()` and
+ * `calc()` exactly as it would for real content — rather than either of the
+ * two things that would make a wrong ratio look right:
+ *
+ *  - a declared `font-size` read off the *source*, which would not catch a
+ *    mistyped token name or a stale value nothing recomputed;
+ *  - an actual rendered word's on-glass size, which depends on which box the
+ *    household dragged each widget to. `fitToBox` scales a whole section
+ *    independently of its neighbours, so `.clock` and `.dr-ev-title` sitting
+ *    in differently-sized boxes can carry the *right* ratio in their own
+ *    `font-size` and still land nowhere near it on the glass — measured, the
+ *    Classic seed alone puts them at 2.44x in portrait even with this fix
+ *    applied. That is real and is exactly what the arc-minute scale (a later
+ *    phase) exists to close; a layout change to Classic's own box sizes is
+ *    explicitly out of scope here (token changes only), so this holds the
+ *    ratio this phase actually owns rather than a number no CSS-only change
+ *    could satisfy.
+ *  - a real month cell's `.hz-rowtext`, which `trimCellRows` may hide
+ *    entirely at a small enough box — measured, every cell on the same paired
+ *    wall at 480x800 and 800x480 (this file's own smallest sizes) falls back
+ *    to "+N" with no event text drawn at all, which is a pre-existing fact
+ *    about Classic's cell size at those two, confirmed by reverting `.hz-num`
+ *    to its old size and measuring again — still nothing.
+ *
+ * Reading the cascade directly sidesteps both: a bare, undropped element with
+ * the right class, appended to the same paired wall's `.canvas` above so it
+ * inherits the same `--t-*`/`--rule` tokens a real one would, is what the
+ * stylesheet actually promises for that class — independent of which box a
+ * household drags a widget into and of whether this particular calendar's
+ * events happened to fit a cell today. It reuses this file's own `link`
+ * rather than pairing a second wall, since both halves measure the one
+ * Classic seed this file already has settled and loaded.
+ *
+ * Three of this file's five viewports, because a ratio expressed in `rem` and
+ * `calc()` has to survive the wall it is measured on: the portrait design
+ * target, a landscape television and the smallest wall this project measures
+ * anywhere (`--t-floor`'s own 1280x720 is not one of the five above, so it is
+ * measured directly here rather than reused).
+ */
+
+/**
+ * The cascade's own `font-size` for a class, read off a bare element planted
+ * inside `.canvas` (so it inherits the same `--t-*` tokens and rem basis a
+ * real widget's content would) and removed immediately after.
+ */
+async function stylesheetFontSize(page: Page, className: string): Promise<number> {
+  return page.evaluate((cls) => {
+    const canvas = document.querySelector('.canvas');
+    if (canvas === null) throw new Error('no .canvas on the paired wall');
+    const probe = document.createElement('div');
+    probe.className = cls;
+    canvas.appendChild(probe);
+    const px = parseFloat(getComputedStyle(probe).fontSize);
+    probe.remove();
+    return px;
+  }, className);
+}
+
+async function measureRatios(size: {
+  readonly width: number;
+  readonly height: number;
+}): Promise<{ readonly numeralRatio: number; readonly clockRatio: number }> {
+  const { page, close } = await loadWallSettled(link, size);
+  try {
+    const numeralPx = await stylesheetFontSize(page, 'hz-num');
+    const eventPx = await stylesheetFontSize(page, 'hz-rowtext');
+    const clockPx = await stylesheetFontSize(page, 'clock');
+    const agendaEventPx = await stylesheetFontSize(page, 'dr-ev-title');
+    return { numeralRatio: numeralPx / eventPx, clockRatio: clockPx / agendaEventPx };
+  } finally {
+    await close();
+  }
+}
+
+/*
+ * A whisker of slack over the exact ratio: browsers round a resolved
+ * `font-size` to hundredths of a pixel independently on each side of a
+ * `calc()`, so a bare `<=` would go red on rounding rather than on a real
+ * regression.
+ */
+const RATIO_SLACK = 1.001;
+
+const RATIO_VIEWPORTS: readonly { readonly label: string; readonly width: number; readonly height: number }[] = [
+  { label: 'portrait (design target)', width: 1080, height: 1920 },
+  { label: 'landscape television', width: 1920, height: 1080 },
+  { label: 'the smallest wall this project measures', width: 1280, height: 720 },
+];
+
+describe('the type hierarchy, on the same paired wall', () => {
+  for (const { label, width, height } of RATIO_VIEWPORTS) {
+    it(
+      `holds both ratios in ${label}`,
+      async () => {
+        const { numeralRatio, clockRatio } = await measureRatios({ width, height });
+        expect(numeralRatio, `.hz-num is ${numeralRatio.toFixed(3)}x .hz-rowtext`).toBeLessThanOrEqual(
+          1.2 * RATIO_SLACK,
+        );
+        expect(clockRatio, `.clock is ${clockRatio.toFixed(3)}x .dr-ev-title`).toBeLessThanOrEqual(
+          1.8 * RATIO_SLACK,
+        );
       },
       SLOW,
     );

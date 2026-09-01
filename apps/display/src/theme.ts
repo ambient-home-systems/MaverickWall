@@ -23,6 +23,28 @@
  * They survive only as `LEGACY_ALIASES` below, so a household's saved setting —
  * or a template that still names one — resolves to the nearest survivor rather
  * than blanking a wall (rule nine).
+ *
+ * Four emphasis roles, on top of the base palette (RFC — wall type hierarchy).
+ * A wall measured on a paired 1920x1080 Classic display drew the clock at
+ * 137.7px and an actual event name at 31.6px: the two facts a household
+ * already knows (the time, the date) were the two largest things on the wall,
+ * and the thing they do not — an event — was smaller than the numeral in its
+ * own cell. These roles exist so `display.css` can say which ink a piece of
+ * text gets without a colour hard-coded at the call site:
+ *
+ *   --ink-event      = --ink.   Event names. The one thing drawn at full ink.
+ *   --ink-scaffold    a demoted ink for date numerals, weekday heads and week
+ *                     numbers — present, legible, but not competing with the
+ *                     event it labels.
+ *   --ink-quiet       = --muted. Overflow counts, times on past events.
+ *   --rule-week       = --rule. The one hairline per week row.
+ *
+ * `--ink-scaffold` is the one that is not a straight copy. It starts from
+ * `mix(--ink, --bg, 0.62)` and the ratio is raised per theme until the result
+ * clears 4.5:1 against that theme's own `--bg` — the same lesson this file
+ * already recorded once, at the shift-hue declarations below, where a fixed
+ * wash read as low as 1.90:1 on a cream ground that the same wash read fine
+ * on a dark one. `test/theme.test.ts` holds every theme to the same bar.
  */
 
 export type ThemeName = 'household' | 'blueprint' | 'panels' | 'almanac' | 'swiss';
@@ -57,6 +79,12 @@ const HOUSEHOLD: ThemeTokens = {
   '--s-break': '#2D7A5A',
   '--s-straight': '#646E7C',
   '--radius': '0.35rem',
+  '--ink-event': '#26221C',
+  // mix(--ink, --bg, 0.64) — 0.62 measured 4.33:1 on --bg, short of the bar,
+  // and 0.63 still only 4.46:1. #706c65 clears 4.59:1 on --bg, 5.22:1 on --panel.
+  '--ink-scaffold': '#706C65',
+  '--ink-quiet': '#8A8474',
+  '--rule-week': '#E6DFCF',
 };
 
 /** Steel-blue on a light technical ground: the bound design system as a wall. */
@@ -75,6 +103,12 @@ const BLUEPRINT: ThemeTokens = {
   '--s-break': '#447A4F',
   '--s-straight': '#736E63',
   '--radius': '0',
+  '--ink-event': '#1D1F20',
+  // mix(--ink, --bg, 0.63) — 0.62 measured 4.50:1 on --bg, too close to the
+  // rounding to trust. #6c6d6e clears 4.63:1 on --bg, 5.18:1 on --panel.
+  '--ink-scaffold': '#6C6D6E',
+  '--ink-quiet': '#7C8288',
+  '--rule-week': '#C6C9CD',
 };
 
 /** The board's descendant: dark, but the blocks read as discrete panels. */
@@ -91,6 +125,12 @@ const PANELS: ThemeTokens = {
   '--s-break': '#35916A',
   '--s-straight': '#6B7684',
   '--radius': '0.4rem',
+  '--ink-event': '#EDEBE6',
+  // mix(--ink, --bg, 0.62) clears 6.40:1 on --bg and 5.82:1 on --panel at the
+  // starting ratio — a dark ground gives this far more room than a light one.
+  '--ink-scaffold': '#9B9B9A',
+  '--ink-quiet': '#9AA5B2',
+  '--rule-week': '#2A323E',
 };
 
 /** Month-as-hero paper ledger: cream ground, red accent, serif display face. */
@@ -110,6 +150,13 @@ const ALMANAC: ThemeTokens = {
   '--s-break': '#467E52',
   '--s-straight': '#777166',
   '--radius': '0',
+  '--ink-event': '#241F19',
+  // mix(--ink, --bg, 0.62) clears 4.56:1 on --bg and 4.83:1 on --panel at the
+  // starting ratio — Almanac is the theme scheduled for daylight, so this is
+  // the ratio a household reads every date numeral and week number at, all day.
+  '--ink-scaffold': '#76716B',
+  '--ink-quiet': '#8A8474',
+  '--rule-week': '#E4DCC9',
 };
 
 
@@ -149,6 +196,13 @@ const SWISS: ThemeTokens = {
   // doing anything.
   '--s-straight': '#7E7E86',
   '--radius': '0',
+  '--ink-event': '#FFFFFF',
+  // mix(--ink, --bg, 0.62) clears 7.79:1 on --bg and 7.50:1 on --panel at the
+  // starting ratio — the darkest ground in the bundle gives white the most
+  // room of any theme here.
+  '--ink-scaffold': '#A2A2A2',
+  '--ink-quiet': '#A1A1AA',
+  '--rule-week': '#27272A',
 };
 
 const THEMES: Readonly<Record<ThemeName, ThemeTokens>> = {
@@ -282,6 +336,44 @@ export function themeTokens(name: string): ThemeTokens {
   return derived;
 }
 
+/** WCAG relative luminance of a hex colour, 0 (black) to 1 (white). */
+function relativeLuminance(hex: string): number {
+  const rgb = parseHex(hex);
+  if (rgb === undefined) return 0;
+  const channel = (raw: number): number => {
+    const c = raw / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+}
+
+/** WCAG contrast ratio between two hex colours, 1 (none) to 21 (max). */
+function contrastRatio(a: string, b: string): number {
+  const [la, lb] = [relativeLuminance(a), relativeLuminance(b)];
+  const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The scaffolding ink for a custom theme: the same derivation the five
+ * built-in themes were hand-tuned to (see the header comment) — start at
+ * `mix(ink, background, 0.62)` and raise the ratio until the result clears
+ * 4.5:1 against the theme's own background, since a fixed ratio reads
+ * differently on a light ground than a dark one. A theme whose ink and
+ * background are too close to ever clear the bar falls back to whatever the
+ * loop last reached rather than looping past pure ink — a scaffold that is
+ * merely dim is still better than a wall that cannot resolve one (rule nine).
+ */
+function scaffoldInk(ink: string, background: string): string {
+  let ratio = 0.62;
+  let value = mix(ink, background, ratio);
+  while (contrastRatio(value, background) < 4.5 && ratio < 1) {
+    ratio = Math.round((ratio + 0.01) * 100) / 100;
+    value = mix(ink, background, ratio);
+  }
+  return value;
+}
+
 /**
  * A custom theme's base tokens with the derived shift tints added — the client
  * mirror of the server's `withTints` (`apps/server/src/api/themes.ts`), so the
@@ -291,6 +383,7 @@ export function themeTokens(name: string): ThemeTokens {
  */
 export function customTokens(base: Readonly<Record<string, string>>): Record<string, string> {
   const background = base['--bg'] ?? '#000000';
+  const ink = base['--ink'] ?? '#000000';
   const rgb = parseHex(background);
   const light = rgb !== undefined && (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 > 0.5;
   const cell = light ? 0.13 : 0.2;
@@ -301,6 +394,12 @@ export function customTokens(base: Readonly<Record<string, string>>): Record<str
     out[`${token}-tint`] = mix(hue, background, cell);
     out[`${token}-badge`] = mix(hue, background, BADGE_TINT);
   }
+  // The four emphasis roles (see the header comment): three are straight
+  // copies, and `--ink-scaffold` is measured against this theme's own ground.
+  out['--ink-event'] = ink;
+  out['--ink-scaffold'] = scaffoldInk(ink, background);
+  out['--ink-quiet'] = base['--muted'] ?? ink;
+  out['--rule-week'] = base['--rule'] ?? background;
   return out;
 }
 

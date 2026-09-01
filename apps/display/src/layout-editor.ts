@@ -2868,10 +2868,15 @@ function boot(): void {
    * the title field appears when the title is set to show, and the background
    * colour and its opacity appear when there is a background to colour.
    *
-   * Corners and the drop shadow are deliberately *not* behind the background
-   * switch: `applyWidgetFormat` rounds and clips the box, and casts the shadow,
-   * whether or not a background colour is set — so hiding them there would
-   * remove working controls rather than irrelevant ones.
+   * Corners are deliberately *not* behind the background switch:
+   * `applyWidgetFormat` rounds and clips the box whether or not a background
+   * colour is set — so hiding it there would remove a working control rather
+   * than an irrelevant one.
+   *
+   * There is no drop-shadow control here any more: a shadow bands on e-ink,
+   * burns in on OLED, and buys nothing at reading distance. A widget that
+   * already has `shadow: true` in its stored config simply draws without one
+   * now — nothing here rewrites that key, so it is dead rather than migrated.
    */
   function buildFormatConfig(widget: Widget, cfg: Record<string, unknown>): void {
     buildBoxFields(widget);
@@ -2959,12 +2964,6 @@ function boot(): void {
         ],
         typeof cfg['corners'] === 'string' ? (cfg['corners'] as string) : 'square',
         (value) => setConfig(widget, 'corners', value === 'square' ? undefined : value),
-      ),
-    );
-
-    configPanel.appendChild(
-      switchRow('Drop shadow', '', cfg['shadow'] === true, (checked) =>
-        setConfig(widget, 'shadow', checked ? true : undefined),
       ),
     );
   }
