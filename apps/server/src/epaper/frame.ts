@@ -37,8 +37,15 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * calendar widget never named the setting draws event titles where it drew
  * marks. No code in this file changed, which is exactly why this bump is easy
  * to miss: the pixels moved because the *meaning of an absent value* did.
+ *
+ * 4: the month grid's three content rules, following the wall. A multi-day
+ * event is one bar across its days instead of the same words repeated in
+ * every square; the "+N" shares the last name's line instead of taking one of
+ * its own, and is not drawn at all by a cell that can name nothing; and a
+ * density mark under the numeral says how busy a day is with no legible text.
+ * Every cell in the grid moves, on every panel.
  */
-export const EPAPER_RENDERER_VERSION = 3;
+export const EPAPER_RENDERER_VERSION = 4;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;
