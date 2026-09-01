@@ -3121,6 +3121,92 @@ which is the case where changing a test is not weakening one: they pinned the
 exact `Location`, so they went red on a gate that now says *more*. They name the
 destination it carries now.
 
+**The wall's type hierarchy was inverted, and the fix is four tokens.**
+Measured on a paired 1920x1080 Classic wall with three ordinary family
+calendars: the clock drew at 137.7px and an actual event name at 31.6px — 4.4x
+— and a month cell's own date numeral drew at 1.4x the event in that same
+cell. The two largest things on the wall were the two facts a household
+already possesses, the time and the date; the one thing they do not — an
+event — was drawn smaller than either. `apps/display/src/theme.ts` gains four
+emphasis roles per theme: `--ink-event` (= `--ink`, event names, the one thing
+at full ink), `--ink-quiet` (= `--muted`, overflow counts and past-event
+times), `--rule-week` (= `--rule`, the one hairline per week row), and
+`--ink-scaffold` — a demoted ink for date numerals, weekday heads and week
+numbers, present but not competing with what it labels. That last one is not
+a fixed mix ratio: it starts from `mix(--ink, --bg, 0.62)` and the ratio is
+raised, per theme, until the result clears 4.5:1 against that theme's own
+`--bg` — the same lesson this file already records once at the shift-hue
+declarations, where a fixed wash read as low as 1.90:1 on a cream ground the
+same wash read fine on a dark one. Household needed 0.64 (0.62 measured only
+4.33:1), Blueprint 0.63 (0.62 measured 4.50:1, too close to trust); the other
+three cleared it at the starting ratio. `display.css` points every date
+numeral, weekday head and week number at `--ink-scaffold`, leaves the actual
+event text (`.hz-rowtext`, `.dr-ev-title`, `.te-title`, the all-day pill) on
+`--ink-event`, and leaves the out-of-month grey on `--faint` exactly as
+before — that one is deliberately below the contrast bar and stays so.
+
+**A custom theme gets the same four roles, or its wall goes blank in the same
+place.** `customTokens()` in the display bundle and `withTints()` in
+`apps/server/src/api/themes.ts` are deliberate mirrors — the shift-tint maths
+was already kept in step this way, since the display bundle has no bundler and
+cannot import the server's copy. Both now carry a `scaffoldInk` helper, and
+the two are written to be **character-identical**, the same guard
+`calendar-view-parity.test.ts` puts on `calendarView`: a test in
+`themes.test.ts` reads `relativeLuminance`, `contrastRatio` and `scaffoldInk`
+out of both files as text and asserts equality, so a drift in the starting
+ratio, the 4.5 bar or the step size turns it red immediately rather than
+showing up as an invisible date numeral on somebody's own theme.
+
+**The numeral and the clock are now sized against the event, not against a
+rem somebody picked.** `.hz-num` was `max(1.85rem, var(--t-floor))`; it is now
+`1.2x` whatever `.hz-rowtext` (its own cell's event text) actually resolves
+to — `calc(max(var(--t-micro), var(--t-floor)) * 1.2)` — so the relationship
+survives whatever the arc-minute scale (a later phase) does to event type,
+rather than needing to be re-picked by hand every time that changes. `.clock`
+carries the equivalent cap at 1.8x a new `--t-event` token (`1.95rem`, lifted
+out of `.dr-ev-title`, the agenda's own event size) in both the portrait rule
+and the `landscape` override — a widget the household dragged into place does
+not get to be the largest thing on the wall. Both keep the `max(…,
+var(--t-floor))` pair written twice, as everywhere else in this file.
+
+**The declared ratio and the on-glass ratio are not the same question, and
+only the first one is this phase's to answer.** `fitToBox` scales each
+widget's *section* independently of its neighbours, so `.clock` and
+`.dr-ev-title` sitting in differently-sized boxes can carry the right ratio in
+their own `font-size` and still land nowhere near it on the glass — measured,
+the shipped Classic seed puts them at 2.44x in portrait even with this fix
+applied, because the "Now" widget's box scales its content about 36% larger
+than the "Next" widget's box does. Closing that gap is layout work (the arc-
+minute scale, or rebalancing Classic's own proportions), and this change is
+deliberately token-only. `apps/server/test/wall-density.test.ts` measures the
+*stylesheet's* ratio — a bare probe element planted in a real paired wall's
+`.canvas`, so every `var()` and `calc()` resolves through the live cascade —
+at three viewports, rather than either a source-text ratio (which would miss
+a mistyped token) or the actual on-glass words. The last of those was tried
+first and rejected for two reasons found by trying it: the cross-widget scale
+gap above, and a paired 1280x720 Classic wall where `trimCellRows` drops every
+`.hz-rowtext` to a bare "+N" — confirmed pre-existing by reverting just the
+numeral size and measuring again — so a test that needs a real rendered event
+word would have nothing to measure on the smallest wall this project checks.
+
+**Two things were removed outright, both for the same reason: a widget the
+household placed does not get to outsize the wall around it.** The generic
+module panel's `stat` and `tiles` kinds (`.gp-stat`/`.gp-tile` in
+`display.css`, a 5.5rem numeral and a strip of big tiles) drew exactly the
+oversized treatment this whole change exists to remove. Both kinds still draw
+— as `.gp-reading` rows, the same markup `kind: 'readings'` always used — so a
+third-party module already sending `kind: 'stat'` or `kind: 'tiles'` still
+shows something on upgrade rather than going blank (rule nine); only the
+treatment changed, never the data a module may send. And the wall editor's
+drop-shadow control is gone from the Style tab (`applyWidgetFormat` in
+`render.ts` no longer reads `c['shadow']` at all) — a shadow bands on e-ink,
+burns in on OLED, and buys nothing at reading distance. A widget that already
+has `shadow: true` in its stored config simply draws without one now; nothing
+migrates the canvas, and the server's widget schema still accepts the key so
+an old wall's config keeps round-tripping. The stylesheet carries no
+`transition` or `animation` anywhere, and never did — the wall has no pointer
+and redraws every fifteen seconds, so there was nothing to remove there.
+
 ---
 
 ## Open decisions

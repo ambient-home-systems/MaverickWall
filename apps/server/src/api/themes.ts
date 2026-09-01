@@ -15,6 +15,14 @@ import { colour, z } from '../validation.js';
  * `CELL_TINT` / `BADGE_TINT`; the two are kept in step by a `mix` unit test on
  * each side rather than a shared import, because the display has no dependency on
  * the server (or core) to share through.
+ *
+ * `withTints` also derives the four emphasis-role tokens (`--ink-event`,
+ * `--ink-scaffold`, `--ink-quiet`, `--rule-week`) a household's custom theme
+ * needs — the same derivation as the display's `customTokens`, kept in step
+ * the same way, for the same reason: two readers of one stored value drifting
+ * apart is this repository's most repeated bug (`shifts[0]`, `display_mode`,
+ * `cellEvents`), and a custom theme with no `--ink-scaffold` resolves `var()`
+ * to nothing on every date numeral in the household's own wall.
  */
 
 /** The prefix a stored theme reference carries; a built-in has no prefix. */
@@ -144,6 +152,44 @@ function isLight(hex: string): boolean {
   return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 > 0.5;
 }
 
+/** WCAG relative luminance of a hex colour, 0 (black) to 1 (white). */
+function relativeLuminance(hex: string): number {
+  const rgb = parseHex(hex);
+  if (rgb === undefined) return 0;
+  const channel = (raw: number): number => {
+    const c = raw / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+}
+
+/** WCAG contrast ratio between two hex colours, 1 (none) to 21 (max). */
+function contrastRatio(a: string, b: string): number {
+  const [la, lb] = [relativeLuminance(a), relativeLuminance(b)];
+  const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The scaffolding ink for a custom theme: the same derivation the five
+ * built-in themes were hand-tuned to (see the header comment) — start at
+ * `mix(ink, background, 0.62)` and raise the ratio until the result clears
+ * 4.5:1 against the theme's own background, since a fixed ratio reads
+ * differently on a light ground than a dark one. A theme whose ink and
+ * background are too close to ever clear the bar falls back to whatever the
+ * loop last reached rather than looping past pure ink — a scaffold that is
+ * merely dim is still better than a wall that cannot resolve one (rule nine).
+ */
+function scaffoldInk(ink: string, background: string): string {
+  let ratio = 0.62;
+  let value = mix(ink, background, ratio);
+  while (contrastRatio(value, background) < 4.5 && ratio < 1) {
+    ratio = Math.round((ratio + 0.01) * 100) / 100;
+    value = mix(ink, background, ratio);
+  }
+  return value;
+}
+
 /**
  * A theme's tokens with the derived shift tints added.
  *
@@ -164,6 +210,14 @@ export function withTints(base: ThemeTokens): Record<string, string> {
     out[`${token}-tint`] = mix(hue, background, cell);
     out[`${token}-badge`] = mix(hue, background, 0.16);
   }
+  // The four emphasis roles (RFC — wall type hierarchy): three are straight
+  // copies, and `--ink-scaffold` is measured against this theme's own ground.
+  // Mirrors `customTokens` in the display bundle's `theme.ts`, token for token.
+  const ink = base['--ink'];
+  out['--ink-event'] = ink;
+  out['--ink-scaffold'] = scaffoldInk(ink, background);
+  out['--ink-quiet'] = base['--muted'];
+  out['--rule-week'] = base['--rule'];
   return out;
 }
 
