@@ -669,6 +669,9 @@ body {
      bundle looking deliberate rather than uncoloured. */
   border-left: 0.3rem solid var(--ec, var(--accent));
   padding-left: 0.9rem;
+  /* The containing block for `.dr-now`, which hangs in the gap above (or
+     below) the event it marks rather than taking a row of its own. */
+  position: relative;
 }
 .dr-ev-time {
   font-family: var(--f-mono);
@@ -708,6 +711,52 @@ body {
 .dr-ev-bar-fill { height: 100%; background: var(--ec, var(--accent)); }
 
 .dr-empty { font-size: 1.7rem; color: var(--faint); font-style: italic; }
+
+/*
+ * Where the day has got to: a rule across the agenda column at the current
+ * time, and no label.
+ *
+ * The product had no current-time indicator anywhere. This is deliberately the
+ * only one — a *day* is not a timeline, so the month grid gets none however
+ * tempting the symmetry, and a panel gets none either, because an indicator
+ * that means anything has to move every minute and a battery e-paper screen is
+ * a glance class rather than an alert class.
+ *
+ * Two pixels, not a rem: it is a hairline at every wall size and a rule-of-
+ * thumb thickness would make it a bar competing with the events either side of
+ * it. `--accent` is the wall's one highlight colour, which is the point — the
+ * accent says which event is next and this says where now is, and the two want
+ * to read as one idea.
+ *
+ * The partner is `.te.is-next` just above, and it is worth knowing that that
+ * rule currently matches nothing: no renderer has emitted a `.te` since the
+ * day block was retired, so the whole `.te*` block is dead styling for markup
+ * that is gone. Left where it is rather than swept up here — that is a
+ * different change from adding an indicator — but not to be read as the thing
+ * this one pairs with today.
+ */
+.dr-now {
+  /*
+   * Out of flow, into the gap above the event it hangs from.
+   *
+   * In flow it is a grid item, and a grid item costs its own track *and* one
+   * more `row-gap` — 11.6px of an 816px agenda on the shipped Classic wall,
+   * which is 4% of the scale that section is drawn at and took the rota chip
+   * from 22.5px to 21.6px, under this product's own legibility floor. A
+   * hairline that costs a word is not a hairline. Absolute costs nothing, and
+   * the containing block is the event's padding box, so `-0.3rem` on the left
+   * reaches back over its calendar-colour edge and the rule spans the column.
+   */
+  position: absolute;
+  left: -0.3rem;
+  right: 0;
+  top: calc(-0.25rem - 1px);
+  height: 2px;
+  background: var(--accent);
+}
+/* Everything with a clock on it has been: the rule sits under the last event
+   rather than above one that does not exist. */
+.dr-now.at-end { top: auto; bottom: calc(-0.25rem - 1px); }
 
 /* --- BLOCK 3 — HORIZON ------------------------------------------------ */
 
@@ -812,7 +861,15 @@ body {
  */
 .hz-rows {
   display: flex; flex-direction: column;
-  gap: 0.26rem; margin-top: 0.4rem;
+  /*
+   * The rows are what leave room for the span bars above them: a bar is an
+   * absolutely placed grid item and reserves nothing by itself, so the cell has
+   * to be told (`--hz-lanes`, set by the renderer from `month-spans.ts`). Told
+   * rather than measured, because a bar and the cells beside it have to agree
+   * before either is laid out.
+   */
+  gap: 0.26rem;
+  margin-top: calc(var(--hz-gap) + var(--hz-lanes, 0) * var(--hz-lane));
   min-width: 0;
 }
 .hz-row {
@@ -887,9 +944,18 @@ body {
   max-height: calc(var(--cell-lines) * 1.25em);
 }
 
-/* The overflow counter. Low-profile, muted, hard right, and its own line:
- * `trimCellRows` pays for this height out of the same budget as the rows, so a
- * cell that shows it shows one fewer event. */
+/*
+ * The overflow counter, which never costs a name.
+ *
+ * It used to take a line of its own and be paid for out of the row budget
+ * *before* the rows were placed, so a cell with room for exactly one row spent
+ * it on "+3" and drew neither of its events. Measured at 800x480, thirteen
+ * cells drew a counter and not one name. So it rides on the last row it is
+ * counting for, hard right (`.in-row`), and `trimCellRows` only gives it a
+ * line of its own when sharing would cost that row's title *and* the names
+ * have left room underneath. A count is a summary of what is missing; it
+ * cannot be worth more than the thing itself.
+ */
 .hz-more {
   margin-top: 0.22rem;
   text-align: right;
@@ -899,7 +965,156 @@ body {
   color: var(--faint);
   font-variant-numeric: tabular-nums;
 }
+/* Sharing the last row: hard right, on that row's last line, and never
+   stretching — the words beside it keep every pixel it does not need. */
+.hz-more.in-row {
+  margin: 0 0 0 0.34rem;
+  flex: 0 0 auto;
+  align-self: flex-end;
+}
 .hz-more:empty { display: none; }
+
+/* ------------------------------------------------ THE DENSITY MARK ------- */
+/*
+ * How busy a day is, drawn with no legible text at all.
+ *
+ * A month cell on the shipped Classic wall is 114x129, which at the 22px floor
+ * is room for one row — so most cells, most weeks, can name one thing or
+ * nothing. The mark is what the grid says to somebody standing in the doorway
+ * rather than at the wall: which days are busy, and the shape of a span across
+ * a week. Its *length* is the count (`densitySteps`, one step per event and
+ * saturating at four), which is why it is a bar rather than the dot row it
+ * replaces — three dots and four dots are the same smudge at ten feet, and a
+ * one-step bar and a four-step one are not.
+ *
+ * `--ink-scaffold` is the register: a demoted ink for the things that *label* a
+ * cell rather than being what a household reads it for, which is already what
+ * the date numeral, the weekday head and the week number are drawn in. A mark
+ * that says how much is there and never what is scaffolding by definition.
+ *
+ * **It shares the numeral's line, and that is a measurement rather than a
+ * preference.** Under the numeral, in flow, it cost the shipped Classic wall
+ * four of the seven event names its landscape month grid was drawing — a cell
+ * there has room for one row, so a few pixels of scaffolding *is* a row, and
+ * the density ratchet is what said so. Beside the numeral the row's height is
+ * the numeral's and the mark is free. A day with nothing on it draws no mark
+ * whatever: an empty day is a fact, and a mark of no length is still a mark.
+ */
+.hz-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  /* The mark may not push the date out of its own cell. */
+  overflow: hidden;
+}
+.hz-mark {
+  height: max(0.24rem, 3px);
+  /*
+   * A sixth of the cell per event, to four — 16% to 64%, which is what fits
+   * beside a two-digit date at the type floor without either shrinking. The
+   * length *is* the encoding, so `flex-shrink` is the belt and never the plan:
+   * a mark squeezed to a common width says the same thing about every day.
+   */
+  flex: 0 1 auto;
+  min-width: 0;
+  width: calc(var(--hz-fill, 1) * 16%);
+  background: var(--ink-scaffold);
+  /* Off the numeral's descender line, so it underlines rather than touches. */
+  margin-bottom: 0.18rem;
+}
+
+/* ------------------------------------------------- MULTI-DAY SPANS ------- */
+/*
+ * A multi-day event drawn once, as a bar across the days it covers.
+ *
+ * "Half term" over seven days used to take a row in seven consecutive squares
+ * and print the same two words seven times — at exactly the moment a row is
+ * the scarcest unit in the grid. Which events are one bar is decided in
+ * `month-spans.ts` and read identically by the panel; this is only where it
+ * lands.
+ *
+ * **Absolutely positioned, and that is the whole trick.** A bar has to cross
+ * the gaps between columns, so it cannot live inside a cell, which clips. As
+ * an ordinary grid item placed on an explicit row it would displace every cell
+ * not yet auto-placed and take the grid apart a week at a time; taken out of
+ * flow it keeps its grid area — the exact columns, the exact row, gaps
+ * included — and disturbs nothing.
+ *
+ * The vertical arithmetic is the one thing here that is *computed* rather than
+ * measured, because a bar and the cells beside it have to agree before either
+ * is laid out. It is declared once per treatment and `browser-month-spans`
+ * measures a bar's top against the cell content beneath it, so a change to the
+ * cell's padding or its numeral turns that red rather than sliding the bars
+ * quietly over a row of names.
+ */
+.horizon-text .hz-grid,
+.horizon-swiss .hz-grid {
+  position: relative;
+  /* A bar's own height, and the space under it before the next lane. Clamped
+     to the floor like every other run in this grid: a bar too short to hold
+     22px type is a coloured smear with a name hidden in it. */
+  --hz-lane-h: max(1.5rem, calc(var(--t-floor) * 1.2));
+  --hz-lane: calc(var(--hz-lane-h) + 0.2rem);
+  /* Between the day number and whatever comes next. */
+  --hz-gap: 0.3rem;
+}
+.horizon-text .hz-grid {
+  /*
+   * padding-top + the numeral's own line (`line-height: 1`) + the gap.
+   *
+   * The numeral term is written the way `.hz-num` writes it rather than as the
+   * rem it happens to resolve to — it is 1.2x the cell's event text, and it was
+   * a flat `1.85rem` until the type-hierarchy pass moved it while this was
+   * being built. A constant here would have slid every bar over a row of names
+   * the moment that changed, with nothing in either declaration to say they
+   * were related. `browser-month-spans` measures a bar's top against the
+   * numeral above it, which is what turns that drift red rather than merely
+   * wrong.
+   */
+  --hz-lane-top: calc(
+    0.45rem + calc(max(var(--t-micro), var(--t-floor)) * 1.2) + var(--hz-gap)
+  );
+  --hz-span-l: 0.3rem;
+  --hz-span-r: 0.3rem;
+}
+.horizon-swiss .hz-grid {
+  /* Swiss pads differently and sets `line-height: 0.95` on a larger numeral. */
+  --hz-lane-top: calc(0.55rem + 0.95 * max(var(--t-md), var(--t-floor)) + var(--hz-gap));
+  --hz-span-l: 0;
+  --hz-span-r: 0.6rem;
+}
+.hz-span {
+  position: absolute;
+  top: calc(var(--hz-lane-top) + var(--hz-lane-index, 0) * var(--hz-lane));
+  left: var(--hz-span-l, 0.3rem);
+  right: var(--hz-span-r, 0.3rem);
+  height: var(--hz-lane-h);
+  display: flex;
+  align-items: center;
+  background: var(--pc);
+  border-radius: var(--radius);
+  padding: 0 0.4rem;
+  overflow: hidden;
+}
+/* Square where it carries on from the week above, so a fortnight reads as one
+   thing interrupted by the edge of the grid rather than as two events. */
+.hz-span.is-cont { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.horizon-swiss .hz-span { border-radius: 0; }
+/*
+ * `#fff` on the calendar's own colour, the same exemption `.hz-pill` takes and
+ * for the same reason: the ground is a per-calendar hue chosen by the
+ * household, not a theme surface, so there is no token that is legible on it.
+ */
+.hz-spantext {
+  font-family: var(--f-cond, var(--f-sans));
+  font-size: var(--t-micro);
+  font-size: max(var(--t-micro), var(--t-floor));
+  line-height: 1.1;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+}
 
 /* The card grid needs a little more height per cell once its cells hold words
  * rather than dots, the way the pill variant already asks for more than the

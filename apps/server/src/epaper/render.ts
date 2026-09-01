@@ -15,6 +15,7 @@
 import type { CivilDate } from '@maverick-wall/core';
 
 import { ditherRect } from './dither.js';
+import { DENSITY_STEPS, densitySteps, monthSpans, type MonthSpan } from './month-spans.js';
 import { drawText, measureText, type TextOptions } from './font.js';
 import { Framebuffer } from './framebuffer.js';
 import {
@@ -271,9 +272,9 @@ export function drawWeekBox(fb: Framebuffer, model: EpaperModel, m: EpaperMetric
 
     let y = top;
     let drawn = 0;
-    for (const title of cell.titles.slice(0, fits)) {
+    for (const event of cell.events.slice(0, fits)) {
       if (y + smallGlyph > foot) break;
-      const line = fit(asciiTitle(title), colW - inset * 2, { scale: small });
+      const line = fit(asciiTitle(event.title), colW - inset * 2, { scale: small });
       if (line === '') break;
       drawText(fb, x + inset, y, line, { scale: small });
       y += m.weekTitleLineH;
@@ -338,11 +339,26 @@ export function drawMonthBox(
   // "labelled pills" is a surprise. It also keeps the setting honest — with
   // nothing on any day, dots and pills draw the identical frame, so the only
   // thing the switch can change is whether the events are named.
-  const numScale = fitNumberScale(
-    Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? 2 * m.smallScale : m.smallScale,
-    grid.cellW - m.cellNumberInset * 2,
-  );
-  const numberBand = m.cellNumberInset + 8 * numScale + 2 * m.smallScale;
+  /*
+   * Two scales, and keeping them apart is what stops one guard moving another
+   * rule's arithmetic.
+   *
+   * `assumedNumScale` is the rung `pillMinCell` is *derived from* — its whole
+   * definition is the number's line plus one row of name — so every vertical
+   * decision below reads it: the lane top, the room for names, the threshold
+   * itself. `numScale` is what actually gets drawn, which may be a rung lower
+   * when the numeral would otherwise run through its own cell's right border.
+   *
+   * Folding the two together looked tidier and was wrong: at a cell of exactly
+   * `pillMinCell` the numeral does not fit its width, so the drawn rung
+   * dropped, the band shrank by a line, and a cell the "no name, no counter"
+   * rule is calibrated on suddenly had room for a name — which turned that
+   * rule's own test red. A width guard should stop a numeral overflowing and
+   * change nothing else.
+   */
+  const assumedNumScale = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? 2 * m.smallScale : m.smallScale;
+  const numScale = fitNumberScale(assumedNumScale, grid.cellW - m.cellNumberInset * 2);
+  const numberBand = m.cellNumberInset + 8 * assumedNumScale + 2 * m.smallScale;
   const titleRows = cellTitlesInBox(grid.cellH - numberBand - 2 * m.smallScale, m);
 
   // Weekday labels, centred over their columns.
@@ -352,7 +368,53 @@ export function drawMonthBox(
     drawText(fb, gx + c * grid.cellW + Math.floor((grid.cellW - w) / 2), box.y, label, { scale: m.labelScale });
   }
 
+  /*
+   * Which multi-day events are one bar, resolved exactly as the wall resolves
+   * them — `month-spans.ts` is the wall's own reading, transcribed, and
+   * `month-spans-parity.test.ts` holds the two files to each other. A panel
+   * following a wall has to draw the same month, and "the same month" now
+   * includes which events are a bar and which are rows.
+   *
+   * Only where names are drawn at all: the unlabelled treatment answers "how
+   * busy" with dither and never says what is on, so a bar there would be a
+   * coloured band with nothing in it.
+   *
+   * The events go in without a colour, because a panel has no hue to give one.
+   * `SpanEvent` asks for it because the wall needs it, and answering with the
+   * empty string is more honest than inventing a value the renderer would then
+   * have to ignore.
+   */
+  const laneTop = numberBand;
+  /*
+   * How many lanes a cell can afford, which the wall has to *measure* and this
+   * can work out: the room under the number, less a pixel of ground, over the
+   * height of a lane. A bar drawn past that would run into the week below —
+   * the one failure a month grid must never have — and an event whose lane
+   * does not fit goes back to being a row in each of its cells.
+   *
+   * The lane is the panel's now rather than a flat 12, so a 13.3" panel gives
+   * a bar a 16px title instead of the 8px one it drew under a 32px numeral.
+   */
+  const maxLanes = pills
+    ? Math.max(0, Math.floor((grid.cellH - laneTop - 2 * m.smallScale) / m.spanLaneH))
+    : 0;
+  const spans =
+    maxLanes > 0
+      ? monthSpans(
+          model.weeks.map((week) =>
+            week.map((item) => item.events.map((event) => ({ ...event, color: '' }))),
+          ),
+        )
+      : undefined;
+
   for (let r = 0; r < weeks; r++) {
+    const bars = (spans?.[r]?.bars ?? []).filter((bar) => bar.lane < maxLanes);
+    // What each column's cell must not repeat, taken from the bars that will
+    // actually be drawn rather than from what `monthSpans` proposed.
+    const covered: string[][] = [[], [], [], [], [], [], []];
+    for (const bar of bars) {
+      for (let c = bar.column; c < bar.column + bar.span; c++) (covered[c] ?? []).push(bar.id);
+    }
     for (let c = 0; c < 7; c++) {
       const item = model.weeks[r]![c]!;
       const x = gx + c * grid.cellW;
@@ -382,18 +444,74 @@ export function drawMonthBox(
       // its number is. Drawn in ink they were black on black — invisible on
       // the one cell somebody actually walks over to read.
       if (pills) {
-        drawCellTitles(
+        const cellBox: Box = { x, y, w: grid.cellW, h: grid.cellH };
+        let top = y + laneTop + laneRowsAt(bars, c) * m.spanLaneH;
+        top = drawDensityMark(fb, item, m, cellBox, top, !item.isToday);
+        drawCellTitles(fb, item, m, cellBox, top, titleRows, !item.isToday, covered[c] ?? []);
+      }
+    }
+    /*
+     * The bars last, over the cells they cross.
+     *
+     * A pixel of clear ground around each one, which does two jobs for the
+     * price of one `fillRect`: it separates the bar from the cell borders it
+     * runs over, so a week reads as one object rather than as three boxes with
+     * ink in them — and it is the *only* thing that makes a bar visible where
+     * it crosses today, whose whole cell is filled and would otherwise swallow
+     * an ink bar completely.
+     */
+    for (const bar of bars) {
+      const bx = gx + bar.column * grid.cellW + 1;
+      const bw = bar.span * grid.cellW - 2;
+      const by = gridTop + r * grid.cellH + laneTop + bar.lane * m.spanLaneH;
+      fb.fillRect(bx - 1, by - 1, bw + 2, m.spanBarH + 2, false);
+      fb.fillRect(bx, by, bw, m.spanBarH, true);
+      // Only the first bar of a run carries the words; a continuation is the
+      // same event still being true, and saying so again is the repetition the
+      // whole rule exists to end.
+      if (bar.leading) {
+        drawText(
           fb,
-          item,
-          m,
-          { x, y, w: grid.cellW, h: grid.cellH },
-          y + numberBand,
-          titleRows,
-          !item.isToday,
+          bx + m.cellInset,
+          by + m.smallScale,
+          fit(asciiTitle(bar.title), bw - m.cellInset * 2, { scale: m.smallScale }),
+          { scale: m.smallScale, ink: false },
         );
       }
     }
   }
+}
+
+/** How many lanes are reserved above the cell in column `c`. */
+function laneRowsAt(bars: readonly MonthSpan[], column: number): number {
+  let lanes = 0;
+  for (const bar of bars) {
+    if (column < bar.column || column >= bar.column + bar.span) continue;
+    lanes = Math.max(lanes, bar.lane + 1);
+  }
+  return lanes;
+}
+
+/**
+ * The density mark under a cell's numeral: a hairline whose length steps with
+ * the day's count, so a cell with no room for a legible name still says how
+ * busy it is. Sized to the panel rather than a flat 3px band.
+ */
+function drawDensityMark(
+  fb: Framebuffer,
+  item: EpaperGridCell,
+  m: EpaperMetrics,
+  cell: Box,
+  top: number,
+  ink: boolean,
+): number {
+  const steps = densitySteps(item.eventCount);
+  if (steps <= 0) return top;
+  const inset = m.cellInset;
+  const width = Math.max(2, Math.round(((cell.w - inset * 2) * steps) / DENSITY_STEPS));
+  if (top + m.markH > cell.y + cell.h - 2 * m.smallScale) return top;
+  fb.fillRect(cell.x + inset, top, width, m.markH, ink);
+  return top + m.markH + m.markGap;
 }
 
 /**
@@ -423,34 +541,63 @@ function drawCellTitles(
   m: EpaperMetrics,
   cell: Box,
   top: number,
-  rows: number,
+  maxRows: number,
   ink: boolean,
+  covered: readonly string[],
 ): void {
   const scale = m.smallScale;
   const glyph = 8 * scale;
   const lineH = m.cellTitleLineH;
   const inset = m.cellInset;
   const width = cell.w - inset * 2;
-  const foot = cell.y + cell.h - 2 * scale;
+  const bottom = cell.y + cell.h - 2 * scale;
+  // Everything a bar is not already drawing. By id, which is the same on every
+  // date the event touches; by title it would take an unrelated "Bin day" with
+  // it.
+  const rows = item.events.filter((event) => covered.indexOf(event.id) < 0);
+  // `maxRows` is how many the cell has room for, worked out once by the caller
+  // from the panel's own line height; the guard below stays as the belt, the
+  // way `agendaRowsInBox` and the agenda loop keep each other honest.
+  const lines: { text: string; y: number }[] = [];
   let y = top;
-  let drawn = 0;
-  // `rows` is how many the cell has room for, worked out once by the caller;
-  // the model carries a generous working set and this is where it is cut. The
-  // guard below stays as the belt, the way `agendaRowsInBox` and the agenda
-  // loop keep each other honest.
-  for (const title of item.titles.slice(0, rows)) {
-    if (y + glyph > foot) break;
-    const line = fit(asciiTitle(title), width, { scale });
+  for (const event of rows.slice(0, Math.max(0, maxRows))) {
+    if (y + glyph > bottom) break;
+    const line = fit(asciiTitle(event.title), width, { scale });
     if (line === '') break;
-    drawText(fb, cell.x + inset, y, line, { scale, ink });
+    lines.push({ text: line, y });
     y += lineH;
-    drawn++;
   }
-  // Say what did not fit rather than silently showing three of seven.
-  const rest = item.eventCount - drawn;
-  if (rest > 0 && y + glyph <= foot) {
-    drawText(fb, cell.x + inset, y, fit(`+${rest}`, width, { scale }), { scale, ink });
+  /*
+   * A cell that can draw no name draws no counter either.
+   *
+   * "+3" alone is a number with no subject — the cell's whole content is a
+   * claim about something it never says. Measured at 800x480, thirteen cells
+   * drew exactly that. The density mark above is what such a cell shows
+   * instead: it is already there, it needs no legible text, and it says the
+   * one thing the "+3" was saying.
+   */
+  if (lines.length === 0) return;
+  /*
+   * And the counter shares the last line rather than taking one.
+   *
+   * It used to sit on a line of its own, out of the same budget as the names,
+   * so a cell with room for one row could spend it on the count. Hard right on
+   * the last name's line costs no row at all; the name it shares with gives up
+   * the width instead, which on 1 bit is a truncation the panel already does
+   * everywhere and never a name lost.
+   */
+  const rest = item.eventCount - lines.length - covered.length;
+  if (rest > 0) {
+    const tag = `+${rest}`;
+    const tagWidth = measureText(tag, { scale });
+    const last = lines[lines.length - 1] as { text: string; y: number };
+    const source = rows[lines.length - 1];
+    if (source !== undefined) {
+      last.text = fit(asciiTitle(source.title), Math.max(0, width - tagWidth - m.cellInset), { scale });
+    }
+    drawText(fb, cell.x + cell.w - inset - tagWidth, last.y, tag, { scale, ink });
   }
+  for (const line of lines) drawText(fb, cell.x + inset, line.y, line.text, { scale, ink });
 }
 
 /**

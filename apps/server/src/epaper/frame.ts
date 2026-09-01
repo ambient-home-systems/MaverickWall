@@ -38,27 +38,28 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * marks. No code in this file changed, which is exactly why this bump is easy
  * to miss: the pixels moved because the *meaning of an absent value* did.
  *
- * 4: the layout is proportional to the panel (`epaper/metrics.ts`). Every
- * absolute pixel the frame was drawn with — the 16px margin, the 54px header,
- * the 34px agenda row, the 26px week head, the 34px pill threshold, the six
- * agenda rows and the four cell names — was tuned by looking at one 800×480
- * Seeed panel and applied to a range running 640×384 to 1872×1404. So *every*
- * paired panel's pixels move here, including the 800×480 ones, whose month grid
- * now fills the column it used to stop halfway down. This is the bump that
- * matters most so far: without it a 13.3" panel would keep serving the frame
- * with 714px of white at the bottom until its calendar happened to change, and
- * "the update did nothing" is indistinguishable from "the update was wrong".
+ * 4: the month grid's three content rules, following the wall. A multi-day
+ * event is one bar across its days instead of the same words repeated in
+ * every square; the "+N" shares the last name's line instead of taking one of
+ * its own, and is not drawn at all by a cell that can name nothing; and a
+ * density mark under the numeral says how busy a day is with no legible text.
+ * Every cell in the grid moves, on every panel.
  *
- * 5: the same, for the *widgets* — which 4 did not reach and this comment did
- * not say. Every widget on a household's own canvas was still drawn in pixels
- * tuned on that one 800×480: an 8px inset, a title bar with 8px type in it,
- * 24px to-do rows, 22px chore rows, and a dozen calls capping ordinary widget
- * text at 16px. A `notes` widget drew 15% of the ink density on a 13.3" panel
- * that it drew on a 7.5" one. The 800×480 frames are byte-identical here —
- * checked, every type — with one deliberate exception: a module panel counts
- * its rows at the line height it draws them with, so a short box shows one more
- * reading than it did. That alone is a pixel change, so the bump is not
- * optional even for the panel nothing else moved on.
+ * 5: the layout is proportional to the panel (`epaper/metrics.ts`), for the
+ * built-in frame *and* the free-form widgets. Every absolute pixel the frame
+ * was drawn with — the 16px margin, the 54px header, the 34px agenda row, the
+ * 26px week head, the 34px pill threshold, the six agenda rows, the four cell
+ * names, and on the widget side an 8px inset, a title bar with 8px type in it,
+ * 24px to-do rows, 22px chore rows and a dozen calls capping ordinary widget
+ * text at 16px — was tuned by looking at one 800×480 Seeed panel and applied
+ * to a range running 640×384 to 1872×1404. A 13.3" panel drew 714px of white
+ * below its last row and a `notes` widget 15% of the ink density it drew on a
+ * 7.5" one. The 800×480 frames are byte-identical apart from a module panel
+ * counting its rows at the line height it draws them with, which is one more
+ * reading in a short box — and that alone is a pixel change, so the bump is
+ * not optional even for the panel nothing else moved on. Two bumps on the
+ * branch (the frame, then the widgets) collapse to this one, because they
+ * reach a household together and no panel ever served the state between them.
  */
 export const EPAPER_RENDERER_VERSION = 5;
 

@@ -144,7 +144,7 @@ describe('the month grid', () => {
     const many = Array.from({ length: 20 }, (_, i) => event({ title: `E${i}`, startsAt: at(1, i) }));
     const busy = buildEpaperModel(fakeManifest([day('2026-08-13', many)]));
     const today = busy.weeks.flat().find((cell) => cell.isToday)!;
-    expect(today.titles).toHaveLength(EPAPER_CELL_TITLES_LIMIT);
+    expect(today.events).toHaveLength(EPAPER_CELL_TITLES_LIMIT);
     // The count is the day's own, so a cell that draws eight still says "+12".
     expect(today.eventCount).toBe(20);
   });
@@ -180,7 +180,7 @@ describe('the month grid', () => {
       ]),
     );
     const today = off.weeks.flat().find((cell) => cell.isToday)!;
-    expect(today.titles).toEqual(['Dentist']);
+    expect(today.events.map((event) => event.title)).toEqual(['Dentist']);
     // The count as well as the names: `drawMonthBox` shades a cell by it and
     // draws "+N" from it, so a cell claiming two and naming one would report a
     // meeting the household asked not to see.

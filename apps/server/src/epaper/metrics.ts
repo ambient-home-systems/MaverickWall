@@ -153,6 +153,23 @@ export interface EpaperMetrics {
   readonly cellTitleLineH: number;
   /** A week column's own title step, which is a line box rather than tighter. */
   readonly weekTitleLineH: number;
+  /**
+   * One span lane in the month grid: the bar, and the pixels under it.
+   *
+   * A multi-day event is one bar across its days rather than the same words in
+   * every square, and the bar has to hold a cell-title line — so it is that
+   * line plus a pixel of ground either side, and the lane is the bar plus the
+   * gap to the next. Constants (10 and 12) when they arrived, which is 10px of
+   * bar under a 32px day number on a 13.3" panel.
+   */
+  readonly spanBarH: number;
+  readonly spanLaneH: number;
+  /**
+   * The density mark under a cell's numeral: a hairline whose length steps
+   * with the day's count, and the gap under it. 3 and 3 at 800×480.
+   */
+  readonly markH: number;
+  readonly markGap: number;
 
   /** Everything the free-form widgets are drawn with. */
   readonly widget: EpaperWidgetMetrics;
@@ -339,6 +356,13 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
     // leading rather than a full line box. 10 and 11 at 800×480 — both shipped.
     cellTitleLineH: GLYPH_SIZE * smallScale + Math.round((GLYPH_SIZE * smallScale) / 4),
     weekTitleLineH: lineBox(smallScale),
+    // A bar is a cell-title line with a pixel of ground either side; a lane is
+    // that bar and the gap to the next. 10 and 12 at 800×480, which is what
+    // they were as constants.
+    spanBarH: GLYPH_SIZE * smallScale + 2 * smallScale,
+    spanLaneH: GLYPH_SIZE * smallScale + 4 * smallScale,
+    markH: Math.max(1, Math.round(GLYPH_SIZE * smallScale * 0.375)),
+    markGap: Math.max(1, Math.round(GLYPH_SIZE * smallScale * 0.375)),
     widget: widgetMetrics(bodyGlyph, smallScale, bodyLine, pad, bullet),
   };
 }

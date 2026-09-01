@@ -339,16 +339,26 @@ describe('the month grid, drawn on a real wall', () => {
                 `day ${cell.day} draws "${title.text}" cut to ${Math.round(title.fit * 100)}%`,
               ).toBe(false);
             }
-          } else {
+          } else if (cell.spans === 0) {
             /*
-             * And a cell with no room says so. This is the half that matters:
-             * the documented failure here is a cell reading "+6" and showing
-             * none of its six — truthful, and a grid that has stopped saying
-             * what is on. Silence *without* the count is the unacceptable one.
+             * And a cell with no room still says *something*.
+             *
+             * This assertion used to demand a "+N" here, and the content rules
+             * reversed it: a counter alone is a number with no subject, and a
+             * cell that can name nothing draws the density mark instead — a
+             * short bar under the numeral whose length is the day's count.
+             * The claim is unchanged and the answer moved: silence is the
+             * unacceptable outcome, not the counter's absence.
+             *
+             * Measured as a width, never as a class: `.hz-mark` with no length
+             * is `.hz-mark`. A cell a span bar crosses is excluded because the
+             * bar is what it is saying, and the bar is not inside the cell.
              */
-            expect(cell.more, `day ${cell.day} holds ${cell.total} events and says nothing`).toMatch(
-              /^\+\d+$/,
-            );
+            expect(
+              cell.markPx,
+              `day ${cell.day} holds ${cell.total} events and says nothing`,
+            ).toBeGreaterThan(0);
+            expect(cell.more, `day ${cell.day} names nothing and still counts`).toBe('');
           }
         }
       },
@@ -362,9 +372,21 @@ describe('the month grid, drawn on a real wall', () => {
         const busy = grid.cells.filter((cell) => cell.total > 0);
         expect(busy.length).toBeGreaterThan(0);
         for (const cell of busy) {
+          if (cell.shown.length === 0) {
+            /*
+             * A cell that names nothing draws no counter (the mark carries it
+             * instead), so there is no arithmetic to check — only that it is
+             * not silent, which the assertion above already makes.
+             */
+            expect(cell.markPx + cell.spans).toBeGreaterThan(0);
+            continue;
+          }
+          // Rows on the glass, plus what a span bar over the cell is already
+          // drawing, plus what the counter says. A spanned event is *shown*.
           expect(
-            cell.shown.length + cell.moreCount,
-            `day ${cell.day}: ${cell.shown.length} drawn + "${cell.more}" != ${cell.total} on that day`,
+            cell.shown.length + cell.spans + cell.moreCount,
+            `day ${cell.day}: ${cell.shown.length} drawn + ${cell.spans} spanned + ` +
+              `"${cell.more}" != ${cell.total} on that day`,
           ).toBe(cell.total);
         }
       },

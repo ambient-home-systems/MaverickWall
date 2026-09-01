@@ -78,13 +78,19 @@ export interface EpaperUpcomingItem {
 export const EPAPER_UPCOMING_LIMIT = 60;
 
 /**
- * The most event labels a grid cell carries, for the labelled-pill month.
+ * The most events a grid cell carries, for the labelled month and the week
+ * columns.
  *
- * Four was what a 34px cell on a 7.5" panel could show; a 235px cell on a 13.3"
- * one has room for eight and was drawing four and a "+9". The renderer counts
- * what fits (`cellTitlesInBox`), so this is only the working set — twelve, the
- * same cut the browser wall's slim list makes, which is why a day with twenty
- * events says "+17" rather than "+9" on both.
+ * Four was what a 34px cell on a 7.5" panel could show; a 235px cell on a
+ * 13.3" one has room for eight and was drawing four and a "+9". The renderer
+ * counts what fits (`cellTitlesInBox`), so this is only the working set —
+ * twelve, the same cut the browser wall's slim list makes, which is why a day
+ * with twenty events says "+17" rather than "+9" on both.
+ *
+ * Raising it also helps the month grid's spans, which is the other thing this
+ * cap decides: an event past it contributes no span, so a bar could be split
+ * where a cell's fifth event was the one that continues. At twelve that takes
+ * a cell nobody has. `eventCount` beside it is still the day's true total.
  */
 export const EPAPER_CELL_TITLES_LIMIT = 12;
 
@@ -98,11 +104,26 @@ export interface EpaperGridCell {
   /** How many events fall on this day, for density shading. */
   readonly eventCount: number;
   /**
-   * The first few titles on this day, for the labelled-pill month and the week
+   * The first few events on this day, for the labelled-pill month and the week
    * columns. Density shading only ever needed the count; a cell that names what
    * is on it needs the names, and a panel has no second request to make.
+   *
+   * It carries the whole event rather than its title because the month grid
+   * now groups a multi-day event into one bar, and grouping on the *title*
+   * would merge two unrelated "Bin day" entries a week apart into a seven-day
+   * span — see `month-spans.ts`, which the wall reads the same way.
    */
-  readonly titles: readonly string[];
+  readonly events: readonly EpaperCellEvent[];
+}
+
+/** One of a cell's events, as much of it as either month treatment needs. */
+export interface EpaperCellEvent {
+  /** Identity, stable across every date the event touches. */
+  readonly id: string;
+  readonly title: string;
+  readonly allDay: boolean;
+  /** The server's own "covers more than one date". */
+  readonly continues: boolean;
 }
 
 export interface EpaperShiftLine {
@@ -287,10 +308,15 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
         isToday: date === today,
         inWindow: day !== undefined,
         eventCount: gridEvents.length,
-        titles: [...gridEvents]
+        events: [...gridEvents]
           .sort(agendaOrder)
           .slice(0, EPAPER_CELL_TITLES_LIMIT)
-          .map((event) => event.title),
+          .map((event) => ({
+            id: event.id,
+            title: event.title,
+            allDay: event.allDay,
+            continues: event.continues,
+          })),
       });
     }
     weeks.push(row);
