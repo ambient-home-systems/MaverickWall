@@ -65,7 +65,15 @@ export interface EpaperUpcomingItem {
  */
 export const EPAPER_UPCOMING_LIMIT = 60;
 
-/** The most event labels a grid cell carries, for the labelled-pill month. */
+/**
+ * The most events a grid cell carries, for the labelled month and the week
+ * columns.
+ *
+ * Four, which is more than a panel cell can draw and enough for the month grid
+ * to find the multi-day ones among them: an event past this cap contributes no
+ * span, so a bar could be split where a cell's fifth event is the one that
+ * continues. `eventCount` beside it is still the day's true total.
+ */
 export const EPAPER_CELL_TITLES = 4;
 
 export interface EpaperGridCell {
@@ -78,11 +86,26 @@ export interface EpaperGridCell {
   /** How many events fall on this day, for density shading. */
   readonly eventCount: number;
   /**
-   * The first few titles on this day, for the labelled-pill month and the week
+   * The first few events on this day, for the labelled-pill month and the week
    * columns. Density shading only ever needed the count; a cell that names what
    * is on it needs the names, and a panel has no second request to make.
+   *
+   * It carries the whole event rather than its title because the month grid
+   * now groups a multi-day event into one bar, and grouping on the *title*
+   * would merge two unrelated "Bin day" entries a week apart into a seven-day
+   * span — see `month-spans.ts`, which the wall reads the same way.
    */
-  readonly titles: readonly string[];
+  readonly events: readonly EpaperCellEvent[];
+}
+
+/** One of a cell's events, as much of it as either month treatment needs. */
+export interface EpaperCellEvent {
+  /** Identity, stable across every date the event touches. */
+  readonly id: string;
+  readonly title: string;
+  readonly allDay: boolean;
+  /** The server's own "covers more than one date". */
+  readonly continues: boolean;
 }
 
 export interface EpaperShiftLine {
@@ -260,10 +283,15 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
         isToday: date === today,
         inWindow: day !== undefined,
         eventCount: gridEvents.length,
-        titles: [...gridEvents]
+        events: [...gridEvents]
           .sort(agendaOrder)
           .slice(0, EPAPER_CELL_TITLES)
-          .map((event) => event.title),
+          .map((event) => ({
+            id: event.id,
+            title: event.title,
+            allDay: event.allDay,
+            continues: event.continues,
+          })),
       });
     }
     weeks.push(row);

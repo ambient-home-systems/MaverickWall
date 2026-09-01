@@ -187,9 +187,22 @@ export interface DayModel {
  * the manifest, so it leaks nothing.
  */
 export interface HorizonEvent {
+  /**
+   * The event's identity, the same on every date it touches — the server
+   * buckets one row onto each of them. The month grid groups a multi-day
+   * event's cells into one bar on this and never on the title, which two
+   * unrelated "Bin day" entries a week apart would happily share.
+   */
+  readonly id: string;
   readonly title: string;
   readonly color: string;
   readonly allDay: boolean;
+  /**
+   * The server's own word for "covers more than one date", carried since the
+   * manifest started bucketing an event onto each of its days and read by
+   * nothing until `month-spans.ts`. With `allDay`, it is what makes a bar.
+   */
+  readonly continues: boolean;
   readonly sourceId: string;
   /**
    * "09:00", or "All day". Formatted here like every other time on the wall so
@@ -1103,9 +1116,11 @@ export function buildModel(options: BuildOptions): DisplayModel {
        * and could never honour a request for twelve.
        */
       events: events.slice(0, 12).map((e) => ({
+        id: e.id,
         title: e.title,
         color: e.color,
         allDay: e.allDay,
+        continues: e.continues,
         sourceId: e.sourceId,
         time: eventTime(e, timezone, hour12),
       })),

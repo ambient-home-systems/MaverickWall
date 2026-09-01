@@ -134,7 +134,7 @@ describe('the month grid', () => {
       ]),
     );
     const today = off.weeks.flat().find((cell) => cell.isToday)!;
-    expect(today.titles).toEqual(['Dentist']);
+    expect(today.events.map((event) => event.title)).toEqual(['Dentist']);
     // The count as well as the names: `drawMonthBox` shades a cell by it and
     // draws "+N" from it, so a cell claiming two and naming one would report a
     // meeting the household asked not to see.
