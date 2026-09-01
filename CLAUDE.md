@@ -39,6 +39,25 @@ Violating any of these is a failed task.
 
 ---
 
+## Design rules: do not reintroduce
+
+- No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
+- No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code.
+- No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink.
+- No stat tiles. A big number with a caption, or a 3-up row of them, is a dashboard idiom. This is a calendar.
+- No shadow on the display, at any size, in any theme. It bands on e-ink and burns in on OLED. Separation is space, then a 1px rule, then a ground step, in that order.
+- No transition or animation on any surface a screen sees. The wall has no pointer and redraws every 15 s; the panel physically cannot animate.
+- No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
+- The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
+- A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter.
+- An overflow count never costs a name. If a cell can draw one row, that row is an event, not "+3".
+- A multi-day event is drawn once, spanning its days. Never repeated per cell.
+- No spacing value in the admin that is not a --mw-s-* token, and no new screen that builds a card, row, table, tag or empty state out of raw markup: use the component, or add one.
+- No icon beside a section heading, and no icon inside a tinted rounded square. Icons identify repeated destinations and nothing else.
+- Never assert a size, a count, or a tier from a class name. Measure the computed value. This codebase has shipped a bug where the class was right and the pixels were wrong.
+
+---
+
 ## Stack — decided, do not relitigate
 
 TypeScript strict · Node LTS · pnpm monorepo · Hono · SQLite via better-sqlite3
@@ -315,13 +334,13 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2228 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
-server 1429. CI runs the whole suite and then the README's one-liner against a
+**2239 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
+server 1440. CI runs the whole suite and then the README's one-liner against a
 clean volume on Linux, which is the only place the install has ever been wrong.
 
-**111 of the server's tests need a real Chromium and say so when they cannot
+**116 of the server's tests need a real Chromium and say so when they cannot
 find one**, which is worth knowing before reading a red suite as a regression:
-16 files fail with "No Chromium to drive" and nothing else is wrong. That is the
+17 files fail with "No Chromium to drive" and nothing else is wrong. That is the
 right failure — these measure layout, and a browser test that silently skips is
 this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
