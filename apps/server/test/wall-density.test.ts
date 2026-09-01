@@ -40,6 +40,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
+import { mountedSize, wallSizePreset } from '../src/wall-sizes.js';
 import {
   TEARDOWN,
   coveredFraction,
@@ -73,6 +74,7 @@ const VIEWPORTS = [
 
 let wall: Installation;
 let link: string;
+let screenId: string;
 
 beforeAll(async () => {
   wall = await install({ calendars: HOUSEHOLD_CALENDARS });
@@ -81,7 +83,80 @@ beforeAll(async () => {
   // display is seeded with Classic — so this measures the seed a household
   // actually gets rather than a fixture built by hand.
   link = await wall.pairLink('Kitchen');
+  screenId = (
+    wall.db.prepare('SELECT id FROM screens ORDER BY created_at LIMIT 1').get() as { id: string }
+  ).id;
 }, SLOW);
+
+/**
+ * What this wall is, physically — or nothing, which is every household until
+ * they open the setting.
+ *
+ * Written straight onto the screen row rather than through the settings form
+ * because the form is not the subject here: `wall-editor.test.ts` proves it
+ * reaches the manifest and `browser-wall-sizing.test.ts` proves the page reads
+ * it, and this file is only ever asking what the wall *draws*. Every
+ * measurement below sets it — including back to `null` — so no test in this
+ * file can inherit the state another one left, which is the one way a file
+ * with both a measured and an unmeasured wall in it silently measures the
+ * wrong one.
+ */
+function measureScreen(size: PanelFacts | undefined): void {
+  wall.db
+    .prepare(
+      `UPDATE screens SET panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?
+        WHERE id = ?`,
+    )
+    .run(
+      size?.widthMm ?? null,
+      size?.heightMm ?? null,
+      size?.distanceMm ?? null,
+      screenId,
+    );
+}
+
+interface PanelFacts {
+  readonly widthMm: number;
+  readonly heightMm: number;
+  readonly distanceMm: number;
+  readonly label: string;
+}
+
+/**
+ * A household for each of the five sizes, taken from the product's own
+ * catalogue rather than invented here.
+ *
+ * `WALL_SIZE_PRESETS` is what the wall's settings page offers and `readAtMm`
+ * is its own claim about where somebody stands to *read* one — so a fixture
+ * built from a preset key and a rotation is a household who picked their panel
+ * off the list and touched nothing else. That matters more than it looks:
+ * every number this scale produces is linear in the read distance, so a
+ * distance chosen here is a thumb on every measurement below, and "the preset,
+ * unedited" is the one choice that is not one. `mountedSize` turns the pair to
+ * how the panel is hung, exactly as the settings form does.
+ *
+ * The pairings are the ordinary ones: a 7.5" e-ink panel is 800x480 and is
+ * hung either way up, and a 32" television is 1920x1080. 2560x1440 has no
+ * preset of its own — it is a 43" panel at the nearest size the list carries.
+ */
+const MEASURED: Record<string, PanelFacts> = {};
+for (const [key, presetKey, rotation] of [
+  ['480x800', 'eink-7.5', 90],
+  ['800x480', 'eink-7.5', 0],
+  ['1080x1920', 'tv-32', 90],
+  ['1920x1080', 'tv-32', 0],
+  ['2560x1440', 'tv-43', 0],
+] as const) {
+  const preset = wallSizePreset(presetKey);
+  if (preset === undefined) throw new Error(`no such wall-size preset: ${presetKey}`);
+  const mounted = mountedSize(preset, rotation);
+  MEASURED[key] = {
+    widthMm: mounted.widthMm,
+    heightMm: mounted.heightMm,
+    distanceMm: preset.readAtMm,
+    label: `${preset.label} at ${preset.readAtMm}mm`,
+  };
+}
 
 afterAll(async () => {
   await wall?.dispose();
@@ -89,6 +164,10 @@ afterAll(async () => {
 }, TEARDOWN);
 
 interface ViewportMeasurement {
+  /** CSS pixels per arc-minute, or absent on a wall nobody has measured. */
+  readonly pxArcmin: number | undefined;
+  /** Every text run inside the month grid, at the size it is drawn on glass. */
+  readonly gridRuns: readonly { readonly where: string; readonly fontPx: number }[];
   readonly totalRuns: number;
   /**
    * How many *different* events the grid names, counting a span bar's label
@@ -130,10 +209,11 @@ interface ViewportMeasurement {
  * spelled out again here because `.day-row` and `.dr-ev` are agenda-specific
  * markup no shared helper reaches into).
  */
-async function measureViewport(size: {
-  readonly width: number;
-  readonly height: number;
-}): Promise<ViewportMeasurement> {
+async function measureViewport(
+  size: { readonly width: number; readonly height: number },
+  panel?: PanelFacts,
+): Promise<ViewportMeasurement> {
+  measureScreen(panel);
   const { page, close } = await loadWallSettled(link, size);
   try {
     const [wallMeasurement, grid, ink, agenda] = await Promise.all([
@@ -155,6 +235,17 @@ async function measureViewport(size: {
       }),
     ]);
 
+    /*
+     * What one arc-minute of the reader's vision is worth here, read off the
+     * root rather than recomputed — `main.ts` writes it and the eight roles
+     * from one place, so asking the page is asking the thing under test. Empty
+     * on an unmeasured wall, which is the state that must draw as it always
+     * has.
+     */
+    const pxArcmin = Number(
+      await page.evaluate(() => document.documentElement.style.getPropertyValue('--px-arcmin')),
+    );
+
     const under = wallMeasurement.runs.filter((run) => run.effectivePx < FLOOR_PX);
     const plusN = grid.cells.filter((cell) => cell.more !== '');
     /*
@@ -175,6 +266,8 @@ async function measureViewport(size: {
     const viewportArea = size.width * size.height;
 
     return {
+      pxArcmin: Number.isFinite(pxArcmin) && pxArcmin > 0 ? pxArcmin : undefined,
+      gridRuns: grid.texts.map((run) => ({ where: run.where, fontPx: run.fontPx })),
       totalRuns: wallMeasurement.runs.length,
       runsUnderFloor: under.length,
       monthNamesVisible: grid.titles.length,
@@ -494,6 +587,319 @@ describe('the Classic wall, measured for density', () => {
           `${key}: widgets covered ${measured.contentSharePercent.toFixed(1)}% of the canvas, ` +
             `below the recorded ${baseline.contentSharePercent}%`,
         ).toBeGreaterThanOrEqual(baseline.contentSharePercent);
+
+        /*
+         * And **nothing on this wall moved at all**, which is rule nine rather
+         * than a ratchet.
+         *
+         * The arc-minute scale replaced the type floor for the whole calendar
+         * widget, and a household who has not opened the wall's size setting —
+         * which is every household until they do — must get the wall they had
+         * yesterday, to the name. That is why every use site in `display.css`
+         * is `var(--t-wall-role, <what that selector drew before>)` with the
+         * old expression written out as the fallback, and why `main.ts`
+         * *removes* the properties rather than leaving stale ones behind: the
+         * unmeasured wall reaches those fallbacks by the same mechanism in
+         * both directions.
+         *
+         * Every one of the assertions above would pass a wall that quietly
+         * drew *more*, which on this change would mean the roles had reached a
+         * screen that never asked for them. The identity is the one that
+         * cannot. It is deliberately stated on the counts and not on the two
+         * share percentages, which are floats recorded to one decimal.
+         *
+         * A later phase that deliberately improves the unmeasured wall raises
+         * this and `BASELINE` in the same commit — it is the same constant.
+         */
+        expect(
+          {
+            monthNamesVisible: measured.monthNamesVisible,
+            distinctNames: measured.distinctNames,
+            plusNCells: measured.plusNCells,
+            markedCells: measured.markedCells,
+            spanBars: measured.spanBars,
+            runsUnderFloor: measured.runsUnderFloor,
+            agendaDays: measured.agendaDays,
+            agendaEvents: measured.agendaEvents,
+          },
+          `${key}: an unmeasured wall drew something other than what it drew before the arc-minute scale`,
+        ).toEqual({
+          monthNamesVisible: baseline.monthNamesVisible,
+          distinctNames: baseline.distinctNames,
+          plusNCells: baseline.plusNCells,
+          markedCells: baseline.markedCells,
+          spanBars: baseline.spanBars,
+          runsUnderFloor: baseline.runsUnderFloor,
+          agendaDays: baseline.agendaDays,
+          agendaEvents: baseline.agendaEvents,
+        });
+
+        // And it reached none of the scale, which is what that identity is a
+        // consequence of rather than a coincidence beside it.
+        expect(measured.pxArcmin, `${key}: an unmeasured wall derived a scale`).toBeUndefined();
+      },
+      SLOW,
+    );
+  }
+});
+
+/**
+ * The same wall, once its household has said how large it is and how far away
+ * they stand.
+ *
+ * This is the other half of the change and the half that has to *earn* it. The
+ * block above proves an unmeasured wall did not move; this one measures the
+ * one that did, at the same five sizes, on the same Classic seed, with the
+ * same three family calendars.
+ *
+ * **The headline assertion is an angle, not a count.** Measured on the shipped
+ * wall, the month's event text was 22.0px at 480x800, 22.0px at 1920x1080 and
+ * 24.8px at 2560x1440 — one number across a 5.7x range of panel area, which is
+ * the clearest possible statement that it was not a function of the wall it
+ * was drawn on. On a measured wall every run in the grid is its role's cap
+ * height in arc-minutes at *every* one of the five, which is the sentence this
+ * phase exists to make true. It is also the assertion with the most reach: it
+ * goes red if any of the seven sites reverts to the floor, if a role is
+ * mistyped, if `main.ts` stops writing one, or if an ancestor transform starts
+ * eating the grid — which is how the type-hierarchy pass's own floor was
+ * quietly undermined once already.
+ *
+ * **`runsUnderFloor` is deliberately not carried into this block.** A count of
+ * runs under 22px is a count of runs under the mechanism this phase retired:
+ * on a measured 7.5" e-ink panel the *correct* event size is 16.9px, so the
+ * number is 88 of 92 and means nothing. The angle assertion replaces it and is
+ * strictly stronger — it pins the exact cap height rather than a lower bound.
+ * The unmeasured block above still asserts it, because there 22px is still the
+ * mechanism.
+ */
+
+/** Cap height as a fraction of the em — `CAP_RATIO` in `orientation.ts`. */
+const CAP_RATIO = 0.71;
+
+/**
+ * What each run in the month grid is, in arc-minutes of cap height.
+ *
+ * Transcribed from `WALL_TYPE_CAPS` in `apps/display/src/orientation.ts`,
+ * which this package cannot import — the seam `epaper-ladder-parity` and
+ * `calendar-view-parity` already live at, for the reason they do (the display
+ * bundle has no bundler and the server cannot reach into it). No parity check
+ * is needed in this direction and one would be weaker than what is here: these
+ * literals are the *specification*, and the assertion below holds a real drawn
+ * wall to them, so moving a rung in `orientation.ts` turns this red rather
+ * than agreeing with itself.
+ */
+const GRID_ROLE_ARCMIN: readonly { readonly cls: string; readonly arcmin: number }[] = [
+  { cls: 'hz-rowtext', arcmin: 14 },
+  { cls: 'hz-spantext', arcmin: 14 },
+  { cls: 'hz-num', arcmin: 16 },
+  { cls: 'hz-head', arcmin: 11 },
+  { cls: 'hz-more', arcmin: 11 },
+  { cls: 'hz-wk', arcmin: 11 },
+];
+
+/**
+ * A whisker, for the same reason `RATIO_SLACK` below is a whisker: a role is
+ * emitted rounded to hundredths of a pixel and a browser resolves it again, so
+ * an exact equality would go red on the rounding rather than on a wall.
+ */
+const ARCMIN_SLACK = 0.05;
+
+/**
+ * Today's numbers on a measured wall, and the same ratchet rule as `BASELINE`.
+ *
+ * Measured, before -> after, against the unmeasured wall recorded above:
+ *
+ *   |     viewport |         panel | distinct | names |  +N  | spans |
+ *   |--------------|---------------|----------|-------|------|-------|
+ *   |      480x800 |  7.5" e-ink   |   0 →  1 |  0→ 0 |  0→0 |   0→2 |
+ *   |      800x480 |  7.5" e-ink   |   0 →  1 |  0→ 0 |  0→0 |   0→2 |
+ *   |    1080x1920 |  32" TV       |   9 → 10 | 11→12 |  4→3 |   2→2 |
+ *   |    1920x1080 |  32" TV       |   8 →  9 |  8→10 |  2→4 |   2→2 |
+ *   |    2560x1440 |  43" TV       |   8 →  9 | 10→10 |  1→4 |   2→2 |
+ *
+ * Three columns need saying out loud, and the third is the one that would
+ * otherwise read as a regression.
+ *
+ * **The two e-ink sizes name their first thing.** `spanBars` goes 0 → 2 at
+ * both: at 22px a bar's lane is taller than a cell of that grid has, so
+ * `trimCellRows` measured every bar back out and the panel drew a month with
+ * no words in it at all. At the event role's 16.9px the lane fits, the half
+ * term is drawn once across its days, and `distinctNames` goes 0 → 1. It is
+ * one name, and it is the first name either of those panels has ever had on
+ * its grid.
+ *
+ * **`plusNCells` goes *up* at the two largest sizes, and that is the counter
+ * getting cheaper rather than a name being lost.** A cell that can name
+ * nothing draws no counter at all (`trimCellRows`: "+3" alone is a number with
+ * no subject), so a cell that starts naming something also becomes a cell that
+ * can carry a count — which is the whole of 1920x1080, where names go 8 → 10
+ * and counters 2 → 4. At 2560x1440 the names are unchanged and the counters
+ * still go 1 → 4: `.hz-more` is the scaffold role there, 19.4px against the
+ * event's 24.7, so a count now *fits* beside a name where before it could only
+ * be had by taking the name off the glass. The metric's recorded direction was
+ * written when a counter cost a name; it is asserted here paired with
+ * `monthNamesVisible` and `distinctNames`, which is what makes a real loss
+ * still fail.
+ *
+ * **2560x1440 names no more than it did**, and that is the scale disagreeing
+ * with the wall rather than failing to improve it. A 43" panel read from 1.6
+ * metres wants 24.7px for 14 arc-minutes, which is what it was already drawing
+ * — so there is nothing for the grid to win there, and the assertion is that
+ * it wins nothing rather than losing anything. Naming more at that size means
+ * standing closer: at 1.2m the same panel measures 18.5px and names 13, and at
+ * 1080x1920 a 32" panel read from 0.9m names 16. Those are households, not
+ * levers, and this file does not get to pick one to make a number look better.
+ */
+const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
+  '480x800': {
+    monthNamesVisible: 0,
+    distinctNames: 1,
+    plusNCells: 0,
+    markedCells: 19,
+    spanBars: 2,
+    agendaDays: 2,
+    agendaEvents: 6,
+    canvasSharePercent: 93.5,
+    contentSharePercent: 85.5,
+  },
+  '800x480': {
+    monthNamesVisible: 0,
+    distinctNames: 1,
+    plusNCells: 0,
+    markedCells: 19,
+    spanBars: 2,
+    agendaDays: 2,
+    agendaEvents: 6,
+    canvasSharePercent: 93.5,
+    contentSharePercent: 80,
+  },
+  '1080x1920': {
+    monthNamesVisible: 12,
+    distinctNames: 10,
+    plusNCells: 3,
+    markedCells: 19,
+    spanBars: 2,
+    agendaDays: 2,
+    agendaEvents: 6,
+    canvasSharePercent: 99.5,
+    contentSharePercent: 85.5,
+  },
+  '1920x1080': {
+    monthNamesVisible: 10,
+    distinctNames: 9,
+    plusNCells: 4,
+    markedCells: 19,
+    spanBars: 2,
+    agendaDays: 2,
+    agendaEvents: 6,
+    canvasSharePercent: 99.5,
+    contentSharePercent: 80,
+  },
+  '2560x1440': {
+    monthNamesVisible: 10,
+    distinctNames: 9,
+    plusNCells: 4,
+    markedCells: 19,
+    spanBars: 2,
+    agendaDays: 2,
+    agendaEvents: 6,
+    canvasSharePercent: 99.5,
+    contentSharePercent: 80,
+  },
+};
+
+describe('the same wall, once its household has measured it', () => {
+  for (const size of VIEWPORTS) {
+    const key = `${size.width}x${size.height}`;
+    const baseline = MEASURED_BASELINE[key];
+    const panel = MEASURED[key];
+    if (baseline === undefined || panel === undefined) {
+      throw new Error(`no measured baseline recorded for ${key}`);
+    }
+
+    it(
+      `${key}: draws the grid at the reader's angle on a ${panel.label}`,
+      async () => {
+        const measured = await measureViewport(size, panel);
+        const pxArcmin = measured.pxArcmin;
+
+        expect(pxArcmin, `${key}: the page derived no scale from a measured wall`).toBeDefined();
+        if (pxArcmin === undefined) return;
+
+        /*
+         * Every run in the grid, at its role's cap height in arc-minutes.
+         *
+         * Read off the drawn size — `measureMonthGrid`'s `fontPx` is the
+         * cascade size times every ancestor transform — and divided by the
+         * page's own `--px-arcmin`, so this is the angle a household's eye
+         * actually meets rather than the number the stylesheet asked for.
+         *
+         * Checked by breaking each of the seven fixes in turn: reverting any
+         * `var(--t-wall-role, …)` to the `max(…)` pair it replaced puts that
+         * class back on the rem scale and this fails at every size at once,
+         * naming the class and both numbers.
+         */
+        const runs = measured.gridRuns.filter((run) =>
+          GRID_ROLE_ARCMIN.some((role) => run.where.split('.').includes(role.cls)),
+        );
+        expect(runs.length, `${key}: no role-driven runs in the grid at all`).toBeGreaterThan(0);
+        for (const run of runs) {
+          const role = GRID_ROLE_ARCMIN.find((candidate) =>
+            run.where.split('.').includes(candidate.cls),
+          );
+          if (role === undefined) continue;
+          const arcmin = (run.fontPx * CAP_RATIO) / pxArcmin;
+          expect(
+            arcmin,
+            `${key}: ${run.where} is drawn at ${run.fontPx.toFixed(2)}px, which is ` +
+              `${arcmin.toFixed(2)}' of cap height and not the ${role.arcmin}' its role is`,
+          ).toBeCloseTo(role.arcmin, 1);
+          expect(Math.abs(arcmin - role.arcmin)).toBeLessThanOrEqual(ARCMIN_SLACK);
+        }
+
+        /*
+         * And the ratchet, on the same measurements the block above records —
+         * more of the household's calendar on the glass, and never fewer of
+         * the things a cell that can name nothing still says.
+         */
+        expect(
+          measured.monthNamesVisible,
+          `${key}: the measured wall named ${measured.monthNamesVisible} events, below the recorded ${baseline.monthNamesVisible}`,
+        ).toBeGreaterThanOrEqual(baseline.monthNamesVisible);
+        expect(
+          measured.distinctNames,
+          `${key}: the measured wall named ${measured.distinctNames} different events, below the recorded ${baseline.distinctNames}`,
+        ).toBeGreaterThanOrEqual(baseline.distinctNames);
+        expect(
+          measured.plusNCells,
+          `${key}: the measured wall drew ${measured.plusNCells} "+N" cells, above the recorded ${baseline.plusNCells}`,
+        ).toBeLessThanOrEqual(baseline.plusNCells);
+        expect(
+          measured.markedCells,
+          `${key}: ${measured.markedCells} cells carry a density mark, below the recorded ${baseline.markedCells}`,
+        ).toBeGreaterThanOrEqual(baseline.markedCells);
+        expect(
+          measured.spanBars,
+          `${key}: ${measured.spanBars} multi-day bars, below the recorded ${baseline.spanBars}`,
+        ).toBeGreaterThanOrEqual(baseline.spanBars);
+        expect(
+          measured.agendaDays,
+          `${key}: the agenda drew ${measured.agendaDays} days, below the recorded ${baseline.agendaDays}`,
+        ).toBeGreaterThanOrEqual(baseline.agendaDays);
+        expect(
+          measured.agendaEvents,
+          `${key}: the agenda drew ${measured.agendaEvents} events, below the recorded ${baseline.agendaEvents}`,
+        ).toBeGreaterThanOrEqual(baseline.agendaEvents);
+        expect(
+          measured.canvasSharePercent,
+          `${key}: the canvas filled ${measured.canvasSharePercent.toFixed(1)}% of the viewport, ` +
+            `below the recorded ${baseline.canvasSharePercent}%`,
+        ).toBeGreaterThanOrEqual(baseline.canvasSharePercent);
+        expect(
+          measured.contentSharePercent,
+          `${key}: widgets covered ${measured.contentSharePercent.toFixed(1)}% of the canvas, ` +
+            `below the recorded ${baseline.contentSharePercent}%`,
+        ).toBeGreaterThanOrEqual(baseline.contentSharePercent);
       },
       SLOW,
     );
@@ -572,10 +978,11 @@ async function stylesheetFontSize(page: Page, className: string): Promise<number
   }, className);
 }
 
-async function measureRatios(size: {
-  readonly width: number;
-  readonly height: number;
-}): Promise<{ readonly numeralRatio: number; readonly clockRatio: number }> {
+async function measureRatios(
+  size: { readonly width: number; readonly height: number },
+  panel?: PanelFacts,
+): Promise<{ readonly numeralRatio: number; readonly clockRatio: number }> {
+  measureScreen(panel);
   const { page, close } = await loadWallSettled(link, size);
   try {
     const numeralPx = await stylesheetFontSize(page, 'hz-num');
@@ -602,20 +1009,46 @@ const RATIO_VIEWPORTS: readonly { readonly label: string; readonly width: number
   { label: 'the smallest wall this project measures', width: 1280, height: 720 },
 ];
 
+/**
+ * A measured wall for the ratio block.
+ *
+ * One panel for all three viewports on purpose: what is under test here is the
+ * *ratio*, which the arc-minute scale makes a property of the table (16'/14'
+ * and the clock's cap) rather than of the screen — so measuring three
+ * viewports against one household is exactly the question "does the hierarchy
+ * survive being drawn somewhere else". 1280x720 is not one of the five sizes
+ * above and carries no preset of its own, which is the second reason not to
+ * pair a panel to each.
+ */
+const RATIO_PANEL = MEASURED['1920x1080'] as PanelFacts;
+
 describe('the type hierarchy, on the same paired wall', () => {
   for (const { label, width, height } of RATIO_VIEWPORTS) {
-    it(
-      `holds both ratios in ${label}`,
-      async () => {
-        const { numeralRatio, clockRatio } = await measureRatios({ width, height });
-        expect(numeralRatio, `.hz-num is ${numeralRatio.toFixed(3)}x .hz-rowtext`).toBeLessThanOrEqual(
-          1.2 * RATIO_SLACK,
-        );
-        expect(clockRatio, `.clock is ${clockRatio.toFixed(3)}x .dr-ev-title`).toBeLessThanOrEqual(
-          1.8 * RATIO_SLACK,
-        );
-      },
-      SLOW,
-    );
+    for (const [state, panel] of [
+      ['unmeasured', undefined],
+      ['measured', RATIO_PANEL],
+    ] as const) {
+      it(
+        `holds both ratios in ${label}, ${state}`,
+        async () => {
+          const { numeralRatio, clockRatio } = await measureRatios({ width, height }, panel);
+          /*
+           * On a measured wall this is 16'/14' = 1.143 and is a fact about the
+           * table rather than about the wall — which is the point, and is what
+           * "size-independent" means: the rem version could only ever hold the
+           * ratio at one design height, and held it by being written as a
+           * multiplication. Both states are asserted because both ship: every
+           * household is unmeasured until they open the setting.
+           */
+          expect(numeralRatio, `.hz-num is ${numeralRatio.toFixed(3)}x .hz-rowtext`).toBeLessThanOrEqual(
+            1.2 * RATIO_SLACK,
+          );
+          expect(clockRatio, `.clock is ${clockRatio.toFixed(3)}x .dr-ev-title`).toBeLessThanOrEqual(
+            1.8 * RATIO_SLACK,
+          );
+        },
+        SLOW,
+      );
+    }
   }
 });

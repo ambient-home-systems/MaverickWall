@@ -213,6 +213,9 @@ useful thing in this document:
 | A fixture that answered a different question from the one it asked | Carrying the live event on a fourth calendar, and reading 20.2px where the bug reads 21.7 |
 | **A performance budget that was 78% the cost of parsing 3.2 MB** | Timing a one-year window and a fourteen-year one and finding 214ms against 275 |
 | **Recurrence expansion costing 45ms per year of distance to the window** | Moving the window and not the feed — same events, 247ms at 2026 and 3492ms at 2100 |
+| **A type floor that made a small panel name nothing and a large one name half** | Measuring the same event text at five panel sizes and reading 22.0, 22.0 and 24.8px |
+| A clock capped at 1.8x its lede and drawn at 1.8005x | Asserting the ratio at three screen sizes rather than reading the constant |
+| Every multi-day bar measured back out of both e-ink panels | A lane whose rem minimum outlived the type it was a minimum for |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -363,8 +366,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2419 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 372 · server 1580. CI runs the whole suite and then the README's
+**2434 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 379 · server 1588. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -1353,6 +1356,14 @@ so an engine without `max()` keeps today's behaviour), so when it binds the cell
 gives up a row rather than the type giving up a point. Measured after: 0 titles
 cut at any of the three sizes, nothing under 22px, and every cell that has
 events shows at least one whole name on the two larger walls.
+
+> **That last clause is history, and the arc-minute paragraph at the end of
+> this section is what replaced it.** The clamp is now only what the calendar
+> widget draws on a wall whose household has not said how large it is or how
+> far away they stand — every household until they do — and on one that has,
+> those same seven sites take a cap height in arc-minutes instead. The
+> *reasoning* is untouched and is what the rungs were calibrated against; what
+> was wrong with it was only ever that "22px" is a fact about one screen.
 
 Three things in it are worth keeping. The default moving means **the panel's
 absence had to move with it** — `cellEvents` unset now draws names on a panel
@@ -3899,7 +3910,10 @@ been measured and *removes* it when it has not, so the arithmetic is observable
 end to end and the seam the type scale needs exists — but the two constants and
 the exponent named above are untouched, and moving them is the next decision
 rather than a side effect of this one, and `epaper/metrics.ts` is where it
-lands first: it already asks the question this answers, in pixels. The migration
+lands first: it already asks the question this answers, in pixels. (**It landed
+in `display.css` first instead**, for the calendar widget, which is the
+paragraph below; `epaper/metrics.ts` still derives from the panel's *pixel*
+short side and is still the obvious next one.) The migration
 is the ordinary discipline and is only worth recording for one thing: it was
 **generated, then read** — three `ALTER TABLE ADD COLUMN` and no recreate,
 which is what rule seven's `0009` paragraph asks of anything touching a table
@@ -3909,6 +3923,116 @@ calendar: paired before `orientation` and `rotation` existed at all (0004), hung
 sideways once they did, and asserted to come out the far side with all three new
 columns null. Not 0. A default of zero here is a wall zero millimetres wide read
 from zero millimetres away, on every screen in the world at one image pull.
+
+**And then the calendar widget started reading it, and `--t-floor` became a
+fallback.** `display.css:123` declared `--t-floor: 22px` — the only absolute
+size in a type system where everything else is 1% of the canvas height — and all
+seven of its uses were in the month grid. Measured on the shipped Classic seed,
+the month's event text was **22.0px at 480x800, 22.0px at 1920x1080 and 24.8px
+at 2560x1440**: one number across a 5.7x range of panel area, which is the
+clearest possible statement that it was not a function of the wall it was drawn
+on. One mechanism, two opposite failures. On a small panel 22px is *larger* than
+a cell's whole row budget, so `trimCellRows` drops every row and thirteen cells
+draw "+3" and not one name — a floor written to stop text becoming illegible,
+making the calendar show nothing. On a large one the same 22px is a *minimum*
+where the cell wanted less, and a 146x190 cell named 8 of its 19 events.
+
+Eight roles replace it, each a **cap height in arc-minutes at the reader's eye**:
+event 14', event-strong 14', time 12', numeral 16', scaffold 11', label 10',
+lede 22', clock 40' — `WALL_TYPE_CAPS` in `orientation.ts`, turned into pixels
+by `capArcmin x pxArcmin / 0.71` and written onto the root beside `--root-size`,
+because both answer the same question and there has to be **one owner of what a
+size is worth on this screen**. Only the *size* is a role: weight, tracking and
+line-height stay with the treatment each selector already declares, because
+moving one would move an unmeasured wall too. The ratios are the payoff and they
+are now size-independent — the numeral goes from 1.61x the event beside it to
+**16/14 = 1.14x**, on every panel, by construction rather than by a
+multiplication that only held at one design height.
+
+**The clock's cap is the one rung that is not the table**, and it binds: 40'
+against the lede's 22' is 1.818x, over the 1.8x this wall's own design rule
+allows a clock over an event name, so `Math.min` is what makes the stated ratio
+true rather than a comment about one. Removing it turns
+`orientation.test.ts` red at all three of its sizes. It also had to **floor**
+rather than round, and that was a real bug the test found rather than a
+precaution: every rung rounds to hundredths independently, so at 0.39 px per
+arc-minute the lede is 12.08 and the clock 21.75, which is 1.8005x. A limit
+exceeded by a hundredth is not a limit — the same rule `epaper/metrics.ts`
+already states for a row count.
+
+**The fallback is the whole of rule nine here, and it is one spelling.** Every
+use site is `var(--t-wall-role, <what that selector drew before>)`, with the old
+expression written out at the site rather than reconstructed, and `main.ts`
+*removes* the properties when a measurement is taken back — so an undefined
+custom property is what reaches the fallback in both directions. The measured
+identity is the assertion: with the columns null, all five sizes in
+`wall-density.test.ts` draw **exactly** what they drew before this existed, on
+eight counts, and writing the roles on an unmeasured wall (a one-word mutation
+in `main.ts`) turns all five red. The `max()` discipline is preserved and is
+worth one line: a role goes in the *second* declaration, not a third, because
+`var(--t-wall-event, max(…))` is no worse than the `max(…)` it replaces on an
+engine that cannot read either — and strictly better on a measured wall, where
+the substitution is a plain px value such an engine understands perfectly.
+
+**The sweep is the calendar widget, not the seven declarations**, and the reason
+is a fault it would otherwise have introduced. `.sk-num`, `.sk-mnum` and
+`.wc-num` were raw rem numerals beside raw rem event text; moving only the
+numerals to the scale would draw, on a measured 800x480 panel, a date at 19.3px
+over a name at 4.8px — the exact inversion this work exists to remove,
+reintroduced by fixing half of it. The span lane went with them for the same
+reason one layer along: `--hz-lane-h` was `max(1.5rem, --t-floor x 1.2)`, and a
+rem *minimum* on a measured wall is the very thing being replaced, so it is
+1.2x the bar's own text and nothing else. Reverting that one line takes both
+e-ink panels from two multi-day bars to none.
+
+Measured on the same five sizes, once each is given the panel it plausibly is —
+a preset from the product's own catalogue at its own read distance, which is
+the one choice that is not a thumb on the scale:
+
+    |     viewport |        panel | distinct | names |  +N  | spans |
+    |      480x800 | 7.5" e-ink   |   0 →  1 |  0→ 0 |  0→0 |   0→2 |
+    |      800x480 | 7.5" e-ink   |   0 →  1 |  0→ 0 |  0→0 |   0→2 |
+    |    1080x1920 | 32" TV       |   9 → 10 | 11→12 |  4→3 |   2→2 |
+    |    1920x1080 | 32" TV       |   8 →  9 |  8→10 |  2→4 |   2→2 |
+    |    2560x1440 | 43" TV       |   8 →  9 | 10→10 |  1→4 |   2→2 |
+
+Three columns need saying out loud. **The two e-ink panels name their first
+thing ever** — the lane finally fits, so the half term is drawn once across its
+days. **`plusNCells` goes up at the two largest sizes and that is the counter
+getting cheaper**: a cell that names nothing draws no counter at all, so a cell
+that starts naming something becomes a cell that can carry a count, and at
+2560x1440 `.hz-more` is 19.4px against the event's 24.7 where both used to be
+the same 24.8 — a count now fits beside a name where before it could only be
+had by taking the name off the glass. The metric's recorded direction was
+written when a counter cost a name; it is asserted paired with the two name
+counts, which is what makes a real loss still fail. And **2560x1440 names no
+more than it did**, which is the scale disagreeing with the wall rather than
+failing it: a 43" panel read from 1.6 metres wants 24.7px for 14 arc-minutes,
+which is what it was already drawing.
+
+**The brief for this phase asked for 15, 15 and 17 names at the three larger
+sizes and the measured answer is 12, 10 and 10**, and the gap is worth more
+than the numbers. Every size this scale produces is linear in the read
+distance, so a fixture is free to hit any target it likes: the same 32" panel
+at 0.9m names 16 at 1080x1920, and a 2560x1440 monitor read from 0.7m names 17.
+Choosing one of those would be raising the ceiling until it went green, more
+expensively — the failure this file's own ratchet paragraphs already record —
+so the fixture is the preset, unedited, and the number is what it is. What
+binds is not type at all: the household fixture has 21 events over 19 busy
+cells and most cells hold one or two, and the titles that stay off the glass
+are the ones the **two-line wrap allowance** refuses whole ("Year 6 trip to the
+Science Museum" at 33 characters in a 102px cell). Moving that, or Classic's
+own month box, is a content decision and a different change.
+
+**The headline assertion is an angle, not a count**, and that is what makes the
+measured block worth having: every run in the grid is its role's cap height in
+arc-minutes at **every one of the five sizes**, read off the drawn size divided
+by the page's own `--px-arcmin`. `runsUnderFloor` is deliberately not carried
+into that block — a count of runs under 22px on a measured wall is a count of
+runs under the mechanism this phase retired, and on a 7.5" e-ink panel the
+*correct* event size is 16.9px, so the number is 88 of 92 and means nothing.
+Nine mutations were checked and all nine are red: each of the seven sites
+reverted in turn, the lane, and the two halves of `main.ts`.
 
 ---
 
