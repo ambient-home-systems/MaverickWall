@@ -499,8 +499,34 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
       setPanelSource(deps.db, id, 'follow', null);
       return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
     }
+    /*
+     * A panel pointed at itself is its own refusal, not a missing wall.
+     *
+     * Both cases used to fall through one `find` — `candidate.id !== id` sat
+     * inside the predicate — so asking a panel to follow itself was answered
+     * "That wall is no longer there.", which is false about the one screen the
+     * household is looking at. It is unreachable from the form (the picker
+     * never offers the panel itself), so nobody has read the wrong sentence
+     * yet; it is written down here because an error message is the only thing
+     * a household gets, and one that describes a different fault sends them
+     * looking for a wall that is fine.
+     *
+     * The sentence names the two ways out, both of which are options in the
+     * select directly above it — "when a message can name the fix, it should".
+     */
+    if (target === id) {
+      return c.html(
+        epaperDesignPage(
+          c,
+          id,
+          screen,
+          'A panel cannot follow itself. Choose another wall, or give this panel its own layout.',
+        ),
+        400,
+      );
+    }
     const wall = readAdminScreens(deps.db).find(
-      (candidate) => candidate.id === target && candidate.id !== id && candidate.revokedAt === null,
+      (candidate) => candidate.id === target && candidate.revokedAt === null,
     );
     if (wall === undefined) {
       // The design page, not `epaperPage`: the panel is fine and the household

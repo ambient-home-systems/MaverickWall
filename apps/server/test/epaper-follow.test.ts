@@ -216,11 +216,28 @@ describe('choosing what a panel draws', () => {
     expect(row.mode).toBeNull();
   });
 
-  it('cannot be told to follow itself', async () => {
+  it('cannot be told to follow itself, and says that rather than blaming a wall', async () => {
     const h = await harness();
     const p = await panel(h, 'Ouroboros');
     const bad = await h.post(`${B}/admin/epaper/${p.id}/source`, { source: `follow:${p.id}` });
     expect(bad.status).toBe(400);
+
+    const html = await bad.text();
+    expect(html).toContain('A panel cannot follow itself');
+    /*
+     * The assertion that matters. Both refusals used to share one `find`, so
+     * this case answered "That wall is no longer there." — false about the one
+     * screen the household is looking at, and it would send them hunting for a
+     * wall that is perfectly fine. A status code cannot tell the two apart.
+     */
+    expect(html).not.toContain('That wall is no longer there.');
+    expect(html).toContain('Ouroboros — layout');
+
+    // Still a refusal, not a write.
+    const row = h.db.prepare(`SELECT layout_mode AS mode FROM screens WHERE id = ?`).get(p.id) as {
+      mode: string | null;
+    };
+    expect(row.mode).toBeNull();
   });
 
   /*
