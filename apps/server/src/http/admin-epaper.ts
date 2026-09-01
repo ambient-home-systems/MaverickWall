@@ -474,7 +474,15 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     const screen = findEpaper(id);
     if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
     const shaped = parse(epaperSourceBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/design`, 302);
+    // A rejected value re-renders the screen it was rejected on, saying why.
+    // It used to answer a bare 302 back here carrying nothing, and the select
+    // then re-drew the *stored* source — which is exactly what a successful
+    // save looks like on this page, so the household was told a value they
+    // never chose had been saved. `savedRedirect` is not the other half of
+    // this: the strip has one tone and it is confirmation (see `saved.ts`),
+    // so a refusal is a 400 with the page's own error block, like every other
+    // rejected form in the admin.
+    if (!shaped.ok) return c.html(epaperDesignPage(c, id, screen, shaped.message), 400);
 
     const choice = shaped.value.source;
     if (choice === 'builtin' || choice === 'own') {
@@ -495,7 +503,13 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
       (candidate) => candidate.id === target && candidate.id !== id && candidate.revokedAt === null,
     );
     if (wall === undefined) {
-      return c.html(epaperPage(c, 'That wall is no longer there.'), 400);
+      // The design page, not `epaperPage`: the panel is fine and the household
+      // is standing on its layout screen, so answering with the add-an-e-paper-
+      // wall form threw away where they were and offered them a second panel
+      // for an error about the first. The 404s above are the other case and
+      // still render that page — there the *panel* is gone, so there is no
+      // design page left to draw.
+      return c.html(epaperDesignPage(c, id, screen, 'That wall is no longer there.'), 400);
     }
     setPanelSource(deps.db, id, 'follow', wall.id);
     return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
@@ -657,11 +671,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
    * aspect is seeded from the panel geometry so a box drawn square is square on
    * the panel; the household still sees the truth in the preview regardless.
    */
-  app.get('/admin/epaper/:id/design', (c: Context) => {
-    const id = c.req.param('id') ?? '';
-    const screen = findEpaper(id);
-    if (screen === undefined) return c.redirect('/admin/walls', 302);
-
+  const epaperDesignPage = (c: Context, id: string, screen: AdminScreenRow, error?: string): string => {
     const pw = screen.panelWidth ?? 800;
     const ph = screen.panelHeight ?? 480;
     const landscapeAspect = Math.max(pw, ph) / Math.min(pw, ph);
@@ -778,33 +788,43 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
             followed === null ? 'default' : encodeURIComponent(followed)
           }#layout">Open ${escapeHtml(followedName)}</a></p>`;
 
-    return c.html(
-      page({
-        self: selfHref(c),
-        modules: navModules(deps.db),
-        title: `${screen.name} layout — Maverick Wall`,
-        nav: 'walls',
-        heading: `${screen.name} — layout`,
-        saved: readSaved(c),
-        intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
-        body:
-          sourceForm +
-          preview +
-          followNote +
-          (followed !== undefined ? '' : arrangeHeading + layoutEditorMount(initial) +
-          // The one save bar, same chrome as the display page minus its
-          // settings form — with no form the chrome saves the canvas and
-          // reloads. Chrome first, so its `mwEditorState` hook is registered
-          // before the editor publishes its bridge.
-          `<div class="savebar" id="savebar">` +
-          `<span class="msg" role="alert"></span>` +
-          `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
-          `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
-          `<button type="button" class="btn" data-action="save">Save layout</button>` +
-          `</div>` +
-          `<script type="module" src="assets/display-editor.js"></script>` +
-          `<script type="module" src="assets/layout-editor.js"></script>`),
-      }),
-    );
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: `${screen.name} layout — Maverick Wall`,
+      nav: 'walls',
+      heading: `${screen.name} — layout`,
+      saved: readSaved(c),
+      intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
+      body:
+        // Above the form it belongs to, which is the whole of the fix: a
+        // rejected source used to redirect here saying nothing, and a page
+        // showing the stored value with no message on it is what a *saved*
+        // one looks like.
+        (error === undefined ? '' : errorBlock(error)) +
+        sourceForm +
+        preview +
+        followNote +
+        (followed !== undefined ? '' : arrangeHeading + layoutEditorMount(initial) +
+        // The one save bar, same chrome as the display page minus its
+        // settings form — with no form the chrome saves the canvas and
+        // reloads. Chrome first, so its `mwEditorState` hook is registered
+        // before the editor publishes its bridge.
+        `<div class="savebar" id="savebar">` +
+        `<span class="msg" role="alert"></span>` +
+        `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
+        `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
+        `<button type="button" class="btn" data-action="save">Save layout</button>` +
+        `</div>` +
+        `<script type="module" src="assets/display-editor.js"></script>` +
+        `<script type="module" src="assets/layout-editor.js"></script>`),
+    });
+  };
+
+  app.get('/admin/epaper/:id/design', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = findEpaper(id);
+    if (screen === undefined) return c.redirect('/admin/walls', 302);
+    return c.html(epaperDesignPage(c, id, screen));
   });
 }

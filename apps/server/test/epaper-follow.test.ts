@@ -223,6 +223,56 @@ describe('choosing what a panel draws', () => {
     expect(bad.status).toBe(400);
   });
 
+  /*
+   * What a refused "Use this" actually puts on the screen.
+   *
+   * Both of these shipped, and both are the same failure the confirmation
+   * strip exists to end, running the other way: a household presses a button
+   * and the page that comes back is indistinguishable from the one a *working*
+   * press produces. The status code was right in one case and never reached a
+   * reader; the other answered the wrong page entirely. So these assert what
+   * is drawn, not what was returned — the select's stored value is the thing
+   * that made a silent refusal look like a save.
+   */
+  const DESIGN_ONLY = 'Layout'; // the source form's own field label
+  const ADD_PANEL_ONLY = 'Add an e-paper wall'; // the page that used to answer
+
+  it('says why it refused a source it cannot read, on the page that asked', async () => {
+    const h = await harness();
+    const p = await panel(h, 'Pantry');
+    const bad = await h.post(`${B}/admin/epaper/${p.id}/source`, { source: 'not-a-source' });
+
+    // A bare 302 was the bug: the design page then re-drew the stored value
+    // with nothing on it, which is what a save that worked looks like.
+    expect(bad.status).toBe(400);
+    const html = await bad.text();
+    expect(html).toContain('Choose what this panel draws.');
+    expect(html).toContain(DESIGN_ONLY);
+    expect(html).not.toContain(ADD_PANEL_ONLY);
+
+    // And it is a refusal, not a write.
+    const row = h.db.prepare(`SELECT layout_mode AS mode FROM screens WHERE id = ?`).get(p.id) as {
+      mode: string | null;
+    };
+    expect(row.mode).toBeNull();
+  });
+
+  it('refuses a wall that is gone on the panel page, not on the add-a-panel form', async () => {
+    const h = await harness();
+    const p = await panel(h, 'Larder');
+    const bad = await h.post(`${B}/admin/epaper/${p.id}/source`, { source: 'follow:nosuchwall' });
+
+    expect(bad.status).toBe(400);
+    const html = await bad.text();
+    expect(html).toContain('That wall is no longer there.');
+    // The screen the household was standing on. Answering with the
+    // add-an-e-paper-wall form threw away where they were and offered them a
+    // second panel for an error about the first.
+    expect(html).toContain('Larder — layout');
+    expect(html).toContain(DESIGN_ONLY);
+    expect(html).not.toContain(ADD_PANEL_ONLY);
+  });
+
   it('goes back to its own canvas, and to the built-in one', async () => {
     const h = await harness();
     const p = await panel(h, 'Hall');
