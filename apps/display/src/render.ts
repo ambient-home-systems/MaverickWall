@@ -14,7 +14,7 @@ import {
   MIN_CHORE_SCALE,
   weekColumnsFit,
 } from './density.js';
-import type { PanelData } from './viewmodel.js';
+import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
 import {
@@ -1227,7 +1227,10 @@ function applyWidgetFormat(box: HTMLElement, config: unknown): void {
     box.style.borderRadius = '0.6rem';
     box.style.overflow = 'hidden';
   }
-  if (c['shadow'] === true) box.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.35)';
+  // The drop shadow control is gone: a shadow bands on e-ink, burns in on
+  // OLED, and buys nothing at reading distance. `c['shadow']` is deliberately
+  // never read — a widget with `shadow: true` already in its stored config
+  // simply draws without one, rather than needing a migration to remove it.
 }
 
 /** Wrap a widget body with its title when one is set to show, else pass through. */
@@ -1390,9 +1393,24 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
   const take = <T,>(items: readonly T[]): readonly T[] =>
     rows === undefined ? items : items.slice(0, rows);
 
-  if (data.kind === 'readings') {
+  /*
+   * 'stat' and 'tiles' used to draw as an oversized numeral and a strip of
+   * tiles — exactly the kind of outsized treatment this wall's type hierarchy
+   * exists to remove, and on a widget a household merely dragged into place.
+   * Both draw as label/value rows now, the same as 'readings': a third-party
+   * module that already sends `kind: 'stat'` or `kind: 'tiles'` still draws
+   * something on upgrade rather than going blank (rule nine) — only the
+   * treatment changed, not the data shape a module may send.
+   */
+  if (data.kind === 'readings' || data.kind === 'stat' || data.kind === 'tiles') {
+    const items: readonly PanelReading[] =
+      data.kind === 'readings'
+        ? data.items
+        : data.kind === 'stat'
+          ? [{ label: data.caption ?? '', value: data.value }]
+          : data.items;
     const list = el('div', 'gp-readings');
-    for (const reading of take(data.items)) {
+    for (const reading of take(items)) {
       const row = el('div', 'gp-reading');
       if (reading.icon !== undefined) row.appendChild(el('span', 'gp-ico', reading.icon));
       row.appendChild(el('span', 'gp-label', reading.label));
@@ -1400,18 +1418,6 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
       list.appendChild(row);
     }
     section.appendChild(list);
-  } else if (data.kind === 'stat') {
-    section.appendChild(el('div', 'gp-stat-value', data.value));
-    if (data.caption !== undefined) section.appendChild(el('div', 'gp-stat-caption', data.caption));
-  } else if (data.kind === 'tiles') {
-    const strip = el('div', 'gp-tiles');
-    for (const tile of take(data.items)) {
-      const cell = el('div', 'gp-tile');
-      cell.appendChild(el('div', 'gp-tile-value', tile.value));
-      cell.appendChild(el('div', 'gp-tile-label', tile.label));
-      strip.appendChild(cell);
-    }
-    section.appendChild(strip);
   } else {
     section.appendChild(el('div', 'gp-text', data.text));
   }

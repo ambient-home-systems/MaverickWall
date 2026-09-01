@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +87,98 @@ describe('withTints', () => {
     const dark = withTints({ ...DARK, '--s-day': '#ff0000' })['--s-day-tint'];
     const light = withTints({ ...LIGHT, '--s-day': '#ff0000' })['--s-day-tint'];
     expect(dark).not.toBe(light);
+  });
+});
+
+/**
+ * The four emphasis roles a custom theme needs (RFC — wall type hierarchy),
+ * derived here for a household's own theme the same way the display bundle's
+ * `customTokens` derives them for the live editor preview — a custom theme
+ * with no `--ink-scaffold` resolves `var()` to nothing on every date numeral
+ * in that household's wall.
+ */
+const luminance601 = (hex: string): number => {
+  const value = parseInt(hex.slice(1), 16);
+  const channel = (raw: number): number => {
+    const c = raw / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return (
+    0.2126 * channel((value >> 16) & 0xff) +
+    0.7152 * channel((value >> 8) & 0xff) +
+    0.0722 * channel(value & 0xff)
+  );
+};
+const contrastOf = (a: string, b: string): number => {
+  const [la, lb] = [luminance601(a), luminance601(b)];
+  const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+};
+
+describe('withTints, the four emphasis roles', () => {
+  it('derives --ink-event, --ink-quiet and --rule-week as straight copies', () => {
+    const t = withTints(DARK);
+    expect(t['--ink-event']).toBe(DARK['--ink']);
+    expect(t['--ink-quiet']).toBe(DARK['--muted']);
+    expect(t['--rule-week']).toBe(DARK['--rule']);
+  });
+
+  it('measures --ink-scaffold to clear 4.5:1 on the background, dark and light alike', () => {
+    expect(contrastOf(withTints(DARK)['--ink-scaffold'] as string, DARK['--bg'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrastOf(withTints(LIGHT)['--ink-scaffold'] as string, LIGHT['--bg'])).toBeGreaterThanOrEqual(
+      4.5,
+    );
+  });
+
+  it('falls back toward pure ink rather than looping forever on an unreadable pair', () => {
+    // Ink and background almost identical: 4.5:1 may be out of reach, but the
+    // loop must still terminate and hand back a colour.
+    const impossible = { ...DARK, '--bg': '#202020', '--ink': '#212121' };
+    expect(withTints(impossible)['--ink-scaffold']).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+/**
+ * The two copies of the emphasis-role derivation must not drift.
+ *
+ * `withTints` here and `customTokens` in the display bundle's `theme.ts` are
+ * deliberate mirrors (see both files' header comments) — the display bundle
+ * has no dependencies and no bundler, so a test here cannot import *from* it
+ * without falling outside `tsconfig.test.json`'s root and failing the
+ * typecheck `pnpm test` exists to run (the same reason
+ * `calendar-view-parity.test.ts` and `epaper-ladder-parity.test.ts` read their
+ * display-side twin as text instead). So this reads `scaffoldInk`,
+ * `contrastRatio` and `relativeLuminance` out of both files and holds them to
+ * being character-identical — the same guard `calendar-view-parity.test.ts`
+ * puts on `calendarView`, and the sharpest one available: any drift in the
+ * starting ratio, the 4.5 bar, or the step size turns this red.
+ */
+describe('scaffoldInk, on both bundles (parity with the display bundle)', () => {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const DISPLAY_THEME_PATH = join(HERE, '..', '..', 'display', 'src', 'theme.ts');
+  const display = readFileSync(DISPLAY_THEME_PATH, 'utf8');
+  const server = readFileSync(join(HERE, '..', 'src', 'api', 'themes.ts'), 'utf8');
+
+  /** `function NAME(...) { ... }`, verbatim, from either file's text. */
+  function bodyOf(source: string, name: string, where: string): string {
+    const from = source.indexOf(`function ${name}(`);
+    if (from < 0) throw new Error(`no ${name} in ${where}`);
+    const to = source.indexOf('\n}\n', from);
+    if (to < 0) throw new Error(`${name} in ${where} never closes`);
+    return source.slice(from, to + 3);
+  }
+
+  for (const name of ['relativeLuminance', 'contrastRatio', 'scaffoldInk']) {
+    it(`draws ${name} character-identical on both sides`, () => {
+      expect(bodyOf(server, name, 'themes.ts')).toBe(bodyOf(display, name, 'theme.ts'));
+    });
+  }
+
+  it('reads the display file it claims to, so a rename fails loudly', () => {
+    // A regex over a file that moved would quietly match nothing and pass
+    // every assertion above by comparing two empty strings.
+    expect(display).toContain('scaffoldInk');
+    expect(bodyOf(display, 'scaffoldInk', 'theme.ts').length).toBeGreaterThan(0);
   });
 });
 

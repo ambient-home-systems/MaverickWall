@@ -14,8 +14,8 @@
  * and it is content, not styling: it decides what you see, a month of days or
  * the next few events, rather than how the box is painted. That is why it sits
  * on the Content tab and why it is not called "Style": Style is the box (its
- * title, alignment, background, corners, shadow), and having two of those words
- * in one panel is what made this confusing to read.
+ * title, alignment, background, corners), and having two of those words in
+ * one panel is what made this confusing to read.
  *
  * Calendar is the only type with more than one today; the other nine have
  * exactly one renderer each, so their view is *stated* rather than offered as a
