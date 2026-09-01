@@ -92,7 +92,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **ninety-two real bugs**, and the pattern in how is the most
+This project has found **ninety-three real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -195,6 +195,7 @@ useful thing in this document:
 | **A ratchet blind to the rule it was gating, for want of one multi-day event** | Deleting the rule and watching the gate stay green |
 | A metric that rewarded printing the same title seven times | The same deletion, which *raised* the number it was scored on |
 | **A ratchet already red on `main`, under a note saying it held** | Running it on a clean worktree of `main` |
+| **A browser assertion that neither of its own fixes could turn red** | Mutating the display's source without rebuilding the bundle the server serves |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -345,14 +346,14 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2323 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 364 · server 1492. CI runs the whole suite and then the
+**2355 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 372 · server 1516. CI runs the whole suite and then the
 README's one-liner against a clean volume on Linux, which is the only place the
 install has ever been wrong.
 
-**148 of the server's tests need a real Chromium and say so when they
+**149 of the server's tests need a real Chromium and say so when they
 cannot find one**, which is worth knowing before reading a red suite as a
-regression: 20 files fail with "No Chromium to drive" and nothing else
+regression: 21 files fail with "No Chromium to drive" and nothing else
 is wrong. That is the
 right failure — these measure layout, and a browser test that silently skips is
 this document's whole complaint about assertions that cannot go red — but the
@@ -3507,8 +3508,8 @@ No stylesheet reads `--px-arcmin`; `main.ts` sets it on the root when a wall has
 been measured and *removes* it when it has not, so the arithmetic is observable
 end to end and the seam the type scale needs exists — but the four constants
 named above are untouched, and moving them is the next decision rather than a
-side effect of this one. The migration is the ordinary discipline
-and is only worth recording for one thing: it was **generated, then read** —
+side effect of this one. The migration is the ordinary discipline and is only
+worth recording for one thing: it was **generated, then read** —
 three `ALTER TABLE ADD COLUMN` and no recreate, which is what rule seven's
 `0009` paragraph asks of anything touching a table with somebody's calendar in
 it — and `migration-upgrade.test.ts` now walks a *screen* through as well as a
