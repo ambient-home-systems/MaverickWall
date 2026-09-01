@@ -94,14 +94,21 @@ async function ready() {
   });
   await postForm('/setup/household', { timezone: 'Europe/London' });
 
-  /** Pair a screen so the editor has a real wall to render. */
-  const pairScreen = (id: string, name: string): void => {
+  /**
+   * Pair a screen so the editor has a real wall to render.
+   *
+   * Hands the raw token back, because the settings this page saves are only
+   * settings once a wall has read them: `/d/manifest` behind a real display
+   * token is the far end of the round trip.
+   */
+  const pairScreen = (id: string, name: string): string => {
     const at = Date.now();
     const issued = issueDisplayToken();
     db.prepare(
       `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
        VALUES (?,?,?,?,?,?)`,
     ).run(id, name, issued.tokenHash, at, at, at);
+    return issued.token;
   };
 
   const screenRow = (id: string): Record<string, unknown> =>
@@ -481,5 +488,183 @@ describe('the stylesheet the editor is drawn with', () => {
     // does not make iOS zoom the page.
     expect(style).toContain('.srow{display:flex;align-items:center;gap:12px;min-height:56px');
     expect(style).toMatch(/\.srow-select\{[^}]*font-size:16px/);
+  });
+});
+
+/**
+ * The size of a wall and the distance it is read from, through the real form.
+ *
+ * A round trip rather than a unit test of the handler, because both auth bugs
+ * this project has found were in the seam rather than in either piece — and
+ * the far end here is a paired wall reading `/d/manifest` with its own token,
+ * which is the only place the facts actually have to arrive.
+ */
+describe('how large this wall is, and how far away it is read from', () => {
+  /** Everything the wall settings form posts, so a save is a whole save. */
+  const settings = (over: Record<string, string> = {}): Record<string, string> => ({
+    name: 'Kitchen', orientation: 'auto', rotation: '0',
+    theme: '', daytime_theme: '', timezone: '', clock_24: '',
+    today_events: '', next_days: '', horizon_weeks: '',
+    ...over,
+  });
+
+  const sizeOf = (h: Awaited<ReturnType<typeof ready>>, id: string) =>
+    h.db
+      .prepare(
+        `SELECT panel_width_mm AS w, panel_height_mm AS hh, read_distance_mm AS d
+           FROM screens WHERE id = ?`,
+      )
+      .get(id) as { w: number | null; hh: number | null; d: number | null };
+
+  it('offers sizes to recognise rather than a measurement nobody will take', async () => {
+    const h = await ready();
+    h.pairScreen('sz1', 'Kitchen');
+    const html = settingsFormOf(await (await h.call('/admin/walls/sz1')).text());
+
+    // The list, the escape hatch, and the fact that an unmeasured wall lands on
+    // "Not set" rather than on somebody else's television.
+    expect(html).toContain('name="panel_size"');
+    expect(html).toContain('>32 inch television</option>');
+    expect(html).toContain('>7.5 inch e-ink panel</option>');
+    expect(html).toContain('>Enter my own</option>');
+    expect(html).toMatch(/<option value="" selected>Not set<\/option>/);
+
+    /*
+     * The distinction the whole design rests on, in the words a household
+     * meets it in. Pinned because it is the one sentence that stops somebody
+     * answering with the distance they glance from, which would size the wall
+     * for the doorway and leave it unreadable from both places.
+     */
+    expect(html).toContain('name="read_distance_mm"');
+    expect(html).toContain('not where they glance at it from the doorway');
+
+    // Progressive disclosure, and it degrades: nothing is rendered `hidden`,
+    // so a household who blocks script sees every field (the `admin-chores.ts`
+    // contract), and nothing is `required`, which a hidden control must never
+    // be or the browser refuses the form and cannot say why.
+    expect(html).toContain('data-cond');
+    expect(html).toContain('data-cond-show="custom"');
+    expect(html).not.toMatch(/data-cond-show="[^"]*" hidden/);
+    expect(html).not.toMatch(/name="panel_(width|height)_mm"[^>]*required/);
+  });
+
+  it('stores a preset in millimetres, and reads it back as the television it is', async () => {
+    const h = await ready();
+    h.pairScreen('sz2', 'Kitchen');
+    const saved = await h.postForm('/admin/screens/sz2', settings({ panel_size: 'tv-32' }));
+    expect(saved.status).toBe(302);
+    // The preset's own reading distance, because none was typed.
+    expect(sizeOf(h, 'sz2')).toEqual({ w: 708, hh: 398, d: 1200 });
+
+    const html = settingsFormOf(await (await h.call('/admin/walls/sz2')).text());
+    expect(html).toContain('<option value="tv-32" selected>32 inch television</option>');
+    expect(html).toContain('value="1200"');
+  });
+
+  it('turns a preset to how the wall is hung, and still names it', async () => {
+    const h = await ready();
+    h.pairScreen('sz3', 'Hall');
+    await h.postForm(
+      '/admin/screens/sz3',
+      settings({ name: 'Hall', rotation: '90', panel_size: 'tv-32' }),
+    );
+    // Stored as mounted: a 32" television on its end is 398mm across the wall.
+    expect(sizeOf(h, 'sz3')).toEqual({ w: 398, hh: 708, d: 1200 });
+    // And it is still the television it is, not "Enter my own" over numbers
+    // the household never typed.
+    const html = settingsFormOf(await (await h.call('/admin/walls/sz3')).text());
+    expect(html).toContain('<option value="tv-32" selected>32 inch television</option>');
+  });
+
+  it('keeps a distance somebody typed when the size is corrected', async () => {
+    const h = await ready();
+    h.pairScreen('sz4', 'Kitchen');
+    // The same television at the end of a hall. The size is a fact about the
+    // hardware and the distance is a fact about the room, which is the whole
+    // reason the two are separate controls.
+    await h.postForm(
+      '/admin/screens/sz4',
+      settings({ panel_size: 'tv-32', read_distance_mm: '3000' }),
+    );
+    expect(sizeOf(h, 'sz4')).toEqual({ w: 708, hh: 398, d: 3000 });
+  });
+
+  it('round-trips a measurement somebody typed', async () => {
+    const h = await ready();
+    h.pairScreen('sz5', 'Study');
+    await h.postForm(
+      '/admin/screens/sz5',
+      settings({
+        name: 'Study', panel_size: 'custom',
+        panel_width_mm: '480', panel_height_mm: '270', read_distance_mm: '900',
+      }),
+    );
+    expect(sizeOf(h, 'sz5')).toEqual({ w: 480, hh: 270, d: 900 });
+    const html = settingsFormOf(await (await h.call('/admin/walls/sz5')).text());
+    expect(html).toContain('<option value="custom" selected>Enter my own</option>');
+    expect(html).toContain('value="480"');
+    expect(html).toContain('value="270"');
+    expect(html).toContain('value="900"');
+  });
+
+  it('lets a household take the measurement back', async () => {
+    const h = await ready();
+    h.pairScreen('sz6', 'Kitchen');
+    await h.postForm('/admin/screens/sz6', settings({ panel_size: 'tv-32' }));
+    expect(sizeOf(h, 'sz6').w).toBe(708);
+
+    /*
+     * "Not set" with the old numbers still in the body — which is exactly what
+     * a browser sends, because a hidden input is submitted like any other. If
+     * the handler read them here, the one control that offers to take a
+     * measurement back could never do it.
+     */
+    const cleared = await h.postForm(
+      '/admin/screens/sz6',
+      settings({
+        panel_size: '', panel_width_mm: '708', panel_height_mm: '398', read_distance_mm: '1200',
+      }),
+    );
+    expect(cleared.status).toBe(302);
+    expect(sizeOf(h, 'sz6')).toEqual({ w: null, hh: null, d: null });
+  });
+
+  it('refuses half a measurement and says which half, storing nothing', async () => {
+    const h = await ready();
+    h.pairScreen('sz7', 'Study');
+    const res = await h.postForm(
+      '/admin/screens/sz7',
+      settings({ name: 'Study', panel_size: 'custom', panel_width_mm: '480', panel_height_mm: '270' }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('reading distance');
+    expect(sizeOf(h, 'sz7')).toEqual({ w: null, hh: null, d: null });
+  });
+
+  it('reaches the wall as facts in millimetres, never as a size in pixels', async () => {
+    /*
+     * The far end of the round trip, through the real display token. What the
+     * wall gets is a size and a distance — the server does not know what the
+     * browser calls a pixel, so it sends the inputs to the arithmetic and never
+     * the answer.
+     */
+    const h = await ready();
+    const token = h.pairScreen('sz8', 'Kitchen');
+    const unmeasured = await (
+      await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
+    ).json() as { screen: Record<string, unknown> };
+    expect(Object.keys(unmeasured.screen)).toEqual([
+      'orientation', 'rotation', 'allowDismiss', 'allowChores',
+    ]);
+
+    await h.postForm('/admin/screens/sz8', settings({ panel_size: 'tv-32' }));
+    const measured = await (
+      await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
+    ).json() as { screen: Record<string, unknown> };
+    expect(measured.screen).toMatchObject({
+      panelWidthMm: 708, panelHeightMm: 398, readDistanceMm: 1200,
+    });
+    // No derived scale rode along with them.
+    expect(Object.keys(measured.screen).filter((key) => /px|scale|arcmin/i.test(key))).toEqual([]);
   });
 });

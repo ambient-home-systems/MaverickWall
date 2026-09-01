@@ -182,6 +182,14 @@ export interface Manifest {
     /** Whether this screen may offer a way to acknowledge an interrupt. */
     readonly allowDismiss?: boolean;
     readonly allowChores?: boolean;
+    /**
+     * How large this screen is and how far away it is read from, in
+     * millimetres — facts, never a size the server derived. All three or none
+     * of them, and absent on a wall nobody has measured, which is most of them.
+     */
+    readonly panelWidthMm?: number;
+    readonly panelHeightMm?: number;
+    readonly readDistanceMm?: number;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

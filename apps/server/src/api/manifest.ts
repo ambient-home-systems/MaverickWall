@@ -15,6 +15,8 @@ import {
   type WeekScheme,
 } from '@maverick-wall/core';
 
+import { physicalWall } from '../wall-sizes.js';
+
 /**
  * The manifest: everything a display needs, in one document.
  *
@@ -564,6 +566,24 @@ export interface Manifest {
     readonly allowDismiss: boolean;
     /** Whether this screen may tick a chore off (RFC 008 phase 3). */
     readonly allowChores: boolean;
+    /**
+     * How large this screen is, and how far away it is read from.
+     *
+     * Millimetres — **facts, never a derived size in pixels**. The server does
+     * not know what the browser calls a pixel: a wall reports a viewport, a
+     * kiosk frame reports something else again, and the household's claim here
+     * is about a physical picture. Only the page knows its own frame, so only
+     * the page can turn these into an angle (`pxPerArcminute`, in the display's
+     * `orientation.ts`).
+     *
+     * All three or none of them, and absent is the common case — a household
+     * that never opens the setting sends the document it sent before this
+     * field existed, byte for byte, so no stored ETag churns and an older
+     * bundle on a wall reads a manifest it fully understands.
+     */
+    readonly panelWidthMm?: number;
+    readonly panelHeightMm?: number;
+    readonly readDistanceMm?: number;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -741,6 +761,10 @@ export interface BuildManifestInput {
     readonly daytimeTheme?: string | null;
     readonly daytimeStartsAt?: string | null;
     readonly daytimeEndsAt?: string | null;
+    /** The physical facts, straight off the row; null until measured. */
+    readonly panelWidthMm?: number | null;
+    readonly panelHeightMm?: number | null;
+    readonly readDistanceMm?: number | null;
   };
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
@@ -1179,6 +1203,26 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       rotation: ((Math.round((input.screen?.rotation ?? 0) / 90) % 4) + 4) % 4 * 90,
       allowDismiss: input.screen?.allowDismiss === true,
       allowChores: input.screen?.allowChores === true,
+      /*
+       * Spread rather than emitted as nulls, and refused rather than clamped.
+       *
+       * Spread because absence has to be *identical* to how this document
+       * looked before the field existed — `manifestEtag` hashes the
+       * serialisation, so a `"panelWidthMm": null` on every wall in the world
+       * would churn every stored ETag at one image pull for a household who
+       * never opened the setting.
+       *
+       * Refused because the two answers are not equally cheap. A wall with no
+       * measurement draws exactly what it drew yesterday; a wall carrying a
+       * hand-edited 999999 draws type sized for a stadium. Clamping a value
+       * that cannot be a wall to the nearest one that could be is a confident
+       * wrong answer where dropping it is the household's own last-known-good.
+       */
+      ...(physicalWall(
+        input.screen?.panelWidthMm,
+        input.screen?.panelHeightMm,
+        input.screen?.readDistanceMm,
+      ) ?? {}),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

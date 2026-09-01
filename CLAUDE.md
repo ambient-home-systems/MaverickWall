@@ -92,7 +92,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and six real bugs**, and the pattern in how is the most
+This project has found **one hundred and seven real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -203,6 +203,7 @@ useful thing in this document:
 | A forecast threshold no *tallest* run of text could see | Measuring the shortest run instead — the temperatures, not the day names |
 | **A width guard that silently moved the arithmetic another rule was calibrated on** | Merging with that rule, and watching its own test go red at a cell of exactly `pillMinCell` |
 | **A ratchet's own header constant, counting a solid inverted band as body ink** | Deriving the split it transcribed, and finding 54 wrong at three of six sizes |
+| **A browser assertion that neither of its own fixes could turn red** | Mutating the display's source without rebuilding the bundle the server serves |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -353,13 +354,33 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2375 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 364 ·
-server 1544. CI runs the whole suite and then the README's one-liner against a
-clean volume on Linux, which is the only place the install has ever been wrong.
+**2405 tests passing and two red.** calendar 153 (plus 1 skipped) · core 314 ·
+display 372 · server 1568, of which two fail. CI runs the whole suite and then
+the README's one-liner against a clean volume on Linux, which is the only place
+the install has ever been wrong.
 
-**139 of the server's tests need a real Chromium and say so when they cannot
-right failure — these measure layout, and a browser test that silently skips is
-this document's whole complaint about assertions that cannot go red — but the
+**The two red ones are the density ratchets, and they are red on `main`.**
+`wall-density` reports 9 of 107 runs under the 22px floor against a recorded 7,
+and `browser-classic-proportions` reports the rota chip at **21.7px** — which is
+the same chip, one tenth of a pixel along, that the table above already records
+being fixed at 21.6px. Established the way that table says to: `main`'s own
+`apps/display/src` *and* `apps/server/src` checked out over a branch, the
+display rebuilt, and the identical two assertions with the identical numbers.
+Recorded here rather than fixed, because the lever is Classic's own proportions
+and moving those is a decision rather than a repair — but a ratchet nobody has
+looked at since it went red is a ratchet that stops ratcheting.
+
+**140 of the server's tests fail without a real Chromium and say so**, across
+21 files, which is worth knowing before reading a red suite as a regression —
+and 138 of those are the whole of it, because the other two are the density
+ratchets above, which are red with a browser as well. So a correct run on this
+tree is those two and nothing else. Both numbers are **measured** — the server
+suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
+carried forward and incremented, which is the only way this pair has ever been
+right: it read 148 over 20 files while the truth was 140 over 21, and the
+increment that produced 148 is how a stale number survives being edited. That is
+the right failure — these measure layout, and a browser test that silently skips
+is this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
 `browser-harness.ts` finds it via `MW_BROWSER_EXECUTABLE`, then
 `PLAYWRIGHT_BROWSERS_PATH` (defaulting to `/opt/pw-browsers`), then a
@@ -373,7 +394,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (27 tables, 37 migrations) · migrations behind a
+secrets at rest · the schema (27 tables, 38 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
@@ -3598,6 +3619,105 @@ migrates the canvas, and the server's widget schema still accepts the key so
 an old wall's config keeps round-tripping. The stylesheet carries no
 `transition` or `animation` anywhere, and never did — the wall has no pointer
 and redraws every fifteen seconds, so there was nothing to remove there.
+
+**A wall knows how large it is and how far away it is read from, and both are
+facts about the hardware rather than preferences.** `screens` already carried
+`rotation` and `orientation` on the reasoning that a kitchen tablet and a hall
+television are mounted differently; `panel_width_mm`, `panel_height_mm` and
+`read_distance_mm` (migration `0037`) join them for the same reason, and they
+answer something nothing in this product could answer before. **Type on a wall
+is legible or not by the angle it subtends at somebody's eye**, and every
+legibility decision in this codebase is taken from a pixel count instead.
+`--t-floor: 22px` in `display.css` and `MIN_CALENDAR_SCALE = 0.62` in
+`density.ts` are each a measurement taken on one wall and defended on all the
+others. And `epaper/metrics.ts`, which has just replaced the panel's own
+constants with arithmetic, derives the whole ladder from the panel's **pixel**
+short side with a `SIZE_EXPONENT` of 0.6 — a number its docstring defends
+exactly right and for the missing reason: at 1.0 a bigger panel shows what a
+smaller one shows only larger, at 0.0 it shows more at a size that stops being
+readable across a kitchen. Which of those a household wants is not a property of
+the pixels. It is how far away they are standing, and that is the number that
+did not exist. Measured: on a 32" panel read from ten feet, 22px is about 9
+arc-minutes tall, of which 6.6 is cap height — the acuity limit for a word
+somebody already expects, and nowhere near fluent reading — while the same 22px
+on the same television read from 1.2 metres is about 23. **The floor is a
+1.2-metre size being defended as a 3-metre one**, and paying for that claim is
+what empties a cell on a small panel.
+
+**The manifest carries the two facts and deliberately not a derived size.** The
+server does not know what a browser calls a pixel: it knows a viewport a wall
+reported once, which a kiosk frame can misreport and a rotation reinterprets.
+So `screen.panelWidthMm` / `panelHeightMm` / `readDistanceMm` travel as
+millimetres, and `pxPerArcminute` in `apps/display/src/orientation.ts` — beside
+`geometryFor`, pure, for the reason `widget-options.ts`, `ink.ts`, `ladder.ts`
+and `placement.ts` are pure — does the arithmetic in the one place both halves
+of the ratio are known. Two traps, and the second is the one worth writing
+down. **The rotated frame is the input and the raw viewport is not**: a screen
+turned a quarter turn has its canvas height on the viewport's *width* axis, the
+trap `rootFontSize` already documents, and getting it wrong here is worse
+because the wall comes out plausibly sized rather than obviously half-size. And
+**the millimetres are reconciled against that frame rather than against the
+rotation** — the columns hold the picture as it is mounted, but a household
+turns a wall a year after measuring it and a panel the operating system rotates
+reports no rotation here at all, so the stored way-up is a claim and the frame
+is the measured truth. Without that, a 32" television hung sideways divides
+398mm by 1920px instead of 708mm by 1920px and every size on the wall is 1.78x
+wrong, silently and in the plausible direction. Two worked examples are pinned:
+a 32" panel hung portrait (1920px over 708mm) read at 1200mm is 0.9466 px per
+arc-minute, and a 7.5" e-ink panel (480px over 98mm) read at 600mm is 0.8549.
+
+**The household is offered sizes to recognise, not a measurement they will
+take.** Eight presets on the wall's own settings page — three e-ink panels, a
+tablet, a monitor, three televisions — plus "Enter my own", each carrying the
+distance one of those is usually read from. **The distance stays editable after
+a size is picked**, because the size is a fact about the hardware and the
+distance is a fact about the *room*: the same 32" television in a hall and in a
+kitchen is read from different places, and that is the difference between 23
+arc-minutes and 9. Its label is where a household meets the whole design
+argument, so it says which distance is meant — where somebody stands to *read* a
+name, not where they glance at it from the doorway. Script-free by construction
+(`data-cond`, the chores form's mechanism, and no group rendered `hidden` so it
+degrades to today's form), and nothing in it is `required`, because a required
+control a script has hidden is a form the browser refuses and cannot explain.
+A preset is stored turned to how the wall is hung, which is a convenience
+rather than a load-bearing decision — the derivation reconciles anyway — and
+`matchWallSize` compares the pair as a *set*, so a wall hung sideways still
+reads back as the television it is instead of "Enter my own" over numbers
+nobody typed.
+
+**Absence means unchanged, and that is the assertion worth having.** With all
+three columns null a wall's manifest is byte-identical to the document it sent
+before the fields existed — conditional spread, never `panelWidthMm: null` —
+which matters because `manifestEtag` hashes the serialisation, so a null on
+every wall in the world would churn every stored ETag at one image pull for a
+household who never opened the setting. The panel frame is identical to the
+byte and to the ETag too. Two of the three is on that same branch rather than
+half on it: a size with no distance derives nothing, so it is the same state as
+none, refused in `physicalWall` on the server and again in `physicalScreenFrom`
+in the display, which has to draw something sane against a server older or newer
+than itself. An out-of-band value is **refused rather than clamped** — clamping
+a hand-edited 999999 draws a wall confidently sized for a stadium, where
+dropping it draws the wall the household had yesterday, which is the side rule
+nine takes. What *does* move once a wall is measured is the ETag, and that is
+pinned rather than assumed: without it, measuring a wall would reach nothing
+until its calendar happened to change.
+
+**Nothing on any wall looks different yet, and that is the whole of this phase.**
+No stylesheet reads `--px-arcmin`; `main.ts` sets it on the root when a wall has
+been measured and *removes* it when it has not, so the arithmetic is observable
+end to end and the seam the type scale needs exists — but the two constants and
+the exponent named above are untouched, and moving them is the next decision
+rather than a side effect of this one, and `epaper/metrics.ts` is where it
+lands first: it already asks the question this answers, in pixels. The migration
+is the ordinary discipline and is only worth recording for one thing: it was
+**generated, then read** — three `ALTER TABLE ADD COLUMN` and no recreate,
+which is what rule seven's `0009` paragraph asks of anything touching a table
+with somebody's calendar in it — and `migration-upgrade.test.ts` now walks a
+*screen* through as well as a
+calendar: paired before `orientation` and `rotation` existed at all (0004), hung
+sideways once they did, and asserted to come out the far side with all three new
+columns null. Not 0. A default of zero here is a wall zero millimetres wide read
+from zero millimetres away, on every screen in the world at one image pull.
 
 ---
 

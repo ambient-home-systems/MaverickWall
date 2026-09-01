@@ -62,6 +62,16 @@ import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
 import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
 import { DEV_BUILD_NOTE, isReleaseVersion } from '../version.js';
+import {
+  matchWallSize,
+  resolveWallSize,
+  PANEL_MM_MAX,
+  PANEL_MM_MIN,
+  READ_DISTANCE_MM_MAX,
+  READ_DISTANCE_MM_MIN,
+  WALL_SIZE_CUSTOM,
+  WALL_SIZE_PRESETS,
+} from '../wall-sizes.js';
 import type { LogBuffer } from '../logbuffer.js';
 import { parseBackground, widgetIsSetUp, WIDGET_TYPES } from '../api/manifest.js';
 import { householdSetUp } from '../modules/index.js';
@@ -217,6 +227,19 @@ const screenBody = z.object({
   today_events: optionalText(3),
   next_days: optionalText(3),
   horizon_weeks: optionalText(3),
+  /*
+   * How large this wall is and how far away it is read from.
+   *
+   * A preset key, `custom`, or blank for "not measured" — and three
+   * millimetre fields the choice decides whether to read at all, because a
+   * browser submits a hidden input exactly as it submits a visible one.
+   * `resolveWallSize` is where the three become one answer; the shape here
+   * only says they are short strings.
+   */
+  panel_size: optionalText(20),
+  panel_width_mm: optionalText(6),
+  panel_height_mm: optionalText(6),
+  read_distance_mm: optionalText(6),
 });
 
 /** Creating a screen asks for one thing; everything else follows the household. */
@@ -1858,6 +1881,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const weeks = density(shaped.value.horizon_weeks, 1, 8, 'Weeks of month');
     if (!weeks.ok) return c.html(displayDetailPage(id, weeks.message, c), 400);
 
+    /*
+     * Three fields, one answer — and the rotation being saved is an input to
+     * it, because a preset's numbers are the panel's own way up and the columns
+     * hold the wall's. Resolved by a pure function rather than here, so every
+     * one of its cases can be reached without a server.
+     */
+    const size = resolveWallSize(
+      {
+        size: shaped.value.panel_size,
+        widthMm: shaped.value.panel_width_mm,
+        heightMm: shaped.value.panel_height_mm,
+        distanceMm: shaped.value.read_distance_mm,
+      },
+      rotation,
+    );
+    if (!size.ok) return c.html(displayDetailPage(id, size.message, c), 400);
+
     if (
       !writeScreenSettings(deps.db, id, {
         name,
@@ -1874,6 +1914,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         displayNextDays: nextDays.value,
         displayHorizonWeeks: weeks.value,
         clock24,
+        panelWidthMm: size.widthMm,
+        panelHeightMm: size.heightMm,
+        readDistanceMm: size.distanceMm,
       })
     ) {
       return c.redirect('/admin/walls', 302);
@@ -2994,6 +3037,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const helpId = `orient-help-${screen.id}`;
     const scheduled = screen.daytimeTheme !== null && screen.daytimeTheme !== '';
 
+    /*
+     * Which entry in the size list this wall is already on.
+     *
+     * Matched on the *pair* rather than on a stored key, because there is no
+     * stored key — the columns hold millimetres, which is the only thing
+     * anything downstream can use. `matchWallSize` compares them as a set, so a
+     * wall hung sideways (whose pair `mountedSize` swapped) still reads back as
+     * the television it is instead of dropping the household onto "Enter my
+     * own" and implying they typed numbers they never typed.
+     */
+    const sizeMeasured = screen.panelWidthMm !== null && screen.panelHeightMm !== null;
+    const sizePreset = matchWallSize(screen.panelWidthMm, screen.panelHeightMm);
+    const sizeValue = !sizeMeasured ? '' : (sizePreset?.key ?? WALL_SIZE_CUSTOM);
+    // Every value except "Not set". The distance is editable whichever size is
+    // chosen, because it is a fact about the room and not about the hardware.
+    const sizeChosen = [...WALL_SIZE_PRESETS.map((one) => one.key), WALL_SIZE_CUSTOM].join(' ');
+
     // --- Appearance ------------------------------------------------------
     const appearance =
       wsetGroup(
@@ -3108,6 +3168,74 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `</div>`
         ) +
       `</div>` +
+      /*
+       * The two facts nothing else in here knows, beside the mounting because
+       * they are the same kind of fact: how big the hardware is, and where
+       * somebody stands to read it.
+       *
+       * Script-free by construction, and it degrades the way `admin-chores.ts`
+       * does: no group is rendered `hidden`, so a household who blocks script
+       * sees every field and the handler still reads only the ones the choice
+       * says to. That is why nothing here is `required` — a required control a
+       * script has hidden is a form a browser refuses to submit and cannot say
+       * why.
+       */
+      wsetGroup(
+        'Size and reading distance',
+        `<div class="rows">` +
+          selectRow({
+            label: 'Wall size',
+            name: 'panel_size',
+            wide: true,
+            hint: 'Pick the nearest, or enter the picture’s own size.',
+            attrs: 'data-cond',
+            optionsHtml:
+              option('', 'Not set', sizeValue === '') +
+              WALL_SIZE_PRESETS.map((preset) =>
+                option(preset.key, preset.label, sizeValue === preset.key),
+              ).join('') +
+              option(WALL_SIZE_CUSTOM, 'Enter my own', sizeValue === WALL_SIZE_CUSTOM),
+          }) +
+          `<div class="rowsub" data-cond-show="${WALL_SIZE_CUSTOM}">` +
+          `<div class="two-up"><div>` +
+          textField({
+            label: 'Width',
+            name: 'panel_width_mm',
+            type: 'number',
+            value: screen.panelWidthMm === null ? '' : String(screen.panelWidthMm),
+            hint: 'Across the wall, in millimetres — the picture, not the case.',
+            attrs: `inputmode="numeric" min="${PANEL_MM_MIN}" max="${PANEL_MM_MAX}"`,
+          }) +
+          `</div><div>` +
+          textField({
+            label: 'Height',
+            name: 'panel_height_mm',
+            type: 'number',
+            value: screen.panelHeightMm === null ? '' : String(screen.panelHeightMm),
+            hint: 'Down the wall, in millimetres.',
+            attrs: `inputmode="numeric" min="${PANEL_MM_MIN}" max="${PANEL_MM_MAX}"`,
+          }) +
+          `</div></div></div>` +
+          `<div class="rowsub" data-cond-show="${sizeChosen}">` +
+          textField({
+            label: 'Read from',
+            name: 'read_distance_mm',
+            type: 'number',
+            value: screen.readDistanceMm === null ? '' : String(screen.readDistanceMm),
+            hint:
+              'How far away somebody stands to read a name off this wall, in ' +
+              'millimetres — not where they glance at it from the doorway. Those ' +
+              'are two different distances and this is the reading one. Left ' +
+              'blank, a size from the list brings its own.',
+            attrs:
+              `inputmode="numeric" min="${READ_DISTANCE_MM_MIN}" max="${READ_DISTANCE_MM_MAX}"`,
+          }) +
+          `</div>` +
+          `</div>` +
+          `<p class="hint-1">Two facts about the hardware, like the mounting above: ` +
+          `nothing else in here knows how large this wall is or how far away it is ` +
+          `read from. Leave them unset and it draws exactly as it does today.</p>`,
+      ) +
       wsetGroup(
         'Time',
         `<div class="rows">` +
@@ -3211,7 +3339,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Wall settings">` +
       wsetRow('appearance', 'Appearance', 'Theme and daylight schedule', true) +
       wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
-      wsetRow('device', 'Device and time', 'Name, mounting, timezone', false) +
+      wsetRow('device', 'Device and time', 'Name, mounting, size, timezone', false) +
       // Names both switches: the section holds one about alerts and one about
       // chores, and a subtitle that mentions only the first is a heading a
       // household would not open looking for the second.
@@ -3222,7 +3350,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
       wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the Default wall.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
-      wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, and the clock it keeps.', device, false) +
+      wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
       // Both switches, not just the alert one — this panel is now where every
       // "can this screen write anything" decision lives, and it is worth saying
       // that a wall display can only ever press what is listed here.
