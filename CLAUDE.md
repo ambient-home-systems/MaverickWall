@@ -39,6 +39,25 @@ Violating any of these is a failed task.
 
 ---
 
+## Design rules: do not reintroduce
+
+- No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
+- No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code.
+- No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink.
+- No stat tiles. A big number with a caption, or a 3-up row of them, is a dashboard idiom. This is a calendar.
+- No shadow on the display, at any size, in any theme. It bands on e-ink and burns in on OLED. Separation is space, then a 1px rule, then a ground step, in that order.
+- No transition or animation on any surface a screen sees. The wall has no pointer and redraws every 15 s; the panel physically cannot animate.
+- No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
+- The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
+- A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter.
+- An overflow count never costs a name. If a cell can draw one row, that row is an event, not "+3".
+- A multi-day event is drawn once, spanning its days. Never repeated per cell.
+- No spacing value in the admin that is not a --mw-s-* token, and no new screen that builds a card, row, table, tag or empty state out of raw markup: use the component, or add one.
+- No icon beside a section heading, and no icon inside a tinted rounded square. Icons identify repeated destinations and nothing else.
+- Never assert a size, a count, or a tier from a class name. Measure the computed value. This codebase has shipped a bug where the class was right and the pixels were wrong.
+
+---
+
 ## Stack — decided, do not relitigate
 
 TypeScript strict · Node LTS · pnpm monorepo · Hono · SQLite via better-sqlite3
@@ -73,7 +92,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **eighty-one real bugs**, and the pattern in how is the most
+This project has found **ninety-two real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -172,6 +191,10 @@ useful thing in this document:
 | **"Show week numbers" doing nothing on five days out of seven** | Writing a test for a bar's column offset and finding the column had never been drawn |
 | A stylesheet rule for an element no renderer has emitted for months | Looking for the accent a new rule was meant to complement |
 | A test that passed because the source was restored and not rebuilt | The same file failing alone, minutes after the whole suite went green |
+| **A density mark that cost the shipped wall four of its seven event names** | The density ratchet, after three narrower measurements had called it free |
+| **A ratchet blind to the rule it was gating, for want of one multi-day event** | Deleting the rule and watching the gate stay green |
+| A metric that rewarded printing the same title seven times | The same deletion, which *raised* the number it was scored on |
+| **A ratchet already red on `main`, under a note saying it held** | Running it on a clean worktree of `main` |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -322,13 +345,15 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2276 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 347 ·
-server 1462. CI runs the whole suite and then the README's one-liner against a
-clean volume on Linux, which is the only place the install has ever been wrong.
+**2323 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 364 · server 1492. CI runs the whole suite and then the
+README's one-liner against a clean volume on Linux, which is the only place the
+install has ever been wrong.
 
-**140 of the server's tests need a real Chromium and say so when they cannot
-find one**, which is worth knowing before reading a red suite as a regression:
-19 files fail with "No Chromium to drive" and nothing else is wrong. That is the
+**148 of the server's tests need a real Chromium and say so when they
+cannot find one**, which is worth knowing before reading a red suite as a
+regression: 20 files fail with "No Chromium to drive" and nothing else
+is wrong. That is the
 right failure — these measure layout, and a browser test that silently skips is
 this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
@@ -1368,17 +1393,31 @@ whichever does not show *fewer names* than the names managed alone. A cell that
 can draw **zero** names draws no counter at all: "+3" alone is a number with no
 subject.
 
-**3 — A density mark, so the glance costs no type.** A short bar under the
-numeral whose *length* steps with the day's count (a quarter of the cell per
-event, saturating at four), in `--faint`. It replaces `hz-dots` as the default
-treatment's quiet layer — `dots` itself is untouched, being a look a household
-has stored — and it is what a cell says when it can name nothing, which on the
-shipped wall is most cells most weeks. **An empty day draws no mark whatever**:
-an empty day is the information, and a mark of no length is still a mark.
-Measured, it costs no names at any of the three wall sizes. The brief for it
-named an `--ink-scaffold` token; there is no such token in this product and
-`--faint` is what it already calls its quietest ink — the week numbers, the
-counter and an out-of-month numeral are all drawn in it.
+**3 — A density mark, so the glance costs no type.** A short bar **beside** the
+numeral, on its own line, whose *length* steps with the day's count (a sixth of
+the cell per event, saturating at four), in `--ink-scaffold`. It replaces `hz-dots` as the
+default treatment's quiet layer — `dots` itself is untouched, being a look a
+household has stored — and it is what a cell says when it can name nothing,
+which on the shipped wall is most cells most weeks. **An empty day draws no
+mark whatever**: an empty day is the information, and a mark of no length is
+still a mark. The token is exactly the register — a demoted ink for the things
+that *label* a cell rather than being what a household reads it for, which is
+what the date numeral and the week number already use, and a mark that says how
+much is there and never what is scaffolding by definition.
+
+**Where it sits was decided by the ratchet, against three earlier
+measurements that all said it was free.** It began in flow *under* the numeral,
+which is where it reads best; measured on a full-canvas widget and on this
+change's own fixture at three wall sizes, it cost no names. Then
+`wall-density.test.ts` — the density gate, which measures the *shipped Classic
+seed* at five sizes with the household's own calendars — reported the landscape
+month grid naming three events where it had named seven. A Classic cell has
+room for one row, so a few pixels of scaffolding **is** a row, and a mark that
+says how busy a day is at the price of not saying what is on it has spent more
+than it bought. Beside the numeral it costs nothing at all: the line's height
+is the numeral's, and a two-digit date leaves most of the cell's width for the
+bar to grow across. Three narrower measurements agreeing is not the same as the
+one that measures the wall a household actually gets.
 
 **4 — A current-time indicator, on the agenda and nowhere else.** The product
 had none anywhere. It is a 2px rule in `--accent` across the agenda column
@@ -1418,6 +1457,40 @@ it). What the panel decides for itself is only how *many* lanes an 800x480 cell
 can afford, which is a fact about the hardware. `EPAPER_RENDERER_VERSION` is 4:
 every cell in every panel's grid moves.
 
+**The density ratchet is the acceptance gate these four rules are measured
+against, and it moved.** `wall-density.test.ts` landed on `main` while this was
+being built, and it is the file that decides whether a phase shipped what it
+claims. Re-measured on its own fixture, before → after: `plusNCells` **19, 19,
+8, 8, 8 → 0, 0, 4, 2, 1** across the five sizes — the audit's "thirteen cells
+drawing a counter and zero names" is now none anywhere — and `distinctNames`
+**0, 0, 8, 6, 7 → 0, 0, 9, 8, 8**.
+
+Three things about raising it are worth more than the numbers.
+
+**A node count is not a name count, and rule 1 exposed that.**
+`monthNamesVisible` counts name-shaped *nodes*, so seven squares each saying
+"Half term" scores seven — and collapsing them into one labelled bar reads as
+losing six. The metric was rewarding the repetition the rule exists to remove,
+and would have gone on rewarding it. `distinctNames` is the replacement, and it
+counts a bar's label once however many days it covers; both are asserted, so a
+later phase cannot quietly lose real names down to the lower node count.
+
+**The gate could not see rule 1 at all**, because `HOUSEHOLD_CALENDARS` had no
+multi-day event in it: its "Half term" lasted a single day, which describes
+nothing a household has. Removing the whole span rule left the ratchet green. It
+is a week now, `spanBars` is asserted, and removing the rule turns three sizes
+red.
+
+**And the gate was already red on `main`.** `runsUnderFloor` at 1080x1920 is
+recorded as 7; a clean worktree of `main` at `b922a06` measures **9** — two
+agenda rota chips at 21.7px against the 22px floor, arriving with the
+type-hierarchy pass whose own paragraph above says it "moved none of that file's
+own `BASELINE` numbers". It moved that one. This phase's agenda changes put it
+back to 7, so the number is left exactly where it was rather than raised to
+bless a regression — but the lesson is the ratchet's own: **a baseline is only a
+gate if somebody runs it**, and a phase that records "the numbers held" without
+the run is the same claim this document keeps having to correct.
+
 **Two pieces of rot came out of writing the tests, and neither is fixed here.**
 `renderHorizon` draws the week-number column only when *every* week's first
 cell carries a number, which is right — a grid with gaps down its first column
@@ -1428,9 +1501,11 @@ numbers" is a control that does nothing on five days out of seven**, and the
 day it works depends on what day of the week it is. And `.te.is-next` in
 `display.css` — the accent the current-time rule was briefed to complement — is
 a rule matching an element nothing has emitted since the day block was retired;
-the whole `.te*` block is dead styling for markup that is gone. Both are
-written down at the declarations and left where they are, because either is a
-different change from these four.
+the whole `.te*` block is dead styling for markup that is gone, and the
+type-hierarchy pass repainted `.te-title` with `--ink-event` while it was in
+that state, which is the cost of leaving it: dead CSS goes on being maintained
+as though it drew something. Both are written down at the declarations and left
+where they are, because either is a different change from these four.
 
 **Five calendar views were three views and a density.** `month`, `week`,
 `list`, `skyweek`, `skymonth` — and the last two were not views at all:
@@ -3258,6 +3333,98 @@ And the two existing `is behind the session gate` assertions had to change,
 which is the case where changing a test is not weakening one: they pinned the
 exact `Location`, so they went red on a gate that now says *more*. They name the
 destination it carries now.
+
+**The wall's type hierarchy was inverted, and the fix is four tokens.**
+Measured on a paired 1920x1080 Classic wall with three ordinary family
+calendars: the clock drew at 137.7px and an actual event name at 31.6px — 4.4x
+— and a month cell's own date numeral drew at 1.4x the event in that same
+cell. The two largest things on the wall were the two facts a household
+already possesses, the time and the date; the one thing they do not — an
+event — was drawn smaller than either. `apps/display/src/theme.ts` gains four
+emphasis roles per theme: `--ink-event` (= `--ink`, event names, the one thing
+at full ink), `--ink-quiet` (= `--muted`, overflow counts and past-event
+times), `--rule-week` (= `--rule`, the one hairline per week row), and
+`--ink-scaffold` — a demoted ink for date numerals, weekday heads and week
+numbers, present but not competing with what it labels. That last one is not
+a fixed mix ratio: it starts from `mix(--ink, --bg, 0.62)` and the ratio is
+raised, per theme, until the result clears 4.5:1 against that theme's own
+`--bg` — the same lesson this file already records once at the shift-hue
+declarations, where a fixed wash read as low as 1.90:1 on a cream ground the
+same wash read fine on a dark one. Household needed 0.64 (0.62 measured only
+4.33:1), Blueprint 0.63 (0.62 measured 4.50:1, too close to trust); the other
+three cleared it at the starting ratio. `display.css` points every date
+numeral, weekday head and week number at `--ink-scaffold`, leaves the actual
+event text (`.hz-rowtext`, `.dr-ev-title`, `.te-title`, the all-day pill) on
+`--ink-event`, and leaves the out-of-month grey on `--faint` exactly as
+before — that one is deliberately below the contrast bar and stays so.
+
+**A custom theme gets the same four roles, or its wall goes blank in the same
+place.** `customTokens()` in the display bundle and `withTints()` in
+`apps/server/src/api/themes.ts` are deliberate mirrors — the shift-tint maths
+was already kept in step this way, since the display bundle has no bundler and
+cannot import the server's copy. Both now carry a `scaffoldInk` helper, and
+the two are written to be **character-identical**, the same guard
+`calendar-view-parity.test.ts` puts on `calendarView`: a test in
+`themes.test.ts` reads `relativeLuminance`, `contrastRatio` and `scaffoldInk`
+out of both files as text and asserts equality, so a drift in the starting
+ratio, the 4.5 bar or the step size turns it red immediately rather than
+showing up as an invisible date numeral on somebody's own theme.
+
+**The numeral and the clock are now sized against the event, not against a
+rem somebody picked.** `.hz-num` was `max(1.85rem, var(--t-floor))`; it is now
+`1.2x` whatever `.hz-rowtext` (its own cell's event text) actually resolves
+to — `calc(max(var(--t-micro), var(--t-floor)) * 1.2)` — so the relationship
+survives whatever the arc-minute scale (a later phase) does to event type,
+rather than needing to be re-picked by hand every time that changes. `.clock`
+carries the equivalent cap at 1.8x a new `--t-event` token (`1.95rem`, lifted
+out of `.dr-ev-title`, the agenda's own event size) in both the portrait rule
+and the `landscape` override — a widget the household dragged into place does
+not get to be the largest thing on the wall. Both keep the `max(…,
+var(--t-floor))` pair written twice, as everywhere else in this file.
+
+**The declared ratio and the on-glass ratio are not the same question, and
+only the first one is this phase's to answer.** `fitToBox` scales each
+widget's *section* independently of its neighbours, so `.clock` and
+`.dr-ev-title` sitting in differently-sized boxes can carry the right ratio in
+their own `font-size` and still land nowhere near it on the glass — measured,
+the shipped Classic seed puts them at 2.44x in portrait even with this fix
+applied, because the "Now" widget's box scales its content about 36% larger
+than the "Next" widget's box does. Closing that gap is layout work (the arc-
+minute scale, or rebalancing Classic's own proportions), and this change is
+deliberately token-only. A second `describe` block in
+`apps/server/test/wall-density.test.ts` — the density-ratchet file a
+concurrent phase built, reusing its own paired wall rather than pairing a
+second one — measures the *stylesheet's* ratio instead: a bare probe element
+planted in the same wall's `.canvas`, so every `var()` and `calc()` resolves
+through the live cascade, at three viewports. That is rather than either a
+source-text ratio (which would miss a mistyped token) or the actual on-glass
+words, the last of which was tried first and rejected for two reasons found by
+trying it: the cross-widget scale gap above, and a paired 1280x720 Classic
+wall where `trimCellRows` drops every `.hz-rowtext` to a bare "+N" — confirmed
+pre-existing by reverting just the numeral size and measuring again — so a
+test that needs a real rendered event word would have nothing to measure on
+the smallest wall this project checks. This phase moved none of that file's
+own `BASELINE` numbers — measured before merging with it, the ratchet held at
+every one of its five sizes with this phase's colour and size changes applied,
+so nothing needed raising.
+
+**Two things were removed outright, both for the same reason: a widget the
+household placed does not get to outsize the wall around it.** The generic
+module panel's `stat` and `tiles` kinds (`.gp-stat`/`.gp-tile` in
+`display.css`, a 5.5rem numeral and a strip of big tiles) drew exactly the
+oversized treatment this whole change exists to remove. Both kinds still draw
+— as `.gp-reading` rows, the same markup `kind: 'readings'` always used — so a
+third-party module already sending `kind: 'stat'` or `kind: 'tiles'` still
+shows something on upgrade rather than going blank (rule nine); only the
+treatment changed, never the data a module may send. And the wall editor's
+drop-shadow control is gone from the Style tab (`applyWidgetFormat` in
+`render.ts` no longer reads `c['shadow']` at all) — a shadow bands on e-ink,
+burns in on OLED, and buys nothing at reading distance. A widget that already
+has `shadow: true` in its stored config simply draws without one now; nothing
+migrates the canvas, and the server's widget schema still accepts the key so
+an old wall's config keeps round-tripping. The stylesheet carries no
+`transition` or `animation` anywhere, and never did — the wall has no pointer
+and redraws every fifteen seconds, so there was nothing to remove there.
 
 ---
 

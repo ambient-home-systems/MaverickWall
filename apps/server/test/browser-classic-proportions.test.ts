@@ -38,8 +38,15 @@
  * satisfies both, and this file is what found it.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
-import { TEARDOWN, browser, install, settleWall, shutDownBrowser, type Installation, type NamedFeed } from './browser-harness.js';
+import {
+  TEARDOWN,
+  equipHousehold,
+  HOUSEHOLD_CALENDARS,
+  install,
+  loadWallSettled,
+  shutDownBrowser,
+  type Installation,
+} from './browser-harness.js';
 import { backfillClassic } from '../src/api/templates.js';
 import { readLayoutWidgets } from '../src/api/queries.js';
 import { householdSetUp } from '../src/modules/index.js';
@@ -53,106 +60,13 @@ const SLOW = 180_000;
 /** The floor, in CSS pixels. `--t-floor` in `display.css` carries the reason. */
 const FLOOR_PX = 22;
 
-/**
- * Three calendars an ordinary household has, with the titles people write.
- *
- * Served over loopback rather than inserted as rows, so the whole path — fetch
- * through the SSRF guard, parse, expand, store, manifest, draw — is what is
- * measured. A single feed cannot pose this question: the agenda's fit is set by
- * how much there is to say, and one quiet calendar is the easy case.
- */
-const CALENDARS: readonly NamedFeed[] = [
-  {
-    name: 'Family',
-    events: [
-      { title: 'Bin day', day: 2 },
-      { title: 'Bin day', day: 9 },
-      { title: "Grandma's 80th birthday", day: 4 },
-      { title: 'Dentist', day: 1, from: '0900', to: '1000' },
-      { title: 'Car service', day: 11, from: '0800', to: '1200' },
-      { title: 'Half term', day: 18 },
-      { title: 'Swimming lesson', day: 0, from: '0730', to: '0830' },
-      { title: 'Book club', day: 5, from: '1930', to: '2130' },
-    ],
-  },
-  {
-    name: 'School',
-    events: [
-      { title: 'Year 6 trip to the Science Museum', day: 3, from: '0830', to: '1600' },
-      { title: 'INSET day - school closed', day: 7 },
-      { title: 'Parents evening', day: 2, from: '1800', to: '2000' },
-      { title: 'Football practice', day: 1, from: '1730', to: '1900' },
-      { title: 'School photos', day: 6, from: '0900', to: '1100' },
-      { title: 'Assembly', day: 0, from: '0915', to: '1000' },
-      { title: 'Cake sale', day: 17, from: '1500', to: '1600' },
-    ],
-  },
-  {
-    name: 'Work',
-    events: [
-      { title: 'Standup', day: 0, from: '0930', to: '0945' },
-      { title: 'Standup', day: 1, from: '0930', to: '0945' },
-      { title: 'Standup', day: 2, from: '0930', to: '0945' },
-      { title: 'Design critique - wall renderer', day: 2, from: '1400', to: '1500' },
-      { title: 'Quarterly planning review', day: 8, from: '1000', to: '1200' },
-      { title: 'One to one', day: 5, from: '1130', to: '1200' },
-    ],
-  },
-];
-
 let wall: Installation;
 let link: string;
 let screenId: string;
 
-/**
- * Give the household a location, a cached forecast and a rota.
- *
- * Without these three the Weather and Shift widgets are dropped from the
- * manifest entirely (`keepWidgetsWithSomethingToSay`), so the wall under test
- * would be a different wall from the one Classic is drawn for — and, worse, the
- * agenda's rota chip is the run that sits lowest in the box, so a household with
- * no rota is precisely the case that would hide the fault this file exists for.
- */
-function equipHousehold(): void {
-  const db = wall.db;
-  const at = Date.now();
-  db.prepare(
-    `UPDATE household_settings SET weather_enabled = 1, latitude = ?, longitude = ?,
-       weather_provider = 'openmeteo', shift_enabled = 1, updated_at = ? WHERE id = 'singleton'`,
-  ).run(51.5074, -0.1278, at);
-  const iso = (offset: number): string =>
-    new Date(at + offset * 86_400_000).toISOString().slice(0, 10);
-  const days = ['Today', 'Tomorrow', 'Wednesday', 'Thursday', 'Friday'].map((name, index) => ({
-    name,
-    date: iso(index),
-    high: 18 - index,
-    low: 9 + index,
-    unit: 'C',
-    summary: ['Sunny', 'Light rain', 'Cloudy', 'Sunny', 'Showers'][index]!,
-    icon: '☀',
-  }));
-  db.prepare(
-    `INSERT INTO weather_cache (id, provider, cache_key, payload, fetched_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at`,
-  ).run('openmeteoforecast', 'openmeteo', 'openmeteo:forecast', JSON.stringify({ days, fetchedAt: at }), at, null);
-  db.prepare(
-    `INSERT INTO people (id, name, color, sort_order, has_shift_rotation, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, ?, ?) ON CONFLICT(id) DO NOTHING`,
-  ).run('p-amy', 'Amy', '#E8A33D', 0, at, at);
-  db.prepare(
-    `INSERT INTO shift_plans
-       (id, person_id, name, kind, effective_from, priority, anchor_date, cycle, consumes_events, created_at, updated_at)
-     VALUES (?, ?, ?, 'pattern', ?, 0, ?, ?, 0, ?, ?) ON CONFLICT(id) DO NOTHING`,
-  ).run(
-    'plan-amy', 'p-amy', 'Amy rota', iso(-30), iso(-30),
-    JSON.stringify(['day', 'day', 'night', 'night', null, null]), at, at,
-  );
-}
-
 beforeAll(async () => {
-  wall = await install({ calendars: CALENDARS });
-  equipHousehold();
+  wall = await install({ calendars: HOUSEHOLD_CALENDARS });
+  equipHousehold(wall.db);
   // `pairLink` is the real `POST /admin/screens`, which is where a new display
   // is seeded with Classic — so this exercises the seed rather than asserting
   // on the constant.
@@ -197,30 +111,8 @@ async function measureWallBoxes(size: { readonly width: number; readonly height:
   readonly boxes: readonly Box[];
   readonly monthColours: readonly string[];
 }> {
-  const context = await (await browser()).newContext({ viewport: size });
-  const page: Page = await context.newPage();
+  const { page, close } = await loadWallSettled(link, size);
   try {
-    /*
-     * Hold the first manifest back until the page has had time to fetch its
-     * fonts, and the race above cannot happen: by the time `draw` runs, the
-     * metrics `fitToBox` and `trimCellRows` measure against are the real ones.
-     * A delay rather than `document.fonts.ready`, because that promise lives in
-     * the page and the request has to be paused from out here. This is the
-     * steady state a wall that has been hanging for a minute is in; the cold
-     * draw is a real product fault and it is not this change's to fix.
-     */
-    let held = false;
-    await page.route('**/d/manifest*', async (route) => {
-      if (!held) {
-        held = true;
-        await new Promise((resolve) => setTimeout(resolve, 750));
-      }
-      await route.continue();
-    });
-    await page.goto(link, { waitUntil: 'load' });
-    await settleWall(page);
-    await page.reload({ waitUntil: 'load' });
-    await settleWall(page);
     return await page.evaluate(() => {
       const canvas = document.querySelector('.canvas') as HTMLElement;
       const canvasRect = canvas.getBoundingClientRect();
@@ -314,7 +206,7 @@ async function measureWallBoxes(size: { readonly width: number; readonly height:
       return { canvas: { w: canvasRect.width, h: canvasRect.height }, boxes, monthColours };
     });
   } finally {
-    await context.close();
+    await close();
   }
 }
 

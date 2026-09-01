@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyTheme,
+  customTokens,
   daytimeActive,
   shiftTint,
   THEME_NAMES,
@@ -244,6 +245,81 @@ describe.each(THEME_NAMES)('the %s theme', (name) => {
       `${fresh.length} newly unreadable pairs (allow-list holds ${UNREADABLE.length}):\n` +
         fresh.map((entry) => `  ${entry}`).join('\n'),
     ).toEqual([]);
+  });
+});
+
+/**
+ * The four emphasis roles (RFC — wall type hierarchy), on every theme.
+ *
+ * `--ink-event`, `--ink-quiet` and `--rule-week` are straight copies of
+ * `--ink`, `--muted` and `--rule` — asserted as equalities, not as fresh
+ * contrast checks, because a quiet role inherits `--muted`'s own accepted
+ * misses (`UNREADABLE` above already carries them) rather than needing to
+ * clear a bar `--muted` itself does not. `--ink-scaffold` is the one that is
+ * not a copy, so it gets its own bar: unlike `--muted`, every theme's
+ * scaffold ink was tuned to clear 4.5:1, so it is held to that on *both*
+ * grounds, the same as the fully-readable tokens above.
+ */
+describe.each(THEME_NAMES)('the %s theme, emphasis roles', (name) => {
+  it('carries all four, as hex colours', () => {
+    const t = tokensOf(name);
+    for (const role of ['--ink-event', '--ink-scaffold', '--ink-quiet', '--rule-week']) {
+      expect(t[role], `${name} is missing ${role}`).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    }
+  });
+
+  it('copies --ink-event from --ink, --ink-quiet from --muted, --rule-week from --rule', () => {
+    const t = tokensOf(name);
+    expect(t['--ink-event']).toBe(t['--ink']);
+    expect(t['--ink-quiet']).toBe(t['--muted']);
+    expect(t['--rule-week']).toBe(t['--rule']);
+  });
+
+  it('clears 4.5:1 with --ink-scaffold on both of its grounds', () => {
+    const t = tokensOf(name);
+    for (const ground of GROUNDS) {
+      const ratio = contrast(t['--ink-scaffold'] as string, t[ground] as string);
+      expect(ratio, `${name} --ink-scaffold on ${ground} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+/**
+ * A custom theme must resolve the same four roles a built-in does, or a
+ * household's own theme draws every date numeral, weekday head and week
+ * number with `var()` resolving to nothing — invisible rather than merely
+ * wrong, which is worse.
+ */
+describe('customTokens, the four emphasis roles', () => {
+  const base = {
+    '--bg': '#101418',
+    '--panel': '#1b2028',
+    '--rule': '#2a333f',
+    '--ink': '#e9eef4',
+    '--muted': '#9ba7b4',
+    '--faint': '#68727e',
+    '--accent': '#e0a33e',
+    '--s-day': '#e0a33e',
+    '--s-night': '#4c7fd1',
+    '--s-break': '#35916a',
+    '--s-straight': '#6b7684',
+    '--radius': '0.4rem',
+  };
+
+  it('derives all four roles from the base tokens', () => {
+    const t = customTokens(base);
+    expect(t['--ink-event']).toBe(base['--ink']);
+    expect(t['--ink-quiet']).toBe(base['--muted']);
+    expect(t['--rule-week']).toBe(base['--rule']);
+    expect(t['--ink-scaffold']).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  it('measures --ink-scaffold to clear 4.5:1 on the custom background, dark and light alike', () => {
+    const dark = customTokens(base);
+    expect(contrast(dark['--ink-scaffold'] as string, base['--bg'])).toBeGreaterThanOrEqual(4.5);
+
+    const light = customTokens({ ...base, '--bg': '#f6f3ec', '--panel': '#ffffff', '--ink': '#1a1815' });
+    expect(contrast(light['--ink-scaffold'] as string, '#f6f3ec')).toBeGreaterThanOrEqual(4.5);
   });
 });
 
