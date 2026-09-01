@@ -37,6 +37,7 @@ import {
   type ShiftWidgetView,
 } from './widget-options.js';
 import { calendarView } from './widget-views.js';
+import { densitySteps, monthSpans } from './month-spans.js';
 
 /**
  * The DOM, and no decisions.
@@ -397,14 +398,61 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
   row.appendChild(when);
 
   const events = el('div', 'dr-events');
-  if (day.events.length === 0) {
-    // Words rather than a dash. An empty day is a fact the wall checked, the
-    // same argument `shiftFor` makes with its synthetic rest day: somebody
-    // reading "—" from across a room cannot tell it from a row that failed.
-    events.appendChild(el('div', 'dr-empty', 'Nothing on'));
-  } else {
+  /*
+   * An empty day draws its date and nothing else.
+   *
+   * It used to say "Nothing on", on the argument that an absence and a stated
+   * fact are different things — which is right about a *rest day*, where the
+   * rota genuinely knows something, and wrong here. A day with no events is
+   * the only thing an empty day can be, so the words carry no information at
+   * all, and on this wall they are not free: a line of italic in every quiet
+   * day's row is a line the days that do have something on them wanted. An
+   * empty day is the information.
+   *
+   * The section's own "Nothing coming up." is untouched and is a different
+   * claim — that the *list* found nothing, which is a fact about the search
+   * rather than about a day.
+   */
+  if (day.events.length > 0) {
+    /*
+     * Where "now" falls in today's list — a rule across the column, no label.
+     *
+     * Only today, and only when the day holds something with a clock on it:
+     * the rule separates what has happened from what has not, and a day of
+     * nothing but all-day events has no such division to draw. It goes above
+     * the next event due, which is where `isNext` already points, and at the
+     * foot of the list when everything timed has been and gone.
+     *
+     * It was meant to complement the `.te.is-next` accent — the accent says
+     * *which* event is next, the rule says where the day has got to — and that
+     * is still the design. It is worth writing down that the accent is not
+     * currently on the glass: `.te.is-next` is a stylesheet rule matching an
+     * element nothing in this file emits, left behind when the day block was
+     * retired. So the rule is the only "now" the wall draws today, and it is
+     * drawn to stand on its own rather than to lean on a partner that is not
+     * there.
+     */
+    const nowRule = day.isToday && day.events.some((event) => !event.allDay);
+    /*
+     * Which event the rule is drawn against, and it is drawn *on* that event
+     * rather than between two of them.
+     *
+     * A row of its own is the obvious shape and it costs the agenda a whole
+     * grid gap — measured on the shipped Classic wall, 11.6px of an 816px
+     * section, which took the rota chip from 22.5px to 21.6px and under this
+     * product's own legibility floor. A hairline that costs a word is not a
+     * hairline. So it is absolutely positioned into the gap it sits in, which
+     * costs nothing at all, and the event it hangs from is the next one due —
+     * or the last one, when everything with a clock on it has been.
+     */
+    const nextIndex = nowRule ? day.events.findIndex((event) => event.isNext) : -1;
+    const ruleOn = nowRule ? (nextIndex >= 0 ? nextIndex : day.events.length - 1) : -1;
+    const ruleAtEnd = nowRule && nextIndex < 0;
+    let index = -1;
     for (const event of day.events) {
+      index += 1;
       const entry = el('div', event.allDay ? 'dr-ev allday' : 'dr-ev');
+      if (index === ruleOn) entry.appendChild(el('div', ruleAtEnd ? 'dr-now at-end' : 'dr-now'));
       // The accent rule, in the calendar's own colour — the one cue that says
       // whose event this is without spending a word on it. Set on the entry
       // rather than the title so timed and all-day events line up on one edge.
@@ -460,10 +508,21 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
  */
 export type CellStyle = 'dots' | 'pills' | 'swiss' | 'text';
 
+/** What the week's span bars leave a cell to do. */
+interface CellSpans {
+  /** How many lanes the bars above this cell reserve. */
+  readonly lanes: number;
+  /** Event ids a bar already draws here, which this cell must not repeat. */
+  readonly drawn: readonly string[];
+  /** This cell's ordinal in the grid, so the trim can find it from a bar. */
+  readonly index: number;
+}
+
 function renderCell(
   cell: HorizonCell,
   style: CellStyle = 'text',
   showShifts = true,
+  spans: CellSpans = { lanes: 0, drawn: [], index: -1 },
 ): HTMLElement {
   const classes = ['hz-cell'];
   if (cell.isToday) classes.push('is-today');
@@ -486,6 +545,47 @@ function renderCell(
   if (cell.eventCount > 0) node.setAttribute('data-count', String(cell.eventCount));
 
   if (style === 'text' || style === 'swiss') {
+    if (spans.index >= 0) node.setAttribute('data-cell', String(spans.index));
+    /*
+     * Room for the bars crossing this cell, between the number and the rows.
+     *
+     * A bar is not inside the cell — it is one absolutely placed item in the
+     * grid, so that it can actually cross the gaps between columns — which
+     * means the cell has to be told to leave it a lane. Told, not measured:
+     * the arithmetic is `month-spans.ts`'s, taken once for the whole week, and
+     * a cell working it out from what is drawn over it would be the second
+     * opinion this file keeps paying for.
+     */
+    if (spans.lanes > 0) {
+      node.style.setProperty('--hz-lanes', String(spans.lanes));
+      node.setAttribute('data-spans', String(spans.drawn.length));
+    }
+    /*
+     * The density mark: how busy the day is, with no legible text at all.
+     *
+     * This is what carries from a doorway — busy days, today's position, and
+     * the shape of a span across a week — on a wall where the type floor and
+     * a 129px cell together mean most cells can name one thing or nothing.
+     * It replaces `hz-dots` as the *default* treatment's quiet layer; `dots`
+     * itself is untouched, because it is a look a household has stored.
+     *
+     * Zero events draws nothing whatever. An empty day is a fact, and a mark
+     * of no length is still a mark.
+     */
+    const steps = densitySteps(cell.eventCount);
+    /*
+     * `spans.lanes` is in the condition and not only `steps`, and it is
+     * load-bearing rather than defensive: the mark is what carries the lane
+     * reservation down the cell, so a cell crossed by a bar and drawing no
+     * mark would put its rows *under* the bar. A cell a bar crosses always has
+     * that event on it, so `steps` is already positive — this makes the
+     * invariant the code's rather than the reader's.
+     */
+    if (steps > 0 || spans.lanes > 0) {
+      const mark = el('div', 'hz-mark');
+      mark.style.setProperty('--hz-fill', String(steps));
+      node.appendChild(mark);
+    }
     /*
      * Flat rows of plain text under the number: no bubble, no ground, no
      * radius, and the words get the cell's own width instead of a pill's
@@ -500,7 +600,20 @@ function renderCell(
      * `el` sets textContent, so a stranger's event title is drawn and never
      * interpreted.
      */
-    if (cell.events.length > 0) {
+    /*
+     * Everything a bar is not already drawing.
+     *
+     * The half of "drawn once" that lives here: a seven-day half term is one
+     * bar across the week, so the seven cells under it must not each add a row
+     * saying the same two words. Skipped by *id*, which is the same on every
+     * date the event touches; skipping by title would take an unrelated "Bin
+     * day" off the wall with it.
+     */
+    const rows =
+      spans.drawn.length === 0
+        ? cell.events
+        : cell.events.filter((ev) => spans.drawn.indexOf(ev.id) < 0);
+    if (rows.length > 0) {
       const list = el('div', 'hz-rows');
       /*
        * In the order the manifest sent them, which is all-day first and then by
@@ -511,7 +624,7 @@ function renderCell(
        * only because the trim now cuts from the bottom, so what sorts first is
        * what survives a cell with no room.
        */
-      for (const ev of cell.events) {
+      for (const ev of rows) {
         const row = el('div', ev.allDay ? 'hz-row allday' : 'hz-row');
         /*
          * A timed event is marked by a dot in its calendar's colour; an all-day
@@ -616,10 +729,81 @@ function renderHorizon(
   // a heading nobody needs and a word competing with the weekdays beside it.
   if (weekNumbers) grid.appendChild(el('div', 'hz-head'));
   for (const cell of headerWeek) grid.appendChild(el('div', 'hz-head', cell.weekday));
-  for (const week of model.horizon) {
+
+  /*
+   * Which multi-day events are one bar, resolved for the whole grid at once.
+   *
+   * Only the treatments that draw words: `dots` says nothing and `pills` is a
+   * stored look with its own three-and-a-counter arithmetic, and changing
+   * either would move a wall somebody has already hung.
+   */
+  const spans =
+    style === 'text' || style === 'swiss'
+      ? monthSpans(model.horizon.map((week) => week.map((cell) => cell.events)))
+      : undefined;
+  /*
+   * Which grid column the week's first day is in, 1-based, because a span bar
+   * is placed by line number and there may or may not be a week-number column
+   * in front of the seven. Getting this wrong draws every bar one day early on
+   * exactly the walls that asked for week numbers.
+   */
+  const firstDayColumn = weekNumbers ? 2 : 1;
+  let cellIndex = 0;
+  model.horizon.forEach((week, weekIndex) => {
     if (weekNumbers) grid.appendChild(el('div', 'hz-wk', String(week[0]?.weekNumber ?? '')));
-    for (const cell of week) grid.appendChild(renderCell(cell, style, showShifts));
-  }
+    const weekSpans = spans?.[weekIndex];
+    week.forEach((cell, column) => {
+      grid.appendChild(
+        renderCell(cell, style, showShifts, {
+          lanes: weekSpans?.lanes[column] ?? 0,
+          drawn: weekSpans?.drawn[column] ?? [],
+          index: cellIndex,
+        }),
+      );
+      cellIndex += 1;
+    });
+    /*
+     * The bars, after the cells they cross.
+     *
+     * They are grid items rather than children of a cell, because a cell
+     * clips and a bar has to run over the gaps between columns. They are
+     * *absolutely positioned* grid items, which is what keeps them out of
+     * auto-placement — an ordinary item placed on row 3 would push the cells
+     * that had not been placed yet into different squares, and the grid would
+     * come apart one week at a time.
+     *
+     * Row `weekIndex + 2`: the weekday headers are row 1.
+     */
+    for (const bar of weekSpans?.bars ?? []) {
+      const node = el('div', bar.leading ? 'hz-span' : 'hz-span is-cont');
+      node.style.setProperty('--pc', bar.color);
+      node.style.setProperty('--hz-lane-index', String(bar.lane));
+      node.style.gridRow = String(weekIndex + 2);
+      node.style.gridColumn = `${firstDayColumn + bar.column} / span ${bar.span}`;
+      // Which cells this covers, so the trim can put their counts right if the
+      // row turns out to be too short to draw it.
+      const covers: number[] = [];
+      for (let column = bar.column; column < bar.column + bar.span; column++) {
+        covers.push(weekIndex * week.length + column);
+      }
+      node.setAttribute('data-cover', covers.join(' '));
+      // The event, so a continuation bar can be attributed to the run it
+      // belongs to by something other than the title it deliberately lacks.
+      node.setAttribute('data-span', bar.id);
+      /*
+       * Only the first bar of a run carries the words. A continuation is the
+       * same event still being true, and printing the title again on the next
+       * row is the bug this whole rule exists to end — one row down instead of
+       * seven columns across.
+       *
+       * It still needs the name for anything that is not looking at pixels, so
+       * the continuation carries it as a label rather than as text.
+       */
+      if (bar.leading) node.appendChild(el('span', 'hz-spantext', bar.title));
+      else node.setAttribute('aria-label', bar.title);
+      grid.appendChild(node);
+    }
+  });
   horizon.appendChild(grid);
 
   // The key goes with the colours it explains. A legend under a grid with no
@@ -1501,12 +1685,44 @@ function backgroundCss(background: CanvasBackground | undefined, mediaBase: stri
 export function trimCellRows(root: HTMLElement): void {
   const cells = root.querySelectorAll('.horizon-text .hz-cell, .horizon-swiss .hz-cell');
 
+  /*
+   * The bars first, because what they draw is what the cells under them owe.
+   *
+   * A bar is an absolutely placed grid item, so nothing clips it to its week:
+   * a row too short for the lane it was given would paint a coloured band
+   * across the *next* week's numbers, which is the one failure a month grid
+   * must never have. The lane arithmetic is declared in the stylesheet and
+   * cannot know the box, so this is where it is checked — measured, like every
+   * other fit on this wall, and a bar that does not fit is hidden and its
+   * event handed back to the cells as a row.
+   */
+  const spanned = new Map<string, number>();
+  const bars = root.querySelectorAll('.horizon-text .hz-span, .horizon-swiss .hz-span');
+  const dropped: HTMLElement[] = [];
+  for (let index = 0; index < bars.length; index++) {
+    const bar = bars[index] as HTMLElement;
+    bar.style.display = '';
+    const cover = (bar.getAttribute('data-cover') ?? '').split(' ').filter((one) => one !== '');
+    const under = cover
+      .map((key) => root.querySelector(`.hz-cell[data-cell="${key}"]`))
+      .filter((one): one is HTMLElement => one instanceof HTMLElement);
+    const floor = Math.min(...under.map((one) => one.getBoundingClientRect().bottom));
+    if (under.length > 0 && bar.getBoundingClientRect().bottom > floor + 0.5) {
+      dropped.push(bar);
+      continue;
+    }
+    for (const key of cover) spanned.set(key, (spanned.get(key) ?? 0) + 1);
+  }
+  for (const bar of dropped) bar.style.display = 'none';
+
   interface Pending {
     readonly cell: HTMLElement;
     readonly more: HTMLElement;
     readonly rows: readonly HTMLElement[];
     /** The day's true total, stamped by the renderer from the model. */
     readonly total: number;
+    /** How many of that total a span bar is already drawing over this cell. */
+    readonly spans: number;
     /** The room the cell has, measured once. */
     readonly limit: number;
     /** The rows whose whole title is on the glass, after the pass across. */
@@ -1545,6 +1761,7 @@ export function trimCellRows(root: HTMLElement): void {
       more,
       rows,
       total: Number(cell.getAttribute('data-count') ?? rows.length),
+      spans: spanned.get(cell.getAttribute('data-cell') ?? '') ?? 0,
       limit: cell.clientHeight - parseFloat(style.paddingBottom),
       visible: [],
     });
@@ -1555,6 +1772,14 @@ export function trimCellRows(root: HTMLElement): void {
   /** How many of a cell's rows are actually on the glass right now. */
   const shownIn = (entry: Pending): number =>
     entry.visible.filter((row) => row.style.display !== 'none').length;
+  /** The last row still on the glass, which is where a counter can ride. */
+  const lastShown = (entry: Pending): HTMLElement | undefined => {
+    for (let index = entry.visible.length - 1; index >= 0; index--) {
+      const row = entry.visible[index] as HTMLElement;
+      if (row.style.display !== 'none') return row;
+    }
+    return undefined;
+  };
 
   /**
    * Hide, from the top down, every row whose bottom is past the budget.
@@ -1603,40 +1828,43 @@ export function trimCellRows(root: HTMLElement): void {
    * "Year 6 trip to the Science Museum" and two events can share it — where
    * "+1" is simply true.
    */
+  /**
+   * Whether this row's whole title is on the glass — the one predicate, so the
+   * pass across and the counter's re-check cannot come to different answers
+   * about the same row.
+   */
+  const fitsWhole = (row: HTMLElement, allowed: number): boolean => {
+    const text = row.querySelector('.hz-rowtext') as HTMLElement | null;
+    if (text === null) return true;
+    /*
+     * How many lines the words actually took. `scrollHeight` is the content's
+     * own height whatever the box was clamped to, so this reads the same
+     * whether or not the stylesheet's `max-height` belt is in force.
+     *
+     * Half a line of slack, never a whole one: a line either happened or it did
+     * not, and sub-pixel rounding on a wrapped box is worth less than that. A
+     * pixel of slack would make a 2.02-line title read as three.
+     */
+    const style = getComputedStyle(text);
+    const lineHeight = parseFloat(style.lineHeight);
+    const line =
+      Number.isFinite(lineHeight) && lineHeight > 0
+        ? lineHeight
+        : parseFloat(style.fontSize) * 1.25;
+    return (
+      text.scrollHeight <= line * allowed + line / 2 &&
+      // A word wider than the column on its own. `overflow-wrap` breaks those
+      // rather than letting them overhang, so this is the belt — but a belt
+      // that costs nothing and catches the case where it cannot.
+      text.scrollWidth <= text.clientWidth + 1
+    );
+  };
+
   const across = (entries: readonly Pending[], allowed: number): void => {
     const keeping: Set<HTMLElement>[] = [];
     for (const entry of entries) {
       const keep = new Set<HTMLElement>();
-      for (const row of entry.rows) {
-        const text = row.querySelector('.hz-rowtext') as HTMLElement | null;
-        if (text === null) {
-          keep.add(row);
-          continue;
-        }
-        /*
-         * How many lines the words actually took. `scrollHeight` is the
-         * content's own height whatever the box was clamped to, so this reads
-         * the same whether or not the stylesheet's `max-height` belt is in
-         * force.
-         *
-         * Half a line of slack, never a whole one: a line either happened or it
-         * did not, and sub-pixel rounding on a wrapped box is worth less than
-         * that. A pixel of slack would make a 2.02-line title read as three.
-         */
-        const style = getComputedStyle(text);
-        const lineHeight = parseFloat(style.lineHeight);
-        const line =
-          Number.isFinite(lineHeight) && lineHeight > 0
-            ? lineHeight
-            : parseFloat(style.fontSize) * 1.25;
-        const fits =
-          text.scrollHeight <= line * allowed + line / 2 &&
-          // A word wider than the column on its own. `overflow-wrap` breaks
-          // those rather than letting them overhang, so this is the belt — but
-          // a belt that costs nothing and catches the case where it cannot.
-          text.scrollWidth <= text.clientWidth + 1;
-        if (fits) keep.add(row);
-      }
+      for (const row of entry.rows) if (fitsWhole(row, allowed)) keep.add(row);
       keeping.push(keep);
     }
     entries.forEach((entry, index) => {
@@ -1646,45 +1874,160 @@ export function trimCellRows(root: HTMLElement): void {
     });
   };
 
-  /** Across, then down, then the counter, then down again underneath it. */
+  /** Across, then down, then the counter into whatever room is left over. */
   const settle = (entries: readonly Pending[], allowed: number): void => {
     for (const entry of entries) {
       for (const row of entry.rows) row.style.display = '';
       entry.more.textContent = '';
+      entry.more.className = 'hz-more';
+      // Back out of whichever row last held it, so a re-settle measures the
+      // rows at their own width rather than at the width a counter left them.
+      if (entry.more.parentElement !== entry.cell) entry.cell.appendChild(entry.more);
     }
     across(entries, allowed);
 
-    // First without a counter: a cell that holds everything owes nobody a "+N".
+    /*
+     * The names, at the cell's whole budget.
+     *
+     * The counter used to be paid for *before* this, out of the same budget —
+     * so a cell with room for exactly one row spent it on "+3" and drew
+     * neither of its events. Measured at 800x480, thirteen cells drew a
+     * counter and not one name. A count is a summary of what is missing; it
+     * cannot be worth more than the thing itself, so it is placed afterwards
+     * and only into room the names did not want.
+     */
     pack(entries, (entry) => entry.limit);
 
-    const counted = entries.filter((entry) => shownIn(entry) < entry.total);
     /*
-     * The counter is a line and has to be paid for out of the same budget, so a
-     * cell that shows one shows one fewer event. It is `display:none` while
-     * empty, so it needs content before it has a height to measure — and the
-     * packing has to run again underneath it, because reserving the room can be
-     * what pushes the last row out.
+     * A cell that says nothing says nothing.
      *
-     * **From the across pass's state, not from the first packing's.** That is
-     * the whole of a bug this introduced and only a measurement found: a cell
-     * holding a two-line title and a one-line one packed as [two-line] with the
-     * one-line row dropped, then re-packed for the counter, dropped the
-     * two-line row as well — and never looked at the one-line row again,
-     * because the first pass had already hidden it. Measured on a 1280x720
-     * wall, that cell drew "+2" and neither of its two events while there was
-     * room for the second all along.
+     * With no name on the glass a "+3" is the cell's entire content — a number
+     * with no subject, which is the failure this grid has already shipped once
+     * in the other direction. The density mark under the numeral is what such
+     * a cell draws instead: it needs no legible text, it is already there, and
+     * it says the one thing a "+3" was saying.
      */
+    const counted = entries.filter(
+      (entry) => shownIn(entry) > 0 && shownIn(entry) + entry.spans < entry.total,
+    );
+    if (counted.length === 0) return;
+
+    /*
+     * What the names managed on their own, which the counter may not reduce.
+     *
+     * This is rule 2 stated as an experiment rather than as a fallback, and it
+     * is what a first draft got wrong. That draft dropped the counter whenever
+     * sharing the last row cost that row its title — and measured on a
+     * 1280x720 wall it turned "Yoga · +1" into "Year 6 trip to the Science
+     * Museum" over two lines and *no count at all*. Which is not a name saved:
+     * it is the same one name, longer, with the household no longer told there
+     * is a second event. The rule is about how many names a cell shows, so the
+     * check has to be a comparison against how many it showed without one.
+     */
+    const baseline = new Map<Pending, Set<HTMLElement>>();
     for (const entry of counted) {
-      for (const row of entry.visible) row.style.display = '';
-      entry.more.textContent = '+0';
+      baseline.set(entry, new Set(entry.visible.filter((row) => row.style.display !== 'none')));
     }
-    pack(counted, (entry) => {
-      const style = getComputedStyle(entry.more);
-      return entry.limit - entry.more.offsetHeight - parseFloat(style.marginTop);
+
+    /*
+     * "+N" rides on the last row it is counting for, hard right.
+     *
+     * It is `display:none` while empty, so it needs content before it has a
+     * size at all. `+0` is a placeholder of the right *shape* — the digits are
+     * tabular, so the box a two-digit count needs is the box it is measured
+     * with.
+     *
+     * A counter is `flex: 0 0 auto`, so the words beside it lose its width —
+     * enough, on a 115px cell, to push a title that fitted onto a line it has
+     * not got. When that happens the row is set aside and the cell is packed
+     * *again* from the across pass's state, which is what lets a shorter title
+     * underneath take its place: the two-line "Year 6 trip…" makes way and
+     * "Yoga · +1" fits where neither fitted before. Rounds rather than
+     * arithmetic, and reads batched against writes, for the reason the pass
+     * above is: hiding one row relays out the whole grid.
+     */
+    const banned = new Map<Pending, Set<HTMLElement>>();
+    for (const entry of counted) banned.set(entry, new Set());
+    for (let round = 0; round < 4; round++) {
+      for (const entry of counted) {
+        const out = banned.get(entry) as Set<HTMLElement>;
+        for (const row of entry.visible) row.style.display = out.has(row) ? 'none' : '';
+        entry.more.className = 'hz-more';
+        entry.more.textContent = '';
+        if (entry.more.parentElement !== entry.cell) entry.cell.appendChild(entry.more);
+      }
+      pack(counted, (entry) => entry.limit);
+      for (const entry of counted) {
+        const row = lastShown(entry);
+        if (row === undefined) continue;
+        entry.more.className = 'hz-more in-row';
+        entry.more.textContent = '+0';
+        row.appendChild(entry.more);
+      }
+      const spilled = counted.filter((entry) => {
+        const row = lastShown(entry);
+        return row !== undefined && !fitsWhole(row, allowed);
+      });
+      if (spilled.length === 0) break;
+      for (const entry of spilled) {
+        const row = lastShown(entry);
+        if (row !== undefined) (banned.get(entry) as Set<HTMLElement>).add(row);
+      }
+    }
+
+    /*
+     * Where sharing could not be had without costing a name, the counter takes
+     * a line of its own — out of the room the names have just declined to use.
+     *
+     * Sharing is the design and this is the fallback, in that order, and the
+     * order is what the rule is about rather than the placement. Measured on
+     * the 1080x1920 wall, a cell holding "Grandma's 80th birthday" over two
+     * lines has room for a third line but not for a third *line of that
+     * title*: sharing pushes the words onto a line the cell has not got, and a
+     * counter underneath them fits exactly. Dropping it there — which a first
+     * draft did — loses the household the fact that the day holds something
+     * else, and buys nothing at all.
+     */
+    const failed = counted.filter((entry) => {
+      const before = baseline.get(entry) as Set<HTMLElement>;
+      const row = lastShown(entry);
+      // Out of rounds with the words still cut is a failure too, and not the
+      // same one: the cell kept its name count and broke "whole or not at all"
+      // to do it. The own-line placement gives that row its width back.
+      return row === undefined || shownIn(entry) < before.size || !fitsWhole(row, allowed);
     });
+    if (failed.length > 0) {
+      for (const entry of failed) {
+        for (const row of entry.visible) row.style.display = '';
+        entry.more.className = 'hz-more';
+        entry.more.textContent = '+0';
+        if (entry.more.parentElement !== entry.cell) entry.cell.appendChild(entry.more);
+      }
+      pack(failed, (entry) => {
+        const style = getComputedStyle(entry.more);
+        return entry.limit - entry.more.offsetHeight - parseFloat(style.marginTop);
+      });
+    }
+
+    /*
+     * And where neither placement could be had without costing a name, the
+     * cell keeps the name and says nothing.
+     *
+     * There is nothing a "+2" can say that is worth the word it would cost,
+     * and the mark under the numeral already says the day is busy. Restored
+     * from the state the names reached on their own rather than re-packed,
+     * because that state is known and a second packing is a second opinion.
+     */
+    for (const entry of failed) {
+      const before = baseline.get(entry) as Set<HTMLElement>;
+      if (shownIn(entry) >= before.size) continue;
+      for (const one of entry.visible) one.style.display = before.has(one) ? '' : 'none';
+      entry.more.textContent = '';
+    }
 
     for (const entry of counted) {
-      const hidden = entry.total - shownIn(entry);
+      if (entry.more.textContent === '') continue;
+      const hidden = entry.total - shownIn(entry) - entry.spans;
       entry.more.textContent = hidden > 0 ? `+${hidden}` : '';
     }
   };

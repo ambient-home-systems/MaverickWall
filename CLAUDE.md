@@ -165,6 +165,13 @@ useful thing in this document:
 | **This document, describing at length a layout the product had retired** | Reading it against `db/schema.ts`, which says so in a comment |
 | **A wall that lost the race to its own fonts kept the wrong arithmetic** | A test failing one run in thirty, and being right |
 | A control in the test for that, which the fix itself was propping up | Reverting the fix and watching the file go red on its premise |
+| **A seven-day half term printed in seven squares, one row each** | Reading `continues`, which the manifest had carried unread since the day it was written |
+| A month cell spending its only row on "+3" and drawing neither event | Measuring what a 129px cell actually draws, and finding a counter and no name |
+| **A rule that "never costs a name" costing one anyway** | Reverting to the old placement and finding the cell drew a *longer* name and no count at all |
+| A 2px hairline that cost the agenda its 22px type floor | The rota chip at 21.6px, one grid gap after an indicator was added |
+| **"Show week numbers" doing nothing on five days out of seven** | Writing a test for a bar's column offset and finding the column had never been drawn |
+| A stylesheet rule for an element no renderer has emitted for months | Looking for the accent a new rule was meant to complement |
+| A test that passed because the source was restored and not rebuilt | The same file failing alone, minutes after the whole suite went green |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -315,13 +322,13 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2228 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
-server 1429. CI runs the whole suite and then the README's one-liner against a
+**2276 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 347 ·
+server 1462. CI runs the whole suite and then the README's one-liner against a
 clean volume on Linux, which is the only place the install has ever been wrong.
 
-**111 of the server's tests need a real Chromium and say so when they cannot
+**140 of the server's tests need a real Chromium and say so when they cannot
 find one**, which is worth knowing before reading a red suite as a regression:
-16 files fail with "No Chromium to drive" and nothing else is wrong. That is the
+19 files fail with "No Chromium to drive" and nothing else is wrong. That is the
 right failure — these measure layout, and a browser test that silently skips is
 this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
@@ -1293,6 +1300,137 @@ It filters the week columns as well as the month squares, and the label says so
 templates draw from it — and a daily meeting floods a week column for the same
 reason. Splitting them would mean a second list and a second count on every
 cell, which is one stored value meaning two things on two widgets.
+
+**Four content rules, and none of them spends a point of type.** The month
+grid and the agenda had been tuned as far as *size* goes — the 22px floor, the
+wrap allowance, Classic's proportions — and what was left was all about
+content: what is drawn at all, and how many times. Measured on the shipped
+Classic month box (0.9 x 0.435 of a 1080x1920 wall) with two family calendars
+and a seven-day half term on it: **13 rows became 6 rows and one bar, drawing
+the same 7 distinct names**, with every busy cell now carrying a mark where 13
+of 15 said anything before. The four are separable and each has its own trap.
+
+**1 — A multi-day event is drawn once, spanning its days.** `render.ts` built
+one row per event per cell, so "Half term" over seven days took a row in seven
+consecutive squares and printed the same two words seven times — at exactly the
+moment a row is the scarcest unit in the grid, since a 114x129 Classic cell has
+room for one. `ManifestEvent.continues` had been carried the whole way through
+the model since the manifest started bucketing an event onto each date it
+touches, and **nothing read it**; `grep` found the word once in `render.ts` and
+no grid span anywhere. It is one bar now, a grid item spanning `n` columns in
+the calendar's colour with the title set inside it. Five things in it are
+load-bearing:
+
+- **The run's length comes from the occurrences, never from the dates.** `DTEND`
+  is exclusive, so subtracting one civil date from another puts every birthday
+  on a two-day bar. The server has already bucketed the event onto each date;
+  counting those buckets cannot be off by one.
+- **A run stops at the week boundary**, because seven columns cannot wrap, and
+  **only the first bar carries the title** — a title repeated on the second row
+  is the bug being fixed, one row down instead of seven columns across.
+  `leading` is a fact about the whole grid rather than about the week, and it is
+  the *first bar drawn* rather than the first day of the event: a half term that
+  started last month would otherwise be nameless on the whole wall.
+- **Only all-day events span.** A daily standup is seven separate occurrences of
+  one series and stays seven rows; a single overnight event is `continues` too,
+  and a bar for it would claim a whole second day for something that ended at
+  one in the morning. `allDay && continues`, and both halves are tested.
+- **Grouping is on the event id, never the title.** Two unrelated "Bin day"
+  entries a week apart are two events, and the assertion that separates the two
+  readings is two *different* events called the same thing overlapping by a day.
+  A single multi-day event proves nothing, because its id and its title agree.
+- **The bar is an absolutely positioned grid item**, which is the whole trick: a
+  cell clips, so a bar cannot live inside one, and an ordinary item placed on an
+  explicit row would displace every cell not yet auto-placed and take the grid
+  apart a week at a time. Out of flow it keeps its grid area — the exact
+  columns, the exact row, gaps included — and disturbs nothing. Its vertical
+  offset is the one piece of arithmetic on this wall that is *computed* rather
+  than measured (a bar and the cells beside it have to agree before either is
+  laid out), so it is declared once per treatment and a browser test holds a
+  bar's top against the cell content beneath it. The lane it sits in is
+  reserved by the density mark's own margin, and `trimCellRows` hides any bar
+  whose row turns out too short — a wall with room proves nothing there, so the
+  test measures a calendar dragged to a fifth of a small wall, where a 26px lane
+  genuinely cannot fit under the numeral.
+
+**2 — An overflow count never costs a name.** `.hz-more` took a line of its own
+*and was paid for out of the same budget as the rows, before they were placed*,
+so a cell with room for exactly one row could spend it on "+3" and draw neither
+of its events. It rides on the last row it is counting for now, hard right.
+**The fallback order is the rule rather than the placement**, and a first draft
+got it exactly wrong: it dropped the counter whenever sharing cost that row its
+title, which measured on a 1280x720 wall turned "Yoga · +1" into "Year 6 trip to
+the Science Museum" over two lines and no count at all — the same one name,
+longer, with the household no longer told there is a second event. So the rule
+is stated as an experiment: place the names at the full budget, then try
+sharing, then a line of its own out of the room the names declined, and take
+whichever does not show *fewer names* than the names managed alone. A cell that
+can draw **zero** names draws no counter at all: "+3" alone is a number with no
+subject.
+
+**3 — A density mark, so the glance costs no type.** A short bar under the
+numeral whose *length* steps with the day's count (a quarter of the cell per
+event, saturating at four), in `--faint`. It replaces `hz-dots` as the default
+treatment's quiet layer — `dots` itself is untouched, being a look a household
+has stored — and it is what a cell says when it can name nothing, which on the
+shipped wall is most cells most weeks. **An empty day draws no mark whatever**:
+an empty day is the information, and a mark of no length is still a mark.
+Measured, it costs no names at any of the three wall sizes. The brief for it
+named an `--ink-scaffold` token; there is no such token in this product and
+`--faint` is what it already calls its quietest ink — the week numbers, the
+counter and an out-of-month numeral are all drawn in it.
+
+**4 — A current-time indicator, on the agenda and nowhere else.** The product
+had none anywhere. It is a 2px rule in `--accent` across the agenda column
+between what has happened and what has not, with no label. Deliberately not on
+the month grid — **a day is not a timeline** — and deliberately not on an
+e-paper panel, where an indicator that means anything has to move every minute
+and a battery screen is documented as a glance class rather than an alert
+class; `epaper-month-spans` pins that by rendering the same day at three
+different times and asserting one identical frame.
+
+**Its own fault was a grid gap.** In flow the rule is a grid item, and a grid
+item costs its own track *and* one more `row-gap` — 11.6px of an 816px agenda
+on the shipped Classic wall, which is 4% off the scale that section is drawn at
+and took the rota chip from 22.5px to **21.6px, under this product's own
+legibility floor**. A hairline that costs a word is not a hairline. It is
+absolutely positioned into the gap above the event it marks (or below the last
+one, when everything with a clock on it has been), which costs nothing at all,
+and `browser-classic-proportions` goes red the moment it is put back in flow.
+
+**And an empty day draws its date and nothing else.** The agenda used to say
+"Nothing on", on the argument that an absence and a stated fact are different
+things — which is right about a *rest day*, where the rota genuinely knows
+something, and wrong here: a day with no events is the only thing an empty day
+can be. This reverses RFC 010's tier-1 reading of it, deliberately. The
+section's own "Nothing coming up." is untouched and is a different claim — that
+the *list* found nothing, which is a fact about the search rather than an
+annotation on a day.
+
+**The panel follows the wall, and the seam is a transcription.** Rules 1, 2 and
+3 apply to `epaper/render.ts` too, and which events are a bar is not decided
+twice: `apps/display/src/month-spans.ts` is the reading and
+`apps/server/src/epaper/month-spans.ts` is that file copied, held to it
+character for character by `month-spans-parity.test.ts` — the seam
+`epaper-ladder-parity` and `calendar-view-parity` already use, for the reason
+they use it (the display bundle has no bundler and the server cannot import
+it). What the panel decides for itself is only how *many* lanes an 800x480 cell
+can afford, which is a fact about the hardware. `EPAPER_RENDERER_VERSION` is 4:
+every cell in every panel's grid moves.
+
+**Two pieces of rot came out of writing the tests, and neither is fixed here.**
+`renderHorizon` draws the week-number column only when *every* week's first
+cell carries a number, which is right — a grid with gaps down its first column
+is worse than one with no column. But the manifest's window starts at `today - 1`
+while the grid starts on the household's week start, up to six days back, so
+those leading cells have no manifest day and no number: measured, **"Show week
+numbers" is a control that does nothing on five days out of seven**, and the
+day it works depends on what day of the week it is. And `.te.is-next` in
+`display.css` — the accent the current-time rule was briefed to complement — is
+a rule matching an element nothing has emitted since the day block was retired;
+the whole `.te*` block is dead styling for markup that is gone. Both are
+written down at the declarations and left where they are, because either is a
+different change from these four.
 
 **Five calendar views were three views and a density.** `month`, `week`,
 `list`, `skyweek`, `skymonth` — and the last two were not views at all:

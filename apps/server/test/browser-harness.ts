@@ -235,6 +235,16 @@ export interface FeedEvent {
   /** `HHMM`, or absent for an all-day event. */
   readonly from?: string;
   readonly to?: string;
+  /**
+   * How many days an all-day event covers. One by default.
+   *
+   * Written as a *count of days on the wall*, and turned into `DTEND` by
+   * adding it to `DTSTART` — because `DTEND` is exclusive and a fixture that
+   * spells it out by hand is a fixture that will eventually spell it wrong.
+   * The single most common ICS bug does not get to live in the harness that
+   * exists to catch it.
+   */
+  readonly days?: number;
 }
 
 export interface Installation {
@@ -586,13 +596,16 @@ export function fixtureDate(zone: string, days: number, now: Date = new Date()):
 function icsBody(events: readonly FeedEvent[], salt = '', zone = 'Europe/London'): string {
   const stamp = (days: number): string => fixtureDate(zone, days);
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Maverick Wall tests//EN'];
-  events.forEach(({ title, day, from, to }, index) => {
+  events.forEach(({ title, day, from, to, days }, index) => {
     // Unique per feed as well as per event: two calendars sharing a UID is one
     // calendar as far as any deduplication downstream is concerned.
     lines.push('BEGIN:VEVENT', `UID:e${index}${salt}@browser-test`, `SUMMARY:${title}`);
     if (from === undefined || to === undefined) {
-      // DTEND is exclusive: a one-day all-day event ends on the following day.
-      lines.push(`DTSTART;VALUE=DATE:${stamp(day)}`, `DTEND;VALUE=DATE:${stamp(day + 1)}`);
+      // DTEND is exclusive: an all-day event covering `days` days ends on the
+      // day *after* the last one it is on, so a one-day event on the 15th ends
+      // on the 16th and a week-long one starting there ends on the 22nd.
+      const span = days !== undefined && days >= 1 ? Math.trunc(days) : 1;
+      lines.push(`DTSTART;VALUE=DATE:${stamp(day)}`, `DTEND;VALUE=DATE:${stamp(day + span)}`);
     } else {
       // The household's zone, not a literal: an event written in London time
       // on a wall set to New York is an event at a different hour of a
@@ -966,6 +979,49 @@ export interface MonthCell {
   /** The counter as a number, or 0 when there is none. */
   readonly moreCount: number;
   readonly contentWidth: number;
+  /**
+   * The drawn width of the density mark, in CSS pixels, or 0 where none is on
+   * the glass. A width and never a class: the encoding *is* the length, and
+   * this project has shipped a control whose class was right and whose pixels
+   * were an empty outline.
+   */
+  readonly markPx: number;
+  /** How many of this day's events a span bar is drawing over the cell. */
+  readonly spans: number;
+  /**
+   * Where the cell sits.
+   *
+   * All four edges, because a span bar is a separate grid item and the only
+   * way to check it landed on the right days is to hold its own rectangle
+   * against the rectangles of the cells it claims to cover. Reading its
+   * `grid-column` instead would be reading back the number the renderer wrote.
+   */
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+}
+
+/** One multi-day bar, as drawn across the grid. */
+export interface MonthSpanBar {
+  /**
+   * The event, so the pieces of one run can be put back together — a
+   * continuation carries no title by design, which is the thing under test,
+   * so the title cannot be what attributes it.
+   */
+  readonly id: string;
+  /** The words on it, or empty for a continuation, which carries none. */
+  readonly title: string;
+  /** Whether it has a title element at all. */
+  readonly labelled: boolean;
+  /** How many days it covers. */
+  readonly days: number;
+  readonly leftPx: number;
+  readonly rightPx: number;
+  readonly topPx: number;
+  readonly bottomPx: number;
+  /** The cells it covers, as ordinals into `cells`. */
+  readonly cover: readonly number[];
 }
 
 export interface MonthGrid {
@@ -974,6 +1030,8 @@ export interface MonthGrid {
   readonly cells: readonly MonthCell[];
   /** Every text run inside the grid, cells and furniture alike. */
   readonly texts: readonly CellText[];
+  /** Every multi-day bar on the glass. */
+  readonly spans: readonly MonthSpanBar[];
   /**
    * Only the event names, across every cell.
    *
@@ -1094,8 +1152,15 @@ export async function measureMonthGrid(page: Page): Promise<MonthGrid> {
     const cells: {
       day: string; total: number; shown: ReturnType<typeof runFor>[];
       hidden: number; more: string; moreCount: number; contentWidth: number;
+      markPx: number; spans: number; top: number; bottom: number;
+      left: number; right: number;
     }[] = [];
     const texts: ReturnType<typeof runFor>[] = [];
+    const spans: {
+      id: string; title: string; labelled: boolean; days: number;
+      leftPx: number; rightPx: number; topPx: number; bottomPx: number;
+      cover: number[];
+    }[] = [];
 
     if (grid !== null) {
       // Every text node in the grid, furniture included: the floor is a claim
@@ -1131,12 +1196,32 @@ export async function measureMonthGrid(page: Page): Promise<MonthGrid> {
           const inner = row.querySelector('.hz-rowtext');
           titles.push(runFor(inner instanceof HTMLElement ? inner : row, contentWidthOf(cell), row));
         }
+        /*
+         * The counter, wherever it ended up.
+         *
+         * `trimCellRows` moves it *into* the last row it counts for, so a
+         * search rooted at the cell is the only one that finds it either way —
+         * and "is it visible" has to be asked of the element rather than of
+         * the cell, because an empty one is `display:none` by stylesheet.
+         */
         const counter = cell.querySelector('.hz-more, .hz-pill-more, .sk-more');
         const more =
           counter instanceof HTMLElement && getComputedStyle(counter).display !== 'none'
             ? (counter.textContent ?? '').trim()
             : '';
         const number = cell.querySelector('.hz-num, .sk-mnum');
+        /*
+         * The density mark, measured rather than counted.
+         *
+         * Its *width* is the encoding, so a test that read the class would
+         * pass on a mark of no length — this project has already shipped a
+         * chore tick whose class was right and whose pixels were an empty
+         * outline. `getBoundingClientRect` is through the widget's scale
+         * transform, which is what a household actually sees.
+         */
+        const markNode = cell.querySelector('.hz-mark');
+        const markVisible =
+          markNode instanceof HTMLElement && getComputedStyle(markNode).display !== 'none';
         cells.push({
           day: (number?.textContent ?? '').trim(),
           total: Number(cell.getAttribute('data-count') ?? '0'),
@@ -1145,6 +1230,54 @@ export async function measureMonthGrid(page: Page): Promise<MonthGrid> {
           more,
           moreCount: /^\+(\d+)$/.test(more) ? Number(/^\+(\d+)$/.exec(more)![1]) : 0,
           contentWidth: contentWidthOf(cell),
+          markPx:
+            markVisible && markNode instanceof HTMLElement
+              ? markNode.getBoundingClientRect().width
+              : 0,
+          spans: 0,
+          top: cell.getBoundingClientRect().top,
+          bottom: cell.getBoundingClientRect().bottom,
+          left: cell.getBoundingClientRect().left,
+          right: cell.getBoundingClientRect().right,
+        });
+      }
+
+      /*
+       * The span bars, which are grid items rather than children of a cell.
+       *
+       * `data-cover` is the renderer's own list of the cells a bar crosses, so
+       * this reads which days are covered from the same place the trim does,
+       * instead of re-deriving it from geometry and agreeing with itself.
+       */
+      const byIndex = new Map<string, number>();
+      let index = 0;
+      for (const cell of grid.querySelectorAll('.hz-cell')) {
+        byIndex.set(cell.getAttribute('data-cell') ?? `x${index}`, index);
+        index++;
+      }
+      for (const bar of grid.querySelectorAll('.hz-span')) {
+        if (!(bar instanceof HTMLElement)) continue;
+        if (getComputedStyle(bar).display === 'none') continue;
+        const text = bar.querySelector('.hz-spantext');
+        const rect = bar.getBoundingClientRect();
+        const cover = (bar.getAttribute('data-cover') ?? '')
+          .split(' ')
+          .filter((one) => one !== '');
+        for (const key of cover) {
+          const at = byIndex.get(key);
+          const entry = at !== undefined ? cells[at] : undefined;
+          if (entry !== undefined) entry.spans += 1;
+        }
+        spans.push({
+          id: bar.getAttribute('data-span') ?? '',
+          title: (text?.textContent ?? '').trim(),
+          labelled: text !== null,
+          days: cover.length,
+          leftPx: rect.left,
+          rightPx: rect.right,
+          topPx: rect.top,
+          bottomPx: rect.bottom,
+          cover: cover.map((key) => byIndex.get(key) ?? -1),
         });
       }
     }
@@ -1154,6 +1287,7 @@ export async function measureMonthGrid(page: Page): Promise<MonthGrid> {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       cells,
       texts,
+      spans,
       titles: cells.flatMap((cell) => cell.shown),
     };
   });
