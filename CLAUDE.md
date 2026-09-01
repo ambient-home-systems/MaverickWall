@@ -161,6 +161,10 @@ useful thing in this document:
 | **Sixteen browser files gave teardown no budget at all** | One suite failing in three runs with every test in it passing |
 | better-auth 1.7 wants a column the schema has not got | A vitest bump that could not move without re-resolving better-auth |
 | **Two wall tests that failed for one hour every night** | Running them at 23:32, then remembering they had passed at 22:36 |
+| **A widget with nothing behind it leaves a hole no wall closes** | Retiring the layout that used to absorb it, and looking at a fresh wall |
+| **This document, describing at length a layout the product had retired** | Reading it against `db/schema.ts`, which says so in a comment |
+| **A wall that lost the race to its own fonts kept the wrong arithmetic** | A test failing one run in thirty, and being right |
+| A control in the test for that, which the fix itself was propping up | Reverting the fix and watching the file go red on its premise |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -255,8 +259,25 @@ day. This is the single most common ICS bug.
 > `963 tests` at 1692, and "the Android app" listed as not started while its
 > signed APK ships with every release. Each one had been wrong for months.
 >
+> **A later audit found something worse than a stale count**, and it is the
+> reason to keep doing this: several paragraphs described the *responsive `auto`
+> zoom-pyramid* — the portrait flex column, "the week ahead yields", landscape
+> placing the month by name, `display_blocks` as a list the renderer walks — as
+> the way the wall draws. It was retired. `buildLayout` has emitted `freeform`
+> unconditionally since `backfillClassic` migrated every wall onto the Classic
+> template, and `db/schema.ts` says so at the `layout_mode` declaration. So the
+> most detailed document in the repository, and the first thing every
+> contributor and every session reads, was confidently wrong about the single
+> most load-bearing thing in the product — and the retirement is the direct
+> cause of the hole an unconfigured widget leaves in a fresh wall, which is a
+> bug that reads as inexplicable if you believe this document. Those paragraphs
+> are now marked as history where they sit; the counts in the same pass went
+> 2152→2227 and 34→37 migrations.
+>
 > The reasoning in these paragraphs is the valuable part and mostly still
-> holds. The *counts and statuses* are the part that rots. `git log`,
+> holds. The *counts and statuses* are the part that rots — **and so is any
+> claim about how the wall draws**, which rots more quietly, because nothing
+> about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
 **0.54.2 is the current release.** `main`, the tag and the published image
@@ -294,9 +315,19 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2152 tests passing.** calendar 153 · core 314 · display 272 · server 1413. CI
-runs the whole suite and then the README's one-liner against a clean volume on
-Linux, which is the only place the install has ever been wrong.
+**2228 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
+server 1429. CI runs the whole suite and then the README's one-liner against a
+clean volume on Linux, which is the only place the install has ever been wrong.
+
+**111 of the server's tests need a real Chromium and say so when they cannot
+find one**, which is worth knowing before reading a red suite as a regression:
+16 files fail with "No Chromium to drive" and nothing else is wrong. That is the
+right failure — these measure layout, and a browser test that silently skips is
+this document's whole complaint about assertions that cannot go red — but the
+count in the paragraph above is the one with a browser present.
+`browser-harness.ts` finds it via `MW_BROWSER_EXECUTABLE`, then
+`PLAYWRIGHT_BROWSERS_PATH` (defaulting to `/opt/pw-browsers`), then a
+`chromium`/`chrome` channel. Nothing downloads one.
 
 Working end to end: a real Google feed fetched through the SSRF guard,
 gzip-decoded, recurrence expanded server-side, stored with the URL encrypted at
@@ -306,7 +337,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (27 tables, 34 migrations) · migrations behind a
+secrets at rest · the schema (27 tables, 37 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
@@ -984,11 +1015,21 @@ two submissions), and it presses `.btn-text` rather than selecting a button by
 the action it carries: a skip wired to the wrong screen must fail as a walk that
 ended somewhere else, not as thirty seconds hunting for an element that moved.
 
-**The display is a zoom pyramid**: today in full, the next few days that have
-anything on them, then six weeks as colour. Every decision about what is shown
-lives in `viewmodel.ts`, which has no DOM in it, so density is argued about
-against a document rather than a screenshot. `render.ts` builds nodes and does
-no thinking — event titles come from calendars the household does not control.
+**The display draws one thing: a free-form canvas of widgets.** It used to draw
+a *zoom pyramid* — today in full, the next few days that have anything on them,
+then six weeks as colour — reflowed by the renderer itself against how much
+room there was. **That layout is retired**, and the paragraphs marked as history
+below are what it was and why it went; `buildLayout` always emits `freeform` and
+`renderFreeform` is the only wall renderer `main.ts` calls.
+
+The pyramid survives as an *arrangement* rather than as a renderer, which is the
+part worth keeping: it is the shape of the Classic template every wall is seeded
+with and every existing wall was migrated onto, so a household still gets today,
+the week ahead and the month down a portrait wall — they can now move them.
+Every decision about what is *shown* still lives in `viewmodel.ts`, which has no
+DOM in it, so density is argued about against a document rather than a
+screenshot. `render.ts` builds nodes and does no thinking — event titles come
+from calendars the household does not control.
 
 **Its theme tokens come from the design file** and live in
 `apps/display/src/theme.ts` — all four directions (Board, Kitchen Slate, Paper
@@ -1145,12 +1186,57 @@ takes 37.4% of the canvas against the month's 28.8%.
 Two things came out of it that are not about this layout. **The grid trims once,
 at first draw**, against whatever font metrics have arrived — so the same wall,
 same data, same size, names 2 or 6 or 13 of its 17 busy cells depending on
-whether the fonts beat the render, and never re-trims. That is why the month is
+whether the fonts beat the render. That is why the month is
 not tuned to its cliff but two notches above it, and why the measurement holds
-the first manifest back until the fonts are in. And the agenda's type is set by
+the first manifest back until the fonts are in. (This paragraph used to end
+"and never re-trims", which was the sentence that mattered and was not quite
+right in either direction: `draw()` has always re-run unconditionally every
+fifteen seconds, rebuilding and re-trimming — so the wrong trim was never
+permanent — and it now also re-runs when the fonts land, which is the fix
+recorded below. What survives is the part this paragraph was actually written
+for: *within* a draw, a decision taken from measured text is taken once.) And the agenda's type is set by
 how many **days** it spans rather than how many events it shows: four, five and
 six events scale identically in a given box, so `count` is a legibility lever
 only up to the point where it stops removing a day header.
+
+**A wall that lost the font race kept the arithmetic, and it was found as a
+flake.** `fitToBox` measures its section as it appends it and writes a `scale()`
+nothing recomputes; the faces are `font-display: swap`, so a paint that arrives
+before the font measures the *fallback*. Measured on the 1080x1920 Classic wall:
+the agenda is **812px** on the fallback and **816px** with the real face, against
+an available height of 532.24 — so the fit lands on `532.24/812 = 0.655468`
+rather than `532.24/816 = 0.652255`. Half a percent too large, on a section whose
+box is `overflow: hidden`, so the bottom row clips and nothing on the wall says
+why. `main.ts` now draws again on `document.fonts.ready`, guarded because a
+tablet with no CSS Font Loading API must lose the correction rather than the wall.
+
+Three things about it are worth more than the fix. It was **a redraw rather than
+a re-fit**, because every decision this bundle takes from measured text has the
+same hazard — `trimCellRows`, the week fallback, the agenda's time column — and
+they are all taken inside a draw: re-running the draw fixes the class, re-fitting
+one section fixes one symptom. The fault was **not what it looked like**:
+`document.fonts.status` reads `loaded` at measure time in the broken case too,
+because the bad scale was computed earlier and kept, so checking the status is
+exactly the check that cannot see it. What identified it was arithmetic — the
+same box and the same content measuring identically in a good run and a bad one,
+with two scales that resolve to 816 and 812.
+
+And it was **a flake that was right**, which is the second time this document has
+had to record that. `browser-empty-bands` compares two templates measured seconds
+apart, either of which can lose the race, and failed about one run in thirty with
+the *baseline* reading larger — the shape that gets quarantined. The flake rate
+was the bug rate, as it was in `redact.test.ts`.
+
+`browser-font-race.test.ts` is the guard, and **its own first draft was wrong in
+the way this project keeps finding**: the control was "load the wall and measure
+it", taken on a cold context whose fonts are also fetched over the network — so
+the control lost the same race it existed to be a control for, and read correctly
+only *because the fix was applied*. Reverting the fix turned the file red on its
+premise instead of its conclusion, which is how that surfaced. The control is now
+a reading taken after a full fifteen-second tick, which is a value the wall
+reaches unaided and the fix cannot flatter; the raced readings are asserted to
+land *inside* one tick, or the tick is what corrected them and the test proves
+nothing.
 
 **What did not change: a wall that already stores `pills`.** Every household
 backfilled onto Classic before this has `cellEvents: 'pills'` in its
@@ -1299,18 +1385,24 @@ leading alone with nothing hidden. The `.fw-clock` flag that survives both
 fixes is real and **pre-existing** — confirmed by stashing the changes,
 rebuilding and measuring the identical 187>173 — and is not chased here.
 
-**It works in portrait and landscape, and they are different layouts.** The
-design is drawn for portrait 1080x1920 and that is the stacked arrangement.
-Landscape is not that squashed: it is two columns, the day and week ahead on
-the left and the month on the right, from the same markup — only placement and
-the rem scale change.
+**It works in portrait and landscape, and they are two authored canvases.** A
+wall arranges one canvas for each and the display draws whichever matches how
+the screen is hung (`pickCanvas`), letterboxing the other one in if only one has
+been arranged. That is the *replacement* for what this used to say, and the
+difference is worth stating plainly: the design was drawn for portrait 1080x1920
+and landscape was **the same markup re-placed** — two columns, the day and week
+ahead on the left and the month on the right, with only placement and the rem
+scale changing. One arrangement, reflowed. It is now two arrangements, each
+dragged by the household, and neither reflows.
 
 **Which layout is a computed answer, not a media query.** `orientation.ts` is a
 pure function of viewport, rotation and what the household pinned, and it sets
-`data-layout` on the root; every layout rule keys off that. A media query is
-the wrong input once rotation exists — a television turned on its end still
-reports a landscape viewport while the thing a person is looking at is
-portrait.
+`data-layout` on the root. That reasoning is untouched by the retirement and is
+the reason the file still exists — a media query is the wrong input once
+rotation exists, because a television turned on its end still reports a
+landscape viewport while the thing a person is looking at is portrait. What
+changed is only what the answer *decides*: it used to select between two sets of
+stacked layout rules, and now it selects which of the two canvases to draw.
 
 **Screens can be rotated and pinned, per screen.** `screens.rotation` is
 quarter turns applied in the page, because plenty of panels cannot rotate in
@@ -1321,26 +1413,67 @@ a kitchen tablet and a hall television are mounted differently. A quarter turn
 swaps the canvas, so the rem basis switches from `vh` to `vw` — get that wrong
 and the wall comes out half size on exactly the screens that needed rotating.
 
-**The household chooses which blocks appear and in what order.**
-`display_blocks` is a comma-separated list — `now`, `next`, `horizon` — edited
-on `/admin/display`. A block left out is not drawn at all, which is a different
-statement from asking for zero days of it. The renderer walks that list and
-nothing else.
+**`display_blocks` is dead in every direction, and this paragraph used to be its
+documentation.** What it said was: a comma-separated list — `now`, `next`,
+`horizon` — edited on `/admin/display`, where a block left out is not drawn at
+all, which is a different statement from asking for zero days of it, and the
+renderer walks that list and nothing else. Every clause of that is now false, and
+it is false at all four layers at once, which is why it is worth writing down
+rather than deleting:
 
-**There is also a free-form layout, and it is the other of two modes.**
-`household_settings.layout_mode` is `auto` (the responsive zoom-pyramid above)
-or `freeform` (a canvas the household arranged — `layout_widgets`, placed
-anywhere). Default `auto`, so an existing wall is untouched and never blank
-while a layout is half-built; `buildLayout` also falls back to `auto` when a
-free-form canvas is empty. The wall's `renderFreeform` places each widget on a
+- **Nothing edits it.** `blockOrder` still reads `block_1`…`block_3` off a
+  submitted body, but no form in `http/` renders those fields, so it always
+  takes its own `!mentioned` branch and hands the stored value straight back.
+  `GET /admin/display` is a redirect to `/admin/walls/default`.
+- **Nothing draws it.** `render.ts` does not read `blocks` at all.
+- **The CSS that reads it does nothing, and the two rules fail differently** —
+  which is worth the extra sentence, because "the selector cannot match" was the
+  first draft of this line and measuring it said otherwise. The portrait rules
+  are written against `.screen > .horizon`, and the free-form path emits
+  `.screen.freeform > .canvas`, so those genuinely never match: measured on a
+  real paired wall, `.screen > .horizon` is **0** and `.screen > .canvas` is 1.
+  The landscape rule (`:not([data-blocks~="horizon"]) .screen`) **does** match on
+  a legacy household whose stored value omits a block — `grid-template-columns`
+  computes to `1fr` rather than `none` — and is inert anyway, because
+  `.screen.freeform` is `display: flex` and never a grid container. A dead rule
+  that still matches is the one a `grep` for the attribute would keep alive.
+- **The column and the manifest field remain**, and `main.ts` still stamps the
+  attribute — which is the honest reason this is documented instead of removed:
+  the dead half is cheap and a household's stored value is untouched, but
+  somebody will otherwise read the column and believe it.
+
+**The free-form canvas is the only mode.** It used to be one of two:
+`household_settings.layout_mode` was `auto` (the responsive zoom-pyramid) or
+`freeform`, defaulting to `auto` so an existing wall was untouched and never
+blank while a layout was half-built, with `buildLayout` falling back to `auto`
+when a free-form canvas was empty. `backfillClassic` migrated every wall onto
+the Classic template, and `layout_mode` became vestigial — kept as a column so
+no migration has to rewrite it, read by nothing (`db/schema.ts` says so at the
+declaration). An empty canvas now draws the free-form "nothing yet" note rather
+than falling back to a second renderer, because there is no second renderer.
+
+**Retiring `auto` is the direct cause of the hole in a fresh wall**, and that is
+the part a reader needs. `placeCanvas` drops a widget with nothing behind it —
+`keepWidgetsWithSomethingToSay`, which is right, and is the `options.json` rule:
+a Weather widget on a household with no location is a permanent apology, not a
+panel. Under `auto` a dropped block cost nothing, because the layout absorbed it
+— that is exactly what "the week ahead yields" and "the month takes the slack"
+below were describing. On a fixed canvas there is nothing to absorb it: the box
+is simply empty, at the size and position somebody dragged it to. The editor
+flags those widgets and says what to do, which is where the household can act;
+the wall itself just has a gap. **A layout that reflows and a layout that does
+not are not the same feature with different ergonomics**, and the fallback that
+one of them made unnecessary has to be rebuilt for the other.
+
+The wall's `renderFreeform` places each widget on a
 canvas of the authored aspect, letterboxed to fit and correct through a
 rotation; the reused sections (calendar, weather, house, shift) are laid out at
 the canvas width and scaled down to their box, so what was dragged is what is
 drawn rather than reflowed. The palette is **first-party modules only** — the
 `WIDGET_TYPES` allowlist is where rule three lives, so there is no website,
 HTML or video widget however much a canvas builder invites one; the schema,
-`buildLayout` and the editor palette all enforce it. `/admin/layout` is the
-first client-side app in the admin (a vanilla-TS drag-and-drop editor, the
+`buildLayout` and the editor palette all enforce it. The editor is the first
+client-side app in the admin (a vanilla-TS drag-and-drop editor, the
 `apps/admin` seed that stayed in `apps/display`), and its preview *is* the
 wall: it renders the real manifest through the same `renderFreeform`, inside a
 shadow root carrying the display's own stylesheet so the CSS never touches the
@@ -1350,24 +1483,57 @@ function under ingress. The one path still unproven on real hardware is a
 *paired wall screen* drawing a saved free-form layout, which needs a screen on
 the port, not the sidebar.
 
-**Portrait is a flex column so the order can be arbitrary.** It was a grid with
-positional row rules, and "the second row yields" is the wrong rule once the
-second row might be the month. Which block gives up space is now a property of
-the block: **the week ahead yields, wherever it sits.** Today and the month are
-whole in every case — the first is what somebody walked over to read, the
-second is the rotation shape that has to carry from the doorway. With no week
-ahead present, the month takes the slack instead of leaving a third of the
-screen empty.
+**It lives at `/admin/walls/:id`, not at `/admin/layout`**, which this paragraph
+said for a long time and which is the sort of drift worth one line rather than a
+rewrite. `/admin/layout` survives as a redirect to the right wall, and as the
+two endpoints the editor script actually calls — `GET /admin/layout/preview.json`
+for the manifest behind the live preview, and `POST /admin/layout`, a JSON POST
+rather than a form because a canvas is shapes and coordinates and not named
+fields. `/admin/display` and `/admin/screens` are redirects to `/admin/walls`
+too; the vocabulary is Wall / Layout / Widget everywhere a household reads it.
 
-**Landscape places the month by name, not by position.** It gets the right-hand
-column whatever its place in the order, because it is the widest thing and the
-only block that is itself a grid; everything else stacks down the left in the
-chosen order. That is what keeps one set of layout rules for any ordering.
+**The two paragraphs below describe the retired `auto` layout and are kept as
+history**, the way the v0.1.1 paragraph is — because what they record is a set
+of *arguments about what a wall should give up*, and those outlive the code that
+implemented them. Nothing in them is true of how the product draws today: there
+is no flex column, nothing yields, and no block is placed by name. They are
+worth reading before adding any behaviour that makes a free-form canvas adapt,
+because they are the last time this project reasoned that through and they
+already contain the answers to the obvious questions.
+
+> **Portrait is a flex column so the order can be arbitrary.** It was a grid
+> with positional row rules, and "the second row yields" is the wrong rule once
+> the second row might be the month. Which block gives up space is now a
+> property of the block: **the week ahead yields, wherever it sits.** Today and
+> the month are whole in every case — the first is what somebody walked over to
+> read, the second is the rotation shape that has to carry from the doorway.
+> With no week ahead present, the month takes the slack instead of leaving a
+> third of the screen empty.
+>
+> **Landscape places the month by name, not by position.** It gets the
+> right-hand column whatever its place in the order, because it is the widest
+> thing and the only block that is itself a grid; everything else stacks down
+> the left in the chosen order. That is what keeps one set of layout rules for
+> any ordering.
+
+**What was traded for what, stated once so nobody re-argues it from one side.**
+`auto` could not be arranged: a household who wanted the month at the top could
+reorder three blocks and nothing else, and every wall in every kitchen looked
+the same. Free-form can be arranged and is the whole of RFC 005, the editor, the
+template gallery, the ink lane and a panel following a wall — none of which has
+a meaning under a renderer that decides placement itself. What was given up is
+everything in the quoted paragraphs above: a wall that closes its own gaps. The
+"+N" and the type floor are the same argument one layer down and were kept; the
+block-level version of it was not, and the gap in a fresh wall is the bill.
 
 **The household owns the density, not the bundle.** Theme, the daylight theme
 and its window, and how much to show — events today, days ahead, weeks of
 horizon — are columns on `household_settings`, travel in the manifest, and are
-edited on `/admin/display`. Bounds are enforced twice, in `buildManifest` and
+edited on the wall's own page, which posts them to `POST /admin/display` (the
+matching GET is now only a redirect to `/admin/walls/default`). That is the same
+handler `blockOrder` sits in, which is how a dead control stays invisible: the
+form renders no `block_N` field, so every save of the density silently preserves
+a `display_blocks` nothing reads. Bounds are enforced twice, in `buildManifest` and
 again in `viewmodel.ts`: the server because a form is a boundary, the display
 because it must draw something sane against a server older or newer than
 itself. The constants in `viewmodel.ts` are now only the fallback for a

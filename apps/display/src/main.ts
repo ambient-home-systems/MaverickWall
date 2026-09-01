@@ -629,6 +629,42 @@ function start(): void {
   setInterval(() => safely(draw), TICK_MS);
 
   /*
+   * Draw again once the webfonts have landed, because a fit is computed once
+   * and never revisited.
+   *
+   * `fitToBox` measures its section as it appends it and writes a `scale()`
+   * that nothing recomputes; the faces are `font-display: swap`, so a first
+   * paint that beats the font measures *fallback* metrics. Measured on a
+   * 1080x1920 Classic wall: the agenda is 812px tall on the fallback and 816px
+   * with the real face, so the fit comes out `532.24/812` rather than
+   * `532.24/816` — half a percent too large, permanently, on a section whose
+   * box is `overflow: hidden`. The last row clips and nothing on the wall says
+   * why.
+   *
+   * The 15-second tick already corrects it, so what this buys is the first
+   * fifteen seconds after a cold load — which is exactly when somebody is
+   * standing in front of it, having just turned the screen on or come back
+   * from a power cut. It is one extra draw on a wall that redraws four times a
+   * minute anyway.
+   *
+   * Deliberately a redraw rather than a re-fit: every decision this bundle
+   * takes from measured text has the same hazard (`trimCellRows`, the week
+   * fallback, the agenda's time column), and they are all taken inside a draw.
+   * Re-running the draw fixes the class; re-fitting one section fixes one
+   * symptom.
+   *
+   * Guarded because the CSS Font Loading API is not everywhere, and a tablet
+   * that has never heard of it must lose the correction rather than the wall
+   * (rule nine). `catch` for the same reason: `ready` is not specified to
+   * reject, and an unhandled rejection is not worth a wall to find out.
+   */
+  const fontSet = (document as unknown as { readonly fonts?: { readonly ready?: Promise<unknown> } })
+    .fonts;
+  if (fontSet?.ready !== undefined) {
+    void fontSet.ready.then(() => safely(draw)).catch(() => undefined);
+  }
+
+  /*
    * The watchdog, which only ever reloads.
    *
    * It cannot help a page the browser has frozen outright — nothing running
