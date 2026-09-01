@@ -198,6 +198,17 @@ export interface ScreenGeometry {
    * measured. Absent otherwise, and absent is the common case.
    */
   readonly pxArcmin?: number;
+  /**
+   * The type scale that follows from it — every role's size in CSS pixels.
+   *
+   * Derived here rather than in the stylesheet so there is **one owner of what
+   * a size is worth on this screen**, beside `rootFontSize`, which owns the
+   * same question for the rem. A `calc()` in `display.css` would put the cap
+   * ratio and eight constants somewhere nothing can unit-test and would need a
+   * second CSS Values 4 function for the clock's cap; here the arithmetic is
+   * pure, and `orientation.test.ts` works the examples.
+   */
+  readonly type?: WallTypeScale;
 }
 
 export function geometryFor(
@@ -208,6 +219,7 @@ export function geometryFor(
 ): ScreenGeometry {
   const turned = rotation === 90 || rotation === 270;
   const pxArcmin = pxPerArcminute(physical, viewport, rotation);
+  const type = wallTypeScale(pxArcmin);
   return {
     rotation,
     layout: resolveLayout(viewport, rotation, forced),
@@ -216,5 +228,173 @@ export function geometryFor(
     // Spread rather than emitted as `undefined`, so an unmeasured wall's
     // geometry is the object it has always been.
     ...(pxArcmin === undefined ? {} : { pxArcmin }),
+    ...(type === undefined ? {} : { type }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The type scale, in arc-minutes of cap height
+// ---------------------------------------------------------------------------
+
+/**
+ * The eight roles the wall's type is drawn at, each stated as **cap height in
+ * arc-minutes at the reader's eye**.
+ *
+ * This is what `--t-floor: 22px` was standing in for, and the difference is
+ * the whole of it: 22px is a measurement taken on one wall and defended on
+ * every other. Measured on the shipped Classic seed, the month grid's event
+ * text was 22.0px at 480x800, 22.0px at 1920x1080 and 24.8px at 2560x1440 —
+ * pinned across a 5.7x range of panel area by a constant that knows nothing
+ * about either panel. One mechanism, two opposite failures: on a small panel
+ * the floor is *larger* than the cell's row budget, so every row is trimmed
+ * and thirteen cells drew "+3" and not one name; on a large one the same floor
+ * *caps* the type below what the cell could carry, and a 146x190 cell named 8
+ * of its 19 events.
+ *
+ * An angle at the eye has neither failure, because it is the thing legibility
+ * is actually a property of. `pxPerArcminute` above is the conversion and the
+ * only screen-dependent term; everything here is a constant.
+ *
+ * The rungs, and what each is for:
+ *
+ *     role            cap    used for
+ *     event           14'    event names — the floor of the system
+ *     event-strong    14'    all-day events and multi-day span bars
+ *     time            12'    times beside events
+ *     numeral         16'    month-cell date numerals
+ *     scaffold        11'    weekday heads, week numbers, "+N"
+ *     label           10'    section labels
+ *     lede            22'    today's agenda titles
+ *     clock           40'    the clock, capped (below)
+ *
+ * The ratios are the point rather than the absolute values, and two of them
+ * carry the hierarchy fix this scale exists for: the numeral is 16/14 = 1.14x
+ * the event beside it where a fixed `1.85rem` made it 1.61x, and the clock is
+ * 1.8x the agenda's lede where it was 4.4x. Both are now *size-independent* —
+ * a household who measures a 7.5" panel and a household who measures a 55"
+ * television get the same hierarchy, which is what no pixel constant can give.
+ *
+ * **Only the size is a role.** Weight, tracking and line-height belong to the
+ * treatment each selector already declares: moving one would move an
+ * *unmeasured* wall too, and every wall is unmeasured until its household
+ * opens the setting. Nothing on a wall that has not been measured may change.
+ */
+export const WALL_TYPE_ROLES = [
+  'event',
+  'eventStrong',
+  'time',
+  'numeral',
+  'scaffold',
+  'label',
+  'lede',
+  'clock',
+] as const;
+
+/**
+ * Derived from the list rather than declared beside it, so the two tables
+ * below cannot cover a role the page does not write, or miss one it does.
+ */
+export type WallTypeRole = (typeof WALL_TYPE_ROLES)[number];
+
+/**
+ * Cap height as a fraction of the em, for the faces this wall ships.
+ *
+ * A role is stated as cap height because that is the part of a letter an eye
+ * actually resolves — an em box is mostly leading and descender, and two faces
+ * with the same `font-size` do not draw the same size of letter. Roboto,
+ * Roboto Condensed and Inter all sit within a whisker of 0.71, and the
+ * bundled display faces are close enough that a single ratio is honest at
+ * these sizes; a face whose cap ratio genuinely differed would want its own
+ * value here rather than a fudge at the call site.
+ */
+export const CAP_RATIO = 0.71;
+
+/** Each role's cap height, in arc-minutes, before the clock's cap. */
+export const WALL_TYPE_CAPS: Readonly<Record<WallTypeRole, number>> = {
+  event: 14,
+  eventStrong: 14,
+  time: 12,
+  numeral: 16,
+  scaffold: 11,
+  label: 10,
+  lede: 22,
+  clock: 40,
+};
+
+/**
+ * The most a clock may outsize an agenda title.
+ *
+ * "A widget the household placed does not get to outsize the fact they put a
+ * wall up to read" — `.clock` already carries this cap against `--t-event` in
+ * `display.css`, and the scale has to carry it too or the arc-minute wall
+ * would quietly undo what the rem one holds. It **binds**: 40' against the
+ * lede's 22' is 1.818x, which is over the bar, so this is the line that makes
+ * the stated ratio true rather than a comment about one. Written as the ratio
+ * rather than as the 39.6' it resolves to, so removing it is one line and the
+ * ratio assertion in `wall-density.test.ts` goes red.
+ */
+export const CLOCK_MAX_LEDE_RATIO = 1.8;
+
+/** The custom property each role is written to. One name, two readers. */
+export const WALL_TYPE_PROPERTIES: Readonly<Record<WallTypeRole, string>> = {
+  event: '--t-wall-event',
+  eventStrong: '--t-wall-event-strong',
+  time: '--t-wall-time',
+  numeral: '--t-wall-numeral',
+  scaffold: '--t-wall-scaffold',
+  label: '--t-wall-label',
+  lede: '--t-wall-lede',
+  clock: '--t-wall-clock',
+};
+
+/** Every role's size in CSS pixels, on a wall that has been measured. */
+export type WallTypeScale = Readonly<Record<WallTypeRole, number>>;
+
+/**
+ * The scale for one screen, or `undefined` when it has not been measured.
+ *
+ * `font-size = cap arc-minutes x px-per-arc-minute / cap ratio`, which is the
+ * whole derivation. Worked, so the arithmetic can be checked without running
+ * anything: a 32" panel hung portrait (1920px over 708mm) read at 1200mm has
+ * 0.9466 px per arc-minute, so an event name is 14 x 0.9466 / 0.71 = 18.67px
+ * and a date numeral 16 x 0.9466 / 0.71 = 21.33px. A 7.5" e-ink panel (480px
+ * over 98mm) read at 600mm has 0.8549, so an event name is 16.86px — which is
+ * within a pixel of the 16px its bitmap renderer already draws, and is why
+ * that panel looks right today while every other one does not.
+ *
+ * Rounded to hundredths because that is the resolution a browser reports a
+ * `font-size` at anyway, and because an inline style reading
+ * `18.665352112676056px` is one nobody can check against the table above.
+ *
+ * `undefined` in, `undefined` out: an unmeasured wall must reach the
+ * stylesheet's own fallbacks rather than a scale derived from a guess.
+ */
+export function wallTypeScale(pxArcmin: number | undefined): WallTypeScale | undefined {
+  if (pxArcmin === undefined || !positive(pxArcmin)) return undefined;
+  const px = (capArcmin: number): number =>
+    Math.round((capArcmin * pxArcmin * 100) / CAP_RATIO) / 100;
+  /*
+   * The cap is taken against the *drawn* lede and floors, which is not
+   * fussiness — it is what makes the ratio survive the rounding above.
+   *
+   * Each rung rounds to hundredths independently, so a clock capped at 1.8x
+   * the lede's own arc-minutes comes out at 1.8005x its rounded pixels on a
+   * small enough panel: 12.08 and 21.75 at 0.39 px per arc-minute, which is
+   * over a bar this product states absolutely. Rounding cannot be relied on to
+   * fall the right way, so the cap floors — the same rule `epaper/metrics.ts`
+   * states for a row count, and for the same reason: a limit that is exceeded
+   * by a hundredth is not a limit. A unit test holds the ratio at three sizes
+   * and this is what it is failing without.
+   */
+  const lede = px(WALL_TYPE_CAPS.lede);
+  return {
+    event: px(WALL_TYPE_CAPS.event),
+    eventStrong: px(WALL_TYPE_CAPS.eventStrong),
+    time: px(WALL_TYPE_CAPS.time),
+    numeral: px(WALL_TYPE_CAPS.numeral),
+    scaffold: px(WALL_TYPE_CAPS.scaffold),
+    label: px(WALL_TYPE_CAPS.label),
+    lede,
+    clock: Math.min(px(WALL_TYPE_CAPS.clock), Math.floor(CLOCK_MAX_LEDE_RATIO * lede * 100) / 100),
   };
 }

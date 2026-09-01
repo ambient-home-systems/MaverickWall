@@ -71,11 +71,32 @@ function measure(widthMm: number | null, heightMm: number | null, distanceMm: nu
  */
 async function readRoot(page: Page): Promise<{
   readonly pxArcmin: string;
+  readonly roles: Record<string, string>;
   readonly innerHeight: number;
   readonly innerWidth: number;
 }> {
   await settleWall(page);
   return page.evaluate(() => ({
+    /*
+     * The eight roles the scale resolves to, read the same way and for the
+     * same reason: the inline style is what `applyGeometry` writes, and only
+     * it can tell a property that was never set from one that was set to ''.
+     * Named here rather than derived from the display's own table because this
+     * package cannot import that module — and because a test that asks the
+     * subject what it calls its own properties cannot notice a rename.
+     */
+    roles: Object.fromEntries(
+      [
+        '--t-wall-event',
+        '--t-wall-event-strong',
+        '--t-wall-time',
+        '--t-wall-numeral',
+        '--t-wall-scaffold',
+        '--t-wall-label',
+        '--t-wall-lede',
+        '--t-wall-clock',
+      ].map((name) => [name, document.documentElement.style.getPropertyValue(name)]),
+    ),
     // The inline style, which is what `applyGeometry` writes — a computed read
     // would not tell a property that was never set from one set to ''.
     pxArcmin: document.documentElement.style.getPropertyValue('--px-arcmin'),
@@ -92,7 +113,18 @@ describe('a wall that has been measured', () => {
       // 1. Nothing measured: the property is not there at all, which is every
       //    household who never opens the setting.
       await page.goto(link, { waitUntil: 'load' });
-      expect((await readRoot(page)).pxArcmin).toBe('');
+      const unmeasured = await readRoot(page);
+      expect(unmeasured.pxArcmin).toBe('');
+      /*
+       * And not one of the eight roles either, which is what makes an
+       * unmeasured wall draw exactly what it drew before the scale existed:
+       * every use site in `display.css` is
+       * `var(--t-wall-role, <the old expression>)`, and an *undefined* custom
+       * property is the only thing that reaches a `var()` fallback. A role set
+       * to anything at all here — including a zero or an empty string — would
+       * be a household who never opened the setting getting a different wall.
+       */
+      expect(Object.values(unmeasured.roles).join('')).toBe('');
 
       // 2. Measured. The expectation is computed from the frame the page
       //    actually got rather than from the viewport this test asked for —
@@ -106,12 +138,30 @@ describe('a wall that has been measured', () => {
       // And it is the number the design argument is made from, not a
       // coincidence of this viewport.
       expect(Number(measured.pxArcmin)).toBeCloseTo(0.9466, 3);
+      /*
+       * Every role, in pixels, from that one number: 14 arc-minutes of cap
+       * height over a 0.71 cap ratio is 18.67px for an event name and 16' is
+       * 21.33px for the numeral beside it. Asserted here as well as in
+       * `orientation.test.ts` because that file proves the arithmetic and this
+       * one proves the page ran it — the wiring slip between the two is
+       * exactly the class of fault this file exists for.
+       */
+      expect(parseFloat(measured.roles['--t-wall-event'] ?? '')).toBeCloseTo(18.67, 2);
+      expect(parseFloat(measured.roles['--t-wall-numeral'] ?? '')).toBeCloseTo(21.33, 2);
+      for (const [name, value] of Object.entries(measured.roles)) {
+        expect(value, `${name} was not written`).toMatch(/^[0-9]+(\.[0-9]+)?px$/);
+      }
 
       // 3. Taken back. Removed rather than left stale: the wall redraws every
       //    fifteen seconds and reloads once in months.
       measure(null, null, null);
       await page.reload({ waitUntil: 'load' });
-      expect((await readRoot(page)).pxArcmin).toBe('');
+      const forgotten = await readRoot(page);
+      expect(forgotten.pxArcmin).toBe('');
+      // The roles go with it. Leaving them behind would size a household's
+      // calendar from a measurement they had just deleted, which is worse than
+      // never having read it.
+      expect(Object.values(forgotten.roles).join('')).toBe('');
     } finally {
       await context.close();
     }

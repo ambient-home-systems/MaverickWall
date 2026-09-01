@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CAP_RATIO,
+  CLOCK_MAX_LEDE_RATIO,
   canvasFor,
   geometryFor,
   normaliseOrientation,
@@ -7,6 +9,10 @@ import {
   physicalScreenFrom,
   pxPerArcminute,
   resolveLayout,
+  WALL_TYPE_CAPS,
+  WALL_TYPE_PROPERTIES,
+  WALL_TYPE_ROLES,
+  wallTypeScale,
 } from '../src/orientation.js';
 
 /**
@@ -279,5 +285,123 @@ describe('an unmeasured wall is the wall it was', () => {
     expect(geo.layout).toBe('portrait');
     expect(geo.rootFontSize).toBe('calc(100vh / 100)');
     expect(geo.frame).toEqual({ width: '100vw', height: '100vh' });
+  });
+});
+
+/**
+ * The type scale, which is the thing `--t-floor: 22px` was standing in for.
+ *
+ * A pixel constant is a measurement taken on one wall and defended on every
+ * other; an angle at the eye is the quantity legibility is actually a property
+ * of. The two worked examples below are the ones the design argument is made
+ * from, and they are written out so the arithmetic can be checked without
+ * running anything — a constant nobody can re-derive is a constant nobody can
+ * correct.
+ */
+describe('the arc-minute type scale', () => {
+  /** 708mm of picture over 1920px, read from 1200mm: 0.9466 px per arc-minute. */
+  const TV_32 = { panelWidthMm: 398, panelHeightMm: 708, readDistanceMm: 1200 };
+  /** 98mm of picture over 480px, read from 600mm: 0.8549. */
+  const EINK_75 = { panelWidthMm: 163, panelHeightMm: 98, readDistanceMm: 600 };
+
+  it('works the worked examples', () => {
+    /*
+     * 14 x 0.94662 / 0.71 = 18.665 and 16 x 0.94662 / 0.71 = 21.331 on the
+     * television; 14 x 0.85486 / 0.71 = 16.857 on the e-ink panel — which is
+     * within a pixel of the 16px its own bitmap renderer already draws, and is
+     * why that panel looks right today while every other one does not.
+     */
+    const tv = wallTypeScale(pxPerArcminute(TV_32, { width: 1080, height: 1920 }, 0));
+    expect(tv?.event).toBeCloseTo(18.67, 2);
+    expect(tv?.numeral).toBeCloseTo(21.33, 2);
+    expect(tv?.scaffold).toBeCloseTo(14.67, 2);
+
+    const eink = wallTypeScale(pxPerArcminute(EINK_75, { width: 800, height: 480 }, 0));
+    expect(eink?.event).toBeCloseTo(16.86, 2);
+  });
+
+  it('is the cap height divided by the face, for every rung', () => {
+    // Stated once, against the table, so a rung cannot be moved in the table
+    // and left behind in the function — which is the drift a per-role literal
+    // here would hide.
+    const pxArcmin = 0.9466;
+    const scale = wallTypeScale(pxArcmin);
+    expect(scale).toBeDefined();
+    if (scale === undefined) return;
+    for (const role of WALL_TYPE_ROLES) {
+      // The clock is the one rung the table does not draw literally; see below.
+      if (role === 'clock') continue;
+      expect(scale[role], role).toBeCloseTo((WALL_TYPE_CAPS[role] * pxArcmin) / CAP_RATIO, 2);
+    }
+  });
+
+  it('holds the two ratios the hierarchy turns on, at any size', () => {
+    /*
+     * The numeral over the event beside it, and the clock over an agenda
+     * title. `.hz-num` was a flat `1.85rem` against a 22px floor — 1.61x — and
+     * `.clock` measured 4.4x an event name on a real 1920x1080 wall. These are
+     * the same two numbers as `wall-density.test.ts`'s ratio block, asserted
+     * here where they are a property of the table rather than of a wall: a
+     * scale that cannot hold them is wrong before anything is drawn.
+     *
+     * They are asserted at three very different screens because "the ratio is
+     * size-independent" is the claim, and a scale that held it at one px per
+     * arc-minute and not another would pass a single case.
+     */
+    for (const pxArcmin of [0.39, 0.8549, 1.2527]) {
+      const scale = wallTypeScale(pxArcmin);
+      expect(scale).toBeDefined();
+      if (scale === undefined) continue;
+      expect(scale.numeral / scale.event, `numeral at ${pxArcmin}`).toBeLessThanOrEqual(1.2);
+      expect(scale.clock / scale.lede, `clock at ${pxArcmin}`).toBeLessThanOrEqual(
+        CLOCK_MAX_LEDE_RATIO + 1e-9,
+      );
+    }
+  });
+
+  it('caps the clock, and the cap is what makes that ratio true', () => {
+    /*
+     * The rung is 40' and the lede is 22', which is 1.818x — over the 1.8x
+     * this wall's design rule allows. So the cap binds, and the assertion
+     * above is not a restatement of the table: removing `Math.min(...)` from
+     * `wallTypeScale` turns it red at every one of its three sizes. Checked
+     * that way round rather than by reading the constant, because a cap that
+     * never binds is a line nothing can contradict.
+     */
+    expect(WALL_TYPE_CAPS.clock / WALL_TYPE_CAPS.lede).toBeGreaterThan(CLOCK_MAX_LEDE_RATIO);
+    const scale = wallTypeScale(1);
+    expect(scale).toBeDefined();
+    if (scale === undefined) return;
+    expect(scale.clock).toBeLessThan((WALL_TYPE_CAPS.clock * 1) / CAP_RATIO);
+    expect(scale.clock).toBeCloseTo(CLOCK_MAX_LEDE_RATIO * scale.lede, 1);
+  });
+
+  it('derives nothing at all from a wall nobody has measured', () => {
+    // The common case, and it has to stay the cheap one: no scale means the
+    // page writes no roles, which means `display.css` reaches the fallback at
+    // every use site and the wall is the one it was yesterday.
+    expect(wallTypeScale(undefined)).toBeUndefined();
+    expect(wallTypeScale(0)).toBeUndefined();
+    expect(wallTypeScale(Number.NaN)).toBeUndefined();
+    expect(wallTypeScale(-1)).toBeUndefined();
+    expect(geometryFor(TABLET, 0, 'auto').type).toBeUndefined();
+  });
+
+  it('names one custom property per role, and no two the same', () => {
+    // The page writes these by walking `WALL_TYPE_ROLES`, and `display.css`
+    // reads them by name — two files that cannot check each other, so a
+    // duplicate or a missing entry would be a role silently drawing another
+    // role's size.
+    const names = WALL_TYPE_ROLES.map((role) => WALL_TYPE_PROPERTIES[role]);
+    expect(new Set(names).size).toBe(WALL_TYPE_ROLES.length);
+    for (const name of names) expect(name.startsWith('--t-wall-')).toBe(true);
+  });
+
+  it('travels on the geometry once a wall has been measured', () => {
+    const geo = geometryFor(TABLET, 0, 'auto', TV_32);
+    expect(geo.type?.event).toBeCloseTo(18.67, 2);
+    // And the rotated frame is what it is derived from, exactly as `pxArcmin`
+    // is: a screen hung sideways must not be sized against the wrong axis.
+    expect(geometryFor(TV, 90, 'auto', TV_32).type?.event).toBeCloseTo(18.67, 2);
   });
 });

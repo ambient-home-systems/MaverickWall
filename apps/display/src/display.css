@@ -84,42 +84,87 @@ body {
  *     --t-display  5.00rem   96px
  *     --t-hero    11.00rem  211px
  *
- * --t-micro is a *floor*, and the reason it exists is the brief: this wall is
- * read from five to ten feet, and text below about 22px at the design height
- * stops being small and starts being absent. Several labels sat at 0.95-1.1rem
- * (18-21px) and are raised to it.
+ * A rem is a fraction of the canvas, which is a fact about the *picture* and
+ * not about the person reading it — so this table alone cannot say whether a
+ * word can be read. That is what the arc-minute scale below answers, and the
+ * calendar widget is drawn from it wherever the household has measured their
+ * wall. Everything else on the wall still reads from this table.
  *
- * The floor has one honest exemption, and it is written here rather than left
- * to be rediscovered: text whose *box* is fixed by something other than type —
- * initials inside a 1.7rem avatar, an overflow count inside a month cell, the
- * compact widget renderings that fitToBox already scales — cannot be raised
- * without overflowing the thing that contains it. Those keep bespoke sizes and
- * say so at the declaration. Raising one of them is not a typography change,
- * it is a layout change, and this project's history is full of the difference:
- * a month grid that clipped through a row, a week that ran off the bottom.
+ * The rem scale has one honest exemption, and it is written here rather than
+ * left to be rediscovered: text whose *box* is fixed by something other than
+ * type — initials inside a 1.7rem avatar, the compact widget renderings that
+ * fitToBox already scales — cannot be raised without overflowing the thing
+ * that contains it. Those keep bespoke sizes and say so at the declaration.
+ * Raising one of them is not a typography change, it is a layout change, and
+ * this project's history is full of the difference: a month grid that clipped
+ * through a row, a week that ran off the bottom.
+ */
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE ARC-MINUTE SCALE, and the floor it replaced
+ * ---------------------------------------------------------------------------
+ *
+ * Type on a wall is legible or not by the **angle it subtends at somebody's
+ * eye**. Every role the calendar widget draws is therefore stated as a cap
+ * height in arc-minutes — 14' for an event name, 16' for a date numeral, 11'
+ * for the scaffolding — and turned into pixels by `orientation.ts`, which is
+ * the only place that knows both halves of the ratio (how large this panel is,
+ * and how far away it is read from). It writes the answers onto the root as
+ * `--t-wall-event`, `--t-wall-numeral`, `--t-wall-scaffold` and the rest;
+ * `WALL_TYPE_CAPS` there is the table and carries the derivation.
+ *
+ * **A wall that has not been measured gets none of them**, which is every
+ * household until they open the setting, and that is what the fallback in
+ * every `var(--t-wall-role, …)` below is for: it is that selector's own
+ * history, written out at the site so nobody has to reconstruct what a wall
+ * used to draw. `main.ts` *removes* the properties when a measurement is taken
+ * back rather than leaving the last ones behind, so the fallback is reached by
+ * the same mechanism in both directions — an undefined custom property.
+ *
+ * **The paragraphs below are the floor's own reasoning, kept as history**, the
+ * way the retired `auto` layout's are kept in CLAUDE.md. The constant is not
+ * retired — it is the fallback now, and the argument for *why* 22px was the
+ * right guess is what the arc-minute rungs were calibrated against:
+ *
+ * > `--t-micro` is 1.15rem, which is 22px *at the design height* and nowhere
+ * > else: on a 1920x1080 landscape wall a rem is 16.2px and the same token
+ * > draws 18.6px, and on a 1280x720 one it draws 12.4px. The month grid is
+ * > where that bites hardest — seven columns of small type read from across a
+ * > room — so its text is clamped to this and the *cell* gives up a row rather
+ * > than the type giving up a point. A row that is not there is honest; a row
+ * > nobody can read is not.
+ * >
+ * > It is a ceiling on the shrinking, never a floor on the growing: on a wall
+ * > taller than the design, `--t-micro` is the larger of the two and wins.
+ *
+ * What that reasoning could not know is which wall it was being read on, and
+ * measured across five it fails in *both* directions at once. On a small panel
+ * 22px is larger than a cell's whole row budget, so `trimCellRows` drops every
+ * row and the cell draws "+3" and no name — a floor written to stop text
+ * becoming illegible, making the calendar show nothing. On a large one the
+ * same 22px caps the type below what the cell could carry: a 146x190 cell at
+ * 2560x1440 named 8 of its 19 events. The event text measured 22.0px at
+ * 480x800, 22.0px at 1920x1080 and 24.8px at 2560x1440 — one number across a
+ * 5.7x range of panel area, which is the clearest possible statement that it
+ * was not a function of the wall.
+ *
+ * `max()` is CSS Values 4 and one vintage past the ES2019 bar this file keeps,
+ * so every use of it is written twice — the plain token first, the clamped
+ * value second. An engine that does not know `max()` drops the second
+ * declaration and keeps today's behaviour exactly, rather than falling back to
+ * an inherited size. `min()` is already load-bearing in `.canvas`, so the
+ * precedent is the file's own. **A role goes in that second declaration**, not
+ * a third: `var(--t-wall-event, max(…))` is no worse than the `max(…)` it
+ * replaces on an engine that cannot read either — and strictly better on a
+ * measured wall, where the substitution is a plain px value such an engine
+ * understands perfectly. Where a fallback carries no `max()` there is nothing
+ * for an engine to drop, so those sites are one declaration.
  */
 :root {
-  /*
-   * The floor as an absolute size, for the one place the rem cannot carry it.
-   *
-   * `--t-micro` is 1.15rem, which is 22px *at the design height* and nowhere
-   * else: on a 1920x1080 landscape wall a rem is 16.2px and the same token
-   * draws 18.6px, and on a 1280x720 one it draws 12.4px. The month grid is
-   * where that bites hardest — seven columns of small type read from across a
-   * room — so its text is clamped to this and the *cell* gives up a row rather
-   * than the type giving up a point. A row that is not there is honest; a row
-   * nobody can read is not.
-   *
-   * It is a ceiling on the shrinking, never a floor on the growing: on a wall
-   * taller than the design, `--t-micro` is the larger of the two and wins.
-   *
-   * `max()` is CSS Values 4 and one vintage past the ES2019 bar this file
-   * keeps, so every use of it is written twice — the plain token first, the
-   * clamped value second. An engine that does not know `max()` drops the second
-   * declaration and keeps today's behaviour exactly, rather than falling back
-   * to an inherited size. `min()` is already load-bearing in `.canvas`, so the
-   * precedent is the file's own.
-   */
+  /* The floor, and now the fallback: what the calendar widget draws on a wall
+     whose household has not said how large it is or how far away they stand.
+     See the block above for why it was 22 and why it cannot be a constant. */
   --t-floor: 22px;
   --t-micro: 1.15rem;
   --t-xs: 1.3rem;
@@ -843,19 +888,22 @@ body {
 .hz-wk {
   display: flex; align-items: center; justify-content: center;
   font-family: var(--f-mono); font-size: 1.2rem;
-  font-size: max(1.2rem, var(--t-floor));
+  /* Scaffold: a week number labels the row it sits beside and is never what
+     somebody walked over to read. */
+  font-size: var(--t-wall-scaffold, max(1.2rem, var(--t-floor)));
   color: var(--ink-scaffold);
   font-variant-numeric: tabular-nums;
 }
 .wc-week {
-  font-family: var(--disp); font-size: 1.2rem; font-weight: 700;
+  font-family: var(--disp); font-size: var(--t-wall-label, 1.2rem); font-weight: 700;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
   margin-bottom: 0.5rem;
 }
 .hz-head {
   font-size: var(--t-micro);
-  /* Clamped: a weekday nobody can read is a column with no label on it. */
-  font-size: max(var(--t-micro), var(--t-floor));
+  /* Scaffold on a measured wall, clamped to the floor on one that is not: a
+     weekday nobody can read is a column with no label on it either way. */
+  font-size: var(--t-wall-scaffold, max(var(--t-micro), var(--t-floor)));
   letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--ink-scaffold); text-align: center; padding-bottom: 0.45rem;
 }
@@ -877,13 +925,18 @@ body {
 .hz-num {
   font-family: var(--disp);
   /*
-   * At most 1.2x the event text drawn in this same cell (.hz-rowtext), not a
-   * fixed rem — expressed against the event size so the relationship survives
-   * whatever the arc-minute scale (a later phase) does to that size, rather
-   * than needing to be re-picked by hand every time it moves.
+   * The numeral role: 16 arc-minutes of cap height against the event's 14, so
+   * 1.14x the name beside it — on every panel, by construction, rather than at
+   * one design height. The wall's job is the thing the household does not
+   * already know, and the date is not it.
+   *
+   * The fallback is the rem expression that stood in for that ratio, and it is
+   * kept written as a ratio rather than as the 1.85rem it replaced: an
+   * unmeasured wall still ties the numeral to the event text drawn in its own
+   * cell, which is as close as a canvas-relative scale can get.
    */
   font-size: calc(var(--t-micro) * 1.2);
-  font-size: calc(max(var(--t-micro), var(--t-floor)) * 1.2);
+  font-size: var(--t-wall-numeral, calc(max(var(--t-micro), var(--t-floor)) * 1.2));
   font-weight: 700; line-height: 1;
   /* A date numeral is scaffolding, not the fact a household reads a month
      cell for — the event beside it is. */
@@ -897,15 +950,20 @@ body {
 .horizon-pills .hz-cell { min-height: 6.6rem; }
 .hz-pills { display: flex; flex-direction: column; gap: 0.24rem; margin-top: 0.4rem; }
 .hz-pill {
-  font-size: 1.15rem; line-height: 1.2; padding: 0.12rem 0.42rem;
+  /* An event name, so the event role — a pill is a look rather than a
+     different kind of content, and a household who stored `pills` before the
+     flat treatment became the default reads their wall at the same size as
+     one who did not. */
+  font-size: var(--t-wall-event, 1.15rem); line-height: 1.2; padding: 0.12rem 0.42rem;
   border-radius: 0.28rem; background: var(--pc); color: #fff;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* An all-day pill reads as a tint with its own colour, like the agenda's. */
 .hz-pill.allday { background: transparent; color: var(--ink-event); border-left: 0.28rem solid var(--pc); border-radius: 0 0.28rem 0.28rem 0; }
-/* Below the floor by exemption: this rides inside a month cell that is already
- * full, which is why it says "+2" instead of showing them. */
-.hz-pill-more { font-size: 1.05rem; color: var(--muted); padding-left: 0.42rem; }
+/* Scaffold, and below the floor by exemption when unmeasured: this rides
+ * inside a month cell that is already full, which is why it says "+2" instead
+ * of showing them. */
+.hz-pill-more { font-size: var(--t-wall-scaffold, 1.05rem); color: var(--muted); padding-left: 0.42rem; }
 
 /* ------------------------------------------- FLAT-TEXT MONTH CELLS ------- */
 /*
@@ -975,14 +1033,19 @@ body {
   min-width: 0; flex: 1 1 auto;
   font-family: var(--f-cond, var(--f-sans));
   /*
-   * The floor, and this is the one place on the wall where it does real work.
-   * `--t-micro` is 22px at the design height and 12.4px on a 1280x720
-   * television, which is the screen furthest from the reader. Clamped, the
-   * type stops shrinking and the *cell* gives up a row instead — `trimCellRows`
-   * measures what is left and says "+N" for the rest.
+   * The event role — 14 arc-minutes of cap height, and the floor of the whole
+   * scale. Everything else in this grid is stated against it.
+   *
+   * This is the one place on the wall where the old constant did real work,
+   * and where it did the most damage: clamped to 22px the type stopped
+   * shrinking and the *cell* gave up a row instead, which is right on a wall
+   * where 22px is legible and catastrophic on one where the cell's whole row
+   * budget is less than that. `trimCellRows` measures what is left and says
+   * "+N" for the rest either way; the difference is whether it has anything
+   * left to measure.
    */
   font-size: var(--t-micro);
-  font-size: max(var(--t-micro), var(--t-floor));
+  font-size: var(--t-wall-event, max(var(--t-micro), var(--t-floor)));
   line-height: 1.25;
   /* An event name is the one thing this wall draws at full ink. */
   color: var(--ink-event);
@@ -1023,8 +1086,14 @@ body {
 .hz-more {
   margin-top: 0.22rem;
   text-align: right;
+  /*
+   * Scaffold, and a rung *below* the names it counts — which is the rule "an
+   * overflow count never costs a name" expressed as type rather than as
+   * placement. A counter drawn at the event's own size takes the width of a
+   * word off the row it shares.
+   */
   font-size: var(--t-micro);
-  font-size: max(var(--t-micro), var(--t-floor));
+  font-size: var(--t-wall-scaffold, max(var(--t-micro), var(--t-floor)));
   line-height: 1.1;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
@@ -1114,10 +1183,24 @@ body {
 .horizon-text .hz-grid,
 .horizon-swiss .hz-grid {
   position: relative;
-  /* A bar's own height, and the space under it before the next lane. Clamped
-     to the floor like every other run in this grid: a bar too short to hold
-     22px type is a coloured smear with a name hidden in it. */
-  --hz-lane-h: max(1.5rem, calc(var(--t-floor) * 1.2));
+  /*
+   * A bar's own height, and the space under it before the next lane.
+   *
+   * A bar is 1.2x the text inside it, which on a measured wall is the
+   * event-strong role and nothing else — the `max(1.5rem, …)` pair below is a
+   * canvas-relative *minimum*, and on a measured wall a minimum expressed in
+   * rem is the very thing this scale replaces: it would hold a lane 28.8px
+   * tall on a 1080x1920 wall whose bar needs 22.4, and a lane comes out of the
+   * rows under it. So the measured expression is named separately and used
+   * whole. It is guaranteed-invalid until `--t-wall-event-strong` is written,
+   * which is what makes the fallback below the unmeasured wall's answer.
+   *
+   * Clamped to the floor when unmeasured, like every other run in this grid: a
+   * bar too short to hold 22px type is a coloured smear with a name hidden in
+   * it.
+   */
+  --hz-lane-measured: calc(var(--t-wall-event-strong) * 1.2);
+  --hz-lane-h: var(--hz-lane-measured, max(1.5rem, calc(var(--t-floor) * 1.2)));
   --hz-lane: calc(var(--hz-lane-h) + 0.2rem);
   /* Between the day number and whatever comes next. */
   --hz-gap: 0.3rem;
@@ -1127,23 +1210,30 @@ body {
    * padding-top + the numeral's own line (`line-height: 1`) + the gap.
    *
    * The numeral term is written the way `.hz-num` writes it rather than as the
-   * rem it happens to resolve to — it is 1.2x the cell's event text, and it was
-   * a flat `1.85rem` until the type-hierarchy pass moved it while this was
-   * being built. A constant here would have slid every bar over a row of names
-   * the moment that changed, with nothing in either declaration to say they
-   * were related. `browser-month-spans` measures a bar's top against the
+   * rem it happens to resolve to — it was a flat `1.85rem` until the
+   * type-hierarchy pass moved it while this was being built, and it is the
+   * numeral role now. A constant here would have slid every bar over a row of
+   * names the moment either changed, with nothing in either declaration to say
+   * they were related. `browser-month-spans` measures a bar's top against the
    * numeral above it, which is what turns that drift red rather than merely
-   * wrong.
+   * wrong — and it is why the whole `var(--t-wall-numeral, …)` expression is
+   * repeated here rather than approximated: half of a pair that has to agree
+   * is worse than neither.
    */
   --hz-lane-top: calc(
-    0.45rem + calc(max(var(--t-micro), var(--t-floor)) * 1.2) + var(--hz-gap)
+    0.45rem + var(--t-wall-numeral, calc(max(var(--t-micro), var(--t-floor)) * 1.2)) +
+      var(--hz-gap)
   );
   --hz-span-l: 0.3rem;
   --hz-span-r: 0.3rem;
 }
 .horizon-swiss .hz-grid {
-  /* Swiss pads differently and sets `line-height: 0.95` on a larger numeral. */
-  --hz-lane-top: calc(0.55rem + 0.95 * max(var(--t-md), var(--t-floor)) + var(--hz-gap));
+  /* Swiss pads differently and sets `line-height: 0.95` on its numeral, which
+     is the same role with a different fallback — so the term is spelled the
+     way `.horizon-swiss .hz-num` spells it, for the reason above. */
+  --hz-lane-top: calc(
+    0.55rem + 0.95 * var(--t-wall-numeral, max(var(--t-md), var(--t-floor))) + var(--hz-gap)
+  );
   --hz-span-l: 0;
   --hz-span-r: 0.6rem;
 }
@@ -1172,7 +1262,7 @@ body {
 .hz-spantext {
   font-family: var(--f-cond, var(--f-sans));
   font-size: var(--t-micro);
-  font-size: max(var(--t-micro), var(--t-floor));
+  font-size: var(--t-wall-event-strong, max(var(--t-micro), var(--t-floor)));
   line-height: 1.1;
   font-weight: 600;
   color: #fff;
@@ -1265,13 +1355,16 @@ body {
    * ate the cell: on a 1080x1920 wall today showed "+6" and not one of its six
    * events, which is a month grid that has stopped saying what is on. The
    * trim pass was right — there genuinely was no room — the type was wrong.
-   * Still well above the 1.85rem the other modes use, still bold, still
-   * tracked tight; just not at the cost of the thing under it.
+   *
+   * On a measured wall it is the same numeral role the other modes take, and
+   * that is the end of the same argument rather than a change of mind about
+   * this mode: Swiss's numerals carry the structure through their *weight*,
+   * their negative tracking and the line-height under 1 declared below, none
+   * of which the role touches. What it does not get to be any more is 1.75x
+   * the name under it, which is the inversion this scale exists to remove.
    */
   font-size: var(--t-md);
-  /* Clamped like every other run in the grid: --t-md is 21.6px on a 1280x720
-     wall, a shade under the floor the rows now hold. */
-  font-size: max(var(--t-md), var(--t-floor));
+  font-size: var(--t-wall-numeral, max(var(--t-md), var(--t-floor)));
   font-weight: 700;
   line-height: 0.95;
   letter-spacing: -0.045em;
@@ -1338,6 +1431,15 @@ body {
  * The dense styles. Same weeks, same colours, same week start as the quiet
  * ones — the difference is entirely what they stop spending on space.
  *
+ * Every size below is a role, and the *event* text had to move with the
+ * numerals rather than after them. A numeral on the arc-minute scale over an
+ * event name still on a rem is not half the fix: on a measured 800x480 panel
+ * the numeral role is 19.3px while `1rem` is 4.8px, so a change that only
+ * touched the numerals would draw a date four times the size of the thing the
+ * day is about — the inversion this scale exists to remove, reintroduced by
+ * fixing half of it. The fallbacks are each selector's own previous value, so
+ * an unmeasured dense wall is unchanged to the pixel.
+ *
  * The rule that reclaims the room is dividers *between* cells rather than gaps
  * *around* them: the quiet month grid spends six 0.35rem gaps horizontally and
  * five more vertically on nothing at all, which on a 1080-wide wall is most of
@@ -1367,10 +1469,10 @@ body {
   padding: 0.2rem 0.3rem; border-bottom: 1px solid var(--rule);
 }
 .sk-wd {
-  font-family: var(--disp); font-size: 0.95rem; font-weight: 700;
+  font-family: var(--disp); font-size: var(--t-wall-scaffold, 0.95rem); font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
 }
-.sk-num { font-family: var(--disp); font-size: 1.6rem; font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
+.sk-num { font-family: var(--disp); font-size: var(--t-wall-numeral, 1.6rem); font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
 :root[data-theme="almanac"] .sk-num { font-weight: 400; }
 /* Today is the header block itself, not a colour on the text: at this density
    a tinted word is invisible from across a room and a filled bar is not. */
@@ -1393,10 +1495,10 @@ body {
 }
 .sk-ev-time {
   display: block; font-family: var(--f-mono);
-  font-size: 0.95rem; line-height: 1.1; opacity: 0.85;
+  font-size: var(--t-wall-time, 0.95rem); line-height: 1.1; opacity: 0.85;
 }
 .sk-ev-title {
-  display: block; font-size: 1.15rem; line-height: 1.15;
+  display: block; font-size: var(--t-wall-event, 1.15rem); line-height: 1.15;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -1408,7 +1510,7 @@ body {
   flex: 1 1 auto;
 }
 .sk-mhead {
-  font-family: var(--disp); font-size: 0.95rem; font-weight: 700;
+  font-family: var(--disp); font-size: var(--t-wall-scaffold, 0.95rem); font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
   padding: 0.15rem 0.3rem; border-bottom: 1px solid var(--rule);
 }
@@ -1422,7 +1524,7 @@ body {
 .sk-cell.has-shift { background: var(--sc-tint); }
 .sk-cell.dim { opacity: 0.5; }
 .sk-cell.outside .sk-mnum { color: var(--faint); }
-.sk-mnum { font-family: var(--disp); font-size: 1.3rem; font-weight: 700; line-height: 1.1; color: var(--ink-scaffold); }
+.sk-mnum { font-family: var(--disp); font-size: var(--t-wall-numeral, 1.3rem); font-weight: 700; line-height: 1.1; color: var(--ink-scaffold); }
 :root[data-theme="almanac"] .sk-mnum { font-weight: 400; }
 /* Today's number, knocked out of a filled disc. Not an outline on the cell:
    with no gaps the outline would sit on its neighbours' hairlines and read as
@@ -1433,7 +1535,7 @@ body {
 }
 .sk-bars { display: flex; flex-direction: column; gap: 1px; margin-top: 0.1rem; min-width: 0; }
 .sk-bar {
-  font-size: 1rem; line-height: 1.2; padding: 0 0.25rem;
+  font-size: var(--t-wall-event, 1rem); line-height: 1.2; padding: 0 0.25rem;
   border-radius: 0.12rem; background: var(--pc); color: #fff;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -1453,14 +1555,15 @@ body {
 }
 .wc-col.is-today .wc-head { border-bottom-color: var(--accent); }
 .wc-wd {
-  display: block; font-size: var(--t-micro); letter-spacing: 0.12em; text-transform: uppercase;
+  display: block; font-size: var(--t-wall-scaffold, var(--t-micro));
+  letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--ink-scaffold);
 }
 .wc-col.is-today .wc-wd, .wc-col.is-today .wc-num { color: var(--accent); }
-.wc-num { font-family: var(--disp); font-size: 1.7rem; font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
+.wc-num { font-family: var(--disp); font-size: var(--t-wall-numeral, 1.7rem); font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
 :root[data-theme="almanac"] .wc-num { font-weight: 400; }
 .wc-ev {
-  font-size: 1.15rem; line-height: 1.2; padding: 0.16rem 0.42rem;
+  font-size: var(--t-wall-event, 1.15rem); line-height: 1.2; padding: 0.16rem 0.42rem;
   border-radius: 0.28rem; background: var(--pc); color: #fff;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

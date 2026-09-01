@@ -17,6 +17,8 @@ import {
   normaliseOrientation,
   normaliseRotation,
   physicalScreenFrom,
+  WALL_TYPE_PROPERTIES,
+  WALL_TYPE_ROLES,
   type ScreenGeometry,
 } from './orientation.js';
 import { buildModel, localTime } from './viewmodel.js';
@@ -149,6 +151,26 @@ function start(): void {
       root.style.removeProperty('--px-arcmin');
     } else {
       root.style.setProperty('--px-arcmin', String(geometry.pxArcmin));
+    }
+    /*
+     * And the eight roles that follow from it, in CSS pixels.
+     *
+     * Written here rather than left for the stylesheet to `calc()` because
+     * this is where `--root-size` is written, and both answer the same
+     * question: what a size is worth on this screen. Removed on the same
+     * argument as `--px-arcmin` above — and it is *removal* that makes the
+     * whole scale degrade, because every use site in `display.css` is
+     * `var(--t-wall-role, <what that selector drew before>)` and an undefined
+     * custom property is exactly what reaches that fallback. A role left
+     * behind on a wall whose measurement was taken back would be the one
+     * thing rule nine does not allow: a wall that changed under a household
+     * who asked for it not to.
+     */
+    const scale = geometry.type;
+    for (const role of WALL_TYPE_ROLES) {
+      const property = WALL_TYPE_PROPERTIES[role];
+      if (scale === undefined) root.style.removeProperty(property);
+      else root.style.setProperty(property, `${scale[role]}px`);
     }
   };
 
