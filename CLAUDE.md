@@ -163,6 +163,8 @@ useful thing in this document:
 | **Two wall tests that failed for one hour every night** | Running them at 23:32, then remembering they had passed at 22:36 |
 | **A widget with nothing behind it leaves a hole no wall closes** | Retiring the layout that used to absorb it, and looking at a fresh wall |
 | **This document, describing at length a layout the product had retired** | Reading it against `db/schema.ts`, which says so in a comment |
+| **A wall that lost the race to its own fonts kept the wrong arithmetic** | A test failing one run in thirty, and being right |
+| A control in the test for that, which the fix itself was propping up | Reverting the fix and watching the file go red on its premise |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -313,8 +315,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2227 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
-server 1428. CI runs the whole suite and then the README's one-liner against a
+**2228 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
+server 1429. CI runs the whole suite and then the README's one-liner against a
 clean volume on Linux, which is the only place the install has ever been wrong.
 
 **111 of the server's tests need a real Chromium and say so when they cannot
@@ -1184,12 +1186,57 @@ takes 37.4% of the canvas against the month's 28.8%.
 Two things came out of it that are not about this layout. **The grid trims once,
 at first draw**, against whatever font metrics have arrived — so the same wall,
 same data, same size, names 2 or 6 or 13 of its 17 busy cells depending on
-whether the fonts beat the render, and never re-trims. That is why the month is
+whether the fonts beat the render. That is why the month is
 not tuned to its cliff but two notches above it, and why the measurement holds
-the first manifest back until the fonts are in. And the agenda's type is set by
+the first manifest back until the fonts are in. (This paragraph used to end
+"and never re-trims", which was the sentence that mattered and was not quite
+right in either direction: `draw()` has always re-run unconditionally every
+fifteen seconds, rebuilding and re-trimming — so the wrong trim was never
+permanent — and it now also re-runs when the fonts land, which is the fix
+recorded below. What survives is the part this paragraph was actually written
+for: *within* a draw, a decision taken from measured text is taken once.) And the agenda's type is set by
 how many **days** it spans rather than how many events it shows: four, five and
 six events scale identically in a given box, so `count` is a legibility lever
 only up to the point where it stops removing a day header.
+
+**A wall that lost the font race kept the arithmetic, and it was found as a
+flake.** `fitToBox` measures its section as it appends it and writes a `scale()`
+nothing recomputes; the faces are `font-display: swap`, so a paint that arrives
+before the font measures the *fallback*. Measured on the 1080x1920 Classic wall:
+the agenda is **812px** on the fallback and **816px** with the real face, against
+an available height of 532.24 — so the fit lands on `532.24/812 = 0.655468`
+rather than `532.24/816 = 0.652255`. Half a percent too large, on a section whose
+box is `overflow: hidden`, so the bottom row clips and nothing on the wall says
+why. `main.ts` now draws again on `document.fonts.ready`, guarded because a
+tablet with no CSS Font Loading API must lose the correction rather than the wall.
+
+Three things about it are worth more than the fix. It was **a redraw rather than
+a re-fit**, because every decision this bundle takes from measured text has the
+same hazard — `trimCellRows`, the week fallback, the agenda's time column — and
+they are all taken inside a draw: re-running the draw fixes the class, re-fitting
+one section fixes one symptom. The fault was **not what it looked like**:
+`document.fonts.status` reads `loaded` at measure time in the broken case too,
+because the bad scale was computed earlier and kept, so checking the status is
+exactly the check that cannot see it. What identified it was arithmetic — the
+same box and the same content measuring identically in a good run and a bad one,
+with two scales that resolve to 816 and 812.
+
+And it was **a flake that was right**, which is the second time this document has
+had to record that. `browser-empty-bands` compares two templates measured seconds
+apart, either of which can lose the race, and failed about one run in thirty with
+the *baseline* reading larger — the shape that gets quarantined. The flake rate
+was the bug rate, as it was in `redact.test.ts`.
+
+`browser-font-race.test.ts` is the guard, and **its own first draft was wrong in
+the way this project keeps finding**: the control was "load the wall and measure
+it", taken on a cold context whose fonts are also fetched over the network — so
+the control lost the same race it existed to be a control for, and read correctly
+only *because the fix was applied*. Reverting the fix turned the file red on its
+premise instead of its conclusion, which is how that surfaced. The control is now
+a reading taken after a full fifteen-second tick, which is a value the wall
+reaches unaided and the fix cannot flatter; the raced readings are asserted to
+land *inside* one tick, or the tick is what corrected them and the test proves
+nothing.
 
 **What did not change: a wall that already stores `pills`.** Every household
 backfilled onto Classic before this has `cellEvents: 'pills'` in its
