@@ -334,11 +334,11 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2248 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 332 ·
-server 1449. CI runs the whole suite and then the README's one-liner against a
+**2276 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 349 ·
+server 1459. CI runs the whole suite and then the README's one-liner against a
 clean volume on Linux, which is the only place the install has ever been wrong.
 
-**116 of the server's tests need a real Chromium and say so when they cannot
+**119 of the server's tests need a real Chromium and say so when they cannot
 find one**, which is worth knowing before reading a red suite as a regression:
 17 files fail with "No Chromium to drive" and nothing else is wrong. That is the
 right failure — these measure layout, and a browser test that silently skips is
@@ -3197,16 +3197,22 @@ the shipped Classic seed puts them at 2.44x in portrait even with this fix
 applied, because the "Now" widget's box scales its content about 36% larger
 than the "Next" widget's box does. Closing that gap is layout work (the arc-
 minute scale, or rebalancing Classic's own proportions), and this change is
-deliberately token-only. `apps/server/test/wall-density.test.ts` measures the
-*stylesheet's* ratio — a bare probe element planted in a real paired wall's
-`.canvas`, so every `var()` and `calc()` resolves through the live cascade —
-at three viewports, rather than either a source-text ratio (which would miss
-a mistyped token) or the actual on-glass words. The last of those was tried
-first and rejected for two reasons found by trying it: the cross-widget scale
-gap above, and a paired 1280x720 Classic wall where `trimCellRows` drops every
-`.hz-rowtext` to a bare "+N" — confirmed pre-existing by reverting just the
-numeral size and measuring again — so a test that needs a real rendered event
-word would have nothing to measure on the smallest wall this project checks.
+deliberately token-only. A second `describe` block in
+`apps/server/test/wall-density.test.ts` — the density-ratchet file a
+concurrent phase built, reusing its own paired wall rather than pairing a
+second one — measures the *stylesheet's* ratio instead: a bare probe element
+planted in the same wall's `.canvas`, so every `var()` and `calc()` resolves
+through the live cascade, at three viewports. That is rather than either a
+source-text ratio (which would miss a mistyped token) or the actual on-glass
+words, the last of which was tried first and rejected for two reasons found by
+trying it: the cross-widget scale gap above, and a paired 1280x720 Classic
+wall where `trimCellRows` drops every `.hz-rowtext` to a bare "+N" — confirmed
+pre-existing by reverting just the numeral size and measuring again — so a
+test that needs a real rendered event word would have nothing to measure on
+the smallest wall this project checks. This phase moved none of that file's
+own `BASELINE` numbers — measured before merging with it, the ratchet held at
+every one of its five sizes with this phase's colour and size changes applied,
+so nothing needed raising.
 
 **Two things were removed outright, both for the same reason: a widget the
 household placed does not get to outsize the wall around it.** The generic
