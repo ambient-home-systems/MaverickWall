@@ -92,7 +92,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **ninety-two real bugs**, and the pattern in how is the most
+This project has found **one hundred and six real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -195,6 +195,14 @@ useful thing in this document:
 | **A ratchet blind to the rule it was gating, for want of one multi-day event** | Deleting the rule and watching the gate stay green |
 | A metric that rewarded printing the same title seven times | The same deletion, which *raised* the number it was scored on |
 | **A ratchet already red on `main`, under a note saying it held** | Running it on a clean worktree of `main` |
+| **Half a 13.3" panel left white, and six agenda rows on every panel in a 3.7x range** | Rendering the same frame at six panel sizes and finding the last inked row |
+| A portrait split whose every assertion stayed green when it was reverted | Reverting each of six fixes in turn, and finding the one that reddened nothing |
+| A test sitting at 98% of its five-second budget for a release | Timing the test that had just started failing, on an idle machine, where it passed |
+| **Every widget but one drawing 15% of its ink density on a 13.3" panel** | Measuring one widget's ink inside its own box at four sizes, and finding the calendar at 64% |
+| A chrome assertion that compared the frame against the arithmetic that drew it | Pinning the metric back to a constant, and watching the test agree with itself |
+| A forecast threshold no *tallest* run of text could see | Measuring the shortest run instead — the temperatures, not the day names |
+| **A width guard that silently moved the arithmetic another rule was calibrated on** | Merging with that rule, and watching its own test go red at a cell of exactly `pillMinCell` |
+| **A ratchet's own header constant, counting a solid inverted band as body ink** | Deriving the split it transcribed, and finding 54 wrong at three of six sizes |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -310,7 +318,7 @@ day. This is the single most common ICS bug.
 > about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
-**0.54.2 is the current release.** `main`, the tag and the published image
+**0.55.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
 signed, pulled anonymously and verified.
@@ -345,15 +353,11 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2323 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 364 · server 1492. CI runs the whole suite and then the
-README's one-liner against a clean volume on Linux, which is the only place the
-install has ever been wrong.
+**2375 tests passing.** calendar 153 (plus 1 skipped) · core 314 · display 364 ·
+server 1544. CI runs the whole suite and then the README's one-liner against a
+clean volume on Linux, which is the only place the install has ever been wrong.
 
-**148 of the server's tests need a real Chromium and say so when they
-cannot find one**, which is worth knowing before reading a red suite as a
-regression: 20 files fail with "No Chromium to drive" and nothing else
-is wrong. That is the
+**139 of the server's tests need a real Chromium and say so when they cannot
 right failure — these measure layout, and a browser test that silently skips is
 this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
@@ -522,8 +526,11 @@ or an OpenDisplay BLE tag (Home
 Assistant pushes, core `opendisplay.upload_image`). The whole rendering path is
 a new backend behind the existing `viewmodel`, in `apps/server/src/epaper/`: a
 pure 1-bit framebuffer, a `node:zlib` PNG encoder, an embedded font, Bayer
-dither, and a landscape/portrait renderer — no headless browser, no image
-library, the same "draw what nobody else supplies" as `http/qr.ts`. Migration
+dither, a landscape/portrait renderer and `metrics.ts`, which is every layout
+number as arithmetic on the panel rather than as a constant (see below — the
+constants were tuned for one 800x480 and left half of a 13.3" panel white) — no
+headless browser, no image library, the same "draw what nobody else supplies" as
+`http/qr.ts`. Migration
 `0029` adds `kind` + panel geometry to `screens` (additive, no rebuild). The
 endpoint mirrors `/d/manifest` but takes its token in the *path* (a dumb device
 holds no cookie) and derives its ETag from the inputs — including the civil-date
@@ -551,8 +558,9 @@ answers with the exact frame the panel would draw, debounced, nothing stored.
 The shape is fixed by making the canvas a fact about the hardware: the design
 page sends the panel's own ratio and its one orientation, **ignoring any stored
 aspect** (on a wall the household may set one, because nobody measured that
-television; a panel is 800x480 and that is the end of it), and the editor hides
-the orientation tabs and the aspect list behind a chip that states the geometry.
+television; a panel's resolution is a fact about the hardware and that is the
+end of it), and the editor hides the orientation tabs and the aspect list behind
+a chip that states the geometry.
 Two traps, both live: the POST must render the posted canvas as `freeform`
 whatever the row says, because a panel that has never been saved has
 `layout_mode` NULL and `renderScreenFrame` gates the canvas on it — read
@@ -589,6 +597,171 @@ naming them must. Looking at the live frame is what caught the one this
 introduced: today's cell is solid ink, so its names were drawn black on black
 and today was the only day with nothing on it — they are knocked out now, like
 its number.
+
+**Every pixel in the eInk layout used to be tuned for one 800x480 panel, and
+that is what an honest measurement of one panel looks like applied to a 3.7x
+range.** `MARGIN = 16`, `HEADER_H = 54`, `rowH = 34`, `headH = 26`,
+`PILL_MIN_CELL = 34`, `EPAPER_TODAY_LIMIT = 6`, `EPAPER_CELL_TITLES = 4` — good
+numbers, from real output, which is more than most numbers in a renderer can
+say. Rendered across the supported range with thirty days of events on it, they
+drew **six agenda rows on every panel** and left the bottom of the biggest one
+white: 69px blank at 640x384, 140px at 800x480, 479px at 1304x984, **714px — 51%
+— at 1872x1404**. On a 13.3" panel the renderer stopped drawing halfway down.
+
+`epaper/metrics.ts` is where those constants come back as expressions: pure,
+geometry in and integers out, the seam `widget-options.ts`, `ink.ts` and
+`ladder.ts` exist at. Three things in it are the whole design. **It is anchored
+rather than invented** — 800x480 is the fixed point and every metric reproduces
+the value it replaced there *exactly*, which is the test that fails first if a
+derivation is wrong. **It reads the short side, never the height**, because a
+panel hung sideways is the same hardware and `min(w, h)` is the one number a
+quarter turn cannot change; deriving from height would make one 13.3" panel draw
+32px type landscape and 48px portrait. And **type grows sub-linearly**, at
+`(shortSide / 480) ** 0.6`: at 1.0 a bigger panel shows what a smaller one shows
+only larger, which is not what a 13.3" panel was bought for, and at 0.0 it shows
+more at a size nobody reads across a kitchen. The ladder that buys is 8, 11, 15
+and 17 agenda rows at 16, 16, 24 and 32px of type. Every value is an integer
+because a 1-bit raster has no half-lit line — a fractional row boundary is a
+grey smear that survives until the next full refresh — and they round to
+*nearest* rather than flooring, because a body is a header plus a gap plus a
+rule plus rows and a downward bias compounds down the stack. A **count** floors:
+a row that does not fit must not be drawn.
+
+The content caps moved to where the box is, which `EPAPER_UPCOMING_LIMIT` had
+already been doing and saying for a release. The viewmodel carries a working set
+(24 agenda rows, 12 cell names) with the household's own density still binding
+first, and the renderer cuts. That is why `agendaOverflow` became
+`agendaTotal`: the model no longer knows what was left out, so the day's count
+travels and the renderer subtracts what it drew.
+
+**Scaling the constants does not on its own fill a panel, and the two layout
+changes that finish it are where the argument is.** The month grid was one
+*square* cell, `min(box.w / 7, available / weeks)`, so on every landscape panel
+it was bound by the width of its column and stopped — 580px of grid in an 1178px
+column at 1872x1404. It fills both directions now, and the cells stretch, to
+2.03:1 at the top of the range. That is the honest cost of two columns on a 4:3
+panel and not a thing to fix later: square cells there need the month 1694px of
+1872, which leaves the agenda seven characters for a title. The rounding
+remainder goes **above** the first row, where it lands under the weekday letters
+and nobody sees it, rather than below the last, where it is the bug. And a
+*portrait* panel sizes its split from the grid rather than at a flat 42%, so it
+keeps square cells **and** reaches its own bottom edge — stacked, that is a
+solvable problem landscape does not have. Measured after: 1.9–3.3% of the height
+blank at all six sizes, and **on a quiet day too**, because a frame that only
+fills when today happens to be busy has moved the fault rather than fixed it.
+
+`EPAPER_RENDERER_VERSION` is **5** — 4 for the built-in layout and 5 for the
+widgets. Every paired panel's pixels move at 4, 800x480 included; at 5 only the
+larger panels move, plus the one module-panel row described below.
+
+**This phase landed against an acceptance gate a concurrent phase had already
+built, and moving its baseline is the interesting part.**
+`apps/server/test/epaper-geometry.test.ts` is that gate — the e-paper twin of
+`wall-density.test.ts`, a ratchet whose `BASELINE` records today's ink and
+whose rule is that a phase improving a number raises it *in the same commit*.
+Four of its six sizes improve on both metrics and are recorded so: the blank
+bottom goes 99→12, 140→16, 479→32 and 714→46 px, and body ink roughly doubles.
+This work's own suite lives beside it in `epaper-proportional.test.ts` rather
+than in that filename, because the gate is a different question — it asks
+whether the frame lost ground, and the other asks whether every metric derives.
+
+**Two of its numbers moved the *worsening* way and are recorded with the
+justification its own rule demands**, because burying them would be the exact
+failure the ratchet exists to catch. Body ink at 480x800 goes 26.9→26.8 and at
+1404x1872 33.6→32.2: the portrait split now sizes the month to what its square
+cells need and hands the agenda the rest, so a fixture whose "today" does not
+fill that generous box leaves white in it where a flat 42% split happened to
+crop the same content tighter. Real, deliberate, and 0.06 and 1.3 points. And
+`blankBottomPx` at 1404x1872 goes 39→46, which is **the margin**: it is derived
+now, so a 1404-wide panel gets 46px rather than a flat 16, and the grid fills to
+exactly `height - margin` — the old 39px meant the old grid stopped 23px short
+of its own inset, where the new frame stops 0px short of a larger one. As a
+fraction of the panel that is 2.5% against 2.1%. At the top of the range this
+metric measures the margin rather than dead space, which is worth knowing before
+reading it as a regression.
+
+**The gate's own header split had to be fixed to keep it honest.** It
+transcribed `const HEADER_H = 54` to decide where "body" starts, with a comment
+saying a change to it "moves the split point rather than silently invalidating
+anything" — true while the header *was* 54 everywhere, and false the moment it
+was derived: 54 still holds at 640x384, 800x480 and 480x800 and is wrong at the
+other three, where the real band is 90, 108 and 112. A split set too high counts
+rows of the header's own solid inverted band as body ink, and the number it
+moves is the one the file compares against its recorded baseline. It asks
+`panelMetrics` now, so the split follows the renderer it measures.
+
+Two things about the verification are worth more than the change. **The pinning
+test was written first and committed red** — eleven of sixteen assertions
+failing, with the three 800x480 baselines passing against the unchanged
+renderer, which is what makes them a baseline rather than a guess. And every fix
+was checked by reverting it: square cells reddens nine assertions, the six-row
+cap two, the rounding remainder two, `2.25x` against the specified `2.2x` three,
+the four-name cap one. **The portrait split reddened nothing.** The grid fills
+either way, so the blank-bottom assertions cannot see it — only the *shape* of
+what it fills with can, and until the cells were measured for squareness that
+change was an edit no test could contradict. The 2.25 is worth its own line: the
+brief said clamp the header band between 2.2 and 3.2 times its own line of ink,
+and 2.2 x 24 is 53 where the shipped band is 54. A pixel there moves every row
+under it, so the anchor won — which is exactly the rule the brief itself set,
+that a derivation which misses the tuned constant is wrong and the constant was
+right.
+
+**And the widgets had the same fault one layer along, which the paragraph that
+used to end here got wrong in the most useful way.** It said the remaining
+absolute pixels were four — `drawFrame`'s pad and title bar, `drawChores`' row,
+`drawPanel`'s `box.h / 24` — and that most widget draws already sized themselves
+to their box through `scaleToFit`. The first half undercounted by about thirty.
+The second half was true and beside the point: `scaleToFit` sizes type to the
+box, but every call passed a *maximum* of `2`, so on a 13.3" panel a widget's
+text was capped at 16px however much room it had. A dozen of those, plus 24px
+to-do rows, 22px chore rows, a 20px title bar with 8px type in it, an 8px inset,
+and the forecast's 56px column threshold.
+
+Measured as ink inside one widget filling 90% of the panel, this is the fraction
+of density each drew at 1872×1404 against what it drew at 800×480:
+
+    clock 16%   shift 14%   countdown 14%   notes 15%   todo 15%
+    chores 15%  week 15%    people 15%      weather 30%
+    homeassistant 15%   external 14%   image 17%
+    …and calendar 64%, because that one had already been fixed.
+
+**64% against 15% is what said the rest were broken**, and it is the argument
+for fixing a class rather than a file: the calendar widget went through
+`drawMonthBox`, which the built-in layout's work had already made proportional,
+so it was carried along and nothing else was. Every one of those is now 57–59%
+— which is what the sub-linear ladder can actually reach, since a widget with
+three readings in it cannot fill a bigger box by drawing more, only by drawing
+bigger. `EpaperWidgetMetrics` is the table, `scaleRung` is the caps, and the
+factor stays at the call site (a clock at 4 rungs, a countdown at 4.5, a shift
+headline at 3.5) because that is a fact about the widget's shape rather than
+about the panel.
+
+**All sixteen 800×480 frames are byte-identical** — every widget type, plus a
+narrow column, a tiny box and two empty states — with one deliberate exception,
+and it is the `agendaRowsInBox` rule again: `drawPanel` capped its rows at
+`box.h / 24` and drew them at a line height of 20, so a box with room for five
+of a module's readings asked the module for four. A count and the loop that
+draws it have to be the same arithmetic. A 120px box shows five now.
+
+**Four of the nine assertions written for this passed with the fix reverted**,
+which is the part worth keeping. Two were *circular*: the title-bar test compared
+the measured offset against `m.widget.inset + m.widget.smallLine` — the
+arithmetic that drew it — so pinning either metric back to a constant moved the
+frame and the expectation together and the test stayed green. It reads literals
+off the ladder by hand now (20 and 40 for the rule, 28 and 56 for the content).
+Two more were *blind*: an ink-density check cannot see a row height left at 24
+while the type in it grew to 32, because overlapping rows are *more* ink rather
+than less — that needs the pitch between bands, and again against literals. And
+the last one was pointed at the wrong end: the forecast's column threshold was
+checked with the *tallest* run of text, which stays tall because the day names
+still fit, while the temperatures beside them — the thing a forecast is for —
+collapse to a single scale. Only the **shortest** run can see it. Ten mutations,
+all red now.
+
+**Still unproven where it counts:** none of this has been photographed on real
+hardware. The measurements are `renderEpaper` and `renderFreeformEpaper`
+decoded, which is the right way to check a 1-bit frame and is not the same as a
+household looking at a 13.3" panel on a wall.
 
 **The add-on now installs and starts on a real Home Assistant supervisor.**
 That was the highest-value unproven thing in the project for a long time, and

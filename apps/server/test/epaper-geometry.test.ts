@@ -30,18 +30,24 @@ import { addDays, type CivilDate } from '@maverick-wall/core';
 
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
+import { panelMetrics, type PanelGeometry } from '../src/epaper/metrics.js';
 import { renderEpaper } from '../src/epaper/render.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
 /**
- * `render.ts`'s own header band height — not exported, so it is transcribed
- * here rather than imported, the same way `epaper/ladder.ts` is transcribed
- * into the display bundle: two packages (here, a private constant and a test)
- * that cannot share the value directly. It only decides where "body" starts
- * for the measurement below; a change to it moves the split point rather than
- * silently invalidating anything.
+ * Where the body starts, asked of the panel rather than transcribed.
+ *
+ * This was `const HEADER_H = 54`, with a comment saying a change to it "moves
+ * the split point rather than silently invalidating anything". That was true
+ * while the header *was* 54 on every panel. It is not any more — the band is
+ * derived now (`epaper/metrics.ts`), so 54 held at 640×384, 800×480 and
+ * 480×800 and was wrong at the other three: 90, 108 and 112. A split that is
+ * too high counts rows of the header's *solid inverted band* as body ink, and
+ * the number it inflates is the one this file compares against its own
+ * recorded baseline — silently, and in the passing direction. Derived, so the
+ * split follows the renderer it is measuring.
  */
-const HEADER_H = 54;
+const headerHeightFor = (panel: PanelGeometry): number => panelMetrics(panel).headerHeight;
 
 // ---------------------------------------------------------------------------
 // A month of an ordinary household's calendar
@@ -142,6 +148,7 @@ interface InkStats {
 
 function measureInk(fb: Framebuffer): InkStats {
   const { width, height } = fb;
+  const headerH = headerHeightFor({ width, height });
   let totalInk = 0;
   let bodyInk = 0;
   let lastInkRow = -1;
@@ -151,10 +158,10 @@ function measureInk(fb: Framebuffer): InkStats {
       if (fb.get(x, y)) rowInk++;
     }
     totalInk += rowInk;
-    if (y >= HEADER_H) bodyInk += rowInk;
+    if (y >= headerH) bodyInk += rowInk;
     if (rowInk > 0) lastInkRow = y;
   }
-  const bodyRows = Math.max(0, height - HEADER_H);
+  const bodyRows = Math.max(0, height - headerH);
   const bodyArea = width * bodyRows;
   const blankBottomPx = height - 1 - lastInkRow;
   return {
@@ -201,26 +208,49 @@ interface Baseline {
  * The audit that this file exists to make repeatable reported, on its own
  * thirty-day fixture: 13.4% / 69px at 640x384, 12.0% / 140px at 800x480,
  * 7.5% / 479px at 1304x984, 6.8% / 714px at 1872x1404, 16.6% / 77px at
- * 480x800, 16.8% / 39px at 1404x1872. `renderEpaper` is a pure function of the
- * manifest and the panel size, so this file's fixture — thirty days, several
- * events a day, realistic titles, the same method as the audit rather than a
- * byte-for-byte replay of its script — reproduces `blankBottomPx` exactly at
- * five of the six sizes (140, 479, 714, 77 and 39, all matched to the pixel;
- * only 640x384 differs, at 99px against the audit's 69px, from which column —
- * agenda or grid — happens to run deepest on this fixture's event mix). The
- * `bodyInkPercent` values are this fixture's own, measured directly rather
- * than copied from the audit's report, because ink density is sensitive to
- * exactly which events land where and this fixture does not attempt to
- * reproduce the audit's day-by-day content byte for byte. Every value below
- * was read off a real run of this file.
+ * 480x800, 16.8% / 39px at 1404x1872. The values below are this file's own,
+ * measured directly rather than copied from that report, because ink density
+ * is sensitive to exactly which events land where.
+ *
+ * ---------------------------------------------------------------------------
+ * Moved by the proportional-layout phase (`epaper/metrics.ts`).
+ * ---------------------------------------------------------------------------
+ *
+ * That phase replaced every absolute pixel the frame was drawn with. Four of
+ * the six sizes improve on both numbers and are recorded as such — the blank
+ * bottom goes 99→12, 140→16, 479→32 and 714→46, which is 3.1–3.3% of the
+ * height at each, and body ink roughly doubles.
+ *
+ * **Two portrait sizes moved in the worsening direction on `bodyInkPercent`,
+ * and this is the justification the rule above asks for.** 480x800 goes
+ * 26.9→26.8 and 1404x1872 goes 33.6→32.2. The cause is the portrait split:
+ * the month is now sized to exactly what its *square* cells need and the
+ * agenda takes the rest, so the agenda's box is generous and a fixture whose
+ * "today" does not fill it leaves white inside it — where the old flat 42%
+ * split happened to hand the same content a tighter box. It is a real trade
+ * and not a measurement artefact: blank bottom at 480x800 improves 77→16 in
+ * the same change, so the frame reaches its own bottom edge and is less dense
+ * on the way down. Deliberate, and small — 0.06 and 1.3 points.
+ *
+ * **1404x1872's `blankBottomPx` also worsens, 39→46, and that one is the
+ * margin.** The frame's outer inset is derived now, so on a 1404-wide panel it
+ * is 46px rather than a flat 16 — and the grid fills to exactly `height -
+ * margin`, which is why the blank bottom *equals* the margin. The old 39px
+ * with a 16px margin meant the old grid stopped 23px short of its own inset;
+ * the new frame stops 0px short of a larger one. Measured as a fraction of the
+ * panel it is 2.5%, against the 2.1% before — the number this metric is for
+ * ("does the frame look unfinished") is better, and the absolute pixel count
+ * is worse because the margin is deliberately bigger on a bigger panel. Worth
+ * knowing before reading it as a regression: at the top of the range this
+ * metric is measuring the margin, not dead space.
  */
 export const BASELINE: Record<string, Baseline> = {
-  '640x384': { bodyInkPercent: 17.1, blankBottomPx: 99 },
-  '800x480': { bodyInkPercent: 17.4, blankBottomPx: 140 },
-  '1304x984': { bodyInkPercent: 13.1, blankBottomPx: 479 },
-  '1872x1404': { bodyInkPercent: 12.9, blankBottomPx: 714 },
-  '480x800': { bodyInkPercent: 26.9, blankBottomPx: 77 },
-  '1404x1872': { bodyInkPercent: 33.6, blankBottomPx: 39 },
+  '640x384': { bodyInkPercent: 26.9, blankBottomPx: 12 },
+  '800x480': { bodyInkPercent: 25.4, blankBottomPx: 16 },
+  '1304x984': { bodyInkPercent: 25.7, blankBottomPx: 32 },
+  '1872x1404': { bodyInkPercent: 25.6, blankBottomPx: 46 },
+  '480x800': { bodyInkPercent: 26.8, blankBottomPx: 16 },
+  '1404x1872': { bodyInkPercent: 32.2, blankBottomPx: 46 },
 };
 
 describe('the e-paper frame, measured for ink', () => {

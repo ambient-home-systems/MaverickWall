@@ -44,8 +44,24 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * its own, and is not drawn at all by a cell that can name nothing; and a
  * density mark under the numeral says how busy a day is with no legible text.
  * Every cell in the grid moves, on every panel.
+ *
+ * 5: the layout is proportional to the panel (`epaper/metrics.ts`), for the
+ * built-in frame *and* the free-form widgets. Every absolute pixel the frame
+ * was drawn with — the 16px margin, the 54px header, the 34px agenda row, the
+ * 26px week head, the 34px pill threshold, the six agenda rows, the four cell
+ * names, and on the widget side an 8px inset, a title bar with 8px type in it,
+ * 24px to-do rows, 22px chore rows and a dozen calls capping ordinary widget
+ * text at 16px — was tuned by looking at one 800×480 Seeed panel and applied
+ * to a range running 640×384 to 1872×1404. A 13.3" panel drew 714px of white
+ * below its last row and a `notes` widget 15% of the ink density it drew on a
+ * 7.5" one. The 800×480 frames are byte-identical apart from a module panel
+ * counting its rows at the line height it draws them with, which is one more
+ * reading in a short box — and that alone is a pixel change, so the bump is
+ * not optional even for the panel nothing else moved on. Two bumps on the
+ * branch (the frame, then the widgets) collapse to this one, because they
+ * reach a household together and no panel ever served the state between them.
  */
-export const EPAPER_RENDERER_VERSION = 4;
+export const EPAPER_RENDERER_VERSION = 5;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

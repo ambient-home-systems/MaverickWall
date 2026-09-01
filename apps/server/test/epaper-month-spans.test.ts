@@ -6,6 +6,7 @@ import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.j
 import { drawMonthBox, renderEpaper } from '../src/epaper/render.js';
 import { Framebuffer } from '../src/epaper/framebuffer.js';
 import { encodePng1bit } from '../src/epaper/png.js';
+import { gridMetrics, panelMetrics } from '../src/epaper/metrics.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
 /**
@@ -165,24 +166,51 @@ function halfTermManifest(): Manifest {
  */
 function grid(manifest: Manifest, box = { x: 0, y: 0, w: 700, h: 420 }): {
   rows: boolean[][];
-  cell: number;
+  cellW: number;
+  cellH: number;
   gx: number;
   gridTop: number;
+  laneH: number;
+  barH: number;
+  numberBand: number;
 } {
   const model = buildEpaperModel(manifest, { now: Date.parse(`${TODAY}T12:00:00Z`) });
   const fb = new Framebuffer(box.w, box.h);
-  drawMonthBox(fb, model, box, { pills: true });
-  const weeks = model.weeks.length;
-  const labelH = 22;
-  const gridTop = box.y + labelH;
-  const cell = Math.max(12, Math.floor(Math.min(box.w / 7, (box.y + box.h - gridTop) / weeks)));
-  const gx = box.x + Math.floor((box.w - cell * 7) / 2);
-  return { rows: decode(encodePng1bit(fb)), cell, gx, gridTop };
+  const m = panelMetrics({ width: box.w, height: box.h });
+  drawMonthBox(fb, model, m, box, { pills: true });
+  /*
+   * Asked of the same arithmetic the renderer used, rather than recomputed.
+   *
+   * This transcribed `labelH = 22` and a *square* `min(box.w / 7, …)` cell to
+   * find what it decodes, which was right while the grid was square and drawn
+   * at fixed pixels. It is neither now — the cell fills its box in both
+   * directions and the rounding remainder sits above the first row — so a
+   * transcription would read a band that has moved and report it as missing
+   * ink. Same reason `epaper-geometry.test.ts` stopped transcribing the header
+   * height: a measurement's geometry has to follow the renderer it measures.
+   */
+  const grid = gridMetrics(box.w, box.h - m.monthHeadH, model.weeks.length, m);
+  const gridTop = box.y + m.monthHeadH + grid.topOffset;
+  const gx = box.x + Math.floor((box.w - grid.cellW * 7) / 2);
+  // Where a cell's lanes start: the number's inset, the number, and the gap
+  // under it — `drawMonthBox`'s own `numberBand`.
+  const numScale = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? 2 * m.smallScale : m.smallScale;
+  const numberBand = m.cellNumberInset + 8 * numScale + 2 * m.smallScale;
+  return {
+    rows: decode(encodePng1bit(fb)),
+    cellW: grid.cellW,
+    cellH: grid.cellH,
+    gx,
+    gridTop,
+    laneH: m.spanLaneH,
+    barH: m.spanBarH,
+    numberBand,
+  };
 }
 
 describe('rule 1 on a panel — one bar across the days', () => {
   it('lays ink across the three covered cells and none beside them', () => {
-    const { rows, cell, gx, gridTop } = grid(halfTermManifest());
+    const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(halfTermManifest());
     /*
      * The lane band, measured column by column across the first grid week.
      *
@@ -192,12 +220,12 @@ describe('rule 1 on a panel — one bar across the days', () => {
      * A bar drawn one column out passes any "did the frame change" check and
      * fails this.
      */
-    const laneTop = gridTop + 4 + 8 * 2 + 2;
+    const laneTop = gridTop + numberBand;
     const band = (column: number): number =>
-      ink(rows, gx + column * cell + 2, laneTop, gx + (column + 1) * cell - 2, laneTop + 10);
+      ink(rows, gx + column * cellW + 2, laneTop, gx + (column + 1) * cellW - 2, laneTop + barH);
 
     for (const column of [1, 2, 3]) {
-      expect(band(column), `column ${column} carries no bar`).toBeGreaterThan(cell * 3);
+      expect(band(column), `column ${column} carries no bar`).toBeGreaterThan(cellW * 3);
     }
     /*
      * Column 4 is today, whose whole cell is a solid fill, so it can say
@@ -218,16 +246,16 @@ describe('rule 1 on a panel — one bar across the days', () => {
      * Measured on the bar's own middle row: every pixel from the start of
      * column 2 to the end of column 4 is ink, with no gap at either boundary.
      */
-    const { rows, cell, gx, gridTop } = grid(halfTermManifest());
+    const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(halfTermManifest());
     /*
      * The bar's *last* row, not its middle: the title is knocked out of the
      * band, so a row through the words is full of holes by design. The bar is
      * ten pixels and scale-1 text is eight of them starting one down, which
      * leaves the bottom row solid wherever the bar is drawn.
      */
-    const middle = gridTop + 4 + 8 * 2 + 2 + 9;
-    const from = gx + 1 * cell + 2;
-    const to = gx + 4 * cell - 3;
+    const middle = gridTop + numberBand + 9;
+    const from = gx + 1 * cellW + 2;
+    const to = gx + 4 * cellW - 3;
     let gaps = 0;
     for (let x = from; x < to; x++) if (rows[middle]?.[x] !== true) gaps++;
     expect(gaps, `${gaps} pixels of the bar are missing across its three days`).toBe(0);
@@ -242,12 +270,12 @@ describe('rule 1 on a panel — one bar across the days', () => {
      * says it, which is the repetition being fixed and is invisible to any
      * measurement taken inside the band.
      */
-    const { rows, cell, gx, gridTop } = grid(halfTermManifest());
+    const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(halfTermManifest());
     // Lane band, then the density mark and its gap: 12 + 3 + 3.
-    const below = gridTop + 4 + 8 * 2 + 2 + 12 + 6;
+    const below = gridTop + numberBand + laneH + 6;
     for (const column of [1, 2, 3]) {
       expect(
-        ink(rows, gx + column * cell + 2, below, gx + (column + 1) * cell - 2, gridTop + cell - 2),
+        ink(rows, gx + column * cellW + 2, below, gx + (column + 1) * cellW - 2, gridTop + cellH - 2),
         `column ${column} repeats its event under the bar that already draws it`,
       ).toBe(0);
     }
@@ -261,12 +289,12 @@ describe('rule 1 on a panel — one bar across the days', () => {
      * measurement available from a bitmap, and it is exactly the difference
      * between a labelled bar and a continuation.
      */
-    const { rows, cell, gx, gridTop } = grid(halfTermManifest());
-    const laneTop = gridTop + 4 + 8 * 2 + 2;
+    const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(halfTermManifest());
+    const laneTop = gridTop + numberBand;
     const clearIn = (column: number): number => {
       let n = 0;
       for (let y = laneTop + 1; y < laneTop + 9; y++) {
-        for (let x = gx + column * cell + 3; x < gx + (column + 1) * cell - 3; x++) {
+        for (let x = gx + column * cellW + 3; x < gx + (column + 1) * cellW - 3; x++) {
           if (rows[y]?.[x] === false) n++;
         }
       }
@@ -291,14 +319,14 @@ describe('rule 1 on a panel — one bar across the days', () => {
       shifts: [],
       events: [ev({ id: 'half', uid: 'half', title: 'Half term', allDay: true, continues: true })],
     });
-    const { rows, cell, gx, gridTop } = grid(
+    const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(
       fakeManifest([half(dayOf(5)), half(dayOf(6)), half(dayOf(7)), half(dayOf(8))]),
     );
     const clearIn = (weekRow: number, column: number): number => {
-      const top = gridTop + weekRow * cell + 4 + 8 * 2 + 2;
+      const top = gridTop + weekRow * cellH + numberBand;
       let n = 0;
       for (let y = top + 1; y < top + 9; y++) {
-        for (let x = gx + column * cell + 3; x < gx + (column + 1) * cell - 3; x++) {
+        for (let x = gx + column * cellW + 3; x < gx + (column + 1) * cellW - 3; x++) {
           if (rows[y]?.[x] === false) n++;
         }
       }
@@ -312,25 +340,25 @@ describe('rule 1 on a panel — one bar across the days', () => {
   it('leaves a one-day all-day event and a daily series as rows', () => {
     // `DTEND` is exclusive and `continues` is what says otherwise. A bar for a
     // birthday is the single most common ICS bug wearing a new hat.
-    const { rows, cell, gx, gridTop } = grid(
+    const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(
       fakeManifest([
         { date: dayOf(1), shifts: [], events: [ev({ id: 'bday', title: 'Birthday', allDay: true })] },
         { date: dayOf(2), shifts: [], events: [ev({ id: 's1', title: 'Standup', startsAt: 0 })] },
         { date: dayOf(3), shifts: [], events: [ev({ id: 's2', title: 'Standup', startsAt: 0 })] },
       ]),
     );
-    const laneTop = gridTop + 4 + 8 * 2 + 2;
+    const laneTop = gridTop + numberBand;
     for (const column of [1, 2, 3]) {
       const band = ink(
         rows,
-        gx + column * cell + 2,
+        gx + column * cellW + 2,
         laneTop,
-        gx + (column + 1) * cell - 2,
-        laneTop + 10,
+        gx + (column + 1) * cellW - 2,
+        laneTop + barH,
       );
       // Text, not a bar: a solid 10px band across a ~90px cell is most of 900
       // pixels, and a line of scale-1 words is a small fraction of that.
-      expect(band, `column ${column} drew a bar for a one-day event`).toBeLessThan(cell * 3);
+      expect(band, `column ${column} drew a bar for a one-day event`).toBeLessThan(cellW * 3);
     }
   });
 });
@@ -354,12 +382,12 @@ describe('rules 2 and 3 on a panel', () => {
       },
     ]);
     const widthOf = (manifest: Manifest): number => {
-      const { rows, cell, gx, gridTop } = grid(manifest);
-      const top = gridTop + 4 + 8 * 2 + 2;
+      const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(manifest);
+      const top = gridTop + numberBand;
       let widest = 0;
       for (let y = top; y < top + 4; y++) {
         let run = 0;
-        for (let x = gx + 2 * cell + 3; x < gx + 3 * cell - 3; x++) {
+        for (let x = gx + 2 * cellW + 3; x < gx + 3 * cellW - 3; x++) {
           if (rows[y]?.[x] === true) run++;
         }
         widest = Math.max(widest, run);
@@ -377,15 +405,15 @@ describe('rules 2 and 3 on a panel', () => {
   it('draws nothing under the numeral on an empty day', () => {
     // An empty day is the information. Every cell in this grid is empty except
     // one, so the whole band under those numerals must be clear.
-    const { rows, cell, gx, gridTop } = grid(
+    const { rows, cellW, cellH, gx, gridTop, laneH, barH, numberBand } = grid(
       fakeManifest([{ date: dayOf(2), shifts: [], events: [ev({ id: 'x', title: 'X', startsAt: 0 })] }]),
     );
-    const top = gridTop + 4 + 8 * 2 + 2;
+    const top = gridTop + numberBand;
     // Column 4 is today: a solid fill, which says nothing about what was drawn
     // under its numeral and is the one cell this cannot ask.
     for (const column of [0, 1, 3, 5, 6]) {
       expect(
-        ink(rows, gx + column * cell + 2, top, gx + (column + 1) * cell - 2, top + 6),
+        ink(rows, gx + column * cellW + 2, top, gx + (column + 1) * cellW - 2, top + 6),
         `column ${column} is empty and drew something under its numeral`,
       ).toBe(0);
     }
@@ -418,7 +446,7 @@ describe('rules 2 and 3 on a panel', () => {
     const model = buildEpaperModel(busy, { now: Date.parse(`${TODAY}T12:00:00Z`) });
     const box = { x: 0, y: 0, w: 322, h: 252 };
     const fb = new Framebuffer(box.w, box.h);
-    drawMonthBox(fb, model, box, { pills: true });
+    drawMonthBox(fb, model, panelMetrics({ width: box.w, height: box.h }), box, { pills: true });
     const rows = decode(encodePng1bit(fb));
     const cell = Math.max(12, Math.floor(Math.min(box.w / 7, (box.h - 22) / model.weeks.length)));
     expect(cell, 'the box did not produce the cell size this measurement assumes').toBe(46);
@@ -458,7 +486,7 @@ describe('rules 2 and 3 on a panel', () => {
     const model = buildEpaperModel(busy, { now: Date.parse(`${TODAY}T12:00:00Z`) });
     const box = { x: 0, y: 0, w: 238, h: 192 };
     const fb = new Framebuffer(box.w, box.h);
-    drawMonthBox(fb, model, box, { pills: true });
+    drawMonthBox(fb, model, panelMetrics({ width: box.w, height: box.h }), box, { pills: true });
     const rows = decode(encodePng1bit(fb));
     const cell = Math.max(12, Math.floor(Math.min(box.w / 7, (box.h - 22) / model.weeks.length)));
     expect(cell, 'the box did not produce the cell size this measurement assumes').toBe(34);
