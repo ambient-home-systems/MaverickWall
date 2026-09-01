@@ -473,6 +473,47 @@ export const screens = sqliteTable(
     rotation: integer('rotation', { mode: 'number' }).notNull().default(0),
 
     /**
+     * How large this screen is, and how far away somebody stands to read it.
+     *
+     * The same kind of fact as `rotation` and `orientation` above, and here for
+     * the same reason: a kitchen tablet and a hall television are not the same
+     * hardware, and nothing else in this database says so. Everything that
+     * decides whether a name on the wall can be *read* — a type floor, a
+     * minimum scale, how many rows a cell can spend — needs an angle rather
+     * than a pixel count, and an angle needs these two numbers. Without them
+     * every such decision is a constant measured on one screen and defended on
+     * all the others: 22px is about six arc-minutes of cap height on a 32"
+     * panel at ten feet, which is at the acuity limit for a word somebody
+     * already expects and nowhere near fluent reading.
+     *
+     * Millimetres, whole, and **as the panel is mounted** — width across the
+     * wall, height down it. That is deliberately not the convention
+     * `panel_width`/`panel_height` above use, which are device pixels in the
+     * panel's own native scan orientation; these are what a person measures
+     * with a tape while standing in front of it. A screen hung sideways has
+     * its long side vertical, and the household is not going to re-measure
+     * because they changed a rotation, so the derivation reconciles the pair
+     * against the frame it is actually drawing rather than trusting the order
+     * they were stored in (`pxPerArcminute` in the display's `orientation.ts`).
+     *
+     * `read_distance_mm` is separate from the size on purpose, because it is a
+     * fact about the room rather than about the panel: the same 32" television
+     * in a hall and in a kitchen is read from different places. It means where
+     * somebody stands to *read* a name, not where they glance at it from the
+     * doorway — a wall sized for the doorway is a wall nobody can read from
+     * either place.
+     *
+     * Null on all three is the common case and must stay the cheap one: a
+     * household that never opens this setting draws exactly what it drew
+     * before, byte for byte. They are also all-or-nothing — two of the three
+     * derive nothing — so anything downstream reads them as a set or not at
+     * all.
+     */
+    panelWidthMm: integer('panel_width_mm', { mode: 'number' }),
+    panelHeightMm: integer('panel_height_mm', { mode: 'number' }),
+    readDistanceMm: integer('read_distance_mm', { mode: 'number' }),
+
+    /**
      * Whether this screen offers a way to acknowledge an interrupt.
      *
      * Per screen, and off by default, because it is a fact about the hardware

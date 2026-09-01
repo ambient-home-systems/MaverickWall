@@ -874,6 +874,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
+              panel_width_mm AS panelWidthMm, panel_height_mm AS panelHeightMm,
+              read_distance_mm AS readDistanceMm,
               daytime_theme AS daytimeTheme,
               daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt,
               display_today_events AS displayTodayEvents,
@@ -913,6 +915,17 @@ export interface ScreenSettings {
   readonly displayHorizonWeeks: number | null;
   /** 24-hour override: 1 forces 24-hour, 0 forces 12-hour, null follows household. */
   readonly clock24: number | null;
+  /**
+   * The physical facts, in millimetres, or null on all three.
+   *
+   * All-or-nothing rather than three independent overrides: a size with no
+   * reading distance derives nothing, so two of the three set is the same
+   * state as none, and keeping "unmeasured" a single state is what makes
+   * absence mean unchanged everywhere downstream.
+   */
+  readonly panelWidthMm: number | null;
+  readonly panelHeightMm: number | null;
+  readonly readDistanceMm: number | null;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -924,7 +937,9 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
                 daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
                 allow_dismiss = ?, allow_chores = ?,
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
-                clock_24 = ?, updated_at = ?
+                clock_24 = ?,
+                panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?,
+                updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -932,7 +947,8 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt,
         s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
-        s.clock24, Date.now(), id,
+        s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
+        Date.now(), id,
       ).changes > 0
   );
 }
@@ -1507,6 +1523,16 @@ export interface ScreenRow {
   readonly panelWidth: number | null;
   readonly panelHeight: number | null;
   readonly panelColour: string | null;
+  /**
+   * How large this screen is and how far away it is read from, in millimetres.
+   *
+   * Not the pair above: those are device pixels in the panel's own scan
+   * orientation, these are the physical picture as it is mounted. Null on all
+   * three until a household says, which is the common case.
+   */
+  readonly panelWidthMm: number | null;
+  readonly panelHeightMm: number | null;
+  readonly readDistanceMm: number | null;
   readonly timezone: string | null;
   readonly daytimeTheme: string | null;
   readonly daytimeStartsAt: string | null;
@@ -1535,6 +1561,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
+              panel_width_mm AS panelWidthMm, panel_height_mm AS panelHeightMm,
+              read_distance_mm AS readDistanceMm,
               daytime_theme AS daytimeTheme,
               daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt,
               display_today_events AS displayTodayEvents,

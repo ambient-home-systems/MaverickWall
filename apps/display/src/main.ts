@@ -16,6 +16,7 @@ import {
   geometryFor,
   normaliseOrientation,
   normaliseRotation,
+  physicalScreenFrom,
   type ScreenGeometry,
 } from './orientation.js';
 import { buildModel, localTime } from './viewmodel.js';
@@ -136,6 +137,19 @@ function start(): void {
     root.style.setProperty('--frame-w', geometry.frame.width);
     root.style.setProperty('--frame-h', geometry.frame.height);
     root.style.setProperty('--root-size', geometry.rootFontSize);
+    /*
+     * What one arc-minute of the reader's vision is worth here, for the type
+     * scale to size against — set only on a wall that has been measured, and
+     * *removed* rather than left when it has not. A household who clears the
+     * measurement must not keep a stale one until the next reload, which is the
+     * same argument as every other attribute written here rather than into the
+     * markup.
+     */
+    if (geometry.pxArcmin === undefined) {
+      root.style.removeProperty('--px-arcmin');
+    } else {
+      root.style.setProperty('--px-arcmin', String(geometry.pxArcmin));
+    }
   };
 
   const geometry = (): ScreenGeometry =>
@@ -143,6 +157,15 @@ function start(): void {
       { width: window.innerWidth, height: window.innerHeight },
       normaliseRotation(manifest?.screen?.rotation),
       normaliseOrientation(manifest?.screen?.orientation),
+      // How large this wall is and how far away it is read from, if the
+      // household has said. The server sends facts in millimetres and never a
+      // size in pixels, because this is the only place that knows what this
+      // browser calls a pixel.
+      physicalScreenFrom(
+        manifest?.screen?.panelWidthMm,
+        manifest?.screen?.panelHeightMm,
+        manifest?.screen?.readDistanceMm,
+      ),
     );
 
   const draw = (): void => {
