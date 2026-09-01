@@ -351,11 +351,15 @@ display 372 · server 1516. CI runs the whole suite and then the
 README's one-liner against a clean volume on Linux, which is the only place the
 install has ever been wrong.
 
-**149 of the server's tests need a real Chromium and say so when they
+**140 of the server's tests need a real Chromium and say so when they
 cannot find one**, which is worth knowing before reading a red suite as a
 regression: 21 files fail with "No Chromium to drive" and nothing else
-is wrong. That is the
-right failure — these measure layout, and a browser test that silently skips is
+is wrong. That pair is **measured** — the suite run with
+`PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than carried forward
+and incremented, which is how it came to read 148 over 20 files: adding one
+browser file to a stale number gives a stale number, and this paragraph's
+whole job is to tell a contributor with no browser what a correct run looks
+like. That is the right failure — these measure layout, and a browser test that silently skips is
 this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
 `browser-harness.ts` finds it via `MW_BROWSER_EXECUTABLE`, then
