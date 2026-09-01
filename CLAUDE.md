@@ -356,7 +356,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (27 tables, 37 migrations) · migrations behind a
+secrets at rest · the schema (27 tables, 38 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
@@ -3231,6 +3231,97 @@ migrates the canvas, and the server's widget schema still accepts the key so
 an old wall's config keeps round-tripping. The stylesheet carries no
 `transition` or `animation` anywhere, and never did — the wall has no pointer
 and redraws every fifteen seconds, so there was nothing to remove there.
+
+**A wall knows how large it is and how far away it is read from, and both are
+facts about the hardware rather than preferences.** `screens` already carried
+`rotation` and `orientation` on the reasoning that a kitchen tablet and a hall
+television are mounted differently; `panel_width_mm`, `panel_height_mm` and
+`read_distance_mm` (migration `0037`) join them for the same reason, and they
+answer something nothing in this product could answer before. **Type on a wall
+is legible or not by the angle it subtends at somebody's eye**, so every
+legibility constant in this codebase is a measurement taken on one screen and
+defended on all the others: `--t-floor: 22px` in `display.css`,
+`MIN_CALENDAR_SCALE = 0.62` in `density.ts`, `EPAPER_TODAY_LIMIT = 6`, the
+bitmap font's scale-2 16px, which is 4.2% of a 384-tall panel and 1.1% of a
+1404-tall one. Measured: on a 32" panel read from ten feet, 22px is about 9
+arc-minutes tall, of which 6.6 is cap height — the acuity limit for a word
+somebody already expects, and nowhere near fluent reading — while the same 22px
+on the same television read from 1.2 metres is about 23. **The floor is a
+1.2-metre size being defended as a 3-metre one**, and paying for that claim is
+what empties a cell on a small panel.
+
+**The manifest carries the two facts and deliberately not a derived size.** The
+server does not know what a browser calls a pixel: it knows a viewport a wall
+reported once, which a kiosk frame can misreport and a rotation reinterprets.
+So `screen.panelWidthMm` / `panelHeightMm` / `readDistanceMm` travel as
+millimetres, and `pxPerArcminute` in `apps/display/src/orientation.ts` — beside
+`geometryFor`, pure, for the reason `widget-options.ts`, `ink.ts`, `ladder.ts`
+and `placement.ts` are pure — does the arithmetic in the one place both halves
+of the ratio are known. Two traps, and the second is the one worth writing
+down. **The rotated frame is the input and the raw viewport is not**: a screen
+turned a quarter turn has its canvas height on the viewport's *width* axis, the
+trap `rootFontSize` already documents, and getting it wrong here is worse
+because the wall comes out plausibly sized rather than obviously half-size. And
+**the millimetres are reconciled against that frame rather than against the
+rotation** — the columns hold the picture as it is mounted, but a household
+turns a wall a year after measuring it and a panel the operating system rotates
+reports no rotation here at all, so the stored way-up is a claim and the frame
+is the measured truth. Without that, a 32" television hung sideways divides
+398mm by 1920px instead of 708mm by 1920px and every size on the wall is 1.78x
+wrong, silently and in the plausible direction. Two worked examples are pinned:
+a 32" panel hung portrait (1920px over 708mm) read at 1200mm is 0.9466 px per
+arc-minute, and a 7.5" e-ink panel (480px over 98mm) read at 600mm is 0.8549.
+
+**The household is offered sizes to recognise, not a measurement they will
+take.** Eight presets on the wall's own settings page — three e-ink panels, a
+tablet, a monitor, three televisions — plus "Enter my own", each carrying the
+distance one of those is usually read from. **The distance stays editable after
+a size is picked**, because the size is a fact about the hardware and the
+distance is a fact about the *room*: the same 32" television in a hall and in a
+kitchen is read from different places, and that is the difference between 23
+arc-minutes and 9. Its label is where a household meets the whole design
+argument, so it says which distance is meant — where somebody stands to *read* a
+name, not where they glance at it from the doorway. Script-free by construction
+(`data-cond`, the chores form's mechanism, and no group rendered `hidden` so it
+degrades to today's form), and nothing in it is `required`, because a required
+control a script has hidden is a form the browser refuses and cannot explain.
+A preset is stored turned to how the wall is hung, which is a convenience
+rather than a load-bearing decision — the derivation reconciles anyway — and
+`matchWallSize` compares the pair as a *set*, so a wall hung sideways still
+reads back as the television it is instead of "Enter my own" over numbers
+nobody typed.
+
+**Absence means unchanged, and that is the assertion worth having.** With all
+three columns null a wall's manifest is byte-identical to the document it sent
+before the fields existed — conditional spread, never `panelWidthMm: null` —
+which matters because `manifestEtag` hashes the serialisation, so a null on
+every wall in the world would churn every stored ETag at one image pull for a
+household who never opened the setting. The panel frame is identical to the
+byte and to the ETag too. Two of the three is on that same branch rather than
+half on it: a size with no distance derives nothing, so it is the same state as
+none, refused in `physicalWall` on the server and again in `physicalScreenFrom`
+in the display, which has to draw something sane against a server older or newer
+than itself. An out-of-band value is **refused rather than clamped** — clamping
+a hand-edited 999999 draws a wall confidently sized for a stadium, where
+dropping it draws the wall the household had yesterday, which is the side rule
+nine takes. What *does* move once a wall is measured is the ETag, and that is
+pinned rather than assumed: without it, measuring a wall would reach nothing
+until its calendar happened to change.
+
+**Nothing on any wall looks different yet, and that is the whole of this phase.**
+No stylesheet reads `--px-arcmin`; `main.ts` sets it on the root when a wall has
+been measured and *removes* it when it has not, so the arithmetic is observable
+end to end and the seam the type scale needs exists — but the four constants
+named above are untouched, and moving them is the next decision rather than a
+side effect of this one. The migration is the ordinary discipline
+and is only worth recording for one thing: it was **generated, then read** —
+three `ALTER TABLE ADD COLUMN` and no recreate, which is what rule seven's
+`0009` paragraph asks of anything touching a table with somebody's calendar in
+it — and `migration-upgrade.test.ts` now walks a *screen* through as well as a
+calendar: paired before `orientation` and `rotation` existed at all (0004), hung
+sideways once they did, and asserted to come out the far side with all three new
+columns null. Not 0. A default of zero here is a wall zero millimetres wide read
+from zero millimetres away, on every screen in the world at one image pull.
 
 ---
 

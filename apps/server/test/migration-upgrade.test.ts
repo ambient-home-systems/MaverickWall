@@ -186,6 +186,75 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('leaves a screen that is already hung with no size and no reading distance (0037)', () => {
+    /*
+     * The two facts that size type arrive on a table full of screens.
+     *
+     * `screens` is where the *hardware* facts live — the rotation and the
+     * pinned orientation are already there — so the panel's size and the
+     * distance it is read from join them, and they join a row somebody paired
+     * years ago. Three additive columns with no default, which has to reach an
+     * existing row as **null on all three**: null is what every reader takes as
+     * "this screen has not been measured", and it is the whole of the promise
+     * that a household who never opens the setting draws exactly what they drew
+     * last night. A default of 0 here would be a screen zero millimetres wide,
+     * read from zero millimetres away, on every wall in the world at one image
+     * pull — the `kind = 'kind'` shape again, one table along.
+     *
+     * The screen goes in before `orientation` and `rotation` exist at all
+     * (0004), and is turned on its end once they do, because that is the row
+     * this migration actually meets: a wall paired early, hung sideways later,
+     * and never touched since.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    let hung = false;
+    for (const entry of entries) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0000')) {
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES ('scr-1', 'Kitchen', 'hash-1', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+      }
+      if (entry.tag.startsWith('0004')) {
+        db.prepare(
+          `UPDATE screens SET rotation = 90, orientation = 'portrait' WHERE id = 'scr-1'`,
+        ).run();
+        hung = true;
+      }
+    }
+    // If the tags ever move, this keeps the test from proving nothing by
+    // setting a rotation on a table that already had every later column.
+    expect(hung).toBe(true);
+
+    const screen = db
+      .prepare(
+        `SELECT name, orientation, rotation, kind,
+                panel_width_mm AS widthMm, panel_height_mm AS heightMm,
+                read_distance_mm AS distanceMm
+           FROM screens WHERE id = 'scr-1'`,
+      )
+      .get() as Record<string, unknown>;
+
+    expect(screen).toEqual({
+      name: 'Kitchen',
+      // Still hung the way the household hung it.
+      orientation: 'portrait',
+      rotation: 90,
+      // 0029's default, on a row inserted long before that column existed.
+      kind: 'browser',
+      // The point. Not 0, not a preset somebody guessed at — unmeasured.
+      widthMm: null,
+      heightMm: null,
+      distanceMm: null,
+    });
+
+    db.close();
+  });
+
   it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
     // A wall arranged before the two-canvas split has widgets with no
     // orientation column. The 0024 migration adds it with a `portrait` default,

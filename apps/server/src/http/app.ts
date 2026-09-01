@@ -731,6 +731,10 @@ export function createApp(deps: AppDeps): Hono {
     readonly layoutLandscapeAspect?: number | null;
     readonly layoutBackground?: string | null;
     readonly layoutLandscapeBackground?: string | null;
+    /** The physical facts, when this is a real paired screen that has them. */
+    readonly panelWidthMm?: number | null;
+    readonly panelHeightMm?: number | null;
+    readonly readDistanceMm?: number | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -834,6 +838,11 @@ export function createApp(deps: AppDeps): Hono {
         rotation: screenLike.rotation,
         allowDismiss: screenLike.allowDismiss,
         allowChores: screenLike.allowChores,
+        // Handed over as they are stored; `buildManifest` is what decides
+        // whether the three of them are an answer.
+        panelWidthMm: screenLike.panelWidthMm ?? null,
+        panelHeightMm: screenLike.panelHeightMm ?? null,
+        readDistanceMm: screenLike.readDistanceMm ?? null,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -874,6 +883,9 @@ export function createApp(deps: AppDeps): Hono {
       layoutLandscapeAspect: screen.layoutLandscapeAspect,
       layoutBackground: screen.layoutBackground,
       layoutLandscapeBackground: screen.layoutLandscapeBackground,
+      panelWidthMm: screen.panelWidthMm,
+      panelHeightMm: screen.panelHeightMm,
+      readDistanceMm: screen.readDistanceMm,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.
