@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.55.0
 
 **Maverick Wall is smaller, and a security scanner has nothing to say about
 it.** If you run Trivy, Dependabot or Docker Scout over what you self-host —
