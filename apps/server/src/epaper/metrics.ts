@@ -1,0 +1,368 @@
+/**
+ * The eInk layout, as arithmetic on the panel rather than as constants (RFC 006).
+ *
+ * Everything the frame is drawn with used to be an absolute pixel tuned by
+ * looking at one 800×480 Seeed 7.5": `MARGIN = 16`, `HEADER_H = 54`,
+ * `rowH = 34`, `headH = 26`, `PILL_MIN_CELL = 34`. Those are good numbers — they
+ * came from real output, which is more than most numbers in a renderer can say
+ * — but they are good numbers *for one panel*, and the supported range runs
+ * 640×384 to 1872×1404 in either orientation. Measured with thirty days of
+ * events on it, the constant version stopped drawing halfway down a 13.3" panel
+ * and left 714px (51%) of it white.
+ *
+ * So this module is where those numbers come back as expressions. It is pure —
+ * geometry in, integers out, no framebuffer and no model — which is the same
+ * seam `widget-options.ts`, `ink.ts` and `ladder.ts` exist at: a layout decision
+ * taken inside a draw call is a decision nothing can test.
+ *
+ * **Every metric is an integer.** This is a 1-bit raster: a fractional row
+ * boundary is not a slightly-off boundary, it is a half-lit scan line, and on
+ * e-paper a half-lit line is a grey smear that does not go away until the next
+ * full refresh. Values round to *nearest* rather than flooring, because these
+ * are stacked rhythms — a body is a header plus a gap plus a rule plus rows —
+ * and a systematic downward bias compounds down the stack. The one thing that
+ * floors is a **count**: a row that does not fit must not be drawn.
+ *
+ * **The type ladder is anchored, not invented.** `800×480 → scale 2` is the
+ * shipped body size and is treated as the fixed point; every other panel is
+ * that scale times `(shortSide / 480) ** 0.6`. The exponent is the whole
+ * argument: at 1.0 a bigger panel shows exactly what a smaller one shows, only
+ * larger, which is what a household with a 13.3" panel did not pay for; at 0.0
+ * it shows more at a size that stops being readable across a kitchen. 0.6 buys
+ * both, and the measured ladder is what to judge it by — 8, 11, 15 and 17
+ * agenda rows across the four landscape sizes, at 16, 16, 24 and 32px of type.
+ *
+ * It is derived from the **short side**, never the height, because a panel
+ * hung sideways is the same piece of hardware: `min(w, h)` is the one number a
+ * quarter turn cannot change, and deriving from height would make the same
+ * 13.3" panel draw 32px type landscape and 48px portrait.
+ */
+
+import { GLYPH_SIZE } from './font.js';
+
+/** The panel's visual size in pixels — after rotation, as a viewer sees it. */
+export interface PanelGeometry {
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * The bitmap font's line box: its 8px glyph plus 3px of leading, per scale rung.
+ *
+ * Read out of the shipped renderer rather than chosen — `drawAgendaBox` puts
+ * its rule at `y + 22`, `drawMonthBox`'s weekday band is 22 tall, and
+ * `drawWeekBox` steps its column rows by 11. Those are 11×2 and 11×1, which
+ * means the file already had a line box; it just had it written down three
+ * times as three literals.
+ */
+const LEADING = 3;
+
+/** The panel the shipped constants were tuned on, and the scale they used. */
+const ANCHOR_SHORT_SIDE = 480;
+const ANCHOR_BODY_SCALE = 2;
+
+/**
+ * How type grows with the panel. See the header — 1.0 is "the same wall,
+ * bigger", 0.0 is "the same type, more of it", and this is deliberately nearer
+ * the second.
+ */
+const SIZE_EXPONENT = 0.6;
+
+/**
+ * A ceiling on the working set, not on what fits.
+ *
+ * `agendaRowsInBox` answers from the box, so a very large panel would otherwise
+ * ask for a hundred rows of a day that has four things on it — and the model
+ * would have to carry them. Twenty-four is a day nobody has; the box is what
+ * actually decides on every panel in the range.
+ */
+export const MAX_AGENDA_ROWS = 24;
+
+/** The same ceiling for one month cell's names. Twelve is the wall's own cut. */
+export const MAX_CELL_TITLES = 12;
+
+/**
+ * The tallest a month cell may be relative to its width.
+ *
+ * The built-in landscape layout never reaches it — the widest the range gets is
+ * 2.03 at 1872×1404 — so this is a rail for a *widget* box a household dragged
+ * three times taller than it is wide, where filling the height would draw seven
+ * columns of letterbox slots with a day number rattling around in each. Past
+ * the rail the grid keeps its shape and leaves the rest of the box, because a
+ * calendar that has stopped looking like a calendar is worth less than a gap.
+ */
+const MAX_CELL_ASPECT = 2.5;
+
+export interface EpaperMetrics {
+  /** The panel this was derived for, so a caller need not carry both. */
+  readonly panel: PanelGeometry;
+
+  /** Integer font scales. `body` is the ladder; the rest are rungs off it. */
+  readonly bodyScale: number;
+  readonly headerScale: number;
+  readonly yearScale: number;
+  /** Weekday letters over the month grid, and a week column's day head. */
+  readonly labelScale: number;
+  /** Event names inside a month cell, date rules, and every "+N". */
+  readonly smallScale: number;
+
+  /** `GLYPH_SIZE × bodyScale` — one line of body ink, the unit for the gaps. */
+  readonly bodyGlyph: number;
+  /** The body line box: glyph plus leading. 22 at 800×480. */
+  readonly bodyLine: number;
+
+  /** The frame's outer inset. 16 at 800×480. */
+  readonly margin: number;
+  /** The inverted date band across the top. 54 at 800×480. */
+  readonly headerHeight: number;
+  /** Between the header band and the body. 14 at 800×480. */
+  readonly headerGap: number;
+  /** Between stacked blocks in portrait. 12 at 800×480. */
+  readonly blockGap: number;
+
+  /** One agenda row, bullet to bullet. 34 at 800×480. */
+  readonly agendaRowH: number;
+  /** A labelled rule ("TODAY") and the drop to the first row. 22 and 36. */
+  readonly agendaRuleY: number;
+  readonly agendaHeadH: number;
+  /** The all-day/timed bullet: its side, its drop, and the gap after it. */
+  readonly bullet: number;
+  readonly bulletDrop: number;
+  readonly bulletGap: number;
+  /** A quarter line, for the small insets inside a head or a column. 4 at 800×480. */
+  readonly pad: number;
+  /** One row of the upcoming list, which is tighter — its days carry rules. */
+  readonly upcomingRowH: number;
+  /** A date rule in that list: where its hairline sits, and the drop after it. */
+  readonly dateRuleY: number;
+  readonly dateRuleH: number;
+
+  /** The weekday label band over the month grid. 22 at 800×480. */
+  readonly monthHeadH: number;
+  /** A week column's day head, which carries a number as well as a letter. 26. */
+  readonly weekHeadH: number;
+  /** The smallest cell the grid will draw at all. 12 at 800×480. */
+  readonly minCell: number;
+  /** The smallest cell that can hold a named event under its day number. 34. */
+  readonly pillMinCell: number;
+  /** …and the narrowest. A cell with room for three characters of a name. */
+  readonly pillMinWidth: number;
+  /** Inside one cell: the number's corner inset, the names' inset, their step. */
+  readonly cellNumberInset: number;
+  readonly cellInset: number;
+  readonly cellTitleLineH: number;
+  /** A week column's own title step, which is a line box rather than tighter. */
+  readonly weekTitleLineH: number;
+}
+
+const clamp = (value: number, low: number, high: number): number => Math.min(high, Math.max(low, value));
+
+/** A line box at a scale: the glyph plus its leading. */
+export const lineBox = (scale: number): number => (GLYPH_SIZE + LEADING) * scale;
+
+/**
+ * Every layout number for one panel.
+ *
+ * Read the 800×480 column of the comments as the specification: each of these
+ * must come back to the constant it replaced on the panel that was tuned, or
+ * the derivation is wrong and the constant was right.
+ */
+export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
+  const width = Math.max(1, Math.round(geometry.width));
+  const height = Math.max(1, Math.round(geometry.height));
+  const short = Math.min(width, height);
+
+  // The ladder. 384→2, 480→2, 984→3, 1404→4, and never below the shipped 2,
+  // so the 4.2" and 2.9" presets keep the type they have today.
+  const bodyScale = clamp(
+    Math.round(ANCHOR_BODY_SCALE * (short / ANCHOR_SHORT_SIDE) ** SIZE_EXPONENT),
+    2,
+    8,
+  );
+  const bodyGlyph = GLYPH_SIZE * bodyScale;
+  const bodyLine = lineBox(bodyScale);
+
+  // Rungs off it. The header is half a rung up (3 at 800×480, which is what
+  // `drawHeader` starts its own step-down from); the year and the weekday
+  // letters sit on the body rung; names inside a cell sit half a rung down.
+  const headerScaleWanted = clamp(Math.round(bodyScale * 1.5), 2, 12);
+  const yearScale = bodyScale;
+  const labelScale = bodyScale;
+  const smallScale = Math.max(1, Math.round(bodyScale / 2));
+
+  // A step off the panel rather than a constant 16. Even pixels, because the
+  // margin is an inset on both sides and an odd one puts the body half a pixel
+  // off centre — which at 1 bit is a column of the frame, not a rounding error.
+  const margin = clamp(2 * Math.round(short / 60), 2, Math.floor(short / 8));
+
+  /*
+   * The header band.
+   *
+   * Aimed at 6% of the panel's height and then held between 2.25 and 3.2 times
+   * the date's own line of ink. On every panel in the supported range the lower
+   * bound is what binds — 6% of 480 is 29px and the date is 24px of glyph, so
+   * the target alone would draw a band the text does not fit in. It earns its
+   * place on a canvas that is tall for its width (a portrait 1404×1872 panel
+   * takes 112 from the target rather than 108 from the bound), and the upper
+   * bound is what stops a very tall narrow canvas spending a third of itself on
+   * the date.
+   *
+   * 2.25 rather than the 2.2 this was specified at, because 2.25 × 24 is
+   * exactly the 54 that shipped. A derivation that misses its anchor by a pixel
+   * moves every row under it.
+   */
+  const headerGlyph = GLYPH_SIZE * headerScaleWanted;
+  const headerHeight = Math.min(
+    clamp(Math.round(0.06 * height), Math.round(2.25 * headerGlyph), Math.round(3.2 * headerGlyph)),
+    // Rule nine: on a 296×128 panel the band would otherwise be 42% of the
+    // glass. A quarter is the most a date may take before the calendar under it
+    // stops being the point.
+    Math.round(height * 0.25),
+  );
+  // …and if the rail above cut the band, the date comes down with it rather
+  // than being drawn through the edge of its own band.
+  const headerScale = Math.max(1, Math.min(headerScaleWanted, Math.floor((headerHeight - 2) / GLYPH_SIZE)));
+
+  return {
+    panel: { width, height },
+    bodyScale,
+    headerScale,
+    yearScale,
+    labelScale,
+    smallScale,
+    bodyGlyph,
+    bodyLine,
+    margin,
+    headerHeight,
+    // Seven eighths and three quarters of a body line. 14 and 12 at 800×480.
+    headerGap: Math.round(bodyGlyph * 0.875),
+    blockGap: Math.round(bodyGlyph * 0.75),
+
+    // 1.55 line boxes to a row: 34 at 800×480, which is the shipped value to
+    // the pixel. The upcoming list runs tighter at 1.36 because its days are
+    // separated by their own dated rules and do not need the air.
+    agendaRowH: Math.round(1.55 * bodyLine),
+    agendaRuleY: bodyLine,
+    agendaHeadH: bodyLine + Math.round(bodyGlyph * 0.875),
+    bullet: Math.round(bodyGlyph * 0.75),
+    bulletDrop: Math.round(bodyGlyph * 0.125),
+    bulletGap: Math.round(bodyGlyph * 0.5),
+    pad: Math.round(bodyGlyph * 0.25),
+    upcomingRowH: Math.round(1.36 * bodyLine),
+    dateRuleY: GLYPH_SIZE * smallScale + 2 * smallScale,
+    dateRuleH: 2 * GLYPH_SIZE * smallScale,
+
+    // The weekday band is exactly the label's own line box — 22 at 800×480,
+    // which is the shipped `labelH`. A week column's head carries a number
+    // beside the letter, so it takes a further quarter line: 26, also shipped.
+    monthHeadH: lineBox(labelScale),
+    weekHeadH: lineBox(labelScale) + Math.round(bodyGlyph / 4),
+    minCell: Math.round(1.5 * GLYPH_SIZE * smallScale),
+    /*
+     * The smallest cell that can hold a named event, written as the anatomy the
+     * shipped comment describes rather than as the 34 it added up to: the
+     * number's inset, the number itself (a rung above the names), the gap under
+     * it, one line of name, and a foot. Every term scales with the name, so a
+     * 1872×1404 panel asks for 68 and gets cells of 235.
+     */
+    pillMinCell:
+      4 * smallScale +
+      GLYPH_SIZE * (2 * smallScale) +
+      2 * smallScale +
+      GLYPH_SIZE * smallScale +
+      4 * smallScale,
+    /*
+     * Width was never checked, because the shipped cell was square by
+     * construction — `min(w / 7, h / weeks)` — so a cell tall enough was wide
+     * enough. A cell that fills its box is not, and a name cut to two
+     * characters is the "unreadable smudge" the pill threshold exists to
+     * refuse. Three characters is the bar; 800×480's 50px cell clears it
+     * exactly as it did before, and so does 640×384's 40px one.
+     */
+    pillMinWidth: 2 * (3 * smallScale) + (3 * (GLYPH_SIZE + 1) - 1) * smallScale,
+    cellNumberInset: 4 * smallScale,
+    cellInset: 3 * smallScale,
+    // A month cell packs tighter than a week column: its names sit under an
+    // oversized day number in a small box, so they get a quarter-glyph of
+    // leading rather than a full line box. 10 and 11 at 800×480 — both shipped.
+    cellTitleLineH: GLYPH_SIZE * smallScale + Math.round((GLYPH_SIZE * smallScale) / 4),
+    weekTitleLineH: lineBox(smallScale),
+  };
+}
+
+/**
+ * How many agenda rows fit between `y` and the foot of the box.
+ *
+ * This is `EPAPER_TODAY_LIMIT`'s replacement and the whole of task 2: the
+ * shipped constant said six, with a comment calling it "the most agenda rows a
+ * 7.5" panel can hold and still be read at the far side of a kitchen" — an
+ * honest measurement of one panel, applied to a 3.7× range. The row height has
+ * not changed at 800×480, so eleven rows there are exactly as readable as the
+ * six were; there are simply five more of them where there was white.
+ *
+ * A row is drawn when its *ink* fits, not its whole row height — that is the
+ * `y + glyph > bottom` guard the renderer has always had, and the arithmetic
+ * has to agree with it or the count and the loop disagree about the last row.
+ */
+export function agendaRowsInBox(available: number, m: EpaperMetrics): number {
+  if (available < m.bodyGlyph) return 0;
+  return Math.min(MAX_AGENDA_ROWS, Math.floor((available - m.bodyGlyph) / m.agendaRowH) + 1);
+}
+
+/** The same question for the names inside one month cell (`EPAPER_CELL_TITLES`). */
+export function cellTitlesInBox(available: number, m: EpaperMetrics): number {
+  const glyph = GLYPH_SIZE * m.smallScale;
+  if (available < glyph) return 0;
+  return Math.min(MAX_CELL_TITLES, Math.floor((available - glyph) / m.cellTitleLineH) + 1);
+}
+
+/** …and for a week column, which steps by a line box rather than by a cell's. */
+export function weekTitlesInBox(available: number, m: EpaperMetrics): number {
+  const glyph = GLYPH_SIZE * m.smallScale;
+  if (available < glyph) return 0;
+  return Math.min(MAX_CELL_TITLES, Math.floor((available - glyph) / m.weekTitleLineH) + 1);
+}
+
+/** A month grid's cell size and where its first row starts, inside one box. */
+export interface GridMetrics {
+  readonly cellW: number;
+  readonly cellH: number;
+  /** Pixels between the weekday labels and the first row — see below. */
+  readonly topOffset: number;
+}
+
+/**
+ * How a month grid fills the box it was given.
+ *
+ * The shipped grid used one square cell, `min(box.w / 7, available / weeks)`,
+ * which means it was width-bound on every landscape panel and simply stopped:
+ * at 1872×1404 the right-hand column is 815px wide and 1178 tall, so 116px
+ * cells drew 580px of grid and left 598px of nothing under it. Width and height
+ * are separate now, and the grid fills.
+ *
+ * **The cells stretch, and that is the honest cost of a two-column layout on a
+ * 4:3 panel.** Making them square instead needs the month column 1694px wide on
+ * a 1872px panel, which leaves the agenda seven characters for a title. Nothing
+ * else in the column can absorb the height — so the cell takes it, and gains
+ * room for names rather than losing anything.
+ *
+ * `topOffset` is the remainder. `floor` is the only correct rounding for a cell
+ * — a cell rounded up puts the last row's border past the foot of the box,
+ * where it is clipped rather than drawn — so five cells of 74 fill 370 of 374
+ * and the grid would stop 4px short of the bottom edge it was asked to reach.
+ * Those 4px go *above* the first row, where they land between the weekday
+ * letters and the grid and nobody can see them, instead of below the last,
+ * where they are the bug this module exists for.
+ */
+export function gridMetrics(boxW: number, availableH: number, weeks: number, m: EpaperMetrics): GridMetrics {
+  const rows = Math.max(1, weeks);
+  const cellW = Math.max(m.minCell, Math.floor(boxW / 7));
+  const fill = Math.max(m.minCell, Math.floor(availableH / rows));
+  const cellH = Math.min(fill, Math.round(cellW * MAX_CELL_ASPECT));
+  // Only the rounding remainder is handed back. When the aspect rail is what
+  // cut the cell the leftover is a deliberate gap, and pushing the grid down
+  // into it would move that gap under the weekday letters, which reads as a
+  // grid that has come unstuck rather than as one that fits.
+  const topOffset = cellH === fill ? Math.max(0, availableH - rows * cellH) : 0;
+  return { cellW, cellH, topOffset };
+}

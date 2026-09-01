@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
-import { buildEpaperModel, EPAPER_TODAY_LIMIT } from '../src/epaper/viewmodel.js';
+import {
+  buildEpaperModel,
+  EPAPER_AGENDA_LIMIT,
+  EPAPER_CELL_TITLES_LIMIT,
+} from '../src/epaper/viewmodel.js';
 
 /**
  * The eInk viewmodel selects the right things from a real-shaped manifest.
@@ -60,21 +64,44 @@ describe('agenda', () => {
       { time: '09:00', title: 'Dentist', allDay: false },
       { time: '14:30', title: 'Football', allDay: false },
     ]);
-    expect(model.agendaOverflow).toBe(0);
+    expect(model.agendaTotal).toBe(3);
   });
 
-  it('caps at the panel ceiling and reports the overflow', () => {
+  /**
+   * The panel ceiling is gone, and the *total* is what travels instead.
+   *
+   * This used to assert `EPAPER_TODAY_LIMIT` — six rows, measured on a 7.5"
+   * panel and then applied to every panel from 640×384 to 1872×1404, which drew
+   * six rows on all of them and left half of the largest white. The cut happens
+   * where the box is known now, so this file cannot know how many rows were
+   * left out; it carries the day's own count and the renderer subtracts what it
+   * drew. The household's density is still applied here, because "show me at
+   * most eight things" is a request about the day rather than about the panel.
+   */
+  it('carries the household density and the day it was cut from', () => {
     const many = Array.from({ length: 9 }, (_, i) => event({ title: `E${i}`, startsAt: at(8 + i, 0) }));
     const model = buildEpaperModel(fakeManifest([day('2026-08-13', many)]));
-    expect(model.agenda).toHaveLength(EPAPER_TODAY_LIMIT);
-    expect(model.agendaOverflow).toBe(9 - EPAPER_TODAY_LIMIT);
+    expect(model.agenda).toHaveLength(8); // `todayEvents`, the fixture's default
+    expect(model.agendaTotal).toBe(9);
   });
 
   it('honours a lower household limit', () => {
     const many = Array.from({ length: 5 }, (_, i) => event({ title: `E${i}`, startsAt: at(8 + i, 0) }));
     const model = buildEpaperModel(fakeManifest([day('2026-08-13', many)], { todayEvents: 2 }));
     expect(model.agenda).toHaveLength(2);
-    expect(model.agendaOverflow).toBe(3);
+    expect(model.agendaTotal).toBe(5);
+  });
+
+  /**
+   * …and the working set is still bounded, which is the half a box-derived cut
+   * would otherwise lose: a household asking for a hundred on a 13.3" panel
+   * must not have a hundred rows built for a box that holds seventeen.
+   */
+  it('stops at the working set when the household asks for more than a day has', () => {
+    const many = Array.from({ length: 40 }, (_, i) => event({ title: `E${i}`, startsAt: at(1, i) }));
+    const model = buildEpaperModel(fakeManifest([day('2026-08-13', many)], { todayEvents: 100 }));
+    expect(model.agenda).toHaveLength(EPAPER_AGENDA_LIMIT);
+    expect(model.agendaTotal).toBe(40);
   });
 });
 
@@ -101,6 +128,25 @@ describe('the month grid', () => {
     );
     expect(monday.weeks[0]![0]!.date).toBe('2026-08-10');
     expect(monday.weekdayLabels).toEqual(['M', 'T', 'W', 'T', 'F', 'S', 'S']);
+  });
+
+  /**
+   * A cell carries names for the largest cell any panel has, not for the
+   * smallest.
+   *
+   * `EPAPER_CELL_TITLES` was four — what a 34px cell on a 7.5" panel could
+   * show. A 235px cell on a 13.3" one has room for eight and was drawing four
+   * and a "+9", because the model had thrown the other names away two layers
+   * before anything knew how big the cell was. The renderer counts what fits;
+   * this only bounds the working set.
+   */
+  it('carries a generous set of names per cell, for the renderer to cut', () => {
+    const many = Array.from({ length: 20 }, (_, i) => event({ title: `E${i}`, startsAt: at(1, i) }));
+    const busy = buildEpaperModel(fakeManifest([day('2026-08-13', many)]));
+    const today = busy.weeks.flat().find((cell) => cell.isToday)!;
+    expect(today.titles).toHaveLength(EPAPER_CELL_TITLES_LIMIT);
+    // The count is the day's own, so a cell that draws eight still says "+12".
+    expect(today.eventCount).toBe(20);
   });
 
   it('marks exactly today and shades days by event count', () => {

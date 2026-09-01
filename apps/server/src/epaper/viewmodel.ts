@@ -20,11 +20,23 @@ import { addDays, dayOfWeek, type CivilDate } from '@maverick-wall/core';
 import type { Manifest, ManifestDay, ManifestEvent, ManifestPersonShift } from '../api/manifest.js';
 
 /**
- * The most agenda rows a 7.5" panel can hold and still be read at the far side
- * of a kitchen. Tighter than the browser wall's eight — this is the ceiling,
- * and a household that asked for fewer gets fewer.
+ * The most of today the model carries, so the *renderer* can decide how much
+ * of it to draw.
+ *
+ * This was `EPAPER_TODAY_LIMIT = 6`, and its comment called it "the most agenda
+ * rows a 7.5-inch panel can hold and still be read at the far side of a kitchen".
+ * That was an honest measurement — of one panel, applied to every panel from
+ * 640×384 to 1872×1404, which is a 3.7× range that drew six rows at every size
+ * and left the bottom half of the biggest one white.
+ *
+ * So it is a working set now rather than an answer, exactly as
+ * `EPAPER_UPCOMING_LIMIT` below already was: generous, bounded so a very large
+ * panel cannot ask the model for a hundred rows of a day that has four things
+ * on it, and cut to the box by `agendaRowsInBox` where the box is known. The
+ * household's own density still binds first and is applied here — "show me at
+ * most four things" is a request about the day, not about the panel.
  */
-export const EPAPER_TODAY_LIMIT = 6;
+export const EPAPER_AGENDA_LIMIT = 24;
 
 /** Rolling weeks in the month grid when the manifest does not say otherwise. */
 export const EPAPER_GRID_WEEKS = 5;
@@ -41,9 +53,9 @@ export interface EpaperAgendaItem {
  * days after it, unfiltered and only loosely capped.
  *
  * `agenda` above is today's, already cut to the household's density for the
- * built-in layout. A widget cannot select from that: filtering six rows by
- * calendar leaves fewer than six, and a household asking for twelve events
- * would never see more than six. So the widget's source is its own list,
+ * built-in layout. A widget cannot select from that: filtering that list by
+ * calendar leaves fewer rows than it held, and a household asking for twelve
+ * events would never see more. So the widget's source is its own list,
  * carrying the source id it filters on and the date it groups under, and the
  * *renderer* does the cutting.
  */
@@ -65,8 +77,16 @@ export interface EpaperUpcomingItem {
  */
 export const EPAPER_UPCOMING_LIMIT = 60;
 
-/** The most event labels a grid cell carries, for the labelled-pill month. */
-export const EPAPER_CELL_TITLES = 4;
+/**
+ * The most event labels a grid cell carries, for the labelled-pill month.
+ *
+ * Four was what a 34px cell on a 7.5" panel could show; a 235px cell on a 13.3"
+ * one has room for eight and was drawing four and a "+9". The renderer counts
+ * what fits (`cellTitlesInBox`), so this is only the working set — twelve, the
+ * same cut the browser wall's slim list makes, which is why a day with twenty
+ * events says "+17" rather than "+9" on both.
+ */
+export const EPAPER_CELL_TITLES_LIMIT = 12;
 
 export interface EpaperGridCell {
   /** Day-of-month number, 1–31. */
@@ -115,8 +135,15 @@ export interface EpaperModel {
   /** Today's shift(s), one per person who has one. Empty when nobody does. */
   readonly todayShifts: readonly EpaperShiftLine[];
   readonly agenda: readonly EpaperAgendaItem[];
-  /** How many of today's events did not fit, so the renderer can say "+3 more". */
-  readonly agendaOverflow: number;
+  /**
+   * How many events today has in total, so the renderer can say "+3 more".
+   *
+   * The *total*, not the overflow, because the cut moved: the renderer decides
+   * how many rows the box holds, so only it knows how many were left out. A
+   * pre-computed overflow would have been an answer to a question this file can
+   * no longer ask.
+   */
+  readonly agendaTotal: number;
   /** Today and the days after it, for a calendar widget's upcoming list. */
   readonly upcoming: readonly EpaperUpcomingItem[];
   /** Weekday labels for the grid header, in the household's week order. */
@@ -187,16 +214,16 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
   const byDate = new Map<CivilDate, ManifestDay>();
   for (const day of manifest.days) byDate.set(day.date, day);
 
-  // Agenda: today's events, all-day first, capped for the panel. The cap is the
-  // tighter of the household's number and the panel ceiling.
-  const limit = Math.min(clampTodayEvents(manifest.display.todayEvents), EPAPER_TODAY_LIMIT);
+  // Agenda: today's events, all-day first. The cap is the tighter of the
+  // household's number and the working set — the *panel* is not consulted here
+  // any more, because this file cannot see the box the rows are drawn in.
+  const limit = Math.min(clampTodayEvents(manifest.display.todayEvents), EPAPER_AGENDA_LIMIT);
   const todaysEvents = [...(byDate.get(today)?.events ?? [])].sort(agendaOrder);
   const agenda: EpaperAgendaItem[] = todaysEvents.slice(0, limit).map((event) => ({
     time: event.allDay ? '' : clockLabel(event.startsAt, timezone, clock24),
     title: event.title,
     allDay: event.allDay,
   }));
-  const agendaOverflow = Math.max(0, todaysEvents.length - agenda.length);
 
   // The widget's source: today and the days after it, in order, unfiltered.
   // Deliberately not the capped `agenda` above — see `EpaperUpcomingItem`.
@@ -262,7 +289,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
         eventCount: gridEvents.length,
         titles: [...gridEvents]
           .sort(agendaOrder)
-          .slice(0, EPAPER_CELL_TITLES)
+          .slice(0, EPAPER_CELL_TITLES_LIMIT)
           .map((event) => event.title),
       });
     }
@@ -275,7 +302,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
     header: headerParts(today),
     todayShifts,
     agenda,
-    agendaOverflow,
+    agendaTotal: todaysEvents.length,
     upcoming,
     weekdayLabels: [...(weekStart === 'monday' ? WEEKDAY_LABELS_MONDAY : WEEKDAY_LABELS_SUNDAY)],
     weeks,
@@ -304,7 +331,7 @@ function localDateFromManifest(manifest: Manifest, nowMs: number, timezone: stri
 }
 
 function clampTodayEvents(value: number): number {
-  if (!Number.isFinite(value) || value < 1) return EPAPER_TODAY_LIMIT;
+  if (!Number.isFinite(value) || value < 1) return EPAPER_AGENDA_LIMIT;
   return Math.floor(value);
 }
 

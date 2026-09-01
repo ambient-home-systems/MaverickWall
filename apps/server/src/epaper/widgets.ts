@@ -21,6 +21,7 @@ import type { Manifest } from '../api/manifest.js';
 
 import { drawText, GLYPH_SIZE, measureText } from './font.js';
 import { Framebuffer } from './framebuffer.js';
+import { panelMetrics, type EpaperMetrics, type PanelGeometry } from './metrics.js';
 import {
   asciiTitle,
   drawMonthBox,
@@ -28,7 +29,6 @@ import {
   drawWeekBox,
   fit,
   type Box,
-  type PanelGeometry,
 } from './render.js';
 import {
   HOUSE_ROLES,
@@ -670,7 +670,13 @@ function drawPanel(fb: Framebuffer, box: Box, panel: unknown, empty: string, row
  * Every option the designer offers is answered here, because an option that
  * does nothing is a worse answer than an option that is not offered.
  */
-function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, config: Config): void {
+function drawCalendarWidget(
+  fb: Framebuffer,
+  box: Box,
+  model: EpaperModel,
+  m: EpaperMetrics,
+  config: Config,
+): void {
   /*
    * The view, resolved by the transcription of the wall's own reading — never
    * by testing `mode` against a string here. `calendar-view.ts` carries why.
@@ -684,7 +690,7 @@ function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, confi
    * drawing exactly what it drew before the split.
    */
   const { view } = calendarView(config);
-  if (view === 'week') return drawWeekBox(fb, model, box);
+  if (view === 'week') return drawWeekBox(fb, model, m, box);
   if (view === 'month') {
     /*
      * `text`, `swiss` and `pills` all draw names here, and that is not a
@@ -704,12 +710,12 @@ function drawCalendarWidget(fb: Framebuffer, box: Box, model: EpaperModel, confi
      * that answers no.
      */
     const cellEvents = str(config, 'cellEvents');
-    return drawMonthBox(fb, model, box, { pills: cellEvents !== 'dots' });
+    return drawMonthBox(fb, model, m, box, { pills: cellEvents !== 'dots' });
   }
 
   const calendars = strings(config, 'calendars');
   const count = num(config, 'count');
-  return drawUpcomingBox(fb, model, box, {
+  return drawUpcomingBox(fb, model, m, box, {
     ...(calendars !== undefined ? { calendars } : {}),
     ...(count !== undefined ? { count } : {}),
   });
@@ -914,12 +920,20 @@ function weekdayOf(date: string): string {
   return Number.isNaN(at.getTime()) ? '' : (WEEKDAYS[at.getUTCDay()] ?? '');
 }
 
-function drawWidget(fb: Framebuffer, type: string, box: Box, model: EpaperModel, manifest: Manifest, config: Config): void {
+function drawWidget(
+  fb: Framebuffer,
+  type: string,
+  box: Box,
+  model: EpaperModel,
+  manifest: Manifest,
+  m: EpaperMetrics,
+  config: Config,
+): void {
   switch (type) {
     case 'clock':
       return drawClock(fb, box, model, config);
     case 'calendar':
-      return drawCalendarWidget(fb, box, model, config);
+      return drawCalendarWidget(fb, box, model, m, config);
     case 'shift':
       return drawShift(fb, box, model, config);
     case 'countdown':
@@ -966,6 +980,11 @@ export function renderFreeformEpaper(
   geometry: PanelGeometry,
 ): Framebuffer {
   const fb = new Framebuffer(geometry.width, geometry.height);
+  // One reading of the panel, handed down. The shared calendar draws size their
+  // type from the panel and their row counts from the box, so a widget dragged
+  // small on a 13.3" panel gets fewer rows of the same readable type rather
+  // than the same rows shrunk to nothing.
+  const m = panelMetrics(geometry);
   const ordered = [...widgets].sort((a, b) => a.z - b.z);
   for (const widget of ordered) {
     const box: Box = {
@@ -988,7 +1007,7 @@ export function renderFreeformEpaper(
      */
     const config = withInk(widget.config);
     const inner = drawFrame(fb, box, config);
-    drawWidget(fb, widget.type, inner, model, manifest, config);
+    drawWidget(fb, widget.type, inner, model, manifest, m, config);
   }
   return fb;
 }

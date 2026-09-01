@@ -37,8 +37,19 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * calendar widget never named the setting draws event titles where it drew
  * marks. No code in this file changed, which is exactly why this bump is easy
  * to miss: the pixels moved because the *meaning of an absent value* did.
+ *
+ * 4: the layout is proportional to the panel (`epaper/metrics.ts`). Every
+ * absolute pixel the frame was drawn with — the 16px margin, the 54px header,
+ * the 34px agenda row, the 26px week head, the 34px pill threshold, the six
+ * agenda rows and the four cell names — was tuned by looking at one 800×480
+ * Seeed panel and applied to a range running 640×384 to 1872×1404. So *every*
+ * paired panel's pixels move here, including the 800×480 ones, whose month grid
+ * now fills the column it used to stop halfway down. This is the bump that
+ * matters most so far: without it a 13.3" panel would keep serving the frame
+ * with 714px of white at the bottom until its calendar happened to change, and
+ * "the update did nothing" is indistinguishable from "the update was wrong".
  */
-export const EPAPER_RENDERER_VERSION = 3;
+export const EPAPER_RENDERER_VERSION = 4;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

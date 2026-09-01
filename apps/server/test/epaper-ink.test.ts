@@ -241,6 +241,16 @@ describe('what a panel cannot honour, and says so', () => {
     }
   });
 
+  /*
+   * The budget is stated because this test needs one: it renders every ignored
+   * key against every widget type, twice each, which is several hundred whole
+   * 800×480 frames. Measured at 4.9s against vitest's default 5s — 98% of its
+   * allowance on an idle machine, so it passed alone and failed whenever the
+   * suite was busy, which reads as a flake and is not one. It is the sixteen
+   * browser files' "teardown given no budget at all" one file along. Fifteen
+   * seconds is three times the measurement, not a number picked to make today's
+   * run green.
+   */
   it('draws none of them, on any widget', () => {
     /*
      * The sentence in the editor is "set on the wall, not drawn here" — so if
@@ -254,7 +264,7 @@ describe('what a panel cannot honour, and says so', () => {
         );
       }
     }
-  });
+  }, 15_000);
 
   it('accounts for every stored option, one way or the other', () => {
     // Derived from the schema rather than from a list here, so a new key has to

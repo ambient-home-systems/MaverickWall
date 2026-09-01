@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
-import { renderEpaper } from '../src/epaper/render.js';
+import {
+  MAX_AGENDA_ROWS,
+  MAX_CELL_TITLES,
+  agendaRowsInBox,
+  cellTitlesInBox,
+  gridMetrics,
+  panelMetrics,
+  type EpaperMetrics,
+} from '../src/epaper/metrics.js';
+import { epaperBlocks, renderEpaper } from '../src/epaper/render.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
 /**
@@ -150,6 +159,54 @@ function agendaRowsDrawn(fb: Framebuffer, left: number, bullet: number): number 
 }
 
 /**
+ * The rows of the raster that are a full-width rule of the month grid.
+ *
+ * A grid cell is a `strokeRect`, so every cell boundary draws right across the
+ * grid — which makes a row that is almost entirely ink between two x bounds a
+ * horizontal rule, and the gaps between those rules the cell height. Today's
+ * cell is filled solid, but only one cell wide, so it never reaches the bar.
+ *
+ * Consecutive hits collapse to one rule, because two neighbouring cells each
+ * stroke their own edge and a boundary is therefore *two* inked rows. Left
+ * uncollapsed the gaps run 1, 186, 1, 186 and the commonest one is 1 — which
+ * reads as a cell a pixel tall and passed the squareness check by tying with
+ * itself on the panel that happened to have an odd number of cells.
+ */
+function fullRuns(
+  fb: Framebuffer,
+  from: number,
+  to: number,
+  span: readonly [number, number],
+  along: 'rows' | 'columns',
+): number[] {
+  const [lo, hi] = span;
+  const width = hi - lo;
+  const hits: number[] = [];
+  let previous = Number.NEGATIVE_INFINITY;
+  for (let i = from; i < to; i++) {
+    let ink = 0;
+    for (let j = lo; j < hi; j++) if (along === 'rows' ? fb.get(j, i) : fb.get(i, j)) ink++;
+    if (ink < width * 0.9) continue;
+    if (i !== previous + 1) hits.push(i);
+    previous = i;
+  }
+  return hits;
+}
+
+/** The commonest gap between consecutive hits — one cell. */
+function step(hits: readonly number[]): number {
+  const gaps = new Map<number, number>();
+  for (let i = 1; i < hits.length; i++) {
+    const gap = hits[i]! - hits[i - 1]!;
+    gaps.set(gap, (gaps.get(gap) ?? 0) + 1);
+  }
+  let best = 0;
+  let seen = 0;
+  for (const [gap, count] of gaps) if (count > seen) [best, seen] = [gap, count];
+  return best;
+}
+
+/**
  * The six sizes: the range's ends and its two commonest panels, each in the
  * orientation a household hangs it in. 640×384 and 1872×1404 are the smallest
  * and largest panels RFC 006 supports; a quarter turn makes the same hardware
@@ -186,17 +243,176 @@ describe('the panel is filled, at every size and whatever is on the calendar', (
 });
 
 describe('a bigger panel shows more, not the same thing bigger', () => {
+  /*
+   * The whole bug in one number. The shipped renderer drew six agenda rows at
+   * 640×384 and six at 1872×1404 — a 3.7× range answered with one constant —
+   * so a household who bought a 13.3" panel got the 7.5" panel's calendar
+   * enlarged and 714px of white under it.
+   *
+   * Counted from ink rather than from the arithmetic that chose it, because
+   * "the function returns more" and "the panel shows more" are two claims and
+   * only the second is the product.
+   */
+  const landscape = PANELS.filter((p) => p.width >= p.height);
+
   it('draws strictly more agenda rows at each step up the range', () => {
-    // 12 is the bullet at 800×480; the count window is wide enough to catch the
-    // bigger panels' bigger bullets, and far too narrow for a grid border.
-    const rows = PANELS.filter((p) => p.width >= p.height).map((p) => {
-      const fb = frameAt(busy, p.width, p.height);
-      const margin = Math.round(p.height / 30);
-      return agendaRowsDrawn(fb, margin, Math.round(p.height / 40));
+    const rows = landscape.map((p) => {
+      const m = panelMetrics(p);
+      return agendaRowsDrawn(frameAt(busy, p.width, p.height), epaperBlocks(5, m).agenda.x, m.bullet);
     });
-    expect(rows[0]).toBeGreaterThan(0);
+    expect(rows).toEqual([...rows].sort((a, b) => a - b));
     for (let i = 1; i < rows.length; i++) expect(rows[i]).toBeGreaterThan(rows[i - 1]!);
+    // …and the smallest panel still draws a usable agenda rather than one row.
+    expect(rows[0]).toBeGreaterThanOrEqual(6);
   });
+
+  it('agrees with the arithmetic that chose the rows', () => {
+    for (const panel of landscape) {
+      const m = panelMetrics(panel);
+      // Asked of `epaperBlocks` rather than recomputed here: a test that works
+      // out the split for itself is a second opinion about the layout, and the
+      // renderer would be free to disagree with it.
+      const box = epaperBlocks(5, m).agenda;
+      const fits = agendaRowsInBox(box.y + box.h - (box.y + m.agendaHeadH), m);
+      expect(agendaRowsDrawn(frameAt(busy, panel.width, panel.height), box.x, m.bullet)).toBe(fits);
+    }
+  });
+});
+
+describe('the counts are bounded, so a huge panel cannot ask for a hundred rows', () => {
+  it('stops the agenda at the working set however tall the box is', () => {
+    const m = panelMetrics({ width: 1872, height: 1404 });
+    expect(agendaRowsInBox(100_000, m)).toBe(MAX_AGENDA_ROWS);
+    expect(cellTitlesInBox(100_000, m)).toBe(MAX_CELL_TITLES);
+  });
+
+  it('draws nothing rather than a clipped row in a box with no room', () => {
+    const m = panelMetrics({ width: 800, height: 480 });
+    expect(agendaRowsInBox(m.bodyGlyph - 1, m)).toBe(0);
+    expect(agendaRowsInBox(m.bodyGlyph, m)).toBe(1);
+  });
+
+  /*
+   * The cell aspect rail. Nothing in the built-in layout reaches it — 2.03 at
+   * 1872×1404 is the widest the range gets — so it is only ever a widget box a
+   * household dragged very tall, and an assertion no edit can turn red is this
+   * project's most repeated complaint. This one can: the box is 4.4 cells tall
+   * for every one it is wide.
+   */
+  it('stops a month cell stretching past two and a half times its width', () => {
+    const m = panelMetrics({ width: 800, height: 480 });
+    const grid = gridMetrics(210, 5 * 210, 5, m);
+    expect(grid.cellH).toBe(Math.round(grid.cellW * 2.5));
+    expect(grid.topOffset).toBe(0); // a deliberate gap, not a rounding remainder
+  });
+});
+
+describe('every metric is a whole pixel', () => {
+  /*
+   * A 1-bit raster has no half-lit line: a fractional row boundary is a grey
+   * smear that survives until the next full refresh. Swept across the range
+   * rather than at the six sizes, because the fractions hide between them —
+   * `2 × round(short / 60)` is an integer at 480 whatever it does at 481.
+   */
+  it('at every panel size from 64 to 2000 pixels', () => {
+    for (let side = 64; side <= 2000; side += 7) {
+      for (const geometry of [{ width: side, height: 384 }, { width: 800, height: side }]) {
+        const m: EpaperMetrics = panelMetrics(geometry);
+        for (const [key, value] of Object.entries(m)) {
+          if (key === 'panel') continue;
+          expect(Number.isInteger(value), `${key} at ${geometry.width}×${geometry.height} is ${String(value)}`).toBe(
+            true,
+          );
+        }
+        const grid = gridMetrics(m.panel.width, m.panel.height, 5, m);
+        for (const [key, value] of Object.entries(grid)) {
+          expect(Number.isInteger(value), `grid ${key} at ${geometry.width}×${geometry.height}`).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe('the arithmetic comes back to the constants it replaced', () => {
+  /*
+   * Task 3, as arithmetic rather than as pixels. These are the numbers somebody
+   * reached by looking at real output on a Seeed 7.5", and a derivation that
+   * cannot reproduce them at 480px of panel is wrong — the constant was right.
+   * Exact equality, not a tolerance: a pixel here moves every row under it.
+   */
+  const m = panelMetrics(OUT_OF_THE_BOX);
+
+  it('at 800×480', () => {
+    expect({
+      margin: m.margin,
+      headerHeight: m.headerHeight,
+      headerGap: m.headerGap,
+      blockGap: m.blockGap,
+      agendaRowH: m.agendaRowH,
+      agendaRuleY: m.agendaRuleY,
+      agendaHeadH: m.agendaHeadH,
+      monthHeadH: m.monthHeadH,
+      weekHeadH: m.weekHeadH,
+      pillMinCell: m.pillMinCell,
+      minCell: m.minCell,
+      cellTitleLineH: m.cellTitleLineH,
+      weekTitleLineH: m.weekTitleLineH,
+      upcomingRowH: m.upcomingRowH,
+      bullet: m.bullet,
+    }).toEqual({
+      margin: 16, // MARGIN
+      headerHeight: 54, // HEADER_H
+      headerGap: 14, // bodyTop = HEADER_H + 14
+      blockGap: 12, // the portrait gap between agenda and grid
+      agendaRowH: 34, // rowH
+      agendaRuleY: 22, // the "TODAY" rule
+      agendaHeadH: 36, // and the drop past it
+      monthHeadH: 22, // labelH
+      weekHeadH: 26, // headH
+      pillMinCell: 34, // PILL_MIN_CELL
+      minCell: 12, // the floor under a grid cell
+      cellTitleLineH: 10, // drawCellTitles' lineH
+      weekTitleLineH: 11, // drawWeekBox's row step
+      upcomingRowH: 30, // drawUpcomingBox's row step
+      bullet: 12, // the all-day/timed square
+    });
+  });
+
+  it('and the type ladder lands on the scales that shipped', () => {
+    expect([m.headerScale, m.yearScale, m.bodyScale, m.labelScale, m.smallScale]).toEqual([3, 2, 2, 2, 1]);
+  });
+});
+
+describe('a portrait panel keeps its month cells square', () => {
+  /*
+   * Filling the box is what closes the white bottom, and on a *landscape* panel
+   * it is paid for by the cell: the month is a tall narrow column beside the
+   * agenda, so its cells come out about twice as tall as they are wide, and
+   * there is nothing else in that column to absorb the height. Stacked, there
+   * is — so a portrait panel asks the grid what a square cell needs (a seventh
+   * of the width) and gives the agenda the rest, rather than splitting the body
+   * at a flat 42% and handing the month a box its cells cannot fill.
+   *
+   * The blank-bottom assertions cannot see this: the grid fills either way, and
+   * only the *shape* of what it fills with is different. Reverting the split to
+   * `bodyH × 0.42` leaves every one of them green and turns this one red, which
+   * is the only reason it is worth writing.
+   */
+  for (const panel of PANELS.filter((p) => p.height > p.width)) {
+    it(`${panel.width}×${panel.height} draws them within a pixel of square`, () => {
+      const fb = frameAt(busy, panel.width, panel.height);
+      const m = panelMetrics(panel);
+      // The lower half of a portrait panel is the month block, and the grid is
+      // the only thing in it that rules right across the body's own width.
+      const body: [number, number] = [m.margin, panel.width - m.margin];
+      const half = Math.floor(panel.height / 2);
+      const rows = fullRuns(fb, half, panel.height, body, 'rows');
+      expect(rows.length).toBeGreaterThanOrEqual(3);
+      const columns = fullRuns(fb, body[0], body[1], [rows[0]!, rows[rows.length - 1]!], 'columns');
+      expect(columns.length).toBeGreaterThanOrEqual(3);
+      expect(Math.abs(step(rows) - step(columns))).toBeLessThanOrEqual(1);
+    });
+  }
 });
 
 describe('the panel that was tuned by looking at it', () => {
