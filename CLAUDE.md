@@ -93,7 +93,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and thirteen real bugs**, and the pattern in how is the most
+This project has found **one hundred and fifteen real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -211,6 +211,8 @@ useful thing in this document:
 | **A progress bar that spanned the whole entry, under the title as well as the time** | Naming only one grid line, and a fixture with a second row — the only thing that can tell the two apart |
 | A bar that cost no row by being drawn zero pixels wide | An abspos grid item with auto insets, which shrink-to-fits an empty track |
 | A fixture that answered a different question from the one it asked | Carrying the live event on a fourth calendar, and reading 20.2px where the bug reads 21.7 |
+| **A performance budget that was 78% the cost of parsing 3.2 MB** | Timing a one-year window and a fourteen-year one and finding 214ms against 275 |
+| **Recurrence expansion costing 45ms per year of distance to the window** | Moving the window and not the feed — same events, 247ms at 2026 and 3492ms at 2100 |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -3471,6 +3473,45 @@ for every day of 2026, one pass differs from two on **one zone and one day** —
 America/Adak on 8 March, where the guess lands at 01:00 at -10 and the single
 correction overshoots to 12:00 at -9 — and two never differs from three. The
 named case is Adak now, and it goes red.
+
+**A wall-clock ceiling measures the runner, and this repository has now
+written one three times.** `performance.test.ts` was rewritten for exactly that
+and says so at length — its absolute ceiling is opt-in "because there is no
+number that is honest on hardware you do not [know]" — and the budget in
+`google-feed.test.ts` next door was left on at 400ms. It failed in CI at 408ms
+with the browser suite running beside it, and passed three times out of three on
+the same tree on an idle machine.
+
+Two measurements decided what to do with it, and both say the number was never
+about what it looked like. **It was ~78% parse**: a one-year window over that
+feed costs 214ms and yields 46 events, the full fourteen-year window costs 275ms
+and yields 5,434, so ~210ms of it is reading and parsing 3.2 MB and the thing
+the budget appeared to guard was ~60ms. And **the shape assertion that would
+replace it is not available on this fixture** — `performance.test.ts` can double
+its input because it generates it, a real export is the size it is, and doubling
+the *window* measures 1.25x for the same reason the budget was meaningless. A
+near/far ratio does carry real signal and was measured and rejected as a test:
+2.2 to 3.06 across six idle rounds and 18 seconds a pass, and a ceiling of 4
+against a value that moves 39% run to run passes on anything — which is what
+raising the old ceiling until it went green would have been, more cheaply. So
+the ceiling is opt-in now, the figure is still printed every run, and the shape
+guard stays where doubling is honest.
+
+**Rejecting that ratio is what found the real fault, and it is much larger than
+the budget was.** Expanding a *one-year* window over the same feed costs 247ms
+at 2026 and **3492ms at 2100** — same width, same ~476 instances, 14x. From 2040
+to 2100 that is +2704ms over sixty years, **~45ms per year of distance**,
+straight-line. Expanding *fourteen* years near the data costs 275ms for 5,434
+instances; expanding *one* year far from it costs 3492ms for 476. The cost is
+not in the events produced, it is in the distance walked to reach them, which is
+the signature of an expander iterating from each series' `DTSTART` and
+discarding everything before `windowStart`. In production the window is always
+near today, so the distance that grows is the one from **old recurring series**
+to now — a weekly event created in 2015 is ~570 discarded occurrences per sync
+today, and that grows by one year every year for every household and never
+resets. It is ~37ms on this feed today, which is why it is filed rather than
+fixed: a compounding cost is much cheaper to fix while it is small, and
+rewriting the expander is not a change to fold into a test's docstring.
 
 **And then the running event stopped costing a row, which took one measurement
 and not a redesign.** `.dr-ev-bar` is out of flow now, taking the grid area of
