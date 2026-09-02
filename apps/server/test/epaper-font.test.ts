@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Framebuffer } from '../src/epaper/framebuffer.js';
-import { drawText, measureText } from '../src/epaper/font.js';
+import { drawText, measureText, rungAt, type TypeRung } from '../src/epaper/font.js';
 
 /**
  * The bitmap font renders the right shapes the right way round.
@@ -13,10 +13,14 @@ import { drawText, measureText } from '../src/epaper/font.js';
  * would not match.
  */
 
+/** The 8x8 face at scale 1 and at scale 2 — rung 0 and the same face doubled. */
+const F8: TypeRung = rungAt(0);
+const F8_2: TypeRung = { ...F8, scale: 2, height: 16, advance: 18 };
+
 /** Render text onto a fresh canvas and read it back as an ASCII-art grid. */
-function render(text: string, w: number, h: number, scale = 1): string[] {
+function render(text: string, w: number, h: number, rung: TypeRung = F8): string[] {
   const fb = new Framebuffer(w, h);
-  drawText(fb, 0, 0, text, { scale, tracking: 0 });
+  drawText(fb, 0, 0, text, { rung, tracking: 0 });
   const rows: string[] = [];
   for (let y = 0; y < h; y++) {
     let line = '';
@@ -50,14 +54,14 @@ describe('glyph shapes', () => {
 describe('layout', () => {
   it('measures monospace width with tracking', () => {
     // 8px cell + 1px tracking, minus the trailing tracking on the last glyph.
-    expect(measureText('AB', { scale: 1, tracking: 1 })).toBe(8 + 1 + 8);
-    expect(measureText('AB', { scale: 2, tracking: 1 })).toBe((8 + 1 + 8) * 2 - 2 + 2);
-    expect(measureText('', {})).toBe(0);
+    expect(measureText('AB', { rung: F8, tracking: 1 })).toBe(8 + 1 + 8);
+    expect(measureText('AB', { rung: F8_2, tracking: 1 })).toBe((8 + 1 + 8) * 2 - 2 + 2);
+    expect(measureText('', { rung: F8 })).toBe(0);
   });
 
   it('scale doubles every drawn pixel', () => {
-    const one = render('A', 8, 8, 1);
-    const two = render('A', 16, 16, 2);
+    const one = render('A', 8, 8, F8);
+    const two = render('A', 16, 16, F8_2);
     // The top of the 'A' apex is at (2,0) at scale 1; at scale 2 it is the
     // 2×2 block anchored at (4,0).
     expect(one[0]![2]).toBe('X');
@@ -68,7 +72,7 @@ describe('layout', () => {
 
   it('drawText returns the x past the last glyph for chaining', () => {
     const fb = new Framebuffer(64, 8);
-    const end = drawText(fb, 0, 0, 'AB', { scale: 1, tracking: 1 });
-    expect(end).toBe(measureText('AB', { scale: 1, tracking: 1 }));
+    const end = drawText(fb, 0, 0, 'AB', { rung: F8, tracking: 1 });
+    expect(end).toBe(measureText('AB', { rung: F8, tracking: 1 }));
   });
 });

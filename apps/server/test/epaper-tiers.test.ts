@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
 import { drawMonthBox } from '../src/epaper/render.js';
 import { Framebuffer } from '../src/epaper/framebuffer.js';
-import { GLYPH_SIZE } from '../src/epaper/font.js';
+import { rungStep } from '../src/epaper/font.js';
 import { encodePng1bit } from '../src/epaper/png.js';
 import { gridMetrics, panelMetrics } from '../src/epaper/metrics.js';
 import { namesAt, spanIsLabelled, tierFor } from '../src/epaper/tiers.js';
@@ -184,15 +184,14 @@ function drawn(panel: { readonly w: number; readonly h: number }, box: { readonl
   const grid = gridMetrics(box.w, box.h - m.monthHeadH, model.weeks.length, m);
   const gridTop = m.monthHeadH + grid.topOffset;
   const gx = Math.floor((box.w - grid.cellW * 7) / 2);
-  const assumedNumScale =
-    Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? 2 * m.smallScale : m.smallScale;
-  const numberBand = m.cellNumberInset + 8 * assumedNumScale + 2 * m.smallScale;
-  const room = grid.cellH - numberBand - 2 * m.smallScale;
-  // The panel's own two measurements: a glyph is 8 tall and 8 wide with a
-  // pixel of tracking, which is why a character here is 1.125em and a 44px
-  // cell holds four of them.
-  const cellEm = GLYPH_SIZE * m.smallScale;
-  const cellCh = (GLYPH_SIZE + 1) * m.smallScale;
+  const assumedNum = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? rungStep(m.small, 1) : m.small;
+  const cellFoot = Math.round(m.smallGlyph / 4);
+  const numberBand = m.cellNumberInset + assumedNum.height + cellFoot;
+  const room = grid.cellH - numberBand - cellFoot;
+  // The panel's own two measurements, taken off the rung the tier resolved: a
+  // cell is `height` tall and `advance` wide including its pixel of tracking.
+  const cellEm = m.smallGlyph;
+  const cellCh = m.small.advance;
   return {
     rows: decode(encodePng1bit(fb)),
     m,
@@ -251,12 +250,18 @@ describe('what a panel cell draws is what its tier permits', () => {
        * The names, counted by scanning the cell's own band for lines with ink
        * in them — a line at a time, bounded by the cell, because the line after
        * the last one that fits runs into the next week's border and numeral.
+       *
+       * **The bound stops one row above the cell**, and that row is the cell's
+       * own bottom rule. It was `+ cellH` while the line height happened to
+       * leave the last slot clear of it; the type tiers moved the pitch, the
+       * last slot reached the border, and the scan reported a rule as a sixth
+       * name in a cell the tier permits five. A border is not a name.
        */
       const column = 1;
       const x0 = d.gx + column * d.grid.cellW + d.m.cellInset;
       const x1 = d.gx + (column + 1) * d.grid.cellW - 1;
-      const bottom = d.gridTop + d.grid.cellH;
-      const glyph = 8 * d.m.smallScale;
+      const bottom = d.gridTop + d.grid.cellH - 1;
+      const glyph = d.m.smallGlyph;
       let lines = 0;
       const top = d.gridTop + d.numberBand + d.m.markH + d.m.markGap;
       for (let y = top; y + glyph <= bottom; y += d.m.cellTitleLineH) {
@@ -381,7 +386,7 @@ describe('what a panel cell draws is what its tier permits', () => {
       }
       return left < 0 ? 0 : right - left + 1;
     };
-    const oneLetter = 8 * small.m.labelScale;
+    const oneLetter = small.m.label.height;
     expect(small.tier.weekdayLetters, 'the small box is not the one-letter case').toBe(1);
     expect(wide.tier.weekdayLetters, 'the wide box asks for no more letters than the small one')
       .toBeGreaterThan(1);
@@ -391,7 +396,7 @@ describe('what a panel cell draws is what its tier permits', () => {
     ).toBeLessThanOrEqual(oneLetter + 2);
     // And the larger panel's head is no *narrower*, which is what says the
     // renderer is reading the tier rather than always cutting to one letter.
-    expect(widthOf(wide) / (8 * wide.m.labelScale)).toBeGreaterThanOrEqual(
+    expect(widthOf(wide) / wide.m.label.height).toBeGreaterThanOrEqual(
       widthOf(small) / oneLetter,
     );
   });

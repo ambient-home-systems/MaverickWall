@@ -12,12 +12,32 @@
  * date (`model.today`) is in the preimage, and so is a renderer version that
  * MUST be bumped whenever the drawing changes, or panels keep the old frame for
  * months. Same "a version that lies" failure the migration journal guards.
+ *
+ * ## The tier, and why it is in the preimage
+ *
+ * `render.ts` states the partial-refresh contract: every drawn region is a
+ * rectangle whose position is a function of **(panel size, tier)** only, so two
+ * frames at the same panel size and tier differ in nothing but the ink inside
+ * their rectangles and everything between them is safe to push as a partial
+ * refresh. A geometry change must therefore force exactly *one* full refresh —
+ * and the ETag is the only handle a dumb panel has on "has the geometry
+ * changed?".
+ *
+ * So the resolved tier is in the preimage. Today it is a pure function of the
+ * panel's short side, which is in the preimage already, so this adds no churn —
+ * a household who never touches anything keeps every stored ETag — and that is
+ * asserted rather than assumed. What it buys is that the contract is hashed
+ * over the thing it is *stated* over rather than over something that happens to
+ * imply it: the day the tier stops being a function of pixels alone (a measured
+ * panel, a grade, a moved table), the ETag moves with it and no panel
+ * composites two layouts onto one sheet.
  */
 import { createHash } from 'node:crypto';
 
 import { manifestEtag, type Manifest } from '../api/manifest.js';
 
 import { Framebuffer, rotate } from './framebuffer.js';
+import { typeTierFor } from './type-tiers.js';
 import { renderEpaper } from './render.js';
 import { buildEpaperModel } from './viewmodel.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
@@ -96,8 +116,26 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  *
  * Every panel with a forecast or a house reading on it moves; a panel with
  * neither is byte-identical.
+ *
+ * 8: three bitmap faces, chosen by tier (`font-12x16.ts`, `font-16x24.ts`,
+ * `type-tiers.ts`). The panel had one 8x8 alphabet at integer scales, so a
+ * bigger panel got bigger type by multiplying a square and the only sizes in
+ * the whole 3.7x range were 8, 16, 24 and 32 pixels. The role carrying a month
+ * cell's event names is `round(body / 2)`, which is **2 on a 10.3" panel and 2
+ * on a 13.3" one** — 12.6 arc-minutes at one panel's read distance and 9.9 at
+ * the other's, so the larger, further screen drew it *smaller*. The two new
+ * faces are drawn at the size they are used, keep font8x8's own cap height and
+ * stroke ratio at every rung, and reach it in 28-37% less advance: measured,
+ * the agenda's title column goes from 11, 15, 17, 18, 18 and 29 characters to
+ * 17, 23, 29, 28, 27 and 43 across the six supported sizes, and a 13.3" panel's
+ * cell names go from 16px to 24px. Every glyph on every panel moves.
+ *
+ * It also brings the **grade**: reversed type — the header band, today's cell,
+ * a span bar's label — is drawn one stroke heavier at the same advance, which
+ * is the browser wall's `--f-grade` on a bitmap. No metric moves with it, by
+ * construction, because a metric change is a reflow.
  */
-export const EPAPER_RENDERER_VERSION = 7;
+export const EPAPER_RENDERER_VERSION = 8;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;
@@ -176,6 +214,9 @@ export function renderScreenFrame(
     EPAPER_RENDERER_VERSION,
     manifestEtag(manifest),
     `${panelWidth}x${panelHeight}`,
+    // The resolved type tier — read off the panel's *visual* short side, which
+    // is what `panelMetrics` reads and so what the frame was actually drawn at.
+    typeTierFor(Math.min(visual.width, visual.height)).tier,
     screen.panelColour ?? 'bw',
     rotation,
     model.today,

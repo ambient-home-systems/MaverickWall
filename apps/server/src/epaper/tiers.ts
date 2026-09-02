@@ -21,10 +21,12 @@
  *
  * What the panel supplies is only the two measurements, and there they differ
  * honestly: a wall measures its own face through the DOM and gets 0.4072em per
- * character, while every glyph here is 8 wide and 8 tall with a pixel of
- * tracking, so a character is 1.125em. That is why a 44px cell on a 7.5" panel
- * holds four characters and the table is stated in characters — so that it can
- * say so, rather than drawing "Denti" and calling it an event name.
+ * character, while here a character is whichever bitmap face the type tier
+ * chose — 1.125em on the 8x8, 0.8125em on the 12x16, 0.7083em on the 16x24,
+ * each its own cell plus a pixel of tracking over its own height. That is why a
+ * 44px cell on a 7.5" panel holds four characters and the table is stated in
+ * characters — so that it can say so, rather than drawing "Denti" and calling
+ * it an event name.
  */
 
 /** The rungs, smallest first. Stable for ever once shipped: read by two renderers. */
@@ -141,10 +143,13 @@ export const MAX_NAMES = 12;
  * same way (0.4081em), and 21% off the figure the CSS `ch` unit would give.
  *
  * The panel measures the same string through its own bitmap metrics, where the
- * answer is a flat 1.125em because every glyph there is 8 wide and 8 tall with
- * a pixel of tracking. That difference is the point rather than a problem: a
- * 44px cell on a 7.5" panel really does hold four characters, and the table is
- * stated in characters so that it can say so.
+ * answer is a property of the *face* its type tier chose rather than of a probe
+ * — each face's own cell plus a pixel of tracking, over its own height: 1.125em
+ * on the 8x8, 0.8125em on the 12x16, 0.7083em on the 16x24. That difference is
+ * the point rather than a problem, and so is the spread inside it: a 44px cell
+ * on a 7.5" panel, which draws the 8x8 face, really does hold four characters,
+ * while a 13.3" panel reads a face 37% narrower for its height and is told so.
+ * The table is stated in characters precisely so that it can say either.
  */
 export const TYPE_SPECIMEN = 'The quick brown fox jumps over the lazy dog';
 

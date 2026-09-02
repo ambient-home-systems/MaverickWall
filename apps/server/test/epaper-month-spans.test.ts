@@ -7,6 +7,7 @@ import { drawMonthBox, renderEpaper } from '../src/epaper/render.js';
 import { Framebuffer } from '../src/epaper/framebuffer.js';
 import { encodePng1bit } from '../src/epaper/png.js';
 import { gridMetrics, panelMetrics } from '../src/epaper/metrics.js';
+import { rungStep } from '../src/epaper/font.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
 /**
@@ -194,8 +195,8 @@ function grid(manifest: Manifest, box = { x: 0, y: 0, w: 700, h: 420 }): {
   const gx = box.x + Math.floor((box.w - grid.cellW * 7) / 2);
   // Where a cell's lanes start: the number's inset, the number, and the gap
   // under it — `drawMonthBox`'s own `numberBand`.
-  const numScale = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? 2 * m.smallScale : m.smallScale;
-  const numberBand = m.cellNumberInset + 8 * numScale + 2 * m.smallScale;
+  const numRung = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? rungStep(m.small, 1) : m.small;
+  const numberBand = m.cellNumberInset + numRung.height + Math.round(m.smallGlyph / 4);
   return {
     rows: decode(encodePng1bit(fb)),
     cellW: grid.cellW,
@@ -450,7 +451,7 @@ describe('rules 2 and 3 on a panel', () => {
     const left = gx + 2 * cellW;
     // The first title line: the numeral's band, then the mark and its gap.
     const top = gridTop + numberBand + m.markH + m.markGap;
-    const glyph = 8 * m.smallScale;
+    const glyph = m.smallGlyph;
     /*
      * Which lines were actually drawn, found by looking rather than by working
      * out how many the box affords — a test that recomputes the renderer's own

@@ -11,12 +11,60 @@
  * aspect — two columns when it is wider than tall, a stack when it is taller.
  * Rotation for a sideways-mounted panel happens later, when the frame is
  * packed, so this never has to think about it.
+ *
+ * ## The refresh contract (RFC 006 phase 11)
+ *
+ * An e-paper panel can update part of a sheet, and a partial refresh is the
+ * difference between a frame that appears and a frame that flashes the whole
+ * screen black and back. What it needs from a renderer is not speed, it is
+ * **stability**: it has to know which rectangle changed, and it can only know
+ * that if the rectangles do not move.
+ *
+ *     Every drawn region is a rectangle whose position is a function of
+ *     (panel size, tier) ONLY.
+ *
+ *     Two frames at the same panel size and tier, with different events,
+ *     have identical region rectangles.
+ *
+ *     Only the ink inside a region may differ.
+ *
+ * Three consequences, and each of them is a rule somewhere below rather than an
+ * aspiration.
+ *
+ * **A size is never picked by measuring a string.** Every rung on this frame
+ * comes from the panel's tier (`type-tiers.ts`) or from the box, and where a
+ * rung still has to be stepped down it is stepped against a *character budget*
+ * — `HEADER_MAX_CHARS`, `NOTE_MAX_CHARS`, `'30'` — which is a constant of this
+ * renderer and of the locale the viewmodel fixes, never of the household's
+ * calendar. The two that were not are the ones this phase repaired: the
+ * empty-state note picked scale 2 or 1 from its own sentence's width (so the
+ * two notes could be drawn at different sizes in the same box, and rewording
+ * one would have moved a rectangle), and the header band shrank to fit today's
+ * date (so the band's type changed size at midnight — a reflow at exactly the
+ * boundary a panel most wants to partial-refresh across).
+ *
+ * **`fit()` stays, and is legitimate.** Truncating a title changes the ink
+ * inside a rectangle and never the rectangle: it can only shorten a run, never
+ * move its origin and never change the line height. That is the one
+ * content-dependent thing left in this file, it is stated here rather than
+ * hidden, and `reflow-stability.test.ts` holds every truncated run to the
+ * rectangle it was given.
+ *
+ * **The tier is in the ETag.** `frame.ts` puts the resolved tier in the
+ * preimage, so a geometry change forces exactly one full refresh and everything
+ * between two frames at the same tier is safe to draw as a partial. Without it
+ * a panel could composite two layouts onto one sheet.
+ *
+ * What this does **not** claim: `widgets.ts` — the free-form canvas — still
+ * sizes a few headlines with `scaleToFit`, which reads the string. The built-in
+ * layout satisfies the contract; a household's own canvas does not yet, and
+ * saying so is better than a half-fix.
  */
 import type { CivilDate } from '@maverick-wall/core';
 
 import { ditherRect } from './dither.js';
 import { DENSITY_STEPS, densitySteps, monthSpans, type MonthSpan } from './month-spans.js';
-import { GLYPH_SIZE, drawText, measureText, type TextOptions } from './font.js';
+import { drawText, measureText, rungStep, type TextOptions, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
 import {
   agendaRowsInBox,
@@ -43,6 +91,85 @@ export interface Box {
   readonly y: number;
   readonly w: number;
   readonly h: number;
+}
+
+/**
+ * One rectangle this frame drew into, and what it was.
+ *
+ * The refresh contract above is a claim about rectangles, and a claim about
+ * rectangles cannot be settled from pixels: two frames with different words in
+ * the same row have different ink in it by definition, and a row that *moved*
+ * looks the same from the outside as a row whose first letter happens to be a
+ * lowercase 'a'. So the renderer says where it drew.
+ *
+ * **It is not a prediction and it must not become one.** Every entry below is
+ * pushed at the site that does the drawing, from the same expression that
+ * positions it, which is what makes `regions(A) == regions(B)` a real test: a
+ * position computed from content moves the record with the ink. What would be
+ * circular is comparing a record against an independently-predicted value, and
+ * nothing does that — `reflow-stability.test.ts` compares two frames with each
+ * other, checks that their pixels genuinely differ, and checks that every run
+ * of ink lands inside the rectangle it was recorded under.
+ *
+ * The name is positional (`cell-row:2:3:1`), never content-derived, so the two
+ * lists are comparable at all.
+ */
+export interface DrawnRegion {
+  readonly name: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/** Where a caller collects them. Absent means the renderer records nothing. */
+export type RegionLog = DrawnRegion[];
+
+const note = (log: RegionLog | undefined, name: string, x: number, y: number, w: number, h: number): void => {
+  if (log !== undefined) log.push({ name, x, y, w, h });
+};
+
+/**
+ * The width `chars` characters occupy at these options.
+ *
+ * The refresh contract's workhorse: every step-down below asks this rather than
+ * measuring the string it is about to draw, so the answer is a fact about the
+ * panel and the tier instead of a fact about today's calendar.
+ */
+function runWidth(chars: number, options: TextOptions): number {
+  return measureText('0'.repeat(Math.max(0, chars)), options);
+}
+
+/**
+ * The longest date line the header band can ever draw.
+ *
+ * `headerParts` formats en-GB with `weekday: 'long'` and `month: 'long'`, so
+ * the worst case is `WEDNESDAY 30 SEPTEMBER` — 22 characters. A constant of the
+ * renderer, which is what lets the band be one size all year (see `drawHeader`).
+ */
+const HEADER_MAX_CHARS = 22;
+
+/** The two empty-state notes this frame draws, and the longest of them. */
+const EMPTY_TODAY = 'Nothing on today';
+const EMPTY_UPCOMING = 'Nothing coming up';
+const NOTE_MAX_CHARS = Math.max(EMPTY_TODAY.length, EMPTY_UPCOMING.length);
+
+/**
+ * The rung an empty-state note is drawn at, from the box and the tier.
+ *
+ * It used to be `measureText(note, body) <= box.w ? body : small`, measured on
+ * each note's own sentence — so "Nothing on today" and "Nothing coming up"
+ * could take different rungs in the same box, and a reworded note would have
+ * moved a rectangle. It asks the *longest* note this renderer draws now, which
+ * makes the answer a property of the box: both notes land on one rung, and the
+ * rung a box affords is the same on every frame that box is drawn in.
+ *
+ * `fit` is still the belt underneath, for the reason the upcoming list gives:
+ * in a column too narrow even for the small rung, a truncated line beats a line
+ * lying across the widget next door.
+ */
+function noteRung(boxW: number, m: EpaperMetrics): TypeRung {
+  return runWidth(NOTE_MAX_CHARS, { rung: m.body }) <= boxW ? m.body : m.small;
 }
 
 /** Truncate a string so it fits `maxWidth` at the given options. */
@@ -76,25 +203,38 @@ function densityOf(cell: EpaperGridCell): number {
   return Math.min(1, 0.18 + cell.eventCount * 0.16);
 }
 
-function drawHeader(fb: Framebuffer, model: EpaperModel, m: EpaperMetrics): void {
+function drawHeader(fb: Framebuffer, model: EpaperModel, m: EpaperMetrics, log?: RegionLog): void {
   const width = m.panel.width;
   fb.fillRect(0, 0, width, m.headerHeight, true);
+  note(log, 'header', 0, 0, width, m.headerHeight);
   const left = `${model.header.weekday.toUpperCase()} ${model.header.day} ${model.header.month.toUpperCase()}`;
   // Step the scale down until the date fits the band with room for the year.
   // The starting rung is the panel's, not a literal 3 — but the step-down is
   // unchanged, because a long weekday in a narrow band is a width problem and
   // no amount of deriving from the height can see it.
   const yearText = model.header.year;
-  let scale = m.headerScale;
-  const yearW = measureText(yearText, { scale: m.yearScale });
+  const yearW = measureText(yearText, { rung: m.year });
   const budget = width - 2 * m.margin - yearW - m.bodyGlyph;
-  while (scale > 1 && measureText(left, { scale, tracking: 1 }) > budget) scale -= 1;
-  const y = Math.floor((m.headerHeight - 8 * scale) / 2);
-  drawText(fb, m.margin, y, left, { scale, tracking: 1, ink: false });
-  drawText(fb, width - m.margin - yearW, Math.floor((m.headerHeight - 8 * m.yearScale) / 2), yearText, {
-    scale: m.yearScale,
-    ink: false,
-  });
+  /*
+   * Stepped down to the *budget*, never to today's date.
+   *
+   * It used to measure `left` and shrink until that particular string fitted,
+   * which is a band whose type changes size at midnight — a reflow at exactly
+   * the boundary an e-paper panel is meant to partial-refresh across, and one
+   * no test comparing two frames on the same day can see. The budget and the
+   * longest line this locale can produce are both facts about the renderer, so
+   * the band is one size for every day of the year and `fit` stays as the belt.
+   */
+  let rung = m.header;
+  while (rung.index > 0 && runWidth(HEADER_MAX_CHARS, { rung, tracking: 1 }) > budget) {
+    rung = rungStep(rung, -1);
+  }
+  const y = Math.floor((m.headerHeight - rung.height) / 2);
+  note(log, 'header-date', m.margin, y, budget, rung.height);
+  drawText(fb, m.margin, y, fit(left, budget, { rung, tracking: 1 }), { rung, tracking: 1, ink: false });
+  const yearY = Math.floor((m.headerHeight - m.year.height) / 2);
+  note(log, 'header-year', width - m.margin - yearW, yearY, yearW, m.year.height);
+  drawText(fb, width - m.margin - yearW, yearY, yearText, { rung: m.year, ink: false });
 }
 
 /**
@@ -109,26 +249,33 @@ export function drawAgendaBox(
   m: EpaperMetrics,
   box: Box,
   header?: string,
+  log?: RegionLog,
 ): void {
   const x0 = box.x;
   const right = box.x + box.w;
   const bottom = box.y + box.h;
-  const body = m.bodyScale;
+  const body = m.body;
   let y = box.y;
+  note(log, 'agenda', box.x, box.y, box.w, box.h);
   if (header !== undefined) {
-    drawText(fb, x0, y, header, { scale: body, tracking: 2 });
-    fb.hLine(x0, right, y + m.agendaRuleY, true);
+    note(log, 'agenda-head', x0, y, right - x0, m.agendaHeadH);
+    drawText(fb, x0, y, header, { rung: body, tracking: 2 });
+    // `right` is the box's exclusive edge and `hLine` is inclusive, so the last
+    // argument is `right - 1`. It was `right` — a one-pixel rule overhang into
+    // the gutter between the agenda and the month grid, which is outside the
+    // rectangle this section records and so outside the refresh contract. Found
+    // by asserting the gutters carry no ink at all.
+    fb.hLine(x0, right - 1, y + m.agendaRuleY, true);
     y += m.agendaHeadH;
   }
   // The gutter past the time column is one bullet wide, which is what the
   // shipped 12 was beside a 12px bullet — stated rather than left as two
   // constants that happened to agree.
-  const timeColW = measureText('00:00', { scale: body }) + m.bullet;
+  const timeColW = measureText('00:00', { rung: body }) + m.bullet;
   if (model.agenda.length === 0) {
-    // Sized to the box, for the same reason as the upcoming list below.
-    const note = 'Nothing on today';
-    const scale = measureText(note, { scale: body }) <= box.w ? body : m.smallScale;
-    drawText(fb, x0, y, fit(note, box.w, { scale }), { scale });
+    const rung = noteRung(box.w, m);
+    note(log, 'agenda-note', x0, y, box.w, rung.height);
+    drawText(fb, x0, y, fit(EMPTY_TODAY, box.w, { rung }), { rung });
     return;
   }
   /*
@@ -143,6 +290,7 @@ export function drawAgendaBox(
   let drawn = 0;
   for (const item of rows) {
     if (y + m.bodyGlyph > bottom) break;
+    note(log, `agenda-row:${drawn}`, x0, y, right - x0, m.bodyGlyph);
     // The bullet carries the all-day/timed distinction — an open square for a
     // day-long thing, a filled one for a timed event — so an all-day title need
     // not spend width on the words "All day" and starts where the time would.
@@ -151,10 +299,10 @@ export function drawAgendaBox(
     const textX = x0 + m.bullet + m.bulletGap;
     let titleX = textX;
     if (!item.allDay) {
-      drawText(fb, textX, y, item.time, { scale: body });
+      drawText(fb, textX, y, item.time, { rung: body });
       titleX = textX + timeColW;
     }
-    drawText(fb, titleX, y, fit(asciiTitle(item.title), right - titleX, { scale: body }), { scale: body });
+    drawText(fb, titleX, y, fit(asciiTitle(item.title), right - titleX, { rung: body }), { rung: body });
     y += m.agendaRowH;
     drawn++;
   }
@@ -165,9 +313,10 @@ export function drawAgendaBox(
    * the box known — which means the total has to travel instead of the answer.
    */
   const overflow = Math.max(0, model.agendaTotal - drawn);
-  const smallGlyph = 8 * m.smallScale;
+  const smallGlyph = m.smallGlyph;
   if (overflow > 0 && y + Math.round(smallGlyph * 1.5) <= bottom) {
-    drawText(fb, x0 + m.bullet + m.bulletGap, y, `+${overflow} more`, { scale: m.smallScale, tracking: 1 });
+    note(log, 'agenda-more', x0 + m.bullet + m.bulletGap, y, right - x0, smallGlyph);
+    drawText(fb, x0 + m.bullet + m.bulletGap, y, `+${overflow} more`, { rung: m.small, tracking: 1 });
   }
 }
 
@@ -193,27 +342,14 @@ export function drawUpcomingBox(
     .filter((item) => keep.length === 0 || keep.includes(item.sourceId))
     .slice(0, limit);
 
-  const body = m.bodyScale;
+  const body = m.body;
   const right = box.x + box.w;
   const bottom = box.y + box.h;
-  const timeColW = measureText('00:00', { scale: body }) + m.bullet;
+  const timeColW = measureText('00:00', { rung: body }) + m.bullet;
   let y = box.y;
   if (rows.length === 0) {
-    /*
-     * Sized to the box, not to the sentence.
-     *
-     * This drew at a fixed scale 2 with no width bound at all, so in a narrow
-     * column it ran straight out of its box and over whatever was beside it —
-     * on the first canvas a panel ever drew, "Nothing coming up" lay across the
-     * month grid. Invisible until a panel started drawing a *wall's*
-     * arrangement, where a box is whatever the household dragged rather than a
-     * half of the built-in layout. `fit` is the belt: at scale 1 in a box too
-     * narrow even for that, a truncated line still beats a line in the widget
-     * next door.
-     */
-    const note = 'Nothing coming up';
-    const scale = measureText(note, { scale: body }) <= box.w ? body : m.smallScale;
-    drawText(fb, box.x, y, fit(note, box.w, { scale }), { scale });
+    const rung = noteRung(box.w, m);
+    drawText(fb, box.x, y, fit(EMPTY_UPCOMING, box.w, { rung }), { rung });
     return;
   }
   let heading: CivilDate | undefined;
@@ -221,10 +357,11 @@ export function drawUpcomingBox(
     // A date rule where the day turns over, so a list spanning days reads as
     // days rather than as one run of times.
     if (item.date !== heading) {
-      if (y + Math.round(8 * m.smallScale * 1.5) > bottom) break;
+      if (y + Math.round(m.smallGlyph * 1.5) > bottom) break;
       const label = item.isToday ? 'TODAY' : dayLabel(item.date);
-      drawText(fb, box.x, y, label, { scale: m.smallScale, tracking: 1 });
-      fb.hLine(box.x, right, y + m.dateRuleY, true);
+      drawText(fb, box.x, y, label, { rung: m.small, tracking: 1 });
+      // Exclusive edge, inclusive line — see `drawAgendaBox`.
+      fb.hLine(box.x, right - 1, y + m.dateRuleY, true);
       y += m.dateRuleH;
       heading = item.date;
     }
@@ -234,10 +371,10 @@ export function drawUpcomingBox(
     const textX = box.x + m.bullet + m.bulletGap;
     let titleX = textX;
     if (!item.allDay) {
-      drawText(fb, textX, y, item.time, { scale: body });
+      drawText(fb, textX, y, item.time, { rung: body });
       titleX = textX + timeColW;
     }
-    drawText(fb, titleX, y, fit(asciiTitle(item.title), right - titleX, { scale: body }), { scale: body });
+    drawText(fb, titleX, y, fit(asciiTitle(item.title), right - titleX, { rung: body }), { rung: body });
     y += m.upcomingRowH;
   }
 }
@@ -254,10 +391,10 @@ export function drawWeekBox(fb: Framebuffer, model: EpaperModel, m: EpaperMetric
   if (row === undefined) return;
   const colW = Math.floor(box.w / 7);
   const headH = m.weekHeadH;
-  const small = m.smallScale;
-  const smallGlyph = 8 * small;
+  const small = m.small;
+  const smallGlyph = m.smallGlyph;
   const inset = m.cellInset;
-  const foot = box.y + box.h - 2 * small;
+  const foot = box.y + box.h - Math.round(smallGlyph / 4);
   const top = box.y + headH + m.pad;
   // The names a column can hold, from its own height rather than from the four
   // the model used to carry — the `EPAPER_CELL_TITLES` half of the same bug.
@@ -269,9 +406,9 @@ export function drawWeekBox(fb: Framebuffer, model: EpaperModel, m: EpaperMetric
     // column somebody is standing in front of is findable across a kitchen.
     if (cell.isToday) fb.fillRect(x, box.y, colW, headH, true);
     const label = `${model.weekdayLabels[c] ?? ''} ${cell.day}`;
-    const lw = measureText(label, { scale: m.labelScale });
+    const lw = measureText(label, { rung: m.label });
     drawText(fb, x + Math.max(2, Math.floor((colW - lw) / 2)), box.y + m.pad, label, {
-      scale: m.labelScale,
+      rung: m.label,
       ink: !cell.isToday,
     });
     fb.strokeRect(x, box.y, colW, box.h, true);
@@ -280,14 +417,14 @@ export function drawWeekBox(fb: Framebuffer, model: EpaperModel, m: EpaperMetric
     let drawn = 0;
     for (const event of cell.events.slice(0, fits)) {
       if (y + smallGlyph > foot) break;
-      const line = fit(asciiTitle(event.title), colW - inset * 2, { scale: small });
+      const line = fit(asciiTitle(event.title), colW - inset * 2, { rung: small });
       if (line === '') break;
-      drawText(fb, x + inset, y, line, { scale: small });
+      drawText(fb, x + inset, y, line, { rung: small });
       y += m.weekTitleLineH;
       drawn++;
     }
     const rest = cell.eventCount - drawn;
-    if (rest > 0 && y + smallGlyph <= foot) drawText(fb, x + inset, y, `+${rest}`, { scale: small });
+    if (rest > 0 && y + smallGlyph <= foot) drawText(fb, x + inset, y, `+${rest}`, { rung: small });
   }
 }
 
@@ -319,7 +456,9 @@ export function drawMonthBox(
   m: EpaperMetrics,
   box: Box,
   options: MonthOptions = {},
+  log?: RegionLog,
 ): void {
+  note(log, 'month', box.x, box.y, box.w, box.h);
   const weeks = model.weeks.length;
   const labelH = m.monthHeadH;
   /*
@@ -352,12 +491,14 @@ export function drawMonthBox(
    * no names in a cell of that size and the panel drew four. One stored value,
    * two renderers, two answers — the fault this seam exists to end.
    *
-   * A character here is `GLYPH_SIZE + 1` — every glyph is 8 wide and 8 tall
-   * with a pixel of tracking — so the two measurements the table needs are
-   * arithmetic rather than a probe.
+   * A character here is the rung's own advance — its cell plus one pixel of
+   * tracking — so the two measurements the table needs are arithmetic rather
+   * than a probe. It is a *face* measurement now rather than `8 + 1` times a
+   * multiplier, which is why a 13.3" panel's names got half again as tall
+   * without costing the cell a single character.
    */
-  const cellEm = GLYPH_SIZE * m.smallScale;
-  const cellCh = (GLYPH_SIZE + 1) * m.smallScale;
+  const cellEm = m.smallGlyph;
+  const cellCh = m.small.advance;
   // Deliberately not conditioned on `pills`: the day number is the thing a
   // person scans for, and having it change size because a household ticked
   // "labelled pills" is a surprise. It also keeps the setting honest — with
@@ -380,16 +521,12 @@ export function drawMonthBox(
    * rule's own test red. A width guard should stop a numeral overflowing and
    * change nothing else.
    */
-  const assumedNumScale = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? 2 * m.smallScale : m.smallScale;
-  const numScale = fitNumberScale(assumedNumScale, grid.cellW - m.cellNumberInset * 2);
-  const numberBand = m.cellNumberInset + 8 * assumedNumScale + 2 * m.smallScale;
+  const assumedNum = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? rungStep(m.small, 1) : m.small;
+  const numRung = fitNumberRung(assumedNum, grid.cellW - m.cellNumberInset * 2);
+  const cellFoot = Math.round(m.smallGlyph / 4);
+  const numberBand = m.cellNumberInset + assumedNum.height + cellFoot;
 
-  const tier = tierFor(
-    grid.cellW - m.cellInset * 2,
-    grid.cellH - numberBand - 2 * m.smallScale,
-    cellCh,
-    cellEm,
-  );
+  const tier = tierFor(grid.cellW - m.cellInset * 2, grid.cellH - numberBand - cellFoot, cellCh, cellEm);
   /*
    * The household's choice and the box's answer are two different things, and
    * folding them together is a fault this was written with for one commit.
@@ -412,8 +549,8 @@ export function drawMonthBox(
    * which is the rule `agendaRowsInBox` is written under.
    */
   const titleRows = Math.min(
-    namesAt(tier, grid.cellH - numberBand - 2 * m.smallScale, cellEm),
-    cellTitlesInBox(grid.cellH - numberBand - 2 * m.smallScale, m),
+    namesAt(tier, grid.cellH - numberBand - cellFoot, cellEm),
+    cellTitlesInBox(grid.cellH - numberBand - cellFoot, m),
   );
 
   // Weekday labels, centred over their columns, cut to what the tier has room
@@ -425,8 +562,9 @@ export function drawMonthBox(
     // is no second array to fall out of step. At one letter that is the 'S' the
     // panel has always drawn.
     const label = weekdayHead(long, long, tier.weekdayLetters);
-    const w = measureText(label, { scale: m.labelScale });
-    drawText(fb, gx + c * grid.cellW + Math.floor((grid.cellW - w) / 2), box.y, label, { scale: m.labelScale });
+    const w = measureText(label, { rung: m.label });
+    note(log, `month-head:${c}`, gx + c * grid.cellW, box.y, grid.cellW, m.label.height);
+    drawText(fb, gx + c * grid.cellW + Math.floor((grid.cellW - w) / 2), box.y, label, { rung: m.label });
   }
 
   /*
@@ -458,7 +596,7 @@ export function drawMonthBox(
    */
   const maxLanes =
     named && tier.spans
-      ? Math.max(0, Math.floor((grid.cellH - laneTop - 2 * m.smallScale) / m.spanLaneH))
+      ? Math.max(0, Math.floor((grid.cellH - laneTop - cellFoot) / m.spanLaneH))
       : 0;
   const spans =
     maxLanes > 0
@@ -481,6 +619,7 @@ export function drawMonthBox(
       const item = model.weeks[r]![c]!;
       const x = gx + c * grid.cellW;
       const y = gridTop + r * grid.cellH;
+      note(log, `cell:${r}:${c}`, x, y, grid.cellW, grid.cellH);
       if (item.isToday) {
         fb.fillRect(x, y, grid.cellW, grid.cellH, true); // the lit cell
       } else if (!named) {
@@ -497,10 +636,12 @@ export function drawMonthBox(
       // Today's number is knocked out of the fill; a busy day keeps a solid
       // number by first clearing a little box behind it, so dither never eats it.
       if (item.isToday) {
-        drawText(fb, nx, ny, num, { scale: numScale, ink: false });
+        drawText(fb, nx, ny, num, { rung: numRung, ink: false });
       } else {
-        if (!named && densityOf(item) > 0) fb.fillRect(nx - 1, ny - 1, measureText(num, { scale: numScale }) + 2, 8 * numScale + 2, false);
-        drawText(fb, nx, ny, num, { scale: numScale });
+        if (!named && densityOf(item) > 0) {
+          fb.fillRect(nx - 1, ny - 1, measureText(num, { rung: numRung }) + 2, numRung.height + 2, false);
+        }
+        drawText(fb, nx, ny, num, { rung: numRung });
       }
       // Today's cell is filled, so its names are knocked out of it exactly as
       // its number is. Drawn in ink they were black on black — invisible on
@@ -510,8 +651,8 @@ export function drawMonthBox(
         let top = y + laneTop + laneRowsAt(bars, c) * m.spanLaneH;
         // The mark first and always: at M0 it is the cell's whole answer, which
         // is the tier the wall's own grid draws at this size too.
-        top = drawDensityMark(fb, item, m, cellBox, top, !item.isToday);
-        drawCellTitles(fb, item, m, cellBox, top, titleRows, !item.isToday, covered[c] ?? []);
+        top = drawDensityMark(fb, item, m, cellBox, top, !item.isToday, log, `${r}:${c}`);
+        drawCellTitles(fb, item, m, cellBox, top, titleRows, !item.isToday, covered[c] ?? [], log, `${r}:${c}`);
       }
     }
     /*
@@ -528,6 +669,7 @@ export function drawMonthBox(
       const bx = gx + bar.column * grid.cellW + 1;
       const bw = bar.span * grid.cellW - 2;
       const by = gridTop + r * grid.cellH + laneTop + bar.lane * m.spanLaneH;
+      note(log, `span:${r}:${bar.lane}:${bar.column}`, bx, by, bw, m.spanBarH);
       fb.fillRect(bx - 1, by - 1, bw + 2, m.spanBarH + 2, false);
       fb.fillRect(bx, by, bw, m.spanBarH, true);
       // Only the first bar of a run carries the words; a continuation is the
@@ -545,9 +687,9 @@ export function drawMonthBox(
         drawText(
           fb,
           bx + m.cellInset,
-          by + m.smallScale,
-          fit(asciiTitle(bar.title), bw - m.cellInset * 2, { scale: m.smallScale }),
-          { scale: m.smallScale, ink: false },
+          by + Math.round(m.smallGlyph / 8),
+          fit(asciiTitle(bar.title), bw - m.cellInset * 2, { rung: m.small }),
+          { rung: m.small, ink: false },
         );
       }
     }
@@ -576,28 +718,42 @@ function drawDensityMark(
   cell: Box,
   top: number,
   ink: boolean,
+  log?: RegionLog,
+  at?: string,
 ): number {
   const steps = densitySteps(item.eventCount);
   if (steps <= 0) return top;
   const inset = m.cellInset;
   const width = Math.max(2, Math.round(((cell.w - inset * 2) * steps) / DENSITY_STEPS));
-  if (top + m.markH > cell.y + cell.h - 2 * m.smallScale) return top;
+  if (top + m.markH > cell.y + cell.h - Math.round(m.smallGlyph / 4)) return top;
+  /*
+   * The *lane* rather than the bar, and the difference is the contract.
+   *
+   * The mark's own length steps with the day's count, so its ink is content —
+   * what is not is the strip it is drawn in, which is the cell's inner width at
+   * a fixed offset. Recording the ink here would say a rectangle moved every
+   * time a household added an event to a Tuesday.
+   */
+  note(log, `cell-mark:${at ?? ''}`, cell.x + inset, top, cell.w - inset * 2, m.markH);
   fb.fillRect(cell.x + inset, top, width, m.markH, ink);
   return top + m.markH + m.markGap;
 }
 
 /**
- * Step the day number down until it fits its cell's width.
+ * Step the day number down the ladder until it fits its cell's width.
  *
  * Never needed while the cell was square and the number was one of two sizes:
- * a 50px cell holds "31" at scale 2 with room over. A cell that fills a tall
- * narrow column on a 13.3" panel is 116px wide with a scale-6 number in it,
- * which is 102px — one bad rounding from drawing through the cell beside it.
+ * a 50px cell holds "31" at 16px with room over. A cell that fills a tall
+ * narrow column on a 13.3" panel is 116px wide with a 48px number in it, which
+ * is one bad rounding from drawing through the cell beside it. `'30'` is a
+ * constant of the renderer rather than the day being drawn — every date is two
+ * characters wide or fewer, so the band is one size for every cell in the grid
+ * and for every day of the month.
  */
-function fitNumberScale(wanted: number, available: number): number {
-  let scale = Math.max(1, wanted);
-  while (scale > 1 && measureText('30', { scale }) > available) scale -= 1;
-  return scale;
+function fitNumberRung(wanted: TypeRung, available: number): TypeRung {
+  let rung = wanted;
+  while (rung.index > 0 && measureText('30', { rung }) > available) rung = rungStep(rung, -1);
+  return rung;
 }
 
 /**
@@ -616,13 +772,15 @@ function drawCellTitles(
   maxRows: number,
   ink: boolean,
   covered: readonly string[],
+  log?: RegionLog,
+  at?: string,
 ): void {
-  const scale = m.smallScale;
-  const glyph = 8 * scale;
+  const rung = m.small;
+  const glyph = m.smallGlyph;
   const lineH = m.cellTitleLineH;
   const inset = m.cellInset;
   const width = cell.w - inset * 2;
-  const bottom = cell.y + cell.h - 2 * scale;
+  const bottom = cell.y + cell.h - Math.round(glyph / 4);
   // Everything a bar is not already drawing. By id, which is the same on every
   // date the event touches; by title it would take an unrelated "Bin day" with
   // it.
@@ -634,7 +792,7 @@ function drawCellTitles(
   let y = top;
   for (const event of rows.slice(0, Math.max(0, maxRows))) {
     if (y + glyph > bottom) break;
-    const line = fit(asciiTitle(event.title), width, { scale });
+    const line = fit(asciiTitle(event.title), width, { rung });
     if (line === '') break;
     lines.push({ text: line, y });
     y += lineH;
@@ -661,15 +819,18 @@ function drawCellTitles(
   const rest = item.eventCount - lines.length - covered.length;
   if (rest > 0) {
     const tag = `+${rest}`;
-    const tagWidth = measureText(tag, { scale });
+    const tagWidth = measureText(tag, { rung });
     const last = lines[lines.length - 1] as { text: string; y: number };
     const source = rows[lines.length - 1];
     if (source !== undefined) {
-      last.text = fit(asciiTitle(source.title), Math.max(0, width - tagWidth - m.cellInset), { scale });
+      last.text = fit(asciiTitle(source.title), Math.max(0, width - tagWidth - m.cellInset), { rung });
     }
-    drawText(fb, cell.x + cell.w - inset - tagWidth, last.y, tag, { scale, ink });
+    drawText(fb, cell.x + cell.w - inset - tagWidth, last.y, tag, { rung, ink });
   }
-  for (const line of lines) drawText(fb, cell.x + inset, line.y, line.text, { scale, ink });
+  lines.forEach((line, index) => {
+    note(log, `cell-row:${at ?? ''}:${index}`, cell.x + inset, line.y, width, glyph);
+    drawText(fb, cell.x + inset, line.y, line.text, { rung, ink });
+  });
 }
 
 /**
@@ -726,13 +887,23 @@ export function epaperBlocks(weeks: number, m: EpaperMetrics): { readonly agenda
   };
 }
 
-/** Render the model to a framebuffer sized to the panel. */
-export function renderEpaper(model: EpaperModel, geometry: PanelGeometry): Framebuffer {
+/**
+ * Render the model to a framebuffer sized to the panel.
+ *
+ * `regions` is opt-in and costs nothing when it is absent: pass an array and
+ * the frame records every rectangle it drew into, which is what
+ * `reflow-stability.test.ts` compares between two frames. See `DrawnRegion`.
+ */
+export function renderEpaper(
+  model: EpaperModel,
+  geometry: PanelGeometry,
+  regions?: RegionLog,
+): Framebuffer {
   const m = panelMetrics(geometry);
   const fb = new Framebuffer(m.panel.width, m.panel.height);
-  drawHeader(fb, model, m);
+  drawHeader(fb, model, m, regions);
   const blocks = epaperBlocks(model.weeks.length, m);
-  drawAgendaBox(fb, model, m, blocks.agenda, 'TODAY');
-  drawMonthBox(fb, model, m, blocks.month);
+  drawAgendaBox(fb, model, m, blocks.agenda, 'TODAY', regions);
+  drawMonthBox(fb, model, m, blocks.month, {}, regions);
   return fb;
 }

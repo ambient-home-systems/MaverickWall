@@ -165,10 +165,13 @@ export const MAX_NAMES = 12;
  * same way (0.4081em), and 21% off the figure the CSS `ch` unit would give.
  *
  * The panel measures the same string through its own bitmap metrics, where the
- * answer is a flat 1.125em because every glyph there is 8 wide and 8 tall with
- * a pixel of tracking. That difference is the point rather than a problem: a
- * 44px cell on a 7.5" panel really does hold four characters, and the table is
- * stated in characters so that it can say so.
+ * answer is a property of the *face* its type tier chose rather than of a probe
+ * — each face's own cell plus a pixel of tracking, over its own height: 1.125em
+ * on the 8x8, 0.8125em on the 12x16, 0.7083em on the 16x24. That difference is
+ * the point rather than a problem, and so is the spread inside it: a 44px cell
+ * on a 7.5" panel, which draws the 8x8 face, really does hold four characters,
+ * while a 13.3" panel reads a face 37% narrower for its height and is told so.
+ * The table is stated in characters precisely so that it can say either.
  */
 export const TYPE_SPECIMEN = 'The quick brown fox jumps over the lazy dog';
 

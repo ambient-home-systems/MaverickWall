@@ -29,9 +29,10 @@ import { describe, expect, it } from 'vitest';
 import { addDays, type CivilDate } from '@maverick-wall/core';
 
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
+import { measureText } from '../src/epaper/font.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { panelMetrics, type PanelGeometry } from '../src/epaper/metrics.js';
-import { renderEpaper } from '../src/epaper/render.js';
+import { epaperBlocks, renderEpaper } from '../src/epaper/render.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
 /**
@@ -185,6 +186,30 @@ const SIZES = [
 interface Baseline {
   readonly bodyInkPercent: number;
   readonly blankBottomPx: number;
+  /** Characters of an event title the agenda's own column holds. */
+  readonly titleChars: number;
+}
+
+/**
+ * How many characters of a title the agenda can draw on one line.
+ *
+ * Arithmetic rather than decoded, and it is the one metric in this file that
+ * is — deliberately, because it is the thing the other two cannot see. Ink
+ * density conflates *how much is drawn* with *how wide the letters are*, so a
+ * face that says more in a narrower cut reads as a loss on it; a truncated
+ * event title is this project's own definition of a different string rather
+ * than a shortened one, and this is the number that says whether one fits.
+ *
+ * Asked of `epaperBlocks` and `panelMetrics` rather than recomputed here, for
+ * the reason the row-count assertions give: a test that works out the split for
+ * itself is a second opinion about the layout.
+ */
+function titleCharsAt(panel: PanelGeometry): number {
+  const m = panelMetrics(panel);
+  const box = epaperBlocks(6, m).agenda;
+  const timeColW = measureText('00:00', { rung: m.body }) + m.bullet;
+  const width = box.w - (m.bullet + m.bulletGap) - timeColW;
+  return Math.floor((width + m.body.scale) / m.body.advance);
 }
 
 /**
@@ -243,14 +268,38 @@ interface Baseline {
  * is worse because the margin is deliberately bigger on a bigger panel. Worth
  * knowing before reading it as a regression: at the top of the range this
  * metric is measuring the margin, not dead space.
+ *
+ * ---------------------------------------------------------------------------
+ * Moved by the three-face phase (`epaper/font-12x16.ts`, `font-16x24.ts`).
+ * ---------------------------------------------------------------------------
+ *
+ * **`bodyInkPercent` falls at all six sizes and `titleChars` is why this file
+ * now records a third number.** The panel drew one 8x8 face at integer scales;
+ * it draws three faces chosen by tier now, each of them keeping font8x8's own
+ * cap height and stroke ratio at its rung and reaching it in 28-37% less
+ * advance. So the frame carries **more of the household's calendar in the same
+ * rectangles**, and each character carries less ink because it is narrower:
+ * measured, a 12x16 'A' is 62 lit pixels against the 112 of an 8x8 doubled.
+ *
+ * Ink density cannot tell those apart. `titleChars` can, and it goes
+ * **11→17, 15→23, 17→29, 18→28, 18→27 and 29→43** across the six — between
+ * 48% and 71% more of an event title on one line, at exactly the cap height
+ * the panel drew before. `blankBottomPx` is unmoved at every size.
+ *
+ * Recorded rather than argued away: 26.9→23.7, 25.4→24.4, 25.7→25.4,
+ * 25.6→25.0, 26.8→25.8 and 32.2→31.4. **A metric whose population changed is
+ * not a metric that improved, and it is not one that regressed either** — the
+ * lesson `wall-density.test.ts` wrote down when a forecast's icon stopped
+ * being a character. What would be a regression is a frame that says less, and
+ * the third column is what makes that visible from here.
  */
 export const BASELINE: Record<string, Baseline> = {
-  '640x384': { bodyInkPercent: 26.9, blankBottomPx: 12 },
-  '800x480': { bodyInkPercent: 25.4, blankBottomPx: 16 },
-  '1304x984': { bodyInkPercent: 25.7, blankBottomPx: 32 },
-  '1872x1404': { bodyInkPercent: 25.6, blankBottomPx: 46 },
-  '480x800': { bodyInkPercent: 26.8, blankBottomPx: 16 },
-  '1404x1872': { bodyInkPercent: 32.2, blankBottomPx: 46 },
+  '640x384': { bodyInkPercent: 23.7, blankBottomPx: 12, titleChars: 17 },
+  '800x480': { bodyInkPercent: 24.4, blankBottomPx: 16, titleChars: 23 },
+  '1304x984': { bodyInkPercent: 25.4, blankBottomPx: 32, titleChars: 29 },
+  '1872x1404': { bodyInkPercent: 25.0, blankBottomPx: 46, titleChars: 28 },
+  '480x800': { bodyInkPercent: 25.8, blankBottomPx: 16, titleChars: 27 },
+  '1404x1872': { bodyInkPercent: 31.4, blankBottomPx: 46, titleChars: 43 },
 };
 
 describe('the e-paper frame, measured for ink', () => {
@@ -288,6 +337,19 @@ describe('the e-paper frame, measured for ink', () => {
         `${key}: ${stats.blankBottomPx}px (${stats.blankBottomPercent.toFixed(1)}%) blank below the last inked row, ` +
           `above the recorded ${baseline.blankBottomPx}px`,
       ).toBeLessThanOrEqual(baseline.blankBottomPx);
+
+      /*
+       * And the third: more of an event title on one line is the improving
+       * direction, which is what the ink metric above cannot see. Checked by
+       * breaking it the same way — pinning the body rung back to the 8x8 at
+       * every tier drops this to 11, 15, 17, 18, 18 and 29 and turns it red at
+       * all six sizes, while `bodyInkPercent` goes *up*.
+       */
+      const chars = titleCharsAt(size);
+      expect(
+        chars,
+        `${key}: the agenda's title column holds ${chars} characters, below the recorded ${baseline.titleChars}`,
+      ).toBeGreaterThanOrEqual(baseline.titleChars);
     });
   }
 });
