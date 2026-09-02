@@ -8,12 +8,7 @@ import type {
   TodayShiftModel,
 } from './viewmodel.js';
 import { localDate, localTime } from './viewmodel.js';
-import {
-  agendaTimeFitsBeside,
-  MIN_CALENDAR_SCALE,
-  MIN_CHORE_SCALE,
-  weekColumnsFit,
-} from './density.js';
+import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { shiftTint } from './theme.js';
@@ -50,6 +45,17 @@ import {
   weekdayHead,
   type CalendarTier,
 } from './tiers.js';
+import {
+  WEATHER_COLUMN_CH,
+  WIDGET_TIERS,
+  columnsAt,
+  itemsAt,
+  laddersToOneLine,
+  rungsAt,
+  rungsByPriority,
+  widgetTierFor,
+  type WidgetTier,
+} from './widget-tiers.js';
 
 /**
  * The DOM, and no decisions.
@@ -340,7 +346,20 @@ function renderWeather(
  * no entity id in the model and no way to ask for one. That boundary is what
  * keeps a compromised wall from being a way into somebody's house.
  */
-function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undefined {
+/**
+ * Which parts of a reading survive a box too narrow for all of them.
+ *
+ * The value first, always: a reading whose value has been given up is a widget
+ * saying "Front door" and not what the front door is doing. See `HOUSE_TIERS`,
+ * which argues why this is the one ladder cut by role rather than by position.
+ */
+const HOUSE_FIELD_PRIORITY: readonly HouseField[] = ['value', 'label', 'icon'];
+
+function renderHouse(
+  model: DisplayModel,
+  config?: unknown,
+  tier?: WidgetTier,
+): HTMLElement | undefined {
   // Which readings to show, by label — the manifest carries no entity id, so a
   // per-widget selection can only ever be by the label the household sees.
   // Empty means all, which is the default and what a bare widget draws.
@@ -358,8 +377,9 @@ function renderHouse(model: DisplayModel, config?: unknown): HTMLElement | undef
      * statements this replaces *were* the mode's meaning, written down nowhere
      * else — which is how the panel came to ignore it entirely.
      */
+    const resolved = houseLadder(config, reading.mode);
     const rows = ladderRows(
-      houseLadder(config, reading.mode),
+      tier === undefined ? resolved : rungsByPriority(tier, resolved, HOUSE_FIELD_PRIORITY),
       { icon: reading.icon, label: reading.label, value: reading.value },
       HOUSE_ROLES,
     );
@@ -1704,6 +1724,389 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
  * A takeover still wins — a warning is a warning, canvas or no canvas — and a
  * banner still draws over the top, the same as it does over the blocks.
  */
+/* ------------------------------------------------------ WIDGET TIERS ---- */
+
+/**
+ * One placed widget whose body takes a form from its box.
+ *
+ * `body` is replaced when a tier redraws it, so every pass after this one —
+ * the belt, the editor's read-back — sees what is actually drawn.
+ */
+interface TieredWidget {
+  readonly box: HTMLElement;
+  readonly widget: ManifestWidget;
+  body: HTMLElement;
+}
+
+/**
+ * Which run each widget's tier is stated in, and where to plant a probe for it.
+ *
+ * The class is the widget's **primary text role** — argued for at each table in
+ * `widget-tiers.ts` — and the selector is the node whose cascade that run
+ * actually inherits. Two of them are descendant rules (`.shift-badge .what`),
+ * so a probe planted on the box would measure the wrong size and the tier would
+ * be read off a run nothing draws.
+ */
+const WIDGET_PRIMARY: Readonly<Record<string, { readonly cls: string; readonly host: string }>> = {
+  weather: { cls: 'wx-temp', host: '.wx-day' },
+  shift: { cls: 'what', host: '.shift-badge' },
+  homeassistant: { cls: 'hs-value', host: '.hs-item' },
+  notes: { cls: 'nt-line', host: '.nt' },
+  todo: { cls: 'td-text', host: '.td' },
+  chores: { cls: 'ch-name', host: '.ch, .ch-people' },
+};
+
+/**
+ * Draw each placed widget at the form its own box affords.
+ *
+ * **The replacement for `fitToBox`, and the question is the other way round.**
+ * That laid a section out at one size and wrote a uniform `transform: scale()`
+ * on it, which is photographic enlargement: it changed how big a widget looked
+ * and could never change what it said. Measured on the shipped Classic wall,
+ * the forecast drew five days and the rota badge three rows at every size from
+ * a 450x800 e-ink panel to a 3.7-megapixel television. This asks the box first.
+ *
+ * Three things are decided here and they are deliberately separate:
+ *
+ *  - **The tier**, from the box's inner size in `ch` and `em` of the widget's
+ *    own primary role (`widget-tiers.ts`). A pure table, no DOM in it.
+ *  - **The form**, which is the tier's rung count applied to the household's
+ *    own ladder — never a rung the household did not ask for, and never fewer
+ *    than one. Where that lands on one rung out of several, a badge draws a
+ *    *line* rather than a word, which is the ladder's own rule kept word for
+ *    word.
+ *  - **How many**, which is the tier's number as a floor and the box's measured
+ *    capacity above it. Measured off the drawn item, because what an item costs
+ *    is a fact about markup that changes whenever a row does.
+ *
+ * And then one geometric belt, which is not a fourth decision but the promise
+ * the other three cannot make: **whatever the arithmetic said, nothing may end
+ * past the foot of its box.** `overflow: hidden` cuts where the pixel falls,
+ * and a row sliced through the middle reads as a broken renderer rather than
+ * as a list that ran out of room — the fault `density.ts` recorded for the
+ * chore board and the month grid shipped once before that.
+ *
+ * A drawing decision, never a saved one. Nothing here writes to the model, so
+ * widening a box brings the rows straight back on the next draw.
+ */
+function applyWidgetTiers(
+  entries: readonly TieredWidget[],
+  model: DisplayModel,
+  mediaBase: string,
+): void {
+  for (const entry of entries) {
+    const table = WIDGET_TIERS[entry.widget.type];
+    const primary = WIDGET_PRIMARY[entry.widget.type];
+    if (table === undefined || primary === undefined) {
+      // Not one of the six. It still may not be cut through a row.
+      beltGenericRows(entry);
+      continue;
+    }
+    const host = entry.box.querySelector(primary.host);
+    if (!(host instanceof HTMLElement)) continue;
+    const inner = innerBox(entry.box);
+    const { chPx, emPx } = typeMetrics(host, primary.cls);
+    if (!(chPx > 0) || !(emPx > 0)) continue;
+
+    switch (entry.widget.type) {
+      case 'weather':
+        tierWeather(entry, model, table, inner, chPx, emPx);
+        break;
+      case 'shift':
+        tierShift(entry, model, table, inner, chPx, emPx);
+        break;
+      case 'homeassistant':
+        tierHouse(entry, model, table, inner, chPx, emPx);
+        break;
+      default:
+        tierList(entry, table, inner, chPx, emPx);
+        break;
+    }
+  }
+  // The title, if the household asked for one, is not a widget row and is never
+  // what a belt gives up: it rides above the body and is the last thing to go,
+  // which is `contentWithTitle`'s own placement rather than a rule here.
+  void mediaBase;
+}
+
+/** Stamp the tier a box resolved to, so the editor can read it back. */
+function stampTier(box: HTMLElement, tier: WidgetTier, items: number): void {
+  box.setAttribute('data-tier', tier.tier);
+  box.setAttribute('data-tier-items', String(items));
+}
+
+/**
+ * The forecast: how many days across, and how much each day says.
+ *
+ * **Width buys days and height buys rungs**, which is the shape of a strip and
+ * is why `WEATHER_COLUMN_CH` is one constant rather than a `minCh` per rung —
+ * conflating them would let a wide short box draw one enormous day. The tier is
+ * then read off *one column*, because that is the box a day is drawn in.
+ *
+ * Rebuilt rather than hidden, and that is not a preference: the high and the
+ * low share a row while they are adjacent, so the DOM has fewer rows than the
+ * ladder has entries and "hide the last two children" is not the same cut as
+ * "keep the first two rungs". `renderWeather` already takes a ladder, and
+ * `weatherWidgetView` already reads `count`, so the cut is expressed where both
+ * rules already live.
+ */
+function tierWeather(
+  entry: TieredWidget,
+  model: DisplayModel,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const config = widgetConfig(entry.widget.config);
+  const drawn = entry.body.querySelectorAll('.wx-day').length;
+  if (drawn === 0) return;
+  const columns = Math.min(drawn, columnsAt(inner.w, chPx, WEATHER_COLUMN_CH));
+  const tier = widgetTierFor(table, inner.w / columns, inner.h, chPx, emPx);
+  const full = weatherLadder(config);
+  const ladder = rungsAt(tier, full);
+  stampTier(entry.box, tier, columns);
+
+  if (columns !== drawn || ladder.length !== full.length) {
+    const rebuilt = renderWeather(model, { ...config, count: columns }, ladder as readonly WeatherField[]);
+    if (rebuilt !== undefined) replaceBody(entry, rebuilt);
+  }
+  entry.body.style.setProperty('--wx-days', String(columns));
+  /*
+   * The belt goes on the rows **inside** each column and never on the columns.
+   *
+   * A strip is one row of boxes with identical tops and identical bottoms, so
+   * "hide every item that ends past the foot" would hide the whole forecast the
+   * moment any of it overflowed — measured, and it is how the first version of
+   * this pass drew a five-day strip as one day. The vertical unit here is a
+   * rung, and every column has the same rungs at the same heights, so cutting
+   * each column independently cuts all of them in the same place.
+   */
+  for (const column of [...entry.body.querySelectorAll('.wx-day')] as HTMLElement[]) {
+    beltItems(entry.box, [...column.children] as HTMLElement[]);
+  }
+}
+
+/**
+ * The rota badge: how much one badge says, and how many of them there are.
+ *
+ * At one rung out of several the badge is a **line** rather than a word — the
+ * ladder's rule, and the reason `laddersToOneLine` is a predicate in the table
+ * rather than an `if` in here: two renderers holding one rule is this project's
+ * most repeated bug.
+ */
+function tierShift(
+  entry: TieredWidget,
+  model: DisplayModel,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const view = shiftWidgetView(model.todayShifts, entry.widget.config);
+  if (view.entries.length === 0) return;
+  const tier = widgetTierFor(table, inner.w, inner.h, chPx, emPx);
+  const ladder = rungsAt(tier, view.ladder);
+  const line = laddersToOneLine(tier, view.ladder.length);
+  stampTier(entry.box, tier, view.entries.length);
+  if (ladder.length === view.ladder.length && !line) {
+    beltShift(entry);
+    return;
+  }
+  const rebuilt = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
+  for (const person of view.entries) {
+    rebuilt.appendChild(
+      line
+        ? shiftLineBadge(person, view, view.ladder)
+        : shiftBadge(person, view, ladder as readonly ShiftField[]),
+    );
+  }
+  replaceBody(entry, rebuilt);
+  beltShift(entry);
+}
+
+/**
+ * The badges, and then the rows inside the last one still standing.
+ *
+ * Two units, because a rota with two people on it is a stack of cards and each
+ * card is a stack of rows: a card half-drawn and a row half-drawn are both the
+ * sliced-through-a-row fault, one nesting apart.
+ */
+function beltShift(entry: TieredWidget): void {
+  const badges = [...entry.box.querySelectorAll('.shift-badge')] as HTMLElement[];
+  beltItems(entry.box, badges);
+  for (const badge of badges) {
+    if (badge.style.display === 'none') continue;
+    beltItems(entry.box, [...badge.children] as HTMLElement[]);
+  }
+}
+
+/**
+ * The house: how much one reading says, and how many of them fit.
+ *
+ * The rungs come off by **role** here rather than by position — see
+ * `HOUSE_TIERS`, which argues it: a reading is one row read left to right and
+ * its ladder puts the value last, so taking the last entry would leave a widget
+ * saying "Front door" and not what the front door is doing.
+ */
+function tierHouse(
+  entry: TieredWidget,
+  model: DisplayModel,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const tier = widgetTierFor(table, inner.w, inner.h, chPx, emPx);
+  const readings = entry.box.querySelectorAll('.hs-item').length;
+  stampTier(entry.box, tier, readings);
+  if (tier.rungs < HOUSE_FIELD_PRIORITY.length) {
+    const rebuilt = renderHouse(model, entry.widget.config, tier);
+    if (rebuilt !== undefined) replaceBody(entry, rebuilt);
+  }
+  beltItems(entry.box, [...entry.body.querySelectorAll('.hs-item')] as HTMLElement[]);
+}
+
+/**
+ * A list of one kind of thing: a note's lines, a checklist, a chore board.
+ *
+ * Hidden rather than rebuilt, which is the opposite call from the forecast and
+ * for the opposite reason: these rows are homogeneous, so "the first N" is
+ * exactly the cut the tier asks for, and leaving the rest in the document keeps
+ * the geometry of what *is* drawn identical between two draws of the same box.
+ * `measureWall` and `measureMonthGrid` both filter on computed `display`, which
+ * is why hiding is a safe way to say "not drawn" in this codebase.
+ *
+ * **The chore week board's unit is a whole day**, which is this rule reading
+ * the same table through a different selector rather than a second mechanism.
+ * `density.ts` recorded what the board did without one: 28 rows shrunk to 8.1px
+ * on a 1280px wall, and then, once a floor stopped that, a box clipping through
+ * a row.
+ */
+function tierList(
+  entry: TieredWidget,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const tier = widgetTierFor(table, inner.w, inner.h, chPx, emPx);
+  const groups = listGroups(entry.body);
+  let total = 0;
+  for (const group of groups) {
+    const capacity = boxCapacity(inner.h, group.items);
+    const many = itemsAt(tier, capacity);
+    for (let index = 0; index < group.items.length; index++) {
+      (group.items[index] as HTMLElement).style.display = index < many ? '' : 'none';
+    }
+    total = Math.max(total, Math.min(many, group.items.length));
+  }
+  stampTier(entry.box, tier, total);
+  for (const group of groups) beltItems(entry.box, group.items);
+}
+
+/**
+ * The rows a list widget draws, grouped by the box each of them stacks in.
+ *
+ * One group for the ordinary lists, and one **per column** for the by-person
+ * chore board — a column is its own stack, so a board of a busy column and a
+ * quiet one must not be told it has room for two rows because the quiet one
+ * does. The chore week board is a stack of *days*, which is why `.ch-day` is
+ * matched ahead of `.ch-row`.
+ */
+function listGroups(body: HTMLElement): readonly { readonly items: HTMLElement[] }[] {
+  const columns = [...body.querySelectorAll('.ch-col')] as HTMLElement[];
+  if (columns.length > 0) {
+    return columns.map((column) => ({
+      items: [...column.querySelectorAll('.ch-row')] as HTMLElement[],
+    }));
+  }
+  for (const selector of ['.ch-day', '.ch-row', '.td-row', '.nt-line, .nt-gap']) {
+    const found = [...body.querySelectorAll(selector)] as HTMLElement[];
+    if (found.length > 0) return [{ items: found }];
+  }
+  return [];
+}
+
+/**
+ * How many of these items a box of this height holds, from the drawn item.
+ *
+ * Measured rather than divided out of a declared row height, for the reason
+ * `agendaEventsAt` already had to learn: what a row costs is a fact about
+ * markup, and this project has moved it twice in one widget without touching a
+ * font size. The first item is the specimen, and its offset inside the stack is
+ * what carries the gap — so the arithmetic cannot be short by a `row-gap`,
+ * which is one of the three faults `trimCellRows` shipped.
+ *
+ * `Infinity` where there is nothing to measure, which `itemsAt` reads as "the
+ * tier's own number" — the honest answer for a box nothing has been drawn in.
+ */
+function boxCapacity(innerH: number, items: readonly HTMLElement[]): number {
+  const first = items[0];
+  if (first === undefined) return Number.POSITIVE_INFINITY;
+  const second = items[1];
+  const pitch =
+    second === undefined
+      ? first.offsetHeight
+      : Math.max(first.offsetHeight, second.offsetTop - first.offsetTop);
+  if (!(pitch > 0)) return Number.POSITIVE_INFINITY;
+  return Math.floor((innerH - first.offsetTop) / pitch);
+}
+
+/**
+ * The belt: nothing may end past the foot of the box.
+ *
+ * One read and no rounds, the same shape as the month cell's: hiding an item
+ * moves only the items under it, and those are going too. Read against the
+ * **box**, which is the element that clips — `fitAndTrimToDays` measured the
+ * scaled content instead and so never trimmed anything at all, which is
+ * exactly how that kind of mistake survives.
+ *
+ * Half a pixel of slack, never a whole one: a row one subpixel over its box is
+ * a rounding artefact rather than a row that has to go.
+ */
+function beltItems(box: HTMLElement, items: readonly HTMLElement[]): void {
+  if (items.length === 0) return;
+  const foot = box.getBoundingClientRect().bottom - parseFloat(getComputedStyle(box).paddingBottom || '0');
+  let cutting = false;
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index] as HTMLElement;
+    if (item.style.display === 'none') continue;
+    if (!cutting && item.getBoundingClientRect().bottom <= foot + 0.5) continue;
+    // The first item always survives, clipped if it comes to that: a widget
+    // that resolves to nothing is the one outcome rule nine forbids.
+    if (index === 0) continue;
+    cutting = true;
+    item.style.display = 'none';
+  }
+}
+
+/**
+ * The belt alone, for the placed widgets with no table of their own.
+ *
+ * A countdown is one reading and there is nothing in it to give up — it sizes
+ * itself to its box the way the clock does, in `display.css`, which is the
+ * right mechanism for a widget whose whole content is one number. A module's
+ * panel is a list, but the rows are the *module's* and how many of them are
+ * worth drawing is the household's `count`; giving it a table of ours would be
+ * this renderer having an opinion about somebody else's data. Both still get
+ * the promise every widget gets: cut between rows, never through one.
+ *
+ * A calendar in agenda mode comes through here too and finds nothing to belt,
+ * which is correct rather than an oversight: its own unit is a *day*, and
+ * `beltDays` is what holds it, after its tier has chosen how many events there
+ * are to hold.
+ */
+function beltGenericRows(entry: TieredWidget): void {
+  beltItems(entry.box, [...entry.box.querySelectorAll('.gp-reading')] as HTMLElement[]);
+}
+
+/** Swap a widget's drawn body, keeping its title wrapper if it has one. */
+function replaceBody(entry: TieredWidget, rebuilt: HTMLElement): void {
+  entry.body.replaceWith(rebuilt);
+  entry.body = rebuilt;
+}
+
 /**
  * Where media (uploaded images) is served from. The wall reads it behind its
  * display token at `/d/media/`; the editor preview, on the admin page, reads the
@@ -1768,16 +2171,20 @@ function typeMetrics(host: HTMLElement, className: string): { readonly chPx: num
   return { chPx, emPx };
 }
 
-/** An element's own `scale()` factor, ignoring every transform above it. */
-function appliedScale(node: HTMLElement): number {
-  const transform = getComputedStyle(node).transform;
-  if (transform === '' || transform === 'none') return 1;
-  const numbers = /matrix\(([^)]+)\)/.exec(transform);
-  if (numbers === null) return 1;
-  const parts = (numbers[1] as string).split(',').map(Number);
-  const [a, b, c, d] = parts as [number, number, number, number];
-  const determinant = Math.abs(a * d - b * c);
-  return determinant > 0 ? Math.sqrt(determinant) : 1;
+/**
+ * The room left under a section inside its box, in the cascade's own units.
+ *
+ * `offsetTop` is measured from the box's own padding edge (`.fw` is
+ * `position: absolute`, so it is the offset parent), which is what makes this
+ * right in the presence of a widget title: a titled widget's section starts
+ * lower and the title's height is already in the number rather than having to
+ * be added back. `scrollHeight` is the content's own height whatever the box
+ * clipped it to, so a section already overflowing answers a negative and the
+ * caller can give something up.
+ */
+function spareBelow(box: HTMLElement, node: HTMLElement): number {
+  const pad = parseFloat(getComputedStyle(box).paddingBottom || '0');
+  return box.clientHeight - pad - node.offsetTop - node.scrollHeight;
 }
 
 /** A box's content area, padding taken off, in the cascade's own units. */
@@ -2100,30 +2507,27 @@ function lineCount(row: HTMLElement): number {
 /**
  * The tier an agenda's box affords, and the events it draws at it.
  *
- * Measured **after** the first fit and against the *drawn* type, which is the
- * half a first draft got wrong. An agenda is laid out at its box width and then
- * `transform: scale()`d, and on an unmeasured 800x480 wall that factor is 1.89
- * — so asking how many rows fit against the declared type answers 23 for a box
- * that holds six. The box is the same either way; the type is not.
+ * **The `factor` this used to carry is gone with the transform it read.** The
+ * comment that stood here explained why the type had to be measured *after* a
+ * fit: an agenda was laid out at its box width and then scaled by up to 1.89,
+ * so asking how many rows fit against the declared type answered 23 for a box
+ * that holds six. Nothing scales now, so the declared type *is* the drawn type
+ * and there is no correction to apply — which is the same sentence
+ * `browser-font-race` now makes about the fonts.
  *
- * `count` is the household's own cap and still binds: the tier says what the
- * box affords and the household says what they asked for, and the drawn number
- * is the lesser. Classic asks for six, so a Classic wall draws six at every
- * size it always did — which is what makes this a mechanism rather than a
- * redesign of somebody's wall.
+ * `count` is the household's own cap and still binds where they have set one:
+ * the tier says what the box affords and the household says what they asked
+ * for, and the drawn number is the lesser.
  */
 function agendaEventsAt(
   box: HTMLElement,
-  scale: HTMLElement,
   section: HTMLElement,
   promote: number,
-  clipped: boolean,
 ): { readonly tier: CalendarTier; readonly rows: number } {
   const inner = innerBox(box);
-  const factor = appliedScale(scale);
   const { chPx, emPx } = typeMetrics(section, 'dr-ev-title');
-  const drawnEm = emPx * factor;
-  const tier = promoted(tierFor(inner.w, inner.h, chPx * factor, drawnEm), promote);
+  const drawnEm = emPx;
+  const tier = promoted(tierFor(inner.w, inner.h, chPx, drawnEm), promote);
 
   /*
    * How tall one entry actually is, which a month cell's arithmetic cannot
@@ -2142,7 +2546,7 @@ function agendaEventsAt(
    * current-time rule and the progress bar have both already done once.
    */
   const entry = section.querySelector('.dr-ev') as HTMLElement | null;
-  const entryPx = entry === null ? 0 : entry.offsetHeight * factor;
+  const entryPx = entry === null ? 0 : entry.offsetHeight;
   const drawn = section.querySelectorAll('.dr-ev').length;
   /*
    * Counted from what is on the glass rather than from a division, and that
@@ -2154,176 +2558,54 @@ function agendaEventsAt(
    * that is not an entry and rounds the wrong way. What is already drawn is
    * known to fit; what the leftover holds is the only open question.
    *
-   * Negative slack is the other half and is where the day trim used to live —
-   * but only where the fit says the section is *clipping*. Above its floor a
-   * scale-to-fit section fills its box to the pixel, so the slack is zero by
-   * construction and a rounding of a third of a pixel would otherwise shed an
-   * event on four of the five walls this project measures. Below it the
-   * section is being cut, and giving up content rather than points is the
-   * design rule this replaces the day trim with.
+   * Negative slack is the other half and is what makes this both a floor and a
+   * ceiling. A section is drawn at its role's size and clipped by its box, so
+   * an agenda too tall for its box is genuinely being cut and the honest answer
+   * is fewer events — the design rule *give up content, not points*, which is
+   * what the day trim used to say and what the scale floor under it used to
+   * contradict. The old reading had to ask the fit whether it had clipped,
+   * because above the floor a scale-to-fit section filled its box to the pixel
+   * and the slack was zero by construction; there is no fit to ask now, so the
+   * measurement is the measurement.
    */
-  const spare = clipped ? inner.h - scale.scrollHeight * factor : Math.max(0, inner.h - scale.scrollHeight * factor);
+  const spare = spareBelow(box, section);
   // Truncated toward zero, which is the difference between "this box is one
   // entry too small" and "this box is a few pixels too small". An overflow
   // under one entry costs more to fix than it costs to leave: dropping an event
   // to recover 30px of a 64px row buys type nobody asked for at a price this
   // project has already refused once, on this exact panel.
   const holds = entryPx > 0 ? drawn + Math.trunc(spare / entryPx) : Number.POSITIVE_INFINITY;
-  return { tier, rows: Math.max(1, Math.min(listRowsAt(tier, inner.h, drawnEm), holds)) };
-}
-
-/**
- * The day-sized groups a section can be cut on, or nothing if it has none.
- *
- * Two sections are a stack of days: a chore week (`.ch-day` under `.ch-week`)
- * and an agenda (`.day-row` under `.next`). They are listed here together
- * rather than trimmed in two places because the rule is one rule — a section
- * too tall for its box gives up whole days from the bottom — and the two
- * renderers of a chore board are already the project's example of what happens
- * when one decision lives in two spots.
- *
- * Anything else answers with an empty list and is left to clip at the floor,
- * which is the right answer for a section with no boundary to cut on: a
- * weather strip or a shift badge is one thing, not a list of things.
- */
-function dayGroups(scale: HTMLElement): readonly HTMLElement[] {
-  const stack =
-    scale.querySelector('.ch-week') ?? scale.querySelector('section.next');
-  if (stack === null) return [];
-  const selector = stack.classList.contains('ch-week') ? '.ch-day' : '.day-row';
   /*
-   * Only the days actually drawn.
+   * The **larger** of the two, and it is an upper bound rather than an answer.
    *
-   * `display.css` hides `.day-row:nth-child(n + 6)` on a short landscape
-   * screen, so on a 1024x600 tablet the last rows of an agenda are in the DOM
-   * with a zero rect. Left in this list they are worse than useless: the trim
-   * walks up from the bottom and stops at the first day that fits, and a
-   * zero-height row "fits" trivially — so the whole pass stopped on its first
-   * iteration and nothing was ever trimmed, on exactly the screens that needed
-   * it most. Filtering here also restores what the loop assumes, that each day
-   * ends below the one before it.
+   * Neither estimate can be trusted on its own and they fail in opposite
+   * directions. `listRowsAt` divides the box by a row of the month cell's own
+   * arithmetic, which knows nothing about a date column. `holds` charges one
+   * entry for the next event, which is right when it lands in a day already
+   * drawn and wrong by a whole date column when it opens a new one — measured
+   * on the 1080x1920 Classic seed, six events fit and seven do not, and the
+   * marginal cost of the seventh is 177px against the 45px this charges. So a
+   * first draft that took the *lesser* of the two and stopped oscillated
+   * between six, seven and eight across its rounds and landed wherever it ran
+   * out of them.
+   *
+   * The caller draws this and then steps down until the last day actually fits,
+   * which is the only reading that cannot be wrong: an over-estimate costs a
+   * redraw and an under-estimate costs the household an event they had room
+   * for.
    */
-  return ([...stack.querySelectorAll(selector)] as HTMLElement[]).filter(
-    (group) => group.getBoundingClientRect().height > 0,
-  );
+  return { tier, rows: Math.max(1, Math.min(AGENDA_MAX_EVENTS, Math.max(listRowsAt(tier, inner.h, drawnEm), holds))) };
 }
 
 /**
- * Fit a reused section to its box, then cut it to whole days and fit again.
+ * The most events an agenda will ever be asked to draw.
  *
- * **The calendar widget no longer comes through here.** An agenda picks the
- * number of events its box affords before it is drawn (`retierAgenda`), so
- * there is nothing left for a trim to take off it; what remains is the chore
- * week, whose board is out of this phase's scope and still measures. The rule
- * below is written for both and is still one rule — a section too tall for its
- * box gives up whole days from the bottom — which is why the function keeps its
- * name and its argument rather than being folded into its one caller.
- *
- * Cut on a day, never through one. A section holds a legible floor and clips
- * below it, which is right — but `overflow: hidden` cuts wherever the pixel
- * falls, and a row sliced across the middle reads as a broken renderer rather
- * than as a list that ran out of room. Same fault as the month grid losing its
- * last week, and visible only by measuring.
- *
- * Then fit again, because what is left is smaller than what was measured. The
- * first fit scaled every day down to the floor and clipped; with the days that
- * did not fit now gone, that scale is a section drawn at its floor in a box
- * with room to spare — the exact "cramped, just in a bigger box" fault
- * `fitToBox` was rewritten to stop. Trimming and re-fitting is one pass each
- * way: **fewer days, drawn larger**, which is the whole argument (RFC 009 1.3).
- *
- * The head always survives, clipped if it comes to that, the same rule the
- * shift ladder keeps: a household who dragged a box too small should see the
- * thing at the top of it — today — rather than an empty rectangle (rule nine).
- * That is new for the chore week, which trimmed from the last group to the
- * first and so could take itself away entirely in a box too small for one day.
- *
- * A drawing decision, never a saved one. Nothing here writes to the model, so
- * widening the box brings the days straight back on the next draw.
+ * The same 50 the household's own `count` is clamped to, so the box cannot ask
+ * for more than a person could — and, more usefully, so the step-down below is
+ * bounded by a number rather than by whatever a measurement of a detached node
+ * happens to produce.
  */
-function fitAndTrimToDays(
-  box: HTMLElement,
-  scale: HTMLElement,
-  min: number,
-  max?: number,
-): void {
-  fitToBox(box, scale, { min, ...(max === undefined ? {} : { max }) });
-
-  const groups = dayGroups(scale);
-  if (groups.length === 0) return;
-
-  /*
-   * Measured against the **box**, which is the element that clips. The first
-   * attempt measured `.fw-content`, which sits *inside* the transform and is
-   * sized to its own content — so its bottom is always past the last row and
-   * nothing was ever trimmed. The frame looked identical, which is exactly how
-   * that kind of mistake survives.
-   */
-  const style = getComputedStyle(box);
-  const limit = box.getBoundingClientRect().bottom - parseFloat(style.paddingBottom || '0');
-  let trimmed = false;
-  for (let index = groups.length - 1; index >= 1; index--) {
-    const group = groups[index] as HTMLElement;
-    if (group.getBoundingClientRect().bottom <= limit + 1) break;
-    /*
-     * Hidden, not removed, which the month tier pass also does and which is
-     * load-bearing here for a reason nothing in this function can see.
-     * `display.css` hides `.day-row:nth-child(n + 6)` on a short landscape
-     * screen — a *positional* rule — so taking a row out of the document
-     * renumbers the rest and hands the hidden ones back. Measured on a
-     * 1024x600 tablet: removing the two days that did not fit promoted the two
-     * the stylesheet had hidden, which then did not fit either, and the trim
-     * had undone itself while looking like it had worked.
-     *
-     * The cost is the closing hairline: `.day-row:last-child` matches a hidden
-     * row, so the last day drawn has no rule under it. A missing 1px line is
-     * the better half of that trade.
-     */
-    group.style.display = 'none';
-    trimmed = true;
-  }
-
-  if (trimmed) fitToBox(box, scale, { min, ...(max === undefined ? {} : { max }) });
-}
-
-/**
- * The ceiling a scale-to-fit section may grow to, on a wall that knows how far
- * away it is read from.
- *
- * **This is the half without which the roles do nothing**, and it is not a
- * refinement of them. `fitToBox` writes a `transform: scale()`, and a
- * transform multiplies straight through a font size — so a section whose type
- * is stated in arc-minutes and then grown by 1.18 is not drawn at the angle it
- * declares. Worse, the growth is *self-cancelling*: the factor is
- * `available / natural` and the natural height is proportional to the type, so
- * making the type smaller makes the factor larger by very nearly the same
- * amount and the ink on the glass does not move at all. Measured on the
- * shipped Classic seed at 800x480, the agenda is grown 1.18x today; without
- * this the whole change would have been an option that does nothing, which is
- * the fault this project has shipped more times than any other.
- *
- * So the arithmetic cannot be the lever, and the design rule already says what
- * is: *a section that does not fit gives up content, not points*. Above the
- * ceiling there is nothing to give up — the household asked for two days and
- * two days is what there is — so the section is drawn at the size the reader
- * needs and the slack stays slack. Below it, `fitAndTrimToDays` trims whole
- * days and re-fits, which is the same rule pointing the other way and is
- * already how this section behaves.
- *
- * `1` rather than a number, because the roles are already in the cascade: the
- * ceiling's whole job is to stop the transform moving them. `undefined` on an
- * unmeasured wall gives `fitToBox` its own default of 6, which is today's
- * behaviour exactly.
- *
- * Asked of the box rather than of `document.documentElement`, because
- * `--px-arcmin` is inherited and the layout editor draws this same renderer
- * inside a shadow root on a page that has no wall measurement of its own —
- * where the honest answer is "not measured" and reading the admin page's root
- * would give it by accident rather than on purpose.
- */
-function fitCeilingFor(box: HTMLElement): number | undefined {
-  return getComputedStyle(box).getPropertyValue('--px-arcmin').trim() === '' ? undefined : 1;
-}
+const AGENDA_MAX_EVENTS = 50;
 
 export function renderFreeform(
   root: HTMLElement,
@@ -2351,15 +2633,11 @@ export function renderFreeform(
   const bg = backgroundCss(layout.background, mediaBase);
   if (bg !== undefined) canvas.style.background = bg;
 
-  // Widgets whose body is a section from the responsive layout are scaled to
-  // their box after they are on screen — see below. Each carries a readable
-  // floor: below it the section clips at the box edge rather than shrinking to
-  // an illegible size.
-  const toFit: {
-    readonly box: HTMLElement;
-    readonly scale: HTMLElement;
-    readonly min: number;
-  }[] = [];
+  // Widgets whose body is a section from the responsive layout. Each takes a
+  // *form* from its box once it is on screen (`applyWidgetTiers`) rather than
+  // being laid out at one size and scaled into place, which is what made a
+  // 3.7-megapixel television draw the same five days as a 7.5" panel.
+  const tiered: TieredWidget[] = [];
 
   // Week-column calendars, to be re-checked once they have a real width. Seven
   // columns cannot reflow: unlike every other section they do not get narrower
@@ -2369,23 +2647,15 @@ export function renderFreeform(
   const weekBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
 
   // Agenda sections, to be re-checked for whether they kept room for a time
-  // column. Includes the ones the week fallback below produces. Each carries
-  // the box and the scaled node it lives in, because that check can change the
-  // layout and the fit then has to be taken again.
+  // column, and then redrawn at the number of events their box affords.
+  // Includes the ones the week fallback below produces.
   const agendas: {
     /** Replaced when the tier redraws it, so the passes below see what is drawn. */
     section: HTMLElement;
     readonly box: HTMLElement;
-    readonly scale: HTMLElement;
     /** The widget's own config, which carries the household's `count` cap. */
     readonly widget: ManifestWidget;
   }[] = [];
-
-  // Widgets with a field ladder, to be re-checked once they have a real size.
-  // The ladder's bottom rungs are given up one at a time when the box cannot
-  // hold them — measured after layout for the same reason the week columns are,
-  // and by the same rule: a drawing decision, never a saved one.
-  const ladderBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
 
   for (const widget of layout.widgets) {
     const box = el('div', `fw fw-${widget.type}`);
@@ -2418,7 +2688,7 @@ export function renderFreeform(
       box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
     } else if (widget.type === 'clock' || widget.type === 'image') {
       // The clock sizes itself to its box, and the image covers it — both fill
-      // the box on their own and would only be fought by the scale-to-fit.
+      // the box on their own, in CSS, with no measurement here at all.
       box.appendChild(body);
     } else if (widget.type === 'calendar' && calendarGridFills(widget.config)) {
       // The month and week grids fill their box: their rows/cells stretch to the
@@ -2448,27 +2718,21 @@ export function renderFreeform(
     } else {
       /*
        * Everything else reuses a section built for a full-width strip or grid,
-       * sized against the whole wall — the weather, house and shift widgets, and
-       * a calendar in list (agenda) mode, whose rows are rem-sized to the wall
-       * and would otherwise draw at full size and clip in a small box (the very
-       * bug that made a small "Upcoming" widget show one giant, half-cut row).
-       * Rather than re-derive every font size for a box — which fights the
-       * design and still guesses — the section is laid out at its box width and
-       * scaled as one to fill the box, up or down, keeping the design's own
-       * proportions. The scale is measured once it is on screen, at the foot of
-       * this function.
+       * and it is drawn **in** the box rather than scaled into it.
+       *
+       * It used to be wrapped in an absolutely positioned `.fw-scale`, laid out
+       * at the box width and given a uniform `transform: scale()`. That kept the
+       * design's proportions and could never change what the widget said: a
+       * transform multiplies straight through a font size, so a forecast in a
+       * box twice the area was the same five days drawn larger. The type is its
+       * role now — the reader's own angle where the household has measured the
+       * wall, the canvas-relative rem where they have not — and the *form* comes
+       * from the box, at the foot of this function.
        */
-      const scale = el('div', 'fw-scale');
-      // The title rides inside the scaled content, so it shrinks with the
-      // section and the fit measurement already accounts for it.
-      scale.appendChild(contentWithTitle(body, widget.config));
-      box.appendChild(scale);
-      toFit.push({ box, scale, min: minScaleFor(widget.type) });
+      box.appendChild(contentWithTitle(body, widget.config));
+      tiered.push({ box, widget, body });
       if (widget.type === 'calendar' && body.classList.contains('next')) {
-        agendas.push({ section: body, box, scale, widget });
-      }
-      if (widget.type === 'shift' || widget.type === 'weather') {
-        ladderBoxes.push({ box, widget });
+        agendas.push({ section: body, box, widget });
       }
     }
     canvas.appendChild(box);
@@ -2494,107 +2758,22 @@ export function renderFreeform(
   root.appendChild(screen);
 
   /*
-   * Every month grid is drawn at the tier its own cells afford, before anything
-   * is fitted: a calendar widget is one of the sections `fitToBox` scales, and
-   * scaling it first would measure a grid that is about to change form.
+   * Every month grid is drawn at the tier its own cells afford, first: a grid
+   * fills its box, so its cells only have a size once the canvas does, and
+   * every pass below measures a widget beside it.
    */
   const monthTiers = applyMonthTier(root);
 
   /*
-   * Now that everything has a size, fit each reused section to its box.
+   * And every other placed widget takes the form *its* box affords.
    *
-   * The ceiling is the agenda's alone, deliberately. Every other section here
-   * — the weather strip, the house readings, a shift badge — still states its
-   * type in canvas-relative rem, so clamping its growth would shrink it
-   * without putting anything in its place: the ceiling is only honest where
-   * the size under it is already the size the reader needs. Those move when
-   * their own roles do.
+   * This is where `fitToBox` used to run. It is deliberately before the two
+   * passes below rather than after: both of them change a widget's *layout*
+   * (an agenda replacing a week, a time column moving above its title), and a
+   * form chosen against a layout that no longer exists is the fault the old
+   * re-fit-after-narrow existed to paper over.
    */
-  const agendaBoxes = new Set(agendas.map((entry) => entry.box));
-  for (const { box, scale, min } of toFit) {
-    // An agenda is fitted by `retierAgenda`, which needs the fit's own answer
-    // about whether it clipped — see there.
-    if (!agendaBoxes.has(box)) fitAndTrimToDays(box, scale, min);
-  }
-
-  /*
-   * And every agenda is redrawn at the number of events *its* box affords —
-   * which is where a month grid that can name nothing pays for itself.
-   *
-   * **This is the one place the renderer has an opinion about the household's
-   * arrangement**, and it is a drawing decision and nothing else. A month at M0
-   * says the words it holds cannot be read at that size, and on a 7.5" panel
-   * that is the whole grid; the attention has to go somewhere, so every agenda
-   * on the same canvas is promoted a rung and shows more of what the month
-   * cannot. Nothing is written back to the canvas, so widening the month brings
-   * its own names back and takes the promotion away on the very next draw —
-   * the rule the week-columns fallback and the ladder's drop loop already keep.
-   */
-  const promote = monthTiers.some((tier) => tier.names === 0) ? 1 : 0;
-  for (const entry of agendas) retierAgenda(entry, model, promote);
-
-  /*
-   * A badge with no room for its whole ladder gives up its bottom rung.
-   *
-   * The wall has no fixed line heights to do this arithmetic against — a badge
-   * is `rem`-sized against a canvas that is itself letterboxed into the frame —
-   * so it is measured rather than predicted: fit, and if the section still
-   * overflows at its floor, drop the last row and fit again. `fitToBox` clamps
-   * at `minScaleFor('shift')` and clips below it, which is exactly the state
-   * this replaces with something readable.
-   *
-   * The same shape as the week-columns fallback below, and the same rule: a
-   * *drawing* decision, not a saved one. The ladder still says four rows, the
-   * editor still shows four rows, and widening the box brings them straight
-   * back. The head of the ladder always survives — a household who dragged a
-   * box too small should see the thing they put first, clipped if it comes to
-   * that, rather than an empty rectangle (rule nine).
-   */
-  for (const { box, widget } of ladderBoxes) {
-    const shift = widget.type === 'shift';
-    const view = shift ? shiftWidgetView(model.todayShifts, widget.config) : undefined;
-    /*
-     * The house widget is not in the drop loop's own list: its ladder is per
-     * *reading* — each one resolves from its own `display_mode` — so there is
-     * no single list here to take a rung off. It scales like everything else
-     * and clips at the floor, which is what it has always done.
-     */
-    let ladder: readonly string[] = shift
-      ? (view?.ladder ?? [])
-      : weatherLadder(widget.config);
-    const full = ladder.length;
-    let scale = box.querySelector('.fw-scale');
-    while (
-      ladder.length > 1 &&
-      scale instanceof HTMLElement &&
-      fitToBox(box, scale, { min: minScaleFor(widget.type) })
-    ) {
-      ladder = ladder.slice(0, -1);
-      let body: HTMLElement | undefined;
-      if (shift && view !== undefined) {
-        const rebuilt = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
-        // Down to one row where the ladder asked for more: a line, not a word.
-        const line = ladder.length === 1 && full > 1;
-        for (const entry of view.entries) {
-          rebuilt.appendChild(
-            line
-              ? shiftLineBadge(entry, view, view.ladder)
-              : shiftBadge(entry, view, ladder as readonly ShiftField[]),
-          );
-        }
-        body = rebuilt;
-      } else {
-        body = renderWeather(model, widget.config, ladder as readonly WeatherField[]);
-      }
-      if (body === undefined) break;
-      const next = el('div', 'fw-scale');
-      next.appendChild(contentWithTitle(body, widget.config));
-      box.textContent = '';
-      box.appendChild(next);
-      fitToBox(box, next, { min: minScaleFor(widget.type) });
-      scale = next;
-    }
-  }
+  applyWidgetTiers(tiered, model, mediaBase);
 
   /*
    * A week too narrow to read becomes the agenda instead.
@@ -2614,154 +2793,210 @@ export function renderFreeform(
     box.classList.remove('fw-fill');
     box.textContent = '';
     const agenda = renderCalendarWidget(model, { ...widgetConfig(widget.config), mode: 'list' });
-    const scale = el('div', 'fw-scale');
-    scale.appendChild(contentWithTitle(agenda, widget.config));
-    box.appendChild(scale);
-    // Trimmed to whole days like any other agenda: this one is here *because*
-    // its box is narrow, which is exactly where the days do not all fit.
-    fitToBox(box, scale, { min: minScaleFor('calendar') });
-    agendas.push({ section: agenda, box, scale, widget });
+    box.appendChild(contentWithTitle(agenda, widget.config));
+    agendas.push({ section: agenda, box, widget });
   }
 
-  // Finally: any agenda with no room for a time column stacks it above the
-  // title. Last, so the sections the fallback just produced are included and
-  // are measured at the width they actually ended up.
-  for (const { section, box, scale } of agendas) {
+  /*
+   * Then any agenda with no room for a time column stacks it above the title.
+   *
+   * Before the tier below rather than after, which is the opposite order from
+   * the one this pass used to run in and is the whole reason the old code had
+   * to fit a second time here. Moving the time is a *layout* change — every
+   * event row gains a line — so an event count chosen against the wide
+   * arrangement is a count for a section that no longer exists. Ask the
+   * question first, then count what the answer costs.
+   */
+  for (const { section } of agendas) {
     if (agendaTimeFitsBeside(section.clientWidth, rem)) continue;
     section.classList.add('narrow');
-    /*
-     * And then fit again, because this is a layout change and not a restyling:
-     * the time moves from beside the title to above it, so every event row
-     * gains a line. The fit this section was given — and the days that were
-     * trimmed to it — were measured against an arrangement that no longer
-     * exists, which at the calendar's floor means a day sliced through rather
-     * than a section that shrinks a little further.
-     *
-     * One pass, like the week fallback that feeds it: `agendaTimeFitsBeside`
-     * is asked once, of the layout the household's box actually produced.
-     */
-    fitToBox(box, scale, { min: minScaleFor('calendar'), ...ceiling(fitCeilingFor(box)) });
   }
-}
 
-/** `{ max }` or nothing, so `exactOptionalPropertyTypes` stays satisfied. */
-function ceiling(max: number | undefined): { readonly max?: number } {
-  return max === undefined ? {} : { max };
+  /*
+   * And every agenda is redrawn at the number of events *its* box affords —
+   * which is where a month grid that can name nothing pays for itself.
+   *
+   * **This is the one place the renderer has an opinion about the household's
+   * arrangement**, and it is a drawing decision and nothing else. A month at M0
+   * says the words it holds cannot be read at that size, and on a 7.5" panel
+   * that is the whole grid; the attention has to go somewhere, so every agenda
+   * on the same canvas is promoted a rung and shows more of what the month
+   * cannot. Nothing is written back to the canvas, so widening the month brings
+   * its own names back and takes the promotion away on the very next draw —
+   * the rule the week-columns fallback keeps too.
+   *
+   * Last, so the sections the week fallback produced are included and every one
+   * of them is measured at the arrangement it actually ended up with.
+   */
+  const promote = monthTiers.some((tier) => tier.names === 0) ? 1 : 0;
+  for (const entry of agendas) retierAgenda(entry, model, promote);
 }
 
 /**
- * Redraw one agenda at the number of events its box affords, and fit it again.
+ * Redraw one agenda at the number of events its box affords.
  *
- * The replacement for `fitAndTrimToDays`'s day trim on this widget, and the
- * question is the other way round: that trimmed whole days off a section that
- * had already been drawn and scaled, so the wall could only ever end up with
- * less than the household asked for. This asks the box first.
+ * **The replacement for `fitAndTrimToDays`'s day trim, and the question is the
+ * other way round.** That drew a section, scaled it, and then took whole days
+ * off the bottom of what was already too big — so a wall could only ever end up
+ * with less than the household asked for, and a bigger box bought a bigger
+ * picture of the same six events. This asks the box first.
  *
- * Both halves are needed and the order is the interesting part. The **fit
- * before** is what makes the measurement honest — an agenda is laid out at its
- * box width and then scaled, by 1.89 on an unmeasured 800x480 wall, so asking
- * how many rows fit against the *declared* type answers 23 for a box that holds
- * six. The **fit after** is because a redraw is a new section: fewer events is
- * a shorter section, and leaving it at the old factor is the "cramped, just in
- * a bigger box" fault `fitToBox` was rewritten to end.
+ * The old version had a *fit before* and a *fit after* and a bounded loop
+ * between them, all of which existed because the type on the glass depended on
+ * how much was drawn: fewer events meant a shorter section meant a larger scale
+ * factor, so the measurement moved every time the answer did. Measured then, a
+ * 576x259 box answered "one event" on the first round and "five" on the second,
+ * and a box of twice the area answered the same one. None of that is true of a
+ * section drawn at its role's own size — the type is fixed, so one measurement
+ * settles it and a second round could only ever repeat the first.
  *
- * A section that already draws what its box affords is left alone, transform
- * and all, so the common case costs one measurement and no layout.
+ * What survives is the rest of the rule. A section that already draws what its
+ * box affords is left alone. The household's `count` still binds where they
+ * have set one. And the belt is geometric and last: whatever the arithmetic
+ * said, no day may end past the foot of the box, because `overflow: hidden`
+ * cuts where the pixel falls and a row sliced through the middle reads as a
+ * broken renderer rather than as a list that ran out of room.
  */
 function retierAgenda(
-  entry: { section: HTMLElement; readonly box: HTMLElement; readonly scale: HTMLElement; readonly widget: ManifestWidget },
+  entry: { section: HTMLElement; readonly box: HTMLElement; readonly widget: ManifestWidget },
   model: DisplayModel,
   promote: number,
 ): void {
-  const { box, scale, widget } = entry;
+  const { box, widget } = entry;
   const config = widgetConfig(widget.config);
-  // The household's own cap still binds: the tier says what the box affords and
-  // the household says what they asked for, and the drawn number is the lesser.
+  /*
+   * The household's own cap, where they have set one — and **absence now means
+   * "what the box affords" rather than twelve.**
+   *
+   * `AGENDA_COUNT_DEFAULT` was a legibility budget standing in for a box
+   * measurement, exactly as Classic's own `count: 6` was, and it is the same
+   * argument one layer along: a constant that says how many events are legible
+   * can only ever be right on one screen. It stays as the cap on what the model
+   * is asked for rather than on what the box may draw — `renderCalendarWidget`
+   * still reads it for the first, pre-tier draw, which is the one that has no
+   * measurement yet.
+   */
   const asked =
     typeof config['count'] === 'number' && config['count'] >= 1
       ? Math.min(50, Math.trunc(config['count']))
-      : AGENDA_COUNT_DEFAULT;
+      : Number.POSITIVE_INFINITY;
 
   /*
-   * Fit, measure, redraw, and ask again — bounded, and the loop is not
-   * belt-and-braces.
+   * An upper bound, then a step down until the last day genuinely fits.
    *
-   * The slack a box has left is read off the section currently in it, and a
-   * section drawn with far more events than the box can hold is squeezed to its
-   * floor and clipping, where the entry height and the section height are both
-   * measured under a scale that is about to change. Measured on a 576x259 box
-   * with the default twelve events, one round answers 1 and two answer 5 — so a
-   * single pass reports "this box holds one event" for a box that holds five,
-   * and a box of twice the area reports the same 1. The estimate has to be
-   * taken again once the section is something like its final size.
+   * The loop this replaces asked the same estimate over and over and stopped
+   * when two rounds agreed. It could not converge, and the reason is the shape
+   * of the thing rather than the arithmetic: **an agenda is a stack of days,
+   * not a stack of events.** Each day carries a date column beside its events,
+   * so the marginal event is nearly free when it lands in a day already drawn
+   * and costs a whole column when it opens a new one — measured on the
+   * 1080x1920 Classic seed, six events fit, seven do not, and the estimator
+   * charged 45px for a seventh that costs 177. Round to round that produced
+   * 6 → 8 → 7 → 6 → 8, and the answer was whichever round the loop happened
+   * to end on.
    *
-   * Three rounds at most, and it stops the moment the answer repeats, which on
-   * every wall this project measures is the second. The same shape as the shift
-   * ladder's drop loop: fit, and if the answer moved, redraw and ask again.
+   * So the estimate is used for the only thing an estimate can be trusted with
+   * — a bound — and the box is the referee. Monotone, terminating, and it lands
+   * on the largest count whose last day is whole, which is the number this
+   * widget has been trying to name since it was written.
+   *
+   * The overflow question is asked of the **last day-row against the box**, not
+   * of the section's own scroll height: the Panels theme gives `.next` a card
+   * inset, so its `scrollHeight` runs past its content by that padding and a
+   * section with nothing sliced reads as ten pixels over. That is the same
+   * measurement the belt below takes, deliberately — two opinions about "does
+   * this fit" is how the old day trim came to measure the wrong element.
    */
-  let settled = agendaRound(box, scale, entry, model, promote, asked);
-  for (let round = 0; round < 2; round++) {
-    const again = agendaRound(box, scale, entry, model, promote, asked);
-    if (again === settled) break;
-    settled = again;
+  const afford = agendaEventsAt(box, entry.section, promote);
+  box.setAttribute('data-tier', afford.tier.tier);
+  redrawAgenda(entry, model, config, Math.min(asked, afford.rows));
+  for (let step = 0; step < AGENDA_MAX_EVENTS; step++) {
+    const drawn = drawnEventCount(entry.section);
+    if (drawn <= 1 || !agendaOverflows(box, entry.section)) break;
+    redrawAgenda(entry, model, config, drawn - 1);
   }
-  box.setAttribute('data-tier-events', String(settled));
+  beltDays(box, entry.section);
+  box.setAttribute('data-tier-events', String(drawnEventCount(entry.section)));
+}
+
+/** Redraw one agenda at `count` events, keeping the narrow arrangement it had. */
+function redrawAgenda(
+  entry: { section: HTMLElement; readonly widget: ManifestWidget },
+  model: DisplayModel,
+  config: Record<string, unknown>,
+  count: number,
+): void {
+  if (count === drawnEventCount(entry.section)) return;
+  const rebuilt = renderCalendarWidget(model, { ...config, mode: 'list', count });
+  if (entry.section.classList.contains('narrow')) rebuilt.classList.add('narrow');
+  entry.section.replaceWith(rebuilt);
+  entry.section = rebuilt;
 }
 
 /**
- * One round: fit what is drawn, ask the box what it affords, and redraw if the
- * answer is not what is on screen. Returns the number now drawn.
+ * Whether the last day drawn ends past the foot of the box.
+ *
+ * The referee for the step-down above and the same question the belt asks, so
+ * the two cannot disagree. Asked of a **day**, because that is the unit the
+ * agenda gives up in.
  */
-function agendaRound(
-  box: HTMLElement,
-  scale: HTMLElement,
-  entry: { section: HTMLElement; readonly widget: ManifestWidget },
-  model: DisplayModel,
-  promote: number,
-  asked: number,
-): number {
-  /*
-   * Fitted here rather than in the caller's own loop, because the answer this
-   * needs is the one `fitToBox` returns: whether the section still overflows
-   * *at its floor*. Above the floor a scale-to-fit section fills its box
-   * exactly, so a shorter agenda buys nothing at all — measured, a 480x800
-   * wall's agenda draws at 0.62 of its role and nothing clips, and this project
-   * has already decided that trimming a day there to buy 13% of type is the
-   * trade backwards. Only a section that is genuinely being cut gives anything
-   * up.
-   */
-  const clipped = fitToBox(box, scale, { min: minScaleFor('calendar'), ...ceiling(fitCeilingFor(box)) });
-  const afford = agendaEventsAt(box, scale, entry.section, promote, clipped);
-  box.setAttribute('data-tier', afford.tier.tier);
+function agendaOverflows(box: HTMLElement, section: HTMLElement): boolean {
+  const rows = [...section.querySelectorAll('.day-row')] as HTMLElement[];
+  let last: HTMLElement | undefined;
+  for (const row of rows) if (row.style.display !== 'none') last = row;
+  if (last === undefined) return false;
+  const foot = box.getBoundingClientRect().bottom - parseFloat(getComputedStyle(box).paddingBottom || '0');
+  return last.getBoundingClientRect().bottom > foot + 0.5;
+}
 
-  const wanted = Math.min(asked, afford.rows);
-  const drawn = drawnEventCount(entry.section);
-  /*
-   * Both directions, and the growing one is the half a first draft got wrong.
-   *
-   * Returning early whenever the box affords *more* than is drawn reads as an
-   * optimisation and is a trap once a previous round has already shed: round
-   * one squeezes twelve events into a box that holds five and lands on two,
-   * round two measures the slack that leaves and answers six — and an early
-   * return there leaves the box drawing two for ever, which is the same two a
-   * box of twice the area draws. Measured: a 576x259 box and an 815x366 box
-   * both reported one event.
-   */
-  if (wanted === drawn) return drawn;
-
-  const config = widgetConfig(entry.widget.config);
-  const rebuilt = renderCalendarWidget(model, { ...config, mode: 'list', count: wanted });
-  if (entry.section.classList.contains('narrow')) rebuilt.classList.add('narrow');
-  scale.textContent = '';
-  scale.appendChild(contentWithTitle(rebuilt, entry.widget.config));
-  entry.section = rebuilt;
-  fitToBox(box, scale, { min: minScaleFor('calendar'), ...ceiling(fitCeilingFor(box)) });
-  return drawnEventCount(rebuilt);
+/**
+ * The agenda's belt: cut on a day, and inside a day on an event, never through
+ * one.
+ *
+ * Two units rather than one, and the second is what the old day trim could not
+ * do. A day group is a date column *beside* its events, so hiding every event
+ * in it does not make the row short enough to fit — the date is still there.
+ * So: give up events from the bottom of the last day that overflows, and if the
+ * row still ends past the foot, give up the row. Read fresh each time, because
+ * hiding an event moves every row under it up and one of them may now fit.
+ *
+ * Hidden rather than removed, which `fitAndTrimToDays` had to learn the hard
+ * way: `display.css` hides `.day-row:nth-child(n + 6)` on a short landscape
+ * screen — a *positional* rule — so taking a row out of the document renumbers
+ * the rest and hands the hidden ones back. Measured on a 1024x600 tablet then,
+ * removing the two days that did not fit promoted the two the stylesheet had
+ * hidden, which then did not fit either, and the trim had undone itself while
+ * looking like it had worked.
+ *
+ * Today always survives, clipped if it comes to that: a household who dragged a
+ * box too small should see the thing at the top of it rather than an empty
+ * rectangle (rule nine).
+ */
+function beltDays(box: HTMLElement, section: HTMLElement): void {
+  const rows = [...section.querySelectorAll('.day-row')] as HTMLElement[];
+  if (rows.length === 0) return;
+  const foot = box.getBoundingClientRect().bottom - parseFloat(getComputedStyle(box).paddingBottom || '0');
+  for (let index = rows.length - 1; index >= 1; index--) {
+    const row = rows[index] as HTMLElement;
+    if (row.style.display === 'none') continue;
+    if (row.getBoundingClientRect().bottom <= foot + 0.5) break;
+    const events = [...row.querySelectorAll('.dr-ev')] as HTMLElement[];
+    for (let at = events.length - 1; at >= 0; at--) {
+      if (row.getBoundingClientRect().bottom <= foot + 0.5) break;
+      (events[at] as HTMLElement).style.display = 'none';
+    }
+    if (row.getBoundingClientRect().bottom > foot + 0.5) row.style.display = 'none';
+  }
 }
 
 /** How many event rows a drawn agenda is currently showing. */
 function drawnEventCount(section: HTMLElement): number {
-  return section.querySelectorAll('.dr-ev').length;
+  let shown = 0;
+  const events = section.querySelectorAll('.dr-ev');
+  for (let index = 0; index < events.length; index++) {
+    if ((events[index] as HTMLElement).style.display !== 'none') shown += 1;
+  }
+  return shown;
 }
 
 /**
@@ -2879,125 +3114,6 @@ function renderSkyMonth(model: DisplayModel, config: unknown): HTMLElement {
   }
   section.appendChild(grid);
   return section;
-}
-
-/**
- * The smallest scale a widget is allowed to shrink to before it clips at the
- * box edge instead (recommendation #3). A weather reading at a tenth of its size
- * is a smudge, not information; a note or a list can go a little smaller before
- * it stops being legible. Below the floor the box's `overflow: hidden` clips,
- * which degrades to "showing less" rather than "showing nothing readable".
- */
-function minScaleFor(type: string): number {
-  switch (type) {
-    case 'weather':
-    case 'homeassistant':
-    case 'countdown':
-    case 'shift':
-      return 0.4;
-    case 'notes':
-    case 'todo':
-      return 0.3;
-    /*
-     * A chore board holds its type far harder than a note does — see
-     * `MIN_CHORE_SCALE`, which carries the measurement and the reason it is not
-     * the 0.3 the note and the checklist use.
-     */
-    case 'chores':
-      return MIN_CHORE_SCALE;
-    /*
-     * And the calendar holds its type as hard as the chore board does — see
-     * `MIN_CALENDAR_SCALE`, which lands on the same number by its own
-     * measurement. It used to fall through to the `default` below, which is how
-     * the one thing the product exists to show came to be drawn at a quarter
-     * size on a wall where nothing else was (RFC 009 1.3).
-     */
-    case 'calendar':
-      return MIN_CALENDAR_SCALE;
-    default:
-      return 0.2;
-  }
-}
-
-/**
- * Fit a reused section (weather, house, shift, notes, an agenda…) to fill its
- * widget box — up or down.
- *
- * The old version scaled *down only*, capped at 1: a compact strip in a large
- * box kept its wall-relative size, pinned to the top-left corner, and left the
- * rest of the box empty — "cramped, just in a bigger box". This fills instead.
- *
- * The trick to growing a width-filling section is that it must be laid out
- * *narrower* than the box first, or the width ratio pins the scale at 1. So:
- * measure at the box width; if there is room to grow, re-flow at a width chosen
- * so the section's aspect matches the box, then scale up to fill. Wrapping
- * content (a note, a list) gets taller as it narrows, so it grows only as far as
- * it can without spilling — which is the behaviour you want. Scaling is uniform,
- * so the design's proportions are never distorted; the section is then centred,
- * so slack on the unfilled axis sits evenly rather than pooling after it.
- *
- * `min` is a readable floor: below it the section clips at the box edge rather
- * than shrinking to an illegible size (rule nine — degrade, never smear).
- */
-/**
- * Scale a section to its box, and say whether it still did not fit.
- *
- * The return value is what lets a caller do something better than clipping —
- * the shift ladder gives up its bottom rung and asks again. Everything else
- * ignores it, because clipping at the floor is the right answer when there is
- * nothing to give up.
- *
- * Idempotent: it re-measures from layout (`scrollWidth`/`scrollHeight`), which
- * a transform does not affect, so calling it twice on the same nodes is the
- * same as calling it once.
- */
-export function fitToBox(
-  box: HTMLElement,
-  scale: HTMLElement,
-  opts: { readonly min?: number; readonly max?: number } = {},
-): boolean {
-  const min = opts.min ?? 0.25;
-  // A ceiling so a one-word note in a huge box grows to fill without becoming a
-  // caricature of itself; well above any sane fill factor, so it rarely bites.
-  const max = opts.max ?? 6;
-
-  const style = getComputedStyle(box);
-  const padL = parseFloat(style.paddingLeft);
-  const padT = parseFloat(style.paddingTop);
-  const availW = box.clientWidth - padL - parseFloat(style.paddingRight);
-  const availH = box.clientHeight - padT - parseFloat(style.paddingBottom);
-  if (availW <= 0 || availH <= 0) return false;
-
-  // Baseline: lay the section out at the full box width and measure it.
-  scale.style.width = `${availW}px`;
-  let contentW = scale.scrollWidth;
-  let contentH = scale.scrollHeight;
-  if (contentH <= 0) return false;
-
-  if (contentW <= availW && contentH <= availH) {
-    // Room to grow: re-flow at an aspect-matched width and re-measure.
-    const targetW = Math.max(1, Math.min(availW, (contentH * availW) / availH));
-    scale.style.width = `${targetW}px`;
-    contentW = scale.scrollWidth;
-    contentH = scale.scrollHeight;
-  }
-
-  let factor = Math.min(availW / contentW, availH / contentH);
-  factor = Math.max(min, Math.min(max, factor));
-
-  // Centre the scaled section in the box's content area (`.fw-scale` is
-  // absolutely positioned, so left/top override its 0/0 default). Clamped at 0
-  // so content larger than the box (the floor clipping) stays in the corner and
-  // clips its far edges rather than being pushed off the near ones.
-  const scaledW = contentW * factor;
-  const scaledH = contentH * factor;
-  scale.style.left = `${padL + Math.max(0, (availW - scaledW) / 2)}px`;
-  scale.style.top = `${padT + Math.max(0, (availH - scaledH) / 2)}px`;
-  scale.style.transform = `scale(${factor})`;
-
-  // Rounded by a pixel: a section one subpixel over its box is a rounding
-  // artefact, not a badge that needs a row taken off it.
-  return scaledW > availW + 1 || scaledH > availH + 1;
 }
 
 /**

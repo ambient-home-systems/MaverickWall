@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MIN_CHORE_SCALE } from '../src/density.js';
+import { CHORE_TIERS } from '../src/widget-tiers.js';
 import { choresFrom } from '../src/viewmodel.js';
 import { WIDGET_VIEWS } from '../src/widget-views.js';
 
@@ -164,34 +164,58 @@ describe('the wall and the panel read one stored view the same way', () => {
   });
 });
 
-describe('the readable floor', () => {
+describe('the board takes a form from its box, and never a scale', () => {
   /*
-   * The floor was found by measuring a real wall, and these pin what the
-   * measurement decided rather than re-deriving it. A board of four daily
-   * chores over a week is 28 rows; at the note widget's 0.3 the names rendered
-   * at 8.1px on a 1280px display, which nobody would report as broken and
-   * nobody could read either — the same failure mode `MIN_WEEK_COLUMN_REM`
-   * exists to prevent one widget along.
+   * **These replace the chore board's scale floor, and what they assert is the
+   * mechanism that replaced it rather than a smaller version of the same
+   * number.**
+   *
+   * `MIN_CHORE_SCALE` was 0.62, and it was measured rather than picked: a board
+   * of four daily chores over a week is 28 rows, `fitToBox` duly shrank the
+   * names to **8.1px** on a 1280px wall — not small, gone — and the note
+   * widget's 0.3 was nowhere near enough to stop it. Its own docstring then had
+   * to record the bill: once the floor stopped the shrinking, the box clipped
+   * *through* a row, which reads as a broken renderer rather than as a list
+   * that ran out of room.
+   *
+   * Both halves are gone with the transform. A chore name is drawn at its own
+   * size, always, and how many of them there are is what the box decides
+   * (`CHORE_TIERS`) — so there is no scale to floor. The measurement table that
+   * justified 0.62 is kept in `CLAUDE.md` as history, because what it recorded
+   * (what a wall looks like at 0.20, 0.30, 0.40, 0.50, 0.62 and 0.80 on a real
+   * 1280x720 television) outlives the constant it was written for.
    */
-  it('is well above the floor a note or a checklist uses', () => {
+  it('has no scale floor left to read, in the widget or in the renderer', () => {
     const render = readFileSync(join(SRC, 'render.ts'), 'utf8');
-    const noteFloor = /case 'notes':\s*\n\s*case 'todo':\s*\n\s*return ([\d.]+);/.exec(render);
-    expect(noteFloor?.[1]).toBe('0.3');
-    expect(MIN_CHORE_SCALE).toBeGreaterThan(Number(noteFloor?.[1]));
+    const density = readFileSync(join(SRC, 'density.ts'), 'utf8');
+    for (const gone of ['MIN_CHORE_SCALE', 'MIN_CALENDAR_SCALE', 'minScaleFor', 'fitToBox']) {
+      expect(render, `${gone} still reaches the renderer`).not.toContain(`${gone}(`);
+      expect(density, `${gone} is still declared`).not.toContain(`export const ${gone}`);
+    }
   });
 
-  it('keeps a chore name legible on a wall, not merely present', () => {
-    // 2rem at the 10.8px root this canvas resolves to — the same arithmetic the
-    // table in `density.ts` records.
-    const nameAtFullSize = 21.6;
-    expect(nameAtFullSize * MIN_CHORE_SCALE).toBeGreaterThan(12);
+  it('gives the board a table whose rungs are whole days and whole rows', () => {
+    // The week board's unit is a day and the two list views' unit is a row —
+    // one table read through two selectors, which is what "express the trim as
+    // a tier" means. Every rung must be a real step up, or the table is a list
+    // of numbers rather than a ladder.
+    expect(CHORE_TIERS.map((tier) => tier.items)).toEqual([1, 2, 4, 7]);
+    for (let at = 1; at < CHORE_TIERS.length; at++) {
+      expect(CHORE_TIERS[at]!.minEm).toBeGreaterThan(CHORE_TIERS[at - 1]!.minEm);
+      expect(CHORE_TIERS[at]!.minCh).toBeGreaterThan(CHORE_TIERS[at - 1]!.minCh);
+    }
   });
 
-  it('is the value the renderer actually uses', () => {
-    // A constant nothing reads is a comment. This is the one line that makes
-    // the measurement above load-bearing.
-    const render = readFileSync(join(SRC, 'render.ts'), 'utf8');
-    expect(render).toMatch(/case 'chores':\s*\n\s*return MIN_CHORE_SCALE;/);
+  it('keeps a chore name at the size it is declared at, whatever the box', () => {
+    /*
+     * The floor's own measurement, inverted. It recorded that a name drawn at
+     * 21.6px came out at 13.4px once the board was scaled to fit, and argued
+     * about how far under 21.6 was still legible. The answer now is that a name
+     * is 21.6px in every box: the board gives up rows, not points.
+     */
+    const css = readFileSync(join(SRC, 'display.css'), 'utf8');
+    expect(css).toMatch(/\.ch-name \{ font-size: 2rem;/);
+    expect(css, 'the scale wrapper still has a rule').not.toMatch(/^\.fw-scale\b/m);
   });
 });
 

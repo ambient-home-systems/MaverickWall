@@ -70,6 +70,33 @@ body {
   font-family: var(--f-sans);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+  /*
+   * A number, never `normal`, and this one line is what makes the wall's
+   * geometry a fact about the type rather than about the font *file*.
+   *
+   * `line-height: normal` is derived from the face's own ascent and descent, so
+   * a run drawn in the fallback and the same run drawn in the bundled face have
+   * different line boxes — measured on the 1080x1920 Classic wall, the date
+   * column's `--disp` runs move an agenda day row by a pixel the moment the
+   * webfont lands, with nothing in the stylesheet asking for it. That is the
+   * font race's last hold on this wall: everything else it used to move went
+   * with `fitToBox`, and a row that changes height when a file finishes
+   * downloading is a row an e-ink panel cannot partially refresh
+   * (`reflow-stability.test.ts`, and RFC 006's phase 11).
+   *
+   * **1.15 is calibrated rather than chosen**, and the calibration is the point:
+   * a number here has to reproduce the wall as it is drawn, or "make the
+   * geometry stable" becomes "make every row taller". Measured on the shipped
+   * wall, `normal` resolves to 1.148 on the sans runs (`.wx-name`,
+   * `.section-label`) and 1.167 to 1.178 on the display ones (`.dr-dow`,
+   * `.dr-mon`, `.dr-shift`) — a range of three hundredths, and 1.15 sits inside
+   * it. 1.2 was tried first and is *above* the whole range: it added two per
+   * cent to every un-declared line box, which on a five-line date column
+   * compounds into a whole agenda day at 2560x1440. Anything that wants a
+   * different leading still declares its own, and most of the runs on this wall
+   * already do.
+   */
+  line-height: 1.15;
   /* A wall has no pointer. */
   cursor: none;
 }
@@ -98,9 +125,11 @@ body {
  *
  * The rem scale has one honest exemption, and it is written here rather than
  * left to be rediscovered: text whose *box* is fixed by something other than
- * type — initials inside a 1.7rem avatar, the compact widget renderings that
- * fitToBox already scales — cannot be raised without overflowing the thing
- * that contains it. Those keep bespoke sizes and say so at the declaration.
+ * type — initials inside a 1.7rem avatar, a chore tick's 44px target, a 1px
+ * rule — cannot be raised without overflowing the thing that contains it. (The
+ * list used to name "the compact widget renderings that `fitToBox` already
+ * scales" as well; nothing is scaled any more, so that exemption is gone with
+ * the mechanism rather than merely unused.) Those keep bespoke sizes and say so at the declaration.
  * Raising one of them is not a typography change, it is a layout change, and
  * this project's history is full of the difference: a month grid that clipped
  * through a row, a week that ran off the bottom.
@@ -190,6 +219,56 @@ body {
    * phase) does to event type without needing to be re-picked by hand.
    */
   --t-event: 1.95rem;
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE SPACING SCALE
+ * ---------------------------------------------------------------------------
+ *
+ * Six steps, in `em` of the wall's own event role: **0, 0.14, 0.28, 0.5, 0.85,
+ * 1.4**. Every gap, padding and vertical margin a widget draws comes off this
+ * ladder, for the same reason the type does — a rem is a fraction of the
+ * *canvas*, which is a fact about the picture, and a wall's spacing is only
+ * meaningful beside the words it separates. Before this the stylesheet carried
+ * 28 distinct `gap` values, 29 `padding` values and 20 `margin-top` values with
+ * nothing relating any of them to anything.
+ *
+ * The base is the event role, so on a measured wall spacing follows the
+ * reader's own angle and on one nobody has measured it follows the design's
+ * body size exactly as it always did. `--t-base` is the fallback rather than
+ * `max(--t-micro, --t-floor)`: `--t-floor` is 22 *pixels*, and a spacing scale
+ * anchored to it would put the same gap on a 7.5" panel and a 43" television —
+ * larger, as a share of the wall, on the small one, which is the wrong way
+ * round and the opposite of what the rest of this file does.
+ *
+ * **These are permissions, not suggestions**, and the three that bind are:
+ *
+ *  - a **month cell** spends at most step 2 on padding, total, per axis;
+ *  - a **widget box** spends at most step 4, total, per axis;
+ *  - the **canvas** spends at most step 5 between the boxes it holds.
+ *
+ * They are limits because chrome competes with content on a fixed number of
+ * pixels with no scrollbar: measured on the shipped Classic wall, the rota
+ * badge spent 25% of its box height on its own padding and could not draw its
+ * third row, and the forecast strip spent 1.35em of the temperature role on
+ * padding and overflowed a box it fits inside with room to spare at step 3.
+ * `browser-density-tiers.test.ts` measures all three against the drawn wall
+ * rather than reading them back out of this file.
+ *
+ * The honest exemptions this file already documents keep their raw values and
+ * their reasons: text and boxes whose size is fixed by something other than
+ * type — the 1.7rem avatar and the initials in it, a chore tick's 44px target,
+ * a 1px rule — cannot be put on this ladder without changing what they are.
+ * Raising one of those is a layout change, not a spacing change.
+ */
+:root {
+  --sp: var(--t-wall-event, var(--t-base));
+  --s1: calc(var(--sp) * 0.14);
+  --s2: calc(var(--sp) * 0.28);
+  --s3: calc(var(--sp) * 0.5);
+  --s4: calc(var(--sp) * 0.85);
+  --s5: calc(var(--sp) * 1.4);
 }
 
 :root {
@@ -467,11 +546,25 @@ body {
 /* The single most important element on the wall. */
 .shift-badge {
   text-align: right;
-  padding: 1.1rem 1.6rem 1.2rem;
+  /* Step 4 vertically, step 5 across: measured, the badge spent 25% of its box
+     height on its own padding and so could not draw its third row at the size
+     its type asks for. Horizontal room is cheaper here — the badge is a card
+     and a card with no side inset reads as a bar. */
+  padding: calc(var(--s4) / 2) var(--s5);
   border-radius: var(--radius);
   background: var(--sc-tint);
   border-right: 0.6rem solid var(--sc);
-  min-width: 24rem;
+  /*
+   * At least 24rem, and never wider than the box it is in.
+   *
+   * The bare `24rem` was a floor written for the stacked layout, where the
+   * badge had the top band of the whole wall. On a free-form canvas it is
+   * whatever the household dragged — 149px on a 480x800 wall against a 192px
+   * minimum — and `fitToBox` hid that by scaling the overflow away. With
+   * nothing scaling, an unconditional minimum is a badge that draws outside its
+   * own box and gets chopped at the box edge mid-word.
+   */
+  min-width: min(24rem, 100%);
 }
 :root[data-theme="almanac"] .shift-badge {
   background: transparent;
@@ -481,7 +574,7 @@ body {
 }
 .shift-badge .who {
   font-size: 1.3rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
-  display: flex; align-items: center; gap: 0.6rem; justify-content: flex-end;
+  display: flex; align-items: center; gap: var(--s2); justify-content: flex-end;
 }
 .shift-badge .who-face {
   width: 2.4rem; height: 2.4rem; border-radius: 50%;
@@ -490,15 +583,15 @@ body {
 .shift-badge .what {
   font-family: var(--disp);
   font-size: 3.6rem; font-weight: 700; line-height: 1.05;
-  margin-top: 0.3rem;
+  margin-top: var(--s1);
   color: var(--sc);
   text-transform: uppercase; letter-spacing: 0.005em;
 }
 :root[data-theme="almanac"] .shift-badge .what { text-transform: none; }
-.shift-badge .until { font-size: 1.35rem; color: var(--muted); margin-top: 0.45rem; }
+.shift-badge .until { font-size: 1.35rem; color: var(--muted); margin-top: var(--s1); }
 .shift-badge .shift-when {
   font-family: var(--f-mono); font-size: 1.5rem; color: var(--muted);
-  margin-top: 0.3rem; font-variant-numeric: tabular-nums;
+  margin-top: var(--s1); font-variant-numeric: tabular-nums;
 }
 
 .today-events { display: grid; gap: 0.85rem; min-height: 0; overflow: hidden; }
@@ -565,10 +658,17 @@ body {
  */
 .wx {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* How many days there are is the box's answer (`tierWeather`), not a
+     constant: a strip drawn into three columns of a five-column grid is two
+     empty columns and three squeezed ones. The fallback is the five the design
+     drew, so a bundle whose script has not run yet still lays out. */
+  grid-template-columns: repeat(var(--wx-days, 5), 1fr);
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
-  padding: 1.15rem 0;
+  /* Step 3, from 1.15rem: measured, the strip's own padding was 1.35em of the
+     temperature role and put a five-day forecast 34px outside a box it fits
+     inside with room over. */
+  padding: var(--s3) 0;
   flex: 0 0 auto;
 }
 .wx-day { text-align: center; }
@@ -592,7 +692,7 @@ body {
 /* Spans the strip, because it is about the forecast rather than about a day. */
 .wx-note {
   grid-column: 1 / -1;
-  padding-top: 0.6rem;
+  padding-top: var(--s2);
   font-size: 1.2rem;
   color: var(--faint);
   text-align: center;
@@ -613,12 +713,12 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0 2.2rem;
+  gap: 0 var(--s5);
   border-bottom: 1px solid var(--rule);
-  padding: 1rem 0 1.15rem;
+  padding: var(--s3) 0;
   flex: 0 0 auto;
 }
-.hs-item { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.hs-item { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
 .hs-ico { font-size: 1.6rem; }
 .hs-label {
   font-size: 1.25rem;
@@ -632,7 +732,7 @@ body {
 .hs-stale .hs-value { color: var(--muted); }
 .hs-note {
   flex: 1 0 100%;
-  padding-top: 0.5rem;
+  padding-top: var(--s2);
   font-size: 1.2rem;
   color: var(--faint);
 }
@@ -645,14 +745,18 @@ body {
      label identifies a destination and is never what somebody walked over to
      read — the same register as the month grid's weekday heads. */
   font-size: var(--t-wall-label, 1.25rem); letter-spacing: 0.24em; text-transform: uppercase;
-  color: var(--faint); margin-bottom: 1.1rem;
+  color: var(--faint); margin-bottom: var(--s3);
 }
 
 .day-row {
   display: grid;
   grid-template-columns: 7.5rem 1fr;
-  gap: 1.6rem;
-  padding: 1.15rem 0 1.15rem 1.3rem;
+  gap: var(--s4);
+  /* Step 4 vertically, from 1.15rem each way: a day row's padding was 2.3rem
+     of a box whose whole content is event names, and on the 2560x1440 Classic
+     seed that alone was the difference between five days on the glass and
+     six. The left inset is the rota rule's own room and stays with it. */
+  padding: calc(var(--s4) / 2) 0 calc(var(--s4) / 2) var(--s4);
   border-top: 1px solid var(--rule);
   /* Transparent rather than absent, so rows with no rota still line up. */
   border-left: 0.45rem solid transparent;
@@ -678,8 +782,21 @@ body {
    * this is scaffolding (`--ink-scaffold`, since the type-hierarchy pass) and
    * the size said the opposite. 16' against the lede's 22' is 0.73x, and the
    * design rule it was breaking only ever set a ceiling.
+   *
+   * **And the fallback is that ceiling now, rather than 1.59x of it.** The rem
+   * expression is what every wall nobody has measured draws — which is every
+   * household until they open the setting — so leaving 3.1rem there left the
+   * design rule ("the date numeral is never larger than the event name beside
+   * it by more than 1.2x") broken on most of the walls in the world. It was
+   * kept because repairing it would have moved a wall nobody measured; this
+   * phase moves that wall anyway, because the transform that was sizing it is
+   * gone. `1.2x` is the month grid's own spelling of the same rule, one widget
+   * along (`.hz-num`), so the two date numerals finally agree about what a
+   * ceiling is. Measured on the 2560x1440 Classic seed, 66.9px to 50.5px — and
+   * the room that buys goes straight into the agenda, which draws 12 events
+   * over 5 days there where it drew 6 over 2.
    */
-  font-size: var(--t-wall-numeral, 3.1rem); font-weight: 700; line-height: 0.95;
+  font-size: var(--t-wall-numeral, calc(var(--t-event) * 1.2)); font-weight: 700; line-height: 0.95;
   color: var(--ink-scaffold);
 }
 :root[data-theme="almanac"] .dr-num { font-weight: 400; }
@@ -725,20 +842,20 @@ body {
    box's `overflow: hidden` made look like a deliberate crop. It predates the
    accent rule (that added 34px to an existing 212), and the week fallback
    routes more walls through this path, so it is fixed here. */
-.dr-events { display: grid; gap: 0.5rem; align-content: center; min-width: 0; }
+.dr-events { display: grid; gap: var(--s2); align-content: center; min-width: 0; }
 .dr-ev {
   display: grid;
   /* minmax(0, …) rather than `8rem 1fr`: the same minimum-is-content trap, one
      level down — the time column must be allowed to give way too. */
   grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
-  gap: 0.35rem 1.2rem;
+  gap: var(--s1) var(--s3);
   align-items: baseline;
   min-width: 0;
   /* The calendar's colour, on every event. `--ec` is set per event in the
      renderer; the fallback keeps a row drawn from a manifest older than this
      bundle looking deliberate rather than uncoloured. */
   border-left: 0.3rem solid var(--ec, var(--accent));
-  padding-left: 0.9rem;
+  padding-left: var(--s3);
   /* The containing block for `.dr-now`, which hangs in the gap above (or
      below) the event it marks rather than taking a row of its own. */
   position: relative;
@@ -760,8 +877,9 @@ body {
 
 /* Too narrow to hold a time column: the time goes above its title instead of
    beside it. `.narrow` is set by the renderer from a measurement, not by a
-   media query — the section is inside a scaled box, so the viewport says
-   nothing useful about how wide this particular agenda ended up. */
+   media query — a widget is whatever fraction of a letterboxed canvas the
+   household dragged it to, so the viewport says nothing useful about how wide
+   this particular agenda ended up. */
 .next.narrow .dr-ev { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
 .next.narrow .dr-ev-time { text-align: left; }
 .next.narrow .dr-ev-span { grid-column: 1; }
@@ -1400,7 +1518,16 @@ body {
    * 0.25rem outline inset into this box, and a title touching that reads as a
    * rendering fault rather than as a marked day.
    */
-  padding: 0.45rem 0.3rem 0.4rem;
+  /*
+   * Step 2, total, per axis — the month cell's permission, and the tightest of
+   * the three because a cell is the smallest box on the wall that carries
+   * words. The 0.45/0.3/0.4rem it replaces was already the narrowed version of
+   * the pill grid's, and the argument for not taking it to zero is unchanged
+   * and is the reason this is a *limit* rather than a token to reach for:
+   * `.hz-cell.is-today` draws a 0.25rem outline inset into this box, and a
+   * title touching that reads as a rendering fault rather than as a marked day.
+   */
+  padding: calc(var(--s2) / 2);
 }
 
 /* ---------------------------------------------- SWISS MONTH GRID --------- */
@@ -1713,7 +1840,19 @@ body {
 :root[data-theme="panels"] .house {
   background: var(--panel);
   border-radius: var(--radius);
-  padding: 1.9rem 2.1rem;
+  /*
+   * Step 4, from 1.9rem/2.1rem, and this one card rule was the largest single
+   * spender on the wall.
+   *
+   * It was written for the retired stacked layout, where a block was a band
+   * across the whole wall and 1.9rem a side was a card's inset. On a free-form
+   * canvas the same rule paints inside a box the household dragged, so the card
+   * and the box both charge for their own inset: measured on the 1080x1920
+   * Classic seed, the forecast strip spent **73px of a 193px box** on this
+   * padding alone and overflowed by 6px, on a theme that is the shipped
+   * default. At step 4 it spends 28 and fits with room over.
+   */
+  padding: calc(var(--s4) / 2) var(--s4);
 }
 /* The forecast and the house strip separate themselves with a full-width rule.
    Inside a card that reads as a stray line, so the card edge does the job. */
@@ -2037,7 +2176,13 @@ body {
   position: absolute;
   overflow: hidden;
   box-sizing: border-box;
-  padding: calc(var(--u) * 1.4);
+  /*
+   * Step 4, total, per axis — the widget-box permission the spacing scale
+   * states. It was `--u * 1.4` per side, which is 2.8% of the canvas height
+   * whatever is inside the box: on a 480x800 wall that is 22px of a 96px-tall
+   * rota box, a quarter of it, before anything is drawn.
+   */
+  padding: calc(var(--s4) / 2);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -2193,25 +2338,28 @@ body {
 .fw-shift.is-several {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--u) * 4);
+  gap: var(--s3);
 }
 
 /*
- * The reused sections (weather, house, shift, notes…) are laid out at the box
- * width inside this wrapper — so their rem-based type stays at its intended
- * size — then scaled down by `fitToBox` only if still too big for the box.
- * Pinned top-left, so a section shorter than its box sits under the top edge.
+ * The reused sections (weather, house, shift, notes…) are drawn **in** the box.
+ *
+ * They used to be wrapped in an absolutely positioned scale wrapper, laid out at
+ * the box width and given a uniform `transform: scale()` — which kept the
+ * design's proportions and could never change what the widget said. That rule
+ * and its wrapper are gone: a section's type is its role, the box picks the
+ * form (`applyWidgetTiers` in `render.ts`), and what does not fit is given up
+ * as content rather than as points. `.fw` is already a clipping flex column,
+ * so the only thing left to declare is that a body may shrink inside it —
+ * without `min-height: 0` a flex item refuses to go below its content height
+ * and the box's `overflow: hidden` has nothing to clip against.
  */
-.fw-scale {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: top left;
-}
 
-/* An optional widget title, riding inside the scaled content so it shrinks with
-   the section (`renderFreeform` measures the whole thing including this). */
-.fw-content { display: block; }
+/* An optional widget title, riding above the body: it is the last thing a
+   belt gives up, because a box with a title and no title is a different box. */
+.fw-content { display: flex; flex-direction: column; min-height: 0; }
+.fw > .fw-content, .fw > .fw-content > *, .fw > section, .fw > .nt, .fw > .td, .fw > .ch,
+.fw > .ch-people, .fw > .house, .fw > .wx, .fw > .fw-shift { min-height: 0; }
 .fw-title {
   font-family: var(--f-cond, var(--f-sans));
   font-weight: 700;
@@ -2219,10 +2367,21 @@ body {
   letter-spacing: 0.08em;
   font-size: 1.7rem;
   color: var(--muted);
-  margin: 0 0 0.7rem;
+  margin: 0 0 var(--s2);
 }
 
-/* Countdown widget. Scaled to its box like the other reused sections. */
+/*
+ * Countdown widget: one reading, sized to its own box the way the clock is.
+ *
+ * It has **no tier table and that is the honest answer rather than an
+ * omission**: a tier says what a box gives up, and a countdown is a number, a
+ * unit and a label with nothing in it to give up. What it needs is the clock's
+ * mechanism — `--buw`/`--buh` are 1% of the box's own width and height, so the
+ * type follows the box the household dragged instead of the canvas. Each size
+ * keeps the design's rem as the *cap*, so a countdown in a large box is the
+ * size it was drawn at and never larger: a widget somebody merely placed does
+ * not get to be the biggest thing on the wall.
+ */
 .cd {
   display: flex;
   flex-direction: column;
@@ -2230,10 +2389,15 @@ body {
   justify-content: center;
   text-align: center;
 }
+/* The one section besides the rota badge that centres itself in its box, which
+   it can only do with a height to centre in. */
+.fw > .cd, .fw > .fw-content > .cd, .fw > .fw-shift, .fw > .fw-content > .fw-shift {
+  flex: 1 1 auto;
+}
 .cd-num {
   font-family: var(--f-cond, var(--f-sans));
   font-weight: 700;
-  font-size: 6rem;
+  font-size: min(6rem, calc(var(--buw) * 30), calc(var(--buh) * 30));
   line-height: 0.95;
   color: var(--ink);
 }
@@ -2242,14 +2406,14 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 1.6rem;
+  font-size: min(1.6rem, calc(var(--buw) * 8), calc(var(--buh) * 8));
   color: var(--muted);
   margin-top: 0.2rem;
 }
 .cd-label {
   font-family: var(--f-cond, var(--f-sans));
   font-weight: 600;
-  font-size: 2.2rem;
+  font-size: min(2.2rem, calc(var(--buw) * 11), calc(var(--buh) * 11));
   color: var(--ink);
   margin-top: 0.6rem;
 }
@@ -2267,11 +2431,11 @@ body {
 /* Notes: free text, kept as written. */
 .nt { display: flex; flex-direction: column; min-width: 0; }
 .nt-line { font-size: 2.1rem; line-height: 1.35; }
-.nt-gap { height: 1rem; }
+.nt-gap { height: var(--s3); }
 
 /* To-do: a static checklist (the wall is read-only; edited in the admin). */
-.td { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
-.td-row { display: flex; align-items: flex-start; gap: 1rem; }
+.td { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.td-row { display: flex; align-items: flex-start; gap: var(--s3); }
 .td-box {
   flex: 0 0 auto; width: 1.7rem; height: 1.7rem; margin-top: 0.3rem;
   border: 0.22rem solid var(--muted); border-radius: 0.3rem;
@@ -2280,8 +2444,8 @@ body {
 
 /* Chores (RFC 008 phase 2): a read-only board. The box is a marker, not a
    control — nothing here is tickable, and phase 3 is what makes it one. */
-.ch { display: flex; flex-direction: column; gap: 0.9rem; min-width: 0; }
-.ch-row { display: flex; align-items: baseline; gap: 0.9rem; min-width: 0; }
+.ch { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.ch-row { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
 .ch-box {
   flex: 0 0 auto; width: 1.5rem; height: 1.5rem; align-self: center;
   border: 0.2rem solid var(--who, var(--muted)); border-radius: 0.3rem;
@@ -2339,8 +2503,8 @@ body {
 .ch-tick:active { background: var(--who, var(--muted)); opacity: 0.45; }
 
 /* By person: a column each, only for people who actually have something due. */
-.ch-people { display: flex; gap: 2rem; min-width: 0; align-items: flex-start; }
-.ch-col { display: flex; flex-direction: column; gap: 0.9rem; min-width: 0; flex: 1 1 0; }
+.ch-people { display: flex; gap: var(--s5); min-width: 0; align-items: flex-start; }
+.ch-col { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; flex: 1 1 0; }
 /* In a column, a name wraps rather than ellipsing.
    Measured at three columns on a 1280px wall, three of four names were cut —
    "Put th…", "Hoover dow…" — which is a chore board that cannot be used to
@@ -2380,14 +2544,14 @@ body {
   letter-spacing: 0.08em;
   font-size: 1.6rem;
   color: var(--muted);
-  margin: 0 0 0.7rem;
+  margin: 0 0 var(--s2);
 }
 .gp-readings { display: flex; flex-direction: column; }
 .gp-reading {
   display: flex;
   align-items: baseline;
-  gap: 0.8rem;
-  padding: 0.5rem 0;
+  gap: var(--s3);
+  padding: var(--s2) 0;
   border-top: 1px solid var(--ruleSoft, rgba(255, 255, 255, 0.06));
   font-size: 2rem;
 }

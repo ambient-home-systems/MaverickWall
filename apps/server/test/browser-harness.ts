@@ -63,6 +63,16 @@ const DISPLAY_DIR = join(HERE, '..', '..', 'display', 'dist');
  * The smallest a word may be drawn on the wall, as a multiple of the wall's own
  * root size.
  *
+ * **Its second term is a deleted constant, and it is kept as an absolute rather
+ * than re-derived.** `MIN_CHORE_SCALE` was the deepest scale a section could be
+ * drawn at, and there are no scales any more — a widget is drawn at its role's
+ * own size and gives up *items* when its box cannot hold them. What that leaves
+ * is a floor with a history rather than a derivation, and that is the honest
+ * shape for it: 0.713rem is the smallest word this project has ever been
+ * willing to defend, and a widget drawing below it is a widget worth looking
+ * at whatever mechanism put it there. The paragraphs below are the reasoning
+ * that produced the number and are unchanged.
+ *
  * **In rem, never in pixels**, and that is the whole point of the number. The
  * rem *is* the canvas: `orientation.ts` writes `--root-size` as 1% of the
  * canvas height (times 1.5 in landscape, `display.css:1180`), so every declared
@@ -661,9 +671,12 @@ export function fixtureDate(zone: string, days: number, now: Date = new Date()):
  *
  * Eleven in the morning, and why it is eleven matters more than the value: it
  * has to be an hour with **nothing running in it**. A live event draws a
- * progress bar, and `.dr-ev-bar` is an in-flow grid item — it costs the agenda
- * a row track and a row gap, about 15px of an 816px section, which takes
- * `fitToBox`'s scale down by 1.8%. `.dr-shift` is `var(--t-micro)`, 22.08px,
+ * progress bar, and `.dr-ev-bar` was an in-flow grid item — it cost the agenda
+ * a row track and a row gap, about 15px of an 816px section, which took
+ * `fitToBox`'s scale down by 1.8%. (Both halves of that are fixed since: the
+ * bar is out of flow, and there is no scale for it to move. The hour stays
+ * pinned, because a fixture that depends on what o'clock the runner started at
+ * is a fixture that reads a clock and reports it as code.) `.dr-shift` is `var(--t-micro)`, 22.08px,
  * which has 0.36% of headroom over this product's 22px legibility floor. So a
  * running event lands it at 21.7px and `browser-classic-proportions` fails —
  * for exactly as long as that event runs, on whatever machine happened to
@@ -917,15 +930,16 @@ export function equipHousehold(db: SqliteDatabase, at: number): void {
 /**
  * Load a paired wall in a fresh browser context at `size`, past the font race.
  *
- * `fitToBox` and `applyMonthTier` (`render.ts`) measure once, synchronously, as
- * their section is appended, and nothing re-runs them — so on a cold context
- * whose web fonts have not arrived the wall settles on a fit computed against
- * fallback metrics and keeps it, which measured anywhere from 2 to 13 named
- * month cells across runs of the identical wall. Holding the first manifest
- * back gives the page time to fetch its fonts, and the reload is what proves
- * it: the second load has them in the HTTP cache, which is the steady state a
- * wall that has been hanging for a while is actually in, and it is
- * repeatable. See `browser-font-race.test.ts` for the fault this avoids.
+ * `applyMonthTier` and the widget tier pass (`render.ts`) measure the drawn
+ * face as they run, so a draw that beats the webfont resolves its rungs against
+ * fallback metrics — which measured anywhere from 2 to 13 named month cells
+ * across runs of the identical wall. Holding the manifest back gives the page
+ * time to fetch its fonts, and the reload is what proves it: the second load
+ * has them in the HTTP cache, which is the steady state a wall that has been
+ * hanging for a while is actually in, and it is repeatable. See
+ * `browser-font-race.test.ts`, which asserts the half of this that is now
+ * structural — the wall's *geometry* is identical either way, and only how many
+ * things it names can move.
  *
  * Extracted from `browser-classic-proportions.test.ts`'s `measureWallBoxes`,
  * which had this inline — every file measuring a real drawn wall needs the
@@ -938,17 +952,54 @@ export async function loadWallSettled(
 ): Promise<{ readonly page: Page; readonly context: BrowserContext; readonly close: () => Promise<void> }> {
   const context = await (await browser()).newContext({ viewport: size });
   const page: Page = await context.newPage();
-  let held = false;
+  /*
+   * **Every** manifest is held, not only the first, and that is a correction
+   * rather than a tidy-up.
+   *
+   * The hold exists so the wall's first draw happens with the webfonts in hand:
+   * a density tier is read from the *measured* advance of the face it is drawing
+   * in, so a draw that beats the font resolves a different rung for the
+   * identical wall. It used to hold the first request only, and the reload got
+   * away with it because `main.ts` redrew on `document.fonts.ready` and quietly
+   * corrected the second load. That redraw is gone — nothing is measured once
+   * and kept any more, so the wall no longer needs it — and with it went the
+   * thing that was making this helper's own promise true. Measured, that showed
+   * up as `browser-density-tiers`' two-load stability check failing under load
+   * and passing on its own, which is precisely the shape of flake this file's
+   * docstring warns about.
+   *
+   * On the reload the fonts come from the HTTP cache, so 750ms is a long wait
+   * for something that has already happened; it is the same number either way
+   * rather than two, because a second constant here is a second thing to be
+   * wrong.
+   */
   await page.route('**/d/manifest*', async (route) => {
-    if (!held) {
-      held = true;
-      await new Promise((resolve) => setTimeout(resolve, 750));
-    }
+    await new Promise((resolve) => setTimeout(resolve, 750));
     await route.continue();
   });
+  /*
+   * Wait for the *manifest* on each navigation, not only for the canvas.
+   *
+   * The wall draws its last-good copy out of IndexedDB before the first poll
+   * answers, and that draw carries the offline banner — "Not reaching the
+   * server", which is true for exactly as long as nothing has answered yet.
+   * A banner is 76px of canvas at 2560x1440 and one whole day off the agenda,
+   * so a measurement taken in that window is a measurement of a different wall.
+   * `settleWall` waits for the fonts and a quarter of a second, which used to
+   * be longer than the reload's manifest took and is not longer than the hold
+   * above. Measured: it drew a banner about half the time.
+   */
+  const first = page.waitForResponse((response) => response.url().includes('/d/manifest'), {
+    timeout: 30_000,
+  });
   await page.goto(link, { waitUntil: 'load' });
+  await first;
   await settleWall(page);
+  const second = page.waitForResponse((response) => response.url().includes('/d/manifest'), {
+    timeout: 30_000,
+  });
   await page.reload({ waitUntil: 'load' });
+  await second;
   await settleWall(page);
   return { page, context, close: (): Promise<void> => context.close() };
 }
@@ -1012,19 +1063,21 @@ export interface WallMeasurement {
 /**
  * Every rendered word, with the size it is actually drawn at.
  *
- * The size of a word on this wall is **not** its `font-size`. `fitToBox`
- * (`render.ts`) lays a section out at its box width and then scales the whole
- * thing with a CSS transform, which leaves `font-size` reading exactly what the
- * stylesheet said while the ink on the glass is a quarter of it. Reading
- * `getComputedStyle(...).fontSize` would report 28.8px for text a household
- * cannot see at 7.1px — a measurement that agrees with a broken wall, which is
- * worse than no measurement.
+ * **The transform walk is kept, and what it was written for is gone.** The size
+ * of a word on this wall used not to be its `font-size`: `fitToBox` laid a
+ * section out at its box width and scaled the whole thing with a CSS transform,
+ * so `font-size` read exactly what the stylesheet said while the ink on the
+ * glass was a quarter of it — 28.8px reported for text a household could not
+ * see at 7.1px, which is a measurement that agrees with a broken wall and is
+ * worse than no measurement. Nothing scales now, so the two agree.
  *
- * So this walks the ancestors of every text node and multiplies out their
- * transforms. `sqrt(|det|)` of the 2-D matrix is the uniform scale factor:
- * `fitToBox` only ever writes `scale(f)`, and a rotation (`orientation.ts`
- * turns the whole canvas a quarter turn) has determinant 1 and correctly counts
- * for nothing.
+ * The walk stays anyway, and deliberately. It costs one `getComputedStyle` per
+ * ancestor and it is the only thing standing between this suite and that
+ * measurement being wrong again the day somebody reintroduces a transform —
+ * which `reflow-stability.test.ts` forbids and this would *notice*. `sqrt(|det|)`
+ * of the 2-D matrix is the uniform scale factor, and a rotation
+ * (`orientation.ts` turns the whole canvas a quarter turn) has determinant 1 and
+ * correctly counts for nothing.
  */
 export async function measureWall(page: Page): Promise<WallMeasurement> {
   return page.evaluate(() => {
@@ -1095,9 +1148,10 @@ export async function measureWall(page: Page): Promise<WallMeasurement> {
       /*
        * And neither is text an ancestor has clipped away.
        *
-       * The wall degrades by clipping on purpose: `fitToBox` clamps at
-       * `minScaleFor` and lets the box's `overflow: hidden` cut what is left,
-       * which is rule nine working. Counting the cut tail would report ink
+       * The wall degrades by clipping on purpose: a widget draws the form its
+       * box affords and the box's `overflow: hidden` cuts anything a tier could
+       * not give up — the first row of a box smaller than one row, which rule
+       * nine says survives clipped rather than leaving an empty rectangle. Counting the cut tail would report ink
        * nobody can see and turn a correct degradation into a failure — so a
        * run wholly outside every clipping ancestor is not measured. Partly
        * visible still counts: half a word on the glass is a word on the glass.
@@ -1704,9 +1758,11 @@ export interface DayStack {
 /**
  * Every stack of days on the wall, measured against the box that clips it.
  *
- * `fitAndTrimToDays` (`render.ts`) is the second half of RFC 009 1.3: a section
- * too tall for its box gives up whole days from the bottom and fits again,
- * rather than being scaled until it fits or clipped wherever the pixel falls.
+ * A section too tall for its box gives up whole days from the bottom rather
+ * than being clipped wherever the pixel falls. That used to be
+ * `fitAndTrimToDays` — trim, then fit again — and is now the agenda's own tier
+ * and `beltDays` (`render.ts`): the count comes off the box before anything is
+ * drawn, and the belt is the geometric promise under it.
  * Which of those happened is not visible in the text sizes — a row sliced
  * across the middle is drawn at exactly the same size as one that fits — so it
  * needs its own measurement, and the measurement is the *boundary*: does the

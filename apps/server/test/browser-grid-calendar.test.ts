@@ -29,7 +29,7 @@ import {
   TEARDOWN,
   browser,
   install,
-  settleWall,
+  loadWallSettled,
   shutDownBrowser,
   type NamedFeed,
 } from './browser-harness.js';
@@ -141,12 +141,20 @@ const standups = (titles: readonly string[]): number =>
 const family = (titles: readonly string[]): number =>
   titles.filter((title) => !title.startsWith('Standup') && title !== '').length;
 
-async function openWall(link: string): Promise<{ page: Page; wall: Wall }> {
-  const page = await (await browser()).newPage();
-  await page.setViewportSize({ width: 1080, height: 1920 });
-  await page.goto(link, { waitUntil: 'load' });
-  await settleWall(page);
-  return { page, wall: await measureWall(page) };
+/**
+ * A settled wall at one width, and the settle is not ceremony.
+ *
+ * A month grid picks its density tier from the *measured* advance of the face
+ * it is drawing in, so a cold context whose webfont has not landed can resolve
+ * a different tier for the identical wall — the flake CLAUDE.md records as "2
+ * or 6 or 13 named cells". `loadWallSettled` holds the first manifest back and
+ * reloads, which is the steady state a wall that has been hanging in a kitchen
+ * is actually in. This file used to do a bare `goto`, and measured against a
+ * cold paint it reported 6 names where a settled one reports 8.
+ */
+async function openWall(link: string, width = 1080): Promise<{ page: Page; wall: Wall; close: () => Promise<void> }> {
+  const { page, close } = await loadWallSettled(link, { width, height: Math.round(width / 0.5625) });
+  return { page, wall: await measureWall(page), close };
 }
 
 describe('a work calendar that fills the month grid', () => {
@@ -181,6 +189,21 @@ describe('a work calendar that fills the month grid', () => {
       // ---------------------------------------------------------------- before
       const first = await openWall(link);
       const before = first.wall;
+      /*
+       * And the same wall on a **narrower** panel, which is where this file's
+       * central claim can still be measured.
+       *
+       * At 1080 the grid is now roomy enough to name every non-Work event this
+       * fixture has *with* the standups still on it — measured, 8 of the 10
+       * either way, the other two being titles no cell of that size can hold
+       * whole. That is the grid having got denser (a month cell's padding is
+       * the spacing scale's tightest permission now) rather than the switch
+       * having stopped working, and this file's own comment above anticipated
+       * it: the honest response is to ask the question on a grid where the room
+       * is scarce. At 800 it is: 2 family names against 31 standups.
+       */
+      const firstNarrow = await openWall(link, 800);
+      const beforeNarrow = firstNarrow.wall;
 
       /*
        * The fault, reproduced on the wall this project ships.
@@ -196,7 +219,8 @@ describe('a work calendar that fills the month grid', () => {
       // Today has the bin day and the standup, and the cell says two.
       expect(before.todayCount).toBe(2);
 
-      await first.page.close();
+      await first.close();
+      await firstNarrow.close();
 
       // ------------------------------------------------ the household's switch
       const admin = await (await browser()).newPage();
@@ -245,16 +269,26 @@ describe('a work calendar that fills the month grid', () => {
       // ----------------------------------------------------------------- after
       const second = await openWall(link);
       const after = second.wall;
+      const secondNarrow = await openWall(link, 800);
+      const afterNarrow = secondNarrow.wall;
 
-      // Not one of them left on the grid.
+      // Not one of them left on the grid, at either size.
       expect(standups(after.gridTitles)).toBe(0);
+      expect(standups(afterNarrow.gridTitles)).toBe(0);
       /*
        * And the grid says *more*, not less. A switch that only emptied cells
        * would pass the assertion above and leave the wall worse: the room the
        * meeting was taking has to come back to the events a household walked
        * over to read.
+       *
+       * Asked on the narrow wall, because that is where the room is scarce —
+       * measured, 2 names against 31 standups before and 6 after. On the 1080
+       * wall the same claim is now only that nothing is *lost* (8 either way),
+       * which is the weaker half and is asserted as such rather than dropped:
+       * a switch that emptied cells there would still fail it.
        */
-      expect(family(after.gridTitles)).toBeGreaterThan(family(before.gridTitles));
+      expect(family(afterNarrow.gridTitles)).toBeGreaterThan(family(beforeNarrow.gridTitles));
+      expect(family(after.gridTitles)).toBeGreaterThanOrEqual(family(before.gridTitles));
 
       /*
        * Today's cell, which is where the counter would lie. It holds one thing
@@ -274,7 +308,8 @@ describe('a work calendar that fills the month grid', () => {
       // the list alone rather than moving anything into it.
       expect(before.agendaTitles.some((title) => title.includes('Standup'))).toBe(true);
 
-      await second.page.close();
+      await second.close();
+      await secondNarrow.close();
       await home.dispose();
     },
     SLOW,

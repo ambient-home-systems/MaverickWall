@@ -552,19 +552,26 @@ describe('2 · the first-run wall', () => {
   );
 
   /**
-   * No word smaller than the floor — **red until RFC 009 1.3, green since**.
+   * No word smaller than the floor — **red until RFC 009 1.3, green since, and
+   * green for a different reason now**.
    *
    * `minScaleFor` protected a note at 0.3, a weather reading at 0.4 and a chore
    * board at 0.62, and dropped the calendar through to `default: 0.2` — the
    * lowest floor in the system, on the one thing the product exists to show.
    * The Classic wall's agenda therefore drew at roughly a quarter size, which
-   * was 7.1px on a 1080p wall and 4.4px on a 720p one. `MIN_CALENDAR_SCALE`
-   * is the measured bound that replaced it, and this is what proves it: 29 of
-   * 92 words under the floor in portrait before, none after.
+   * was 7.1px on a 1080p wall and 4.4px on a 720p one. `MIN_CALENDAR_SCALE` was
+   * the measured bound that replaced it: 29 of 92 words under the floor in
+   * portrait before, none after.
    *
-   * The floor is in rem because the fault is: the *same* wall draws the *same*
-   * 0.34rem on both those screens. See `LEGIBILITY_FLOOR_REM` for where 0.713
-   * comes from and why it is quoted rather than imported.
+   * Both are gone with `fitToBox`. Nothing is scaled, so no word can be drawn
+   * at a fraction of what its stylesheet asked for, and this assertion holds
+   * because there is no mechanism left that could break it rather than because
+   * a floor is catching one. It is kept for exactly that reason — it is what
+   * goes red the day a transform comes back — and its number is now a history
+   * rather than a derivation (see `LEGIBILITY_FLOOR_REM`).
+   *
+   * The floor is in rem because the fault was: the *same* wall drew the *same*
+   * 0.34rem on both those screens.
    */
   it(
     'draws no word below the legibility floor',
@@ -584,8 +591,8 @@ describe('2 · the first-run wall', () => {
       expect(
         offending,
         `text is drawn below ${LEGIBILITY_FLOOR_REM}rem — the design's own --t-micro ` +
-          `(1.15rem) at the deepest scale this project has measured and accepted ` +
-          `(MIN_CHORE_SCALE, 0.62). Smallest first:\n${detail.join('\n')}`,
+          `(1.15rem) at the deepest scale this project ever measured and accepted, ` +
+          `back when a section could be scaled at all. Smallest first:\n${detail.join('\n')}`,
       ).toEqual([]);
     },
     SLOW,
@@ -597,9 +604,11 @@ describe('2 · the first-run wall', () => {
    * The other half of RFC 009 1.3, and it needs its own assertion because the
    * one above cannot see it: a row sliced across the middle is drawn at exactly
    * the same size as one that fits, so a floor with no trimming behind it
-   * passes the legibility test while the wall shows half a Tuesday. Raising the
-   * floor is what *creates* this: at 0.62 the agenda no longer shrinks to fit,
-   * so something has to give, and `fitAndTrimToDays` makes it whole days.
+   * passes the legibility test while the wall shows half a Tuesday. A floor is
+   * what *created* this — at 0.62 the agenda stopped shrinking to fit, so
+   * something had to give — and with no scale at all it is the ordinary case
+   * rather than the edge one: an agenda draws the events its box affords and
+   * `beltDays` is the promise that the last of them is whole.
    *
    * Two things, both measured against the box that clips:
    *
