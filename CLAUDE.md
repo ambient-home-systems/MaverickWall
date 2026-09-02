@@ -50,7 +50,7 @@ Violating any of these is a failed task.
 ## Design rules: do not reintroduce
 
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
-- No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code.
+- No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code — and there is none left in old code either: `fitToBox` is deleted, and `reflow-stability.test.ts` scans the stylesheet and the renderer for one. A uniform transform is photographic enlargement; it changes how big a widget looks and can never change what it says.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
 - No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink.
 - No stat tiles. A big number with a caption, or a 3-up row of them, is a dashboard idiom. This is a calendar.
@@ -102,7 +102,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and fifteen real bugs**, and the pattern in how is the most
+This project has found **one hundred and twenty-five real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -236,6 +236,15 @@ useful thing in this document:
 | **A bar-label assertion that neither of its own fixes could turn red** | A widest-run scan taken through the middle of the words it was looking for |
 | A tier note in the editor that no household could read as wrong | Reading it back out of the preview instead of predicting it |
 | **Two tests red for all but two minutes a day, on `main`** | Reading the runner's clock against `HARNESS_HOUR` when they failed at 01:08 and had passed at 11:00 |
+| **A forecast that drew five days on a 7.5" panel and on a 43" television** | Reading one number down a column of five renders, and asking what mechanism could ever have changed it |
+| A belt that hid four of a forecast's five columns | Measuring a strip and reading back one day where the renderer had stamped five |
+| **An agenda estimator that answered 6, 8, 7, 6, 8 and stopped wherever it ran out of rounds** | Charging 45px for a seventh event whose real cost is a 177px date column |
+| An overflow referee ten pixels out, on a section with nothing sliced | A theme's card inset, which `scrollHeight` counts and no row occupies |
+| **A day row that moved a pixel when a font file finished downloading** | `line-height: normal`, which is a property of a face rather than of the type |
+| A numeric leading that fixed that and cost a 43" television a whole agenda day | Measuring what `normal` actually resolved to, instead of picking a round number above it |
+| **A card inset written for a retired layout, spending 73px of a 193px box** | Asking why a strip that fits with room to spare was overflowing by six |
+| A "the room comes back" assertion that no edit could turn red | The month cell getting roomy enough to name everything with the meeting still on it |
+| **Every settled wall in the suite measured with its offline banner still up** | A canvas 76px short of the viewport, and an agenda one day short of the file next door |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -386,8 +395,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2493 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 409 · server 1617. CI runs the whole suite and then the README's
+**2556 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 445 · server 1644. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -442,8 +451,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**146 of the server's tests fail without a real Chromium and say so**, across
-22 files, which is worth knowing before reading a red suite as a regression. A
+**184 of the server's tests fail without a real Chromium and say so**, across
+25 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -528,10 +537,12 @@ changes it and midnight rolls it. That is free by accident rather than by
 design, so a test pins it.
 
 **Three faults came out of it, all found by looking at a real wall and none by a
-test.** The week board inherited the note widget's 0.3 scale floor, and a week
-of four daily chores is 28 rows — `fitToBox` shrank the names to **8.1px** on a
-1280px display, which is not small, it is gone, and nobody would report it as
-broken. Three of four names in the by-person columns were ellipsised, because a
+test — and the cure for the first is kept here as history, because the floor it
+installed is gone with `fitToBox` and the chore board takes a form from its box
+now (`CHORE_TIERS`).** The week board inherited the note widget's 0.3 scale
+floor, and a week of four daily chores is 28 rows — `fitToBox` shrank the names
+to **8.1px** on a 1280px display, which is not small, it is gone, and nobody
+would report it as broken. Three of four names in the by-person columns were ellipsised, because a
 column is narrow by construction and its rows were built to ellipse like the
 wide views. And once the floor was raised so the box clipped instead, it clipped
 *through a row*, which reads as a broken renderer rather than as a list that ran
@@ -1515,6 +1526,17 @@ how many **days** it spans rather than how many events it shows: four, five and
 six events scale identically in a given box, so `count` is a legibility lever
 only up to the point where it stops removing a day header.
 
+> **The four paragraphs that follow are about the font race and are kept as
+> history.** The redraw they record is gone, and so is the fault: nothing on
+> this wall is measured once and kept any more, so a paint that beats the
+> webfont cannot leave a number behind that is wrong for ever. What is left is
+> a *form* chosen from live metrics and corrected from live metrics on the next
+> tick — a cold boot can name a different number of month cells for up to
+> fifteen seconds, and the wall's **geometry** is identical either way, which is
+> what `browser-font-race.test.ts` asserts instead of the fit it was written
+> for. The reasoning below is the valuable part and is why the invariant is
+> stated the way it is.
+
 **A wall that lost the font race kept the arithmetic, and it was found as a
 flake.** `fitToBox` measures its section as it appends it and writes a `scale()`
 nothing recomputes; the faces are `font-display: swap`, so a paint that arrives
@@ -1657,10 +1679,11 @@ load-bearing:
   than measured (a bar and the cells beside it have to agree before either is
   laid out), so it is declared once per treatment and a browser test holds a
   bar's top against the cell content beneath it. The lane it sits in is
-  reserved by the density mark's own margin, and `trimCellRows` hides any bar
-  whose row turns out too short — a wall with room proves nothing there, so the
-  test measures a calendar dragged to a fifth of a small wall, where a 26px lane
-  genuinely cannot fit under the numeral.
+  reserved by the density mark's own margin, and the tier pass hides any bar
+  whose row turns out too short (`tierSpans`; it was `trimCellRows` when this
+  was written, and the behaviour outlived the function) — a wall with room
+  proves nothing there, so the test measures a calendar dragged to a fifth of a
+  small wall, where a 26px lane genuinely cannot fit under the numeral.
 
 **2 — An overflow count never costs a name.** `.hz-more` took a line of its own
 *and was paid for out of the same budget as the rows, before they were placed*,
@@ -2103,15 +2126,21 @@ from position would re-typeset every badge already hanging in a kitchen the
 moment somebody reordered anything, and would make "put the hours first" mean
 "draw the hours enormous".
 
-**The two renderers drop differently and that is honest.** The panel predicts —
-it owns its line heights, so `dropToFit` is arithmetic. The wall measures: a
-badge is `rem`-sized against a letterboxed canvas, so `fitToBox` now *reports*
-whether it clipped and the drop loop takes a rung off and asks again. That is
-the week-columns fallback's shape and the same rule — a drawing decision, never
-a saved one, so widening the box brings the rows straight back. Both stop at
-one row, and both then draw a *line* rather than a word: a box with room for
-one row spending it on "Amy" when "Amy: Days · 07:00–19:00" fits is the same
-room spent on strictly less.
+**The two renderers used to drop differently, and the wall's half is history.**
+The panel predicts — it owns its line heights, so `dropToFit` is arithmetic. The
+wall measured: a badge is `rem`-sized against a letterboxed canvas, so `fitToBox`
+*reported* whether it clipped and the drop loop took a rung off and asked again.
+That is gone with the transform it read. The wall reads its rung count off a
+table now (`SHIFT_TIERS`, `WEATHER_TIERS`), which is this threshold made explicit
+rather than a different rule — a tier is where the drop loop's answer was always
+coming from, and asking a table costs one measurement where the loop cost a
+fit, a redraw and a fit. It is still a drawing decision, never a saved one, so
+widening the box brings the rows straight back. **Both stop at one row, and both
+then draw a *line* rather than a word**: a box with room for one row spending it
+on "Amy" when "Amy: Days · 07:00–19:00" fits is the same room spent on strictly
+less. That rule survives untouched and is stated as a predicate in the table
+(`laddersToOneLine`) rather than as an `if` in a renderer, because two renderers
+holding one rule is this project's most repeated bug.
 
 **The table is written twice because it has to be.** The display bundle has no
 dependencies and no bundler — plain `tsc` output with `rootDir` pinned to its
@@ -2160,10 +2189,14 @@ So the mode is not duplicated by the ladder — it *is* a ladder, and
 `HOUSE_MODE_LADDERS` is that meaning written down where both renderers read it.
 A stored `fields` list is the override, and the trade it makes is real and
 stated in the editor: a per-widget list cannot express per-entity shapes, so
-writing one flattens them. The house widget is deliberately *not* in the wall's
-drop loop — its ladder is per reading, so there is no single list to take a rung
-off — and the icon rung resolves to nothing on a panel, the same way a forecast
-glyph does.
+writing one flattens them. The house widget was deliberately *not* in the wall's
+drop loop — its ladder is per reading, so there was no single list to take a
+rung off — and the icon rung resolves to nothing on a panel, the same way a
+forecast glyph does. **The drop loop is gone and the house has a tier now**,
+which is that same observation with somewhere to put it: `HOUSE_TIERS` gives up
+rungs by *role* rather than by position, because a reading order with the value
+last cannot be cut from the bottom without leaving a widget that says "Front
+door" and not what the front door is doing.
 
 **The editor marks the cut from the preview, not from a prediction.** The
 inspector's list strikes through the rows the box is currently too small for,
@@ -3889,8 +3922,10 @@ answer something nothing in this product could answer before. **Type on a wall
 is legible or not by the angle it subtends at somebody's eye**, and every
 legibility decision in this codebase is taken from a pixel count instead.
 `--t-floor: 22px` in `display.css` and `MIN_CALENDAR_SCALE = 0.62` in
-`density.ts` are each a measurement taken on one wall and defended on all the
-others. And `epaper/metrics.ts`, which has just replaced the panel's own
+`density.ts` were each a measurement taken on one wall and defended on all the
+others. (Both are gone now — the first is a fallback and the second is deleted
+with the transform it bounded — and this paragraph is kept because the *fault*
+is what it names, not the constants.) And `epaper/metrics.ts`, which has just replaced the panel's own
 constants with arithmetic, derives the whole ladder from the panel's **pixel**
 short side with a `SIZE_EXPONENT` of 0.6 — a number its docstring defends
 exactly right and for the missing reason: at 1.0 a bigger panel shows what a
@@ -4104,6 +4139,20 @@ event beside it to 0.73x**, and the clock from **2.66x to 1.80x** — *on the
 glass*, which is what the type-hierarchy pass could not deliver and said so at
 the time.
 
+> **The three paragraphs that follow are about the fit and its ceiling, and are
+> kept as history.** There is no fit to put a ceiling on: `fitToBox` is deleted
+> and a section is drawn at its role's own size. What the first two record is
+> the *argument* that a transform cannot be the lever, and it is the argument
+> this phase acted on — so it is worth reading before anybody reaches for a
+> scale again. The third is the decision that argument was not carried far
+> enough to reach, and it is **reversed**: it holds that a section too small for
+> its role should shrink rather than trim, and names `minScaleFor`'s floor as
+> where "give up content" starts. There is no floor and no shrink now — a
+> section is drawn at the size the reader needs or it is not drawn — so a 7.5"
+> panel loses one agenda day and three events, and every run it does draw is
+> exactly its role's angle where before it could only be held to "not larger
+> than". The reversal and its price are written up with the tiers below.
+
 **The roles alone would have done nothing at all, and that is the interesting
 part.** `fitToBox` writes a `transform: scale()` on the whole section and a
 transform multiplies straight through a font size — but worse than that, the
@@ -4286,6 +4335,18 @@ the wall drew no names in a cell of that size while the panel drew four: one
 stored value, two renderers, two answers, which is `shifts[0]`, `display_mode`,
 `cellEvents` and `mode` for the fifth time. `EPAPER_RENDERER_VERSION` is **6**.
 
+> **The paragraph that follows is about Classic's `count: 6` and is kept as
+> history.** The constant is gone: the template's own comment said it existed
+> because the section was scaled to fit, and with no scale a seventh event costs
+> the six above it nothing at all — it either fits at the size the reader needs
+> or it is not drawn. The half of it that is still true is the first sentence,
+> and it is the mechanism rather than the number: an agenda still draws
+> `min(what the household asked for, what its box affords)`, and a household who
+> sets a count still gets it capped. What it records otherwise is the shape of
+> the fault rather than its value, and it named that correctly — a legibility
+> budget written into a template is a box measurement somebody could not take
+> yet. It was the last one standing.
+
 **The household still owns the density, and Classic still asks for six.** An
 agenda draws `min(what the household asked for, what its box affords)`, so a
 Classic wall draws the same six events at every size it always did — which is
@@ -4302,10 +4363,21 @@ written back to the canvas — widening the month brings its own names back and
 takes the promotion away on the very next draw, which is the rule the
 week-columns fallback and the ladder's drop loop already keep, and
 `browser-density-tiers.test.ts` asserts the stored row still contains no tier.
-Its **limit is worth stating**: on a wall nobody has measured, `fitToBox` grows
-an agenda freely and every agenda comes out M4, so the promotion resolves and
-has no rung to move to. It bites where the tier binds, which is a measured wall
-with a short agenda box.
+Its **limit was worth stating and has since moved**: on a wall nobody had
+measured, `fitToBox` grew an agenda freely and every agenda came out M4, so the
+promotion resolved and had no rung to move to. Nothing grows now, so the tier
+binds on every wall and the promotion bites on all of them.
+
+> **The paragraph that follows is about the agenda's estimator and is kept as
+> history.** Its two *readings* survive, and they are why the current estimator
+> is shaped the way it is: an entry is 2.6 title-ems rather than the month
+> cell's 1.55, and what a row costs is a fact about markup that has to be
+> measured rather than declared. Both of its *mechanisms* are gone. Nothing is
+> asked "after the first fit", because there is no fit and no 1.89 scale to ask
+> against. And the loop that "stops when the answer repeats" is the one that
+> oscillated 6 → 8 → 7 → 6 → 8 and answered whichever round it ran out on; what
+> replaced it is an upper bound and a monotone descent, which is written up
+> below.
 
 **The agenda's own arithmetic is measured twice, and both corrections were
 faults first.** How many rows a box holds is asked *after* the first fit and
@@ -4363,6 +4435,270 @@ solid top row, and reads the words out of the middle.
 on real hardware, and no household has looked at a kitchen wall drawn this way.
 The measurements are a real browser and a decoded framebuffer, which is the
 right way to check both and is not the same thing.
+
+**And then scale-to-fit was deleted, and the other six widgets took density
+tiers.** The calendar's tiers made "a bigger box shows more" true of one widget;
+this makes it true of the wall. Everything else a household can place — the
+forecast, the rota badge, the house readings, a note, a checklist and a chore
+board — was laid out at one size and given a uniform `transform: scale()` to
+fill its box, which is **photographic enlargement**: it changes a widget's
+apparent size and can never change what it says. Measured on the shipped Classic
+wall, that is one number down a column — the forecast drew five days and the
+badge three rows at 480x800 and at 2560x1440, and `font-size` read 28.8px for
+text a household saw at 7.1px.
+
+`apps/display/src/widget-tiers.ts` is the table, in the shape `tiers.ts`
+established: thresholds in `ch` and `em` of each widget's **own primary text
+role**, four rungs, and a form per rung. Which role is "primary" is a judgement
+written down at each table, and one of them is a correction this project has
+already paid for once — a forecast's primary text is its *temperatures* rather
+than its day names, because a threshold measured with the tallest run of text
+cannot see the shortest one collapse.
+
+**Two of the six already had most of the answer and are built on rather than
+beside.** The **field ladder** was already "an ordered list of fields, given up
+from the bottom when the box cannot hold them", so a tier is that threshold made
+explicit: `rungs` is the ladder's length at each rung, and the wall stops
+dropping-and-remeasuring (fit, overflow?, drop, fit again) and reads the answer
+off a table. The ladder's own rule survives word for word — **at one rung out of
+several a badge draws a line rather than a word**, because a box with room for
+one row spending it on "Amy" when "Amy: Days · 07:00–19:00" fits is the same room
+spent on strictly less. And the **chore week board** already "trimmed to whole
+days and re-fitted", which is a tier in all but name; it is one now, the same
+table read through a different selector, so a board draws whole days in the
+first place rather than drawing 28 rows and taking some away.
+
+**How many, and how much, are two questions and only one of them is measured.**
+`rungs` is the tier's own number and nothing else. `items` is the tier's number
+as a **floor**, with the box's measured capacity above it — the rule `namesAt`
+already states, for the reason it states it: a table capped at its own threshold
+is a table about boxes that land exactly on one, and a box clears one dimension
+and not the other far more often than it lands on both. What an item *costs* is
+read off the drawn item rather than declared, because that is a fact about
+markup and this renderer has moved it twice in one widget without touching a
+font size.
+
+**The house is the one table whose rungs are given up by role rather than by
+position, and the reason is why the house was never in the drop loop.**
+Everywhere else the ladder's order is both the drawing order and the sacrifice
+order, and `dropToFit` takes the last entry — right for a stack of rows, and
+right on the panel, so the two renderers agree. A house reading is not a stack:
+it is one baseline-aligned row read left to right, and `HOUSE_MODE_LADDERS` puts
+the **value last** in every one of its four shapes. Taking the last entry there
+takes the reading away and leaves its label, which is a widget that says "Front
+door" and not what the front door is doing.
+
+**Two widgets have no table and both absences are decisions.** A **countdown**
+is a number, a unit and a label with nothing in it to give up, so it takes the
+*clock's* mechanism instead — `--buw`/`--buh` are one percent of the box's own
+width and height, and each size keeps the design's rem as a **cap**, so a
+countdown in a large box is the size it was drawn at and never larger. A
+**module's panel** is a list, but the rows are the module's and how many are
+worth drawing is the household's `count`; a table of ours there would be this
+renderer having an opinion about somebody else's data. Both still get the
+promise every widget gets: cut between rows, never through one.
+
+**`weekColumnsFit` and `MIN_WEEK_COLUMN_REM` are kept and re-expressed as what
+they always were: a boundary, not a floor.** A scale floor bounds how far a
+drawing may be shrunk; this decides *which of two drawings there is*. Seven
+columns are the one section on the wall that does not get narrower type as its
+box narrows — they get narrower columns, and a column with a letter in it is not
+a week — so below the boundary the household's week is drawn as an agenda, at
+the size it is declared at, and above it as seven columns. It stays stated in
+`rem` rather than in `ch` of a role, because a week column's problem is never
+that its type is too small, and it stays restricted to the **comfortable** week,
+because the dense week gives up its gaps, cards and padding precisely to fit in
+less room and applying an unmeasured number to it would swap an agenda onto
+every wall already hanging that stores `skyweek`.
+
+**Classic's `count: 6` went with the transform it was written for**, and the
+template said so in as many words: "the section is scaled to fit, so two more
+rows is a shorter scale factor on every character in the widget", with a
+measurement to match. Every clause of that was true of `fitToBox` and none of it
+is true now — nothing is scaled, so a seventh event costs the six above it
+nothing at all; it either fits at the size the reader needs or it is not drawn.
+It was the last constant in a shipped template standing in for a box
+measurement. `AGENDA_COUNT_DEFAULT` is still what the *first* draw asks the
+model for, because that draw has no measurement yet, and it no longer caps what
+the box may show.
+
+**What moved, measured on the shipped Classic seed with the same three family
+calendars, at the same hour, against a clean worktree of `main`.** The agenda,
+as events over days:
+
+    |     viewport | unmeasured | measured, at its own panel |
+    |--------------|------------|----------------------------|
+    |      480x800 |  6/2 → 6/2 |  6/2 → 3/1                 |
+    |      800x480 |  6/2 → 11/4|  6/2 → 5/2                 |
+    |    1080x1920 |  6/2 → 6/2 |  6/2 → 10/3                |
+    |    1920x1080 |  6/2 → 11/4|  6/2 → 12/5                |
+    |    2560x1440 |  6/2 → 11/4|  6/2 → **14/6**            |
+
+A 43" television draws **fourteen events over six days where it drew six over
+two**, and that is the sentence this whole line of work is named for.
+
+**Two of those go the worsening way and the reversal is deliberate.** On the two
+e-ink sizes a *measured* wall loses events, and the paragraph it overturns is
+this document's own: it argued that at 480x800 and 800x480 "the section shrinks
+to 0.62 and 0.88 — which is the existing shrink-then-trim behaviour and the
+right one: trimming instead would cost one of the two days to buy 13% of type".
+There is no shrink now. A section is drawn at the size the reader needs or it is
+not drawn, which is this project's own hard design rule, and the price on a
+7.5" panel is one day and three events. What the panel gets back is asserted in
+the same file: **every run in the agenda is now exactly its role's angle at all
+five sizes**, where before the two e-ink panels could only be held to "not
+larger than".
+
+**`runsUnderFloor` also rises on the unmeasured wall at two sizes, and no
+individual run got smaller for it** — both are the sizes whose agenda went from
+6 events to 11, so there are simply more runs at sizes that were already under
+the floor. The one run that did shrink is the 800x480 agenda's type, 16.6px →
+14.0px, which is the fit's *growth* being removed rather than a size anybody
+chose: `fitToBox` grew that section by 1.18x because its box had spare height,
+and the spare height now buys five more events.
+
+**And `.dr-num` finally honours a design rule this document has stated for
+months.** "The date numeral is never larger than the event name beside it by
+more than 1.2x" — its rem fallback was 1.59x, on every wall nobody has measured,
+which is most of the walls in the world. It was left because repairing it would
+have moved an unmeasured wall; this phase moves that wall anyway, so it is
+`calc(var(--t-event) * 1.2)` now, the month grid's own spelling of the same rule
+one widget along. Measured, 66.9px → 50.5px at 2560x1440, and the room goes
+straight into the agenda.
+
+**The spacing scale is six steps in `em` of the wall's event role — 0, 0.14,
+0.28, 0.5, 0.85, 1.4 — and the three permissions are limits rather than
+suggestions:** a month cell spends at most step 2 on padding, total, per axis; a
+widget box at most step 4; the canvas at most step 5 between the boxes it holds.
+Before it the stylesheet carried 28 distinct `gap` values, 29 `padding` values
+and 20 `margin-top` values with nothing relating any of them to anything. The
+base is the event role, so on a measured wall spacing follows the reader's own
+angle; the *fallback* is `--t-base` and deliberately not `max(--t-micro,
+--t-floor)`, because `--t-floor` is 22 **pixels** and a spacing scale anchored to
+it would put the same gap on a 7.5" panel and a 43" television — larger, as a
+share of the wall, on the small one, which is the wrong way round.
+
+**The sweep is what made the tiers fit, which was not the plan and is the most
+useful thing in it.** Three rules were each spending more than the widget they
+decorated: the Panels theme's card inset — `1.9rem 2.1rem`, written for the
+retired stacked layout where a block was a band across the whole wall — spent
+**73px of a 193px box** on a forecast that then overflowed by 6, and spends 28
+at step 4; the rota badge spent a quarter of its box height on its own padding
+and so could not draw its third row at the size its type asks for; and a
+`.day-row`'s 2.3rem alone was the difference between five days and six on the
+2560x1440 wall. Every one of those is a raw value that was correct in the layout
+it was written for and had never been re-read in the one it ended up in.
+
+**`line-height` is a number now and never `normal`, and that one line is what
+makes the wall's geometry a fact about the type rather than about the font
+*file*.** `normal` is derived from a face's own ascent and descent, so a run
+drawn in the fallback and the same run drawn in the bundled face have different
+line boxes: measured, the date column's `--disp` runs move an agenda day row by
+a pixel the moment the webfont lands, with nothing in the stylesheet asking for
+it. **1.15 is calibrated rather than chosen** — `normal` resolves to 1.148 on
+the sans runs and 1.167 to 1.178 on the display ones, a range of three
+hundredths, and 1.15 sits inside it. 1.2 was tried first and is above the whole
+range: two per cent on every un-declared line box, which on a five-line date
+column compounds into a whole agenda day at 2560x1440. A number that "makes the
+geometry stable" by making every row taller has moved the fault, not fixed it.
+
+**The font race dissolves, and `browser-font-race.test.ts` is reworked rather
+than deleted.** `main.ts` no longer redraws on `document.fonts.ready`: nothing
+is measured once and kept, so a paint that beats the webfont cannot leave a
+number behind. The file asserts the invariant that replaced the old one —
+**the wall's geometry is identical whether or not the fonts have arrived**,
+every widget box, month cell, day row and forecast column, to the pixel — with
+the premise (the face really does measure differently) and the structure (no
+laid-out section carries a transform) asserted beside it. Its control is now
+**the same page**, which is a deliberate correction of the fault its own
+docstring recorded: the first draft compared a raced context against a "load it
+normally and measure" baseline taken on a cold context, so the control lost the
+same race it existed to be a control for. Here there is no second context to be
+wrong — one page, one draw, one variable.
+
+**What is honestly left is written down rather than papered over:** a cold boot
+still picks its density tiers from whatever face has arrived, so a month grid
+can name a different number of cells for up to one tick. That is a *content*
+difference and it self-corrects; the geometry does not move. The premise the
+removal was made on — "with no measured scale to keep, that class of fault is
+structurally impossible" — is exactly true of the *scale* and not of the tier,
+and the difference is the whole of why the test asserts geometry and not names.
+
+**`reflow-stability.test.ts` is the acceptance for e-ink partial refresh (RFC
+006 phase 11) and it belongs in this phase because this is the phase that makes
+it true.** Two walls, the same arrangement, different events — same days, same
+counts, every title and time different — and every widget box, month cell,
+weekday head, span bar, agenda day, agenda entry, date column and forecast
+column identical to the hundredth of a pixel. Seven mechanisms used to recompute
+geometry from content; four are now gone (`fitToBox`, `trimCellRows`,
+`fitAndTrimToDays`, the ladder drop loop), `weekColumnsFit` reads the box and
+never the content, and the last two are the panel's. What the file deliberately
+does **not** claim is stated in it: a feed with a different number of events on a
+day is a different arrangement of rows and its geometry moves, which is correct,
+and a title long enough to wrap gains its row a line, which is the agenda's own
+wrap doing what it is for.
+
+**The measurement tables the scale floors were justified by are kept here as
+history**, the way the retired `auto` layout's paragraphs are, because what they
+record — what a wall *looks like* at each scale, with a sentence per row —
+outlives the constants they were written for. Both were taken on a real 1280x720
+television.
+
+`MIN_CHORE_SCALE`, on a "this week" board of four daily chores (28 rows):
+
+    | scale | chore name on a 1280px wall | what it looks like                  |
+    |-------|-----------------------------|-------------------------------------|
+    | 1.00  | 21.6px                      | the design                          |
+    | 0.62  | 13.4px                      | dense, still readable across a room |
+    | 0.30  | 8.1px                       | grey texture with boxes in it       |
+
+`MIN_CALENDAR_SCALE`, on the first-run wall — the Classic template, one feed,
+nothing configured — whose agenda box is 333x216 on a 1280x720 television. Each
+row is the floor, the scale the fit then settled at, and what was on the glass:
+
+    | floor | settles at | event time | days | what it looks like                 |
+    |-------|------------|------------|------|------------------------------------|
+    | 0.20  | 0.27       | 4.4px      | 6    | six days of grey; no word is a word |
+    | 0.30  | 0.31       | 5.1px      | 5    | still gone — the note floor is not this widget's |
+    | 0.40  | 0.46       | 7.4px      | 3    | small: legible leaning in, not from the doorway |
+    | 0.50  | 0.60       | 9.8px      | 2    | readable here, and 0.642rem in portrait — under the bar |
+    | 0.62  | 0.62       | 10.0px     | 2    | today and tomorrow, read across a room |
+    | 0.80  | 1.00       | —          | 1    | today alone, reading "Nothing on": an Upcoming widget with nothing upcoming |
+
+The argument those tables settled is worth keeping too, and it is the one this
+phase overturns: *the cost is real and deliberate — a wall that drew six days
+now draws two*. That was the honest price of a floor on a scale. It is not a
+price a tier has to pay, because a tier does not trade points for content in the
+first place; what a box cannot hold at the reader's size it does not draw.
+
+**Six faults came out of building this and five were only ever going to be found
+by measuring.** A belt written as "hide every item that ends past the foot" hid
+**four of a forecast's five columns**, because a strip is one row of boxes with
+identical bottoms — the vertical unit there is a rung inside a column, and the
+belt goes on the rows and never on the columns. The agenda's own estimator
+**oscillated 6 → 8 → 7 → 6 → 8** across its rounds and answered whichever round
+it stopped on: an agenda is a stack of *days*, not of events, so the marginal
+event is nearly free when it lands in a day already drawn and costs a whole date
+column when it opens a new one — 45px charged for a seventh that costs 177. It
+asks the box for an **upper bound** now and steps down until the last day
+genuinely fits, which is monotone, terminating and lands on the truth. The
+referee for that had to be the **last day-row against the box** rather than the
+section's own scroll height, because the Panels theme gives `.next` a card inset
+and a section with nothing sliced reads as ten pixels over. `browser-grid-calendar`
+lost the ability to go red — the month cell got roomy enough to name every
+non-Work event *with* 31 standups still on it, 8 either way — so its central
+claim is asked on a narrower wall where the room is scarce (2 names against 31
+standups, and 6 after), with the 1080 wall keeping the weaker "nothing is lost"
+half rather than dropping it. And `loadWallSettled` was measuring walls with
+their **offline banner still up**: the wall draws its IndexedDB copy before the
+first poll answers, that draw carries the banner, and a banner is 76px of canvas
+and one whole agenda day at 2560x1440. It waits for the manifest on each
+navigation now, not merely for the canvas.
+
+**Still unproven where it counts:** nobody has looked at a kitchen wall drawn
+this way, and no e-ink panel has been partially refreshed against the stability
+this phase establishes. The measurements are a real browser at five sizes with
+three real feeds, which is the right way to check this and is not the same thing.
 
 ---
 

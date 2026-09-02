@@ -4,7 +4,7 @@
  * The wall draws a progress bar on an event that is happening now. It was an
  * in-flow grid item, so it cost the entry its own row track *and* one more
  * `row-gap` — measured on the shipped Classic wall, a running entry stood
- * 53.8px against 40.1px for every other one. `fitToBox` scales the whole
+ * 53.8px against 40.1px for every other one. `fitToBox` scaled the whole
  * agenda to its box, so that came off the scale: 0.983, or 1.7% smaller type
  * on every run in the section. `.dr-shift` — the rota chip, the one run in the
  * agenda that carries a colour — is `var(--t-micro)`, 22.08px, which has 0.36%

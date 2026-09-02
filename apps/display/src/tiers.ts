@@ -304,14 +304,28 @@ export function promoted(tier: CalendarTier, rungs: number): CalendarTier {
 /**
  * How many events a list — an agenda, an upcoming column — draws in this box.
  *
- * The same rungs, and one difference that is rule nine rather than a rounding:
- * never fewer than one. A month cell that can name nothing has the density mark
- * to say the day is busy; a list that draws nothing is an empty rectangle with
- * a heading on it, and a household who dragged a box too small should see the
- * thing at the top of it.
+ * The same rungs and the same "the tier's number is a floor, the height buys
+ * more" arithmetic, with two differences from `namesAt` and both of them are
+ * about the difference between a square and a column.
+ *
+ * **Never fewer than one**, which is rule nine rather than a rounding: a month
+ * cell that can name nothing has the density mark to say the day is busy, and a
+ * list that draws nothing is an empty rectangle with a heading on it.
+ *
+ * **And no `MAX_NAMES` cap.** Twelve is where the *model's slim per-cell list*
+ * stops, which is a fact about a month cell — the manifest carries at most
+ * twelve titles for one day, so a thirteenth is not something a bigger square
+ * can buy. An agenda reads the household's whole window, seven days of it by
+ * default, so there a thirteenth event is exactly what a bigger box buys and
+ * capping it here would be the fault this table exists to remove, hiding one
+ * table down. Measured on the shipped Classic wall at 2560x1440, that cap alone
+ * was the difference between 12 events and 15.
  */
 export function listRowsAt(tier: CalendarTier, innerH: number, emPx: number): number {
-  return Math.max(1, namesAt(tier, innerH, emPx));
+  if (tier.names <= 0) return 1;
+  if (!(emPx > 0) || !(innerH > 0)) return Math.max(1, tier.names);
+  const rows = Math.floor((innerH / emPx - NUMERAL_EM) / ROW_EM);
+  return Math.max(1, tier.names, rows);
 }
 
 /**

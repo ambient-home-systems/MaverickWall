@@ -491,6 +491,54 @@ interface Baseline {
  * a line of its own out of room the names declined, and otherwise says nothing
  * and leaves the density mark to say the day is busy.
  *
+ * **Raised again, by the density tiers for the other six widgets — and this is
+ * the pass that moves numbers the worsening way.** `fitToBox` is gone: nothing
+ * on this wall is laid out at one size and scaled into its box any more, so a
+ * widget's type is its role and its *form* comes from the box
+ * (`widget-tiers.ts`). The "before" column is a clean worktree of `main`
+ * running this same fixture at the same hour:
+ *
+ *   |     viewport | names | distinct |  +N  | floor |  days |  events |
+ *   |--------------|-------|----------|------|-------|-------|---------|
+ *   |      480x800 |  0→ 0 |    0→ 0  | 0→ 0 | 45→41 |  2→ 2 |   6→  6 |
+ *   |      800x480 |  0→ 0 |    0→ 0  | 0→ 0 | 46→58 |  2→ 4 |   6→ 11 |
+ *   |    1080x1920 | 11→12 |    9→10  | 1→ 0 |  7→ 0 |  2→ 2 |   6→  6 |
+ *   |    1920x1080 | 10→10 |    8→ 8  | 1→ 1 | 15→18 |  2→ 4 |   6→ 11 |
+ *   |    2560x1440 | 11→12 |    9→10  | 1→ 3 |  0→ 0 |  2→ 4 |   6→ 11 |
+ *
+ * The headline is the two right-hand columns: **the agenda stops drawing the
+ * same six events on every wall in a 3.7-megapixel range.** Classic's own
+ * `count: 6` went with the transform it was written for — the template said so
+ * in as many words, "the section is scaled to fit, so two more rows is a
+ * shorter scale factor on every character in the widget" — and with nothing
+ * scaled a seventh event costs the six above it nothing. The two portrait
+ * sizes are unchanged because their box genuinely holds six.
+ *
+ * Three columns move the wrong way and are recorded rather than buried, which
+ * is this file's own rule.
+ *
+ * **`runsUnderFloor` rises at 800x480 (46→58) and 1920x1080 (15→18), and no
+ * individual run got smaller for it.** Both are the sizes whose agenda went
+ * from 6 events to 11: there are simply more runs on the glass, at sizes that
+ * were already under the floor. The one run that *did* shrink is the agenda's
+ * type at 800x480, 16.6px → 14.0px (`AGENDA_BASELINE`), and that is the fit's
+ * growth being removed rather than a size anybody chose — `fitToBox` grew that
+ * section by 1.18x because its box had spare height, and the spare height now
+ * buys events. Neither number is legible on a 7.5" panel either way; what makes
+ * one legible is measuring the wall, which is the block below.
+ *
+ * **`plusNCells` rises at 2560x1440 (1→3), paired with names 11→12.** The same
+ * argument the previous phase recorded and the reason the two are asserted
+ * together: a cell that can name nothing draws no counter at all, so a cell
+ * that *starts* naming something becomes a cell that can carry a count. A loss
+ * of names would still fail.
+ *
+ * **`AGENDA_BASELINE`'s numeral falls at every size**, 59.7px → 44.9px at
+ * 1080x1920. That is `.dr-num` finally honouring this project's own design rule
+ * on a wall nobody has measured — "the date numeral is never larger than the
+ * event name beside it by more than 1.2x", which its rem fallback had been
+ * breaking at 1.59x. The room it frees goes straight into the agenda.
+ *
  * The audit that this file exists to make repeatable reported, at these same
  * five sizes: 6 agenda events across 3 days at every size; 0 month names
  * visible at 480x800 and 800x480, 3 at 1080x1920, 7 at 1920x1080, 8 at
@@ -515,7 +563,7 @@ export const BASELINE: Record<string, Baseline> = {
     // No room for a lane under the numeral at this cell size, so the bars are
     // measured back out by the tier pass and the events go back to being rows.
     spanBars: 0,
-    runsUnderFloor: 45,
+    runsUnderFloor: 41,
     agendaDays: 2,
     agendaEvents: 6,
     canvasSharePercent: 93.5,
@@ -527,19 +575,19 @@ export const BASELINE: Record<string, Baseline> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 0,
-    runsUnderFloor: 46,
-    agendaDays: 2,
-    agendaEvents: 6,
+    runsUnderFloor: 58,
+    agendaDays: 4,
+    agendaEvents: 11,
     canvasSharePercent: 93.5,
     contentSharePercent: 80,
   },
   '1080x1920': {
-    monthNamesVisible: 11,
-    distinctNames: 9,
-    plusNCells: 1,
+    monthNamesVisible: 12,
+    distinctNames: 10,
+    plusNCells: 0,
     markedCells: 20,
     spanBars: 2,
-    runsUnderFloor: 7,
+    runsUnderFloor: 0,
     agendaDays: 2,
     agendaEvents: 6,
     canvasSharePercent: 99.5,
@@ -551,21 +599,21 @@ export const BASELINE: Record<string, Baseline> = {
     plusNCells: 1,
     markedCells: 20,
     spanBars: 2,
-    runsUnderFloor: 15,
-    agendaDays: 2,
-    agendaEvents: 6,
+    runsUnderFloor: 18,
+    agendaDays: 4,
+    agendaEvents: 11,
     canvasSharePercent: 99.5,
     contentSharePercent: 80,
   },
   '2560x1440': {
-    monthNamesVisible: 11,
-    distinctNames: 9,
-    plusNCells: 1,
+    monthNamesVisible: 12,
+    distinctNames: 10,
+    plusNCells: 3,
     markedCells: 20,
     spanBars: 2,
     runsUnderFloor: 0,
-    agendaDays: 2,
-    agendaEvents: 6,
+    agendaDays: 4,
+    agendaEvents: 11,
     canvasSharePercent: 99.5,
     contentSharePercent: 80,
   },
@@ -585,6 +633,16 @@ const DRAWN_RUNS = ['title', 'time', 'numeral', 'weekday', 'rota', 'label', 'clo
  * opened the wall's size setting gets these numbers, and this file is what
  * says so.
  *
+ * **Every figure here moved when `fitToBox` went**, and two of the movements
+ * are the point rather than noise. The **numeral** falls at every size (59.7 →
+ * 44.9 at 1080x1920) because `.dr-num`'s rem fallback finally honours the 1.2x
+ * ceiling this project's own design rules set for it. And the **800x480 title**
+ * falls 16.6 → 14.0, which is the only run on the wall that got smaller: the
+ * fit used to *grow* that section by 1.18x because its box had spare height,
+ * and the spare height now buys five more events instead. Everything else is
+ * within a percent of what it was, which is what says the rest of the wall did
+ * not move.
+ *
  * Two of them are worth reading on their own. The clock at 1080x1920 is
  * **99.8px against a 37.5px event name — 2.66x**, where this product's own
  * design rule says a clock may not be more than 1.8x an event, and the
@@ -596,11 +654,11 @@ const DRAWN_RUNS = ['title', 'time', 'numeral', 'weekday', 'rota', 'label', 'clo
  * somebody did.
  */
 const AGENDA_BASELINE: Record<string, Record<(typeof DRAWN_RUNS)[number], number>> = {
-  '480x800': { title: 15.4, time: 11.8, numeral: 24.4, weekday: 13.0, rota: 9.1, label: 9.8, clock: 41.6 },
-  '800x480': { title: 16.6, time: 12.7, numeral: 26.3, weekday: 14.0, rota: 9.8, label: 10.6, clock: 25.3 },
-  '1080x1920': { title: 37.5, time: 28.9, numeral: 59.7, weekday: 31.8, rota: 22.1, label: 24.1, clock: 99.8 },
-  '1920x1080': { title: 31.6, time: 24.3, numeral: 50.2, weekday: 26.7, rota: 18.6, label: 20.2, clock: 56.9 },
-  '2560x1440': { title: 42.1, time: 32.4, numeral: 66.9, weekday: 35.6, rota: 24.8, label: 27.0, clock: 75.8 },
+  '480x800': { title: 15.6, time: 12.0, numeral: 18.7, weekday: 13.2, rota: 9.2, label: 10.0, clock: 41.6 },
+  '800x480': { title: 14.0, time: 10.8, numeral: 16.8, weekday: 11.9, rota: 8.3, label: 9.0, clock: 25.3 },
+  '1080x1920': { title: 37.4, time: 28.8, numeral: 44.9, weekday: 31.7, rota: 22.1, label: 24.0, clock: 99.8 },
+  '1920x1080': { title: 31.6, time: 24.3, numeral: 37.9, weekday: 26.7, rota: 18.6, label: 20.3, clock: 56.9 },
+  '2560x1440': { title: 42.1, time: 32.4, numeral: 50.5, weekday: 35.6, rota: 24.8, label: 27.0, clock: 75.8 },
 };
 
 describe('the Classic wall, measured for density', () => {
@@ -963,6 +1021,40 @@ const ARCMIN_SLACK = 0.05;
  * 1080x1920 a 32" panel read from 0.9m names 16. Those are households, not
  * levers, and this file does not get to pick one to make a number look better.
  */
+/**
+ * **Raised by the density tiers for the six widgets, and the two smallest sizes
+ * move the worsening way on purpose.**
+ *
+ *   |     viewport | names | distinct |  +N  | days | events |
+ *   |--------------|-------|----------|------|------|--------|
+ *   |      480x800 |  0→ 0 |    1→ 1  | 0→ 0 | 2→ 1 |  6→  3 |
+ *   |      800x480 |  0→ 0 |    1→ 1  | 0→ 0 | 2→ 2 |  6→  5 |
+ *   |    1080x1920 | 12→14 |   10→12  | 0→ 3 | 2→ 3 |  6→ 10 |
+ *   |    1920x1080 | 11→12 |    9→10  | 4→ 3 | 2→ 5 |  6→ 12 |
+ *   |    2560x1440 | 11→12 |    9→10  | 4→ 3 | 2→ 6 |  6→ 14 |
+ *
+ * **A 43" television draws fourteen events over six days where it drew six over
+ * two**, which is the sentence this whole line of work is for, and it is
+ * measured on the same shipped seed with the same three family calendars.
+ *
+ * **480x800 and 800x480 lose events, and that is a decision being reversed
+ * rather than a regression being blessed.** The paragraph this file replaced
+ * said so explicitly: "at 480x800 and 800x480 the household's Classic box
+ * genuinely cannot hold two days at 22' and the section shrinks to 0.62 and
+ * 0.88 — which is the existing shrink-then-trim behaviour and the right one:
+ * trimming instead would cost one of the two days to buy 13% of type". There is
+ * no shrink now. A section is drawn at the size the reader needs or it is not
+ * drawn, which is this project's own hard design rule — *a section that does
+ * not fit gives up content, not points* — and the price on a 7.5" panel is one
+ * day and three events. What the panel gets back is the other half of the
+ * trade, and it is asserted a few lines down: **every run in the agenda is now
+ * exactly its role's angle at all five sizes**, where before the two e-ink
+ * panels could only be held to "not larger than".
+ *
+ * `plusNCells` rises at 1080x1920 (0→3) beside names 12→14, which is the
+ * counter getting cheaper rather than a name being lost — the same pairing the
+ * unmeasured table above argues, and the reason the two are asserted together.
+ */
 const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
   '480x800': {
     monthNamesVisible: 0,
@@ -970,8 +1062,8 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 2,
-    agendaEvents: 6,
+    agendaDays: 1,
+    agendaEvents: 3,
     canvasSharePercent: 93.5,
     contentSharePercent: 85.5,
   },
@@ -982,40 +1074,40 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     markedCells: 20,
     spanBars: 2,
     agendaDays: 2,
-    agendaEvents: 6,
+    agendaEvents: 5,
     canvasSharePercent: 93.5,
     contentSharePercent: 80,
   },
   '1080x1920': {
-    monthNamesVisible: 12,
-    distinctNames: 10,
-    plusNCells: 0,
+    monthNamesVisible: 14,
+    distinctNames: 12,
+    plusNCells: 3,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 2,
-    agendaEvents: 6,
+    agendaDays: 3,
+    agendaEvents: 10,
     canvasSharePercent: 99.5,
     contentSharePercent: 85.5,
   },
   '1920x1080': {
-    monthNamesVisible: 11,
-    distinctNames: 9,
-    plusNCells: 4,
+    monthNamesVisible: 12,
+    distinctNames: 10,
+    plusNCells: 3,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 2,
-    agendaEvents: 6,
+    agendaDays: 5,
+    agendaEvents: 12,
     canvasSharePercent: 99.5,
     contentSharePercent: 80,
   },
   '2560x1440': {
-    monthNamesVisible: 11,
-    distinctNames: 9,
-    plusNCells: 4,
+    monthNamesVisible: 12,
+    distinctNames: 10,
+    plusNCells: 3,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 2,
-    agendaEvents: 6,
+    agendaDays: 6,
+    agendaEvents: 14,
     canvasSharePercent: 99.5,
     contentSharePercent: 80,
   },

@@ -188,7 +188,7 @@ async function measureRuns(size: {
   const page: Page = await context.newPage();
   try {
     /*
-     * Hold the first manifest back, then reload. `fitToBox` measures once, as
+     * Hold the manifest back, then reload. The tier passes measure once, as
      * its section is appended, and nothing re-runs it — so on a cold context
      * whose fonts have not arrived the wall keeps a fit computed against
      * fallback metrics. The second load has them in the HTTP cache, which is

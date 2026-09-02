@@ -496,13 +496,16 @@ describe('what the grid says when it can say nothing', () => {
        * its own arrangement instead of measuring Classic.
        */
       /*
-       * A *measured* wall, because that is where an agenda's tier can be below
-       * the top at all: the fit ceiling is 1 there, so the type in the box is
-       * the size the reader needs and the box measures a real number of ems.
-       * On a wall nobody has measured, `fitToBox` grows the section freely and
-       * every agenda comes out M4 — the promotion is still resolved, it simply
-       * has no rung left to move to, which is a limit worth knowing and is why
-       * this test says which wall it is about.
+       * A *measured* wall, because that is where an agenda's tier is most
+       * clearly below the top: the type in the box is the size the reader needs
+       * and the box measures a real number of ems of it.
+       *
+       * (History, and worth keeping because the limit moved: on a wall nobody
+       * had measured, `fitToBox` grew the section freely and every agenda came
+       * out M4 — the promotion resolved and had no rung left to move to.
+       * Nothing grows now, so the tier binds on every wall and this test would
+       * work on either; it stays on the measured one because that is the wall
+       * whose angle the rest of the file is about.)
        */
       measureScreen('tv-32', 0);
       const size = { width: 1920, height: 1080 } as const;
@@ -604,7 +607,9 @@ describe('a paired wall still settles', () => {
        * A tier decided from measured text has the font race's hazard, and this
        * project has already paid for it once: `fitToBox` measured a section
        * against fallback metrics and kept the arithmetic, which showed up as a
-       * flake nobody believed. `loadWallSettled` is what holds the first
+       * flake nobody believed. Nothing is kept now, but a tier is still read
+       * from a measured advance, so the settle is still what makes an answer
+       * repeatable. `loadWallSettled` is what holds the first
        * manifest back, and this is what says the settled answer is stable —
        * two loads of the identical wall, one rung.
        */

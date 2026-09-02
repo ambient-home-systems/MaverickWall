@@ -674,40 +674,35 @@ function start(): void {
   setInterval(() => safely(draw), TICK_MS);
 
   /*
-   * Draw again once the webfonts have landed, because a fit is computed once
-   * and never revisited.
+   * **There is no redraw on `document.fonts.ready` any more, and the deletion
+   * is the point rather than a tidy-up.**
    *
-   * `fitToBox` measures its section as it appends it and writes a `scale()`
-   * that nothing recomputes; the faces are `font-display: swap`, so a first
-   * paint that beats the font measures *fallback* metrics. Measured on a
-   * 1080x1920 Classic wall: the agenda is 812px tall on the fallback and 816px
-   * with the real face, so the fit comes out `532.24/812` rather than
-   * `532.24/816` — half a percent too large, permanently, on a section whose
-   * box is `overflow: hidden`. The last row clips and nothing on the wall says
-   * why.
+   * There used to be one, and the fault it existed for was real: `fitToBox`
+   * measured its section as it appended it and wrote a `scale()` that nothing
+   * recomputed, so a first paint that beat the webfont measured *fallback*
+   * metrics and kept the answer. Measured on a 1080x1920 Classic wall, the
+   * agenda was 812px tall on the fallback and 816px with the real face, so the
+   * fit came out `532.24/812` rather than `532.24/816` — half a percent too
+   * large, permanently, on a section whose box is `overflow: hidden`. The last
+   * row clipped and nothing on the wall said why. It was found as a flake that
+   * was right, which is the second time this project has had to record one.
    *
-   * The 15-second tick already corrects it, so what this buys is the first
-   * fifteen seconds after a cold load — which is exactly when somebody is
-   * standing in front of it, having just turned the screen on or come back
-   * from a power cut. It is one extra draw on a wall that redraws four times a
-   * minute anyway.
+   * Nothing keeps a measurement now. A section is drawn at its role's own size
+   * and the box picks a form; every measurement the renderer takes is taken
+   * again, from scratch, on every draw, and the only thing a wrong one can cost
+   * is a form that is corrected on the next tick. **A wall cannot end up
+   * holding a number computed against metrics that have since changed**, which
+   * is the whole of what that redraw was for.
    *
-   * Deliberately a redraw rather than a re-fit: every decision this bundle
-   * takes from measured text has the same hazard (the month tier pass, the week
-   * fallback, the agenda's time column), and they are all taken inside a draw.
-   * Re-running the draw fixes the class; re-fitting one section fixes one
-   * symptom.
-   *
-   * Guarded because the CSS Font Loading API is not everywhere, and a tablet
-   * that has never heard of it must lose the correction rather than the wall
-   * (rule nine). `catch` for the same reason: `ready` is not specified to
-   * reject, and an unhandled rejection is not worth a wall to find out.
+   * What is left is honest and is written down rather than papered over: a cold
+   * boot picks its density tiers from whatever face has arrived, so a month
+   * grid can name a different number of cells for up to one tick. That is a
+   * *content* difference and it self-corrects; the wall's **geometry** — every
+   * widget box, every month cell, every day row — is identical either way,
+   * because none of it is derived from a measurement of text.
+   * `browser-font-race.test.ts` is that invariant, and it is what that file
+   * asserts now instead of the fit it was written for.
    */
-  const fontSet = (document as unknown as { readonly fonts?: { readonly ready?: Promise<unknown> } })
-    .fonts;
-  if (fontSet?.ready !== undefined) {
-    void fontSet.ready.then(() => safely(draw)).catch(() => undefined);
-  }
 
   /*
    * The watchdog, which only ever reloads.

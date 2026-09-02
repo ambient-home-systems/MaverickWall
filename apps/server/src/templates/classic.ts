@@ -83,25 +83,35 @@ export const template: DisplayTemplate = {
       { type: 'shift', x: 0.57, y: 0.02, w: 0.38, h: 0.12 },
       { type: 'weather', x: 0.05, y: 0.125, w: 0.9, h: 0.115 },
       /*
-       * Six, not eight. The count is part of the legibility budget rather than a
-       * setting beside it: the section is scaled to fit, so two more rows is a
-       * shorter scale factor on every character in the widget. Measured in this
-       * box, eight events put the rota chip under the floor and six clear it —
-       * which is the grid's own rule ("give up a row rather than a point") one
-       * widget along. A household who wants more asks for more.
+       * **No count. The box says how many, and that is this template's own
+       * paragraph rewritten rather than a value deleted.**
        *
-       * What the count cannot fix is a *thin* week. Measured, four events and
-       * five and six all scale identically in a given box: the agenda's height
-       * is mostly its day headers, so what sets the type is how many days the
-       * events are spread over, and no template geometry reaches that. The floor
-       * is cleared for a household with a busy few days, which is the wall this
-       * layout is drawn for.
+       * It used to be six, and the reason was written down here: "the section is
+       * scaled to fit, so two more rows is a shorter scale factor on every
+       * character in the widget", with a measurement to match — eight events put
+       * the rota chip under the 22px floor and six cleared it. Every clause of
+       * that was true of `fitToBox` and none of it is true now. Nothing is
+       * scaled, so a seventh event costs the six above it nothing at all; it
+       * either fits at the size the reader needs or it is not drawn. A constant
+       * standing in for a box measurement is exactly what the density tiers
+       * replace, and this was the last one in a shipped template.
+       *
+       * Measured on this wall with three ordinary family calendars, before →
+       * after: 6 events over 2 days at every size from 480x800 to 2560x1440,
+       * against 6/2, 6/2, 8/3, 11/4 and 14/6. The small panels are unchanged
+       * because their box genuinely holds six; the large ones stop drawing a
+       * 7.5" panel's worth of calendar on a 43" television.
+       *
+       * The other half of that paragraph still holds and is worth keeping: what
+       * the count could never fix is a *thin* week, because the agenda's height
+       * is mostly its day headers and no template geometry reaches how many days
+       * the household's events are spread over.
        *
        * 0.305 is not a tidy number and is not meant to be. The rota chip lands
        * at 21.7px at 0.30 — three tenths of a pixel under the floor — and at
        * 22.5px here, which is the first height with any margin at all.
        */
-      { type: 'calendar', x: 0.05, y: 0.245, w: 0.9, h: 0.305, config: { mode: 'list', count: 6 } },
+      { type: 'calendar', x: 0.05, y: 0.245, w: 0.9, h: 0.305, config: { mode: 'list' } },
       /*
        * 0.435 rather than 0.45: the smallest trim that buys the agenda its last
        * rung without taking the grid anywhere near the height at which its cells
@@ -140,7 +150,7 @@ export const template: DisplayTemplate = {
       { type: 'clock', x: 0.03, y: 0.04, w: 0.22, h: 0.16 },
       { type: 'weather', x: 0.27, y: 0.04, w: 0.45, h: 0.16 },
       { type: 'shift', x: 0.75, y: 0.04, w: 0.22, h: 0.16 },
-      { type: 'calendar', x: 0.03, y: 0.24, w: 0.52, h: 0.72, config: { mode: 'list', count: 6 } },
+      { type: 'calendar', x: 0.03, y: 0.24, w: 0.52, h: 0.72, config: { mode: 'list' } },
       { type: 'calendar', x: 0.57, y: 0.24, w: 0.4, h: 0.72, config: { mode: 'month' } },
     ],
   },
@@ -202,7 +212,7 @@ export const template: DisplayTemplate = {
  */
 
 /** Classic's two calendar views, so a variant cannot drift from the original. */
-const AGENDA = { mode: 'list', count: 6 } as const;
+const AGENDA = { mode: 'list' } as const;
 const MONTH = { mode: 'month' } as const;
 
 /** The clock alone in the top band takes its whole width; `fitToBox` centres it. */
