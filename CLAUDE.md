@@ -1679,10 +1679,11 @@ load-bearing:
   than measured (a bar and the cells beside it have to agree before either is
   laid out), so it is declared once per treatment and a browser test holds a
   bar's top against the cell content beneath it. The lane it sits in is
-  reserved by the density mark's own margin, and `trimCellRows` hides any bar
-  whose row turns out too short — a wall with room proves nothing there, so the
-  test measures a calendar dragged to a fifth of a small wall, where a 26px lane
-  genuinely cannot fit under the numeral.
+  reserved by the density mark's own margin, and the tier pass hides any bar
+  whose row turns out too short (`tierSpans`; it was `trimCellRows` when this
+  was written, and the behaviour outlived the function) — a wall with room
+  proves nothing there, so the test measures a calendar dragged to a fifth of a
+  small wall, where a 26px lane genuinely cannot fit under the numeral.
 
 **2 — An overflow count never costs a name.** `.hz-more` took a line of its own
 *and was paid for out of the same budget as the rows, before they were placed*,
@@ -2188,10 +2189,14 @@ So the mode is not duplicated by the ladder — it *is* a ladder, and
 `HOUSE_MODE_LADDERS` is that meaning written down where both renderers read it.
 A stored `fields` list is the override, and the trade it makes is real and
 stated in the editor: a per-widget list cannot express per-entity shapes, so
-writing one flattens them. The house widget is deliberately *not* in the wall's
-drop loop — its ladder is per reading, so there is no single list to take a rung
-off — and the icon rung resolves to nothing on a panel, the same way a forecast
-glyph does.
+writing one flattens them. The house widget was deliberately *not* in the wall's
+drop loop — its ladder is per reading, so there was no single list to take a
+rung off — and the icon rung resolves to nothing on a panel, the same way a
+forecast glyph does. **The drop loop is gone and the house has a tier now**,
+which is that same observation with somewhere to put it: `HOUSE_TIERS` gives up
+rungs by *role* rather than by position, because a reading order with the value
+last cannot be cut from the bottom without leaving a widget that says "Front
+door" and not what the front door is doing.
 
 **The editor marks the cut from the preview, not from a prediction.** The
 inspector's list strikes through the rows the box is currently too small for,
@@ -4134,11 +4139,19 @@ event beside it to 0.73x**, and the clock from **2.66x to 1.80x** — *on the
 glass*, which is what the type-hierarchy pass could not deliver and said so at
 the time.
 
-> **The two paragraphs that follow are about the fit ceiling and are kept as
-> history.** There is no fit to put a ceiling on: `fitToBox` is deleted and a
-> section is drawn at its role's own size. What they record is the *argument*
-> that a transform cannot be the lever, and it is the argument this phase acted
-> on — so it is worth reading before anybody reaches for a scale again.
+> **The three paragraphs that follow are about the fit and its ceiling, and are
+> kept as history.** There is no fit to put a ceiling on: `fitToBox` is deleted
+> and a section is drawn at its role's own size. What the first two record is
+> the *argument* that a transform cannot be the lever, and it is the argument
+> this phase acted on — so it is worth reading before anybody reaches for a
+> scale again. The third is the decision that argument was not carried far
+> enough to reach, and it is **reversed**: it holds that a section too small for
+> its role should shrink rather than trim, and names `minScaleFor`'s floor as
+> where "give up content" starts. There is no floor and no shrink now — a
+> section is drawn at the size the reader needs or it is not drawn — so a 7.5"
+> panel loses one agenda day and three events, and every run it does draw is
+> exactly its role's angle where before it could only be held to "not larger
+> than". The reversal and its price are written up with the tiers below.
 
 **The roles alone would have done nothing at all, and that is the interesting
 part.** `fitToBox` writes a `transform: scale()` on the whole section and a
@@ -4322,6 +4335,18 @@ the wall drew no names in a cell of that size while the panel drew four: one
 stored value, two renderers, two answers, which is `shifts[0]`, `display_mode`,
 `cellEvents` and `mode` for the fifth time. `EPAPER_RENDERER_VERSION` is **6**.
 
+> **The paragraph that follows is about Classic's `count: 6` and is kept as
+> history.** The constant is gone: the template's own comment said it existed
+> because the section was scaled to fit, and with no scale a seventh event costs
+> the six above it nothing at all — it either fits at the size the reader needs
+> or it is not drawn. The half of it that is still true is the first sentence,
+> and it is the mechanism rather than the number: an agenda still draws
+> `min(what the household asked for, what its box affords)`, and a household who
+> sets a count still gets it capped. What it records otherwise is the shape of
+> the fault rather than its value, and it named that correctly — a legibility
+> budget written into a template is a box measurement somebody could not take
+> yet. It was the last one standing.
+
 **The household still owns the density, and Classic still asks for six.** An
 agenda draws `min(what the household asked for, what its box affords)`, so a
 Classic wall draws the same six events at every size it always did — which is
@@ -4342,6 +4367,17 @@ Its **limit was worth stating and has since moved**: on a wall nobody had
 measured, `fitToBox` grew an agenda freely and every agenda came out M4, so the
 promotion resolved and had no rung to move to. Nothing grows now, so the tier
 binds on every wall and the promotion bites on all of them.
+
+> **The paragraph that follows is about the agenda's estimator and is kept as
+> history.** Its two *readings* survive, and they are why the current estimator
+> is shaped the way it is: an entry is 2.6 title-ems rather than the month
+> cell's 1.55, and what a row costs is a fact about markup that has to be
+> measured rather than declared. Both of its *mechanisms* are gone. Nothing is
+> asked "after the first fit", because there is no fit and no 1.89 scale to ask
+> against. And the loop that "stops when the answer repeats" is the one that
+> oscillated 6 → 8 → 7 → 6 → 8 and answered whichever round it ran out on; what
+> replaced it is an upper bound and a monotone descent, which is written up
+> below.
 
 **The agenda's own arithmetic is measured twice, and both corrections were
 faults first.** How many rows a box holds is asked *after* the first fit and
