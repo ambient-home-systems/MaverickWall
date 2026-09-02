@@ -1,5 +1,6 @@
 import type { Context, Hono } from 'hono';
 import { confirmDestroyPage, escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { destructive, emptyState, listRow, section } from './components.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
   COLOUR_TOKENS,
@@ -204,18 +205,28 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   function themesPage(c: Context, error?: string): string {
     const custom = readThemes(deps.db);
-    const card = (theme: ThemeRow): string =>
-      `<article class="card">` +
-      `<div style="display:flex;align-items:center;gap:12px">` +
-      `<div class="sw" style="display:flex;width:66px;height:34px;border-radius:6px;overflow:hidden;flex:0 0 auto">` +
-      swatch(theme.tokens).map((c) => `<i style="flex:1;background:${escapeHtml(c)}"></i>`).join('') +
-      `</div>` +
-      `<div class="rname" style="flex:1;font-size:16px">${escapeHtml(theme.name)}</div></div>` +
-      `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
-      `<a class="btn btn-sm" href="admin/themes/${encodeURIComponent(theme.id)}">Edit</a>` +
-      `<form method="get" action="admin/themes/${encodeURIComponent(theme.id)}/delete">` +
-      `<button class="btn-danger btn-sm" type="submit" style="margin-left:auto">Delete</button></form>` +
-      `</div></article>`;
+    // A three-colour swatch strip identifying the theme, and the two actions
+    // that operate on it. Small enough that `listRow` — a lead, a title, a
+    // trail — fits exactly; there is no second line of detail to show, so
+    // `body.detail` is left unset.
+    const themeRow = (theme: ThemeRow): string =>
+      listRow(
+        `<div style="display:flex;width:66px;height:34px;border-radius:6px;overflow:hidden;flex:0 0 auto">` +
+          swatch(theme.tokens).map((c) => `<i style="flex:1;background:${escapeHtml(c)}"></i>`).join('') +
+          `</div>`,
+        { title: theme.name },
+        `<a class="btn btn-sm" href="admin/themes/${encodeURIComponent(theme.id)}">Edit</a>` +
+          // `destructive()` is what this GET+POST /admin/themes/:id/delete
+          // shape is for — the confirmation page names exactly which walls
+          // change, which is what used to make this a two-step control at
+          // all. `variant: 'button'` because this row has no overflow menu to
+          // put it in.
+          destructive('Delete', {
+            thing: theme.name,
+            confirmAction: `admin/themes/${encodeURIComponent(theme.id)}/delete`,
+            variant: 'button',
+          }),
+      );
 
     return page({
       self: selfHref(c),
@@ -231,29 +242,35 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error)) +
         (custom.length === 0
-          ? `<p class="hint">No custom themes yet. The four built-in directions (Board, ` +
-            `Kitchen Slate, Paper Almanac, Glance) are always available on the Walls ` +
-            `page. Make your own with “New theme”.</p>`
-          : `<div class="grid g2">${custom.map(card).join('')}</div>`) +
+          ? // No action offered: "New theme" is already the page's one primary,
+            // in the app bar above. A second one here would only scroll to it.
+            emptyState(
+              'No custom themes yet. The four built-in directions (Board, Kitchen Slate, ' +
+                'Paper Almanac, Glance) are always available on the Walls page. Make your ' +
+                'own with “New theme”.',
+            )
+          : custom.map(themeRow).join('')) +
 
-        `<h2 class="add">Generate from a colour</h2>` +
-        `<p class="hint">Pick one colour — the seed — and a whole matching theme is ` +
-        `worked out from it: background, panels, text and the shift colours, every ` +
-        `pairing kept readable from across a room. It lands in the builder, so you ` +
-        `can adjust anything afterwards.</p>` +
-        `<form method="post" action="admin/themes/generate">` +
-        `<div class="row-fields">` +
-        textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sea glass' }) +
-        textField({ label: 'Seed colour', name: 'seed', type: 'color', value: '#4C7FD1' }) +
-        selectField({
-          label: 'Dark or light',
-          name: 'mode',
-          optionsHtml:
-            `<option value="dark" selected>Dark — for a wall on all evening</option>` +
-            `<option value="light">Light — paper-bright</option>`,
-        }) +
-        `</div>` +
-        `<button type="submit">Generate theme</button></form>`,
+        section(
+          'Generate from a colour',
+          'Pick one colour — the seed — and a whole matching theme is worked out from ' +
+            'it: background, panels, text and the shift colours, every pairing kept ' +
+            'readable from across a room. It lands in the builder, so you can adjust ' +
+            'anything afterwards.',
+          `<form method="post" action="admin/themes/generate">` +
+            `<div class="row-fields">` +
+            textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sea glass' }) +
+            textField({ label: 'Seed colour', name: 'seed', type: 'color', value: '#4C7FD1' }) +
+            selectField({
+              label: 'Dark or light',
+              name: 'mode',
+              optionsHtml:
+                `<option value="dark" selected>Dark — for a wall on all evening</option>` +
+                `<option value="light">Light — paper-bright</option>`,
+            }) +
+            `</div>` +
+            `<button type="submit">Generate theme</button></form>`,
+        ),
     });
   }
 

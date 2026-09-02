@@ -22,6 +22,7 @@ import { householdSetUp } from '../modules/index.js';
 import { optionalText, parse, text, z } from '../validation.js';
 import { layoutEditorMount, navModules, pairingSecret, widgetsNotDrawn, type AdminDeps } from './admin.js';
 import { bytesOf } from './app.js';
+import { destructive, section } from './components.js';
 import { confirmDestroyPage, errorBlock, escapeHtml, page, selectField, textField } from './html.js';
 import { ingressPath } from './ingress.js';
 import { readSaved, savedRedirect } from './saved.js';
@@ -241,8 +242,15 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(url)) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
-        `<form method="get" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
-        `<button class="btn ghost" type="submit">Regenerate URL</button></form>` +
+        // GET-then-POST, behind confirmDestroyPage — exactly destructive()'s
+        // shape, and the old one-off "btn ghost" label repeated below with a
+        // different sentence for no reason but that nobody had a shared place
+        // to say it once.
+        destructive('Regenerate URL', {
+          thing: name,
+          confirmAction: `admin/epaper/${encodeURIComponent(id)}/regenerate`,
+          variant: 'button',
+        }) +
         `</div>`,
     });
   };
@@ -282,8 +290,15 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(placeholder)) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
-        `<form method="get" action="admin/epaper/${encodeURIComponent(id)}/regenerate">` +
-        `<button class="btn ghost" type="submit">Regenerate URL (the panel will need re-flashing)</button></form>` +
+        // Same GET-then-POST shape as the config page's button above, and now
+        // the same component — the "re-flashing" consequence is what the
+        // interstitial itself says, so the button no longer has to repeat it
+        // in a longer sentence than the other page's identical control.
+        destructive('Regenerate URL', {
+          thing: name,
+          confirmAction: `admin/epaper/${encodeURIComponent(id)}/regenerate`,
+          variant: 'button',
+        }) +
         `</div>`,
     });
   };
@@ -774,45 +789,65 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
       screen.layoutMode === 'freeform' ? 'own' : followed === undefined ? 'builtin' : `follow:${followed ?? 'default'}`;
     const sourceOption = (value: string, label: string): string =>
       `<option value="${escapeHtml(value)}"${value === currentSource ? ' selected' : ''}>${escapeHtml(label)}</option>`;
-    const sourceForm =
-      `<h2 class="add">What this panel draws</h2>` +
+    // No section-level help text: the one thing worth explaining is a
+    // property of the "Layout" field itself (a note about one field is
+    // `textField`/`selectField`'s own `hint`, per `section`'s own doc), not a
+    // reason this section exists, so it stays where it was.
+    const sourceForm = section(
+      'What this panel draws',
+      undefined,
       `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/source"><div class="row">` +
-      selectField({
-        label: 'Layout',
-        name: 'source',
-        optionsHtml:
-          sourceOption('builtin', 'Its built-in layout') +
-          sourceOption('own', 'Its own layout') +
-          sourceOption('follow:default', "The Default wall's layout") +
-          walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s layout`)).join(''),
-        hint:
-          // Escaped by `fieldWrap`, so the ampersand is written plainly here:
-          // an `&amp;` in a hint reaches the page as a literal `&amp;`.
-          'Following a wall draws that layout in black & white — move a box there ' +
-          'and this panel moves with it. Each widget can say less on ink without changing the wall.',
-      }) +
-      `<button class="secondary" type="submit">Use this</button></div></form>`;
+        selectField({
+          label: 'Layout',
+          name: 'source',
+          optionsHtml:
+            sourceOption('builtin', 'Its built-in layout') +
+            sourceOption('own', 'Its own layout') +
+            sourceOption('follow:default', "The Default wall's layout") +
+            walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s layout`)).join(''),
+          hint:
+            // Escaped by `fieldWrap`, so the ampersand is written plainly here:
+            // an `&amp;` in a hint reaches the page as a literal `&amp;`.
+            'Following a wall draws that layout in black & white — move a box there ' +
+            'and this panel moves with it. Each widget can say less on ink without changing the wall.',
+        }) +
+        `<button class="secondary" type="submit">Use this</button></div></form>`,
+    );
 
-    const preview =
-      `<h2 class="add">Preview</h2>` +
-      `<p class="hint">What the panel actually draws, in black &amp; white. Save your ` +
-      `changes and it updates within a few seconds.</p>` +
+    const preview = section(
+      'Preview',
+      // `section`'s own `help` is escaped for us, so the ampersand is written
+      // plainly here too, the same reason as the field hint above.
+      'What the panel actually draws, in black & white. Save your changes and it updates within a few seconds.',
       `<img id="ep-preview" class="ep-paper" alt="eInk preview of ${escapeHtml(screen.name)}" ` +
-      `src="admin/epaper/${encodeURIComponent(id)}/preview.png">` +
-      `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
-      `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>`;
+        `src="admin/epaper/${encodeURIComponent(id)}/preview.png">` +
+        `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
+        `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>`,
+    );
 
+    // Left as a bare heading, not `section()`: it fronts the drag-and-drop
+    // editor mount below, which this task's brief says to leave alone, and
+    // the two branches (following vs. arranging here) already had to repeat
+    // the identical string rather than share it, since only one is ever
+    // rendered — sharing it now would mean threading it through both.
     const arrangeHeading = `<h2 class="add">Arrange</h2>`;
     const followNote =
       followed === undefined
         ? ''
-        : `<h2 class="add">Arrange</h2>` +
-          `<p class="hint">This panel follows <b>${escapeHtml(followedName)}</b>. Arrange it there — ` +
-          `and use the <b>On ink</b> lane beside a widget to say less on this panel without changing ` +
-          `that wall.</p>` +
-          `<p><a class="btn" href="admin/walls/${
-            followed === null ? 'default' : encodeURIComponent(followed)
-          }#layout">Open ${escapeHtml(followedName)}</a></p>`;
+        : // No section-level help either: the prose carries `<b>` markup
+          // (the wall's own name, and "On ink") that `section`'s `help`
+          // would escape into literal tags, so it stays in the body exactly
+          // as it was rendered before.
+          section(
+            'Arrange',
+            undefined,
+            `<p class="hint">This panel follows <b>${escapeHtml(followedName)}</b>. Arrange it there — ` +
+              `and use the <b>On ink</b> lane beside a widget to say less on this panel without changing ` +
+              `that wall.</p>` +
+              `<p><a class="btn" href="admin/walls/${
+                followed === null ? 'default' : encodeURIComponent(followed)
+              }#layout">Open ${escapeHtml(followedName)}</a></p>`,
+          );
 
     return page({
       self: selfHref(c),

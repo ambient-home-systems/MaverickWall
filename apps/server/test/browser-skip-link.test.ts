@@ -333,4 +333,35 @@ describe('the drawer, with the skip link in front of it', () => {
     },
     SLOW,
   );
+
+  /**
+   * Phase 10B's own regression to guard against: the compact-width redesign
+   * exists to get real content near the top of a phone screen, and a
+   * component conversion that reintroduced extra chrome above `.content`
+   * (a stray section, a second heading) would widen this gap with nothing
+   * else here noticing — the skip-link and drawer assertions above are about
+   * reachability, not about how far down the page they land you.
+   */
+  it(
+    'starts real content within 70px of the top at compact width',
+    async () => {
+      const home = await fresh();
+      const ctx = await (await browser()).newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      const page = await ctx.newPage();
+      await home.signIn(page);
+      await page.goto(`${home.base}/admin/calendars`, { waitUntil: 'load' });
+
+      const top = await page.evaluate(() => {
+        const el = document.querySelector('.content') as HTMLElement | null;
+        if (el === null) throw new Error('no .content element in the document at all');
+        return el.getBoundingClientRect().top;
+      });
+      expect(top, `.content starts ${Math.round(top)}px down a 390px-wide page`).toBeLessThanOrEqual(70);
+    },
+    SLOW,
+  );
 });

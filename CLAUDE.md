@@ -336,6 +336,21 @@ VTIMEZONE, which is often stale or absent.
 16th. Rendering `startUtc..endUtc` inclusive puts every birthday on the wrong
 day. This is the single most common ICS bug.
 
+**A new admin screen is built from `components.ts`, not typed by hand.**
+`pageHeader`, `section`, `card`, `listRow`, `dataTable`, `tag`, `emptyState`,
+`destructive` are the whole vocabulary a settings screen composes from —
+`pageHeader` for free via `page()`, the other seven called directly. Copying
+the screen next door instead of reaching for these is exactly how spacing,
+radius and font-size drift happened the first time (see Phase 10A/10B below):
+`admin-component-drift.test.ts` holds the served stylesheet to zero raw
+spacing, radius and font-size literals, absolutely, with no allow-list, so a
+new one-off declaration fails the build rather than joining a list somebody
+has to remember to shrink. When a screen is genuinely not a card, a list, a
+table, a section, an empty state or a destructive action — a drag-and-drop
+canvas, a live colour-generation preview, a multi-select search widget — say
+so and leave it hand-built rather than forcing a component that doesn't fit;
+do not invent a ninth component without raising it first.
+
 ---
 
 ## Current state
@@ -4965,6 +4980,73 @@ Thirteen further mutations were checked and all thirteen are red.
 **Still unproven where it counts:** nobody has used either converted screen on
 a real phone, and the other forty-seven routes are still literal HTML — this
 phase built the layer and converted two, deliberately.
+
+**Phase 10B worked through the other forty-seven, and the numbers it was
+chasing are now zero rather than merely smaller.** Every remaining admin file —
+`admin-ha.ts`, `admin-alerts.ts`, `admin-modules.ts`, `admin-chores.ts`,
+`admin-shifts.ts` (the shift *types* sub-screen), `admin-themes.ts`,
+`admin-epaper.ts`, and the rest of `admin.ts` (the dashboard, People, the shift
+*rotation* editor, Walls' pairing and approve screens) — now composes from
+`section`/`card`/`listRow`/`dataTable`/`tag`/`emptyState`/`destructive` wherever
+a screen is genuinely that shape. `admin-component-drift.test.ts` is the hard
+version of the numeric drift check above it: not "is this value a multiple of
+4px" but "does the declaration use the token" — 297 of 407 spacing
+declarations, 25 of 100 radii and 45 of 94 font-sizes were raw literals against
+token sets that already existed, and a CSS-only pass (no markup touched: every
+one of these lived in `html.ts`'s `STYLE_BODY`, the single stylesheet every
+page shares) drove all three to zero, with no allow-list to shrink later. Where
+a pixel value had no single rung — 20px, 28px, a 3px radius — it is a `calc()`
+over two existing tokens rather than a new one invented for the occasion, the
+same idiom `components.ts` already used for `--mw-touch + --mw-s-1`.
+
+Three faults came out of the CSS pass alone, each a case of a check that could
+not see what it existed to rule out because the thing it was looking for was
+spelled `50%` instead of a token. `.dot`, `.pulse::after`, `img.avatar`,
+`.insp-lane.has-override::before` and `.ripple` are genuine circles and had
+been drawn as literal `border-radius:50%` since before either design-system
+test existed — tokenising them to `var(--mw-r-full)` made them visible to
+`admin-design-system.test.ts`'s "no pills" check for the first time, which
+correctly flagged five rules it had never been able to see. They joined the
+same screen's `ROUND_BY_DESIGN` allow-list already covering the switch thumb
+and the entity-chip's close dot, because they always were what that list is
+for. `--mw-t-h4-size` came off the unreferenced-token list the same way: it had
+never been *read*, not because nothing was 14px, but because every 14px site
+spelled the number instead of the role.
+
+The screen-by-screen conversion repeated one finding twice over, on
+`admin-ha.ts`'s rules and `admin-shifts.ts`'s types: an "(off)" or " · off"
+suffix baked into a heading's own text — the same fault already fixed once on
+Calendars — became `tag('Off', …)` each time it recurred, because a state is a
+word with its own element, never a parenthesis inside the name of the thing it
+describes. And one screen's shape argued
+against the tool built to help it: `admin-ha.ts`'s "remove a watched entity"
+route addresses its target with a query parameter, and `destructive()`'s
+generated form carries no hidden fields — wiring it in anyway would have built
+a GET whose submission silently serialised away the `entity_id` it exists to
+carry. Read the target's addressing scheme before reaching for `destructive()`;
+it fits a path parameter and not a query string.
+
+Left deliberately unconverted, and each is a screen where none of the eight
+components is what the markup actually is: the free-form layout editor's own
+canvas, inspector and toolbar (`.le-*`/`.lay-*`/`.insp-*`), the theme builder's
+live colour-generation preview, the Home Assistant entity picker's
+search-and-chip widget, the shift-rotation pattern/preview editor, the template
+gallery, and the dashboard's `statCard` nav tiles and `today-card` summary
+(the latter two also pinned by `admin-status-claims.test.ts`'s literal
+`class="card today-card"` match, so swapping the wrapping tag would have forced
+an unrelated test edit for a purely cosmetic rename). The wizard needed no
+conversion at all and this is a finding rather than an omission: `page()`'s own
+wizard branch already wraps every step's body in `.card`, so `/setup` has had
+the component layer's card treatment for free since Phase 10A shipped it, and
+wrapping a `section()` around a screen that is already one focused form under
+one heading would only have added a second, redundant heading below the `<h1>`
+`pageHeader` already draws.
+
+The number that matters here is not a test count; it is 379/384, 31/101 and
+48/93 all reading zero against the harder, token-level question rather than the
+looser numeric one `admin-design-drift.test.ts` already asked. `pnpm test`
+stays green under it. Still unproven where it counts: nobody has used any of
+these converted screens on a real phone either.
 
 ---
 
