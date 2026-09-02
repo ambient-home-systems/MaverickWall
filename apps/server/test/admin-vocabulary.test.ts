@@ -411,11 +411,11 @@ describe('the admin, read out loud', () => {
        * adjectives about inheritance, not names.
        */
       const ALLOWED: readonly string[] = [
-        // The theme editor's three font pickers open on "Default", meaning the
+        // The theme editor's two font pickers open on "Default", meaning the
         // theme's own face rather than any wall. Named by the option that
         // follows it, so reordering that list retires the entry rather than
         // quietly widening it.
-        'Default Inter',
+        'Default Roboto Flex',
       ];
       const { offenders, stale } = sweep(await pages(), /\bDefault\b(?! wall)/g, ALLOWED);
       expect(

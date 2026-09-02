@@ -633,9 +633,11 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 .field input[type=file].field-input{padding:8px 12px;height:auto;
   color:var(--mw-ink-2)}
 /* Supporting text, aligned to the field edge rather than indented — there is
- * no 16px inset to line up with any more. */
+ * no 16px inset to line up with any more. Body, not body-sm: this is a
+ * sentence explaining what to type, not a machine fact, and the whole point
+ * of the promotion below is that prose does not get the small size any more. */
 .field-hint{margin:var(--mw-s-1) 0 0;color:var(--mw-ink-2);
-  font:var(--mw-t-body-sm);letter-spacing:var(--mw-t-body-sm-tracking)}
+  font:var(--mw-t-body);letter-spacing:var(--mw-t-body-tracking)}
 .field-hint.is-error{color:var(--mw-danger)}
 /* A field with a "?" riding it as a trailing icon (left of a select's caret);
  * its popover opens under the field. Both offsets are measured from the
@@ -984,26 +986,36 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  *
  * Both are ink-muted rather than ink-3: a hostname is text somebody has to
  * read too, so the split is about the *face*, and the colour was wrong for
- * both. */
+ * both.
+ *
+ * **The size split came later, and it is the same problem one step along.**
+ * "Body face, same size" meant .sub — text this comment already calls
+ * *prose* — sat at body-sm's 12.5px, which is exactly the register a machine
+ * fact like .host earns and a sentence does not. .host stays: a hostname, an
+ * id, a version string is not what a household reads for meaning. .sub
+ * promotes to body. */
 .card .host,.host{color:var(--mw-ink-muted);font-size:12.5px;font-family:var(--mono);
   margin:0.25rem 0}
-.card .sub,.sub{color:var(--mw-ink-muted);font-size:12.5px;line-height:1.5;
+.card .sub,.sub{color:var(--mw-ink-muted);font-size:var(--mw-t-body-size);line-height:1.5;
   margin:0.25rem 0}
 /* A machine token inside a sentence — "800×480 · rotated 90° · last seen 2
  * minutes ago", or a hostname before a count. It keeps the mono face, which is
  * the whole of what .host means, and nothing else: a block's margin on an
  * inline run does nothing, and its colour is the same ink-muted the sentence
- * around it is set in. The size is not re-stated because both classes are
- * 12.5px by declaration — an inherit here would be off the type scale, which
- * admin-design-drift.test.ts is right to refuse. */
-.sub .host{margin:0}
+ * around it is set in. Its size is not re-stated because .host is still
+ * body-sm by declaration — an inherit here would pick up .sub's promoted
+ * size, which is off the type scale for a hostname the same way the old
+ * literal was, just in the other direction. */
+.sub .host{margin:0;font-size:12.5px}
 .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
 .row form{margin:.75rem 0 0}
 .row button{margin-top:0}
 h2.add{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
   margin:2rem 0 0;padding-top:1.5rem;border-top:1px solid var(--rule)}
-p.hint,.hint{font-size:12.5px;color:var(--mw-ink-2);margin:0.25rem 0 0;line-height:1.5}
+/* A hint is a sentence telling a household what to type — prose, promoted
+   with .sub and .field-hint rather than left at the machine-fact size. */
+p.hint,.hint{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);margin:0.25rem 0 0;line-height:1.5}
 
 /* ---- Grids and section headers ------------------------------------------ */
 .grid{display:grid;gap:16px;margin:1rem 0}
@@ -1510,7 +1522,7 @@ pre.code{background:var(--mw-surface-2);
  * because none of them matter while nothing draws the widget. */
 .le-not-drawn{margin:0 0 12px;padding:12px 12px;border-radius:var(--mw-r-2);
   background:var(--mw-surface-2);border:1px solid var(--mw-line);
-  font:var(--mw-t-body-sm);color:var(--mw-ink-2)}
+  font:var(--mw-t-body);color:var(--mw-ink-2)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
 /* A 12px corner is a pointer target on a mouse and nothing at all on a
@@ -1772,7 +1784,7 @@ pre.code{background:var(--mw-surface-2);
  * hamburger. What it does add is one row — what you are editing, whether the
  * screen is up, and an overflow for the infrequent and the destructive. */
 .wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:8px;
-  font-size:12.5px;color:var(--mw-ink-2);min-width:0}
+  font-size:var(--mw-t-body-size);color:var(--mw-ink-2);min-width:0}
 .wall-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wall-status b{color:var(--mw-ink);font-weight:500}
 
@@ -1890,7 +1902,7 @@ pre.code{background:var(--mw-surface-2);
 .insp-ink-note{margin:16px 0 4px}
 .insp-ink-list{margin:0 0 4px;padding-left:20px;
   color:var(--mw-ink-2);
-  font-size:var(--mw-t-body-sm-size);line-height:1.45}
+  font-size:var(--mw-t-body-size);line-height:1.45}
 .insp-ink-reset{margin-top:12px;width:100%}
 /* Content | Style, inside the inspector. Only drawn when both apply. */
 .insp-tabs[hidden]{display:none}
@@ -2020,7 +2032,7 @@ pre.code{background:var(--mw-surface-2);
 /* A single-line hint replaces the old multi-line grey prose. On the
  * on-surface-variant role rather than the faint token: measured, faint came
  * out at 3.87:1 on a card in the light scheme, which is under AA for text. */
-.hint-1{font-size:12.5px;color:var(--mw-ink-2);
+.hint-1{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);
   margin:.5rem 0 0;line-height:1.5}
 /* The "?" help affordance and its popover, in place of a prose paragraph.
  * (It rides a .field-with-help wrapper now — see the field rules.) */
@@ -2040,7 +2052,7 @@ pre.code{background:var(--mw-surface-2);
   padding:12px 16px;background:var(--mw-surface);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1);
-  font-size:var(--mw-t-body-sm-size);line-height:1.5;
+  font-size:var(--mw-t-body-size);line-height:1.5;
   color:var(--mw-ink-2);
   text-transform:none;font-weight:400;letter-spacing:0}
 .helppop[hidden]{display:none}

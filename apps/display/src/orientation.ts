@@ -302,10 +302,12 @@ export type WallTypeRole = (typeof WALL_TYPE_ROLES)[number];
  * A role is stated as cap height because that is the part of a letter an eye
  * actually resolves — an em box is mostly leading and descender, and two faces
  * with the same `font-size` do not draw the same size of letter. Roboto,
- * Roboto Condensed and Inter all sit within a whisker of 0.71, and the
- * bundled display faces are close enough that a single ratio is honest at
- * these sizes; a face whose cap ratio genuinely differed would want its own
- * value here rather than a fudge at the call site.
+ * Roboto Condensed and Roboto Flex all sit within a whisker of 0.71 — Roboto
+ * Flex is drawn from the same superfamily and holds its cap height across the
+ * wdth and opsz range this wall actually drives — and the bundled display
+ * faces are close enough that a single ratio is honest at these sizes; a face
+ * whose cap ratio genuinely differed would want its own value here rather
+ * than a fudge at the call site.
  */
 export const CAP_RATIO = 0.71;
 
