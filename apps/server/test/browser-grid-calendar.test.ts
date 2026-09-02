@@ -101,7 +101,7 @@ interface Wall {
  * The wall as a household sees it.
  *
  * A row the trim pass hid is not on the glass, so it does not count — the
- * renderer draws every event the model carries and `trimCellRows` sets
+ * renderer draws every event the model carries and the tier pass sets
  * `display:none` on what will not fit, which is why counting `.hz-row`
  * elements reports rows nobody can read.
  */

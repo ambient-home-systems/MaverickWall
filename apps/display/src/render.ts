@@ -38,6 +38,18 @@ import {
 } from './widget-options.js';
 import { calendarView } from './widget-views.js';
 import { densitySteps, monthSpans } from './month-spans.js';
+import {
+  TYPE_SPECIMEN,
+  linesAt,
+  listRowsAt,
+  namesAt,
+  promoted,
+  spanIsLabelled,
+  tierFor,
+  tierNamed,
+  weekdayHead,
+  type CalendarTier,
+} from './tiers.js';
 
 /**
  * The DOM, and no decisions.
@@ -501,9 +513,9 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
  * different string.
  *
  * `text` gives the words the cell's own width, lets them wrap, and draws only
- * the ones that fit whole — see `trimCellRows`. `pills` is kept because it is a
- * look a household can choose and because canvases have it stored; `dots` is
- * kept as the quiet option and is now stored explicitly, since absence means
+ * the ones the tier affords — see `applyMonthTier`. `pills` is kept because it
+ * is a look a household can choose and because canvases have it stored; `dots`
+ * is kept as the quiet option and is now stored explicitly, since absence means
  * the default and the default is no longer "say nothing".
  */
 export type CellStyle = 'dots' | 'pills' | 'swiss' | 'text';
@@ -565,6 +577,23 @@ function renderCell(
   if (style === 'text' || style === 'swiss') {
     if (spans.index >= 0) node.setAttribute('data-cell', String(spans.index));
     /*
+     * The all-day colour at the cell's own edge — what M0 draws instead of a
+     * row, and nothing at any other tier.
+     *
+     * A cell with no room for a name still has room for a colour, and whose day
+     * it is is most of what a family wall is for: a birthday, a bin day, a half
+     * term. Out of flow (the cell is `position: relative`), so it costs no row
+     * anywhere and takes nothing off the density mark beside the numeral —
+     * "nothing that annotates an event costs it a row", which this project has
+     * paid for twice.
+     */
+    const banner = cell.events.find((ev) => ev.allDay);
+    if (banner !== undefined) {
+      const mark = el('div', 'hz-edge');
+      mark.style.setProperty('--pc', banner.color);
+      node.appendChild(mark);
+    }
+    /*
      * Room for the bars crossing this cell, between the number and the rows.
      *
      * A bar is not inside the cell — it is one absolutely placed item in the
@@ -615,7 +644,7 @@ function renderCell(
      *
      * Every event the model carries is rendered; nothing is cut here. What
      * fits is a question about the *box*, and only layout can answer it, so
-     * `trimCellRows` does the cutting after the wall has a size. That is the
+     * `applyMonthTier` picks the form after the wall has a size. That is the
      * same seam `fitToBox` uses and the same rule: a drawing decision, never a
      * saved one, so a widened box brings the rows straight back.
      *
@@ -662,6 +691,16 @@ function renderCell(
         } else {
           row.style.setProperty('--pc', ev.color);
         }
+        /*
+         * The clock, for the one tier with a column to spare for it.
+         *
+         * Emitted always and shown only at M4, because whether it is drawn is a
+         * fact about the *box* and the box has no size until the grid is on
+         * screen — the same seam every other decision in this grid is taken at.
+         * An all-day event has no time to draw, and "All day" is what the
+         * colour rule down its edge already says.
+         */
+        if (!ev.allDay && ev.time !== '') row.appendChild(el('span', 'hz-rowtime', ev.time));
         row.appendChild(el('span', 'hz-rowtext', ev.title));
         list.appendChild(row);
       }
@@ -750,7 +789,19 @@ function renderHorizon(
   // The corner above the numbers stays empty: "WK" over a column of numbers is
   // a heading nobody needs and a word competing with the weekdays beside it.
   if (weekNumbers) grid.appendChild(el('div', 'hz-head'));
-  for (const cell of headerWeek) grid.appendChild(el('div', 'hz-head', cell.weekday));
+  for (const cell of headerWeek) {
+    const head = el('div', 'hz-head', cell.weekday);
+    /*
+     * Both forms travel on the node, because how much of a weekday a column has
+     * room for is a fact about the box and the box has no size yet. Cutting a
+     * string the model supplied is also the only honest way a *pure* module can
+     * answer it: a zone and a locale are the household's, and `Intl` is not
+     * `tiers.ts`'s to reach for.
+     */
+    head.setAttribute('data-weekday', cell.weekday);
+    head.setAttribute('data-weekday-long', cell.weekdayLong);
+    grid.appendChild(head);
+  }
 
   /*
    * Which multi-day events are one bar, resolved for the whole grid at once.
@@ -1470,6 +1521,15 @@ function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
  * has one density, so there is nothing to choose there and the editor offers
  * nothing — an option that does nothing is worse than an option not offered.
  */
+/**
+ * The events an agenda draws when the household has not said.
+ *
+ * Named because two readers want it now — the widget that draws the list and
+ * the tier pass that decides how many of them the box affords — and one number
+ * written twice is one number that can drift.
+ */
+const AGENDA_COUNT_DEFAULT = 12;
+
 function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
   const c = widgetConfig(config);
   const { view, density } = calendarView(config);
@@ -1511,7 +1571,9 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
     calendars.length === 0 || calendars.includes(event.sourceId);
 
   const limit =
-    typeof c['count'] === 'number' && c['count'] >= 1 ? Math.min(50, Math.trunc(c['count'])) : 12;
+    typeof c['count'] === 'number' && c['count'] >= 1
+      ? Math.min(50, Math.trunc(c['count']))
+      : AGENDA_COUNT_DEFAULT;
   const showWeather = c['showWeather'] === true;
   const source = [model.today, ...model.next].filter(
     (day): day is DayModel => day !== undefined,
@@ -1672,427 +1734,442 @@ function backgroundCss(background: CanvasBackground | undefined, mediaBase: stri
 
 
 /**
- * Cut each flat-text month cell to the rows it can actually *say*.
+ * A section's own type metrics, in the units the tier table is stated in.
  *
- * The cell is a fixed height, so "how many fit" looks like arithmetic — and it
- * is not, twice over. A row is one line or two depending on the words in it,
- * and a calendar widget in a free-form box
- * is whatever size the household dragged it to, and the same grid is drawn at
- * 1080x1920, on a 1280px television and inside a 200px preview. Any constant
- * here would be a second opinion about what fits, which is the fault this
- * project keeps finding. So it measures, exactly as `fitToBox` does, and for
- * the same reason.
+ * Both terms are read **untransformed** — `offsetWidth` and the cascade's
+ * `font-size`, never a client rect — because the tier is two *ratios* and a
+ * transform that scales the box scales the type with it. Measuring one through
+ * a rect and the other through the cascade is how a month grid drawn inside the
+ * editor's scaled preview would resolve to a different tier from the same grid
+ * on the wall, which is the two-opinions fault this whole seam exists to stop.
  *
- * Two passes, and the first is the new one.
+ * The probe is a specimen rather than a household's title: `TYPE_SPECIMEN` is
+ * the same 43 characters on every wall, so what comes back is a property of the
+ * face. It is planted inside a real node so it inherits the exact cascade the
+ * run it stands for has — a font-size stated in `var(--t-wall-event, …)` cannot
+ * be resolved anywhere else.
+ */
+function typeMetrics(host: HTMLElement, className: string): { readonly chPx: number; readonly emPx: number } {
+  const probe = document.createElement('span');
+  probe.className = className;
+  probe.textContent = TYPE_SPECIMEN;
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  probe.style.display = 'inline-block';
+  probe.style.whiteSpace = 'pre';
+  probe.style.maxHeight = 'none';
+  probe.style.overflow = 'visible';
+  probe.style.left = '0';
+  probe.style.top = '0';
+  host.appendChild(probe);
+  const emPx = parseFloat(getComputedStyle(probe).fontSize);
+  const chPx = probe.offsetWidth / TYPE_SPECIMEN.length;
+  probe.remove();
+  return { chPx, emPx };
+}
+
+/** An element's own `scale()` factor, ignoring every transform above it. */
+function appliedScale(node: HTMLElement): number {
+  const transform = getComputedStyle(node).transform;
+  if (transform === '' || transform === 'none') return 1;
+  const numbers = /matrix\(([^)]+)\)/.exec(transform);
+  if (numbers === null) return 1;
+  const parts = (numbers[1] as string).split(',').map(Number);
+  const [a, b, c, d] = parts as [number, number, number, number];
+  const determinant = Math.abs(a * d - b * c);
+  return determinant > 0 ? Math.sqrt(determinant) : 1;
+}
+
+/** A box's content area, padding taken off, in the cascade's own units. */
+function innerBox(node: HTMLElement): { readonly w: number; readonly h: number } {
+  const style = getComputedStyle(node);
+  return {
+    w: node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+    h: node.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+  };
+}
+
+/**
+ * Draw each month grid at the tier its own cells afford.
  *
- * **Across.** A row is drawn only if its whole title is on the glass. Measured
- * on a real wall, seven columns of a 1080px portrait canvas leave about 115px
- * per cell, which at the type floor is eleven characters a line — so the old
- * single ellipsised line rendered "Year 6 trip to the Science Museum" and
- * "Year 6 sports day" as the same five letters. That is not a shortened title,
- * it is a different string, and two events can share it. Titles wrap to
- * `--cell-lines` lines now, and one that needs more is *hidden* rather than
- * cut: it becomes part of the "+N", which is honest, where "Year 6…" is not.
+ * **This replaces `trimCellRows`, and the difference is the question asked.**
+ * That function drew every event in every cell, measured the result, and hid
+ * what spilled — so the grid could only ever subtract, and a widget with more
+ * room drew the same thing less cut about. Its three recorded faults are all
+ * shapes of the same thing: it subtracted `cell.offsetTop`, which is the cell's
+ * position in the grid and has nothing to do with its inside; it summed row
+ * heights and was short by the flex gap and the counter's margin; and it once
+ * drew "+6" and none of the six events, with every measurement passing and
+ * every counter truthful, because nothing it measured asked whether anything
+ * was *shown*.
  *
- * **Down.** What is left is walked from the top and stopped at the box, which
- * is the pass this function always had. Two things the arithmetic would get
- * wrong even at a fixed size. The "+N" is itself a line and has to be paid for
- * out of the same budget, so a cell that overflows shows one *fewer* row than
- * one that does not. And the count is `data-count` — the day's true total —
- * not the number of rows rendered: the model caps its slim list at twelve, so a
- * day with twenty events must say "+17" and not "+9".
+ * None of the three can come back here. There is no vertical budget arithmetic
+ * at all — the tier is read from the cell's own inner box and the table
+ * (`tiers.ts`) — nothing is summed, and a counter exists only where a name
+ * does, because it rides on the last row it counts for and there is no branch
+ * that draws one without one. The third fault's assertion is carried over
+ * whole: what a measurement of this grid has to check is that something is
+ * *shown*, not that nothing spilled.
  *
- * Reads are batched ahead of writes on purpose. Hiding a row moves every row
- * under it, so deciding and hiding in one loop would measure positions that the
- * previous iteration had already invalidated — and would ask the browser for a
- * fresh layout once per row, forty-two cells over.
+ * What it *does* still measure is two things about the box and one about the
+ * words, each read once and never in rounds:
+ *
+ *  - **A bar's lane.** A span bar is an absolutely placed grid item, so nothing
+ *    clips it to its week and one given a row too short paints a coloured band
+ *    across the next week's numbers. That is the one failure a month grid must
+ *    never have, and it is a fact about the box.
+ *  - **A row's foot.** The tier's row arithmetic is optimistic by design (the
+ *    wrap allowance is a maximum, not a promise), so a cell whose titles all
+ *    wrap can end a row past its own content box. Clipping *through* a row
+ *    reads as a broken renderer rather than as a list that ran out — the
+ *    month-grid fault this project has already shipped once. Rows are hidden
+ *    from the first that ends past the foot, downwards, which needs no relayout
+ *    at all: hiding a row moves only the rows under it, and those are going too.
+ *  - **A title's own length**, once, through `titleFitsWhole`.
  *
  * A drawing decision, never a saved one. Nothing here writes to the model, so
  * widening the box brings the rows straight back on the next draw.
+ *
+ * Returns the tier each grid resolved to, in document order — the demotion half
+ * of RFC's promotion rule: a month that names nothing hands its attention to
+ * the agendas beside it, and the caller is what knows they exist.
  */
-export function trimCellRows(root: HTMLElement): void {
-  const cells = root.querySelectorAll('.horizon-text .hz-cell, .horizon-swiss .hz-cell');
+export function applyMonthTier(root: HTMLElement): readonly CalendarTier[] {
+  const grids = root.querySelectorAll('.horizon-text .hz-grid, .horizon-swiss .hz-grid');
+  const resolved: CalendarTier[] = [];
+  for (let index = 0; index < grids.length; index++) {
+    resolved.push(tierOneGrid(grids[index] as HTMLElement));
+  }
+  return resolved;
+}
+
+function tierOneGrid(grid: HTMLElement): CalendarTier {
+  const cells: HTMLElement[] = [];
+  const found = grid.querySelectorAll('.hz-cell');
+  for (let index = 0; index < found.length; index++) cells.push(found[index] as HTMLElement);
+  const first = cells[0];
+  if (first === undefined) return tierNamed('M0');
 
   /*
-   * The bars first, because what they draw is what the cells under them owe.
-   *
-   * A bar is an absolutely placed grid item, so nothing clips it to its week:
-   * a row too short for the lane it was given would paint a coloured band
-   * across the *next* week's numbers, which is the one failure a month grid
-   * must never have. The lane arithmetic is declared in the stylesheet and
-   * cannot know the box, so this is where it is checked — measured, like every
-   * other fit on this wall, and a bar that does not fit is hidden and its
-   * event handed back to the cells as a row.
+   * One cell decides the grid, because a `1fr` grid draws seven identical
+   * columns and the rows are the same height as each other. Asking each cell
+   * separately would let two squares of the same size answer differently on a
+   * sub-pixel rounding, which is a grid that looks broken rather than dense.
    */
+  const inner = innerBox(first);
+  const { chPx, emPx } = typeMetrics(first, 'hz-rowtext');
+  const tier = tierFor(inner.w, inner.h, chPx, emPx);
+  const names = namesAt(tier, inner.h, emPx);
+  const lines = linesAt(tier, inner.h, emPx);
+
+  /*
+   * Stamped so the editor can say which tier a household's box landed on
+   * without measuring the preview a second time — one decider, read back.
+   * Never *read* by the renderer: this project has shipped a bug where the
+   * class was right and the pixels were wrong.
+   */
+  const section = grid.parentElement;
+  if (section !== null) {
+    section.setAttribute('data-tier', tier.tier);
+    section.setAttribute('data-tier-names', String(names));
+  }
+  grid.style.setProperty('--tier-lines', String(Math.max(1, lines)));
+
+  // The weekday heads, cut to what the tier has room for.
+  const heads = grid.querySelectorAll('.hz-head');
+  for (let index = 0; index < heads.length; index++) {
+    const head = heads[index] as HTMLElement;
+    const short = head.getAttribute('data-weekday') ?? '';
+    if (short === '') continue;
+    head.textContent = weekdayHead(short, head.getAttribute('data-weekday-long') ?? '', tier.weekdayLetters);
+  }
+
+  const spanned = tierSpans(grid, tier, chPx);
+
+  for (const cell of cells) {
+    tierOneCell(cell, tier, names, lines, spanned.get(cell.getAttribute('data-cell') ?? '') ?? 0);
+  }
+  return tier;
+}
+
+/**
+ * The bars: which are drawn, which carry words, and which do not fit.
+ *
+ * A bar's *label* is asked of the bar's own width rather than of the cell's
+ * tier, and that is the one place this file departs from the table it is
+ * written from — see `CALENDAR_TIERS`. A bar is `n` cells wide, so on a 7.5"
+ * panel whose cells are 4.7ch a five-day half term is 26ch and names itself
+ * perfectly well.
+ */
+function tierSpans(grid: HTMLElement, tier: CalendarTier, chPx: number): Map<string, number> {
   const spanned = new Map<string, number>();
-  const bars = root.querySelectorAll('.horizon-text .hz-span, .horizon-swiss .hz-span');
+  const bars = grid.querySelectorAll('.hz-span');
   const dropped: HTMLElement[] = [];
   for (let index = 0; index < bars.length; index++) {
     const bar = bars[index] as HTMLElement;
-    bar.style.display = '';
+    bar.style.display = tier.spans ? '' : 'none';
+    if (!tier.spans) continue;
+
+    const label = bar.querySelector('.hz-spantext') as HTMLElement | null;
+    if (label !== null) label.style.display = spanIsLabelled(innerBox(bar).w, chPx) ? '' : 'none';
+
     const cover = (bar.getAttribute('data-cover') ?? '').split(' ').filter((one) => one !== '');
-    const under = cover
-      .map((key) => root.querySelector(`.hz-cell[data-cell="${key}"]`))
-      .filter((one): one is HTMLElement => one instanceof HTMLElement);
-    const floor = Math.min(...under.map((one) => one.getBoundingClientRect().bottom));
-    if (under.length > 0 && bar.getBoundingClientRect().bottom > floor + 0.5) {
+    const under: HTMLElement[] = [];
+    for (const key of cover) {
+      const cell = grid.querySelector(`.hz-cell[data-cell="${key}"]`);
+      if (cell instanceof HTMLElement) under.push(cell);
+    }
+    if (under.length === 0) continue;
+    let floor = Number.POSITIVE_INFINITY;
+    for (const cell of under) floor = Math.min(floor, cell.getBoundingClientRect().bottom);
+    if (bar.getBoundingClientRect().bottom > floor + 0.5) {
       dropped.push(bar);
       continue;
     }
     for (const key of cover) spanned.set(key, (spanned.get(key) ?? 0) + 1);
   }
   for (const bar of dropped) bar.style.display = 'none';
+  return spanned;
+}
 
-  interface Pending {
-    readonly cell: HTMLElement;
-    readonly more: HTMLElement;
-    readonly rows: readonly HTMLElement[];
-    /** The day's true total, stamped by the renderer from the model. */
-    readonly total: number;
-    /** How many of that total a span bar is already drawing over this cell. */
-    readonly spans: number;
-    /** The room the cell has, measured once. */
-    readonly limit: number;
-    /** The rows whose whole title is on the glass, after the pass across. */
-    visible: HTMLElement[];
+function tierOneCell(
+  cell: HTMLElement,
+  tier: CalendarTier,
+  names: number,
+  lines: number,
+  spans: number,
+): void {
+  const edge = cell.querySelector('.hz-edge') as HTMLElement | null;
+  if (edge !== null) edge.style.display = tier.allDay === 'edge' ? '' : 'none';
+
+  const times = cell.querySelectorAll('.hz-rowtime');
+  for (let index = 0; index < times.length; index++) {
+    (times[index] as HTMLElement).style.display = tier.times ? '' : 'none';
   }
-  const pending: Pending[] = [];
 
-  for (let index = 0; index < cells.length; index++) {
-    const cell = cells[index] as HTMLElement;
-    const list = cell.querySelector('.hz-rows') as HTMLElement | null;
-    const more = cell.querySelector('.hz-more') as HTMLElement | null;
-    if (list === null || more === null) continue;
+  const list = cell.querySelector('.hz-rows') as HTMLElement | null;
+  const more = cell.querySelector('.hz-more') as HTMLElement | null;
+  if (list === null || more === null) return;
+  const rows: HTMLElement[] = [];
+  for (let index = 0; index < list.children.length; index++) rows.push(list.children[index] as HTMLElement);
 
-    const rows: HTMLElement[] = [];
-    for (let r = 0; r < list.children.length; r++) rows.push(list.children[r] as HTMLElement);
-    if (rows.length === 0) continue;
-
-    const style = getComputedStyle(cell);
-    /*
-     * The room the cell has, measured rather than added up.
-     *
-     * Summing row heights was the first approach and it was short by exactly
-     * the things that are not heights: the flex `gap` between rows, and the
-     * counter's own top margin. That left today's cell overflowing by 2px on
-     * two of three screen sizes — small enough to look like a rounding error
-     * and big enough to clip the last row's descenders. `offsetTop` already
-     * carries the gaps, the margins and the date number above, so reading it
-     * removes the arithmetic instead of correcting it.
-     *
-     * `clientHeight` is the padding box and a child's `offsetTop` is measured
-     * from that box's top edge — the cell is `position:relative`, so it is the
-     * offsetParent — which is what lets the two be compared directly.
-     */
-    pending.push({
-      cell,
-      more,
-      rows,
-      total: Number(cell.getAttribute('data-count') ?? rows.length),
-      spans: spanned.get(cell.getAttribute('data-cell') ?? '') ?? 0,
-      limit: cell.clientHeight - parseFloat(style.paddingBottom),
-      visible: [],
-    });
+  // Back to a known state before anything is decided, so a redraw that lands on
+  // a different tier is not reading the last one's leftovers.
+  more.textContent = '';
+  more.className = 'hz-more';
+  if (more.parentElement !== cell) cell.appendChild(more);
+  for (const row of rows) row.style.display = '';
+  if (names <= 0) {
+    for (const row of rows) row.style.display = 'none';
+    return;
   }
-  if (pending.length === 0) return;
-
-  const bottomOf = (node: HTMLElement): number => node.offsetTop + node.offsetHeight;
-  /** How many of a cell's rows are actually on the glass right now. */
-  const shownIn = (entry: Pending): number =>
-    entry.visible.filter((row) => row.style.display !== 'none').length;
-  /** The last row still on the glass, which is where a counter can ride. */
-  const lastShown = (entry: Pending): HTMLElement | undefined => {
-    for (let index = entry.visible.length - 1; index >= 0; index--) {
-      const row = entry.visible[index] as HTMLElement;
-      if (row.style.display !== 'none') return row;
-    }
-    return undefined;
-  };
-
-  /**
-   * Hide, from the top down, every row whose bottom is past the budget.
-   *
-   * Rows are not a uniform height — a title may take one line or two — and that
-   * breaks the walk this used to do. "Stop at the first row that does not fit"
-   * is only correct when every row is the same size: with mixed heights, a
-   * two-line title that does not fit says nothing at all about the one-line one
-   * under it. Measured on a 1280x720 wall, that cost six cells every name they
-   * had, each showing "+2" and not one of its two events.
-   *
-   * So a row that does not fit is hidden and the walk *continues*. Hiding one
-   * pulls everything under it up, and this project does not do that arithmetic
-   * — it measures — so it is done in rounds: hide the first row that overflows,
-   * let the browser lay out again, look again. Reads are batched across every
-   * cell and so are the writes, so a round is two layouts for the whole grid
-   * rather than two per cell.
-   */
-  const pack = (entries: readonly Pending[], budgetOf: (entry: Pending) => number): void => {
-    let working = entries.slice();
-    // Bounded by the model's own cap on how many events a cell can carry, so
-    // the loop cannot outlive the data even if a measurement never settles.
-    for (let round = 0; round < 12 && working.length > 0; round++) {
-      const hiding: { entry: Pending; row: HTMLElement }[] = [];
-      for (const entry of working) {
-        const budget = budgetOf(entry);
-        for (const row of entry.visible) {
-          if (row.style.display === 'none') continue;
-          if (bottomOf(row) > budget) {
-            hiding.push({ entry, row });
-            break;
-          }
-        }
-      }
-      if (hiding.length === 0) return;
-      for (const { row } of hiding) row.style.display = 'none';
-      working = hiding.map(({ entry }) => entry);
-    }
-  };
-
-  /**
-   * The pass across: a row survives only if its whole title is on the glass.
-   *
-   * `allowed` is how many lines the words may take. A title that needs more is
-   * *hidden* rather than cut, because "Year 6…" is a different string from
-   * "Year 6 trip to the Science Museum" and two events can share it — where
-   * "+1" is simply true.
-   */
-  /**
-   * Whether this row's whole title is on the glass — the one predicate, so the
-   * pass across and the counter's re-check cannot come to different answers
-   * about the same row.
-   */
-  const fitsWhole = (row: HTMLElement, allowed: number): boolean => {
-    const text = row.querySelector('.hz-rowtext') as HTMLElement | null;
-    if (text === null) return true;
-    /*
-     * How many lines the words actually took. `scrollHeight` is the content's
-     * own height whatever the box was clamped to, so this reads the same
-     * whether or not the stylesheet's `max-height` belt is in force.
-     *
-     * Half a line of slack, never a whole one: a line either happened or it did
-     * not, and sub-pixel rounding on a wrapped box is worth less than that. A
-     * pixel of slack would make a 2.02-line title read as three.
-     */
-    const style = getComputedStyle(text);
-    const lineHeight = parseFloat(style.lineHeight);
-    const line =
-      Number.isFinite(lineHeight) && lineHeight > 0
-        ? lineHeight
-        : parseFloat(style.fontSize) * 1.25;
-    return (
-      text.scrollHeight <= line * allowed + line / 2 &&
-      // A word wider than the column on its own. `overflow-wrap` breaks those
-      // rather than letting them overhang, so this is the belt — but a belt
-      // that costs nothing and catches the case where it cannot.
-      text.scrollWidth <= text.clientWidth + 1
-    );
-  };
-
-  const across = (entries: readonly Pending[], allowed: number): void => {
-    const keeping: Set<HTMLElement>[] = [];
-    for (const entry of entries) {
-      const keep = new Set<HTMLElement>();
-      for (const row of entry.rows) if (fitsWhole(row, allowed)) keep.add(row);
-      keeping.push(keep);
-    }
-    entries.forEach((entry, index) => {
-      const keep = keeping[index] as Set<HTMLElement>;
-      entry.visible = entry.rows.filter((row) => keep.has(row));
-      for (const row of entry.rows) row.style.display = keep.has(row) ? '' : 'none';
-    });
-  };
-
-  /** Across, then down, then the counter into whatever room is left over. */
-  const settle = (entries: readonly Pending[], allowed: number): void => {
-    for (const entry of entries) {
-      for (const row of entry.rows) row.style.display = '';
-      entry.more.textContent = '';
-      entry.more.className = 'hz-more';
-      // Back out of whichever row last held it, so a re-settle measures the
-      // rows at their own width rather than at the width a counter left them.
-      if (entry.more.parentElement !== entry.cell) entry.cell.appendChild(entry.more);
-    }
-    across(entries, allowed);
-
-    /*
-     * The names, at the cell's whole budget.
-     *
-     * The counter used to be paid for *before* this, out of the same budget —
-     * so a cell with room for exactly one row spent it on "+3" and drew
-     * neither of its events. Measured at 800x480, thirteen cells drew a
-     * counter and not one name. A count is a summary of what is missing; it
-     * cannot be worth more than the thing itself, so it is placed afterwards
-     * and only into room the names did not want.
-     */
-    pack(entries, (entry) => entry.limit);
-
-    /*
-     * A cell that says nothing says nothing.
-     *
-     * With no name on the glass a "+3" is the cell's entire content — a number
-     * with no subject, which is the failure this grid has already shipped once
-     * in the other direction. The density mark under the numeral is what such
-     * a cell draws instead: it needs no legible text, it is already there, and
-     * it says the one thing a "+3" was saying.
-     */
-    const counted = entries.filter(
-      (entry) => shownIn(entry) > 0 && shownIn(entry) + entry.spans < entry.total,
-    );
-    if (counted.length === 0) return;
-
-    /*
-     * What the names managed on their own, which the counter may not reduce.
-     *
-     * This is rule 2 stated as an experiment rather than as a fallback, and it
-     * is what a first draft got wrong. That draft dropped the counter whenever
-     * sharing the last row cost that row its title — and measured on a
-     * 1280x720 wall it turned "Yoga · +1" into "Year 6 trip to the Science
-     * Museum" over two lines and *no count at all*. Which is not a name saved:
-     * it is the same one name, longer, with the household no longer told there
-     * is a second event. The rule is about how many names a cell shows, so the
-     * check has to be a comparison against how many it showed without one.
-     */
-    const baseline = new Map<Pending, Set<HTMLElement>>();
-    for (const entry of counted) {
-      baseline.set(entry, new Set(entry.visible.filter((row) => row.style.display !== 'none')));
-    }
-
-    /*
-     * "+N" rides on the last row it is counting for, hard right.
-     *
-     * It is `display:none` while empty, so it needs content before it has a
-     * size at all. `+0` is a placeholder of the right *shape* — the digits are
-     * tabular, so the box a two-digit count needs is the box it is measured
-     * with.
-     *
-     * A counter is `flex: 0 0 auto`, so the words beside it lose its width —
-     * enough, on a 115px cell, to push a title that fitted onto a line it has
-     * not got. When that happens the row is set aside and the cell is packed
-     * *again* from the across pass's state, which is what lets a shorter title
-     * underneath take its place: the two-line "Year 6 trip…" makes way and
-     * "Yoga · +1" fits where neither fitted before. Rounds rather than
-     * arithmetic, and reads batched against writes, for the reason the pass
-     * above is: hiding one row relays out the whole grid.
-     */
-    const banned = new Map<Pending, Set<HTMLElement>>();
-    for (const entry of counted) banned.set(entry, new Set());
-    for (let round = 0; round < 4; round++) {
-      for (const entry of counted) {
-        const out = banned.get(entry) as Set<HTMLElement>;
-        for (const row of entry.visible) row.style.display = out.has(row) ? 'none' : '';
-        entry.more.className = 'hz-more';
-        entry.more.textContent = '';
-        if (entry.more.parentElement !== entry.cell) entry.cell.appendChild(entry.more);
-      }
-      pack(counted, (entry) => entry.limit);
-      for (const entry of counted) {
-        const row = lastShown(entry);
-        if (row === undefined) continue;
-        entry.more.className = 'hz-more in-row';
-        entry.more.textContent = '+0';
-        row.appendChild(entry.more);
-      }
-      const spilled = counted.filter((entry) => {
-        const row = lastShown(entry);
-        return row !== undefined && !fitsWhole(row, allowed);
-      });
-      if (spilled.length === 0) break;
-      for (const entry of spilled) {
-        const row = lastShown(entry);
-        if (row !== undefined) (banned.get(entry) as Set<HTMLElement>).add(row);
-      }
-    }
-
-    /*
-     * Where sharing could not be had without costing a name, the counter takes
-     * a line of its own — out of the room the names have just declined to use.
-     *
-     * Sharing is the design and this is the fallback, in that order, and the
-     * order is what the rule is about rather than the placement. Measured on
-     * the 1080x1920 wall, a cell holding "Grandma's 80th birthday" over two
-     * lines has room for a third line but not for a third *line of that
-     * title*: sharing pushes the words onto a line the cell has not got, and a
-     * counter underneath them fits exactly. Dropping it there — which a first
-     * draft did — loses the household the fact that the day holds something
-     * else, and buys nothing at all.
-     */
-    const failed = counted.filter((entry) => {
-      const before = baseline.get(entry) as Set<HTMLElement>;
-      const row = lastShown(entry);
-      // Out of rounds with the words still cut is a failure too, and not the
-      // same one: the cell kept its name count and broke "whole or not at all"
-      // to do it. The own-line placement gives that row its width back.
-      return row === undefined || shownIn(entry) < before.size || !fitsWhole(row, allowed);
-    });
-    if (failed.length > 0) {
-      for (const entry of failed) {
-        for (const row of entry.visible) row.style.display = '';
-        entry.more.className = 'hz-more';
-        entry.more.textContent = '+0';
-        if (entry.more.parentElement !== entry.cell) entry.cell.appendChild(entry.more);
-      }
-      pack(failed, (entry) => {
-        const style = getComputedStyle(entry.more);
-        return entry.limit - entry.more.offsetHeight - parseFloat(style.marginTop);
-      });
-    }
-
-    /*
-     * And where neither placement could be had without costing a name, the
-     * cell keeps the name and says nothing.
-     *
-     * There is nothing a "+2" can say that is worth the word it would cost,
-     * and the mark under the numeral already says the day is busy. Restored
-     * from the state the names reached on their own rather than re-packed,
-     * because that state is known and a second packing is a second opinion.
-     */
-    for (const entry of failed) {
-      const before = baseline.get(entry) as Set<HTMLElement>;
-      if (shownIn(entry) >= before.size) continue;
-      for (const one of entry.visible) one.style.display = before.has(one) ? '' : 'none';
-      entry.more.textContent = '';
-    }
-
-    for (const entry of counted) {
-      if (entry.more.textContent === '') continue;
-      const hidden = entry.total - shownIn(entry) - entry.spans;
-      entry.more.textContent = hidden > 0 ? `+${hidden}` : '';
-    }
-  };
-
-  const allowed = (): number => {
-    const first = pending[0]?.rows[0]?.querySelector('.hz-rowtext');
-    if (!(first instanceof HTMLElement)) return 2;
-    const declared = parseFloat(getComputedStyle(first).getPropertyValue('--cell-lines'));
-    return Number.isFinite(declared) && declared >= 1 ? Math.round(declared) : 2;
-  };
-
-  settle(pending, allowed());
 
   /*
-   * And a cell that ended up saying nothing gets one more go, on one line.
+   * Every row measured once, with all of them on screen, and then one decision.
    *
-   * The wrap allowance is a *maximum*, not a promise, and this is where that
-   * matters. Measured on the shipped Classic wall in portrait — a month box
-   * 972x864, so cells of 114x129 — a 22px two-line row is 55px and the counter
-   * another 26, which does not fit under a 22px date number. Seven of nine
-   * cells with events drew "+3" and not one name: truthful, and a month grid
-   * that has stopped saying what is on, which is the exact failure this whole
-   * change exists to end.
-   *
-   * On one line those same cells hold "Dentist" and "Bin day" — a short title
-   * whole, which is worth more than a number. A title that needs two lines is
-   * hidden here as it always was, so nothing is cut; the cell just stops
-   * reserving room it cannot use. Only cells that would otherwise be silent pay
-   * for this pass, so a wall with room is untouched.
-   *
-   * The same shape as the shift ladder dropping a rung and asking again, and
-   * the same rule: a drawing decision, never a saved one.
+   * `lineCount` is what the words actually took at this cell's width, which is
+   * the single question about the *content* that survives the tier: a title
+   * needing more lines than the allowance is hidden and counted rather than
+   * cut, because "Year 6…" is a different string from "Year 6 trip to the
+   * Science Museum" and two events can share it, where "+1" is simply true.
    */
-  if (allowed() > 1) {
-    const silent = pending.filter((entry) => entry.total > 0 && shownIn(entry) === 0);
-    if (silent.length > 0) settle(silent, 1);
+  const gap = parseFloat(getComputedStyle(list).rowGap);
+  const budget = cell.clientHeight - parseFloat(getComputedStyle(cell).paddingBottom) - list.offsetTop;
+  interface Candidate {
+    readonly row: HTMLElement;
+    readonly at: number;
+    readonly lines: number;
+    readonly height: number;
   }
+  const candidates: Candidate[] = [];
+  for (let at = 0; at < rows.length; at++) {
+    const row = rows[at] as HTMLElement;
+    const took = lineCount(row);
+    if (took > lines) continue;
+    candidates.push({ row, at, lines: took, height: row.offsetHeight });
+  }
+
+  /*
+   * **A two-line title never costs a name**, which is the overflow counter's
+   * own rule one line down and is the whole of why the order here is not the
+   * document's.
+   *
+   * The wrap allowance is a maximum rather than a promise (the shift ladder's
+   * rule, one widget along), and a cell that spends its whole budget on one
+   * wrapped title has spent two names' worth of room on one name. Measured on
+   * the shipped portrait wall, the 2nd draws "Swimming lesson" over two lines
+   * and says nothing else, where the same box holds "Assembly", "Standup" and a
+   * "+1". So the shortest rows are *chosen* first and then drawn back in the
+   * model's own order — all-day first and then by start time, which
+   * `buildManifest` decided and this does not re-decide.
+   *
+   * Arithmetic rather than rounds of hide-and-look, and the gap is read off the
+   * list rather than assumed: summing row heights and forgetting the flex gap
+   * is one of the three faults `trimCellRows` shipped, and it is the one that
+   * cost today's cell 2px on two screen sizes out of three.
+   */
+  const order = candidates.slice().sort((a, b) => (a.lines - b.lines) || (a.at - b.at));
+  const chosen: Candidate[] = [];
+  let used = 0;
+  for (const candidate of order) {
+    if (chosen.length >= names) break;
+    const next = used + (chosen.length === 0 ? 0 : gap) + candidate.height;
+    if (next > budget + 0.5) continue;
+    chosen.push(candidate);
+    used = next;
+  }
+  chosen.sort((a, b) => a.at - b.at);
+
+  const keep = chosen.map((candidate) => candidate.row);
+  for (const row of rows) row.style.display = keep.indexOf(row) < 0 ? 'none' : '';
+
+  /*
+   * And the belt: whatever the arithmetic said, nothing may end past the foot
+   * of the cell. `overflow: hidden` cuts where the pixel falls, and a row
+   * sliced through the middle reads as a broken renderer rather than as a list
+   * that ran out of room — the month grid's own recorded fault. One read, no
+   * rounds: hiding a row moves only the rows under it, and those go with it.
+   */
+  const limit = cell.clientHeight - parseFloat(getComputedStyle(cell).paddingBottom);
+  let shown = 0;
+  for (const row of keep) {
+    if (row.offsetTop + row.offsetHeight > limit + 0.5) break;
+    shown += 1;
+  }
+  for (let index = shown; index < keep.length; index++) (keep[index] as HTMLElement).style.display = 'none';
+  if (shown === 0) return;
+
+  /*
+   * The counter rides on the last name it is counting for, and never costs one.
+   *
+   * There is no experiment here and no rounds, because under a tier there is
+   * nothing to experiment with: the row set is already decided, so dropping the
+   * counter cannot buy a longer title the way it once could. If sharing the row
+   * costs that row its words — the counter is `flex: 0 0 auto`, so the title
+   * loses its width — the counter goes rather than the name. The density mark
+   * beside the numeral has already said the day is busy.
+   */
+  const total = Number(cell.getAttribute('data-count') ?? String(shown));
+  const hidden = total - shown - spans;
+  if (hidden <= 0) return;
+  const last = keep[shown - 1] as HTMLElement;
+  more.className = 'hz-more in-row';
+  more.textContent = `+${hidden}`;
+  last.appendChild(more);
+  if (lineCount(last) > lines || last.offsetTop + last.offsetHeight > limit + 0.5) {
+    /*
+     * Sharing cost that row its words, so the counter takes a line of its own —
+     * out of room the names have already declined, never out of theirs. Where
+     * there is none it says nothing at all: the mark beside the numeral has
+     * already said the day is busy, and "+3" on its own is a number with no
+     * subject, which is the fault this grid shipped once in the other
+     * direction.
+     */
+    more.className = 'hz-more';
+    cell.appendChild(more);
+    if (more.offsetTop + more.offsetHeight > limit + 0.5) more.textContent = '';
+  }
+}
+
+/**
+ * How many lines this row's title actually took at the cell's own width.
+ *
+ * `scrollHeight` is the content's own height whatever the stylesheet clamped
+ * the box to, so this reads the same with the wrap allowance in force or not.
+ * Half a line of slack, never a whole one: a line either happened or it did
+ * not, and a pixel of slack would make a 2.02-line title read as two.
+ *
+ * A word wider than the column on its own counts as one line more than it took,
+ * which is what puts it out of every allowance: `overflow-wrap` breaks those
+ * rather than letting them overhang, and this is the belt for the case where
+ * it cannot.
+ */
+function lineCount(row: HTMLElement): number {
+  const text = row.querySelector('.hz-rowtext') as HTMLElement | null;
+  if (text === null) return 1;
+  const style = getComputedStyle(text);
+  const declared = parseFloat(style.lineHeight);
+  const line =
+    Number.isFinite(declared) && declared > 0 ? declared : parseFloat(style.fontSize) * 1.25;
+  if (line <= 0) return 1;
+  const took = Math.max(1, Math.round(text.scrollHeight / line));
+  return text.scrollWidth > text.clientWidth + 1 ? took + 1 : took;
+}
+
+
+/**
+ * The tier an agenda's box affords, and the events it draws at it.
+ *
+ * Measured **after** the first fit and against the *drawn* type, which is the
+ * half a first draft got wrong. An agenda is laid out at its box width and then
+ * `transform: scale()`d, and on an unmeasured 800x480 wall that factor is 1.89
+ * — so asking how many rows fit against the declared type answers 23 for a box
+ * that holds six. The box is the same either way; the type is not.
+ *
+ * `count` is the household's own cap and still binds: the tier says what the
+ * box affords and the household says what they asked for, and the drawn number
+ * is the lesser. Classic asks for six, so a Classic wall draws six at every
+ * size it always did — which is what makes this a mechanism rather than a
+ * redesign of somebody's wall.
+ */
+function agendaEventsAt(
+  box: HTMLElement,
+  scale: HTMLElement,
+  section: HTMLElement,
+  promote: number,
+  clipped: boolean,
+): { readonly tier: CalendarTier; readonly rows: number } {
+  const inner = innerBox(box);
+  const factor = appliedScale(scale);
+  const { chPx, emPx } = typeMetrics(section, 'dr-ev-title');
+  const drawnEm = emPx * factor;
+  const tier = promoted(tierFor(inner.w, inner.h, chPx * factor, drawnEm), promote);
+
+  /*
+   * How tall one entry actually is, which a month cell's arithmetic cannot
+   * answer for a list.
+   *
+   * `ROW_EM` in `tiers.ts` is a row of a month cell: one line of the event's own
+   * type and the gap under it. An agenda entry is not that — it carries a time,
+   * a title, sometimes a "Day 2 of 3", and it sits inside a day group with a
+   * date column beside it. Measured on the shipped portrait wall, an entry is
+   * 2.6 title-ems, so the cell's constant answers nine for a box that holds six
+   * and the section would be drawn smaller to fit rows it was told would fit.
+   *
+   * So the tier is what the box *affords* and this is what an entry *costs*,
+   * and the count is the lesser. Measured rather than declared, because the
+   * cost is a fact about markup that changes when a row does — which the
+   * current-time rule and the progress bar have both already done once.
+   */
+  const entry = section.querySelector('.dr-ev') as HTMLElement | null;
+  const entryPx = entry === null ? 0 : entry.offsetHeight * factor;
+  const drawn = section.querySelectorAll('.dr-ev').length;
+  /*
+   * Counted from what is on the glass rather than from a division, and that
+   * correction is worth the two extra reads.
+   *
+   * `inner.h / entryPx` answers five for a box drawing six: an agenda is not a
+   * stack of entries, it is a stack of *days*, each a date column beside its
+   * events, under a section label — so the arithmetic is short by everything
+   * that is not an entry and rounds the wrong way. What is already drawn is
+   * known to fit; what the leftover holds is the only open question.
+   *
+   * Negative slack is the other half and is where the day trim used to live —
+   * but only where the fit says the section is *clipping*. Above its floor a
+   * scale-to-fit section fills its box to the pixel, so the slack is zero by
+   * construction and a rounding of a third of a pixel would otherwise shed an
+   * event on four of the five walls this project measures. Below it the
+   * section is being cut, and giving up content rather than points is the
+   * design rule this replaces the day trim with.
+   */
+  const spare = clipped ? inner.h - scale.scrollHeight * factor : Math.max(0, inner.h - scale.scrollHeight * factor);
+  // Truncated toward zero, which is the difference between "this box is one
+  // entry too small" and "this box is a few pixels too small". An overflow
+  // under one entry costs more to fix than it costs to leave: dropping an event
+  // to recover 30px of a 64px row buys type nobody asked for at a price this
+  // project has already refused once, on this exact panel.
+  const holds = entryPx > 0 ? drawn + Math.trunc(spare / entryPx) : Number.POSITIVE_INFINITY;
+  return { tier, rows: Math.max(1, Math.min(listRowsAt(tier, inner.h, drawnEm), holds)) };
 }
 
 /**
@@ -2133,6 +2210,14 @@ function dayGroups(scale: HTMLElement): readonly HTMLElement[] {
 
 /**
  * Fit a reused section to its box, then cut it to whole days and fit again.
+ *
+ * **The calendar widget no longer comes through here.** An agenda picks the
+ * number of events its box affords before it is drawn (`retierAgenda`), so
+ * there is nothing left for a trim to take off it; what remains is the chore
+ * week, whose board is out of this phase's scope and still measures. The rule
+ * below is written for both and is still one rule — a section too tall for its
+ * box gives up whole days from the bottom — which is why the function keeps its
+ * name and its argument rather than being folded into its one caller.
  *
  * Cut on a day, never through one. A section holds a legible floor and clips
  * below it, which is right — but `overflow: hidden` cuts wherever the pixel
@@ -2181,7 +2266,7 @@ function fitAndTrimToDays(
     const group = groups[index] as HTMLElement;
     if (group.getBoundingClientRect().bottom <= limit + 1) break;
     /*
-     * Hidden, not removed, which `trimCellRows` also does and which is
+     * Hidden, not removed, which the month tier pass also does and which is
      * load-bearing here for a reason nothing in this function can see.
      * `display.css` hides `.day-row:nth-child(n + 6)` on a short landscape
      * screen — a *positional* rule — so taking a row out of the document
@@ -2288,9 +2373,12 @@ export function renderFreeform(
   // the box and the scaled node it lives in, because that check can change the
   // layout and the fit then has to be taken again.
   const agendas: {
-    readonly section: HTMLElement;
+    /** Replaced when the tier redraws it, so the passes below see what is drawn. */
+    section: HTMLElement;
     readonly box: HTMLElement;
     readonly scale: HTMLElement;
+    /** The widget's own config, which carries the household's `count` cap. */
+    readonly widget: ManifestWidget;
   }[] = [];
 
   // Widgets with a field ladder, to be re-checked once they have a real size.
@@ -2377,7 +2465,7 @@ export function renderFreeform(
       box.appendChild(scale);
       toFit.push({ box, scale, min: minScaleFor(widget.type) });
       if (widget.type === 'calendar' && body.classList.contains('next')) {
-        agendas.push({ section: body, box, scale });
+        agendas.push({ section: body, box, scale, widget });
       }
       if (widget.type === 'shift' || widget.type === 'weather') {
         ladderBoxes.push({ box, widget });
@@ -2405,10 +2493,12 @@ export function renderFreeform(
   root.textContent = '';
   root.appendChild(screen);
 
-  // A flat-text month grid cuts its rows to the box, and has to do it before
-  // the fits below: a calendar widget is one of the sections `fitToBox` scales,
-  // and scaling it first would measure rows that are about to be hidden.
-  trimCellRows(root);
+  /*
+   * Every month grid is drawn at the tier its own cells afford, before anything
+   * is fitted: a calendar widget is one of the sections `fitToBox` scales, and
+   * scaling it first would measure a grid that is about to change form.
+   */
+  const monthTiers = applyMonthTier(root);
 
   /*
    * Now that everything has a size, fit each reused section to its box.
@@ -2422,8 +2512,26 @@ export function renderFreeform(
    */
   const agendaBoxes = new Set(agendas.map((entry) => entry.box));
   for (const { box, scale, min } of toFit) {
-    fitAndTrimToDays(box, scale, min, agendaBoxes.has(box) ? fitCeilingFor(box) : undefined);
+    // An agenda is fitted by `retierAgenda`, which needs the fit's own answer
+    // about whether it clipped — see there.
+    if (!agendaBoxes.has(box)) fitAndTrimToDays(box, scale, min);
   }
+
+  /*
+   * And every agenda is redrawn at the number of events *its* box affords —
+   * which is where a month grid that can name nothing pays for itself.
+   *
+   * **This is the one place the renderer has an opinion about the household's
+   * arrangement**, and it is a drawing decision and nothing else. A month at M0
+   * says the words it holds cannot be read at that size, and on a 7.5" panel
+   * that is the whole grid; the attention has to go somewhere, so every agenda
+   * on the same canvas is promoted a rung and shows more of what the month
+   * cannot. Nothing is written back to the canvas, so widening the month brings
+   * its own names back and takes the promotion away on the very next draw —
+   * the rule the week-columns fallback and the ladder's drop loop already keep.
+   */
+  const promote = monthTiers.some((tier) => tier.names === 0) ? 1 : 0;
+  for (const entry of agendas) retierAgenda(entry, model, promote);
 
   /*
    * A badge with no room for its whole ladder gives up its bottom rung.
@@ -2511,8 +2619,8 @@ export function renderFreeform(
     box.appendChild(scale);
     // Trimmed to whole days like any other agenda: this one is here *because*
     // its box is narrow, which is exactly where the days do not all fit.
-    fitAndTrimToDays(box, scale, minScaleFor('calendar'));
-    agendas.push({ section: agenda, box, scale });
+    fitToBox(box, scale, { min: minScaleFor('calendar') });
+    agendas.push({ section: agenda, box, scale, widget });
   }
 
   // Finally: any agenda with no room for a time column stacks it above the
@@ -2532,8 +2640,128 @@ export function renderFreeform(
      * One pass, like the week fallback that feeds it: `agendaTimeFitsBeside`
      * is asked once, of the layout the household's box actually produced.
      */
-    fitAndTrimToDays(box, scale, minScaleFor('calendar'), fitCeilingFor(box));
+    fitToBox(box, scale, { min: minScaleFor('calendar'), ...ceiling(fitCeilingFor(box)) });
   }
+}
+
+/** `{ max }` or nothing, so `exactOptionalPropertyTypes` stays satisfied. */
+function ceiling(max: number | undefined): { readonly max?: number } {
+  return max === undefined ? {} : { max };
+}
+
+/**
+ * Redraw one agenda at the number of events its box affords, and fit it again.
+ *
+ * The replacement for `fitAndTrimToDays`'s day trim on this widget, and the
+ * question is the other way round: that trimmed whole days off a section that
+ * had already been drawn and scaled, so the wall could only ever end up with
+ * less than the household asked for. This asks the box first.
+ *
+ * Both halves are needed and the order is the interesting part. The **fit
+ * before** is what makes the measurement honest — an agenda is laid out at its
+ * box width and then scaled, by 1.89 on an unmeasured 800x480 wall, so asking
+ * how many rows fit against the *declared* type answers 23 for a box that holds
+ * six. The **fit after** is because a redraw is a new section: fewer events is
+ * a shorter section, and leaving it at the old factor is the "cramped, just in
+ * a bigger box" fault `fitToBox` was rewritten to end.
+ *
+ * A section that already draws what its box affords is left alone, transform
+ * and all, so the common case costs one measurement and no layout.
+ */
+function retierAgenda(
+  entry: { section: HTMLElement; readonly box: HTMLElement; readonly scale: HTMLElement; readonly widget: ManifestWidget },
+  model: DisplayModel,
+  promote: number,
+): void {
+  const { box, scale, widget } = entry;
+  const config = widgetConfig(widget.config);
+  // The household's own cap still binds: the tier says what the box affords and
+  // the household says what they asked for, and the drawn number is the lesser.
+  const asked =
+    typeof config['count'] === 'number' && config['count'] >= 1
+      ? Math.min(50, Math.trunc(config['count']))
+      : AGENDA_COUNT_DEFAULT;
+
+  /*
+   * Fit, measure, redraw, and ask again — bounded, and the loop is not
+   * belt-and-braces.
+   *
+   * The slack a box has left is read off the section currently in it, and a
+   * section drawn with far more events than the box can hold is squeezed to its
+   * floor and clipping, where the entry height and the section height are both
+   * measured under a scale that is about to change. Measured on a 576x259 box
+   * with the default twelve events, one round answers 1 and two answer 5 — so a
+   * single pass reports "this box holds one event" for a box that holds five,
+   * and a box of twice the area reports the same 1. The estimate has to be
+   * taken again once the section is something like its final size.
+   *
+   * Three rounds at most, and it stops the moment the answer repeats, which on
+   * every wall this project measures is the second. The same shape as the shift
+   * ladder's drop loop: fit, and if the answer moved, redraw and ask again.
+   */
+  let settled = agendaRound(box, scale, entry, model, promote, asked);
+  for (let round = 0; round < 2; round++) {
+    const again = agendaRound(box, scale, entry, model, promote, asked);
+    if (again === settled) break;
+    settled = again;
+  }
+  box.setAttribute('data-tier-events', String(settled));
+}
+
+/**
+ * One round: fit what is drawn, ask the box what it affords, and redraw if the
+ * answer is not what is on screen. Returns the number now drawn.
+ */
+function agendaRound(
+  box: HTMLElement,
+  scale: HTMLElement,
+  entry: { section: HTMLElement; readonly widget: ManifestWidget },
+  model: DisplayModel,
+  promote: number,
+  asked: number,
+): number {
+  /*
+   * Fitted here rather than in the caller's own loop, because the answer this
+   * needs is the one `fitToBox` returns: whether the section still overflows
+   * *at its floor*. Above the floor a scale-to-fit section fills its box
+   * exactly, so a shorter agenda buys nothing at all — measured, a 480x800
+   * wall's agenda draws at 0.62 of its role and nothing clips, and this project
+   * has already decided that trimming a day there to buy 13% of type is the
+   * trade backwards. Only a section that is genuinely being cut gives anything
+   * up.
+   */
+  const clipped = fitToBox(box, scale, { min: minScaleFor('calendar'), ...ceiling(fitCeilingFor(box)) });
+  const afford = agendaEventsAt(box, scale, entry.section, promote, clipped);
+  box.setAttribute('data-tier', afford.tier.tier);
+
+  const wanted = Math.min(asked, afford.rows);
+  const drawn = drawnEventCount(entry.section);
+  /*
+   * Both directions, and the growing one is the half a first draft got wrong.
+   *
+   * Returning early whenever the box affords *more* than is drawn reads as an
+   * optimisation and is a trap once a previous round has already shed: round
+   * one squeezes twelve events into a box that holds five and lands on two,
+   * round two measures the slack that leaves and answers six — and an early
+   * return there leaves the box drawing two for ever, which is the same two a
+   * box of twice the area draws. Measured: a 576x259 box and an 815x366 box
+   * both reported one event.
+   */
+  if (wanted === drawn) return drawn;
+
+  const config = widgetConfig(entry.widget.config);
+  const rebuilt = renderCalendarWidget(model, { ...config, mode: 'list', count: wanted });
+  if (entry.section.classList.contains('narrow')) rebuilt.classList.add('narrow');
+  scale.textContent = '';
+  scale.appendChild(contentWithTitle(rebuilt, entry.widget.config));
+  entry.section = rebuilt;
+  fitToBox(box, scale, { min: minScaleFor('calendar'), ...ceiling(fitCeilingFor(box)) });
+  return drawnEventCount(rebuilt);
+}
+
+/** How many event rows a drawn agenda is currently showing. */
+function drawnEventCount(section: HTMLElement): number {
+  return section.querySelectorAll('.dr-ev').length;
 }
 
 /**

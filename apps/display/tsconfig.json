@@ -7,8 +7,10 @@
      * The wall runs on whatever tablet the household already owned, and some
      * of those browsers stopped updating years ago. Newer syntax is fine to
      * write — tsc compiles it down — but anything the compiler cannot lower
-     * (`:has()`, container queries, subgrid, `@layer`, top-level await,
-     * structuredClone) must not appear at all.
+     * (`:has()`, subgrid, `@layer`, top-level await, structuredClone) must not
+     * appear at all. Container queries are permitted (hard rule 2, amended):
+     * they are CSS rather than syntax, so nothing here lowers them, and the
+     * fallback is the size the widget draws today.
      */
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable"],

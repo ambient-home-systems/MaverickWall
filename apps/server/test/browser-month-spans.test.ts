@@ -408,7 +408,7 @@ describe('rule 1 — a multi-day event is drawn once, spanning its days', () => 
        * taller than the cell paints a band across the *next* week's numbers,
        * which is the one failure a month grid must never have. The lane
        * arithmetic is declared in the stylesheet and cannot know the box, so
-       * `trimCellRows` measures it and hides a bar that does not fit.
+       * the tier pass measures it and hides a bar that does not fit.
        *
        * **A wall with room proves nothing here.** At full canvas the lane
        * always fits, so the guard never runs and removing it changes nothing —

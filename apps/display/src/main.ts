@@ -693,7 +693,7 @@ function start(): void {
    * minute anyway.
    *
    * Deliberately a redraw rather than a re-fit: every decision this bundle
-   * takes from measured text has the same hazard (`trimCellRows`, the week
+   * takes from measured text has the same hazard (the month tier pass, the week
    * fallback, the agenda's time column), and they are all taken inside a draw.
    * Re-running the draw fixes the class; re-fitting one section fixes one
    * symptom.

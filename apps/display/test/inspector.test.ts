@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { inspectorView, type InspectorInput } from '../src/inspector.js';
 import type { NotDrawn } from '../src/omission.js';
+import { TIER_NAMES } from '../src/tiers.js';
 
 /**
  * What the widget inspector should show.
@@ -139,5 +140,75 @@ describe('the note about a box the wall leaves out', () => {
       notDrawn: flagged,
     });
     expect(view.kind === 'widget' && view.note).toBeUndefined();
+  });
+});
+
+describe('what the box has room to say', () => {
+  const month = { id: 'm1', type: 'calendar' };
+  const agenda = { id: 'a1', type: 'calendar', config: { mode: 'list' } };
+  const week = { id: 'k1', type: 'calendar', config: { mode: 'week' } };
+
+  it('says nothing at all until the preview has drawn a tier', () => {
+    /*
+     * The whole point of reading it back: before the preview loads there is no
+     * answer, and an editor that guessed one would be the second opinion this
+     * seam exists to prevent. Absent, not "unknown" — a line of text that says
+     * nothing is worse than no line.
+     */
+    const view = ask({ widgets: [month], selected: month.id });
+    expect(view).not.toHaveProperty('density');
+  });
+
+  it('names the rung and what it means, in the household\u2019s words', () => {
+    expect(
+      ask({ widgets: [month], selected: month.id, drawnTier: 'M2' }),
+    ).toMatchObject({ density: 'Month grid, M2, showing 2\u20133 names per day' });
+    expect(
+      ask({ widgets: [month], selected: month.id, drawnTier: 'M0' }),
+    ).toMatchObject({
+      density: 'Month grid, M0, too small for names \u2014 a mark shows how busy each day is',
+    });
+  });
+
+  it('says what the household chose, not what a grid would say', () => {
+    // The same tier means something different in a list, where a "day" is a row
+    // and there are no cells at all. Read through `calendarView`, so a wall
+    // storing the retired `skymonth`/`skyweek` values resolves the same way the
+    // renderer does rather than falling through to Month.
+    expect(ask({ widgets: [agenda], selected: agenda.id, drawnTier: 'M3' })).toMatchObject({
+      density: 'Upcoming list, M3, room for 4\u20135 events',
+    });
+    expect(ask({ widgets: [week], selected: week.id, drawnTier: 'M1' })).toMatchObject({
+      density: 'Week columns, M1, showing one name per day',
+    });
+  });
+
+  it('has a sentence for every rung the table declares', () => {
+    // A rung with no sentence would render as `undefined` in the panel. Derived
+    // from the table rather than from a list written here, so a rung added to
+    // `tiers.ts` fails this rather than shipping a blank line.
+    for (const tier of TIER_NAMES) {
+      const view = ask({ widgets: [month], selected: month.id, drawnTier: tier });
+      expect(view, tier).toMatchObject({ density: expect.stringContaining(`, ${tier}, `) });
+    }
+  });
+
+  it('says nothing for a widget that has no tier', () => {
+    // Only the calendar reads one. A clock with "M2" beside it would be a
+    // number about nothing.
+    expect(ask({ drawnTier: 'M2' })).not.toHaveProperty('density');
+  });
+
+  it('is the wall lane\u2019s alone', () => {
+    // The ink lane is about what a *panel* says differently, and this describes
+    // the box on the wall — the same rule the omission note follows.
+    const view = ask({
+      widgets: [month],
+      selected: month.id,
+      drawnTier: 'M2',
+      inkAvailable: true,
+      lane: 'ink',
+    });
+    expect(view).not.toHaveProperty('density');
   });
 });

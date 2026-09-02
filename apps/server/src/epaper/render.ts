@@ -16,7 +16,7 @@ import type { CivilDate } from '@maverick-wall/core';
 
 import { ditherRect } from './dither.js';
 import { DENSITY_STEPS, densitySteps, monthSpans, type MonthSpan } from './month-spans.js';
-import { drawText, measureText, type TextOptions } from './font.js';
+import { GLYPH_SIZE, drawText, measureText, type TextOptions } from './font.js';
 import { Framebuffer } from './framebuffer.js';
 import {
   agendaRowsInBox,
@@ -27,6 +27,12 @@ import {
   type EpaperMetrics,
   type PanelGeometry,
 } from './metrics.js';
+import {
+  namesAt,
+  spanIsLabelled,
+  tierFor,
+  weekdayHead,
+} from './tiers.js';
 import type { EpaperGridCell, EpaperModel } from './viewmodel.js';
 
 export type { PanelGeometry } from './metrics.js';
@@ -330,10 +336,28 @@ export function drawMonthBox(
   const gridTop = box.y + labelH + grid.topOffset;
   const gridW = grid.cellW * 7;
   const gx = box.x + Math.floor((box.w - gridW) / 2);
-  // Height says whether a name has somewhere to go; width says whether it would
-  // be a name when it got there. The second check is new because the cell used
-  // to be square, so a cell tall enough was wide enough by construction.
-  const pills = options.pills === true && grid.cellH >= m.pillMinCell && grid.cellW >= m.pillMinWidth;
+  /*
+   * What this cell affords, from the tier table the wall reads (`tiers.ts`).
+   *
+   * It replaces `pillMinCell`/`pillMinWidth`, which asked the two halves of the
+   * same question separately and asked the width half far too gently: 32px is
+   * three and a half characters of this font, so on every panel in the range a
+   * household who asked for labelled cells got "Denti" and "Assem" — a
+   * truncation this project's own rule calls a *different string* rather than a
+   * shortened title, and one the wall stopped drawing when flat names replaced
+   * pills. Measured, the built-in layout's cells are 3.8 to 9.7 characters
+   * wide, which is the whole of why they draw a density mark now.
+   *
+   * The pair also disagreed with the wall it follows: at 800x480 the wall draws
+   * no names in a cell of that size and the panel drew four. One stored value,
+   * two renderers, two answers — the fault this seam exists to end.
+   *
+   * A character here is `GLYPH_SIZE + 1` — every glyph is 8 wide and 8 tall
+   * with a pixel of tracking — so the two measurements the table needs are
+   * arithmetic rather than a probe.
+   */
+  const cellEm = GLYPH_SIZE * m.smallScale;
+  const cellCh = (GLYPH_SIZE + 1) * m.smallScale;
   // Deliberately not conditioned on `pills`: the day number is the thing a
   // person scans for, and having it change size because a household ticked
   // "labelled pills" is a surprise. It also keeps the setting honest — with
@@ -359,11 +383,48 @@ export function drawMonthBox(
   const assumedNumScale = Math.min(grid.cellH, grid.cellW) >= m.pillMinCell ? 2 * m.smallScale : m.smallScale;
   const numScale = fitNumberScale(assumedNumScale, grid.cellW - m.cellNumberInset * 2);
   const numberBand = m.cellNumberInset + 8 * assumedNumScale + 2 * m.smallScale;
-  const titleRows = cellTitlesInBox(grid.cellH - numberBand - 2 * m.smallScale, m);
 
-  // Weekday labels, centred over their columns.
+  const tier = tierFor(
+    grid.cellW - m.cellInset * 2,
+    grid.cellH - numberBand - 2 * m.smallScale,
+    cellCh,
+    cellEm,
+  );
+  /*
+   * The household's choice and the box's answer are two different things, and
+   * folding them together is a fault this was written with for one commit.
+   *
+   * `named` is what the household asked for and decides the cell's *language*:
+   * a named cell carries its density in a mark under the numeral, an unnamed
+   * one shades the whole square with dither, and the two never appear together
+   * because dither behind text is ink under ink. The tier decides only how many
+   * names there are room for — which at M0 is none. Read as one flag, a cell
+   * too narrow to name anything fell all the way back to the *dots* treatment:
+   * it lost its mark, gained a shaded square, and `cellEvents` stopped moving
+   * any ink at all, which is a control that does nothing.
+   */
+  const named = options.pills === true;
+  /*
+   * How many, still asked of the box that draws them — the tier says what the
+   * cell affords and `cellTitlesInBox` says how many of the panel's own line
+   * heights fit, and the count is the lesser. Two questions rather than one
+   * because a count and the loop that draws it have to be the same arithmetic,
+   * which is the rule `agendaRowsInBox` is written under.
+   */
+  const titleRows = Math.min(
+    namesAt(tier, grid.cellH - numberBand - 2 * m.smallScale, cellEm),
+    cellTitlesInBox(grid.cellH - numberBand - 2 * m.smallScale, m),
+  );
+
+  // Weekday labels, centred over their columns, cut to what the tier has room
+  // for. The model carries both spellings for exactly this.
   for (let c = 0; c < 7; c++) {
-    const label = model.weekdayLabels[c] ?? '';
+    const long = model.weekdayLabelsLong[c] ?? model.weekdayLabels[c] ?? '';
+    // The long name in both places: this locale's short weekday *is* its first
+    // three letters, so cutting one spelling answers all three tiers and there
+    // is no second array to fall out of step. At one letter that is the 'S' the
+    // panel has always drawn.
+    const label = weekdayHead(long, long, tier.weekdayLetters);
     const w = measureText(label, { scale: m.labelScale });
     drawText(fb, gx + c * grid.cellW + Math.floor((grid.cellW - w) / 2), box.y, label, { scale: m.labelScale });
   }
@@ -395,9 +456,10 @@ export function drawMonthBox(
    * The lane is the panel's now rather than a flat 12, so a 13.3" panel gives
    * a bar a 16px title instead of the 8px one it drew under a 32px numeral.
    */
-  const maxLanes = pills
-    ? Math.max(0, Math.floor((grid.cellH - laneTop - 2 * m.smallScale) / m.spanLaneH))
-    : 0;
+  const maxLanes =
+    named && tier.spans
+      ? Math.max(0, Math.floor((grid.cellH - laneTop - 2 * m.smallScale) / m.spanLaneH))
+      : 0;
   const spans =
     maxLanes > 0
       ? monthSpans(
@@ -421,7 +483,7 @@ export function drawMonthBox(
       const y = gridTop + r * grid.cellH;
       if (item.isToday) {
         fb.fillRect(x, y, grid.cellW, grid.cellH, true); // the lit cell
-      } else if (!pills) {
+      } else if (!named) {
         // Shading is the *unlabelled* answer to "how busy is this day". With
         // the names drawn in the cell they are the density, and dither behind
         // them is ink under ink — the thing that makes 1-bit text unreadable.
@@ -437,15 +499,17 @@ export function drawMonthBox(
       if (item.isToday) {
         drawText(fb, nx, ny, num, { scale: numScale, ink: false });
       } else {
-        if (!pills && densityOf(item) > 0) fb.fillRect(nx - 1, ny - 1, measureText(num, { scale: numScale }) + 2, 8 * numScale + 2, false);
+        if (!named && densityOf(item) > 0) fb.fillRect(nx - 1, ny - 1, measureText(num, { scale: numScale }) + 2, 8 * numScale + 2, false);
         drawText(fb, nx, ny, num, { scale: numScale });
       }
       // Today's cell is filled, so its names are knocked out of it exactly as
       // its number is. Drawn in ink they were black on black — invisible on
       // the one cell somebody actually walks over to read.
-      if (pills) {
+      if (named) {
         const cellBox: Box = { x, y, w: grid.cellW, h: grid.cellH };
         let top = y + laneTop + laneRowsAt(bars, c) * m.spanLaneH;
+        // The mark first and always: at M0 it is the cell's whole answer, which
+        // is the tier the wall's own grid draws at this size too.
         top = drawDensityMark(fb, item, m, cellBox, top, !item.isToday);
         drawCellTitles(fb, item, m, cellBox, top, titleRows, !item.isToday, covered[c] ?? []);
       }
@@ -469,7 +533,15 @@ export function drawMonthBox(
       // Only the first bar of a run carries the words; a continuation is the
       // same event still being true, and saying so again is the repetition the
       // whole rule exists to end.
-      if (bar.leading) {
+      /*
+       * The words, and whether they are worth drawing is asked of the *bar* and
+       * not of the cell under it — the one place the table is read against a
+       * different box, and the wall's copy says why. A five-day bar on a panel
+       * whose cells are four characters wide is twenty-six of its own, and
+       * "Half term" is the only name either e-ink panel has ever had on its
+       * grid.
+       */
+      if (bar.leading && spanIsLabelled(bw - m.cellInset * 2, cellCh)) {
         drawText(
           fb,
           bx + m.cellInset,

@@ -16,8 +16,16 @@ Violating any of these is a failed task.
    runtime API beyond the standard library. Need I/O? Define a port.
    `packages/core/src/globals.d.ts` is the complete, auditable list of runtime
    surface core depends on.
-2. Display targets ES2019. No `:has()`, container queries, subgrid, `@layer`,
-   top-level await, `structuredClone`.
+2. Display targets ES2019. No `:has()`, subgrid, `@layer`, top-level await,
+   `structuredClone`. **Container queries are permitted, and that is a
+   deliberate change to this rule rather than a hole in it.** The household's
+   free-form canvas is fixed by design — what they dragged is what is drawn, and
+   nothing reflows — so a widget cannot be adapted to its box by the renderer
+   the way the retired `auto` layout adapted a block. The only thing left that
+   can adapt a widget to its box is the widget reading that box, and a container
+   query is how it reads it without a second layout pass. Everything else in
+   this rule stands: those five are still out, and a container query is not a
+   licence for one.
 3. No third-party origins in the display bundle or HTML. No CDN, no web fonts,
    no analytics. Everything ships in the image — it must work with no internet
    beyond the calendar feeds themselves.
@@ -43,6 +51,7 @@ Violating any of these is a failed task.
 
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
 - No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code.
+- A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
 - No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink.
 - No stat tiles. A big number with a caption, or a 3-up row of them, is a dashboard idiom. This is a calendar.
 - No shadow on the display, at any size, in any theme. It bands on e-ink and burns in on OLED. Separation is space, then a 1px rule, then a ground step, in that order.
@@ -219,6 +228,13 @@ useful thing in this document:
 | An overflow assertion that passed with its fix reverted, then failed for the wrong reason | `getBoundingClientRect` on a block, which is its parent's width whatever is inside it |
 | A clock capped at 1.8x its lede and drawn at 1.8005x | Asserting the ratio at three screen sizes rather than reading the constant |
 | Every multi-day bar measured back out of both e-ink panels | A lane whose rem minimum outlived the type it was a minimum for |
+| **A widget that drew the same six events on a 450x800 panel and a 3.7-megapixel television** | Measuring the same wall at five sizes and reading one number down the column |
+| **A month cell that could name "Bin day" classified as one that can name nothing** | Measuring a figure's advance against running text in the same face: 0.494em against 0.408em |
+| **A panel drawing "Denti" where the wall it follows draws nothing** | Deriving the panel's cell from the wall's own table instead of a 32px threshold |
+| A ratchet that read 2 bars for six days a week and 1 on the seventh | The same clean worktree passing at 22:46 UTC and failing at 23:10 |
+| An agenda reporting "this box holds one event" for a box that holds five | Doubling a box's area and getting the identical count |
+| **A bar-label assertion that neither of its own fixes could turn red** | A widest-run scan taken through the middle of the words it was looking for |
+| A tier note in the editor that no household could read as wrong | Reading it back out of the preview instead of predicting it |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -369,13 +385,35 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2435 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 379 · server 1589. CI runs the whole suite and then the README's
+**2491 tests passing and two red.** calendar 153 (plus 1 skipped) · core 314 ·
+display 409 · server 1615. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
-**The two red ones were the density ratchets, and the paragraph that used to
-sit here diagnosed them wrongly — which is the useful part.** It said
+**The two red ones are a clock fault and they are not a regression — they fail
+identically on a clean worktree of `main`.** `admin-status-claims` and
+`browser-admin` both assert that a calendar added a moment ago says "Syncing…",
+which `firstSyncPending` decides by `at - source.createdAt < 2 minutes`. Those
+are two different clocks: the page's `at` is the app's injected `now`, which
+`browser-harness` pins to today at `HARNESS_HOUR` in the household's zone, and
+`created_at` is stamped by `addCalendarSource` from a bare `Date.now()`. In
+production they are the same clock and no household sees anything; under the
+harness they are hours apart, so the two-minute window can only be met in the
+couple of minutes a day when the runner's own clock happens to read 11:00 in
+Europe/London. Measured: the runner at 01:08 London, both tests red, and both
+red at the same commit on a clean checkout.
+
+That is the bootstrap code's fault again — "stamped by one clock and read by
+another" — and the cure is the one `equipHousehold` already states: hand the
+app's `now` in rather than defaulting to the runner's. It is left unfixed
+deliberately, because the change is `AddSourceInput` and its three production
+call sites, which is a different seam from anything the density-tier work
+touches, and a phase should not widen into one on the way past.
+
+**The two red ones used to be the density ratchets, and the paragraph that
+sat here diagnosed them wrongly — which is the useful part, and is kept
+because the shape recurs.** (Both ratchets are green now; the two red tests
+today are the clock fault above, which is a different one.) It said
 `wall-density` reporting 9 of 107 runs under the 22px floor against a recorded
 7, and `browser-classic-proportions` reporting the rota chip at **21.7px**, were
 red on `main`; that the lever was Classic's own proportions; and that moving
@@ -400,8 +438,9 @@ below and filed, because no one-line cure survives the geometry.
 
 **146 of the server's tests fail without a real Chromium and say so**, across
 22 files, which is worth knowing before reading a red suite as a regression. A
-correct run on this tree with a browser present is **green**, which the sentence
-here could not say for one release. Both numbers are **measured** — the server
+correct run on this tree with a browser present is green apart from the two
+clock-fault tests recorded above, which the sentence here could not say for one
+release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
 carried forward and incremented, which is the only way this pair has ever been
 right: it read 148 over 20 files while the truth was 140 over 21, and the
@@ -698,9 +737,11 @@ solvable problem landscape does not have. Measured after: 1.9–3.3% of the heig
 blank at all six sizes, and **on a quiet day too**, because a frame that only
 fills when today happens to be busy has moved the fault rather than fixed it.
 
-`EPAPER_RENDERER_VERSION` is **5** — 4 for the built-in layout and 5 for the
-widgets. Every paired panel's pixels move at 4, 800x480 included; at 5 only the
-larger panels move, plus the one module-panel row described below.
+`EPAPER_RENDERER_VERSION` was **5** at the time this was written — 4 for the
+built-in layout and 5 for the widgets. Every paired panel's pixels move at 4,
+800x480 included; at 5 only the larger panels move, plus the one module-panel
+row described below. It is **6** now, for the density tiers; `frame.ts` carries
+the whole ladder and is the file to read rather than this line.
 
 **This phase landed against an acceptance gate a concurrent phase had already
 built, and moving its baseline is the interesting part.**
@@ -1303,6 +1344,15 @@ theme, **Swiss**, for the near-black ground it was drawn against — but the mod
 reads tokens like everything else, so on Almanac it is a light Swiss grid on
 cream. Either half alone still reads as deliberate, and `pills` is untouched, so
 no wall already hanging changed.
+
+> **The two paragraphs that follow are about `trimCellRows` and are kept as
+> history**, the way the `auto` layout's are. That function is gone: a month
+> cell reads its own box and takes a *form* from the tier table now
+> (`applyMonthTier`, `tiers.ts`), so nothing is drawn and then taken away. What
+> they record is a set of *faults*, and those outlive the code — the third one
+> especially, whose assertion is carried into the tier's own tests word for
+> word. Read them for what a measurement of this grid has to check; do not read
+> them for how the grid works.
 
 **How many events a cell shows is measured, never counted.** The old grid
 hard-coded three. A calendar widget is whatever size the household dragged it
@@ -4127,6 +4177,187 @@ that cannot hold two days at 22'. The ratio is broken by Classic's proportions
 on a 7.5" panel — a layout decision, and a different change. What the roles can
 promise is that neither widget draws larger than the reader needs, and that is
 asserted everywhere. Six mutations checked, all six red.
+
+**And then the calendar stopped asking whether things fit and started asking
+what its box affords.** Every legibility decision the widget took before this
+was a measurement of its own content — draw everything, measure it, hide what
+spilled — and a measurement of content can only ever *subtract*. Measured on the
+shipped Classic wall with three ordinary family calendars and nineteen events in
+view, that is one number down a column: six agenda events across three days at
+every size from a 450x800 e-ink panel to a 3.7-megapixel television, and 0, 0,
+3, 7, 8 month names. There was no mechanism anywhere in either renderer by which
+a widget with more room showed *more things*.
+
+A **density tier** is the other question. `apps/display/src/tiers.ts` is the
+table — pure, no DOM, for the reason `widget-options.ts`, `ink.ts`, `ladder.ts`,
+`placement.ts`, `omission.ts` and `inspector.ts` are — and it says what a box
+affords rather than what fits in it:
+
+    tier        needs           names          times  weekday  all-day
+    M0 Mark     — (the floor)   0              no     1        colour rule at the cell edge
+    M1 One      9ch x 3.0em     1              no     1        bar, spans
+    M2 Few      12ch x 5.0em    2-3            no     3        bar, spans
+    M3 List     16ch x 7.5em    4-5            no     3        bar, spans, labelled
+    M4 Column   22ch x 10em     6+, with times yes    full     bar, spans, labelled
+
+**The thresholds are in `ch` and `em` of the event role, and that is what makes
+one table right on every panel.** The role is already distance-corrected — 14
+arc-minutes of cap height at the reader's eye — so "12ch wide" means twelve
+characters of the size that household can read from where they stand. The table
+names no device and no pixel count and is correct from 640x384 to 1872x1404, and
+on a wall nobody has measured, where the role falls back to the rem expression
+the stylesheet has always used.
+
+**`ch` here is the face's own mean advance and deliberately not the CSS `ch`
+unit**, which is the advance of a figure. Measured on the bundled display face
+at every size this project checks: a figure is 0.4937em and running text is
+0.4081em — 21% wider, and the same 21% at every size, so it is a property of the
+face rather than of one screen. Read as figures, the shipped 1920x1080 wall's
+month cell measures 7.48ch and is classified as a cell that can name nothing,
+while it draws eight event names today with "Bin day" and "Dentist" whole on one
+line. A threshold that calls that cell empty is measuring the wrong glyph.
+`TYPE_SPECIMEN` is the fixed string both renderers measure, so the unit is a
+constant of the face and never of the household's own titles.
+
+**Two rules in it are the table's numbers applied to boxes the table does not
+describe, and both were found by a measurement rather than reasoned to.** The
+table states each rung *at its own threshold*, and a box clears one dimension
+and not the other far more often than it lands on both: the 13.3" panel's cell
+is 9.7ch by 10.9em — M1 by width and tall enough for six rows — and held to M1's
+literal one name it draws one where it draws seven. So height buys rows and the
+tier's own number is the floor, which reproduces every figure in the table
+exactly at the box it is stated for and lets a 20em column show more than a 10em
+one. The same applies to the wrap allowance one axis along: the shipped portrait
+cell is 8.6ch and **5.1em**, and refusing it a second line to honour a threshold
+it has cleared twice would take "Grandma's 80th birthday" off a wall that draws
+it today.
+
+**A two-line title never costs a name**, which is the overflow counter's own
+rule one line down and is the whole of why a cell's rows are *chosen* shortest
+first and then drawn back in the model's order. Measured on the shipped portrait
+wall, one cell drew "Swimming lesson" over two lines and said nothing else,
+where the same box holds "Assembly", "Standup" and a "+1". The old code reached
+that second answer too, by accident, through the counter-placement experiment —
+and paid for it by clipping the cell.
+
+**`spans` is `true` at M0 and the brief's table says otherwise; the deviation is
+deliberate and measured.** A bar is a *grid* object rather than a cell one — it
+is `n` cells wide — so on a 7.5" panel whose cells are 4.7ch a five-day half
+term is 26ch across and names itself at 16.9px. Following the table literally
+there takes the only name either e-ink panel has ever had on its grid off the
+glass. Whether a bar carries its *words* is therefore asked of the bar's own
+width (`spanIsLabelled`, against the table's own M2 threshold) and never of the
+cell beneath it, which is the wrong box to ask.
+
+**Hard rule 2 was amended for this and not worked around.** A free-form canvas
+does not reflow — what the household dragged is what is drawn — so nothing above
+a widget can give it room, and the only thing that can adapt a widget to its box
+is the widget reading that box. The month grid's gutter is `min(0.35rem,
+0.45cqw)` now, because `rem` here is 1% of the *canvas height* and so takes a
+fixed share of the wall and an arbitrary share of a cell: `0.35rem` is 6.7px
+between two 114px cells in portrait and 3.8px between two 91px cells in
+landscape. `min()` so it can only ever get tighter than the wall already draws,
+and an engine that reads neither keeps today's value. The cell's own padding is
+deliberately still `rem`, which looks like an inconsistency and is a
+measurement: `.hz-cell.is-today` draws a `0.25rem` outline inset into it, and a
+proportional padding computes to 3.5px against a 4.8px outline — a name drawn
+over the marker for today reads as a broken renderer.
+
+**The panel gets the same table, transcribed** (`epaper/tiers.ts`), and
+`tier-parity.test.ts` holds the two files to being character-identical — the
+tables, the constants and every function *body*, compared as **sets derived from
+each file** rather than from a list written in the test, which is the lesson the
+ladder's own parity check learned after a third table sailed through it. What
+the panel supplies is only the two measurements, and there they differ honestly:
+every glyph is 8 wide and 8 tall with a pixel of tracking, so a character is
+1.125em and a 44px cell holds four of them.
+
+That closes a divergence rather than only a fault. `pillMinCell`/`pillMinWidth`
+asked the two halves of the question separately and asked the width half far too
+gently — 32px is three and a half characters — so a household who asked for
+labelled cells got "Denti" and "Assem" on every panel in the range, which is a
+truncation this document's own rule calls a *different string*. And at 800x480
+the wall drew no names in a cell of that size while the panel drew four: one
+stored value, two renderers, two answers, which is `shifts[0]`, `display_mode`,
+`cellEvents` and `mode` for the fifth time. `EPAPER_RENDERER_VERSION` is **6**.
+
+**The household still owns the density, and Classic still asks for six.** An
+agenda draws `min(what the household asked for, what its box affords)`, so a
+Classic wall draws the same six events at every size it always did — which is
+what makes this a mechanism rather than a redesign of somebody's wall. Classic's
+`count: 6` was itself a legibility budget standing in for a box measurement
+("two more rows is a shorter scale factor on every character in the widget"),
+and now that the box can measure itself that constant is a decision to take
+deliberately rather than a workaround; it was left exactly where it was.
+
+**The one place the renderer has an opinion about the household's arrangement is
+the promotion, and it is a drawing decision only.** A month grid at M0 names
+nothing, so every agenda on the same canvas is promoted a rung. Nothing is
+written back to the canvas — widening the month brings its own names back and
+takes the promotion away on the very next draw, which is the rule the
+week-columns fallback and the ladder's drop loop already keep, and
+`browser-density-tiers.test.ts` asserts the stored row still contains no tier.
+Its **limit is worth stating**: on a wall nobody has measured, `fitToBox` grows
+an agenda freely and every agenda comes out M4, so the promotion resolves and
+has no rung to move to. It bites where the tier binds, which is a measured wall
+with a short agenda box.
+
+**The agenda's own arithmetic is measured twice, and both corrections were
+faults first.** How many rows a box holds is asked *after* the first fit and
+against the **drawn** type, because an agenda is laid out at its box width and
+then scaled — by 1.89 on an unmeasured 800x480 wall — so asking against the
+declared type answers 23 for a box that holds six. And what an entry *costs* is
+read off the drawn entry rather than from the cell's `ROW_EM`: an agenda entry
+is 2.6 title-ems, not 1.55, because it carries a time, a title, sometimes a "Day
+2 of 3", and sits in a day group with a date column beside it. The loop that
+settles it runs at most three rounds and stops when the answer repeats; a first
+draft returned early whenever the box afforded *more* than was drawn, and that
+left a 576x259 box and an 815x366 box both reporting one event.
+
+**What was measured, against a clean worktree of `main` on the same fixture at
+the same hour** — the discipline `wall-density.test.ts` sets for itself, and the
+only way to tell a change in the code from a change in the calendar:
+
+    |     viewport | distinct | names |  +N  |
+    |--------------|----------|-------|------|
+    |      480x800 |   0 →  0 |  0→ 0 | 0→ 0 |
+    |      800x480 |   0 →  0 |  0→ 0 | 0→ 0 |
+    |    1080x1920 |   9 →  9 | 11→11 | 4→ 1 |
+    |    1920x1080 |   8 →  8 |  8→10 | 2→ 1 |
+    |    2560x1440 |   8 →  9 | 10→11 | 1→ 1 |
+
+Nothing moved the worsening way, at either the unmeasured or the measured
+baseline, and no drawn size moved at all. The two e-ink sizes name nothing in
+the grid before and after, which is the honest answer for a 4.7-character cell
+and is why the demotion rule exists: what the tier asserts there is that the
+household's events are on the wall *somewhere*, in the widget with room for
+them.
+
+**And the ratchet was measuring the calendar rather than the code.** Its
+multi-day fixture lasted exactly seven days, which lands on one grid row
+whenever it happens to start on the household's week start and on two rows every
+other day of the week — so `spanBars` read 2 for six days out of seven and 1 on
+the seventh. The same clean worktree passed at 22:46 UTC and failed at 23:10,
+when the fixture's dates rolled into the next London day. It is eight days now,
+which cannot fit in one row whatever weekday it begins on. That is the hour
+`HARNESS_HOUR` pins, one unit up, and the third time this document has had to
+record a test reading a clock as though it were reading the code.
+
+**Six mutations were checked and all six are red**: the height-buys-rows rule,
+the tier resolved from the box, the promotion, the M0 edge mark, the times gate,
+and the panel's bar label taken from the cell's tier instead of the bar's width.
+The last one is the interesting one, because **it passed twice before it
+failed**. The first discriminator measured clear pixels across a window that
+included the bar's own edges, and `drawMonthBox` clears a pixel of ground round
+every bar — so it reported a knocked-out word whether or not one was written.
+The second placed the bar by column arithmetic and found today's *filled cell*
+instead, because the run crosses it. The third finds the bar by scanning its own
+solid top row, and reads the words out of the middle.
+
+**Still unproven where it counts:** none of the panel side has been photographed
+on real hardware, and no household has looked at a kitchen wall drawn this way.
+The measurements are a real browser and a decoded framebuffer, which is the
+right way to check both and is not the same thing.
 
 ---
 
