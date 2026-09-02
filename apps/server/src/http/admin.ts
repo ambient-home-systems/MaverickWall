@@ -101,6 +101,7 @@ import type { SqliteDatabase } from '../db/open.js';
 import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, icon,
   networkAccessDisclosure, networkAccessSuggestion, page, saveRow,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
+import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
 
@@ -2480,108 +2481,183 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error)) +
 
-        `<article class="card">` +
-        `<h2>Version ${escapeHtml(deps.appVersion)}</h2>` +
-        `<p class="sub">Running ${escapeHtml(uptimeText)} · schema ` +
-        `${readSchemaVersionSafe()} · database ${formatBytes(size)}</p>` +
-        `<p>${integrity.ok ? 'The database checks out.' : `Database problem: ${escapeHtml(integrity.detail)}`}</p>` +
-        `</article>` +
-
-        `<h2 class="add">Timezone</h2>` +
-        `<p class="hint">Every all-day event and the whole shift rotation are ` +
-        `anchored to this. A wall somewhere else can override it on its own card.</p>` +
-        /*
-         * No echo here, deliberately — unlike Weather and Calendars.
-         *
-         * A rejected timezone reaches that branch *because* it is not in
-         * `offeredTimezones()`, so echoing it selects nothing and the browser
-         * preselects whatever sorts first: `Africa/Abidjan`, with Save live
-         * over it. That is `setup.ts`'s `detectedTimezoneOption` rule
-         * ("never 'nothing' … rather than leaving the select to preselect
-         * whatever sorts first") and it is worth restating, because an echo is
-         * the right answer for a text field and the wrong one for a closed
-         * list: there is nothing to hand back that the control can show. The
-         * stored zone stays selected, so the form is honestly clean and the
-         * message says to choose from the list.
-         */
-        `<form method="post" action="admin/system/timezone"${dirtyForm()}>` +
-        selectField({
-          label: 'Household timezone',
-          name: 'timezone',
-          /*
-           * The stored zone is always one of the options, even when `Intl` has
-           * never heard of it.
-           *
-           * `offeredTimezones()` is whatever this build's `Intl` knows, plus a
-           * UTC fallback — and a database restored from an image with different
-           * tzdata, or one running the ten-zone list used when
-           * `supportedValuesOf` is missing, can hold a zone that is not in it.
-           * Listing only the offered ones then leaves *nothing* selected, the
-           * browser picks whatever sorts first (`Africa/Abidjan`), `looksEdited`
-           * correctly reports a form that differs from its markup, and one
-           * press of the now-live Save re-anchors every all-day event and the
-           * whole shift rotation to west Africa.
-           *
-           * So the household's own zone is added rather than replaced: it is a
-           * fact about them, not a suggestion. `setup.ts`'s
-           * `detectedTimezoneOption` falls back to UTC instead, which is right
-           * there — nothing is stored yet and it is guessing.
-           */
-          optionsHtml: (offeredTimezones().includes(household.timezone)
-            ? offeredTimezones()
-            : [household.timezone, ...offeredTimezones()]
-          )
-            .map(
-              (zone) =>
-                `<option value="${escapeHtml(zone)}"` +
-                `${zone === household.timezone ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
-            )
-            .join(''),
-        }) +
-        saveRow('admin/system') +
-        `</form>` +
-
-        `<h2 class="add">Update check</h2>` +
-        updateSection() +
-
-        `<h2 class="add">Backup</h2>` +
-        `<p class="hint">Two files, and you need both to restore everything. The ` +
-        `database holds your calendars and settings; the key is what decrypts the ` +
-        `calendar addresses inside it.</p>` +
-        `<div class="row">` +
-        downloadForm('admin/system/backup', 'Download database') +
-        downloadForm('admin/system/key', 'Download key', 'secondary') +
-        `</div>` +
-        errorBlock(
-          'The key file is a credential.',
-          'Anyone with it and your database can read your calendar addresses. ' +
-            'Keep it somewhere private, and never attach it to a support request.',
+        card(
+          `<h2>Version ${escapeHtml(deps.appVersion)}</h2>` +
+            /*
+             * Four readings in a table rather than four run together in a line.
+             *
+             * They were one `.sub` — "Running 3 hours · schema 38 · database
+             * 1.2 MB" — which is the shape somebody writes when there is no
+             * table to reach for, and it is the wrong shape for what this is:
+             * labelled machine readings, mostly figures, on the one screen a
+             * household opens *because* they are about to quote one of them
+             * into a bug report. A middle-dotted sentence makes you count
+             * separators to find the schema number. A table puts the labels
+             * down the left and the values on a common right edge, tabular,
+             * where two figures line up under each other.
+             */
+            dataTable(
+              [{ label: 'Reading' }, { label: 'Value', numeric: true }],
+              [
+                ['Running', escapeHtml(uptimeText)],
+                ['Schema', String(readSchemaVersionSafe())],
+                ['Database', escapeHtml(formatBytes(size))],
+                ['Integrity', integrity.ok ? tag('Checks out', 'ok') : tag('Problem', 'danger')],
+              ],
+            ) +
+            (integrity.ok ? '' : `<p>Database problem: ${escapeHtml(integrity.detail)}</p>`),
+          // The edge carries the hue and the row inside says it in words, so
+          // neither a monochrome screenshot nor a colour-blind reader is left
+          // relying on a tint. See card()'s own note on why a tone is an edge
+          // here and not a ground.
+          integrity.ok ? {} : { tone: 'danger' },
         ) +
 
-        `<h2 class="add">Restore</h2>` +
-        `<p class="hint">Upload a database backup, and the key if you have it — ` +
-        `without it your calendar addresses stay encrypted and unreadable. Both ` +
-        `are checked and put aside, then applied when Maverick Wall next starts.</p>` +
-        `<form method="post" action="admin/system/restore" enctype="multipart/form-data">` +
-        textField({ label: 'Backup file', name: 'backup', type: 'file', required: true }) +
-        textField({
-          label: 'Key file',
-          name: 'key',
-          type: 'file',
-          hint: 'Optional. The file System → Backup downloads as maverick-wall.key.',
-        }) +
-        `<button type="submit">Stage restore</button></form>` +
+        section(
+          'Timezone',
+          'Every all-day event and the whole shift rotation are anchored to this. ' +
+            'A wall somewhere else can override it on its own card.',
+          /*
+           * No echo here, deliberately — unlike Weather and Calendars.
+           *
+           * A rejected timezone reaches that branch *because* it is not in
+           * `offeredTimezones()`, so echoing it selects nothing and the browser
+           * preselects whatever sorts first: `Africa/Abidjan`, with Save live
+           * over it. That is `setup.ts`'s `detectedTimezoneOption` rule
+           * ("never 'nothing' … rather than leaving the select to preselect
+           * whatever sorts first") and it is worth restating, because an echo
+           * is the right answer for a text field and the wrong one for a closed
+           * list: there is nothing to hand back that the control can show. The
+           * stored zone stays selected, so the form is honestly clean and the
+           * message says to choose from the list.
+           */
+          `<form method="post" action="admin/system/timezone"${dirtyForm()}>` +
+            selectField({
+              label: 'Household timezone',
+              name: 'timezone',
+              /*
+               * The stored zone is always one of the options, even when `Intl`
+               * has never heard of it.
+               *
+               * `offeredTimezones()` is whatever this build's `Intl` knows,
+               * plus a UTC fallback — and a database restored from an image
+               * with different tzdata, or one running the ten-zone list used
+               * when `supportedValuesOf` is missing, can hold a zone that is
+               * not in it. Listing only the offered ones then leaves *nothing*
+               * selected, the browser picks whatever sorts first
+               * (`Africa/Abidjan`), `looksEdited` correctly reports a form that
+               * differs from its markup, and one press of the now-live Save
+               * re-anchors every all-day event and the whole shift rotation to
+               * west Africa.
+               *
+               * So the household's own zone is added rather than replaced: it
+               * is a fact about them, not a suggestion. `setup.ts`'s
+               * `detectedTimezoneOption` falls back to UTC instead, which is
+               * right there — nothing is stored yet and it is guessing.
+               */
+              optionsHtml: (offeredTimezones().includes(household.timezone)
+                ? offeredTimezones()
+                : [household.timezone, ...offeredTimezones()]
+              )
+                .map(
+                  (zone) =>
+                    `<option value="${escapeHtml(zone)}"` +
+                    `${zone === household.timezone ? ' selected' : ''}>${escapeHtml(zone)}</option>`,
+                )
+                .join(''),
+            }) +
+            saveRow('admin/system') +
+            `</form>`,
+        ) +
 
-        `<h2 class="add">Diagnostics</h2>` +
-        `<p class="hint">Safe to attach to a bug report: it carries no calendar ` +
-        `addresses, no event titles and no email addresses — only hostnames, ` +
-        `counts and the log below.</p>` +
-        downloadForm('admin/system/diagnostics', 'Download diagnostics') +
+        section('Update check', undefined, updateSection()) +
 
-        `<h2 class="add">Recent log</h2>` +
-        (lines.length === 0
-          ? `<p class="hint">Nothing logged yet.</p>`
-          : `<pre class="log">${escapeHtml(logText)}</pre>`),
+        section(
+          'Backup',
+          'Two files, and you need both to restore everything. The database holds ' +
+            'your calendars and settings; the key is what decrypts the calendar ' +
+            'addresses inside it.',
+          /*
+           * A row per file rather than two buttons side by side.
+           *
+           * As a `.row` the pair said nothing about which file is which —
+           * "Download database" and "Download key", with the sentence that
+           * tells them apart up in the section's prose, where somebody reads it
+           * once and never again. A list row puts the name and what it holds
+           * beside the button that fetches it, which is the whole of what a
+           * list row is for: the explanation travels with the control.
+           */
+          listRow(
+            '',
+            {
+              title: 'Database',
+              detail:
+                'Your calendars, walls and settings. Restores everything except ' +
+                'the calendar addresses.',
+            },
+            downloadForm('admin/system/backup', 'Download'),
+          ) +
+            listRow(
+              '',
+              {
+                title: 'Encryption key',
+                detail: 'What decrypts the calendar addresses inside the database.',
+              },
+              downloadForm('admin/system/key', 'Download', 'secondary'),
+            ) +
+            errorBlock(
+              'The key file is a credential.',
+              'Anyone with it and your database can read your calendar addresses. ' +
+                'Keep it somewhere private, and never attach it to a support request.',
+            ),
+        ) +
+
+        section(
+          'Restore',
+          'Upload a database backup, and the key if you have it — without it your ' +
+            'calendar addresses stay encrypted and unreadable. Both are checked and ' +
+            'put aside, then applied when Maverick Wall next starts.',
+          `<form method="post" action="admin/system/restore" enctype="multipart/form-data">` +
+            textField({ label: 'Backup file', name: 'backup', type: 'file', required: true }) +
+            textField({
+              label: 'Key file',
+              name: 'key',
+              type: 'file',
+              hint: 'Optional. The file System → Backup downloads as maverick-wall.key.',
+            }) +
+            `<button type="submit">Stage restore</button></form>`,
+        ) +
+
+        section(
+          'Diagnostics',
+          'Safe to attach to a bug report: it carries no calendar addresses, no ' +
+            'event titles and no email addresses — only hostnames, counts and the ' +
+            'log below.',
+          listRow(
+            '',
+            {
+              title: 'Diagnostics export',
+              detail: 'Hostnames, counts, job state and the log below.',
+            },
+            downloadForm('admin/system/diagnostics', 'Download'),
+          ),
+        ) +
+
+        section(
+          'Recent log',
+          undefined,
+          /*
+           * "Nothing logged yet" is a claim about this process, and it is on
+           * the branch that can make it: `lines` is the in-memory ring this
+           * server has written since it booted, so an empty one means exactly
+           * that and nothing about a log that could not be read. No action is
+           * offered because there is none — a household cannot make a container
+           * say something — which is the other half of emptyState's rule.
+           */
+          lines.length === 0
+            ? emptyState('Nothing logged yet.')
+            : `<pre class="log">${escapeHtml(logText)}</pre>`,
+        ),
     });
   }
 
@@ -4115,8 +4191,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         )
         .join('');
 
-    return (
-      `<article class="card">` +
+    return card(
       /*
        * The name, the host, and an overflow for the destructive one.
        *
@@ -4132,7 +4207,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        */
       `<div class="card-head"><div class="card-head-main">` +
       `<h2><span class="swatch" style="--swatch:${escapeHtml(source.color)}"></span>` +
-      `${escapeHtml(source.name)}${source.enabled === 1 ? '' : ' (off)'}</h2>` +
+      /*
+       * "(off)" used to be two words appended to the name, so a calendar's
+       * heading read "Work (off)" and its state was a parenthesis inside the
+       * thing it was about — invisible scanning a list of eight, and
+       * indistinguishable from a calendar somebody had actually named that. It
+       * is a tag now: its own element, its own ground, and still a *word*,
+       * which is what a monochrome screenshot and a colour-blind reader both
+       * need. The colour is never the signal on its own.
+       */
+      `${escapeHtml(source.name)}</h2>` +
+      (source.enabled === 1 ? '' : tag('Not syncing', 'warn')) +
       // The host and never the path. The path is the credential. A Home
       // Assistant calendar has neither — it is an entity read through the one
       // connection — so it says what it is rather than "unknown host".
@@ -4146,11 +4231,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
       `aria-label="More actions for ${escapeHtml(source.name)}" title="More">${icon('more')}</summary>` +
       `<div class="ovf-menu" role="menu">` +
-      // The ellipsis is the promise that a tap here is not the end of it — the
-      // same wording the wall header's "Reset layout…" and "Unpair wall…" use
-      // for the two other actions that ask before they act.
-      `<form method="get" action="admin/calendars/${id}/delete">` +
-      `<button class="ovf-item is-danger" type="submit">Remove…</button></form>` +
+      // The ellipsis, the GET rather than a one-click POST, and an accessible
+      // name that says *which* calendar are all `destructive()`'s now rather
+      // than three things this row had to remember. Eight rows of "Remove" is
+      // what a screen reader hears without the last of them.
+      destructive('Remove', {
+        thing: source.name,
+        confirmAction: `admin/calendars/${id}/delete`,
+      }) +
       `</div></details></div>` +
       status +
 
@@ -4254,8 +4342,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<form method="post" action="admin/calendars/${id}/sync">` +
           `<button class="secondary" type="submit">Sync now</button></form>` +
           `</div>`
-        : '') +
-      `</article>`
+        : ''),
+      // A failing calendar takes the hue on its own edge, so a list of eight
+      // says which one to look at before a word of it is read. The tone follows
+      // the branch the status text above is on, never a second opinion about
+      // it — and it is an edge rather than a ground precisely so the error
+      // block inside it stays legible. See `card`.
+      source.lastError !== null ? { tone: 'danger' } : {},
     );
   }
 
@@ -4318,24 +4411,37 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const offer = available.filter((entity) => !already.has(entity.entityId));
     if (offer.length === 0) return '';
 
-    return (
-      `<h2 class="add">From Home Assistant</h2>` +
-      `<p class="hint">Home Assistant is connected and has ` +
-      `${offer.length} calendar${offer.length === 1 ? '' : 's'} you have not added yet. ` +
-      `Adding one here needs no address — its events come through the same ` +
-      `connection, and it behaves exactly like a feed once it is in.</p>` +
-      `<form method="post" action="admin/home-assistant/calendars">` +
-      selectField({
-        label: 'Calendar',
-        name: 'entity_id',
-        optionsHtml: offer
-          .map(
-            (entity) =>
-              `<option value="${escapeHtml(entity.entityId)}">${escapeHtml(entity.name)}</option>`,
-          )
-          .join(''),
-      }) +
-      `<button type="submit">Add from Home Assistant</button></form>`
+    return section(
+      'From Home Assistant',
+      `Home Assistant is connected and has ` +
+        `${offer.length} calendar${offer.length === 1 ? '' : 's'} you have not added yet. ` +
+        `Adding one here needs no address — its events come through the same ` +
+        `connection, and it behaves exactly like a feed once it is in.`,
+      /*
+       * One row per calendar rather than one `<select>` over all of them.
+       *
+       * The select was the cheap thing to write and it hides the answer to the
+       * question somebody arrives with: *which* of my Home Assistant calendars
+       * are not on the wall yet. A closed list says "there are some" and makes
+       * you open it to find out, and adding two means two round trips through a
+       * control that has forgotten the first. `listRow` is the shape this
+       * always wanted — the entity's name, its id under it, the one action on
+       * the right — and it posts to the same endpoint with the same field, so
+       * there is still one validation and one writer.
+       */
+      offer
+        .map((entity) =>
+          listRow(
+            '',
+            { title: entity.name, detail: entity.entityId },
+            `<form method="post" action="admin/home-assistant/calendars">` +
+              `<input type="hidden" name="entity_id" value="${escapeHtml(entity.entityId)}">` +
+              `<button class="secondary" type="submit"` +
+              ` aria-label="Add ${escapeHtml(entity.name)} from Home Assistant">Add</button>` +
+              `</form>`,
+          ),
+        )
+        .join(''),
     );
   }
 
@@ -4405,9 +4511,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * one, whose whole effect was to scroll. One primary per screen, and on
        * this screen it is the Add at the foot of the form.
        */
-      ...(sources.length === 0
-        ? { intro: 'No calendars yet. Add the iCal address of one below.' }
-        : {}),
       body:
         /*
          * A row's error belongs above the rows, not under "Add a calendar".
@@ -4422,68 +4525,100 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * apart, because it is only ever set by a row's own handler.
          */
         (echo === undefined || error === undefined ? '' : errorHtml) +
-        sources
-          .map((source) => sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined))
-          .join('') +
-        haCalendarSection(haCalendars, sources) +
-        `<h2 class="add" id="add">Add a calendar</h2>` +
-        (echo !== undefined || error === undefined ? '' : errorHtml) +
-        (tested === undefined ? '' : previewPanel(tested)) +
-        `<form method="post" action="admin/calendars">` +
-        textField({
-          label: 'Name',
-          name: 'name',
-          required: true,
-          placeholder: 'Family',
-          value: values.name ?? '',
-        }) +
-        textField({
-          label: 'Address',
-          name: 'url',
-          required: true,
-          placeholder: 'https://…/basic.ics',
-          value: values.url ?? '',
-        }) +
-        // Owner is offered at add time only when there is someone to pick, so a
-        // household with no people never sees a control that does nothing.
-        (people.length === 0
-          ? ''
-          : selectField({
-              label: 'Belongs to',
-              name: 'person_id',
-              hint: 'When a calendar belongs to someone, its events take their colour on the wall.',
-              optionsHtml:
-                `<option value="" selected>Everyone</option>` +
-                people
-                  .map(
-                    (person) =>
-                      `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
-                  )
-                  .join(''),
-            })) +
-        networkAccessDisclosure({
-          allowPrivateNetwork: values.allowPrivateNetwork === true,
-          allowLoopback: values.allowLoopback === true,
-          allowHttp: values.allowHttp === true,
-          // Only for the add form's own refusal. A rejected row save is echoed
-          // at the top of the page and has nothing to do with these controls.
-          open: echo === undefined && networkOptions.length > 0,
-        }) +
         /*
-         * Two buttons, one form — and the emphasis was the wrong way round.
+         * The empty state is a claim, so it sits on the branch that can make it.
          *
-         * Test feed was the filled primary and Add the outlined secondary, so
-         * the optional diagnostic was styled as the goal and the goal as
-         * optional. Add is the one thing this screen exists to do, so it is
-         * the filled button and the only one on the page. Testing first is
-         * still the cheap habit worth encouraging, so it keeps the left-hand
-         * position — order says "do this first", weight says "this is what you
-         * came for", and they are different sentences.
+         * `sources.length === 0` is "this household has added no calendars",
+         * which is exactly the sentence — not "the list is loading", not "you
+         * have filtered them all out". It used to be the page's `intro`: a grey
+         * lead line above an expanse of nothing, with the form it refers to
+         * three hundred pixels below it. It is where the rows would be now, and
+         * it names the one action, which is that form.
          */
-        `<div class="row">` +
-        `<button class="secondary" type="submit" name="action" value="test">Test feed</button>` +
-        `<button type="submit" name="action" value="save">Add</button>` +
-        `</div></form>`,
+        (sources.length === 0
+          ? /*
+             * And no action on it, which is `emptyState`'s rule read the way
+             * round it is written: *offer the one action*, where there is one
+             * to offer. On an empty Calendars page the add form is already on
+             * screen a few hundred pixels down — a button here would be a
+             * second primary whose whole effect is to scroll, which is the
+             * same objection that keeps an "Add a calendar" out of the app
+             * bar on this screen and which `admin-saved.test.ts` pins. The
+             * sentence names the thing that is missing and points at the form;
+             * a control that only moves the viewport is not an action.
+             */
+            emptyState('No calendars yet. Add the iCal address of one below.')
+          : sources
+              .map((source) =>
+                sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined),
+              )
+              .join('')) +
+        haCalendarSection(haCalendars, sources) +
+        section(
+          'Add a calendar',
+          undefined,
+          (echo !== undefined || error === undefined ? '' : errorHtml) +
+            (tested === undefined ? '' : previewPanel(tested)) +
+            `<form method="post" action="admin/calendars">` +
+            textField({
+              label: 'Name',
+              name: 'name',
+              required: true,
+              placeholder: 'Family',
+              value: values.name ?? '',
+            }) +
+            textField({
+              label: 'Address',
+              name: 'url',
+              required: true,
+              placeholder: 'https://…/basic.ics',
+              value: values.url ?? '',
+            }) +
+            // Owner is offered at add time only when there is someone to pick,
+            // so a household with no people never sees a control that does
+            // nothing.
+            (people.length === 0
+              ? ''
+              : selectField({
+                  label: 'Belongs to',
+                  name: 'person_id',
+                  hint: 'When a calendar belongs to someone, its events take their colour on the wall.',
+                  optionsHtml:
+                    `<option value="" selected>Everyone</option>` +
+                    people
+                      .map(
+                        (person) =>
+                          `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
+                      )
+                      .join(''),
+                })) +
+            networkAccessDisclosure({
+              allowPrivateNetwork: values.allowPrivateNetwork === true,
+              allowLoopback: values.allowLoopback === true,
+              allowHttp: values.allowHttp === true,
+              // Only for the add form's own refusal. A rejected row save is
+              // echoed at the top of the page and has nothing to do with these
+              // controls.
+              open: echo === undefined && networkOptions.length > 0,
+            }) +
+            /*
+             * Two buttons, one form — and the emphasis was the wrong way round.
+             *
+             * Test feed was the filled primary and Add the outlined secondary,
+             * so the optional diagnostic was styled as the goal and the goal as
+             * optional. Add is the one thing this screen exists to do, so it is
+             * the filled button and the only one on the page. Testing first is
+             * still the cheap habit worth encouraging, so it keeps the
+             * left-hand position — order says "do this first", weight says
+             * "this is what you came for", and they are different sentences.
+             */
+            `<div class="row">` +
+            `<button class="secondary" type="submit" name="action" value="test">Test feed</button>` +
+            `<button type="submit" name="action" value="save">Add</button>` +
+            `</div></form>`,
+          // The fragment the empty state's action links to.
+          'add',
+        ),
     });
   }
 }

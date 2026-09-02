@@ -403,8 +403,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2578 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 445 · server 1666. CI runs the whole suite and then the README's
+**2621 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 445 · server 1709. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -459,8 +459,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**184 of the server's tests fail without a real Chromium and say so**, across
-25 files, which is worth knowing before reading a red suite as a regression. A
+**197 of the server's tests fail without a real Chromium and say so**, across
+27 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -4889,6 +4889,82 @@ household has looked at a kitchen wall drawn this way, and no e-paper hardware
 has been photographed. The wall's house strip and a module panel's rows go
 through the identical `glyphNode` seam as the forecast, but only the forecast
 has been seen on a real wall.
+
+**The admin has a component layer now, and the reason it did not is the whole
+argument for building one.** `html.ts` exported fifteen helpers and eleven were
+form fields — there was no card, list row, table, badge, section, empty state,
+page header or destructive control anywhere, so every one of those on
+forty-nine routes was re-typed as literal HTML. The measured consequence is not
+a matter of taste: **379 of 384 spacing declarations bypassed `--mw-s-1..7`**,
+of which five of the seven rungs were declared, commented, and read by
+*nothing*; 31 of 101 radii and 48 of 93 font sizes were raw pixels against
+token sets that already existed. That is not carelessness. A screen has to
+compose something, and with nothing to inherit from the only thing left to copy
+is the screen next door — so every feature restates the vocabulary and gets a
+little of it wrong. Sweeping the declarations buys a green run and one
+feature's worth of drift back.
+
+`components.ts` is the eight: `pageHeader`, `section`, `card`, `listRow`,
+`dataTable`, `tag`, `emptyState`, `destructive`. `escapeHtml` and `icon` moved
+down a layer (`escape.ts`, `icons.ts`) so components can use both without
+importing the file that imports *them* — `html.ts` re-exports both, so no call
+site changed. `.card` and `.tag` are **moved** into the component layer rather
+than restated beside it, tokenised to the pixel (`1rem` is `--mw-s-4`, `1px` is
+`--mw-hairline`), because two rules with one selector and one of them "the
+token version" is the drift being fixed rather than a step towards fixing it.
+`COMPONENT_STYLE` is interpolated into the one stylesheet, so the served
+structure is unchanged; it is a separate string only so
+`admin-components.test.ts` has a subject — **every declaration in it spends
+tokens and no raw length**, absolutely and with no allow-list, which is a claim
+that cannot be made about a sheet with forty-nine screens of one-offs in it.
+That is what pulled `--mw-s-2/3/5/6/7` and `--mw-hairline` off the drift file's
+unread list: nothing swept them in, eight components were written and they had
+something to spend.
+
+**None of it reintroduces what Material's removal took out**, and that was the
+brief's first constraint: no elevation ladder (a card is a hairline and a
+surface step; a card *tone* moves the **edge** to a status hue and leaves the
+ground alone, because a tinted 400px card is a colour sized for a chip and
+swallows the `errorBlock` or the `tag` inside it saying the same thing in
+words), no tonal state layer, nothing rounder than `--mw-r-4`, no icon beside a
+heading and none in an empty state. **`tag` deliberately carries no glyph**:
+the brief asked for "icon plus label, never colour alone", and the accessibility
+half of that is met by the label being required and load-bearing — a leading
+tick would be decoration standing beside the word that already says it, which
+is the one placement this admin bans outright and the shape of every mistake
+recorded above it.
+
+Converted as proof: `/admin/calendars` (a list of rows with per-row actions)
+and `/admin/system` (settings, downloads and the dirty-form guard). The
+dirty-flag guard, `data-download` on the three downloads, echo-on-400 and its
+limit at a closed list, `savedRedirect`'s token-not-message, the drawer's
+script-free checkbox and DOM order, and the skip link are all untouched and all
+still asserted. Three faults came out of it and each was a claim on the wrong
+branch: an "(off)" appended to a calendar's own name (a state as a parenthesis
+*inside* the thing it is about — a `tag` now), a `<select>` hiding *which* Home
+Assistant calendars are not yet added, and an empty state offering "Add a
+calendar" as an in-page anchor to a form already on screen —
+`admin-saved.test.ts` caught that last one, correctly: a control whose whole
+effect is to scroll is not an action.
+
+**Two assertions written for this could not go red, and finding that out is the
+part worth keeping.** `.mw-row-trail{position:relative;z-index:1}` reads as the
+fix for "the stretched row link eats the button beside it" and was written that
+way first; measured in an isolated page it *is* that fix, and measured in the
+real admin it changes nothing, because `button,.btn` is already
+`position:relative` for its own pointer target and wins on document order. A
+line nothing can contradict is not a fix, so it is gone and the **coupling** is
+asserted instead — in the browser, by tapping the row's own button and reading
+back what is under the finger, which goes red the moment `button,.btn` stops
+positioning itself. And "every list row is at least 48px" passed with
+`min-height` deleted, because every real row on System carries a title, a line
+of prose and a control and is taller than the floor anyway; the test plants a
+row with nothing but a name, which is the only shape where the rule binds.
+Thirteen further mutations were checked and all thirteen are red.
+
+**Still unproven where it counts:** nobody has used either converted screen on
+a real phone, and the other forty-seven routes are still literal HTML — this
+phase built the layer and converted two, deliberately.
 
 ---
 

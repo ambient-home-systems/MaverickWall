@@ -145,13 +145,14 @@ const OFF_GRID_SPACING: readonly string[] = [];
  * Tokens nothing reads today. Two kinds, and the difference matters when one
  * is being burned down:
  *
- *  - **The one-offs.** `--mw-focus`, `--mw-hairline`, `--mw-shadow-0`,
- *    `--mw-danger-ink`, `--mw-night-soft`, `--mw-dur-3` and
- *    the `--night` alias are declared, described in a comment, and never
- *    used. Each is a delete or a use, and it is 6b's call which. (`--mw-touch`
- *    was the RFC's own example of one — it now backs the Phase 7 touch-target
- *    rules below 900px.)
- *  - **The unfilled rungs of a ladder.** `--mw-s-2` and the `--mw-t-*` parts
+ *  - **The one-offs.** `--mw-focus`, `--mw-shadow-0`, `--mw-danger-ink`,
+ *    `--mw-night-soft`, `--mw-dur-3` and the `--night` alias are declared,
+ *    described in a comment, and never used. Each is a delete or a use.
+ *    (`--mw-touch` was the RFC's own example of one — it now backs the Phase 7
+ *    touch-target rules below 900px, and `listRow` reads it as the floor it
+ *    was declared to be. `--mw-hairline` was another and is now what every
+ *    component's border is a pixel of.)
+ *  - **The unfilled rungs of a ladder.** The `--mw-t-*` parts
  *    are emitted as complete scales by construction — `adminTypeVars()` writes
  *    four parts and a shorthand for every role whether or not a call site
  *    wants them — so an unread rung is a vocabulary with room in it rather
@@ -159,25 +160,22 @@ const OFF_GRID_SPACING: readonly string[] = [];
  *    naming rule, because "it looks like part of a scale" is exactly the
  *    reasoning that would let a genuinely dead token in beside them, and
  *    because a scale nobody uses at all is worth seeing.
+ *
+ * **The whole spacing scale came off this list at once**, which is worth a
+ * line because it is the argument for building a component layer rather than
+ * sweeping declarations. `--mw-s-2`, `-3`, `-5`, `-6` and `-7` were declared,
+ * commented, and read by nothing: five of seven rungs of the one scale the
+ * audit found 379 declarations bypassing. Nothing swept them in — eight
+ * components were written, and they had something to spend.
  */
 const UNREFERENCED_TOKENS: readonly string[] = [
   '--mw-danger-ink',
   '--mw-dur-3',
   '--mw-focus',
-  '--mw-hairline',
   '--mw-night-soft',
-  '--mw-s-2',
-  '--mw-s-3',
-  '--mw-s-5',
-  '--mw-s-6',
-  '--mw-s-7',
   '--mw-shadow-0',
-  '--mw-t-body-lg',
   '--mw-t-body-lg-lh',
-  '--mw-t-body-lg-tracking',
   '--mw-t-body-lg-weight',
-  '--mw-t-body-sm',
-  '--mw-t-body-sm-tracking',
   '--mw-t-body-sm-weight',
   '--mw-t-body-weight',
   '--mw-t-display',
