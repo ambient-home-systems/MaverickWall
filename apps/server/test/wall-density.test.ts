@@ -539,6 +539,23 @@ interface Baseline {
  * event name beside it by more than 1.2x", which its rem fallback had been
  * breaking at 1.59x. The room it frees goes straight into the agenda.
  *
+ * **`runsUnderFloor` rises again, at the same two sizes, for a fourth reason:
+ * `--f-sans` and `--f-cond` are a real self-hosted face now instead of
+ * `system-ui` and Roboto Condensed.** 41→46 at 480x800, 58→63 at 800x480 —
+ * both unmeasured sizes, where the calendar widget's density tier and every
+ * rem-derived size on the wall are read off Roboto Flex's own metrics rather
+ * than whatever font a tablet happened to already have. `AGENDA_BASELINE`'s
+ * seven named runs do not move at either size, which is what says this is the
+ * font measuring differently rather than a size anybody chose falling — the
+ * runs that cross the floor are the ones this file does not name individually
+ * (event and weekday text elsewhere on the glass), pushed under 22px by a few
+ * tenths of a pixel each. The two measured sizes (1080x1920, 1920x1080,
+ * 2560x1440) do not move, because there a household's own panel dimensions
+ * drive the arc-minute scale rather than this rem fallback — the fallback is
+ * exactly the thing rule three's font work exists to make consistent, and a
+ * one-time cost on the sizes nobody has measured yet is the honest price of
+ * two panels on the same version finally drawing the same type.
+ *
  * The audit that this file exists to make repeatable reported, at these same
  * five sizes: 6 agenda events across 3 days at every size; 0 month names
  * visible at 480x800 and 800x480, 3 at 1080x1920, 7 at 1920x1080, 8 at
@@ -563,7 +580,7 @@ export const BASELINE: Record<string, Baseline> = {
     // No room for a lane under the numeral at this cell size, so the bars are
     // measured back out by the tier pass and the events go back to being rows.
     spanBars: 0,
-    runsUnderFloor: 41,
+    runsUnderFloor: 46,
     agendaDays: 2,
     agendaEvents: 6,
     canvasSharePercent: 93.5,
@@ -575,7 +592,7 @@ export const BASELINE: Record<string, Baseline> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 0,
-    runsUnderFloor: 58,
+    runsUnderFloor: 63,
     agendaDays: 4,
     agendaEvents: 11,
     canvasSharePercent: 93.5,

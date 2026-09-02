@@ -395,8 +395,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2556 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 445 · server 1644. CI runs the whole suite and then the README's
+**2559 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 445 · server 1647. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -1346,8 +1346,66 @@ from calendars the household does not control.
 Almanac, Glance). Nothing outside that file names a colour. Two things had to
 be adapted: `color-mix()` is the same vintage as `:has()` and is out under rule
 two, so the cell and badge tints are pre-mixed per theme against that theme's
-own background; and no web font is fetched, so the design's Roboto Condensed
-and Roboto Mono are used only if the device already has them.
+own background; and no web font is fetched — every face the wall draws is
+self-hosted from `/assets/fonts` and `@font-face`'d in `display.css` itself,
+never hoped for on the device (the paragraph below is the one time that was not
+true, and the fix).
+
+**`--f-sans` used to name a font the wall did not ship, and `--f-mono` named
+one it never had at all.** `system-ui` led the stack, ahead of `'Roboto'` —
+which is not bundled by the display either — so the wall's most-used family
+token, resolved by 22-odd rules, was whatever face a tablet happened to ship;
+two panels on the same version could render different type. `--f-mono` named
+`'Roboto Mono'`, bundled nowhere, so every time and every reading on the wall
+was already falling through to `ui-monospace` — silently, since nothing
+measures a font that failed to apply. Meanwhile `roboto.woff2` was sitting in
+the image, self-hosted for the *admin*, and the display never `@font-face`'d
+it; `--f-serif` was declared and used by nothing; and Inter and JetBrains Mono
+were `@font-face`'d (91KB across four files) and referenced by zero rules —
+downloaded by every wall, for nothing.
+
+**Roboto Flex replaces the guess, and it replaces a second family too.**
+Self-hosted, Apache's superfamily sibling to the bundled Roboto and Roboto
+Condensed, subset to Latin plus Latin-1 Supplement the same way every other
+bundled face is (the file's own metadata names SIL OFL 1.1 rather than
+Apache-2.0, despite the shared lineage — see `assets/fonts/LICENSES.md`, which
+is the source of truth, not the family name). `--f-sans` now leads with it,
+Roboto Condensed and Roboto behind it as genuine last-resort names reached
+only if the bundled file somehow fails, `system-ui` demoted to the actual final
+fallback it should always have been. Three axes ship on the one file:
+`wdth` 75–100 is what `--f-cond` is now — a width, not a second family, so the
+month grid and the chore board narrow the *same* letterforms the agenda draws
+rather than switching to Roboto Condensed, which is why those used to read as
+two different products on one wall. `opsz` 8–144 needs no rule at all —
+`font-optical-sizing: auto` is the default, driven by each element's own
+`font-size`, so a 22px event name and a 137px clock each get the cut drawn for
+their own size from the one file. `GRAD` -50..100 has no registered CSS
+property, so it is carried as `--f-grade` and applied once on `body`,
+inherited everywhere, defaulting to 0 — wired up for RFC 006 phase 11's future
+dark-theme and 1-bit stroke corrections, which need thickness without a
+glyph's advance width moving (a weight change moves it; a grade change
+cannot), and cost nothing today.
+
+`--f-mono` is gone rather than repointed at a real bundled mono face. Its two
+uses were times and the chore board's clock column, and both wanted digits
+that do not change width, not a monospaced letterform — which is exactly what
+`font-variant-numeric: tabular-nums` on `body` already promises, inherited
+everywhere. A figure that changes width changes a row's geometry, and on
+e-ink that is a partial-refresh region change, so this is a reflow requirement
+now, not a preference, and `browser-tabular-figures.test.ts` walks every
+visible run on a real wall asking what `font-variant-numeric` actually
+computed to rather than trusting the declaration. The one on-wall exception is
+the pairing code field, which keeps a literal `monospace` — a household aligns
+what they typed against what the wall shows character for character there,
+which is a case equal-width *letters* serve and tabular digits alone do not.
+JetBrains Mono is deleted with it: nothing names it any longer. Inter is
+deleted outright — it was never used for anything a household could pick,
+unlike Roboto Condensed, which stays bundled solely because a custom theme can
+still choose it by name (`api/themes.ts`'s `FONTS` allowlist, which lost Inter
+and JetBrains Mono as options for exactly the reason their files are gone: a
+theme naming a family the image does not ship is the fault rule three exists
+to prevent). Net image size: four files (91,096 bytes) deleted, one (Roboto
+Flex, 60,168 bytes) added — 30,928 bytes smaller, about 30KB.
 
 **The month grid has a Swiss mode, and it is a mode rather than a
 restyling.** `cellEvents: 'swiss'` draws the International Typographic Style

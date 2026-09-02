@@ -176,6 +176,8 @@ const UNREFERENCED_TOKENS: readonly string[] = [
   '--mw-t-body-lg-lh',
   '--mw-t-body-lg-tracking',
   '--mw-t-body-lg-weight',
+  '--mw-t-body-sm',
+  '--mw-t-body-sm-tracking',
   '--mw-t-body-sm-weight',
   '--mw-t-body-weight',
   '--mw-t-display',

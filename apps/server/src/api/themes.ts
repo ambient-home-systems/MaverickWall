@@ -51,26 +51,39 @@ export const COLOUR_TOKENS = [
 const SHIFT_TOKENS = ['--s-day', '--s-night', '--s-break', '--s-straight'] as const;
 
 /**
- * The optional font tokens a theme can set: the heading face, the body face and
- * the data/times face. Each value is a whole font-family *stack*, chosen from
- * the closed list below — never a free string, so nothing a household types can
- * reach the wall's stylesheet. Omitted tokens leave the display's own defaults.
+ * The optional font tokens a theme can set: the heading face and the body
+ * face. Each value is a whole font-family *stack*, chosen from the closed
+ * list below — never a free string, so nothing a household types can reach
+ * the wall's stylesheet. Omitted tokens leave the display's own defaults.
+ *
+ * There used to be a third, `--f-mono`, for times and data readings — but the
+ * wall's mono uses were never really about a monospaced face, they were about
+ * digits that do not change width (`font-variant-numeric: tabular-nums`,
+ * already set on `body` and inherited everywhere). A face nothing lets a
+ * household actually preview is not a real choice, so the token is gone
+ * rather than left pointing at a face nobody picks it for.
  */
-export const FONT_TOKENS = ['--disp', '--f-sans', '--f-mono'] as const;
+export const FONT_TOKENS = ['--disp', '--f-sans'] as const;
 
 /**
  * The bundled, self-hosted faces (see `apps/server/assets/fonts` and the
  * `@font-face` declarations in `display.css`). The `stack` is exactly the CSS
  * value stored in a theme's tokens, so the allowlist below is the whole of the
  * safety: a font token must equal one of these strings.
+ *
+ * Inter and JetBrains Mono are gone from here because they are gone from the
+ * image — a stack naming a family the wall does not ship is exactly the fault
+ * this list exists to prevent. Roboto Condensed stays: it is no longer the
+ * built-in `--f-cond` (that is Roboto Flex at a width now, see `display.css`),
+ * but the file is still bundled and a household can still choose its look by
+ * name.
  */
 export const FONTS: readonly { readonly label: string; readonly stack: string }[] = [
-  { label: 'Inter', stack: "'Inter', system-ui, sans-serif" },
+  { label: 'Roboto Flex', stack: "'Roboto Flex', 'Roboto Condensed', 'Roboto', system-ui, sans-serif" },
   { label: 'Roboto Condensed', stack: "'Roboto Condensed', 'Arial Narrow', sans-serif" },
   { label: 'Oswald', stack: "'Oswald', 'Arial Narrow', sans-serif" },
   { label: 'Space Grotesk', stack: "'Space Grotesk', system-ui, sans-serif" },
   { label: 'Fraunces', stack: "'Fraunces', Georgia, serif" },
-  { label: 'JetBrains Mono', stack: "'JetBrains Mono', ui-monospace, monospace" },
 ];
 
 const FONT_STACKS = new Set(FONTS.map((f) => f.stack));
@@ -103,7 +116,6 @@ export const themeTokensSchema = z
     // to keep the display's defaults.
     '--disp': fontStack.optional(),
     '--f-sans': fontStack.optional(),
-    '--f-mono': fontStack.optional(),
   })
   .strict();
 

@@ -200,7 +200,7 @@ describe('themeTokensSchema', () => {
 
 describe('font tokens', () => {
   const heading = FONTS[0]?.stack ?? '';
-  const mono = FONTS[FONTS.length - 1]?.stack ?? '';
+  const body = FONTS[FONTS.length - 1]?.stack ?? '';
 
   it('accepts a bundled font stack, and none is fine (fonts are optional)', () => {
     expect(themeTokensSchema.safeParse(DARK).success).toBe(true);
@@ -211,10 +211,14 @@ describe('font tokens', () => {
     expect(themeTokensSchema.safeParse({ ...DARK, '--disp': 'Comic Sans, cursive' }).success).toBe(false);
   });
 
+  it('refuses a token this schema no longer has (Times & numbers is gone)', () => {
+    expect(themeTokensSchema.safeParse({ ...DARK, '--f-mono': heading }).success).toBe(false);
+  });
+
   it('carries a chosen font through resolution', () => {
     const d = db();
-    const created = createTheme(d, { name: 'Typed', tokens: { ...DARK, '--f-mono': mono } });
-    expect(resolveTheme(d, `custom:${created.id}`).tokens?.['--f-mono']).toBe(mono);
+    const created = createTheme(d, { name: 'Typed', tokens: { ...DARK, '--f-sans': body } });
+    expect(resolveTheme(d, `custom:${created.id}`).tokens?.['--f-sans']).toBe(body);
   });
 });
 
