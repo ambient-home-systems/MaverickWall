@@ -55,7 +55,7 @@ Violating any of these is a failed task.
 - No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink. **This rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them, and `no-emoji.test.ts` is what stops the fourth mapping. It scans comments too, because a comment is where the next one gets pasted from.
 - No stat tiles. A big number with a caption, or a 3-up row of them, is a dashboard idiom. This is a calendar.
 - No shadow on the display, at any size, in any theme. It bands on e-ink and burns in on OLED. Separation is space, then a 1px rule, then a ground step, in that order.
-- No transition or animation on any surface a screen sees. The wall has no pointer and redraws every 15 s; the panel physically cannot animate.
+- No transition or animation on any surface a screen sees. The wall has no pointer and redraws every 15 s; the panel physically cannot animate. **This was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads. It is a build failure now: `apps/display/test/motion.test.ts` holds `display.css` (source *and* the copy `dist/` serves), the wall's HTML, its offline shell and **every module in `main.ts`'s own import graph** to carrying neither word at all, and `apps/server/test/motion-scope.test.ts` holds the other two edges — the panel path reaches no stylesheet, and the admin *keeps* its three durations and three easings with every one of those declarations inside `prefers-reduced-motion: no-preference`. The two rules are opposite for a reason worth stating once: a wall has no pointer and redraws on a fifteen-second tick, so a transition there is a flicker in a room; the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
 - No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
 - The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
 - A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter.
@@ -418,8 +418,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2621 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 445 · server 1709. CI runs the whole suite and then the README's
+**2730 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 468 · server 1795. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -474,7 +474,7 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**197 of the server's tests fail without a real Chromium and say so**, across
+**198 of the server's tests fail without a real Chromium and say so**, across
 27 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
@@ -779,8 +779,8 @@ fills when today happens to be busy has moved the fault rather than fixed it.
 `EPAPER_RENDERER_VERSION` was **5** at the time this was written — 4 for the
 built-in layout and 5 for the widgets. Every paired panel's pixels move at 4,
 800x480 included; at 5 only the larger panels move, plus the one module-panel
-row described below. It is **6** now, for the density tiers; `frame.ts` carries
-the whole ladder and is the file to read rather than this line.
+row described below. It is **8** now; `frame.ts` carries the whole ladder and is
+the file to read rather than this line.
 
 **This phase landed against an acceptance gate a concurrent phase had already
 built, and moving its baseline is the interesting part.**
@@ -4404,8 +4404,13 @@ tables, the constants and every function *body*, compared as **sets derived from
 each file** rather than from a list written in the test, which is the lesson the
 ladder's own parity check learned after a third table sailed through it. What
 the panel supplies is only the two measurements, and there they differ honestly:
-every glyph is 8 wide and 8 tall with a pixel of tracking, so a character is
-1.125em and a 44px cell holds four of them.
+a character is whichever bitmap face the type tier chose, each face's own cell
+plus a pixel of tracking over its own height — 1.125em on the 8x8, 0.8125em on
+the 12x16, 0.7083em on the 16x24 — so a 44px cell holds four of them on a 7.5"
+panel and rather more on a 13.3" one. (That sentence read "every glyph is 8 wide
+and 8 tall … 1.125em" until phase 11 shipped the other two faces, which is the
+rot this section's own header warns about: a claim about how a renderer draws,
+left standing after the renderer changed under it.)
 
 That closes a divergence rather than only a fault. `pillMinCell`/`pillMinWidth`
 asked the two halves of the question separately and asked the width half far too
@@ -4904,6 +4909,145 @@ household has looked at a kitchen wall drawn this way, and no e-paper hardware
 has been photographed. The wall's house strip and a module panel's rows go
 through the identical `glyphNode` seam as the forecast, but only the forecast
 has been seen on a real wall.
+
+**The panel draws in three bitmap faces now, chosen by tier, and the fault they
+fix is one number measured at two panels.** `epaper/font.ts` shipped one 8x8
+alphabet at integer scales, so every type size anywhere in a 3.7x range of
+panels was 8, 16, 24 or 32 pixels — and `smallScale`, the role that carries a
+month cell's event names, a widget's title bar and every "+N", is
+`round(body / 2)`, which is **2 on a 10.3" panel and 2 on a 13.3" one**. At each
+panel's own read distance that is 12.6 arc-minutes and **9.9**: the larger,
+further screen drew it *smaller*. A ladder with rungs eight pixels apart cannot
+express anything between them, so there was nowhere for the bigger panel to go.
+
+`font-12x16.ts` and `font-16x24.ts` are the two new faces, and **this is the
+brand mark's argument one alphabet along**: `lit-cell-small.svg` is a
+five-column *redraw* rather than the seven-column mark scaled down, because
+below about 20px a seven-column field stops being a grid and becomes grey
+texture with a dot in it. A glyph is the same. Both are written as ASCII art —
+`#` is ink — for the reason `epaper/glyphs.ts` gives: it is the only form in
+which a person can review a pixel, and a glyph nobody has looked at is the fault
+the whole change is about. The 8x8 stays a hex string, untouched, because it is
+somebody else's shipped, verified public-domain data and retyping it as art
+would be a transcription with a chance of being wrong and nothing to gain.
+
+**The redraw's own fault is the one worth keeping, because no count or density
+could see it.** The first pass drew an 11-row cap in a 16-row cell and a 17-row
+cap in a 24-row one, which is 69% and 71% where font8x8 is 87.5% — so at the
+same line box a household's event titles would have come out **21% shorter than
+the face they replace**. The rows were where they had always been and the words
+were the same words; what moved was the size somebody reads. Every face is
+drawn to font8x8's own proportions now — cap 87.5% of the cell, x-height 0.71 of
+the cap, one baseline — and `epaper-faces.test.ts` asserts exactly that, so what
+the new faces buy is the **width and only the width**.
+
+**`type-tiers.ts` is the table, and a tier is a choice of face rather than a
+multiplier.** The anchor and the exponent are untouched: the target is still
+`16 * (short / 480) ** 0.6`, still read off the panel's **short side** because a
+panel hung sideways is the same hardware, and 480 still lands on a 16px body —
+so every vertical metric in `epaper/metrics.ts` reproduces its shipped 800x480
+value to the pixel. What changed is that the rung is `(face, scale)`, the header
+is one rung above the body and the small role one below, and **an offset on a
+strictly increasing ladder cannot collapse** the way `round(body / 2)` did.
+`TYPE_RUNGS` is monotone in height *and* advance together, which is not
+decoration: `rungToFit` walks down it until a string fits, and the ladder
+contains `f8@5` — 40px tall at 45px of advance — sitting between two rungs where
+stepping *down* would make the text wider, so every rung that is not the
+narrowest at its height is left out.
+
+What moved, measured on the six supported sizes with thirty days of an ordinary
+household's calendar:
+
+    panel        body   small     agenda title, in characters
+    640x384      16/13   8/9      11 -> 17
+    800x480      16/13   8/9      15 -> 23
+    1304x984     24/17  16/13     17 -> 29
+    1872x1404    32/26  24/17     18 -> 28
+    480x800      16/13   8/9      18 -> 27
+    1404x1872    32/26  24/17     29 -> 43
+
+Every cap height is what the panel drew before, except the 13.3" panel's small
+role, which goes 16px to 24px — the fault above. Between 48% and 71% more of an
+event title fits on one line, at exactly the size a household was already
+reading, because the faces reach those heights in 28-37% less advance.
+
+**`epaper-geometry`'s `bodyInkPercent` falls at all six sizes and the ratchet
+grew a third column rather than being argued with.** A 12x16 'A' is 62 lit
+pixels against the 112 of an 8x8 doubled, so the same words in a narrower cut
+carry less ink — and ink density cannot tell "the frame says less" from "the
+letters are narrower". `titleChars` can, and it is recorded beside the other
+two. This is `wall-density`'s own lesson when a forecast's icon stopped being a
+character: **a metric whose population changed is not a metric that improved,
+and it is not one that regressed either.** `blankBottomPx` is unmoved at every
+size.
+
+**Reversed type is graded, which is the browser wall's `--f-grade` on a
+bitmap.** On e-paper the black bleeds into the white, so a light stroke knocked
+out of a filled ground closes up — the header band, today's cell and a span
+bar's label are the only places this renderer draws light-on-dark, and they are
+exactly where a thin stroke is eaten. The correction is a one-pixel horizontal
+dilation of each row, which is the next weight at the **same cell width**: no
+metric moves, by construction, because a metric change is a reflow. It follows
+the ground rather than a flag, so no call site can forget it. **The 8x8 face is
+not graded and that is measured rather than assumed**: swept over all 95 glyphs
+a one-pixel grade closes a counter in three of them and two more already carry
+ink in the last column, where the dilation would leave the cell. The drawn faces
+are clean on both counts and every glyph keeps every counter it has.
+
+**The refresh contract is written down in `epaper/render.ts` and enforced.**
+
+    Every drawn region is a rectangle whose position is a function of
+    (panel size, tier) ONLY.
+    Two frames at the same panel size and tier, with different events,
+    have identical region rectangles.
+    Only the ink inside a region may differ.
+
+That is what a partial refresh needs: not speed, **stability** — a panel can
+only push a rectangle if it knows which one changed, and it can only know that
+if they do not move. Three consequences, each a rule rather than an aspiration.
+A size is never picked by measuring a string: every rung comes from the tier or
+from the box, and where one is still stepped down it is stepped against a
+*character budget* (`HEADER_MAX_CHARS`, `NOTE_MAX_CHARS`, `'30'`) that is a
+constant of the renderer and of the locale the viewmodel fixes. `fit()` stays
+and is legitimate — truncation changes the ink in a rectangle and can never move
+its origin. And **the resolved tier is in the frame's ETag**, so a geometry
+change forces exactly one full refresh and everything between two frames at the
+same tier is safe as a partial; without it a panel could composite two layouts
+onto one sheet.
+
+**Two mechanisms had to be repaired to make that true, and neither is reachable
+from a pair of frames that only differ in their events** — which is why both are
+asked directly. The empty-state note picked its rung by measuring *its own
+sentence*, so "Nothing on today" (16 characters) and "Nothing coming up" (17)
+could take different rungs in the same box and rewording either one would have
+moved a rectangle. And the header band stepped down until *today's* date fitted,
+so its type changed size at midnight — a reflow at exactly the boundary a panel
+most wants to partial-refresh across, and one no two frames from the same day
+can see. Both mutations turn `reflow-stability.test.ts` red now; neither turned
+anything red before the targeted assertions were written.
+
+The comparison itself is a **region log**: the renderer records the rectangle it
+drew into at the site that does the drawing, from the same expression that
+positions it, because pixels cannot settle a claim about rectangles — two frames
+with different words in one row have different ink in it by definition, and a
+row that *moved* looks, from outside, exactly like a row whose first letter is a
+lowercase 'a'. It is not circular: the test compares two logs with each other,
+checks that the frames genuinely differ, and checks the gutters carry no ink at
+all, which is what holds `fit` to the box it was given. That last one found a
+live off-by-one on its first run: `hLine` is inclusive and the agenda's rule was
+drawn to `right` rather than `right - 1`, so the "TODAY" hairline had always
+overhung its own box by a pixel, into the gutter beside the month grid.
+
+**`reflow-stability.test.ts`'s browser setup moved inside the wall's own
+describe** so the panel half runs without one — it is pure and synchronous, the
+way `epaper-geometry.test.ts` is, and a machine with no Chromium should still be
+told whether the e-paper frame keeps its rectangles still.
+
+**Still unproven where it counts:** no panel has been photographed and no
+household has looked at a wall drawn in these faces. Every glyph in both was
+rendered and read as ASCII art before it shipped, and a real frame was decoded
+and read at 800x480 and 1872x1404 — which is the right way to check a 1-bit
+alphabet and is not the same as looking at a sheet of e-paper on a wall.
 
 **The admin has a component layer now, and the reason it did not is the whole
 argument for building one.** `html.ts` exported fifteen helpers and eleven were

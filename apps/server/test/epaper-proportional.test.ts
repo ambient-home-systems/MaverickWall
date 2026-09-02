@@ -321,11 +321,23 @@ describe('every metric is a whole pixel', () => {
     for (let side = 64; side <= 2000; side += 7) {
       for (const geometry of [{ width: side, height: 384 }, { width: 800, height: side }]) {
         const m: EpaperMetrics = panelMetrics(geometry);
-        // Descends into the widget group rather than stopping at it: a nested
-        // object read as "not an integer" is the sweep working, and a nested
-        // object *skipped* is twelve metrics it silently stops checking.
+        /*
+         * Descends into the widget group rather than stopping at it: a nested
+         * object read as "not an integer" is the sweep working, and a nested
+         * object *skipped* is twelve metrics it silently stops checking.
+         *
+         * The five type rungs are objects and the tier is a name, so they are
+         * skipped *by name* and swept separately below rather than by a blanket
+         * "ignore anything that is not a number" — which is how a metric that
+         * quietly became an object would stop being checked at all.
+         */
+        for (const rung of [m.body, m.header, m.year, m.label, m.small]) {
+          expect(Number.isInteger(rung.height), `${rung.face}@${rung.scale} height`).toBe(true);
+          expect(Number.isInteger(rung.advance), `${rung.face}@${rung.scale} advance`).toBe(true);
+        }
+        const RUNGS = ['tier', 'body', 'header', 'year', 'label', 'small'];
         for (const [key, value] of [...Object.entries(m), ...Object.entries(m.widget)]) {
-          if (key === 'panel' || key === 'widget') continue;
+          if (key === 'panel' || key === 'widget' || RUNGS.includes(key)) continue;
           expect(Number.isInteger(value), `${key} at ${geometry.width}×${geometry.height} is ${String(value)}`).toBe(
             true,
           );
@@ -384,8 +396,19 @@ describe('the arithmetic comes back to the constants it replaced', () => {
     });
   });
 
-  it('and the type ladder lands on the scales that shipped', () => {
-    expect([m.headerScale, m.yearScale, m.bodyScale, m.labelScale, m.smallScale]).toEqual([3, 2, 2, 2, 1]);
+  it('and the type ladder lands on the heights that shipped', () => {
+    /*
+     * The *heights* rather than the scales, which is what the tier changed:
+     * 800x480 draws a 24px header over a 16px body with 8px names exactly as
+     * it always has, in faces that reach those heights at 17, 13 and 9 pixels
+     * of advance instead of 27, 18 and 9. A rung is a face now, so a scale is
+     * no longer a size and asserting one would be asserting the wrong thing.
+     */
+    expect([m.header.height, m.year.height, m.body.height, m.label.height, m.small.height]).toEqual([
+      24, 16, 16, 16, 8,
+    ]);
+    expect([m.header.advance, m.body.advance, m.small.advance]).toEqual([17, 13, 9]);
+    expect(m.tier).toBe('E1');
   });
 });
 
@@ -422,26 +445,46 @@ describe('a portrait panel keeps its month cells square', () => {
 });
 
 describe('the panel that was tuned by looking at it', () => {
-  const before = { header: 38944, agendaColumn: 2773, monthColumn: 15280, total: 56997 };
+  /*
+   * **These were pinned to the pixel and are not any more, and the reason is
+   * the whole of phase 11.** The layout arithmetic still comes back to the
+   * shipped constant at 480px of panel — the block above asserts every one of
+   * them — but the *face* those metrics are filled with changed: a 16px line
+   * of body type is drawn on a 12x16 grid now rather than as an 8x8 doubled,
+   * and a 24px header band on a 16x24 grid rather than an 8x8 tripled. Same
+   * cap height, same stroke ratio, 28% less advance, so the same words carry
+   * less ink in the same rectangles.
+   *
+   * Recording the new numbers rather than loosening the assertion, because a
+   * pixel of drift here is still a derivation that missed its anchor — it is
+   * only the anchor's *value* that moved, once, deliberately, in the commit
+   * that redrew the alphabet.
+   */
+  const before = { header: 40486, agendaColumn: 1639, total: 51756 };
   const fb = frameAt(quiet, OUT_OF_THE_BOX.width, OUT_OF_THE_BOX.height);
 
-  /*
-   * The header band and the agenda column are pinned to the pixel, not to a
-   * tolerance. Nothing about them is meant to move: every metric under them
-   * derives back to the shipped constant at 480px of panel, so a single pixel
-   * of drift here is a derivation that missed its anchor.
-   */
-  it('draws the identical header band', () => {
+  it('draws the header band the tier says, to the pixel', () => {
     expect(inkIn(fb, 0, 800, 0, 54)).toBe(before.header);
   });
 
-  it('draws the identical agenda column on a quiet day', () => {
+  it('draws the agenda column the tier says, to the pixel', () => {
     expect(inkIn(fb, 0, SPLIT_800, 54, 480)).toBe(before.agendaColumn);
   });
 
   it('keeps the whole frame within a tenth of the ink it had', () => {
     const total = inkIn(fb, 0, 800, 0, 480);
     expect(Math.abs(total - before.total) / before.total).toBeLessThanOrEqual(0.1);
+  });
+
+  /*
+   * And the band's *geometry* is face-independent, which is what "the
+   * derivation still hits its anchor" actually means. The header is a solid
+   * inverted fill 54 rows tall: its last row is entirely inked and the row
+   * under it is not, whatever alphabet is knocked out of it.
+   */
+  it('still puts the header band exactly 54 rows down', () => {
+    expect(inkIn(fb, 0, 800, 53, 54)).toBe(800);
+    expect(inkIn(fb, 0, 800, 54, 55)).toBeLessThan(800);
   });
 });
 
@@ -469,10 +512,20 @@ describe('the panel that was tuned by looking at it', () => {
  *
  * 14% is what "the box grew 6.85× and the type did not" looks like: a note
  * widget on a 13.3" panel spending 98% of itself on white. The bar below is
- * 45%, which is clear of every pre-change number and clear of the ~58% the
- * ladder can actually reach — a widget with three readings in it cannot fill a
- * bigger box by drawing more, only by drawing bigger, and the ladder is
- * deliberately sub-linear.
+ * clear of every one of those numbers and clear of what the ladder can
+ * actually reach — a widget with three readings in it cannot fill a bigger box
+ * by drawing more, only by drawing bigger, and the ladder is deliberately
+ * sub-linear.
+ *
+ * **The bar moved from 45% to 42% when the panel took three drawn faces**, and
+ * the reason is a property of the alphabet rather than of any widget: at the
+ * same cap height a 12x16 or 16x24 glyph carries about 55% of the ink an 8x8
+ * doubled or tripled carries, because it is narrower. Measured over all
+ * thirteen cases the lowest is the clock at **0.436** — one short string filling
+ * a whole widget, which is the case with the least other ink in it to dilute
+ * the change — where before it read 0.45. What the gate is for is untouched:
+ * a widget still capped at 800×480's absolute pixels reads 14-17%, and every
+ * case here reads 43% or better.
  */
 
 function widgetManifest(): Manifest {
@@ -592,7 +645,7 @@ describe('a widget draws at the panel\'s scale, not at 800×480\'s', () => {
       expect(base).toBeGreaterThan(0);
       for (const panel of PANELS) {
         const fill = widgetInkFill(widget.type, widget.config, panel);
-        expect(fill / base, `${widget.name} at ${panel.width}×${panel.height}`).toBeGreaterThanOrEqual(0.45);
+        expect(fill / base, `${widget.name} at ${panel.width}×${panel.height}`).toBeGreaterThanOrEqual(0.42);
       }
     });
   }
@@ -646,8 +699,15 @@ describe('the widget chrome scales too', () => {
    * it, so pinning either metric back to a constant moved the frame *and* the
    * expectation together and the test stayed green. Checked by doing exactly
    * that, twice. These come off the ladder by hand instead: at 1872×1404 the
-   * body glyph is 32, so the inset is 16, and the small glyph is 16 with 8 of
-   * leading, so the title bar is 24 to its rule and 40 to the content.
+   * body glyph is 32, so the inset is 16, and the small glyph is 24 with 8 of
+   * leading, so the title bar is 32 to its rule and 56 to the content.
+   *
+   * **The small glyph is 24 rather than 16 because of the type tier**, and that
+   * one number is the fault phase 11 measured: `round(body / 2)` answered 2 on
+   * a 10.3" panel and 2 on a 13.3" one, so a widget's title was the same 16px
+   * on both — 12.6 arc-minutes at one panel's read distance and 9.9 at the
+   * other's, which is *smaller* on the larger, further screen. A rung below the
+   * body cannot collapse like that.
    */
   const titled = { showTitle: true, title: 'Shopping', text: 'Milk' };
 
@@ -660,17 +720,24 @@ describe('the widget chrome scales too', () => {
 
     const large = inkBands('notes', titled, LARGE_PANEL);
     expect(large[0]!.top).toBe(16);
-    expect(large[1]!.top).toBe(40);
-    expect(large[2]!.top).toBe(56);
+    expect(large[1]!.top).toBe(48);
+    expect(large[2]!.top).toBe(72);
   });
 
-  it('draws the title itself a rung larger on the larger panel', () => {
-    // The band's height is the glyph's inked height, so this is a fact about
-    // the *scale* the title was drawn at rather than about where it sits — the
-    // half the offsets above cannot see.
+  it('draws the title itself two rungs larger on the larger panel', () => {
+    /*
+     * The band's height is the glyph's inked height, so this is a fact about
+     * the *rung* the title was drawn at rather than about where it sits — the
+     * half the offsets above cannot see.
+     *
+     * Three times, not twice. A title is uppercase, so the band is a cap: the
+     * 7.5" panel draws it in the 8x8 at a 7-row cap and the 13.3" one in the
+     * 16x24 at a 21-row cap. Every face here keeps font8x8's own 87.5% cap
+     * ratio, which is what makes a ratio of drawn ink a ratio of rungs.
+     */
     const small = inkBands('notes', titled, SMALL_PANEL)[0]!.height;
     const large = inkBands('notes', titled, LARGE_PANEL)[0]!.height;
-    expect(large).toBe(small * 2);
+    expect(large).toBe(small * 3);
   });
 });
 
@@ -740,7 +807,7 @@ describe('a forecast gives up its columns at the panel\'s own threshold', () => 
    */
   for (const panel of [SMALL_PANEL, LARGE_PANEL]) {
     it(`draws nothing under the small rung at ${panel.width}×${panel.height}`, () => {
-      const rung = 8 * panelMetrics(panel).smallScale;
+      const rung = panelMetrics(panel).smallGlyph;
       expect(shortest(panel)).toBeGreaterThanOrEqual(rung - 1);
     });
   }
@@ -778,15 +845,26 @@ describe('the widget metrics come back to the constants they replaced', () => {
     });
   });
 
-  it('and the scale rungs land on the caps that shipped', () => {
+  it('and the scale rungs land on the ladder nearest the caps that shipped', () => {
+    /*
+     * These were integer multipliers of the body scale — 8, 9, 7, 3 and 2, or
+     * 64, 72, 56, 24 and 16 pixels — and they are rungs now, so each lands on
+     * the nearest height the ladder actually carries. Three of the five are
+     * exact. The clock's cap goes 64 to 72 and a shift headline's 56 to 48,
+     * because the ladder has a deliberate gap between 48 and 72 (`TYPE_RUNGS`
+     * says why: every height between them is reached only by a *wider* face,
+     * and a step-down search needs the ladder monotone in advance as well as
+     * height). Both are caps rather than sizes — `rungToFit` and the box bind
+     * long before either does on any panel this project measures.
+     */
     const m = panelMetrics(OUT_OF_THE_BOX);
     expect([
-      scaleRung(m, 4), // the clock's biggest time
-      scaleRung(m, 4.5), // the countdown's biggest number
-      scaleRung(m, 3.5), // a shift card's headline
-      scaleRung(m, 1.5), // a forecast column's headline, and the clock's date
-      scaleRung(m, 1), // ordinary widget text
-    ]).toEqual([8, 9, 7, 3, 2]);
+      scaleRung(m, 4).height, // the clock's biggest time
+      scaleRung(m, 4.5).height, // the countdown's biggest number
+      scaleRung(m, 3.5).height, // a shift card's headline
+      scaleRung(m, 1.5).height, // a forecast column's headline, and the clock's date
+      scaleRung(m, 1).height, // ordinary widget text
+    ]).toEqual([72, 72, 48, 24, 16]);
   });
 });
 

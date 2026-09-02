@@ -19,7 +19,7 @@ import { daysBetween } from '@maverick-wall/core';
 
 import type { Manifest } from '../api/manifest.js';
 
-import { drawText, GLYPH_SIZE, measureText } from './font.js';
+import { drawText, measureText, rungAtMost, rungStep, shorterRung, tallerRung, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
 import {
   drawGlyph,
@@ -87,13 +87,13 @@ const alignOf = (c: Config): 'left' | 'center' | 'right' => {
 };
 
 /** Greedy word wrap to a pixel width, in the bitmap font. */
-function wrap(text: string, maxWidth: number, scale: number): string[] {
+function wrap(text: string, maxWidth: number, rung: TypeRung): string[] {
   const lines: string[] = [];
   for (const paragraph of asciiTitle(text).split('\n')) {
     let line = '';
     for (const word of paragraph.split(/\s+/).filter(Boolean)) {
       const candidate = line === '' ? word : `${line} ${word}`;
-      if (measureText(candidate, { scale }) <= maxWidth) line = candidate;
+      if (measureText(candidate, { rung }) <= maxWidth) line = candidate;
       else {
         if (line !== '') lines.push(line);
         line = word;
@@ -105,19 +105,28 @@ function wrap(text: string, maxWidth: number, scale: number): string[] {
 }
 
 /**
- * The largest scale, down to 1, at which `text` fits `width`.
+ * The largest rung, down the ladder, at which `text` fits `width`.
  *
- * `drawLines` truncates a line to its box, so a scale picked from the box's
+ * `drawLines` truncates a line to its box, so a rung picked from the box's
  * *height* alone silently loses characters off the right — a clock drawing
  * "08:3" for half past eight, which is not a smaller clock but a wrong one.
  * Every headline string picks its size through here, so the box shrinks the
  * type rather than the type losing its tail.
+ *
+ * **It walks `TYPE_RUNGS`, which is why that ladder is monotone in advance as
+ * well as height.** Stepping down has to make a string *narrower*; a ladder
+ * with `f8@5` on it (40px tall, 45px of advance) would sit between two rungs
+ * where a step down widens the text, and this loop would never terminate
+ * usefully.
+ *
+ * It is also the last content-dependent size on the panel and the refresh
+ * contract in `render.ts` says so: the built-in layout takes every rung from
+ * its tier, and a household's own canvas does not yet.
  */
-function scaleToFit(text: string, width: number, max: number): number {
-  for (let scale = Math.max(1, Math.floor(max)); scale > 1; scale -= 1) {
-    if (measureText(text, { scale }) <= width) return scale;
-  }
-  return 1;
+function rungToFit(text: string, width: number, max: TypeRung): TypeRung {
+  let rung = max;
+  while (rung.index > 0 && measureText(text, { rung }) > width) rung = rungStep(rung, -1);
+  return rung;
 }
 
 /**
@@ -156,9 +165,9 @@ function drawStack(
       continue;
     }
     if (row.text === '') continue;
-    const h = GLYPH_SIZE * row.scale;
+    const h = row.rung.height;
     if (y + h > box.y + box.h) break;
-    drawLines(fb, m, [row.text], { ...box, y, h }, row.scale, align);
+    drawLines(fb, m, [row.text], { ...box, y, h }, row.rung, align);
     y += h + m.widget.linePad;
   }
 }
@@ -169,8 +178,8 @@ function drawStack(
  * line, because a 1-bit row has no room to be two things.
  */
 type StackRow =
-  | { readonly text: string; readonly scale: number; readonly glyph?: undefined }
-  | { readonly text: ''; readonly scale: number; readonly glyph: GlyphKey; readonly glyphScale: GlyphScale };
+  | { readonly text: string; readonly rung: TypeRung; readonly glyph?: undefined }
+  | { readonly text: ''; readonly rung: TypeRung; readonly glyph: GlyphKey; readonly glyphScale: GlyphScale };
 
 /** Draw stacked lines within a box, clipped to its height and width, honouring align. */
 function drawLines(
@@ -178,20 +187,20 @@ function drawLines(
   m: EpaperMetrics,
   lines: readonly string[],
   box: Box,
-  scale: number,
+  rung: TypeRung,
   align: 'left' | 'center' | 'right',
 ): void {
-  const lineH = GLYPH_SIZE * scale + m.widget.linePad;
+  const lineH = rung.height + m.widget.linePad;
   let y = box.y;
   for (const raw of lines) {
-    if (y + GLYPH_SIZE * scale > box.y + box.h) break;
+    if (y + rung.height > box.y + box.h) break;
     // Truncate to the box so a long line stops at its own edge rather than
     // bleeding into the widget beside it.
-    const line = fit(raw, box.w, { scale });
-    const w = measureText(line, { scale });
+    const line = fit(raw, box.w, { rung });
+    const w = measureText(line, { rung });
     const x =
       align === 'center' ? box.x + Math.floor((box.w - w) / 2) : align === 'right' ? box.x + box.w - w : box.x;
-    drawText(fb, x, y, line, { scale });
+    drawText(fb, x, y, line, { rung });
     y += lineH;
   }
 }
@@ -210,8 +219,9 @@ function drawFrame(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config):
   let inner: Box = { x: box.x + pad, y: box.y + pad, w: box.w - pad * 2, h: box.h - pad * 2 };
   const title = str(config, 'title');
   if (config.showTitle === true && title !== undefined && title !== '') {
-    drawText(fb, inner.x, inner.y, asciiTitle(title).toUpperCase(), { scale: m.smallScale, tracking: 1 });
-    fb.hLine(inner.x, inner.x + inner.w, inner.y + m.widget.smallLine, true);
+    drawText(fb, inner.x, inner.y, asciiTitle(title).toUpperCase(), { rung: m.small, tracking: 1 });
+    // Exclusive edge, inclusive line — see `drawAgendaBox` in `render.ts`.
+    fb.hLine(inner.x, inner.x + inner.w - 1, inner.y + m.widget.smallLine, true);
     const bar = m.widget.titleBarH;
     inner = { x: inner.x, y: inner.y + bar, w: inner.w, h: inner.h - bar };
   }
@@ -234,25 +244,25 @@ function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
   // Bounded by the height it has *and* the width it has: a box taller than it
   // is wide used to pick a size the time could not fit, and lost its last
   // digit to the truncation in `drawLines`.
-  // `box.h / 18` is a ratio and stays one — a taller box gets a bigger clock on
-  // any panel. The *cap* is what was absolute: eight rungs is 64px on a 7.5"
-  // panel and 64px on a 13.3" one, in a box six times the area.
-  const byHeight = Math.max(m.bodyScale, Math.min(scaleRung(m, 4), Math.floor(box.h / 18)));
-  const timeScale = scaleToFit(time, box.w, byHeight);
+  // Four ninths of the box's height is a ratio and stays one — a taller box
+  // gets a bigger clock on any panel. The *cap* is what was absolute: it was
+  // 64px on a 7.5" panel and 64px on a 13.3" one, in a box six times the area.
+  const byHeight = tallerRung(m.body, shorterRung(scaleRung(m, 4), rungAtMost((box.h * 4) / 9)));
+  const timeRung = rungToFit(time, box.w, byHeight);
   const align = alignOf(config);
-  drawLines(fb, m, [time], { ...box, h: GLYPH_SIZE * timeScale }, timeScale, align);
+  drawLines(fb, m, [time], { ...box, h: timeRung.height }, timeRung, align);
   if (config['showDate'] === false) return;
-  const dateScale = Math.max(1, Math.min(scaleRung(m, 1.5), Math.floor(timeScale / 2)));
+  const dateRung = shorterRung(scaleRung(m, 1.5), rungStep(timeRung, -1));
   const date = `${model.header.weekday} ${model.header.day} ${model.header.month}`;
-  const dateTop = box.y + GLYPH_SIZE * timeScale + m.widget.inset;
+  const dateTop = box.y + timeRung.height + m.widget.inset;
   drawLines(
     fb,
     m,
-    wrap(date, box.w, dateScale),
+    wrap(date, box.w, dateRung),
     // The remaining height, not the whole box: measuring from the box's top
     // let the wrapped date run past its foot and into the widget below.
     { x: box.x, y: dateTop, w: box.w, h: Math.max(0, box.y + box.h - dateTop) },
-    dateScale,
+    dateRung,
     align,
   );
 }
@@ -272,15 +282,15 @@ function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: Epape
   }
   // Same fitting as the clock: "365" in a narrow box must shrink, not lose its
   // last digit — a countdown that reads 36 is worse than a small one.
-  const scale = scaleToFit(big, box.w, Math.max(m.bodyScale, Math.min(scaleRung(m, 4.5), Math.floor(box.h / 16))));
-  drawLines(fb, m, [big], { ...box, h: GLYPH_SIZE * scale }, scale, 'center');
-  const restTop = box.y + GLYPH_SIZE * scale + m.widget.rowGap;
+  const rung = rungToFit(big, box.w, tallerRung(m.body, shorterRung(scaleRung(m, 4.5), rungAtMost(box.h / 2))));
+  drawLines(fb, m, [big], { ...box, h: rung.height }, rung, 'center');
+  const restTop = box.y + rung.height + m.widget.rowGap;
   drawLines(
     fb,
     m,
     [unit, asciiTitle(title)].filter((l) => l !== ''),
     { x: box.x, y: restTop, w: box.w, h: Math.max(0, box.y + box.h - restTop) },
-    m.bodyScale,
+    m.body,
     'center',
   );
 }
@@ -315,7 +325,7 @@ function drawShift(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
   if (shifts.length === 0) {
     // Sized to the box: at a fixed scale this read "No shift t" in a narrow
     // column, which is not a smaller message but a broken one.
-    drawLines(fb, m, ['No shift today'], box, scaleToFit('No shift today', box.w, m.bodyScale), 'left');
+    drawLines(fb, m, ['No shift today'], box, rungToFit('No shift today', box.w, m.body), 'left');
     return;
   }
 
@@ -349,7 +359,7 @@ function drawShift(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
      */
     const ROW_GAP = m.widget.linePad;
     const heightOf = (role: LadderRole): number =>
-      GLYPH_SIZE * (role === 'headline' ? m.bodyScale : m.smallScale) + ROW_GAP;
+      (role === 'headline' ? m.bodyGlyph : m.smallGlyph) + ROW_GAP;
     const kept = dropToFit(rows, box.h, heightOf);
 
     /*
@@ -362,27 +372,27 @@ function drawShift(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
      * can actually hold.
      */
     if (kept.length === 1 && rows.length > 1) {
-      drawLines(fb, m, [compactLine(rows)], box, scaleToFit(compactLine(rows), box.w, m.bodyScale), 'left');
+      drawLines(fb, m, [compactLine(rows)], box, rungToFit(compactLine(rows), box.w, m.body), 'left');
       return;
     }
 
     // The headline takes whatever the surviving rows did not need.
     const others = kept.filter((row) => row.role !== 'headline');
-    const small = GLYPH_SIZE * m.smallScale;
+    const small = m.smallGlyph;
     const headroom = Math.max(small, box.h - others.length * (small + ROW_GAP));
     const stack = kept.map((row) => {
-      if (row.role !== 'headline') return { text: row.text, scale: m.smallScale };
+      if (row.role !== 'headline') return { text: row.text, rung: m.small };
       const text = row.text.toUpperCase();
       return {
         text,
-        scale: scaleToFit(text, box.w, Math.max(m.bodyScale, Math.min(scaleRung(m, 3.5), Math.floor(headroom / GLYPH_SIZE)))),
+        rung: rungToFit(text, box.w, tallerRung(m.body, shorterRung(scaleRung(m, 3.5), rungAtMost(headroom)))),
       };
     });
     drawStack(
       fb,
       m,
       box,
-      stack.map((row) => (row.scale === m.smallScale ? { ...row, text: row.text.toUpperCase() } : row)),
+      stack.map((row) => (row.rung === m.small ? { ...row, text: row.text.toUpperCase() } : row)),
       'left',
     );
     return;
@@ -392,11 +402,11 @@ function drawShift(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
   // rather than being cut at the box edge. The ladder decides which parts are
   // on the line and in what order, exactly as it decides the rows above.
   const lines = shifts.map((s) => compactLine(ladderRows(ladder, valuesFor(s), SHIFT_ROLES)));
-  const scale = lines.reduce(
-    (smallest, line) => Math.min(smallest, scaleToFit(line, box.w, m.bodyScale)),
-    m.bodyScale,
+  const rung = lines.reduce(
+    (smallest, line) => shorterRung(smallest, rungToFit(line, box.w, m.body)),
+    m.body,
   );
-  drawLines(fb, m, lines, box, scale, 'left');
+  drawLines(fb, m, lines, box, rung, 'left');
 }
 
 /**
@@ -418,7 +428,7 @@ function compactLine(rows: readonly LadderRow<ShiftField>[]): string {
 function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
   const items = list(config, 'items').filter((x): x is string => typeof x === 'string');
   if (items.length === 0) {
-    drawLines(fb, m, ['(nothing on the list)'], box, scaleToFit('(nothing on the list)', box.w, m.bodyScale), 'left');
+    drawLines(fb, m, ['(nothing on the list)'], box, rungToFit('(nothing on the list)', box.w, m.body), 'left');
     return;
   }
   const rowH = m.widget.listRowH;
@@ -429,8 +439,8 @@ function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): 
     // the same guard the agenda uses, in the same terms.
     if (y + m.bulletDrop + m.bullet > box.y + box.h) break;
     fb.strokeRect(box.x, y + m.bulletDrop, m.bullet, m.bullet, true);
-    drawText(fb, box.x + textX, y, fit(asciiTitle(item), box.w - textX, { scale: m.bodyScale }), {
-      scale: m.bodyScale,
+    drawText(fb, box.x + textX, y, fit(asciiTitle(item), box.w - textX, { rung: m.body }), {
+      rung: m.body,
     });
     y += rowH;
   }
@@ -438,7 +448,7 @@ function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): 
 
 function drawImage(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
   const name = str(config, 'image');
-  const scale = m.smallScale;
+  const rung = m.small;
   // Lifted a line, less half a gap, so the two-line block straddles the middle.
   // Two pixels shy of a true centre at the anchor, and kept that way: it is
   // what the panel draws today and this is a placeholder until there is a
@@ -447,9 +457,9 @@ function drawImage(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config):
   drawLines(
     fb,
     m,
-    ['[ photo ]', name !== undefined ? fit(name, box.w, { scale }) : 'not shown on eInk yet'],
+    ['[ photo ]', name !== undefined ? fit(name, box.w, { rung }) : 'not shown on eInk yet'],
     { x: box.x, y: box.y + Math.max(0, Math.floor(box.h / 2) - lift), w: box.w, h: box.h },
-    scale,
+    rung,
     'center',
   );
 }
@@ -548,7 +558,7 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
 function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manifest, config: Config): void {
   let days = forecastDays(manifest.panels['weather']);
   if (days.length === 0) {
-    drawLines(fb, m, ['No weather yet'], box, scaleToFit('No weather yet', box.w, m.bodyScale), 'left');
+    drawLines(fb, m, ['No weather yet'], box, rungToFit('No weather yet', box.w, m.body), 'left');
     return;
   }
   const wanted = config['count'];
@@ -573,7 +583,7 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
    * panel cannot draw is not put in the record at all, so `ladderRows` drops
    * the rung and the column gives the room back.
    */
-  const glyphScale = glyphScaleFor(GLYPH_SIZE * m.bodyScale);
+  const glyphScale = glyphScaleFor(m.bodyGlyph);
   const rowsFor = (day: EpaperForecastDay): readonly LadderRow<WeatherField>[] =>
     ladderRows(
       ladder,
@@ -620,8 +630,8 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
     // temperatures above the day name must not make the day name enormous —
     // that is the ladder's own rule, and sizing by index broke it the moment a
     // household reordered anything. Found by rendering a reordered strip.
-    const maxScale = (role: LadderRole): number =>
-      role === 'headline' ? scaleRung(m, 1.5) : m.smallScale;
+    const maxRung = (role: LadderRole): TypeRung =>
+      role === 'headline' ? scaleRung(m, 1.5) : m.small;
     // Predicted from `maxScale` rather than from its own literals, so the room
     // reserved for a row and the size that row is allowed to reach cannot
     // disagree — the count-and-loop rule one widget along.
@@ -631,29 +641,29 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
      * rows are drawings, with no second lookup and no change to `dropToFit`.
      */
     const heightOf = (role: LadderRole): number =>
-      role === 'body' ? glyphHeight(glyphScale) + ROW_GAP : GLYPH_SIZE * maxScale(role) + ROW_GAP;
+      role === 'body' ? glyphHeight(glyphScale) + ROW_GAP : maxRung(role).height + ROW_GAP;
 
     const columns = days.map((day) => foldPairs(dropToFit(rowsFor(day), box.h, heightOf)));
     /*
      * One scale per row, across every column.
      *
-     * `scaleToFit` answers per string, so "20  9C" fits a size that "24  13C"
+     * `rungToFit` answers per string, so "20  9C" fits a size that "24  13C"
      * does not and the strip came out with one column twice the size of its
      * neighbours — a forecast that reads as five unrelated widgets. Taking the
      * smallest that fits them all is what keeps a strip a strip.
      */
     const rowCount = columns.reduce((most, rows) => Math.max(most, rows.length), 0);
-    const scales: number[] = [];
+    const rungs: TypeRung[] = [];
     for (let row = 0; row < rowCount; row++) {
-      let scale = 0;
+      let rung: TypeRung | undefined;
       for (const rows of columns) {
         const cell = rows[row];
-        // A glyph has no string to measure and no type scale to agree on.
+        // A glyph has no string to measure and no type rung to agree on.
         if (cell === undefined || cell.role === 'body') continue;
-        const fits = scaleToFit(cell.text, columnWidth - m.widget.linePad, maxScale(cell.role));
-        scale = scale === 0 ? fits : Math.min(scale, fits);
+        const fits = rungToFit(cell.text, columnWidth - m.widget.linePad, maxRung(cell.role));
+        rung = rung === undefined ? fits : shorterRung(rung, fits);
       }
-      scales.push(Math.max(1, scale));
+      rungs.push(rung ?? m.small);
     }
 
     columns.forEach((rows, index) => {
@@ -669,8 +679,8 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
         column,
         rows.map((cell, row) =>
           cell.role === 'body' && isGlyphKey(cell.text)
-            ? { text: '' as const, scale: 1, glyph: cell.text, glyphScale }
-            : { text: cell.text, scale: scales[row] ?? 1 },
+            ? { text: '' as const, rung: m.small, glyph: cell.text, glyphScale }
+            : { text: cell.text, rung: rungs[row] ?? m.small },
         ),
         'left',
       );
@@ -693,11 +703,11 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
       .map((cell) => cell.text)
       .join('  '),
   );
-  const scale = lines.reduce(
-    (smallest, line) => Math.min(smallest, scaleToFit(line, box.w, m.bodyScale)),
-    m.bodyScale,
+  const rung = lines.reduce(
+    (smallest, line) => shorterRung(smallest, rungToFit(line, box.w, m.body)),
+    m.body,
   );
-  drawLines(fb, m, lines, box, scale, 'left');
+  drawLines(fb, m, lines, box, rung, 'left');
 }
 
 /**
@@ -750,7 +760,7 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
   const panel = manifest.panels['home'] ?? manifest.panels['homeassistant'];
   let readings = houseReadings(panel);
   const noReadings = (): void => {
-    drawLines(fb, m, ['No readings yet'], box, scaleToFit('No readings yet', box.w, m.bodyScale), 'left');
+    drawLines(fb, m, ['No readings yet'], box, rungToFit('No readings yet', box.w, m.body), 'left');
   };
   if (readings.length === 0) {
     noReadings();
@@ -777,7 +787,7 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
    * The label keeps its colon when it leads, because "Kitchen: 19.4 C" reads as
    * an attribution and "Kitchen 19.4 C" reads as a mistake.
    */
-  const glyphScale = glyphScaleFor(GLYPH_SIZE * m.bodyScale);
+  const glyphScale = glyphScaleFor(m.bodyGlyph);
   const advance = glyphAdvance(glyphScale);
   const lines = readings.map((reading) => {
     const rows = ladderRows(
@@ -802,9 +812,9 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
   // `drawWeather` states, one widget along.
   const anyGlyph = lines.some((line) => line.glyph !== undefined);
   const textWidth = Math.max(1, box.w - (anyGlyph ? advance : 0));
-  const scale = lines.reduce(
-    (smallest, line) => Math.min(smallest, scaleToFit(line.text, textWidth, m.bodyScale)),
-    m.bodyScale,
+  const rung = lines.reduce(
+    (smallest, line) => shorterRung(smallest, rungToFit(line.text, textWidth, m.body)),
+    m.body,
   );
 
   /*
@@ -817,7 +827,7 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
    * already.
    */
   const glyphH = anyGlyph ? glyphHeight(glyphScale) : 0;
-  const textH = GLYPH_SIZE * scale;
+  const textH = rung.height;
   const rowH = Math.max(glyphH, textH) + m.widget.linePad;
   let y = box.y;
   for (const line of lines) {
@@ -828,8 +838,8 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
       // read as a mark with a caption hanging off its chin.
       drawGlyph(fb, box.x, y + Math.floor((rowH - m.widget.linePad - glyphH) / 2), line.glyph, glyphScale);
     }
-    const text = fit(line.text, textWidth, { scale });
-    drawText(fb, left, y + Math.floor((rowH - m.widget.linePad - textH) / 2), text, { scale });
+    const text = fit(line.text, textWidth, { rung });
+    drawText(fb, left, y + Math.floor((rowH - m.widget.linePad - textH) / 2), text, { rung });
     y += rowH;
   }
 }
@@ -850,10 +860,10 @@ function drawPanel(
    * for four and drew four. A count and the loop that draws it have to be the
    * same arithmetic; `agendaRowsInBox` is the same rule in the built-in layout.
    */
-  const lineH = GLYPH_SIZE * m.bodyScale + m.widget.linePad;
+  const lineH = m.bodyGlyph + m.widget.linePad;
   const fits = Math.max(1, Math.floor(box.h / lineH));
   const lines = panelLines(panel, rows === undefined ? fits : Math.min(fits, rows)).map(asciiTitle);
-  drawLines(fb, m, lines.length > 0 ? lines : [empty], box, m.bodyScale, 'left');
+  drawLines(fb, m, lines.length > 0 ? lines : [empty], box, m.body, 'left');
 }
 
 /**
@@ -945,7 +955,7 @@ function drawCalendarWidget(
  */
 function drawChores(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
   const note = (text: string): void => {
-    drawLines(fb, m, [text], box, scaleToFit(text, box.w, m.bodyScale), 'left');
+    drawLines(fb, m, [text], box, rungToFit(text, box.w, m.body), 'left');
   };
   const board = readChorePanel(panel);
   if (board === undefined) {
@@ -992,8 +1002,8 @@ function drawChores(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown,
      */
     const name = asciiTitle(item.name);
     const withOwner = item.person === undefined ? name : `${name} (${asciiTitle(item.person)})`;
-    const label = measureText(withOwner, { scale: m.bodyScale }) <= width ? withOwner : name;
-    drawText(fb, left + textX, y, fit(label, width, { scale: m.bodyScale }), { scale: m.bodyScale });
+    const label = measureText(withOwner, { rung: m.body }) <= width ? withOwner : name;
+    drawText(fb, left + textX, y, fit(label, width, { rung: m.body }), { rung: m.body });
     y += rowH;
   };
 
@@ -1006,7 +1016,7 @@ function drawChores(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown,
       if (items.length === 0) continue;
       if (!rowFits(y)) break;
       const heading = day.date === board.today ? 'TODAY' : weekdayOf(day.date).toUpperCase();
-      drawText(fb, box.x, y, fit(heading, box.w, { scale: m.smallScale }), { scale: m.smallScale });
+      drawText(fb, box.x, y, fit(heading, box.w, { rung: m.small }), { rung: m.small });
       y += m.widget.smallLine;
       for (const item of items) {
         if (!rowFits(y)) break;
@@ -1044,8 +1054,8 @@ function drawChores(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown,
     groups.delete('');
     const draw = (name: string, items: readonly ChoreLine[]): void => {
       if (!rowFits(y)) return;
-      drawText(fb, box.x, y, fit(asciiTitle(name).toUpperCase(), box.w, { scale: m.smallScale }), {
-        scale: m.smallScale,
+      drawText(fb, box.x, y, fit(asciiTitle(name).toUpperCase(), box.w, { rung: m.small }), {
+        rung: m.small,
       });
       y += m.widget.smallLine;
       for (const item of items) {
@@ -1155,9 +1165,9 @@ function drawWidget(
       return drawLines(
         fb,
         m,
-        wrap(str(config, 'text') ?? '', box.w, m.bodyScale),
+        wrap(str(config, 'text') ?? '', box.w, m.body),
         box,
-        m.bodyScale,
+        m.body,
         alignOf(config),
       );
     case 'todo':
@@ -1183,7 +1193,7 @@ function drawWidget(
     case 'image':
       return drawImage(fb, m, box, config);
     default:
-      return drawLines(fb, m, [asciiTitle(type)], box, m.bodyScale, 'left');
+      return drawLines(fb, m, [asciiTitle(type)], box, m.body, 'left');
   }
 }
 

@@ -39,7 +39,7 @@ import {
   shutDownBrowser,
   type Installation,
 } from './browser-harness.js';
-import { measureText } from '../src/epaper/font.js';
+import { measureText, TYPE_RUNGS, type TypeRung } from '../src/epaper/font.js';
 
 process.env['TZ'] = 'UTC';
 
@@ -114,17 +114,27 @@ describe('the wall', () => {
 
 describe('the panel', () => {
   it('has no proportional figure to begin with — every glyph shares one advance width', () => {
-    // font8x8 is a fixed-grid bitmap face: `measureText` multiplies the glyph
-    // count by one constant advance, so any two equal-length strings measure
-    // identical whatever digits (or letters) they carry — a stronger property
-    // than "tabular", since it holds for every character, not only 0-9.
-    const digitsOnly = ['0000', '1111', '9090', '3.14'];
-    const widths = digitsOnly.map((s) => measureText(s));
-    expect(new Set(widths).size, `expected one width for equal-length strings: ${widths.join(', ')}`).toBe(1);
+    /*
+     * Every bitmap face here is a fixed grid: `measureText` multiplies the
+     * glyph count by one constant advance, so any two equal-length strings
+     * measure identical whatever digits (or letters) they carry — a stronger
+     * property than "tabular", since it holds for every character, not only
+     * 0-9. Asserted on **every rung**, because the panel ships three faces now
+     * and a proportional one added later would be caught by whichever rung
+     * drew it rather than only by the 8x8.
+     */
+    for (const rung of TYPE_RUNGS as readonly TypeRung[]) {
+      const digitsOnly = ['0000', '1111', '9090', '3.14'];
+      const widths = digitsOnly.map((s) => measureText(s, { rung }));
+      expect(
+        new Set(widths).size,
+        `${rung.face}@${rung.scale}: expected one width for equal-length strings: ${widths.join(', ')}`,
+      ).toBe(1);
 
-    // And a genuinely proportional face would fail this the other way:
-    // digits and letters of the same *count* still match, because the width
-    // is a function of character count alone, never of which glyph.
-    expect(measureText('12:34')).toBe(measureText('ABCDE'));
+      // And a genuinely proportional face would fail this the other way:
+      // digits and letters of the same *count* still match, because the width
+      // is a function of character count alone, never of which glyph.
+      expect(measureText('12:34', { rung })).toBe(measureText('ABCDE', { rung }));
+    }
   });
 });

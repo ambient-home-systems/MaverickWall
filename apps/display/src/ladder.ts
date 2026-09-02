@@ -47,8 +47,9 @@ export type ShiftField = (typeof SHIFT_FIELDS)[number];
  * How prominently each row is drawn.
  *
  * Four steps rather than a size, because the two renderers measure in different
- * units — the wall in `rem` against its canvas, the panel in `GLYPH_SIZE` times
- * an integer scale — and a number here would mean neither.
+ * units — the wall in `rem` against its canvas, the panel in rungs of its own
+ * ladder, each a bitmap face at an integer scale — and a number here would mean
+ * neither.
  */
 export type LadderRole = 'kicker' | 'headline' | 'body' | 'small';
 

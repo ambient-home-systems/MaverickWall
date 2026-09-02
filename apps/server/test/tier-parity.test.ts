@@ -194,7 +194,11 @@ describe('the tier table, on both renderers', () => {
  */
 describe('the panel resolving a tier', () => {
   const EM = 16;
-  const CH = 18; // 8px glyph, 9px advance: the panel's own 1.125em per character.
+  // The 8x8 face at scale 1: an 8px cell and a 9px advance, so 1.125em per
+  // character. Named as a face rather than as "the panel's", which it stopped
+  // being when the 12x16 and 16x24 faces shipped — the table is stated in
+  // characters precisely so that each face can answer for itself.
+  const CH = 18;
 
   it('reads the table in the panel’s own units', () => {
     expect(tierFor(22 * CH, 10 * EM, CH, EM).tier).toBe('M4');

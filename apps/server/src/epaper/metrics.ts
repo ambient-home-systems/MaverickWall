@@ -23,22 +23,24 @@
  * and a systematic downward bias compounds down the stack. The one thing that
  * floors is a **count**: a row that does not fit must not be drawn.
  *
- * **The type ladder is anchored, not invented.** `800×480 → scale 2` is the
- * shipped body size and is treated as the fixed point; every other panel is
- * that scale times `(shortSide / 480) ** 0.6`. The exponent is the whole
- * argument: at 1.0 a bigger panel shows exactly what a smaller one shows, only
- * larger, which is what a household with a 13.3" panel did not pay for; at 0.0
- * it shows more at a size that stops being readable across a kitchen. 0.6 buys
- * both, and the measured ladder is what to judge it by — 8, 11, 15 and 17
- * agenda rows across the four landscape sizes, at 16, 16, 24 and 32px of type.
+ * **The type ladder lives in `type-tiers.ts` now**, and this module reads it.
+ * It used to be here as `round(2 * (short / 480) ** 0.6)` used as an integer
+ * multiplier of one 8x8 face, which is four sizes across the whole range and
+ * is the fault that phase 11 measured: two panels a third of a metre apart in
+ * diagonal drew the same type, and the role carrying a month cell's names was
+ * the *same 16px* on a 10.3" panel and a 13.3" one — smaller in arc-minutes on
+ * the larger, further one. The anchor and the exponent are untouched and their
+ * argument is untouched with them; what changed is that a tier now picks a
+ * **face** off a ladder of three rather than a multiplier of one.
  *
- * It is derived from the **short side**, never the height, because a panel
- * hung sideways is the same piece of hardware: `min(w, h)` is the one number a
- * quarter turn cannot change, and deriving from height would make the same
- * 13.3" panel draw 32px type landscape and 48px portrait.
+ * Every number below is still stated against the 800x480 column, and every one
+ * of them still reproduces it: the tier resolves a 16px body there, exactly as
+ * `scale 2` did. What moved is the *advance* — 18px per character to 13 —
+ * which is a third more of a household's event title on the same line.
  */
 
-import { GLYPH_SIZE } from './font.js';
+import { nearestRung, rungAtMost, rungStep, shorterRung, type TypeRung } from './font.js';
+import { tierRungs, typeTierFor, type TypeTierName } from './type-tiers.js';
 
 /** The panel's visual size in pixels — after rotation, as a viewer sees it. */
 export interface PanelGeometry {
@@ -47,26 +49,18 @@ export interface PanelGeometry {
 }
 
 /**
- * The bitmap font's line box: its 8px glyph plus 3px of leading, per scale rung.
+ * The line box: a glyph plus three eighths of its own height in leading.
  *
  * Read out of the shipped renderer rather than chosen — `drawAgendaBox` puts
  * its rule at `y + 22`, `drawMonthBox`'s weekday band is 22 tall, and
  * `drawWeekBox` steps its column rows by 11. Those are 11×2 and 11×1, which
  * means the file already had a line box; it just had it written down three
- * times as three literals.
+ * times as three literals. Stated as a *ratio* of the glyph now rather than as
+ * "3 pixels per scale rung", because a rung is a face and not a multiplier —
+ * and 3/8 reproduces 11, 22, 33 and 44 exactly at the four heights the range
+ * asks for, which is the test that fails first if this is wrong.
  */
-const LEADING = 3;
-
-/** The panel the shipped constants were tuned on, and the scale they used. */
-const ANCHOR_SHORT_SIDE = 480;
-const ANCHOR_BODY_SCALE = 2;
-
-/**
- * How type grows with the panel. See the header — 1.0 is "the same wall,
- * bigger", 0.0 is "the same type, more of it", and this is deliberately nearer
- * the second.
- */
-const SIZE_EXPONENT = 0.6;
+const LEADING_RATIO = 3 / 8;
 
 /**
  * A ceiling on the working set, not on what fits.
@@ -97,17 +91,29 @@ export interface EpaperMetrics {
   /** The panel this was derived for, so a caller need not carry both. */
   readonly panel: PanelGeometry;
 
-  /** Integer font scales. `body` is the ladder; the rest are rungs off it. */
-  readonly bodyScale: number;
-  readonly headerScale: number;
-  readonly yearScale: number;
-  /** Weekday letters over the month grid, and a week column's day head. */
-  readonly labelScale: number;
-  /** Event names inside a month cell, date rules, and every "+N". */
-  readonly smallScale: number;
+  /**
+   * The resolved type tier's name — the one thing downstream may key on.
+   *
+   * It is in the frame's ETag (`frame.ts`) because the partial-refresh contract
+   * is stated over it: two frames at the same panel size *and tier* draw into
+   * identical rectangles, so a panel that cannot tell a tier change from a
+   * content change could composite two layouts onto one sheet.
+   */
+  readonly tier: TypeTierName;
 
-  /** `GLYPH_SIZE × bodyScale` — one line of body ink, the unit for the gaps. */
+  /** The rungs the tier resolved. `body` is the ladder; the rest sit beside it. */
+  readonly body: TypeRung;
+  readonly header: TypeRung;
+  readonly year: TypeRung;
+  /** Weekday letters over the month grid, and a week column's day head. */
+  readonly label: TypeRung;
+  /** Event names inside a month cell, date rules, and every "+N". */
+  readonly small: TypeRung;
+
+  /** `body.height` — one line of body ink, the unit for the gaps. */
   readonly bodyGlyph: number;
+  /** `small.height`, which the month grid and every widget title are built on. */
+  readonly smallGlyph: number;
   /** The body line box: glyph plus leading. 22 at 800×480. */
   readonly bodyLine: number;
 
@@ -221,8 +227,9 @@ export interface EpaperWidgetMetrics {
 
 const clamp = (value: number, low: number, high: number): number => Math.min(high, Math.max(low, value));
 
-/** A line box at a scale: the glyph plus its leading. */
-export const lineBox = (scale: number): number => (GLYPH_SIZE + LEADING) * scale;
+/** A line box at a rung: the glyph plus its leading. */
+export const lineBox = (rung: TypeRung): number =>
+  rung.height + Math.round(rung.height * LEADING_RATIO);
 
 /**
  * Every layout number for one panel.
@@ -236,23 +243,19 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
   const height = Math.max(1, Math.round(geometry.height));
   const short = Math.min(width, height);
 
-  // The ladder. 384→2, 480→2, 984→3, 1404→4, and never below the shipped 2,
-  // so the 4.2" and 2.9" presets keep the type they have today.
-  const bodyScale = clamp(
-    Math.round(ANCHOR_BODY_SCALE * (short / ANCHOR_SHORT_SIDE) ** SIZE_EXPONENT),
-    2,
-    8,
-  );
-  const bodyGlyph = GLYPH_SIZE * bodyScale;
-  const bodyLine = lineBox(bodyScale);
-
-  // Rungs off it. The header is half a rung up (3 at 800×480, which is what
-  // `drawHeader` starts its own step-down from); the year and the weekday
-  // letters sit on the body rung; names inside a cell sit half a rung down.
-  const headerScaleWanted = clamp(Math.round(bodyScale * 1.5), 2, 12);
-  const yearScale = bodyScale;
-  const labelScale = bodyScale;
-  const smallScale = Math.max(1, Math.round(bodyScale / 2));
+  /*
+   * The ladder, read off `type-tiers.ts` rather than multiplied here.
+   *
+   * 384 and 480 land on E1 (a 16px body), 984 on E2 (24px) and 1404 on E3
+   * (32px) — the same four heights the constant ladder reached, drawn in faces
+   * that reach them at 13, 17 and 26 pixels of advance instead of 18, 27 and
+   * 36. The header is the rung above the body and the small role the rung
+   * below; the year and the weekday letters sit on the body rung, as they did.
+   */
+  const rungs = tierRungs(typeTierFor(short));
+  const bodyGlyph = rungs.body.height;
+  const smallGlyph = rungs.small.height;
+  const bodyLine = lineBox(rungs.body);
 
   // A step off the panel rather than a constant 16. Even pixels, because the
   // margin is an inset on both sides and an odd one puts the body half a pixel
@@ -275,7 +278,7 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
    * exactly the 54 that shipped. A derivation that misses its anchor by a pixel
    * moves every row under it.
    */
-  const headerGlyph = GLYPH_SIZE * headerScaleWanted;
+  const headerGlyph = rungs.header.height;
   const headerHeight = Math.min(
     clamp(Math.round(0.06 * height), Math.round(2.25 * headerGlyph), Math.round(3.2 * headerGlyph)),
     // Rule nine: on a 296×128 panel the band would otherwise be 42% of the
@@ -284,8 +287,9 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
     Math.round(height * 0.25),
   );
   // …and if the rail above cut the band, the date comes down with it rather
-  // than being drawn through the edge of its own band.
-  const headerScale = Math.max(1, Math.min(headerScaleWanted, Math.floor((headerHeight - 2) / GLYPH_SIZE)));
+  // than being drawn through the edge of its own band. A rung rather than a
+  // division now, so the step-down lands on a face this build actually ships.
+  const header = shorterRung(rungs.header, rungAtMost(headerHeight - 2));
 
   // Hoisted, because the widget metrics below are built from them too and one
   // expression written twice is one expression that can drift.
@@ -294,12 +298,14 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
 
   return {
     panel: { width, height },
-    bodyScale,
-    headerScale,
-    yearScale,
-    labelScale,
-    smallScale,
+    tier: rungs.tier,
+    body: rungs.body,
+    header,
+    year: rungs.year,
+    label: rungs.label,
+    small: rungs.small,
     bodyGlyph,
+    smallGlyph,
     bodyLine,
     margin,
     headerHeight,
@@ -318,15 +324,15 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
     bulletGap: Math.round(bodyGlyph * 0.5),
     pad,
     upcomingRowH: Math.round(1.36 * bodyLine),
-    dateRuleY: GLYPH_SIZE * smallScale + 2 * smallScale,
-    dateRuleH: 2 * GLYPH_SIZE * smallScale,
+    dateRuleY: smallGlyph + Math.round(smallGlyph / 4),
+    dateRuleH: 2 * smallGlyph,
 
     // The weekday band is exactly the label's own line box — 22 at 800×480,
     // which is the shipped `labelH`. A week column's head carries a number
     // beside the letter, so it takes a further quarter line: 26, also shipped.
-    monthHeadH: lineBox(labelScale),
-    weekHeadH: lineBox(labelScale) + Math.round(bodyGlyph / 4),
-    minCell: Math.round(1.5 * GLYPH_SIZE * smallScale),
+    monthHeadH: lineBox(rungs.label),
+    weekHeadH: lineBox(rungs.label) + Math.round(bodyGlyph / 4),
+    minCell: Math.round(1.5 * smallGlyph),
     /*
      * The smallest cell that can hold a named event, written as the anatomy the
      * shipped comment describes rather than as the 34 it added up to: the
@@ -335,11 +341,11 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
      * 1872×1404 panel asks for 68 and gets cells of 235.
      */
     pillMinCell:
-      4 * smallScale +
-      GLYPH_SIZE * (2 * smallScale) +
-      2 * smallScale +
-      GLYPH_SIZE * smallScale +
-      4 * smallScale,
+      Math.round(smallGlyph / 2) +
+      rungStep(rungs.small, 1).height +
+      Math.round(smallGlyph / 4) +
+      smallGlyph +
+      Math.round(smallGlyph / 2),
     /*
      * Width was never checked, because the shipped cell was square by
      * construction — `min(w / 7, h / weeks)` — so a cell tall enough was wide
@@ -348,22 +354,22 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
      * refuse. Three characters is the bar; 800×480's 50px cell clears it
      * exactly as it did before, and so does 640×384's 40px one.
      */
-    pillMinWidth: 2 * (3 * smallScale) + (3 * (GLYPH_SIZE + 1) - 1) * smallScale,
-    cellNumberInset: 4 * smallScale,
-    cellInset: 3 * smallScale,
+    pillMinWidth: 2 * Math.round(smallGlyph * 0.375) + 3 * rungs.small.advance - rungs.small.scale,
+    cellNumberInset: Math.round(smallGlyph / 2),
+    cellInset: Math.round(smallGlyph * 0.375),
     // A month cell packs tighter than a week column: its names sit under an
     // oversized day number in a small box, so they get a quarter-glyph of
     // leading rather than a full line box. 10 and 11 at 800×480 — both shipped.
-    cellTitleLineH: GLYPH_SIZE * smallScale + Math.round((GLYPH_SIZE * smallScale) / 4),
-    weekTitleLineH: lineBox(smallScale),
+    cellTitleLineH: smallGlyph + Math.round(smallGlyph / 4),
+    weekTitleLineH: lineBox(rungs.small),
     // A bar is a cell-title line with a pixel of ground either side; a lane is
     // that bar and the gap to the next. 10 and 12 at 800×480, which is what
     // they were as constants.
-    spanBarH: GLYPH_SIZE * smallScale + 2 * smallScale,
-    spanLaneH: GLYPH_SIZE * smallScale + 4 * smallScale,
-    markH: Math.max(1, Math.round(GLYPH_SIZE * smallScale * 0.375)),
-    markGap: Math.max(1, Math.round(GLYPH_SIZE * smallScale * 0.375)),
-    widget: widgetMetrics(bodyGlyph, smallScale, bodyLine, pad, bullet),
+    spanBarH: smallGlyph + Math.round(smallGlyph / 4),
+    spanLaneH: smallGlyph + Math.round(smallGlyph / 2),
+    markH: Math.max(1, Math.round(smallGlyph * 0.375)),
+    markGap: Math.max(1, Math.round(smallGlyph * 0.375)),
+    widget: widgetMetrics(bodyGlyph, smallGlyph, bodyLine, pad, bullet),
   };
 }
 
@@ -376,12 +382,11 @@ export function panelMetrics(geometry: PanelGeometry): EpaperMetrics {
  */
 function widgetMetrics(
   bodyGlyph: number,
-  smallScale: number,
+  smallGlyph: number,
   bodyLine: number,
   pad: number,
   bullet: number,
 ): EpaperWidgetMetrics {
-  const smallGlyph = GLYPH_SIZE * smallScale;
   const smallLine = smallGlyph + pad;
   const choreRowH = bodyLine;
   const tickInset = Math.round(bullet / 4);
@@ -409,17 +414,22 @@ function widgetMetrics(
 }
 
 /**
- * A type scale `factor` rungs off the panel's body scale.
+ * The rung nearest `factor` times the panel's own body height.
  *
- * The widget draws cap their type — a clock at 8, a countdown at 9, a shift
- * headline at 7, a forecast column's at 3 — and every one of those numbers was
- * a literal, which is why a 13.3" panel drew a clock the size of a 7.5" panel's
- * in six times the box. The *factor* stays at the call site because it is a
- * fact about that widget's shape rather than about the panel; only the rung it
- * is measured in belongs here. At the anchor these give back 8, 9, 7 and 3.
+ * The widget draws cap their type — a clock at 4x the body, a countdown at
+ * 4.5x, a shift headline at 3.5x, a forecast column at 3x — and every one of
+ * those was an absolute scale, which is why a 13.3" panel drew a clock the size
+ * of a 7.5" panel's in six times the box. The *factor* stays at the call site
+ * because it is a fact about that widget's shape rather than about the panel;
+ * only the rung it is measured in belongs here.
+ *
+ * Nearest rather than floor, because the ladder has a gap between 48 and 72 by
+ * construction (see `TYPE_RUNGS`) and flooring a 56px cap into it would take a
+ * quarter off a shift headline for the sake of a rounding rule nobody asked
+ * for. What has to *fit* a box uses `rungAtMost`, which floors.
  */
-export function scaleRung(m: EpaperMetrics, factor: number): number {
-  return Math.max(1, Math.round(m.bodyScale * factor));
+export function scaleRung(m: EpaperMetrics, factor: number): TypeRung {
+  return nearestRung(m.bodyGlyph * factor);
 }
 
 /**
@@ -443,14 +453,14 @@ export function agendaRowsInBox(available: number, m: EpaperMetrics): number {
 
 /** The same question for the names inside one month cell (`EPAPER_CELL_TITLES`). */
 export function cellTitlesInBox(available: number, m: EpaperMetrics): number {
-  const glyph = GLYPH_SIZE * m.smallScale;
+  const glyph = m.smallGlyph;
   if (available < glyph) return 0;
   return Math.min(MAX_CELL_TITLES, Math.floor((available - glyph) / m.cellTitleLineH) + 1);
 }
 
 /** …and for a week column, which steps by a line box rather than by a cell's. */
 export function weekTitlesInBox(available: number, m: EpaperMetrics): number {
-  const glyph = GLYPH_SIZE * m.smallScale;
+  const glyph = m.smallGlyph;
   if (available < glyph) return 0;
   return Math.min(MAX_CELL_TITLES, Math.floor((available - glyph) / m.weekTitleLineH) + 1);
 }
