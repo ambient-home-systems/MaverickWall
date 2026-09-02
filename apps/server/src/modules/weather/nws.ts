@@ -1,6 +1,7 @@
 import { FETCH_LIMITS, type Fetcher } from '@maverick-wall/core';
 import { DEFAULT_USER_AGENT } from '../../net/fetcher.js';
 import { parseJsonOr, z } from '../../validation.js';
+import type { GlyphKey } from '../../glyphs.js';
 
 /**
  * The National Weather Service.
@@ -38,8 +39,8 @@ export interface ForecastDay {
   readonly low: number | null;
   readonly unit: string;
   readonly summary: string;
-  /** A character the display can draw without fetching anything. */
-  readonly icon: string;
+  /** A glyph key both renderers draw themselves, or `null` for a sky neither has. */
+  readonly glyph: GlyphKey | null;
 }
 
 export interface Forecast {
@@ -67,38 +68,44 @@ export function pointsUrl(at: Coordinates): string {
 }
 
 /**
- * A character for a forecast, matched on the provider's own wording.
+ * A glyph for a forecast, matched on the provider's own wording.
  *
- * NWS returns an icon URL, which rule three forbids the display from
- * fetching — so the summary text is mapped here instead and the wall draws a
- * character it already has. Ordered: "chance showers and thunderstorms" must
- * match the storm before it matches the shower.
+ * NWS returns an icon URL, which rule three forbids the display from fetching
+ * — so the summary text is mapped here instead. What it used to map to was an
+ * emoji, which is the same rule broken invisibly: no emoji font ships in the
+ * image, so the storm was resolved out of whatever colour bitmap set the tablet
+ * happened to have, differed on every panel, and was stripped outright on
+ * e-ink. It names a first-party glyph now and each renderer draws it.
+ *
+ * Ordered: "chance showers and thunderstorms" must match the storm before it
+ * matches the shower. A summary nothing matches gets `null` and the strip draws
+ * no glyph rather than a stand-in character.
  */
-export function iconFor(summary: string): string {
+export function glyphFor(summary: string): GlyphKey | null {
   const text = summary.toLowerCase();
-  const rules: readonly (readonly [string, string])[] = [
-    ['thunder', '⛈'],
-    ['snow', '❄'],
-    ['sleet', '🌨'],
-    ['freezing', '🌨'],
-    ['fog', '🌫'],
-    ['haze', '🌫'],
-    ['shower', '🌦'],
-    ['rain', '🌧'],
-    ['drizzle', '🌧'],
-    ['mostly cloudy', '☁'],
-    ['partly sunny', '⛅'],
-    ['partly cloudy', '⛅'],
-    ['mostly sunny', '🌤'],
-    ['mostly clear', '🌤'],
-    ['cloud', '☁'],
-    ['overcast', '☁'],
-    ['wind', '💨'],
-    ['sunny', '☀'],
-    ['clear', '☀'],
+  const rules: readonly (readonly [string, GlyphKey])[] = [
+    ['thunder', 'thunderstorm'],
+    ['snow', 'snow'],
+    ['sleet', 'sleet'],
+    ['freezing', 'sleet'],
+    ['fog', 'fog'],
+    ['haze', 'fog'],
+    ['shower', 'showers'],
+    ['drizzle', 'drizzle'],
+    ['rain', 'rain'],
+    ['mostly cloudy', 'cloudy'],
+    ['partly sunny', 'partly-cloudy'],
+    ['partly cloudy', 'partly-cloudy'],
+    ['mostly sunny', 'mostly-clear'],
+    ['mostly clear', 'mostly-clear'],
+    ['cloud', 'cloudy'],
+    ['overcast', 'cloudy'],
+    ['wind', 'wind'],
+    ['sunny', 'clear'],
+    ['clear', 'clear'],
   ];
   for (const [needle, glyph] of rules) if (text.includes(needle)) return glyph;
-  return '·';
+  return null;
 }
 
 /**
@@ -181,7 +188,7 @@ export function foldPeriods(periods: readonly unknown[], limit: number): Forecas
         low,
         unit,
         summary,
-        icon: iconFor(summary),
+        glyph: glyphFor(summary),
       });
       index++;
       continue;
@@ -203,7 +210,7 @@ export function foldPeriods(periods: readonly unknown[], limit: number): Forecas
       low: temperature,
       unit,
       summary,
-      icon: iconFor(summary),
+      glyph: glyphFor(summary),
     });
   }
 

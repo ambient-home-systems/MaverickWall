@@ -1,5 +1,6 @@
 import type { Context, Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
+import { glyphSvg } from '../glyphs.js';
 import { FETCH_LIMITS } from '@maverick-wall/core';
 import { confirmDestroyPage, errorBlock, escapeHtml, page, textField, textareaField } from './html.js';
 import { ago, navModules } from './admin.js';
@@ -575,7 +576,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<article class="card">` +
       `<div style="display:flex;align-items:flex-start;gap:12px">` +
-      `<div style="font-size:26px;line-height:1">${escapeHtml(entry.icon)}</div>` +
+      `<div class="cglyph">${glyphSvg(entry.glyph, 'gl')}</div>` +
       preview +
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +

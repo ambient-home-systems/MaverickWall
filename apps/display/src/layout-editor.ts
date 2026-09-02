@@ -3395,7 +3395,10 @@ function boot(): void {
     hours: ['The hours', '19:00–07:00'],
     run: ['How far through', 'Day 2 of 4 · 2 more'],
     name: ['The day', 'Today'],
-    icon: ['The symbol', '☀'],
+    // Named rather than shown: the example column beside it is a line of
+    // plain text, and the one thing that could stand in for a drawing here is
+    // a character out of a font nobody ships.
+    icon: ['The symbol', 'a sun, a cloud'],
     high: ['The high', '24°'],
     low: ['The overnight low', '13°C'],
     label: ['What it is', 'Kitchen'],

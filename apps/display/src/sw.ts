@@ -56,6 +56,7 @@ const SHELL = [
   '/assets/main.js',
   '/assets/clock.js',
   '/assets/density.js',
+  '/assets/glyphs.js',
   '/assets/ladder.js',
   '/assets/manifest.js',
   '/assets/month-spans.js',

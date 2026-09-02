@@ -11,6 +11,7 @@ import { localDate, localTime } from './viewmodel.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
+import { glyphNode } from './glyphs.js';
 import { shiftTint } from './theme.js';
 import {
   HOUSE_ROLES,
@@ -299,6 +300,22 @@ function weatherColumn(
       index++;
       continue;
     }
+    /*
+     * The icon rung is a drawing, so it is a node rather than a line of text.
+     *
+     * `row.text` is a glyph *key* here — the ladder carries strings and this is
+     * the one field whose string names a picture. A key `glyphs.ts` cannot draw
+     * yields no node and the rung is simply not appended: the column gives the
+     * room back rather than drawing an empty box, which is what an inline
+     * element with nothing in it costs. The viewmodel has already refused any
+     * key that is not in the vocabulary, so this is the second of two gates and
+     * the one that matters if the first is ever loosened.
+     */
+    if (row.field === 'icon') {
+      const glyph = glyphNode(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
+      if (glyph !== null) cell.appendChild(glyph);
+      continue;
+    }
     // A low on its own row keeps the quieter treatment it has when it rides
     // beside the high: its emphasis is a property of the field, not of whether
     // the household happened to put it next to something.
@@ -321,7 +338,7 @@ function renderWeather(
   for (const day of view.days) {
     const rows = ladderRows(
       ladder,
-      { name: day.name, icon: day.icon, high: day.high, low: day.low },
+      { name: day.name, icon: day.glyph ?? '', high: day.high, low: day.low },
       WEATHER_ROLES,
     );
     strip.appendChild(weatherColumn(rows, paired));
@@ -380,10 +397,18 @@ function renderHouse(
     const resolved = houseLadder(config, reading.mode);
     const rows = ladderRows(
       tier === undefined ? resolved : rungsByPriority(tier, resolved, HOUSE_FIELD_PRIORITY),
-      { icon: reading.icon, label: reading.label, value: reading.value },
+      { icon: reading.glyph ?? '', label: reading.label, value: reading.value },
       HOUSE_ROLES,
     );
-    for (const row of rows) cell.appendChild(el('span', HOUSE_ROW_CLASS[row.field], row.text));
+    for (const row of rows) {
+      // The icon rung is a drawing — see `weatherColumn`, which says why.
+      if (row.field === 'icon') {
+        const glyph = glyphNode(row.text, `${HOUSE_ROW_CLASS[row.field]} gl`);
+        if (glyph !== null) cell.appendChild(glyph);
+        continue;
+      }
+      cell.appendChild(el('span', HOUSE_ROW_CLASS[row.field], row.text));
+    }
     strip.appendChild(cell);
   }
 
@@ -417,7 +442,8 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
   // forecast strip's information without the strip's row of the wall.
   if (showWeather && day.weather !== undefined) {
     const wx = el('div', 'dr-wx');
-    wx.appendChild(el('span', 'dr-wx-icon', day.weather.icon));
+    const glyph = glyphNode(day.weather.glyph, 'dr-wx-icon gl');
+    if (glyph !== null) wx.appendChild(glyph);
     wx.appendChild(el('span', 'dr-wx-high', day.weather.high));
     wx.appendChild(el('span', 'dr-wx-low', day.weather.low));
     when.appendChild(wx);
@@ -1700,7 +1726,8 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
     const list = el('div', 'gp-readings');
     for (const reading of take(items)) {
       const row = el('div', 'gp-reading');
-      if (reading.icon !== undefined) row.appendChild(el('span', 'gp-ico', reading.icon));
+      const glyph = glyphNode(reading.glyph, 'gp-ico gl');
+      if (glyph !== null) row.appendChild(glyph);
       row.appendChild(el('span', 'gp-label', reading.label));
       row.appendChild(el('span', 'gp-value', reading.value));
       list.appendChild(row);

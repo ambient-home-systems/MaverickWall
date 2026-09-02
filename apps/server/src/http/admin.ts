@@ -851,7 +851,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     // A span, not an anchor: the whole stat card is already an <a>, and a
     // nested anchor is invalid HTML the browser hoists out of the card.
-    const manage = (): string => `<span class="link">Manage ${icon('arrow')}</span>`;
+    // The word, and no arrow after it. An icon is allowed where it is the
+    // primary identifier of a destination; beside a word that already names the
+    // destination it is the same sentence twice.
+    const manage = (): string => `<span class="link">Manage</span>`;
 
     /*
      * Zero calendars is its own branch, and it needs one.
@@ -893,21 +896,30 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>${screens.length === 1 ? 'Online' : 'All online'}</span>`
           : `<span class="tag"><span class="dot dot-idle"></span>${online} of ${screens.length} online</span>`;
 
+    /*
+     * No icon on a stat card, and that is the rule rather than a tidy-up.
+     *
+     * Each of these carried its nav row's glyph inside `.ic` — a 34px
+     * accent-coloured rounded tile on a panel ground — beside the card's own
+     * number and label. Two of the three bans in one element: an icon inside a
+     * tinted rounded square, and an icon standing next to a heading rather than
+     * identifying a destination. The card is a link to that destination; the
+     * heading is what names it.
+     */
     const statCard = (
       href: string,
-      iconKey: string,
       tag: string,
       big: string | number,
       lab: string,
       sub: string,
     ): string =>
       `<a class="card stat" href="${href}">` +
-      `<div class="top"><div class="ic">${icon(iconKey)}</div>${tag}</div>` +
+      `<div class="top">${tag}</div>` +
       `<div class="big">${escapeHtml(String(big))}</div><div class="lab">${escapeHtml(lab)}</div>` +
       `<div class="subrow"><span>${sub}</span>${manage()}</div></a>`;
 
-    const statusRow = (iconKey: string, name: string, meta: string, tag: string): string =>
-      `<div class="frow"><div class="ic">${icon(iconKey)}</div>` +
+    const statusRow = (name: string, meta: string, tag: string): string =>
+      `<div class="frow">` +
       `<div style="flex:1;min-width:0"><div class="rname">${escapeHtml(name)}</div>` +
       (meta === '' ? '' : `<div class="host">${escapeHtml(meta)}</div>`) +
       `</div>${tag}</div>`;
@@ -931,17 +943,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         body:
           `<div class="grid g3">` +
           statCard(
-            'admin/calendars', 'calendars', calTag, sources.length,
+            'admin/calendars', calTag, sources.length,
             `Calendar${sources.length === 1 ? '' : 's'} connected`,
             `Timezone ${escapeHtml(household.timezone)}`,
           ) +
           statCard(
-            'admin/walls', 'screens', scrTag, screens.length,
+            'admin/walls', scrTag, screens.length,
             `Wall${screens.length === 1 ? '' : 's'} paired`,
             screens.length === 0 ? 'Pair one on the Walls page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
           ) +
           statCard(
-            'admin/shifts', 'shifts',
+            'admin/shifts',
             plans.length === 0 ? '<span class="tag">None set</span>' : `<span class="tag tag-accent">${plans.length} active</span>`,
             plans.length, `Rotation${plans.length === 1 ? '' : 's'}`,
             plans.length === 0 ? 'Colour each day by who is working' : escapeHtml(plans.map((p) => p.personName ?? 'Someone').join(' · ')),
@@ -955,13 +967,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           // Linked, because the summary can name something to go and do and a
           // pill that says "needs your location" with no way to it is a nag.
           statusRow(
-            'alerts',
             'Weather alerts',
             '',
             `<a class="link" href="admin/alerts">${tagFor(alertSummary())}</a>`,
           ) +
-          statusRow('homeassistant', 'Home Assistant', '', tagFor(haSummary())) +
-          statusRow('system', 'System', `${escapeHtml(deps.appVersion)} · up ${uptimeText}`, `<a class="link" href="admin/system">Open ${icon('arrow')}</a>`) +
+          statusRow('Home Assistant', '', tagFor(haSummary())) +
+          statusRow('System', `${escapeHtml(deps.appVersion)} · up ${uptimeText}`, `<a class="link" href="admin/system">Open</a>`) +
           `</div>` +
           `<div class="card today-card">` +
           `<div class="kick">Today on the wall</div>` +
@@ -3388,7 +3399,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="sub">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
       (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
       `</div></div>` +
-      `<span class="link">Open ${icon('arrow')}</span>` +
+      `<span class="link">Open</span>` +
       `</div></a>`
     );
   }
@@ -3404,7 +3415,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const seen = screen.lastSeenAt === null ? 'never connected' : `last seen ${ago(screen.lastSeenAt, now())}`;
     return (
       `<div class="card"><div style="display:flex;align-items:center;gap:12px">` +
-      `<div class="ic">${icon('screens')}</div>` +
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
       `<span class="tag">E-paper</span></div>` +
@@ -3441,11 +3451,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const defaultCard =
       `<a class="card" href="admin/walls/default">` +
       `<div style="display:flex;align-items:center;gap:12px">` +
-      `<div class="ic">${icon('layout')}</div>` +
       `<div style="flex:1;min-width:0">` +
       `<div class="rname" style="font-size:16px">Default wall</div>` +
       `<div class="sub">The layout every wall shows until it has one of its own</div></div>` +
-      `<span class="link">Open ${icon('arrow')}</span>` +
+      `<span class="link">Open</span>` +
       `</div></a>`;
 
     const cardFor = (screen: AdminScreenRow): string =>

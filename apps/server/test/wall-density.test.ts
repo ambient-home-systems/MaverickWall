@@ -533,6 +533,29 @@ interface Baseline {
  * that *starts* naming something becomes a cell that can carry a count. A loss
  * of names would still fail.
  *
+ * **`runsUnderFloor` then falls by exactly five at 480x800 and 800x480, and
+ * not one word got bigger.** The forecast strip's icon
+ * used to be a *character* — an emoji, set at 2.1rem — so it counted as a run
+ * of type, and at those two sizes 2.1rem is 15.7px and 9.4px. It is a drawing
+ * now (`glyphs.ts`), so five columns' worth of runs stopped existing. The
+ * arithmetic is what says so rather than the direction: at 1920x1080 the same
+ * 2.1rem is 22.7px, above the floor, and that size's count is unchanged; at
+ * 1080x1920 and 2560x1440 the count was already 0. A metric whose *population*
+ * changed is not a metric that improved, and recording it as one is how a
+ * baseline stops meaning anything.
+ *
+ * **The recorded values are 41 and 58, and the arithmetic to reach them is why
+ * this was measured on the merged tree rather than computed.** Roboto Flex
+ * landed on `main` while the glyphs were being built and raised these same two
+ * numbers by five each, for its own unrelated reason (41→46, 58→63, the
+ * paragraph above). Two independent deltas of five on one metric, in opposite
+ * directions, land back where they started — which is exactly the coincidence
+ * that would let a merge resolved by picking a side pass while measuring
+ * something nobody intended. Measured after merging: 41 and 58, the same
+ * numbers this file carried before either change, reached by two mechanisms
+ * that cancel. Neither is a return to a previous state, and the paragraph for
+ * each stays.
+ *
  * **`AGENDA_BASELINE`'s numeral falls at every size**, 59.7px → 44.9px at
  * 1080x1920. That is `.dr-num` finally honouring this project's own design rule
  * on a wall nobody has measured — "the date numeral is never larger than the
@@ -580,7 +603,7 @@ export const BASELINE: Record<string, Baseline> = {
     // No room for a lane under the numeral at this cell size, so the bars are
     // measured back out by the tier pass and the events go back to being rows.
     spanBars: 0,
-    runsUnderFloor: 46,
+    runsUnderFloor: 41,
     agendaDays: 2,
     agendaEvents: 6,
     canvasSharePercent: 93.5,
@@ -592,7 +615,7 @@ export const BASELINE: Record<string, Baseline> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 0,
-    runsUnderFloor: 63,
+    runsUnderFloor: 58,
     agendaDays: 4,
     agendaEvents: 11,
     canvasSharePercent: 93.5,

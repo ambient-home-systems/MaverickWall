@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   domainOf,
-  iconFor,
+  glyphFor,
   isSupported,
   parseStates,
   readState,
@@ -107,13 +107,36 @@ describe('reading entities', () => {
     expect(readState(state({ domain: 'person', state: 'School' }))).toBe('School');
   });
 
-  it('draws a character it already has rather than fetching an icon', () => {
-    // Rule three: Home Assistant offers an icon URL and the wall may not
-    // fetch one, so the device class maps to a glyph.
-    expect(iconFor(state({ deviceClass: 'temperature' }))).toBe('🌡');
-    expect(iconFor(state({ deviceClass: 'moisture' }))).toBe('💦');
-    expect(iconFor(state({ domain: 'person', deviceClass: null }))).toBe('🧍');
-    expect(iconFor(state({ domain: 'sensor', deviceClass: 'unheard-of' }))).toBe('·');
+  it('names a first-party glyph rather than fetching an icon', () => {
+    // Rule three: Home Assistant offers an icon URL and the wall may not fetch
+    // one — and an emoji is a fetch too, resolved on the device out of a font
+    // this image does not ship. So the device class names a key both renderers
+    // draw themselves.
+    expect(glyphFor(state({ deviceClass: 'temperature' }))).toBe('temperature');
+    expect(glyphFor(state({ deviceClass: 'moisture' }))).toBe('moisture');
+    expect(glyphFor(state({ domain: 'person', deviceClass: null }))).toBe('person');
+  });
+
+  it('tells apart the pairs the emoji drew as one picture', () => {
+    // Two footprints for `motion` and `occupancy`, one flame for `smoke` and
+    // `gas`, one door for a door and a garage. Each pair answers a different
+    // question and a wall that cannot separate them reports the cat as family.
+    expect(glyphFor(state({ deviceClass: 'motion' }))).not.toBe(
+      glyphFor(state({ deviceClass: 'occupancy' })),
+    );
+    expect(glyphFor(state({ deviceClass: 'smoke' }))).not.toBe(
+      glyphFor(state({ deviceClass: 'gas' })),
+    );
+    expect(glyphFor(state({ deviceClass: 'garage_door' }))).not.toBe(
+      glyphFor(state({ deviceClass: 'door' })),
+    );
+  });
+
+  it('answers null for a device class with no glyph, never a stand-in character', () => {
+    // The middle dot this used to answer with was a character standing in for a
+    // picture nobody had drawn. Nothing at all is the honest reading, and it is
+    // what lets the renderer give the rung's room back.
+    expect(glyphFor(state({ domain: 'sensor', deviceClass: 'unheard-of' }))).toBeNull();
   });
 });
 

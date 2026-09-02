@@ -338,8 +338,13 @@ describe('the chores screen', () => {
     // An icon key with no path renders as an empty <svg>, silently. The nav
     // entry would still work and would look broken, which is the kind of thing
     // nothing else here would catch.
+    //
+    // The literal is Lucide's `list-checks` — its two ticks, which nothing else
+    // in the set draws. What it replaces was hand-drawn, three items and a tick
+    // sized by eye at 24px, because Material Symbols had no checklist that read
+    // at that size; a set drawn by one hand for one grid does not need that.
     const nav = body.slice(body.indexOf('href="admin/chores"'));
-    expect(nav.slice(0, 400)).toContain('<path d="M138 -684');
+    expect(nav.slice(0, 400)).toContain('<path d="m3 17 2 2 4-4"/>');
   });
 
   it('adds a chore and shows it with the schedule spelled out', async () => {

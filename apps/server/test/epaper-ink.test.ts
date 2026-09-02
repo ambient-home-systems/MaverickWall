@@ -80,17 +80,17 @@ function manifest(): Manifest {
     panels: {
       weather: {
         days: [
-          { name: 'Fri', high: 24, low: 13, icon: 'sun' },
-          { name: 'Sat', high: 22, low: 12, icon: 'cloud' },
-          { name: 'Sun', high: 20, low: 11, icon: 'rain' },
+          { name: 'Fri', high: 24, low: 13, glyph: 'clear' },
+          { name: 'Sat', high: 22, low: 12, glyph: 'cloudy' },
+          { name: 'Sun', high: 20, low: 11, glyph: 'rain' },
         ],
         provider: 'nws',
         fetchedAt: 1,
       },
       home: {
         readings: [
-          { label: 'Front door', value: 'Locked', icon: 'lock', mode: 'label_value' },
-          { label: 'Kitchen', value: '19.4 C', icon: 'therm', mode: 'label_value' },
+          { label: 'Front door', value: 'Locked', glyph: 'lock', mode: 'label_value' },
+          { label: 'Kitchen', value: '19.4 C', glyph: 'temperature', mode: 'label_value' },
           { label: 'Garage', value: 'Open', icon: 'garage', mode: 'label_value' },
         ],
         fetchedAt: 1,

@@ -12,7 +12,10 @@ export const entry: CatalogEntry = {
   description:
     'A big number counting down the days to a date you choose — the runnable ' +
     'reference module. A good first module to try, and to copy.',
-  icon: '⏳',
+  // The vocabulary is closed at twenty-nine and has no hourglass, which is the
+  // point of a closed set: a store entry does not get to add a drawing. The
+  // gauge is the nearest thing in it that reads as a dial counting down.
+  glyph: 'pressure',
   preview: ['42', 'days to Holiday'],
   kind: 'service',
   install: {

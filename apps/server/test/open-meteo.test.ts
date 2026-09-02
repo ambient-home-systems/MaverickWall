@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { forecastUrl, iconForCode, parseForecast } from '../src/modules/weather/open-meteo.js';
+import { forecastUrl, glyphForCode, parseForecast } from '../src/modules/weather/open-meteo.js';
 
 /**
  * Open-Meteo, against bytes it actually sent.
@@ -40,7 +40,7 @@ describe('the request', () => {
 });
 
 describe('reading a real forecast', () => {
-  it('folds the parallel daily arrays into days with a high, a low and an icon', () => {
+  it('folds the parallel daily arrays into days with a high, a low and a glyph', () => {
     const forecast = parseForecast(FORECAST, AT, 'metric', TODAY, 5);
     expect(forecast).toBeDefined();
     expect(forecast?.days).toHaveLength(5);
@@ -49,7 +49,7 @@ describe('reading a real forecast', () => {
     // The first day is the household's today.
     expect(first?.name).toBe('Today');
     // Fixture: code 3 (overcast), 35.4 / 20.5 °C.
-    expect(first?.icon).toBe('☁');
+    expect(first?.glyph).toBe('cloudy');
     expect(first?.high).toBe(35.4);
     expect(first?.low).toBe(20.5);
     // The letter alone. The display draws the degree itself and appends the
@@ -93,23 +93,23 @@ describe('reading a real forecast', () => {
   });
 });
 
-describe('the icon, from a WMO code', () => {
+describe('the glyph, from a WMO code', () => {
   it('maps the codes the fixture uses', () => {
-    expect(iconForCode(3)).toBe('☁'); // overcast
-    expect(iconForCode(51)).toBe('🌧'); // drizzle
+    expect(glyphForCode(3)).toBe('cloudy'); // overcast
+    expect(glyphForCode(51)).toBe('drizzle'); // drizzle
   });
 
   it('separates the weather families', () => {
-    expect(iconForCode(0)).toBe('☀'); // clear
-    expect(iconForCode(2)).toBe('⛅'); // partly cloudy
-    expect(iconForCode(71)).toBe('❄'); // snow
-    expect(iconForCode(80)).toBe('🌦'); // rain showers
-    expect(iconForCode(95)).toBe('⛈'); // thunderstorm
-    expect(iconForCode(45)).toBe('🌫'); // fog
+    expect(glyphForCode(0)).toBe('clear'); // clear
+    expect(glyphForCode(2)).toBe('partly-cloudy'); // partly cloudy
+    expect(glyphForCode(71)).toBe('snow'); // snow
+    expect(glyphForCode(80)).toBe('showers'); // rain showers
+    expect(glyphForCode(95)).toBe('thunderstorm'); // thunderstorm
+    expect(glyphForCode(45)).toBe('fog'); // fog
   });
 
   it('falls back rather than throwing on a code nobody predicted', () => {
-    expect(iconForCode(999)).toBe('·');
-    expect(iconForCode(-1)).toBe('·');
+    expect(glyphForCode(999)).toBeNull();
+    expect(glyphForCode(-1)).toBeNull();
   });
 });

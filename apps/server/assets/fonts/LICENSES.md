@@ -46,10 +46,19 @@ with this software, are not sold on their own, retain their reserved names, and
 carry this notice. The Apache-2.0 fonts (Roboto, Roboto Condensed) are used
 under https://www.apache.org/licenses/LICENSE-2.0.
 
-## Material Symbols
+## Lucide
 
-The admin's inline icons are Material Symbols Outlined (24dp, default weight),
-© Google, Apache License 2.0 — https://github.com/google/material-design-icons.
-No font file ships: the glyph outline paths are copied into `ICON_PATHS` in
-`apps/server/src/http/html.ts` (rule three — nothing is fetched at runtime),
-each entry named after its Symbols source glyph.
+The admin's inline icons are Lucide, © Lucide Icons and Contributors, ISC
+License — https://github.com/lucide-icons/lucide. No font file ships: twenty
+icons' elements are copied into `ICON_PATHS` in `apps/server/src/http/html.ts`
+(rule three — nothing is fetched at runtime), each entry named after its Lucide
+source file. They are drawn as strokes on Lucide's 24 grid at a width of 1.75.
+
+Lucide replaced Material Symbols Outlined (© Google, Apache-2.0), and no path
+from that set remains — the admin's icon set is now one hand, which is what let
+the hand-drawn checklist go.
+
+The wall's own glyphs are **not** Lucide and are not from any set: they are
+drawn in this repository (`apps/server/src/glyphs.ts` and its two renderers),
+because nothing off the shelf is drawn as a filled silhouette for a 1-bit
+e-paper panel read from across a kitchen.

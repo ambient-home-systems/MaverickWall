@@ -471,6 +471,17 @@ body {
 }
 :root:not([data-blocks~="next"]) .legend { flex: 0 0 auto; }
 
+/* --- glyphs ------------------------------------------------------------ */
+/*
+ * A first-party silhouette, drawn by `glyphs.ts` and never fetched.
+ *
+ * `currentColor`, so a glyph is ink like the words beside it and takes the
+ * theme's own emphasis role from whatever it is placed in — which is the whole
+ * reason these replaced emoji: a vendor's colour bitmap could not.
+ * `width`/`height` are set at each site, three of them by density tier.
+ */
+.gl { display: block; flex: 0 0 auto; }
+
 /* --- banners ---------------------------------------------------------- */
 
 .banners { display: grid; gap: 0.6rem; }
@@ -765,7 +776,21 @@ body {
 .wx-name {
   font-size: 1.25rem; letter-spacing: var(--ls-scaffold); text-transform: uppercase; color: var(--muted);
 }
-.wx-ico { font-size: 2.1rem; line-height: 1.5; }
+/*
+ * Three sizes, chosen by the widget's own density tier.
+ *
+ * A glyph is a drawing rather than a character, so it is sized in length and
+ * not in points, and `.gl` takes its box from `width`/`height` alone. The
+ * middle rung reproduces the 2.1rem this drew as text, which is the anchor the
+ * other two are read against — the rule `epaper/metrics.ts` states for its own
+ * ladder, that a derivation which misses the tuned value is wrong.
+ *
+ * The forecast reaches T1 before it draws a glyph at all (the ladder's second
+ * rung), so all three of these are live: T1 small, T2 the anchor, T3 large.
+ */
+.wx-ico { width: 2rem; height: 2rem; margin: 0 auto; }
+[data-tier="T1"] .wx-ico { width: 1.5rem; height: 1.5rem; }
+[data-tier="T3"] .wx-ico { width: 2.7rem; height: 2.7rem; }
 .wx-temp { font-size: 1.7rem; font-weight: 600; }
 /*
  * The low is quieter than the high, whether it sits beside it or on its own.
@@ -808,7 +833,9 @@ body {
   flex: 0 0 auto;
 }
 .hs-item { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
-.hs-ico { font-size: 1.6rem; }
+.hs-ico { width: 1.6rem; height: 1.6rem; }
+[data-tier="T0"] .hs-ico, [data-tier="T1"] .hs-ico { width: 1.3rem; height: 1.3rem; }
+[data-tier="T3"] .hs-ico { width: 2rem; height: 2rem; }
 .hs-label {
   font-size: 1.25rem;
   letter-spacing: var(--ls-scaffold);
@@ -908,7 +935,9 @@ body {
   font-family: var(--f-sans); font-size: var(--t-wall-time, 1.4rem); margin-top: 0.4rem;
   font-variant-numeric: tabular-nums;
 }
-.dr-wx-icon { font-family: var(--f-body, inherit); font-size: var(--t-wall-time, 1.5rem); }
+/* The day row's own glyph takes the time role's size, because it sits on that
+   line and nothing else in the row is nearer to it. */
+.dr-wx-icon { width: var(--t-wall-time, 1.4rem); height: var(--t-wall-time, 1.4rem); }
 .dr-wx-high { color: var(--ink); }
 .dr-wx-low { color: var(--muted); }
 
@@ -2649,7 +2678,7 @@ body {
   font-size: 2rem;
 }
 .gp-reading:first-child { border-top: 0; }
-.gp-ico { font-size: 1.8rem; flex: 0 0 auto; }
+.gp-ico { width: 1.8rem; height: 1.8rem; flex: 0 0 auto; }
 .gp-label { color: var(--muted); flex: 1; min-width: 0; }
 .gp-value { color: var(--ink); font-weight: 600; white-space: nowrap; }
 /*

@@ -13,7 +13,7 @@ export const entry: CatalogEntry = {
     'The current temperature where you live, from Open-Meteo — a free, ' +
     'key-less public weather feed. A good first recipe: install it, fill in ' +
     'your latitude and longitude, done.',
-  icon: '🌡️',
+  glyph: 'temperature',
   preview: ['19.4°', 'Outside'],
   kind: 'recipe',
   recipe: {

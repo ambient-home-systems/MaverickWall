@@ -725,7 +725,7 @@ describe('the forecast beside a day', () => {
   }) as Partial<Manifest>;
 
   const wx = (date: string | undefined, high: number, low: number) => ({
-    name: 'Wednesday', icon: '☀', high, low, unit: 'F',
+    name: 'Wednesday', glyph: 'clear', high, low, unit: 'F',
     ...(date !== undefined ? { date } : {}),
   });
 

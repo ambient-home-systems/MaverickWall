@@ -1,4 +1,5 @@
 import { z } from '../validation.js';
+import { GLYPH_KEYS } from '../glyphs.js';
 import { recipeSchema } from '../modules/external/recipe.js';
 import { STORE_ENTRIES } from '../catalog/index.js';
 
@@ -36,13 +37,22 @@ const common = {
   name: z.string().min(1).max(60),
   author: z.string().min(1).max(60),
   description: z.string().min(1).max(280),
-  /** A single glyph the device already has — never a fetched image (rule three). */
-  icon: z.string().min(1).max(4),
+  /**
+   * A key from the first-party glyph vocabulary — never a fetched image (rule
+   * three), and no longer an emoji either.
+   *
+   * An emoji here was a third-party asset resolved on whatever device is
+   * looking, which the store card shares with the wall; and a store entry's
+   * mark can reach a panel, where an emoji is stripped to nothing. `z.enum`
+   * rather than a string, so a catalogue entry naming a glyph nobody drew fails
+   * the build (`catalog.test.ts`) rather than a household's wall.
+   */
+  glyph: z.enum(GLYPH_KEYS),
   /**
    * An optional preview of what the module draws — a "screenshot" spelled out in
    * glyphs and text, never a fetched image (rule three). A few short lines: the
    * first is the headline (a big value), the rest a caption or two, echoing how
-   * a stat panel reads on the wall. Shown beside the icon on the store card.
+   * a stat panel reads on the wall. Shown beside the glyph on the store card.
    */
   preview: z.array(z.string().min(1).max(24)).min(1).max(4).optional(),
 };

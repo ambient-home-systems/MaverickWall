@@ -1,4 +1,5 @@
 import { z } from '../../validation.js';
+import { isGlyphKey } from '../../glyphs.js';
 
 /**
  * The Panel Data Schema — the vocabulary a third-party module may put on the
@@ -16,9 +17,29 @@ import { z } from '../../validation.js';
 
 const str = (max: number): z.ZodString => z.string().max(max);
 
+/**
+ * One reading. `glyph` is a key from the first-party vocabulary and nothing
+ * else — never a character, never a URL.
+ *
+ * `icon` is the field this replaced and it is still **accepted and then
+ * dropped**, which is deliberate on both halves. Accepted, because the schema
+ * is `.strict()` and a module written against the old contract would otherwise
+ * have its whole panel refused — a wall losing a widget over a field nobody
+ * reads is rule nine. Dropped, because what it carried was an emoji: a
+ * third-party asset resolved on the device, which is the fault this change
+ * exists to remove and which a module is no more entitled to than we were.
+ */
 const reading = z
-  .object({ label: str(60), value: str(60), icon: str(4).optional() })
-  .strict();
+  .object({
+    label: str(60),
+    value: str(60),
+    glyph: str(24).optional(),
+    icon: str(4).optional(),
+  })
+  .strict()
+  .transform(({ label, value, glyph }) =>
+    isGlyphKey(glyph) ? { label, value, glyph } : { label, value },
+  );
 
 const tile = z.object({ label: str(60), value: str(60) }).strict();
 

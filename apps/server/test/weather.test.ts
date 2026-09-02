@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { foldPeriods, iconFor, parseForecast, pointsUrl } from '../src/modules/weather/nws.js';
+import { GLYPH_KEYS } from '../src/glyphs.js';
+import { foldPeriods, glyphFor, parseForecast, pointsUrl } from '../src/modules/weather/nws.js';
 import { weatherModule, type WeatherPanel } from '../src/modules/weather/index.js';
 import { collectPanels, type PanelModule } from '../src/modules/registry.js';
 import { openDatabase } from '../src/db/open.js';
@@ -126,24 +127,31 @@ describe('reading a real forecast', () => {
   });
 });
 
-describe('the icon', () => {
+describe('the glyph', () => {
   it('matches the more specific wording first', () => {
     // "Chance Showers And Thunderstorms" is a storm, not a shower.
-    expect(iconFor('Chance Showers And Thunderstorms')).toBe(iconFor('Thunderstorms'));
-    expect(iconFor('Showers And Thunderstorms')).not.toBe(iconFor('Rain Showers'));
+    expect(glyphFor('Chance Showers And Thunderstorms')).toBe(glyphFor('Thunderstorms'));
+    expect(glyphFor('Showers And Thunderstorms')).not.toBe(glyphFor('Rain Showers'));
+  });
+
+  it('names a glyph the renderers actually have', () => {
+    // The key is the whole contract: a summary mapped to a name nobody drew is
+    // a wall with a gap in it and nothing anywhere saying why.
+    expect(GLYPH_KEYS).toContain(glyphFor('Sunny'));
+    expect(GLYPH_KEYS).toContain(glyphFor('Patchy Fog'));
   });
 
   it('has something for every summary in the real fixture', () => {
     const summaries = [...FORECAST.matchAll(/"shortForecast":\s*"([^"]+)"/g)].map((m) => m[1] ?? '');
     expect(summaries.length).toBeGreaterThan(3);
     for (const summary of summaries) {
-      expect(iconFor(summary), `no icon for "${summary}"`).not.toBe('·');
+      expect(glyphFor(summary), `no glyph for "${summary}"`).not.toBeNull();
     }
   });
 
-  it('falls back rather than throwing on wording nobody predicted', () => {
-    expect(iconFor('Volcanic Ash')).toBe('·');
-    expect(iconFor('')).toBe('·');
+  it('answers null rather than throwing on wording nobody predicted', () => {
+    expect(glyphFor('Volcanic Ash')).toBeNull();
+    expect(glyphFor('')).toBeNull();
   });
 });
 
@@ -213,7 +221,7 @@ describe('which provider draws the strip', () => {
       key.replace(/[^a-z0-9]/gi, ''),
       key.split(':')[0],
       key,
-      JSON.stringify({ days: [{ name, high: 20, low: 10, unit: 'C', summary: '', icon: '☁' }], fetchedAt: NOW }),
+      JSON.stringify({ days: [{ name, high: 20, low: 10, unit: 'C', summary: '', glyph: 'cloudy' }], fetchedAt: NOW }),
       NOW,
     );
   };
