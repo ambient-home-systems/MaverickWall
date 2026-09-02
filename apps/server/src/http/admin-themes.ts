@@ -341,7 +341,6 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
         `<label class="tb-group">Fonts</label>` +
         fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
         fontField('--f-sans', 'Body', 'Event titles and the everyday text.') +
-        fontField('--f-mono', 'Times & numbers', 'Clock digits, times, and data readings.') +
 
         `<button type="submit">${editing ? 'Save theme' : 'Create theme'}</button>` +
         `</div>` +

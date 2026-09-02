@@ -26,12 +26,30 @@
  */
 
 /* Bundled, self-hosted, first-party. See /assets/fonts/LICENSES.md. */
+/*
+ * Roboto Flex, Apache-2.0, same superfamily as Roboto Condensed below — the
+ * wall's one variable sans. Subset to Latin plus Latin-1 Supplement (the same
+ * Google "latin" cut the other bundled faces use), and restricted to the
+ * three axes this wall actually drives:
+ *
+ *   wdth 75-100    a width, not a family switch — see --f-cond below.
+ *   opsz 8-144     driven automatically by `font-optical-sizing: auto`
+ *                  (the default), so a 22px event name and a 137px clock read
+ *                  from the same file at the cut each size actually wants.
+ *   GRAD -50..100  no registered CSS property, so it is carried as --f-grade
+ *                  and applied once on `body`. Thickens strokes without
+ *                  moving a glyph's advance width — see --f-grade below.
+ *
+ * font-weight is a single 400: this face is not asked to vary weight, so a
+ * `font-weight: 700` on it synthesises bold exactly as it would on any face
+ * with only one weight on offer, the way the wall has always drawn a face
+ * with no bundled bold (Fraunces excepted).
+ */
+@font-face{font-family:'Roboto Flex';font-style:normal;font-weight:400;
+  font-stretch:75% 100%;font-display:swap;
+  src:url('/assets/fonts/roboto-flex.woff2') format('woff2')}
 @font-face{font-family:'Roboto Condensed';font-style:normal;font-weight:400 700;
   font-display:swap;src:url('/assets/fonts/roboto-condensed.woff2') format('woff2')}
-@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;
-  src:url('/assets/fonts/inter-400.woff2') format('woff2')}
-@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;
-  src:url('/assets/fonts/inter-700.woff2') format('woff2')}
 @font-face{font-family:'Oswald';font-style:normal;font-weight:400;font-display:swap;
   src:url('/assets/fonts/oswald-400.woff2') format('woff2')}
 @font-face{font-family:'Oswald';font-style:normal;font-weight:700;font-display:swap;
@@ -40,10 +58,6 @@
   src:url('/assets/fonts/fraunces-400.woff2') format('woff2')}
 @font-face{font-family:'Fraunces';font-style:normal;font-weight:700;font-display:swap;
   src:url('/assets/fonts/fraunces-700.woff2') format('woff2')}
-@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;
-  src:url('/assets/fonts/jetbrains-mono-400.woff2') format('woff2')}
-@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:700;font-display:swap;
-  src:url('/assets/fonts/jetbrains-mono-700.woff2') format('woff2')}
 @font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400;font-display:swap;
   src:url('/assets/fonts/space-grotesk-400.woff2') format('woff2')}
 @font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;
@@ -69,6 +83,15 @@ body {
   color: var(--ink, #E9EEF4);
   font-family: var(--f-sans);
   font-variant-numeric: tabular-nums;
+  /*
+   * Grade, not weight. A future dark-theme or 1-bit correction (RFC 006 phase
+   * 11) needs strokes thickened without a glyph's advance width moving — a
+   * weight change moves it, a grade change cannot — so it is wired here once,
+   * inherited everywhere, and defaults to 0 (no correction). Harmless on the
+   * faces with no GRAD axis (Oswald, Fraunces, Space Grotesk): an
+   * unrecognised axis tag is silently ignored.
+   */
+  font-variation-settings: 'GRAD' var(--f-grade, 0);
   -webkit-font-smoothing: antialiased;
   /*
    * A number, never `normal`, and this one line is what makes the wall's
@@ -272,20 +295,75 @@ body {
 }
 
 :root {
-  --f-cond: 'Roboto Condensed', 'Arial Narrow', 'Helvetica Neue', system-ui, sans-serif;
-  --f-sans: system-ui, 'Roboto', 'Segoe UI', -apple-system, sans-serif;
-  --f-serif: Georgia, 'Times New Roman', serif;
-  --f-mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /*
+   * The wall's body face, self-hosted (see the @font-face block above) and
+   * first in its own stack: `system-ui` used to lead here, which is why two
+   * panels on the same version could render different type — whatever the
+   * tablet happened to ship. Roboto Flex always loads (same origin, rule
+   * three), so 'Roboto Condensed' and 'Roboto' behind it are true
+   * last-resort names — reached only if the bundled file somehow fails —
+   * and `system-ui`/`sans-serif` close it out as the genuine final fallback.
+   */
+  --f-sans: 'Roboto Flex', 'Roboto Condensed', 'Roboto', system-ui, sans-serif;
+  /*
+   * The condensed cut of the *same* face — a width (wdth 75), not a second
+   * family. The month grid and the chore board used to switch to Roboto
+   * Condensed here, which drew a different typeface from the agenda's
+   * --f-sans on one wall; narrowing the same face instead is why the two now
+   * read as one product. Applied per site as `font-stretch: 75%` beside each
+   * `font-family: var(--f-cond, …)` below, since a custom property cannot
+   * carry a second CSS property.
+   */
+  --f-cond: var(--f-sans);
+  /* GRAD's default — see the declaration on `body`. */
+  --f-grade: 0;
   /* Two bundled display faces the new directions reach for. Both ship in the
      image and are @font-face'd above — never fetched (rule three). */
   --f-grotesk: 'Space Grotesk', system-ui, 'Segoe UI', sans-serif;
   --f-fraunces: 'Fraunces', Georgia, 'Times New Roman', serif;
-  /* Panels is the default, and its display face is the base grotesque. */
+  /* Panels is the default, and its display face is the condensed cut. */
   --disp: var(--f-cond);
+  --disp-stretch: 75%;
 }
-:root[data-theme="household"] { --disp: var(--f-grotesk); }
+:root[data-theme="household"] { --disp: var(--f-grotesk); --disp-stretch: 100%; }
 :root[data-theme="blueprint"] { --disp: var(--f-cond); }
-:root[data-theme="almanac"] { --disp: var(--f-fraunces); }
+:root[data-theme="almanac"] { --disp: var(--f-fraunces); --disp-stretch: 100%; }
+
+/*
+ * Letter-spacing, by role — the same idea as the type scale above, applied to
+ * tracking instead of size. Sixteen call sites each typed their own value,
+ * several of them a hundredth of an em apart for what is functionally the
+ * same kind of text: a scaffold label reading 0.10em in one widget and 0.16em
+ * in the next is this project's most repeated bug (`shifts[0]`,
+ * `display_mode`, `cellEvents`) one property along — two things that should
+ * read as one rule computing to values nobody chose so much as arrived at.
+ * `--ls-scaffold` folds the closest cluster of those (0.10–0.16em, a
+ * date/weekday/rota/countdown-unit head that labels what is beside it)
+ * to the value already shared by three of its sites; every other role below
+ * is an exact-value grouping and changes nothing on the glass.
+ *
+ * Two are named but deliberately not folded any further in. Swiss's date
+ * numeral is tracked tighter than the shared numeral treatment on purpose —
+ * see the comment at `.horizon-swiss .hz-num` — so it keeps its own token
+ * rather than being pulled toward `--ls-scaffold` or a numeral role that does
+ * not otherwise carry letter-spacing at all. And the pairing code's tracking
+ * lives beside the code's own `font-family: monospace` decision, not here —
+ * it is `--ls-wide`, shared with Swiss's quiet weekday head only because the
+ * two values already happened to match, not because the two are one role.
+ */
+:root {
+  --ls-label: 0.22em;        /* a quiet, oversized, all-caps identifier: an alert's category, a section label, a shift's name */
+  --ls-wide: 0.18em;         /* Swiss's weekday head; the pairing code and its placeholder */
+  --ls-scaffold: 0.12em;     /* a date, weekday, week number, rota chip or countdown unit — the register the month grid's weekday heads set */
+  --ls-title: 0.08em;        /* a widget or column's own small bold heading */
+  --ls-tight-label: 0.06em;  /* a quieter uppercase note: "Day 2 of 4", a chore's assignee */
+  --ls-button: 0.04em;       /* a pressed control's own label */
+  --ls-headline: 0.01em;     /* the Now widget's big date line — barely tracked, already large */
+  --ls-shift-what: 0.005em;  /* the shift badge's own headline — near zero, since bold and huge already carry it */
+  --ls-time: -0.02em;        /* a clock-style reading beside a name, tracked tight the way big tabular digits read best */
+  --ls-oversized: -0.03em;   /* the wall's biggest numerals: the clock, Swiss's month title */
+  --ls-swiss-numeral: -0.045em; /* Swiss's own date numeral — see `.horizon-swiss .hz-num` for why it is tighter than the shared numeral treatment */
+}
 
 /*
  * The rotation frame.
@@ -445,13 +523,13 @@ body {
 /* "EXTREME". Small, above the event, because it is a category not a sentence. */
 .alert-kind {
   font-size: 1.6rem;
-  letter-spacing: 0.24em;
+  letter-spacing: var(--ls-label);
   text-transform: uppercase;
   color: var(--accent);
   margin-bottom: 1.2rem;
 }
 .alert-line {
-  font-family: var(--disp);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
   font-size: 5rem;
   font-weight: 700;
   line-height: 1.1;
@@ -492,7 +570,7 @@ body {
   font: inherit;
   font-size: 1.8rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--ls-button);
   cursor: none;
 }
 .alert-ack:focus,
@@ -527,7 +605,7 @@ body {
 .now-top { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 2rem; }
 
 .clock {
-  font-family: var(--disp);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
   /*
    * At most 1.8x the event size — a widget the household placed does not get
    * to be the largest thing on the wall. On a measured wall the clock role
@@ -541,16 +619,16 @@ body {
   font-size: var(--t-wall-clock, calc(var(--t-event) * 1.8));
   line-height: 0.82;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--ls-oversized);
 }
-:root[data-theme="almanac"] .clock { font-weight: 400; letter-spacing: -0.02em; }
+:root[data-theme="almanac"] .clock { font-weight: 400; letter-spacing: var(--ls-time); }
 
 .today-date {
   margin-top: 1.1rem;
-  font-family: var(--disp);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
   font-size: 2.9rem;
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: var(--ls-headline);
 }
 :root[data-theme="almanac"] .today-date { font-style: italic; }
 
@@ -584,7 +662,7 @@ body {
   padding-top: 0.9rem;
 }
 .shift-badge .who {
-  font-size: 1.3rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+  font-size: 1.3rem; letter-spacing: var(--ls-label); text-transform: uppercase; color: var(--muted);
   display: flex; align-items: center; gap: var(--s2); justify-content: flex-end;
 }
 .shift-badge .who-face {
@@ -592,25 +670,25 @@ body {
   object-fit: cover; background: var(--panel);
 }
 .shift-badge .what {
-  font-family: var(--disp);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
   font-size: 3.6rem; font-weight: 700; line-height: 1.05;
   margin-top: var(--s1);
   color: var(--sc);
-  text-transform: uppercase; letter-spacing: 0.005em;
+  text-transform: uppercase; letter-spacing: var(--ls-shift-what);
 }
 :root[data-theme="almanac"] .shift-badge .what { text-transform: none; }
 .shift-badge .until { font-size: 1.35rem; color: var(--muted); margin-top: var(--s1); }
 .shift-badge .shift-when {
-  font-family: var(--f-mono); font-size: 1.5rem; color: var(--muted);
+  font-family: var(--f-sans); font-size: 1.5rem; color: var(--muted);
   margin-top: var(--s1); font-variant-numeric: tabular-nums;
 }
 
 .today-events { display: grid; gap: 0.85rem; min-height: 0; overflow: hidden; }
 .te { display: grid; grid-template-columns: 9.5rem 1fr; align-items: baseline; gap: 1.4rem; }
 .te-time {
-  font-family: var(--f-mono);
+  font-family: var(--f-sans);
   font-size: 1.85rem; color: var(--muted);
-  text-align: right; letter-spacing: -0.02em;
+  text-align: right; letter-spacing: var(--ls-time);
 }
 .te-title { font-size: 2.35rem; font-weight: 500; line-height: 1.18; color: var(--ink-event); }
 .te-where { color: var(--faint); font-size: 1.5rem; margin-left: 0.8rem; }
@@ -682,10 +760,21 @@ body {
   padding: var(--s3) 0;
   flex: 0 0 auto;
 }
-.wx-day { text-align: center; }
+/*
+ * `min-width: 0` defeats the grid item default of `min-width: auto`, which
+ * ties a column's floor to its own content's min-content width — invisible
+ * for as long as --f-sans was `system-ui` (nothing to race, so every day's
+ * min-content read identically before and after "loading"), and a real
+ * font-race hazard the moment --f-sans became a face that is actually
+ * fetched: a day whose name or temperature happens to measure differently
+ * pulls its `1fr` track wider than its neighbours, and every column answers
+ * back (`browser-font-race.test.ts`). The track must come from the grid
+ * alone, never from what a household's forecast provider happens to say.
+ */
+.wx-day { text-align: center; min-width: 0; }
 .wx-day + .wx-day { border-left: 1px solid var(--rule); }
 .wx-name {
-  font-size: 1.25rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  font-size: 1.25rem; letter-spacing: var(--ls-scaffold); text-transform: uppercase; color: var(--muted);
 }
 /*
  * Three sizes, chosen by the widget's own density tier.
@@ -749,7 +838,7 @@ body {
 [data-tier="T3"] .hs-ico { width: 2rem; height: 2rem; }
 .hs-label {
   font-size: 1.25rem;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--ls-scaffold);
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -771,7 +860,7 @@ body {
   /* The label role: 10 arc-minutes, the smallest rung there is. A section
      label identifies a destination and is never what somebody walked over to
      read — the same register as the month grid's weekday heads. */
-  font-size: var(--t-wall-label, 1.25rem); letter-spacing: 0.24em; text-transform: uppercase;
+  font-size: var(--t-wall-label, 1.25rem); letter-spacing: var(--ls-label); text-transform: uppercase;
   color: var(--faint); margin-bottom: var(--s3);
 }
 
@@ -793,12 +882,12 @@ body {
 :root[data-theme="almanac"] .day-row { border-left-width: 0.55rem; }
 
 .dr-dow {
-  font-family: var(--disp);
-  font-size: var(--t-wall-scaffold, 1.65rem); font-weight: 700; letter-spacing: 0.13em;
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
+  font-size: var(--t-wall-scaffold, 1.65rem); font-weight: 700; letter-spacing: var(--ls-scaffold);
   text-transform: uppercase; color: var(--muted);
 }
 .dr-num {
-  font-family: var(--disp);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
   /*
    * The numeral role, which on a measured wall makes this **smaller** than the
    * event title beside it rather than 1.59x it.
@@ -828,8 +917,8 @@ body {
 }
 :root[data-theme="almanac"] .dr-num { font-weight: 400; }
 .dr-mon {
-  font-family: var(--disp);
-  font-size: var(--t-wall-scaffold, 1.3rem); font-weight: 700; letter-spacing: 0.1em;
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
+  font-size: var(--t-wall-scaffold, 1.3rem); font-weight: 700; letter-spacing: var(--ls-scaffold);
   text-transform: uppercase; color: var(--ink-scaffold); margin-top: 0.15rem;
 }
 
@@ -843,7 +932,7 @@ body {
    reason the weather strip draws no images. */
 .dr-wx {
   display: flex; align-items: baseline; gap: 0.35rem;
-  font-family: var(--f-mono); font-size: var(--t-wall-time, 1.4rem); margin-top: 0.4rem;
+  font-family: var(--f-sans); font-size: var(--t-wall-time, 1.4rem); margin-top: 0.4rem;
   font-variant-numeric: tabular-nums;
 }
 /* The day row's own glyph takes the time role's size, because it sits on that
@@ -856,11 +945,11 @@ body {
   /* Scaffold: the rota chip labels the day, and it is the run this project has
      twice measured at 21.6 and 21.7px against a 22px floor — a floor it no
      longer has to clear, because 11' is a size rather than a guess. */
-  font-size: var(--t-wall-scaffold, var(--t-micro)); letter-spacing: 0.13em; text-transform: uppercase;
+  font-size: var(--t-wall-scaffold, var(--t-micro)); letter-spacing: var(--ls-scaffold); text-transform: uppercase;
   color: var(--sc); margin-top: 0.3rem; font-weight: 600;
 }
 .dr-when {
-  font-family: var(--f-mono); font-size: var(--t-wall-time, var(--t-micro)); color: var(--muted);
+  font-family: var(--f-sans); font-size: var(--t-wall-time, var(--t-micro)); color: var(--muted);
   margin-top: 0.15rem; font-variant-numeric: tabular-nums;
 }
 
@@ -890,9 +979,9 @@ body {
   position: relative;
 }
 .dr-ev-time {
-  font-family: var(--f-mono);
+  font-family: var(--f-sans);
   /* The time role, 12': a household reads the name and *checks* the time. */
-  font-size: var(--t-wall-time, 1.5rem); color: var(--muted); text-align: right; letter-spacing: -0.02em;
+  font-size: var(--t-wall-time, 1.5rem); color: var(--muted); text-align: right; letter-spacing: var(--ls-time);
 }
 /*
  * The lede — 22 arc-minutes, the largest rung the scale carries besides the
@@ -918,8 +1007,8 @@ body {
    of the event rather than as another event. */
 .dr-ev-span {
   grid-column: 2;
-  font-family: var(--f-mono);
-  font-size: var(--t-wall-scaffold, 1.15rem); letter-spacing: 0.06em; color: var(--muted);
+  font-family: var(--f-sans);
+  font-size: var(--t-wall-scaffold, 1.15rem); letter-spacing: var(--ls-tight-label); color: var(--muted);
 }
 .dr-ev.allday .dr-ev-span { grid-column: 1 / -1; }
 
@@ -1107,7 +1196,7 @@ body {
 .hz-grid.has-weeks { grid-template-columns: 2.6rem repeat(7, 1fr); }
 .hz-wk {
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--f-mono); font-size: 1.2rem;
+  font-family: var(--f-sans); font-size: 1.2rem;
   /* Scaffold: a week number labels the row it sits beside and is never what
      somebody walked over to read. */
   font-size: var(--t-wall-scaffold, max(1.2rem, var(--t-floor)));
@@ -1115,8 +1204,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .wc-week {
-  font-family: var(--disp); font-size: var(--t-wall-label, 1.2rem); font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: var(--t-wall-label, 1.2rem); font-weight: 700;
+  letter-spacing: var(--ls-scaffold); text-transform: uppercase; color: var(--faint);
   margin-bottom: 0.5rem;
 }
 .hz-head {
@@ -1124,7 +1213,7 @@ body {
   /* Scaffold on a measured wall, clamped to the floor on one that is not: a
      weekday nobody can read is a column with no label on it either way. */
   font-size: var(--t-wall-scaffold, max(var(--t-micro), var(--t-floor)));
-  letter-spacing: 0.16em; text-transform: uppercase;
+  letter-spacing: var(--ls-scaffold); text-transform: uppercase;
   color: var(--ink-scaffold); text-align: center; padding-bottom: 0.45rem;
 }
 .hz-cell {
@@ -1143,7 +1232,7 @@ body {
 .hz-cell.dim { opacity: 0.42; }
 .hz-cell.outside .hz-num { color: var(--faint); }
 .hz-num {
-  font-family: var(--disp);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
   /*
    * The numeral role: 16 arc-minutes of cap height against the event's 14, so
    * 1.14x the name beside it — on every panel, by construction, rather than at
@@ -1251,7 +1340,7 @@ body {
 }
 .hz-rowtext {
   min-width: 0; flex: 1 1 auto;
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   /*
    * The event role — 14 arc-minutes of cap height, and the floor of the whole
    * scale. Everything else in this grid is stated against it.
@@ -1360,7 +1449,7 @@ body {
  */
 .hz-rowtime {
   flex: 0 0 auto;
-  font-family: var(--f-mono);
+  font-family: var(--f-sans);
   font-size: var(--t-wall-time, max(var(--t-micro), var(--t-floor)));
   line-height: 1.25;
   color: var(--ink-scaffold);
@@ -1521,7 +1610,7 @@ body {
  * household, not a theme surface, so there is no token that is legible on it.
  */
 .hz-spantext {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-size: var(--t-micro);
   font-size: var(--t-wall-event-strong, max(var(--t-micro), var(--t-floor)));
   line-height: 1.1;
@@ -1577,11 +1666,11 @@ body {
  * this style exists to reject. line-height under 1 pulls the cap-height up to
  * the corner so the type sits on the edge rather than floating near it. */
 .hz-title {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-size: var(--t-xl);
   font-weight: 700;
   line-height: 0.92;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--ls-oversized);
   color: var(--ink);
   text-align: left;
   margin: 0 0 1.4rem;
@@ -1595,7 +1684,7 @@ body {
   color: var(--faint);
   text-align: left;
   padding: 0 0 0.8rem;
-  letter-spacing: 0.18em;
+  letter-spacing: var(--ls-wide);
 }
 .horizon-swiss .hz-cell {
   /* Stage 1.1 — no card, no radius, no shadow, nothing to contain the day. */
@@ -1619,7 +1708,7 @@ body {
 /* Stage 1.3 — the date number is the structure: oversized, bold, tracked
  * tight. */
 .horizon-swiss .hz-num {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   /*
    * --t-md, not --t-lg. The first cut set this two rungs higher and the number
    * ate the cell: on a 1080x1920 wall today showed "+6" and not one of its six
@@ -1637,7 +1726,7 @@ body {
   font-size: var(--t-wall-numeral, max(var(--t-md), var(--t-floor)));
   font-weight: 700;
   line-height: 0.95;
-  letter-spacing: -0.045em;
+  letter-spacing: var(--ls-swiss-numeral);
   color: var(--muted);
 }
 :root[data-theme="almanac"] .horizon-swiss .hz-num { font-weight: 700; }
@@ -1739,10 +1828,10 @@ body {
   padding: 0.2rem 0.3rem; border-bottom: 1px solid var(--rule);
 }
 .sk-wd {
-  font-family: var(--disp); font-size: var(--t-wall-scaffold, 0.95rem); font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: var(--t-wall-scaffold, 0.95rem); font-weight: 700;
+  letter-spacing: var(--ls-scaffold); text-transform: uppercase; color: var(--muted);
 }
-.sk-num { font-family: var(--disp); font-size: var(--t-wall-numeral, 1.6rem); font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
+.sk-num { font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: var(--t-wall-numeral, 1.6rem); font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
 :root[data-theme="almanac"] .sk-num { font-weight: 400; }
 /* Today is the header block itself, not a colour on the text: at this density
    a tinted word is invisible from across a room and a filled bar is not. */
@@ -1764,7 +1853,7 @@ body {
   border-left: 0.25rem solid var(--pc); border-radius: 0 0.15rem 0.15rem 0;
 }
 .sk-ev-time {
-  display: block; font-family: var(--f-mono);
+  display: block; font-family: var(--f-sans);
   font-size: var(--t-wall-time, 0.95rem); line-height: 1.1; opacity: 0.85;
 }
 .sk-ev-title {
@@ -1780,8 +1869,8 @@ body {
   flex: 1 1 auto;
 }
 .sk-mhead {
-  font-family: var(--disp); font-size: var(--t-wall-scaffold, 0.95rem); font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: var(--t-wall-scaffold, 0.95rem); font-weight: 700;
+  letter-spacing: var(--ls-scaffold); text-transform: uppercase; color: var(--muted);
   padding: 0.15rem 0.3rem; border-bottom: 1px solid var(--rule);
 }
 .sk-cell {
@@ -1794,7 +1883,7 @@ body {
 .sk-cell.has-shift { background: var(--sc-tint); }
 .sk-cell.dim { opacity: 0.5; }
 .sk-cell.outside .sk-mnum { color: var(--faint); }
-.sk-mnum { font-family: var(--disp); font-size: var(--t-wall-numeral, 1.3rem); font-weight: 700; line-height: 1.1; color: var(--ink-scaffold); }
+.sk-mnum { font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: var(--t-wall-numeral, 1.3rem); font-weight: 700; line-height: 1.1; color: var(--ink-scaffold); }
 :root[data-theme="almanac"] .sk-mnum { font-weight: 400; }
 /* Today's number, knocked out of a filled disc. Not an outline on the cell:
    with no gaps the outline would sit on its neighbours' hairlines and read as
@@ -1826,11 +1915,11 @@ body {
 .wc-col.is-today .wc-head { border-bottom-color: var(--accent); }
 .wc-wd {
   display: block; font-size: var(--t-wall-scaffold, var(--t-micro));
-  letter-spacing: 0.12em; text-transform: uppercase;
+  letter-spacing: var(--ls-scaffold); text-transform: uppercase;
   color: var(--ink-scaffold);
 }
 .wc-col.is-today .wc-wd, .wc-col.is-today .wc-num { color: var(--accent); }
-.wc-num { font-family: var(--disp); font-size: var(--t-wall-numeral, 1.7rem); font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
+.wc-num { font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: var(--t-wall-numeral, 1.7rem); font-weight: 700; line-height: 1; color: var(--ink-scaffold); }
 :root[data-theme="almanac"] .wc-num { font-weight: 400; }
 .wc-ev {
   font-size: var(--t-wall-event, 1.15rem); line-height: 1.2; padding: 0.16rem 0.42rem;
@@ -1843,7 +1932,7 @@ body {
   display: flex; gap: 2.2rem; flex-wrap: wrap;
   margin-top: 1.3rem; padding-top: 1.1rem;
   border-top: 1px solid var(--rule);
-  font-size: 1.2rem; letter-spacing: 0.13em; text-transform: uppercase;
+  font-size: 1.2rem; letter-spacing: var(--ls-scaffold); text-transform: uppercase;
   color: var(--muted); align-items: center;
 }
 .legend span { display: flex; align-items: center; gap: 0.6rem; }
@@ -1892,7 +1981,7 @@ body {
 
 .screen-message { display: flex; align-items: center; justify-content: center; }
 .message { text-align: center; }
-.message h1 { font-family: var(--disp); font-size: 6rem; font-weight: 700; }
+.message h1 { font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: 6rem; font-weight: 700; }
 .message p { font-size: 2.4rem; color: var(--muted); margin-top: 1.6rem; }
 
 /* The code-entry form on the unpaired screen. Sized to be read across a room
@@ -1912,14 +2001,18 @@ body {
   border-radius: var(--radius);
   background: var(--panel);
   color: var(--ink);
-  font-family: var(--f-mono, monospace);
+  /* True monospace, deliberately: this is a code the household types, where
+     equal-width letters (not just tabular digits) help the eye align what
+     they typed against what the wall shows — the one case on this wall a
+     generic system fallback is the right face rather than a hoped-for one. */
+  font-family: monospace;
   font-size: 2.6rem;
   font-weight: 600;
-  letter-spacing: 0.18em;
+  letter-spacing: var(--ls-wide);
   text-align: center;
   text-transform: uppercase;
 }
-.pair-input::placeholder { color: var(--muted); letter-spacing: 0.18em; }
+.pair-input::placeholder { color: var(--muted); letter-spacing: var(--ls-wide); }
 .pair-input:focus,
 .pair-input:focus-visible {
   outline: 0.25rem solid var(--accent);
@@ -1935,7 +2028,7 @@ body {
   font: inherit;
   font-size: 2rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--ls-button);
 }
 .pair-submit:focus,
 .pair-submit:focus-visible {
@@ -2256,7 +2349,7 @@ body {
  * 130 over five characters is the 26 this always was.
  */
 .fw-clock .clock {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-size: min(
     calc(var(--buw) * 130 / var(--clock-chars, 5)),
     calc(var(--buh) * 52)
@@ -2390,10 +2483,10 @@ body {
 .fw > .fw-content, .fw > .fw-content > *, .fw > section, .fw > .nt, .fw > .td, .fw > .ch,
 .fw > .ch-people, .fw > .house, .fw > .wx, .fw > .fw-shift { min-height: 0; }
 .fw-title {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--ls-title);
   font-size: 1.7rem;
   color: var(--muted);
   margin: 0 0 var(--s2);
@@ -2424,23 +2517,23 @@ body {
   flex: 1 1 auto;
 }
 .cd-num {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-weight: 700;
   font-size: min(6rem, calc(var(--buw) * 30), calc(var(--buh) * 30));
   line-height: 0.95;
   color: var(--ink);
 }
 .cd-unit {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--ls-scaffold);
   font-size: min(1.6rem, calc(var(--buw) * 8), calc(var(--buh) * 8));
   color: var(--muted);
   margin-top: 0.2rem;
 }
 .cd-label {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-weight: 600;
   font-size: min(2.2rem, calc(var(--buw) * 11), calc(var(--buh) * 11));
   color: var(--ink);
@@ -2487,10 +2580,10 @@ body {
 .ch-name { font-size: 2rem; line-height: 1.25; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ch-who {
-  flex: 0 0 auto; font-family: var(--f-cond, var(--f-sans)); font-size: 1.4rem;
-  text-transform: uppercase; letter-spacing: 0.06em; color: var(--who, var(--muted));
+  flex: 0 0 auto; font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%; font-size: 1.4rem;
+  text-transform: uppercase; letter-spacing: var(--ls-tight-label); color: var(--who, var(--muted));
 }
-.ch-time { flex: 0 0 auto; margin-left: auto; font-family: var(--f-mono, var(--f-sans));
+.ch-time { flex: 0 0 auto; margin-left: auto; font-family: var(--f-sans);
   font-size: 1.5rem; color: var(--muted); }
 
 /* The tick, on a screen allowed to (RFC 008 phase 3).
@@ -2548,8 +2641,8 @@ body {
 .ch-col .ch-time { margin-left: 0; }
 
 .ch-col-head {
-  font-family: var(--f-cond, var(--f-sans)); font-weight: 700; font-size: 1.5rem;
-  text-transform: uppercase; letter-spacing: 0.08em; color: var(--who, var(--muted));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%; font-weight: 700; font-size: 1.5rem;
+  text-transform: uppercase; letter-spacing: var(--ls-title); color: var(--who, var(--muted));
   border-bottom: 0.15rem solid var(--who, var(--line, var(--muted)));
   padding-bottom: 0.35rem;
 }
@@ -2558,8 +2651,8 @@ body {
 .ch-week { gap: 1.4rem; }
 .ch-day { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; }
 .ch-dow {
-  font-family: var(--f-cond, var(--f-sans)); font-weight: 700; font-size: 1.4rem;
-  text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%; font-weight: 700; font-size: 1.4rem;
+  text-transform: uppercase; letter-spacing: var(--ls-title); color: var(--muted);
 }
 
 /* The generic module panel (docs/rfc-001-module-framework.md). Scaled to its
@@ -2567,10 +2660,10 @@ body {
    strings. */
 .gp { display: flex; flex-direction: column; min-width: 0; }
 .gp-title {
-  font-family: var(--f-cond, var(--f-sans));
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--ls-title);
   font-size: 1.6rem;
   color: var(--muted);
   margin: 0 0 var(--s2);

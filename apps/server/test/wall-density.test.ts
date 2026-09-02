@@ -533,8 +533,8 @@ interface Baseline {
  * that *starts* naming something becomes a cell that can carry a count. A loss
  * of names would still fail.
  *
- * **`runsUnderFloor` then falls by exactly five at 480x800 (41→36) and
- * 800x480 (58→53), and not one word got bigger.** The forecast strip's icon
+ * **`runsUnderFloor` then falls by exactly five at 480x800 and 800x480, and
+ * not one word got bigger.** The forecast strip's icon
  * used to be a *character* — an emoji, set at 2.1rem — so it counted as a run
  * of type, and at those two sizes 2.1rem is 15.7px and 9.4px. It is a drawing
  * now (`glyphs.ts`), so five columns' worth of runs stopped existing. The
@@ -544,11 +544,40 @@ interface Baseline {
  * changed is not a metric that improved, and recording it as one is how a
  * baseline stops meaning anything.
  *
+ * **The recorded values are 41 and 58, and the arithmetic to reach them is why
+ * this was measured on the merged tree rather than computed.** Roboto Flex
+ * landed on `main` while the glyphs were being built and raised these same two
+ * numbers by five each, for its own unrelated reason (41→46, 58→63, the
+ * paragraph above). Two independent deltas of five on one metric, in opposite
+ * directions, land back where they started — which is exactly the coincidence
+ * that would let a merge resolved by picking a side pass while measuring
+ * something nobody intended. Measured after merging: 41 and 58, the same
+ * numbers this file carried before either change, reached by two mechanisms
+ * that cancel. Neither is a return to a previous state, and the paragraph for
+ * each stays.
+ *
  * **`AGENDA_BASELINE`'s numeral falls at every size**, 59.7px → 44.9px at
  * 1080x1920. That is `.dr-num` finally honouring this project's own design rule
  * on a wall nobody has measured — "the date numeral is never larger than the
  * event name beside it by more than 1.2x", which its rem fallback had been
  * breaking at 1.59x. The room it frees goes straight into the agenda.
+ *
+ * **`runsUnderFloor` rises again, at the same two sizes, for a fourth reason:
+ * `--f-sans` and `--f-cond` are a real self-hosted face now instead of
+ * `system-ui` and Roboto Condensed.** 41→46 at 480x800, 58→63 at 800x480 —
+ * both unmeasured sizes, where the calendar widget's density tier and every
+ * rem-derived size on the wall are read off Roboto Flex's own metrics rather
+ * than whatever font a tablet happened to already have. `AGENDA_BASELINE`'s
+ * seven named runs do not move at either size, which is what says this is the
+ * font measuring differently rather than a size anybody chose falling — the
+ * runs that cross the floor are the ones this file does not name individually
+ * (event and weekday text elsewhere on the glass), pushed under 22px by a few
+ * tenths of a pixel each. The two measured sizes (1080x1920, 1920x1080,
+ * 2560x1440) do not move, because there a household's own panel dimensions
+ * drive the arc-minute scale rather than this rem fallback — the fallback is
+ * exactly the thing rule three's font work exists to make consistent, and a
+ * one-time cost on the sizes nobody has measured yet is the honest price of
+ * two panels on the same version finally drawing the same type.
  *
  * The audit that this file exists to make repeatable reported, at these same
  * five sizes: 6 agenda events across 3 days at every size; 0 month names
@@ -574,7 +603,7 @@ export const BASELINE: Record<string, Baseline> = {
     // No room for a lane under the numeral at this cell size, so the bars are
     // measured back out by the tier pass and the events go back to being rows.
     spanBars: 0,
-    runsUnderFloor: 36,
+    runsUnderFloor: 41,
     agendaDays: 2,
     agendaEvents: 6,
     canvasSharePercent: 93.5,
@@ -586,7 +615,7 @@ export const BASELINE: Record<string, Baseline> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 0,
-    runsUnderFloor: 53,
+    runsUnderFloor: 58,
     agendaDays: 4,
     agendaEvents: 11,
     canvasSharePercent: 93.5,
