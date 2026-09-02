@@ -235,6 +235,7 @@ useful thing in this document:
 | An agenda reporting "this box holds one event" for a box that holds five | Doubling a box's area and getting the identical count |
 | **A bar-label assertion that neither of its own fixes could turn red** | A widest-run scan taken through the middle of the words it was looking for |
 | A tier note in the editor that no household could read as wrong | Reading it back out of the preview instead of predicting it |
+| **Two tests red for all but two minutes a day, on `main`** | Reading the runner's clock against `HARNESS_HOUR` when they failed at 01:08 and had passed at 11:00 |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -385,30 +386,35 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2491 tests passing and two red.** calendar 153 (plus 1 skipped) · core 314 ·
-display 409 · server 1615. CI runs the whole suite and then the README's
+**2493 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 409 · server 1617. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
-**The two red ones are a clock fault and they are not a regression — they fail
-identically on a clean worktree of `main`.** `admin-status-claims` and
+**Two of them were red for all but about two minutes a day, and it is the
+bootstrap code's fault a third time.** `admin-status-claims` and
 `browser-admin` both assert that a calendar added a moment ago says "Syncing…",
-which `firstSyncPending` decides by `at - source.createdAt < 2 minutes`. Those
-are two different clocks: the page's `at` is the app's injected `now`, which
-`browser-harness` pins to today at `HARNESS_HOUR` in the household's zone, and
-`created_at` is stamped by `addCalendarSource` from a bare `Date.now()`. In
-production they are the same clock and no household sees anything; under the
-harness they are hours apart, so the two-minute window can only be met in the
-couple of minutes a day when the runner's own clock happens to read 11:00 in
-Europe/London. Measured: the runner at 01:08 London, both tests red, and both
-red at the same commit on a clean checkout.
+which `firstSyncPending` decides by `at - source.createdAt < 2 minutes` — and
+those were two different clocks. The page's `at` is the app's injected `now`,
+which `browser-harness` pins to today at `HARNESS_HOUR` in the household's
+zone; `created_at` was stamped by `addCalendarSource` from a bare `Date.now()`.
+In production they are one clock and no household ever saw anything. Under the
+harness they are hours apart, so the window could only be met in the couple of
+minutes a day when the runner's own clock happened to read 11:00 in
+Europe/London: measured, the runner at 01:08 London and both tests red, at the
+same commit, on a clean checkout of `main`.
 
-That is the bootstrap code's fault again — "stamped by one clock and read by
-another" — and the cure is the one `equipHousehold` already states: hand the
-app's `now` in rather than defaulting to the runner's. It is left unfixed
-deliberately, because the change is `AddSourceInput` and its three production
-call sites, which is a different seam from anything the density-tier work
-touches, and a phase should not widen into one on the way past.
+`addCalendarSource` takes the caller's clock now, as a fourth argument and
+**deliberately not defaulted** — the rule `equipHousehold` already states, and
+a default is precisely how the second clock came back. The wizard and the
+admin screen hand over the app's `now`; the CLI tool hands over `Date.now()`
+and says why, which is the point of making every caller answer. Confirmed by
+reverting the admin's call to `Date.now()` and watching both go red again.
+
+Worth knowing before reading that check: it is itself hour-dependent in one
+direction only. With the fix the tests pass at any hour; without it they pass
+for about two minutes a day, so a mutation run started at 11:00 London would be
+inconclusive and one started at any other time is not.
 
 **The two red ones used to be the density ratchets, and the paragraph that
 sat here diagnosed them wrongly — which is the useful part, and is kept
@@ -438,9 +444,8 @@ below and filed, because no one-line cure survives the geometry.
 
 **146 of the server's tests fail without a real Chromium and say so**, across
 22 files, which is worth knowing before reading a red suite as a regression. A
-correct run on this tree with a browser present is green apart from the two
-clock-fault tests recorded above, which the sentence here could not say for one
-release. Both numbers are **measured** — the server
+correct run on this tree with a browser present is **green**, which the
+sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
 carried forward and incremented, which is the only way this pair has ever been
 right: it read 148 over 20 files while the truth was 140 over 21, and the

@@ -1072,14 +1072,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const personId =
       owner !== undefined && readPeopleAdmin(deps.db).some((p) => p.id === owner) ? owner : null;
 
-    const added = addCalendarSource(deps.db, deps.keyring, {
-      name,
-      url,
-      personId,
-      allowPrivateNetwork,
-      allowLoopback,
-      allowHttp,
-    });
+    const added = addCalendarSource(
+      deps.db,
+      deps.keyring,
+      { name, url, personId, allowPrivateNetwork, allowLoopback, allowHttp },
+      // The app's clock, which is what `firstSyncPending` reads the stamp back
+      // against a few lines further down this same file.
+      now(),
+    );
     if (!added.ok) {
       return c.html(calendarsPage(c, values, { message: added.message }), 400);
     }
