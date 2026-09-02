@@ -36,7 +36,7 @@ interface Day {
   high: number | null;
   low: number | null;
   unit: string;
-  icon: string;
+  glyph: string;
   summary: string;
 }
 
@@ -45,7 +45,7 @@ const day = (name: string, high: number, low: number): Day => ({
   high,
   low,
   unit: 'C',
-  icon: '☀',
+  glyph: 'clear',
   summary: 'Sunny',
 });
 
@@ -94,6 +94,9 @@ function frameOf(
   } as PlacedEpaperWidget;
   return renderFreeformEpaper(buildEpaperModel(manifest), manifest, [widget], PANEL);
 }
+
+/** How much ink a frame carries — a direction the bit list on its own cannot give. */
+const inkOf = (fb: Framebuffer): number => bitsOf(fb).reduce((sum, bit) => sum + bit, 0);
 
 const bitsOf = (fb: Framebuffer): number[] => {
   const out: number[] = [];
@@ -164,8 +167,27 @@ describe('the weather widget on a panel', () => {
     const tall = frameOf(manifestOf(FIVE), {});
     const short = frameOf(manifestOf(FIVE), {}, 'weather', { h: 0.28 });
     expect(bitsOf(short)).not.toEqual(bitsOf(tall));
+    /*
+     * `['name', 'icon']`, and it used to read `['name', 'high']` here.
+     *
+     * Not a change of rule — the ladder still gives up rows from the bottom, so
+     * the low goes and then the high. What changed is that `icon` *costs*
+     * something now: it resolved to nothing while it was an emoji the panel's
+     * font could not draw, so a column silently kept one more temperature than
+     * its ladder said it could. The glyph is a drawing with its own height, and
+     * the room it takes is the room a row below it does not get.
+     *
+     * The wall reaches the identical answer from its own table —
+     * `WEATHER_TIERS` T1 is `rungs: 2`, which is the name and the glyph — so
+     * this is two renderers agreeing rather than a panel with an opinion.
+     */
     expect(bitsOf(short)).toEqual(
-      bitsOf(frameOf(manifestOf(FIVE), { fields: ['name', 'high'] }, 'weather', { h: 0.28 })),
+      bitsOf(frameOf(manifestOf(FIVE), { fields: ['name', 'icon'] }, 'weather', { h: 0.28 })),
+    );
+    // And something beyond the day name does survive, or "gives up from the
+    // bottom" would be satisfied by giving up everything.
+    expect(bitsOf(short)).not.toEqual(
+      bitsOf(frameOf(manifestOf(FIVE), { fields: ['name'] }, 'weather', { h: 0.28 })),
     );
   });
 
@@ -193,16 +215,23 @@ describe('the weather widget on a panel', () => {
     );
   });
 
-  it('changes nothing for the symbol, which a 1-bit font has no glyph for', () => {
+  it('draws the symbol, and drops it when the household turns it off', () => {
     /*
-     * `showIcon` is the wall's. The panel's font is 0x20–0x7E and a forecast
-     * glyph is not in it, so there is no symbol here to hide. Pinned as
-     * identical rather than left to be discovered on a panel that quietly
-     * ignores a switch the editor offered.
+     * This assertion used to say the opposite, and it was true when it was
+     * written: the modules chose an *emoji*, the panel's font is 0x20–0x7E, and
+     * `asciiTitle` deleted it — so `showIcon` was a switch the editor offered
+     * and the panel could not obey, which is the `options.json` fault, and the
+     * strip had a hole in it where the weather goes.
+     *
+     * With a first-party vocabulary there is a drawing, so the switch has to
+     * move ink in both directions. Turning it off must also be *less* ink
+     * rather than merely different — a rung that shuffles the rows around
+     * without giving the room back is the same bug wearing a different frame.
      */
-    expect(bitsOf(frameOf(manifestOf(FIVE), { showIcon: false }))).toEqual(
-      bitsOf(frameOf(manifestOf(FIVE), {})),
-    );
+    const on = frameOf(manifestOf(FIVE), {});
+    const off = frameOf(manifestOf(FIVE), { showIcon: false });
+    expect(bitsOf(off)).not.toEqual(bitsOf(on));
+    expect(inkOf(off)).toBeLessThan(inkOf(on));
   });
 
   it('falls back to a line each when a column would be too narrow to read', () => {

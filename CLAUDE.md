@@ -52,7 +52,7 @@ Violating any of these is a failed task.
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
 - No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code — and there is none left in old code either: `fitToBox` is deleted, and `reflow-stability.test.ts` scans the stylesheet and the renderer for one. A uniform transform is photographic enlargement; it changes how big a widget looks and can never change what it says.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
-- No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink.
+- No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink. **This rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them, and `no-emoji.test.ts` is what stops the fourth mapping. It scans comments too, because a comment is where the next one gets pasted from.
 - No stat tiles. A big number with a caption, or a 3-up row of them, is a dashboard idiom. This is a calendar.
 - No shadow on the display, at any size, in any theme. It bands on e-ink and burns in on OLED. Separation is space, then a 1px rule, then a ground step, in that order.
 - No transition or animation on any surface a screen sees. The wall has no pointer and redraws every 15 s; the panel physically cannot animate.
@@ -63,7 +63,7 @@ Violating any of these is a failed task.
 - Nothing that annotates an event costs it a row. A progress bar, a current-time rule, a badge: out of flow, or it comes off the scale the whole section is drawn at and takes a word off the wall somewhere else. This has been shipped twice — a 2px hairline in flow cost the agenda its 22px floor, and so did an 8px bar.
 - A multi-day event is drawn once, spanning its days. Never repeated per cell.
 - No spacing value in the admin that is not a --mw-s-* token, and no new screen that builds a card, row, table, tag or empty state out of raw markup: use the component, or add one.
-- No icon beside a section heading, and no icon inside a tinted rounded square. Icons identify repeated destinations and nothing else.
+- No icon beside a section heading, and no icon inside a tinted rounded square. Icons identify repeated destinations and nothing else. Enforced by `admin-icon-rules.test.ts` against the markup a household receives, which is where the `.ic` tile — 34px, rounded, accent-coloured — was found doing both at once on the Overview's cards.
 - Never assert a size, a count, or a tier from a class name. Measure the computed value. This codebase has shipped a bug where the class was right and the pixels were wrong.
 
 ---
@@ -245,6 +245,14 @@ useful thing in this document:
 | **A card inset written for a retired layout, spending 73px of a 193px box** | Asking why a strip that fits with room to spare was overflowing by six |
 | A "the room comes back" assertion that no edit could turn red | The month cell getting roomy enough to name everything with the meeting still on it |
 | **Every settled wall in the suite measured with its offline banner still up** | A canvas 76px short of the viewport, and an agenda one day short of the file next door |
+| **Every weather and device-class icon on the wall resolved out of a font the image does not ship** | This document's own rule, and one `grep` for the code points it names |
+| A forecast strip with a hole where the weather goes, on every e-paper panel ever made | `asciiTitle`, which deletes every code point above 0x7E, including the one the module chose |
+| An assertion that a weather switch "changes nothing", true only because nothing could draw | Giving the panel something to draw, and watching the assertion invert |
+| **Three fixtures that seeded the very emoji under test** | Pointing the scan at the test tree, where the fault had been hiding from its own tests |
+| A glyph set rasterised from the wall's paths, in which rain and drizzle came out byte-identical | Filling the paths at 12x12 and looking: a sun with no rays, and 0.9 of a pixel of difference |
+| **A panel drawing four specks and a temperature** | Rendering a frame with the glyph at parity with its type, and looking at it |
+| Every nav icon reported as sitting inside a paragraph | `<p` being a prefix of `<path` |
+| The offline shell missing the one module the wall had just started importing | The shell test, which walks the compiled import graph rather than a list |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -395,8 +403,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2556 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 445 · server 1644. CI runs the whole suite and then the README's
+**2575 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 445 · server 1663. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -4699,6 +4707,119 @@ navigation now, not merely for the canvas.
 this way, and no e-ink panel has been partially refreshed against the stability
 this phase establishes. The measurements are a real browser at five sizes with
 three real feeds, which is the right way to check this and is not the same thing.
+
+**And then the emoji went, which is a rule this document had already written
+down and the product had been breaking on every screen since it shipped.** The
+design rules say it in as many words — no emoji in anything a screen renders,
+because the image ships no emoji font, so an emoji is a *third-party asset
+resolved on the device*. Rule three, broken in the one way nothing in this
+repository can see: no code here fetches it. Four mappings chose one —
+`homeassistant/entities.ts` by device class, `weather/nws.ts` by the provider's
+wording, `weather/open-meteo.ts` by WMO code, and the store's own catalogue
+entries — and what a household got was one vendor's full-colour cartoon dropped
+into five hand-tuned monochromatic themes, a different vendor's on the tablet
+beside it, and **nothing at all on a panel**, because `asciiTitle` deletes every
+code point above 0x7E. The forecast strip on every e-paper wall this product has
+ever drawn has had a hole in it where the weather goes.
+
+**Twenty-nine silhouettes replace them, drawn here.** Twelve skies and
+seventeen device classes, and the set is deliberately closed: an icon set that
+grows by one entry per integration is one nobody has looked at as a whole, and
+this one has to read as one hand at 8 pixels. `apps/display/src/glyphs.ts` is
+the spec — paths on a 24 grid, **filled and never stroked**, because a 1.75px
+stroke is gone at one bit and reads as a grey smudge at ten feet. What travels
+in the manifest is a **key**, resolved once on the server, and each renderer
+draws it: `apps/server/src/glyphs.ts` transcribes the vocabulary and the paths
+for the admin's store cards, and `epaper/glyphs.ts` holds a 1-bit cell per key.
+`glyph-parity.test.ts` compares the two source files as text, the seam
+`tier-parity` and `month-spans-parity` already sit at.
+
+**The panel's cells are a redraw, and finding out that they had to be is the
+useful part.** The obvious thing is to fill the wall's paths at 12x12 and keep
+the answer; it was tried first and it is the brand mark's lesson exactly, the
+one that made `lit-cell-small.svg` a five-column drawing rather than the
+seven-column mark scaled down. Measured: the sun came out with no rays at all,
+and `rain` and `drizzle` were **byte-identical**, because the feature that
+separates them is 1.8 grid units wide and 1.8 of 24 at 12 pixels is 0.9 of a
+pixel. So the cells are drawn at the size they are used, the way `font.ts`'s
+alphabet is, and what is shared is the vocabulary and the silhouette rather
+than the coordinates. `glyph-parity` asserts no two cells are the same picture,
+which is the assertion that would have caught it.
+
+**The manifest field is renamed, and the rename *is* the compatibility.** An
+older display bundle handed a key it does not know would draw the word
+"thunderstorm" where a picture belongs, which is worse than a gap. So `icon`
+became `glyph`: an old bundle finds no `icon`, takes its own long-standing
+absent-value branch and draws its middle dot, and a new bundle refuses any key
+outside the vocabulary — in the viewmodel and again in the renderer, which is
+the second of two gates and the one that matters if the first is ever loosened.
+A module's panel body still *accepts* `icon` and drops it, because the schema is
+`.strict()` and refusing the whole panel over a field nobody reads is rule nine.
+
+**`EPAPER_RENDERER_VERSION` is 7**, and `showIcon` moved from `PANEL_IGNORES`
+to `PANEL_HONOURS`: it was a control the editor offered that the panel could not
+obey, which is the `options.json` bug, and the test asserting it "changes
+nothing" was true only because there was nothing to draw. One ladder rung's
+behaviour changed with it and is worth knowing: `icon` **costs** height now, so
+a short forecast column gives up a temperature it used to keep for free. That is
+not a new rule — the wall's `WEATHER_TIERS` T1 is `rungs: 2`, the name and the
+glyph — it is the two renderers finally agreeing.
+
+**Two faults came out of it that only rendering and looking could find.** At
+parity with its own type the 7.5" panel drew **four specks and a temperature**,
+so a mark is drawn at 1.4x the type here (`GLYPH_OVER_TYPE`) where the wall
+draws it at about 1.0x — a deviation, deliberate, and the same argument the
+filled silhouettes rest on. And a reading came out as `⌂Front door` with the
+mark welded to the F, because the gutter was the font's own `linePad`; it is a
+quarter of the cell now, so it grows with the mark.
+
+**Three fixtures seeded the very emoji under test**, which is why the scan
+covers the test trees. `browser-harness`, `browser-empty-bands` and
+`epaper-weather-widget` all built a forecast whose icon was a character — so
+every test that had ever measured a forecast strip was measuring one with no
+icon in it. The one exemption is named in the open rather than pattern-matched:
+`keyring.test.ts` encrypts arbitrary Unicode on purpose, and weakening a test
+about bytes to make a rule about pictures pass would be the wrong trade.
+
+**`wall-density`'s `runsUnderFloor` falls by five at both e-ink sizes, and not
+one word got bigger.** The forecast's icon used to be a *character* set at
+2.1rem, so it counted as a run of type; at 480x800 and 800x480 that is 15.7px
+and 9.4px, under the floor. It is a drawing now, so five runs stopped existing.
+The arithmetic is what says so rather than the direction: at 1920x1080 the same
+2.1rem is 22.7px, above the floor, and that size's count is unchanged. **A
+metric whose population changed is not a metric that improved**, and recording
+it as one is how a baseline stops meaning anything.
+
+**The admin's icons are Lucide now (ISC), and swapping a set is the moment to
+say what a set is for.** Twenty icons' elements are inlined from `lucide-static`
+— no font, nothing fetched, rule three unchanged — drawn as strokes at 1.75
+rather than Lucide's own 2, because at the 20px these sit at a 2px stroke reads
+heavier than any word beside it. That is the opposite call from the wall's
+glyphs and for the opposite reason: this is a pointer's distance on a lit
+screen. The hand-drawn `chores` checklist is gone, which is the argument for
+swapping a set rather than adding to it — it existed because Material Symbols
+had none that read at 24px, and its own comment said it had been sized by eye.
+
+**Three placements are banned and each of the three was live.** `.ic` — a 34px
+accent-coloured rounded tile — carried a glyph on all three Overview stat cards,
+all three status rows and beside two wall names: an icon inside a tinted rounded
+square *and* an icon beside the thing that names the card, which is the sentence
+twice with one of them in a language the reader has to learn. It is gone, its
+rule with it, and `arrow` went too — a right arrow after the word "Open"
+identifies nothing the word has not already said. `admin-icon-rules.test.ts`
+holds all three against the markup a household receives, and its own first draft
+reported **every nav icon as sitting inside a paragraph**, because `<p` is a
+prefix of `<path` and it had found the previous icon's own path element.
+
+**Looked at, which is the check this repository counts.** A real paired wall at
+1080x1920 and 1920x1080 draws the strip in the theme's ink at 38px; two panels
+at 800x480 and 1872x1404 draw a forecast and a house strip with lock,
+thermometer, garage and person legible in both; the admin's nav and store cards
+were rendered through the real server. **Still unproven where it counts:** no
+household has looked at a kitchen wall drawn this way, and no e-paper hardware
+has been photographed. The wall's house strip and a module panel's rows go
+through the identical `glyphNode` seam as the forecast, but only the forecast
+has been seen on a real wall.
 
 ---
 

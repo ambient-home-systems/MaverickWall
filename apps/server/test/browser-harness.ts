@@ -906,7 +906,11 @@ export function equipHousehold(db: SqliteDatabase, at: number): void {
     low: 9 + index,
     unit: 'C',
     summary: ['Sunny', 'Light rain', 'Cloudy', 'Sunny', 'Showers'][index]!,
-    icon: '☀',
+    // A glyph *key*, as `glyphFor` resolves those five summaries. This fixture
+    // carried an emoji until the vocabulary existed, which meant every browser
+    // test that measured the forecast was measuring a strip with no icon in it
+    // at all — the fault being fixed, hiding inside the fixture for it.
+    glyph: (['clear', 'rain', 'cloudy', 'clear', 'showers'] as const)[index]!,
   }));
   db.prepare(
     `INSERT INTO weather_cache (id, provider, cache_key, payload, fetched_at, expires_at)

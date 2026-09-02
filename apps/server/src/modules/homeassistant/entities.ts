@@ -1,4 +1,5 @@
 import { parseJsonOr, z } from '../../validation.js';
+import type { GlyphKey } from '../../glyphs.js';
 
 /**
  * Entity readings: parsing what Home Assistant says, and deciding how it reads.
@@ -54,7 +55,7 @@ export type DisplayMode = 'value' | 'label_value' | 'icon_state' | 'presence';
 export const DISPLAY_MODES: readonly { key: DisplayMode; label: string }[] = [
   { key: 'label_value', label: 'Name and reading — Kitchen 19.4 °C' },
   { key: 'value', label: 'Just the reading — 19.4 °C' },
-  { key: 'icon_state', label: 'Symbol and state — ⌂ Closed' },
+  { key: 'icon_state', label: 'Symbol and state — a door, then Closed' },
   { key: 'presence', label: 'Who is in — Ada · home' },
 ];
 
@@ -147,40 +148,54 @@ export function parseStates(body: string): HaState[] {
 }
 
 /**
- * A character for a reading.
+ * A glyph for a reading, by device class.
  *
- * Home Assistant names an icon like `mdi:thermometer`, which rule three
- * forbids the display from fetching — no icon font, no sprite sheet, nothing
- * from a third origin. So the device class is mapped to a character the wall
- * already has, the same trick the weather module uses for its forecast.
+ * Home Assistant names an icon like `mdi:thermometer`, which rule three forbids
+ * the display from fetching — no icon font, no sprite sheet, nothing from a
+ * third origin. What used to be here was an emoji per device class, which is
+ * the same rule broken more quietly: the image ships no emoji font, so an
+ * emoji is a third-party asset resolved on the device. It came out as one
+ * vendor's cartoon in full colour on a tablet, another vendor's on the tablet
+ * beside it, and nothing at all on a panel, where `asciiTitle` drops it.
+ *
+ * So what travels is a **key** from the first-party vocabulary, and each
+ * renderer draws it. A device class with no glyph gets `null` and the wall
+ * draws no glyph at all, which is the honest reading — the middle dot this used
+ * to answer with was a character standing in for a picture nobody had.
  */
-export function iconFor(state: HaState): string {
-  const known: Readonly<Record<string, string>> = {
-    temperature: '🌡',
-    humidity: '💧',
-    pressure: '⏱',
-    battery: '🔋',
-    power: '⚡',
-    energy: '⚡',
-    illuminance: '☀',
-    door: '🚪',
-    garage_door: '🚪',
-    window: '🪟',
-    opening: '🚪',
-    motion: '👣',
-    occupancy: '👣',
-    moisture: '💦',
-    smoke: '🔥',
-    gas: '🔥',
-    problem: '⚠',
-    lock: '🔒',
+export function glyphFor(state: HaState): GlyphKey | null {
+  const known: Readonly<Record<string, GlyphKey>> = {
+    temperature: 'temperature',
+    humidity: 'humidity',
+    pressure: 'pressure',
+    battery: 'battery',
+    power: 'power',
+    energy: 'power',
+    illuminance: 'illuminance',
+    door: 'door',
+    // Its own glyph now rather than a second door: a garage is the one opening
+    // in a house somebody drives at, and it is the reading a household checks.
+    garage_door: 'garage',
+    window: 'window',
+    opening: 'door',
+    // Two device classes the emoji drew as one pair of footprints. They answer
+    // different questions — something moved, and somebody is here — and a wall
+    // that cannot tell them apart is a wall reporting the cat as the family.
+    motion: 'motion',
+    occupancy: 'occupancy',
+    moisture: 'moisture',
+    // Likewise `smoke` and `gas`, which were both a flame.
+    smoke: 'smoke',
+    gas: 'gas',
+    problem: 'problem',
+    lock: 'lock',
   };
   if (state.deviceClass !== null && state.deviceClass in known) {
-    return known[state.deviceClass] as string;
+    return known[state.deviceClass] as GlyphKey;
   }
-  if (state.domain === 'person' || state.domain === 'device_tracker') return '🧍';
-  if (state.domain === 'weather') return '☁';
-  return '·';
+  if (state.domain === 'person' || state.domain === 'device_tracker') return 'person';
+  if (state.domain === 'weather') return 'cloudy';
+  return null;
 }
 
 /**
@@ -240,7 +255,8 @@ export interface EntityReading {
   readonly label: string;
   readonly value: string;
   readonly unit: string | null;
-  readonly icon: string;
+  /** A glyph key, or `null` for a reading this vocabulary has no picture for. */
+  readonly glyph: GlyphKey | null;
   readonly mode: DisplayMode;
   /** True when this reading is older than the wall should quietly trust. */
   readonly stale: boolean;
@@ -264,7 +280,7 @@ export function toReading(state: HaState, watch: WatchedEntity, fetchedAt: numbe
     // Duplicating the unit into the value would double it up in `value` mode,
     // where the whole point is that the unit is the only context there is.
     unit: state.unit,
-    icon: iconFor(state),
+    glyph: glyphFor(state),
     mode,
     stale: now - fetchedAt > STALE_AFTER_MS,
   };

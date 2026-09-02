@@ -35,7 +35,7 @@ describe('module catalogue', () => {
           name: 'X',
           author: 'a',
           description: 'd',
-          icon: '⏳',
+          glyph: 'pressure',
           kind: 'service',
           install: { hint: 'h', code: 'alert(1)' },
         },
@@ -53,7 +53,7 @@ describe('module catalogue', () => {
           name: 'Temp',
           author: 'a',
           description: 'd',
-          icon: '🌡️',
+          glyph: 'temperature',
           kind: 'recipe',
           recipe: {
             name: 'Temp',
@@ -76,7 +76,7 @@ describe('module catalogue', () => {
           name: 'Temp',
           author: 'a',
           description: 'd',
-          icon: '🌡️',
+          glyph: 'temperature',
           kind: 'recipe',
           // `evil` is not an allowed formatter — the recipe schema catches it,
           // so the catalogue entry is rejected too.

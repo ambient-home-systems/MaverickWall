@@ -36,6 +36,11 @@ the container image ships a software bill of materials alongside it.
 
 A few assets are copied into the repository rather than depended on, so that
 list will not name them: the bundled typefaces (SIL OFL 1.1 and Apache-2.0)
-and the admin's inline Material Symbols icons (© Google, Apache-2.0, from
-https://github.com/google/material-design-icons). Both are recorded with their
-terms in apps/server/assets/fonts/LICENSES.md.
+and the admin's inline Lucide icons (© Lucide Icons and Contributors, ISC, from
+https://github.com/lucide-icons/lucide). Both are recorded with their terms in
+apps/server/assets/fonts/LICENSES.md. Lucide replaced Material Symbols there
+and no path from that set remains.
+
+The wall's and the e-paper panel's glyphs are drawn in this repository and are
+nobody else's work — see apps/display/src/glyphs.ts, which says why nothing off
+the shelf would do.

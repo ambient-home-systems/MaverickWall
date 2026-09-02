@@ -21,6 +21,16 @@ import type { Manifest } from '../api/manifest.js';
 
 import { drawText, GLYPH_SIZE, measureText } from './font.js';
 import { Framebuffer } from './framebuffer.js';
+import {
+  drawGlyph,
+  glyphAdvance,
+  glyphHeight,
+  glyphScaleFor,
+  isGlyphKey,
+  GLYPH_CELL,
+  type GlyphKey,
+  type GlyphScale,
+} from './glyphs.js';
 import { panelMetrics, scaleRung, type EpaperMetrics, type PanelGeometry } from './metrics.js';
 import {
   asciiTitle,
@@ -118,11 +128,33 @@ function drawStack(
   fb: Framebuffer,
   m: EpaperMetrics,
   box: Box,
-  rows: readonly { readonly text: string; readonly scale: number }[],
+  rows: readonly StackRow[],
   align: 'left' | 'center' | 'right',
 ): void {
   let y = box.y;
   for (const row of rows) {
+    /*
+     * A glyph row is a drawing and takes its own height, never the type's.
+     *
+     * The room reserved for it and the room it occupies are the same
+     * expression — `glyphHeight(scale)`, here and in the caller's `heightOf` —
+     * which is the count-and-loop rule `drawPanel` states one widget along and
+     * paid for by asking a module for four readings and drawing five.
+     */
+    if (row.glyph !== undefined) {
+      const h = glyphHeight(row.glyphScale);
+      if (y + h > box.y + box.h) break;
+      const w = GLYPH_CELL * row.glyphScale;
+      const x =
+        align === 'center'
+          ? box.x + Math.floor((box.w - w) / 2)
+          : align === 'right'
+            ? box.x + box.w - w
+            : box.x;
+      drawGlyph(fb, x, y, row.glyph, row.glyphScale);
+      y += h + m.widget.linePad;
+      continue;
+    }
     if (row.text === '') continue;
     const h = GLYPH_SIZE * row.scale;
     if (y + h > box.y + box.h) break;
@@ -130,6 +162,15 @@ function drawStack(
     y += h + m.widget.linePad;
   }
 }
+
+/**
+ * One row of a stack: a run of text, or a glyph drawn at its own whole-number
+ * scale. Never both — a glyph is a mark of its own here, not an ornament on a
+ * line, because a 1-bit row has no room to be two things.
+ */
+type StackRow =
+  | { readonly text: string; readonly scale: number; readonly glyph?: undefined }
+  | { readonly text: ''; readonly scale: number; readonly glyph: GlyphKey; readonly glyphScale: GlyphScale };
 
 /** Draw stacked lines within a box, clipped to its height and width, honouring align. */
 function drawLines(
@@ -475,6 +516,8 @@ interface EpaperForecastDay {
   readonly name: string;
   readonly high: string;
   readonly low: string;
+  /** A key the panel can draw, or `undefined` — a newer server may name one. */
+  readonly glyph: GlyphKey | undefined;
 }
 
 /** Read the weather panel defensively — a module's shape is its own. */
@@ -485,7 +528,9 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
   const out: EpaperForecastDay[] = [];
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
-    const day = entry as { name?: unknown; high?: unknown; low?: unknown; unit?: unknown };
+    const day = entry as {
+      name?: unknown; high?: unknown; low?: unknown; unit?: unknown; glyph?: unknown;
+    };
     if (typeof day.name !== 'string') continue;
     const unit = typeof day.unit === 'string' ? asciiTitle(day.unit) : '';
     const degrees = (value: unknown): string =>
@@ -494,6 +539,7 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
       name: asciiTitle(day.name),
       high: degrees(day.high),
       low: `${degrees(day.low)}${unit}`,
+      glyph: isGlyphKey(day.glyph) ? day.glyph : undefined,
     });
   }
   return out;
@@ -513,13 +559,27 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
   const ladder = weatherLadder(config);
   const paired = pairsTemperatures(ladder);
   /*
-   * `icon` never resolves here: the panel's font is 0x20–0x7E and a forecast
-   * glyph is not in it, so the rung is simply dropped — the same way `run` is
-   * dropped from a shift ladder on a screen that has never had a row for it.
-   * The ladder is shared; the data is not.
+   * `icon` resolves now, and for years it did not.
+   *
+   * The rung used to be dropped here because the module chose an *emoji* and
+   * this panel's font is 0x20–0x7E, so `asciiTitle` deleted it — a household
+   * who put a forecast on a panel got a column of temperatures with a hole in
+   * it, and no test could see the difference because the widget drew inside its
+   * box, did not throw and produced ink. With a first-party vocabulary there is
+   * a drawing to draw.
+   *
+   * The key travels through the ladder as this rung's *text*, which is how the
+   * wall carries it too, and `drawStack` turns it into a drawing. A key this
+   * panel cannot draw is not put in the record at all, so `ladderRows` drops
+   * the rung and the column gives the room back.
    */
+  const glyphScale = glyphScaleFor(GLYPH_SIZE * m.bodyScale);
   const rowsFor = (day: EpaperForecastDay): readonly LadderRow<WeatherField>[] =>
-    ladderRows(ladder, { name: day.name, high: day.high, low: day.low }, WEATHER_ROLES);
+    ladderRows(
+      ladder,
+      { name: day.name, icon: day.glyph ?? '', high: day.high, low: day.low },
+      WEATHER_ROLES,
+    );
 
   /**
    * The rows of one column, with the temperatures folded onto one line when the
@@ -565,7 +625,13 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
     // Predicted from `maxScale` rather than from its own literals, so the room
     // reserved for a row and the size that row is allowed to reach cannot
     // disagree — the count-and-loop rule one widget along.
-    const heightOf = (role: LadderRole): number => GLYPH_SIZE * maxScale(role) + ROW_GAP;
+    /*
+     * `body` is the icon rung and nothing else — `WEATHER_ROLES` gives `name`,
+     * `high` and `low` the other three roles — so a role is enough to say which
+     * rows are drawings, with no second lookup and no change to `dropToFit`.
+     */
+    const heightOf = (role: LadderRole): number =>
+      role === 'body' ? glyphHeight(glyphScale) + ROW_GAP : GLYPH_SIZE * maxScale(role) + ROW_GAP;
 
     const columns = days.map((day) => foldPairs(dropToFit(rowsFor(day), box.h, heightOf)));
     /*
@@ -582,7 +648,8 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
       let scale = 0;
       for (const rows of columns) {
         const cell = rows[row];
-        if (cell === undefined) continue;
+        // A glyph has no string to measure and no type scale to agree on.
+        if (cell === undefined || cell.role === 'body') continue;
         const fits = scaleToFit(cell.text, columnWidth - m.widget.linePad, maxScale(cell.role));
         scale = scale === 0 ? fits : Math.min(scale, fits);
       }
@@ -600,14 +667,32 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
         fb,
         m,
         column,
-        rows.map((cell, row) => ({ text: cell.text, scale: scales[row] ?? 1 })),
+        rows.map((cell, row) =>
+          cell.role === 'body' && isGlyphKey(cell.text)
+            ? { text: '' as const, scale: 1, glyph: cell.text, glyphScale }
+            : { text: cell.text, scale: scales[row] ?? 1 },
+        ),
         'left',
       );
     });
     return;
   }
 
-  const lines = days.map((day) => foldPairs(rowsFor(day)).map((cell) => cell.text).join('  '));
+  /*
+   * The narrow fallback is one line a day, and a glyph does not go in it.
+   *
+   * This branch is what a household gets when they drag the forecast into a
+   * tall thin box, and a line here is already "Tue  24  13F" at whatever size
+   * fits. A drawing wedged between two words on a 1-bit line is neither, so the
+   * rung is dropped exactly as `run` is dropped from a shift on a panel that has
+   * no row for it — the ladder is shared, the medium is not.
+   */
+  const lines = days.map((day) =>
+    foldPairs(rowsFor(day))
+      .filter((cell) => cell.role !== 'body')
+      .map((cell) => cell.text)
+      .join('  '),
+  );
   const scale = lines.reduce(
     (smallest, line) => Math.min(smallest, scaleToFit(line, box.w, m.bodyScale)),
     m.bodyScale,
@@ -624,14 +709,22 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
  * `Locked` on the wall and `Front door: Locked` on a panel. One stored value,
  * two renderers, two answers. Found by rendering one and looking at it.
  *
- * The icon rung resolves to nothing: a glyph is not in the 0x20–0x7E font, the
- * same way a forecast symbol is not. So `icon_state` and `presence` draw their
- * label and value here, which is the honest 1-bit reading of them.
+ * The icon rung resolves now. It used to be nothing — the module chose an emoji
+ * and `asciiTitle` deleted it — so `icon_state`, whose whole name is the mark
+ * and the state, drew its label and its value and no mark at all. With a
+ * first-party vocabulary there is a drawing.
+ *
+ * **The mark leads the line wherever the household put the rung**, and that is
+ * a deliberate difference from the wall. A panel reading is one line read left
+ * to right, not a stack, so a picture between two words is a hole in a
+ * sentence; leading it is the only place a mark on a line can go. The order of
+ * the *words* is untouched, which is what the ladder actually promises.
  */
 interface EpaperReading {
   readonly label: string;
   readonly value: string;
   readonly mode: string;
+  readonly glyph: GlyphKey | undefined;
 }
 
 function houseReadings(panel: unknown): EpaperReading[] {
@@ -641,12 +734,13 @@ function houseReadings(panel: unknown): EpaperReading[] {
   const out: EpaperReading[] = [];
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
-    const row = entry as { label?: unknown; value?: unknown; mode?: unknown };
+    const row = entry as { label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown };
     if (typeof row.label !== 'string' || typeof row.value !== 'string') continue;
     out.push({
       label: asciiTitle(row.label),
       value: asciiTitle(row.value),
       mode: typeof row.mode === 'string' ? row.mode : 'label_value',
+      glyph: isGlyphKey(row.glyph) ? row.glyph : undefined,
     });
   }
   return out;
@@ -683,24 +777,61 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
    * The label keeps its colon when it leads, because "Kitchen: 19.4 C" reads as
    * an attribution and "Kitchen 19.4 C" reads as a mistake.
    */
+  const glyphScale = glyphScaleFor(GLYPH_SIZE * m.bodyScale);
+  const advance = glyphAdvance(glyphScale);
   const lines = readings.map((reading) => {
     const rows = ladderRows(
       houseLadder(config, reading.mode),
-      { label: reading.label, value: reading.value },
+      { icon: reading.glyph ?? '', label: reading.label, value: reading.value },
       HOUSE_ROLES,
     );
-    const parts = rows.map((row) => row.text);
-    if (rows[0]?.field === 'label' && parts.length > 1) {
-      return `${parts[0]}: ${parts.slice(1).join('  ')}`;
-    }
-    return parts.join('  ');
+    // `body` is the icon rung and nothing else here, exactly as it is in the
+    // forecast's roles — see `heightOf` in `drawWeather`.
+    const glyph = rows.find((row) => row.role === 'body');
+    const words = rows.filter((row) => row.role !== 'body');
+    const parts = words.map((row) => row.text);
+    const text =
+      words[0]?.field === 'label' && parts.length > 1
+        ? `${parts[0]}: ${parts.slice(1).join('  ')}`
+        : parts.join('  ');
+    return { text, glyph: glyph !== undefined && isGlyphKey(glyph.text) ? glyph.text : undefined };
   });
 
+  // Every line is measured against the same width, glyph or no glyph, so a
+  // reading with a mark and one without still share a scale — the strip rule
+  // `drawWeather` states, one widget along.
+  const anyGlyph = lines.some((line) => line.glyph !== undefined);
+  const textWidth = Math.max(1, box.w - (anyGlyph ? advance : 0));
   const scale = lines.reduce(
-    (smallest, line) => Math.min(smallest, scaleToFit(line, box.w, m.bodyScale)),
+    (smallest, line) => Math.min(smallest, scaleToFit(line.text, textWidth, m.bodyScale)),
     m.bodyScale,
   );
-  drawLines(fb, m, lines, box, scale, 'left');
+
+  /*
+   * One row a reading, drawn here rather than through `drawLines`, because a
+   * row is a mark and a run of words on one baseline and that is two draws.
+   *
+   * The row's height is the taller of the two, so a mark can never push the
+   * line it belongs to into the reading below — the reservation and the
+   * advance are the same expression, which is the rule this file states twice
+   * already.
+   */
+  const glyphH = anyGlyph ? glyphHeight(glyphScale) : 0;
+  const textH = GLYPH_SIZE * scale;
+  const rowH = Math.max(glyphH, textH) + m.widget.linePad;
+  let y = box.y;
+  for (const line of lines) {
+    if (y + rowH - m.widget.linePad > box.y + box.h) break;
+    const left = box.x + (anyGlyph ? advance : 0);
+    if (line.glyph !== undefined) {
+      // Centred against the words, so a 24px mark beside 16px type does not
+      // read as a mark with a caption hanging off its chin.
+      drawGlyph(fb, box.x, y + Math.floor((rowH - m.widget.linePad - glyphH) / 2), line.glyph, glyphScale);
+    }
+    const text = fit(line.text, textWidth, { scale });
+    drawText(fb, left, y + Math.floor((rowH - m.widget.linePad - textH) / 2), text, { scale });
+    y += rowH;
+  }
 }
 
 function drawPanel(

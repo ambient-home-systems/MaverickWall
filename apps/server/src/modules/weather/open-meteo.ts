@@ -2,6 +2,7 @@ import { FETCH_LIMITS, type Fetcher } from '@maverick-wall/core';
 import { DEFAULT_USER_AGENT } from '../../net/fetcher.js';
 import { parseJsonOr, z } from '../../validation.js';
 import type { Coordinates, Forecast, ForecastDay, WeatherResult } from './nws.js';
+import type { GlyphKey } from '../../glyphs.js';
 
 /**
  * Open-Meteo — the second forecast provider, and the reason weather is a choice.
@@ -10,7 +11,7 @@ import type { Coordinates, Forecast, ForecastDay, WeatherResult } from './nws.js
  * to a gridpoint, the gridpoint to a forecast), Open-Meteo is worldwide,
  * key-less, and answers in one. It hands back daily maxima, minima and a WMO
  * weather code rather than prose, so the glyph is mapped from the code here the
- * way `iconFor` maps it from NWS wording. Everything it produces is the same
+ * way `glyphFor` maps it from NWS wording. Everything it produces is the same
  * `Forecast` shape NWS produces, so the panel, the cache and the wall never
  * learn there is a second provider.
  *
@@ -23,26 +24,27 @@ import type { Coordinates, Forecast, ForecastDay, WeatherResult } from './nws.js
 export type Units = 'metric' | 'imperial';
 
 /**
- * WMO weather-interpretation codes → a glyph the display already has.
+ * WMO weather-interpretation codes to a glyph key.
  *
- * The same characters `iconFor` uses, so the two providers draw the same
- * weather the same way. Grouped as Open-Meteo documents the codes; anything
- * unmapped falls back to the dot, exactly as the NWS mapping does.
+ * The same keys `glyphFor` maps NWS's wording to, so the two providers draw the
+ * same weather the same way — one vocabulary, resolved on the server, handed to
+ * both renderers. Grouped as Open-Meteo documents the codes; anything unmapped
+ * answers `null` and the strip draws no glyph, exactly as the NWS mapping does.
  */
-export function iconForCode(code: number): string {
-  if (code === 0) return '☀'; // clear sky
-  if (code === 1) return '🌤'; // mainly clear
-  if (code === 2) return '⛅'; // partly cloudy
-  if (code === 3) return '☁'; // overcast
-  if (code === 45 || code === 48) return '🌫'; // fog
-  if (code === 56 || code === 57 || code === 66 || code === 67) return '🌨'; // freezing drizzle / rain
-  if (code >= 51 && code <= 55) return '🌧'; // drizzle
-  if (code >= 61 && code <= 65) return '🌧'; // rain
-  if (code >= 71 && code <= 77) return '❄'; // snow
-  if (code >= 80 && code <= 82) return '🌦'; // rain showers
-  if (code === 85 || code === 86) return '❄'; // snow showers
-  if (code >= 95 && code <= 99) return '⛈'; // thunderstorm
-  return '·';
+export function glyphForCode(code: number): GlyphKey | null {
+  if (code === 0) return 'clear';
+  if (code === 1) return 'mostly-clear';
+  if (code === 2) return 'partly-cloudy';
+  if (code === 3) return 'cloudy';
+  if (code === 45 || code === 48) return 'fog';
+  if (code === 56 || code === 57 || code === 66 || code === 67) return 'sleet'; // freezing
+  if (code >= 51 && code <= 55) return 'drizzle';
+  if (code >= 61 && code <= 65) return 'rain';
+  if (code >= 71 && code <= 77) return 'snow';
+  if (code >= 80 && code <= 82) return 'showers';
+  if (code === 85 || code === 86) return 'snow'; // snow showers
+  if (code >= 95 && code <= 99) return 'thunderstorm';
+  return null;
 }
 
 /** The document, validated defensively — a missing array is an empty forecast, never a throw. */
@@ -117,7 +119,7 @@ export function parseForecast(
       low: daily.temperature_2m_min[i] ?? null,
       unit,
       summary: '',
-      icon: iconForCode(code),
+      glyph: glyphForCode(code),
     });
   }
   return days.length === 0 ? undefined : { days, fetchedAt: at };

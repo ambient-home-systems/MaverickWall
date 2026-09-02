@@ -443,7 +443,7 @@ describe('the same household, once a location is set', () => {
         low: 9 + index,
         unit: 'C',
         summary: ['Sunny', 'Light rain', 'Cloudy', 'Sunny', 'Showers'][index]!,
-        icon: '☀',
+        glyph: (['clear', 'rain', 'cloudy', 'clear', 'showers'] as const)[index]!,
       }));
       wall.db
         .prepare(

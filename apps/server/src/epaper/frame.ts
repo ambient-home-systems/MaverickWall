@@ -83,8 +83,21 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * draws its density mark, which was already there; a multi-day bar keeps its
  * words wherever the bar's *own* width can hold them, which on a 7.5" panel is
  * the only name its grid has ever had.
+ *
+ * 7: first-party glyphs (`epaper/glyphs.ts`). The forecast strip and the house
+ * readings draw a picture where they have drawn nothing since they were
+ * written. The rung was always in the ladder; what filled it was an emoji the
+ * modules chose, and `asciiTitle` drops every code point above 0x7E, so a
+ * household who put weather on a panel got a column of temperatures with a hole
+ * in it and `icon_state` — whose whole name is the mark and the state — drew no
+ * mark. The vocabulary is first-party and closed, the cells are drawn at the
+ * size they are used rather than scaled down from the wall's paths, and a key
+ * this panel does not know draws nothing at all.
+ *
+ * Every panel with a forecast or a house reading on it moves; a panel with
+ * neither is byte-identical.
  */
-export const EPAPER_RENDERER_VERSION = 6;
+export const EPAPER_RENDERER_VERSION = 7;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

@@ -15,7 +15,7 @@ describe('panelFrom', () => {
       kind: 'readings',
       title: 'The house',
       items: [
-        { label: 'Front door', value: 'Locked', icon: '🔒' },
+        { label: 'Front door', value: 'Locked', glyph: 'lock' },
         { label: 'Nope' }, // no value → dropped
         { value: 'Nope' }, // no label → dropped
       ],
@@ -23,7 +23,7 @@ describe('panelFrom', () => {
     expect(panel).toEqual({
       kind: 'readings',
       title: 'The house',
-      items: [{ label: 'Front door', value: 'Locked', icon: '🔒' }],
+      items: [{ label: 'Front door', value: 'Locked', glyph: 'lock' }],
     });
   });
 

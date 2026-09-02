@@ -533,6 +533,17 @@ interface Baseline {
  * that *starts* naming something becomes a cell that can carry a count. A loss
  * of names would still fail.
  *
+ * **`runsUnderFloor` then falls by exactly five at 480x800 (41→36) and
+ * 800x480 (58→53), and not one word got bigger.** The forecast strip's icon
+ * used to be a *character* — an emoji, set at 2.1rem — so it counted as a run
+ * of type, and at those two sizes 2.1rem is 15.7px and 9.4px. It is a drawing
+ * now (`glyphs.ts`), so five columns' worth of runs stopped existing. The
+ * arithmetic is what says so rather than the direction: at 1920x1080 the same
+ * 2.1rem is 22.7px, above the floor, and that size's count is unchanged; at
+ * 1080x1920 and 2560x1440 the count was already 0. A metric whose *population*
+ * changed is not a metric that improved, and recording it as one is how a
+ * baseline stops meaning anything.
+ *
  * **`AGENDA_BASELINE`'s numeral falls at every size**, 59.7px → 44.9px at
  * 1080x1920. That is `.dr-num` finally honouring this project's own design rule
  * on a wall nobody has measured — "the date numeral is never larger than the
@@ -563,7 +574,7 @@ export const BASELINE: Record<string, Baseline> = {
     // No room for a lane under the numeral at this cell size, so the bars are
     // measured back out by the tier pass and the events go back to being rows.
     spanBars: 0,
-    runsUnderFloor: 41,
+    runsUnderFloor: 36,
     agendaDays: 2,
     agendaEvents: 6,
     canvasSharePercent: 93.5,
@@ -575,7 +586,7 @@ export const BASELINE: Record<string, Baseline> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 0,
-    runsUnderFloor: 58,
+    runsUnderFloor: 53,
     agendaDays: 4,
     agendaEvents: 11,
     canvasSharePercent: 93.5,

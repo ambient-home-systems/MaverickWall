@@ -6,7 +6,9 @@ import type {
   ManifestPerson,
   ManifestShift,
 } from './manifest.js';
+import { isGlyphKey, type GlyphKey } from './glyphs.js';
 export type { ManifestShift };
+export type { GlyphKey };
 
 /**
  * Manifest to something drawable, with no DOM in sight.
@@ -256,7 +258,16 @@ export interface HorizonCell {
 
 export interface WeatherDayModel {
   readonly name: string;
-  readonly icon: string;
+  /**
+   * A key from `glyphs.ts`, or `undefined` when there is no glyph to draw.
+   *
+   * Undefined covers three cases and they all end the same way: a sky nothing
+   * matched, a cached forecast written before this field existed, and — the one
+   * that matters — a *newer server* naming a glyph this bundle has never heard
+   * of. A wall drawing the word "thunderstorm" where a picture belongs is worse
+   * than a wall drawing nothing, so an unknown key is not a key.
+   */
+  readonly glyph: GlyphKey | undefined;
   readonly high: string;
   readonly low: string;
   /**
@@ -384,7 +395,8 @@ export interface DisplayModel {
 export interface HouseReadingModel {
   readonly label: string;
   readonly value: string;
-  readonly icon: string;
+  /** A key from `glyphs.ts`, or `undefined` — see `WeatherDayModel.glyph`. */
+  readonly glyph: GlyphKey | undefined;
   readonly mode: string;
   readonly stale: boolean;
 }
@@ -425,7 +437,7 @@ export function houseFrom(panel: unknown): {
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
     const reading = entry as {
-      label?: unknown; value?: unknown; unit?: unknown; icon?: unknown;
+      label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
       mode?: unknown; stale?: unknown;
     };
     /*
@@ -448,9 +460,10 @@ export function houseFrom(panel: unknown): {
       // that shows a value shows it with its unit and nothing styles them
       // differently. A degree sign gets no space; a word does.
       value: unit === '' ? value : `${value}${unit.startsWith('°') ? '' : ' '}${unit}`,
-      // One character, and one this bundle chose. A glyph is a token rather
-      // than a sentence, so a long "icon" is a mistake rather than a reading.
-      icon: text(reading.icon, 4) ?? '·',
+      // A key this bundle can draw, or nothing. Never the key's own text: the
+      // manifest is a boundary in both directions and a server one release
+      // ahead can name a silhouette that does not exist here yet.
+      glyph: isGlyphKey(reading.glyph) ? reading.glyph : undefined,
       mode: typeof reading.mode === 'string' ? reading.mode : 'label_value',
       stale: reading.stale === true,
     });
@@ -529,7 +542,8 @@ function text(value: unknown, limit: number): string | undefined {
 export interface PanelReading {
   readonly label: string;
   readonly value: string;
-  readonly icon?: string;
+  /** A glyph key the module named. Absent unless this bundle can draw it. */
+  readonly glyph?: GlyphKey;
 }
 export interface PanelTile {
   readonly label: string;
@@ -541,7 +555,7 @@ export type PanelData =
   | { readonly kind: 'tiles'; readonly title?: string; readonly items: readonly PanelTile[] }
   | { readonly kind: 'text'; readonly title?: string; readonly text: string };
 
-function readPanelItems(raw: unknown, withIcon: boolean): PanelReading[] {
+function readPanelItems(raw: unknown, withGlyph: boolean): PanelReading[] {
   if (!Array.isArray(raw)) return [];
   const items: PanelReading[] = [];
   for (const entry of raw.slice(0, 12)) {
@@ -550,8 +564,8 @@ function readPanelItems(raw: unknown, withIcon: boolean): PanelReading[] {
     const label = text(row['label'], 60);
     const value = text(row['value'], 60);
     if (label === undefined || value === undefined) continue;
-    const icon = withIcon ? text(row['icon'], 4) : undefined;
-    items.push(icon === undefined ? { label, value } : { label, value, icon });
+    const glyph = withGlyph && isGlyphKey(row['glyph']) ? row['glyph'] : undefined;
+    items.push(glyph === undefined ? { label, value } : { label, value, glyph });
   }
   return items;
 }
@@ -725,7 +739,7 @@ export function weatherFrom(panel: unknown): {
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
     const day = entry as {
-      name?: unknown; icon?: unknown; high?: unknown; low?: unknown; unit?: unknown;
+      name?: unknown; glyph?: unknown; high?: unknown; low?: unknown; unit?: unknown;
       date?: unknown;
     };
     if (typeof day.name !== 'string') continue;
@@ -734,7 +748,7 @@ export function weatherFrom(panel: unknown): {
       typeof value === 'number' ? `${Math.round(value)}°` : '—';
     days.push({
       name: day.name,
-      icon: typeof day.icon === 'string' ? day.icon : '·',
+      glyph: isGlyphKey(day.glyph) ? day.glyph : undefined,
       high: degrees(day.high),
       // The unit rides on the low so the row reads "84° 69°F" rather than
       // repeating itself five times across the strip.

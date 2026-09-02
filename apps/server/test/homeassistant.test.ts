@@ -667,10 +667,12 @@ describe('readings on the wall', () => {
     expect(document).not.toContain(TOKEN);
     expect(document).not.toContain(ha.base);
 
-    const panel = manifest.panels['home'] as { readings: { value: string; icon: string }[] };
+    const panel = manifest.panels['home'] as { readings: { value: string; glyph: string }[] };
     // `on` means open, and only the device class knows that.
     expect(panel.readings[0]?.value).toBe('Open');
-    expect(panel.readings[0]?.icon).toBe('🚪');
+    // A glyph *key* both renderers draw themselves, never a character: an emoji
+    // here is a third-party asset resolved on whatever tablet is looking.
+    expect(panel.readings[0]?.glyph).toBe('door');
   });
 
   it('never puts the address on the wall, even when the connection is refused', async () => {

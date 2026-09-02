@@ -49,7 +49,7 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate'],
   calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars'],
   shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours'],
-  weather: ['title', 'showTitle', 'count', 'fields', 'showLow'],
+  weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon'],
   homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings'],
   external: ['title', 'showTitle', 'count', 'module'],
   countdown: ['title', 'showTitle', 'target'],
@@ -130,11 +130,6 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'showRun',
     label: 'Run position',
     why: "the panel's model does not carry which day of a run it is.",
-  },
-  {
-    key: 'showIcon',
-    label: 'Weather symbol',
-    why: "the panel's font is plain ASCII and has no weather glyph.",
   },
   {
     key: 'showShifts',

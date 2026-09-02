@@ -9,7 +9,7 @@ import { panelDataSchema } from '../src/modules/external/panel-data.js';
  */
 describe('panelDataSchema', () => {
   it('accepts each shape in the vocabulary', () => {
-    expect(panelDataSchema.safeParse({ kind: 'readings', title: 'House', items: [{ label: 'Door', value: 'Locked', icon: '🔒' }] }).success).toBe(true);
+    expect(panelDataSchema.safeParse({ kind: 'readings', title: 'House', items: [{ label: 'Door', value: 'Locked', glyph: 'lock' }] }).success).toBe(true);
     expect(panelDataSchema.safeParse({ kind: 'stat', value: '135', caption: 'days' }).success).toBe(true);
     expect(panelDataSchema.safeParse({ kind: 'tiles', items: [{ label: 'Mon', value: '24' }] }).success).toBe(true);
     expect(panelDataSchema.safeParse({ kind: 'text', text: 'Bins out tonight' }).success).toBe(true);

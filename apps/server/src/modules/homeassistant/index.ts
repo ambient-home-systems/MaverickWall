@@ -6,7 +6,7 @@ import { parseCalendarList, type CalendarEntity } from './calendars.js';
 import type { Keyring } from '../../secrets/keyring.js';
 import type { Fetcher } from '@maverick-wall/core';
 import {
-  iconFor,
+  glyphFor,
   parseStates,
   readState,
   toReading,
@@ -317,4 +317,4 @@ function recordError(db: SqliteDatabase, message: string): void {
 }
 
 /** Re-exported so the admin screen draws the same characters the wall does. */
-export { iconFor, readState };
+export { glyphFor, readState };
