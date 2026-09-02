@@ -483,11 +483,13 @@ describe('the stylesheet the editor is drawn with', () => {
     // `hidden` must actually hide something a display rule would otherwise show.
     expect(style).toContain('.insp-tabs[hidden]{display:none}');
     // The save bar clears the phone's home indicator.
-    expect(style).toContain('padding-bottom:calc(12px + env(safe-area-inset-bottom))');
+    expect(style).toContain('padding-bottom:calc(var(--mw-s-3) + env(safe-area-inset-bottom))');
     // A settings row is a touch target, and its value is 16px so focusing it
     // does not make iOS zoom the page.
-    expect(style).toContain('.srow{display:flex;align-items:center;gap:12px;min-height:56px');
-    expect(style).toMatch(/\.srow-select\{[^}]*font-size:16px/);
+    expect(style).toContain(
+      '.srow{display:flex;align-items:center;gap:var(--mw-s-3);min-height:56px',
+    );
+    expect(style).toMatch(/\.srow-select\{[^}]*font-size:var\(--mw-t-body-lg-size\)/);
   });
 });
 

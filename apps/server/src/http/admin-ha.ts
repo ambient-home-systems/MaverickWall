@@ -1,5 +1,6 @@
 import type { Context, Hono } from 'hono';
 import { confirmDestroyPage, errorBlock, escapeHtml, networkAccessLabel, page, selectField, textField } from './html.js';
+import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
 import { call, resolveConnection, testConnection, type ConnectionMode } from '../modules/homeassistant/client.js';
 import {
   DISPLAY_MODES,
@@ -706,8 +707,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * only claim on this page that somebody has to take on trust.
    */
   function boundary(): string {
-    return (
-      `<div class="card">` +
+    return card(
       `<h2>Maverick Wall reads. It cannot control anything.</h2>` +
       `<ul class="plain">` +
       `<li>No switches, no scenes, no service calls. There is no code in this ` +
@@ -721,40 +721,57 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="hint">A Home Assistant long-lived access token has full control of ` +
       `your home and cannot be limited to reading. That is why the limit is on this ` +
       `side: if a wall in your hallway were ever compromised, the worst it could ` +
-      `give away is your indoor temperature.</p>` +
-      `</div>`
+      `give away is your indoor temperature.</p>`,
     );
+  }
+
+  /**
+   * The three counts used to be one middle-dotted `.sub` line — exactly the
+   * anti-pattern `dataTable`'s own doc-comment names, and the same fix as the
+   * System screen's version card: labels down the left, figures on a common
+   * right edge.
+   */
+  function statusReadings(live: LiveState, lastSyncAt: number | null): (readonly string[])[] {
+    const rows: (readonly string[])[] = [];
+    if (live.mode === 'manual') {
+      rows.push(['Host', `<span class="host">${escapeHtml(live.host ?? '')}</span>`]);
+    }
+    rows.push(['Readable entities', String(live.entities.length)]);
+    rows.push(['Calendars', String(live.calendars.length)]);
+    if (lastSyncAt !== null) {
+      rows.push(['Last read', escapeHtml(ago(lastSyncAt, now()))]);
+    }
+    return rows;
   }
 
   function status(live: LiveState, lastSyncAt: number | null): string {
     if (live.mode === 'supervisor') {
-      return (
-        `<div class="card"><h2>Connected — running as an add-on</h2>` +
+      return card(
+        `<h2>Connected — running as an add-on</h2>` +
         `<p>Home Assistant is reached through the supervisor. There is nothing to ` +
         `configure and no token to manage.</p>` +
-        `<p class="sub">${live.entities.length} readable entities · ` +
-        `${live.calendars.length} calendars${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(ago(lastSyncAt, now()))}</p>` +
-        `</div>`
+        dataTable([{ label: 'Reading' }, { label: 'Value', numeric: true }], statusReadings(live, lastSyncAt)),
       );
     }
     if (live.mode === 'manual') {
-      return (
-        `<div class="card"><h2>Connected</h2>` +
-        `<p class="sub"><span class="host">${escapeHtml(live.host ?? '')}</span> · ${live.entities.length} readable ` +
-        `entities · ${live.calendars.length} calendars` +
-        `${lastSyncAt === null ? '' : ' · last read ' + escapeHtml(ago(lastSyncAt, now()))}</p>` +
-        `<form method="get" action="admin/home-assistant/disconnect">` +
-        `<button class="btn-danger" type="submit">Disconnect</button></form>` +
-        `<p class="hint">${escapeHtml(HA_DISCONNECT_CONSEQUENCE)}</p>` +
-        `</div>`
+      return card(
+        `<h2>Connected</h2>` +
+        dataTable([{ label: 'Reading' }, { label: 'Value', numeric: true }], statusReadings(live, lastSyncAt)) +
+        destructive('Disconnect', {
+          thing: 'Home Assistant',
+          confirmAction: 'admin/home-assistant/disconnect',
+          variant: 'button',
+        }) +
+        `<p class="hint">${escapeHtml(HA_DISCONNECT_CONSEQUENCE)}</p>`,
       );
     }
-    return `<div class="card"><h2>Not connected</h2><p>Nothing from your house is on the wall.</p></div>`;
+    return card(`<h2>Not connected</h2><p>Nothing from your house is on the wall.</p>`);
   }
 
   function connectionForm(settings: ReturnType<typeof readHaSettings>): string {
-    return (
-      `<h2 class="add">Connect</h2>` +
+    return section(
+      'Connect',
+      undefined,
       `<form method="post" action="admin/home-assistant/connect">` +
       textField({
         label: 'Address of Home Assistant',
@@ -800,7 +817,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<label><input type="checkbox" name="accept_http" value="1"> ` +
       `${escapeHtml(networkAccessLabel('allowHttp'))} — I understand the token crosses my network unencrypted</label>` +
       `</div>` +
-      `<button type="submit">Connect</button></form>`
+      `<button type="submit">Connect</button></form>`,
     );
   }
 
@@ -817,19 +834,29 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   function readings(live: LiveState): string {
     const watched = readWatched(deps.db).filter((row) => row.watched === 1);
 
+    /*
+     * Left as a hand-built form rather than `destructive()`: the target here
+     * is `?entity_id=…`, a query parameter, and `destructive()`'s lead button
+     * has nowhere to carry a hidden field — its form has no fields at all,
+     * only an action. A GET form with no fields replaces the action URL's own
+     * query with the (empty) serialised field set on submission, so embedding
+     * the id in `confirmAction`'s query string would silently submit with no
+     * `entity_id` at all. The rule and calendar deletes below take their id
+     * from the *path* instead, which is exactly what `destructive()` expects.
+     */
     const rows = watched
       .map(
         (row) =>
-          `<article class="card">` +
-          `<h2>${escapeHtml(row.label ?? row.friendlyName ?? row.entityId)}</h2>` +
-          `<p>${escapeHtml(row.state ?? '—')}` +
-          `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
-          `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(ago(row.fetchedAt, now()))}</p>` +
-          `<p class="host">${escapeHtml(row.entityId)}</p>` +
-          `<form method="get" action="admin/home-assistant/entities/remove">` +
-          `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
-          `<button class="btn-danger" type="submit">Remove</button></form>` +
-          `</article>`,
+          card(
+            `<h2>${escapeHtml(row.label ?? row.friendlyName ?? row.entityId)}</h2>` +
+            `<p>${escapeHtml(row.state ?? '—')}` +
+            `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
+            `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(ago(row.fetchedAt, now()))}</p>` +
+            `<p class="host">${escapeHtml(row.entityId)}</p>` +
+            `<form method="get" action="admin/home-assistant/entities/remove">` +
+            `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
+            `<button class="btn-danger" type="submit">Remove</button></form>`,
+          ),
       )
       .join('');
 
@@ -853,45 +880,53 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       .join('');
 
     return (
-      `<h2 class="add">On the wall</h2>` +
-      `<p class="hint">A few readings beside the calendar. This is deliberately not a ` +
-      `dashboard — Home Assistant already has one, and it is better at it.</p>` +
-      // Calendars used to be offered here too, and a calendar added as a
-      // reading drew "Bins · On" — its state, which means "an event is on right
-      // now". They are not in this picker any more, so this says where they went
-      // rather than leaving somebody hunting for one that has quietly vanished.
-      `<p class="hint">Calendar entities are not readings — they are added as ` +
-      `calendars, below, and behave like any other feed.</p>` +
-      (rows === '' ? `<p>Nothing on the wall yet.</p>` : rows) +
-      `<h2 class="add">Add readings</h2>` +
-      `<div id="ha-entity-picker" ` +
-      `data-entities="${escapeHtml(JSON.stringify(entityData))}" ` +
-      `data-modes="${escapeHtml(JSON.stringify(DISPLAY_MODES))}"></div>` +
-      `<script type="module" src="assets/ha-entity-picker.js"></script>` +
-      `<noscript>` +
-      `<form method="post" action="admin/home-assistant/entities">` +
-      textField({
-        label: 'Entity',
-        name: 'entity_id',
-        required: true,
-        placeholder: 'Start typing a name',
-        attrs: 'list="ha-entities" autocomplete="off"',
-      }) +
-      `<datalist id="ha-entities">${fallbackOptions}</datalist>` +
-      textField({
-        label: 'Call it',
-        name: 'label',
-        placeholder: 'Leave empty to use its own name',
-      }) +
-      selectField({
-        label: 'Show it as',
-        name: 'display_mode',
-        optionsHtml: DISPLAY_MODES.map(
-          (option) =>
-            `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
-        ).join(''),
-      }) +
-      `<button type="submit">Add to the wall</button></form></noscript>`
+      section(
+        'On the wall',
+        'A few readings beside the calendar. This is deliberately not a ' +
+          'dashboard — Home Assistant already has one, and it is better at it.',
+        // Calendars used to be offered here too, and a calendar added as a
+        // reading drew "Bins · On" — its state, which means "an event is on
+        // right now". They are not in this picker any more, so this says
+        // where they went rather than leaving somebody hunting for one that
+        // has quietly vanished. Kept as a second `.hint` paragraph in the
+        // body, since `section`'s own `help` is one prose blurb and this is a
+        // second, narrower aside rather than the section's main reason.
+        `<p class="hint">Calendar entities are not readings — they are added as ` +
+        `calendars, below, and behave like any other feed.</p>` +
+        (rows === '' ? emptyState('Nothing on the wall yet.') : rows),
+      ) +
+      section(
+        'Add readings',
+        undefined,
+        `<div id="ha-entity-picker" ` +
+        `data-entities="${escapeHtml(JSON.stringify(entityData))}" ` +
+        `data-modes="${escapeHtml(JSON.stringify(DISPLAY_MODES))}"></div>` +
+        `<script type="module" src="assets/ha-entity-picker.js"></script>` +
+        `<noscript>` +
+        `<form method="post" action="admin/home-assistant/entities">` +
+        textField({
+          label: 'Entity',
+          name: 'entity_id',
+          required: true,
+          placeholder: 'Start typing a name',
+          attrs: 'list="ha-entities" autocomplete="off"',
+        }) +
+        `<datalist id="ha-entities">${fallbackOptions}</datalist>` +
+        textField({
+          label: 'Call it',
+          name: 'label',
+          placeholder: 'Leave empty to use its own name',
+        }) +
+        selectField({
+          label: 'Show it as',
+          name: 'display_mode',
+          optionsHtml: DISPLAY_MODES.map(
+            (option) =>
+              `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
+          ).join(''),
+        }) +
+        `<button type="submit">Add to the wall</button></form></noscript>`,
+      )
     );
   }
 
@@ -906,13 +941,13 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       )
       .join('');
 
-    return (
-      `<h2 class="add">Calendars</h2>` +
-      `<p class="hint">Calendars already in Home Assistant, added without finding a ` +
-      `single address. They appear on the Calendars page like any other, and can be ` +
-      `coloured and assigned to a person there.</p>` +
-      (available.length === 0
-        ? `<p>${already.size === 0 ? 'Home Assistant has no calendar entities.' : 'All of them have been added.'}</p>`
+    return section(
+      'Calendars',
+      'Calendars already in Home Assistant, added without finding a ' +
+        'single address. They appear on the Calendars page like any other, and can be ' +
+        'coloured and assigned to a person there.',
+      available.length === 0
+        ? emptyState(already.size === 0 ? 'Home Assistant has no calendar entities.' : 'All of them have been added.')
         : `<form method="post" action="admin/home-assistant/calendars">` +
           selectField({ label: 'Calendar', name: 'entity_id', optionsHtml: options }) +
           textField({
@@ -920,7 +955,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
             name: 'name',
             placeholder: 'Leave empty to use its own name',
           }) +
-          `<button type="submit">Add calendar</button></form>`)
+          `<button type="submit">Add calendar</button></form>`,
     );
   }
 
@@ -938,9 +973,14 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           match?.condition?.between != null
             ? `, ${match.condition.between.from}–${match.condition.between.to}`
             : '';
-        return (
-          `<article class="card">` +
-          `<h2>${escapeHtml(row.name)}${row.enabled === 1 ? '' : ' (off)'}</h2>` +
+        return card(
+          `<h2>${escapeHtml(row.name)}</h2>` +
+          // The same "(off)" fault the calendar row shipped with — a state
+          // appended to the name it belongs to, invisible scanning a list and
+          // indistinguishable from a rule somebody actually named that. A tag
+          // is its own element on its own ground and still a word, so a
+          // monochrome screenshot and a colour-blind reader both get it.
+          (row.enabled === 1 ? '' : tag('Off', 'warn')) +
           `<p class="host">${escapeHtml(match?.entityId ?? 'unknown entity')} ` +
           `${escapeHtml(match?.condition?.kind ?? '?')} ` +
           `${escapeHtml(match?.condition?.value ?? '?')}` +
@@ -951,23 +991,33 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +
           `<button class="secondary" type="submit">${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button>` +
           `</form>` +
-          `<form method="get" action="admin/home-assistant/rules/${encodeURIComponent(row.id)}/delete">` +
-          `<button class="btn-danger" type="submit">Delete</button></form>` +
-          `</div></article>`
+          destructive('Delete', {
+            thing: row.name,
+            confirmAction: `admin/home-assistant/rules/${encodeURIComponent(row.id)}/delete`,
+            variant: 'button',
+          }) +
+          `</div>`,
         );
       })
       .join('');
 
     /*
-     * A link per template, which fills the form in below.
+     * A row per template, which fills the form in below.
      *
-     * Links rather than buttons because choosing one changes nothing — it is a
-     * different view of an empty form, and a GET is what that is.
+     * `listRow` rather than a button because choosing one changes nothing —
+     * it is a different view of an empty form, and a GET is what that is; the
+     * whole row is the target, so a template's hint is not a separate hit
+     * from its name.
      */
-    const templates = RULE_TEMPLATES.map(
-      (entry) =>
-        `<li><a class="link" href="admin/home-assistant?template=${encodeURIComponent(entry.key)}">` +
-        `${escapeHtml(entry.name)}</a> — ${escapeHtml(entry.hint)}</li>`,
+    const templates = RULE_TEMPLATES.map((entry) =>
+      listRow(
+        '',
+        {
+          title: entry.name,
+          detail: entry.hint,
+          href: `admin/home-assistant?template=${encodeURIComponent(entry.key)}`,
+        },
+      ),
     ).join('');
 
     const options = live.entities
@@ -978,12 +1028,12 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       )
       .join('');
 
-    return (
-      `<h2 class="add">Tell me when…</h2>` +
-      `<p class="hint">The wall interrupts itself for things worth walking over for. ` +
-      `Everything else belongs in a Home Assistant notification.</p>` +
+    return section(
+      'Tell me when…',
+      'The wall interrupts itself for things worth walking over for. ' +
+        'Everything else belongs in a Home Assistant notification.',
       (existing === '' ? '' : existing) +
-      `<ul class="plain">${templates}</ul>` +
+      templates +
       `<form method="post" action="admin/home-assistant/rules">` +
       textField({
         label: 'What to say',
@@ -1061,7 +1111,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
             `${entry.key === template?.action ? ' selected' : ''}>${escapeHtml(entry.label)}</option>`,
         ).join(''),
       }) +
-      `<button type="submit">Add rule</button></form>`
+      `<button type="submit">Add rule</button></form>`,
     );
   }
 }

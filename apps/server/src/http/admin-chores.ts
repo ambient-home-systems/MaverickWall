@@ -22,6 +22,7 @@ import {
 import { readHousehold, readPeople } from '../api/queries.js';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { card, destructive, emptyState, section, tag } from './components.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
@@ -445,11 +446,10 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
         : `<p class="hint">Done ${record.done} of the last ${record.of} ` +
           `${escapeHtml(record.weekday ?? (record.of === 1 ? 'time' : 'times'))}</p>`;
 
-    return (
-      `<article class="card${chore.paused ? ' is-paused' : ''}">` +
+    return card(
       `<h2><span class="swatch" style="--swatch:${escapeHtml(swatch)}"></span>` +
       `${escapeHtml(chore.name)}` +
-      (chore.paused ? `<span class="tag">Paused</span>` : '') +
+      (chore.paused ? tag('Paused') : '') +
       `</h2>` +
       `<p class="sub">${escapeHtml(describeSchedule(chore.schedule))}` +
       (chore.dueTime === null ? '' : ` · by ${escapeHtml(chore.dueTime)}`) +
@@ -515,9 +515,15 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       `<form method="post" action="admin/chores/${id}/pause" style="margin-left:auto">` +
       (chore.paused ? `<input type="hidden" name="resume" value="1">` : '') +
       `<button class="secondary" type="submit">${chore.paused ? 'Resume' : 'Pause'}</button></form>` +
-      `<form method="get" action="admin/chores/${id}/delete">` +
-      `<button class="btn-danger" type="submit">Remove</button></form>` +
-      `</div></article>`
+      // `variant: 'button'`, not the `menu` default: this card has no overflow
+      // to put it in, so it is a standalone control in the action row.
+      destructive('Remove', {
+        thing: chore.name,
+        confirmAction: `admin/chores/${id}/delete`,
+        variant: 'button',
+      }) +
+      `</div>`,
+      chore.paused ? { className: 'is-paused' } : {},
     );
   }
 
@@ -546,48 +552,58 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
             `them assigned — a chore inherits that person’s colour on the wall.</p>`
           : '') +
         (chores.length === 0
-          ? `<p class="hint">No chores yet. Add one below and it will appear here ` +
-            `with the next few days it falls due, so you can check it means what ` +
-            `you meant.</p>`
+          ? // No action offered: "Add a chore" is already the page's one primary
+            // action, in the app bar, pointing at the very form below. A second
+            // one here would only move the viewport — the same reasoning
+            // Calendars' empty state already carries.
+            emptyState(
+              'No chores yet. Add one below and it will appear here with the ' +
+                'next few days it falls due, so you can check it means what you meant.',
+            )
           : chores
               .map((chore, index) =>
                 choreCard(chore, from, index === 0, index === chores.length - 1),
               )
               .join('')) +
 
-        `<h2 class="add" id="add">Add a chore</h2>` +
-        `<form method="post" action="admin/chores">` +
-        `<div class="row-fields">` +
-        textField({ label: 'Name', name: 'name', required: true, placeholder: 'Put the bins out', attrs: 'maxlength="60"' }) +
-        selectField({ label: 'Who does it', name: 'person_id', optionsHtml: personOptions(null) }) +
-        `</div>` +
-        `<div class="row-fields">` +
-        selectField({
-          label: 'Repeats',
-          name: 'kind',
-          optionsHtml: kindOptions('weekdays'),
-          attrs: 'data-cond',
-        }) +
-        textField({ label: 'By (optional)', name: 'due_time', type: 'time' }) +
-        `</div>` +
-        dayChecks([], 'new') +
-        `<div class="row-fields" data-cond-show="everyNDays">` +
-        textField({ label: 'Every N days', name: 'every_n', type: 'number', attrs: 'min="1" max="365"' }) +
-        // Today, on the *add* form only: a chore being created has no anchor yet,
-        // so this is a suggestion rather than a claim about what was saved.
-        textField({ label: 'Starting', name: 'every_from', type: 'date', value: from }) +
-        `</div>` +
-        `<div class="row-fields" data-cond-show="monthlyDate">` +
-        textField({ label: 'Day of the month', name: 'month_day', type: 'number', attrs: 'min="1" max="28"' }) +
-        `</div>` +
-        `<div class="row-fields" data-cond-show="once">` +
-        textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: from }) +
-        `</div>` +
-        `<p class="hint">Pick how it repeats, then fill in only the boxes that ` +
-        `belong to it — with script off, every box shows and this still holds. ` +
-        `“By” is a time of day the wall shows beside the chore; ` +
-        `leave it blank for any time that day.</p>` +
-        `<button type="submit">Add</button></form>`,
+        section(
+          'Add a chore',
+          undefined,
+          `<form method="post" action="admin/chores">` +
+            `<div class="row-fields">` +
+            textField({ label: 'Name', name: 'name', required: true, placeholder: 'Put the bins out', attrs: 'maxlength="60"' }) +
+            selectField({ label: 'Who does it', name: 'person_id', optionsHtml: personOptions(null) }) +
+            `</div>` +
+            `<div class="row-fields">` +
+            selectField({
+              label: 'Repeats',
+              name: 'kind',
+              optionsHtml: kindOptions('weekdays'),
+              attrs: 'data-cond',
+            }) +
+            textField({ label: 'By (optional)', name: 'due_time', type: 'time' }) +
+            `</div>` +
+            dayChecks([], 'new') +
+            `<div class="row-fields" data-cond-show="everyNDays">` +
+            textField({ label: 'Every N days', name: 'every_n', type: 'number', attrs: 'min="1" max="365"' }) +
+            // Today, on the *add* form only: a chore being created has no anchor
+            // yet, so this is a suggestion rather than a claim about what was saved.
+            textField({ label: 'Starting', name: 'every_from', type: 'date', value: from }) +
+            `</div>` +
+            `<div class="row-fields" data-cond-show="monthlyDate">` +
+            textField({ label: 'Day of the month', name: 'month_day', type: 'number', attrs: 'min="1" max="28"' }) +
+            `</div>` +
+            `<div class="row-fields" data-cond-show="once">` +
+            textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: from }) +
+            `</div>` +
+            `<p class="hint">Pick how it repeats, then fill in only the boxes that ` +
+            `belong to it — with script off, every box shows and this still holds. ` +
+            `“By” is a time of day the wall shows beside the chore; ` +
+            `leave it blank for any time that day.</p>` +
+            `<button type="submit">Add</button></form>`,
+          // The fragment the app bar's own "Add a chore" action links to.
+          'add',
+        ),
     });
   }
 }

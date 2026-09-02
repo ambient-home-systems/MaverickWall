@@ -3,6 +3,7 @@ import {
   defaultSubmit, dirtyForm, escapeHtml, errorBlock, icon, noticeBlock, page, saveRow, selectField, switchRow,
   textField,
 } from './html.js';
+import { card, emptyState, section, tag } from './components.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
@@ -452,14 +453,21 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       }
     }
 
-    return (
-      `<h2 class="add" style="margin-top:0;padding-top:0;border-top:0">Forecast</h2>` +
+    /*
+     * `help` is not used here: it is escaped, and this intro carries a real
+     * link to the Default wall. That has to travel as a child instead — the
+     * Forecast section's own lesson, kept where it would otherwise silently
+     * turn "Default wall" into inert text on the same paragraph that names it.
+     */
+    return section(
+      'Forecast',
+      undefined,
       `<p class="hint">A five-day forecast strip. It is a widget like any other — ` +
-      `choose where it sits on the <a class="link" href="admin/walls/default">Default wall</a>.</p>` +
-      forecastBlock +
-      (weather.enabled && located && forecastBlock === ''
-        ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
-        : '')
+        `choose where it sits on the <a class="link" href="admin/walls/default">Default wall</a>.</p>` +
+        forecastBlock +
+        (weather.enabled && located && forecastBlock === ''
+          ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
+          : ''),
     );
   }
 
@@ -595,32 +603,39 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
               'to Open-Meteo above.',
           )) +
 
-      `<h2 class="add">Alerts</h2>` +
-      // Before the switch. Somebody deciding whether to rely on this should
-      // read it before they decide, not after. Prominence, not alarm — this is
-      // not an error, so it is not in the .error surface.
-      noticeBlock('Not a life-safety system.', LIFE_SAFETY_DISCLAIMER) +
-      switchRow({
-        label: 'Show National Weather Service alerts on the wall',
-        name: 'alerts_enabled',
-        checked: alertsOn,
-        hint:
-          'The United States only. There is no account and no key — alerts are ' +
-          'a public service. Nothing about your household is sent; the request ' +
-          'asks about a public zone code.',
-      }) +
-      /*
-       * Read off the *form*, not off the database.
-       *
-       * Everything else in here shows `weather`, which is the echo on a 400 —
-       * so asking the stored row would put "Fill in the latitude and longitude
-       * above" under two boxes that visibly have numbers in them, on exactly
-       * the re-render where the household is looking hardest.
-       */
-      (weather.latitude !== '' && weather.longitude !== ''
-        ? ''
-        : `<p class="hint">Fill in the latitude and longitude above — the alert ` +
-          `zones are worked out from them.</p>`) +
+      // Still inside the one form — a <section> nests fine inside a <form>
+      // and does not split it, so the Alerts run keeps its own heading and
+      // rhythm without becoming a second submission.
+      section(
+        'Alerts',
+        undefined,
+        // Before the switch. Somebody deciding whether to rely on this should
+        // read it before they decide, not after. Prominence, not alarm — this
+        // is not an error, so it is not in the .error surface.
+        noticeBlock('Not a life-safety system.', LIFE_SAFETY_DISCLAIMER) +
+          switchRow({
+            label: 'Show National Weather Service alerts on the wall',
+            name: 'alerts_enabled',
+            checked: alertsOn,
+            hint:
+              'The United States only. There is no account and no key — alerts are ' +
+              'a public service. Nothing about your household is sent; the request ' +
+              'asks about a public zone code.',
+          }) +
+          /*
+           * Read off the *form*, not off the database.
+           *
+           * Everything else in here shows `weather`, which is the echo on a
+           * 400 — so asking the stored row would put "Fill in the latitude
+           * and longitude above" under two boxes that visibly have numbers in
+           * them, on exactly the re-render where the household is looking
+           * hardest.
+           */
+          (weather.latitude !== '' && weather.longitude !== ''
+            ? ''
+            : `<p class="hint">Fill in the latitude and longitude above — the alert ` +
+              `zones are worked out from them.</p>`),
+      ) +
 
       saveRow('admin/alerts') +
       `</form>`
@@ -675,55 +690,70 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         forecastPreview() +
         weatherForm(echo) +
 
-        `<h2 class="add">Zones being watched</h2>` +
-        (zones.length === 0
-          ? `<p>` +
-            (enabled && located
-              ? /*
-                 * Not "working them out on the next check", which was said for
-                 * every zero-zone case and is only true of one of them. A
-                 * location outside the service resolves to nothing at all, and
-                 * from here the two are indistinguishable — so both are named
-                 * rather than the hopeful one asserted (RFC 009 Phase 2).
-                 */
-                'None yet — either the first check has not run, or this location ' +
-                'is outside National Weather Service coverage. Until there is one, ' +
-                'no alert rule below is armed.'
-              : 'None yet.') +
-            `</p>`
-          : zones
-              .map(
-                (zone) =>
-                  `<article class="card"><h2>${escapeHtml(zone.code)}</h2>` +
-                  `<p class="sub">${zone.kind === 'county' ? 'County' : 'Forecast zone'}` +
-                  `${zone.lastPolledAt === null ? '' : ' · checked ' + escapeHtml(ago(zone.lastPolledAt, now()))}</p>` +
-                  (zone.lastError === null ? '' : errorBlock(zone.lastError)) +
-                  `</article>`,
+        section(
+          'Zones being watched',
+          undefined,
+          (zones.length === 0
+            ? emptyState(
+                enabled && located
+                  ? /*
+                     * Not "working them out on the next check", which was said
+                     * for every zero-zone case and is only true of one of
+                     * them. A location outside the service resolves to
+                     * nothing at all, and from here the two are
+                     * indistinguishable — so both are named rather than the
+                     * hopeful one asserted (RFC 009 Phase 2).
+                     */
+                    'None yet — either the first check has not run, or this location ' +
+                      'is outside National Weather Service coverage. Until there is ' +
+                      'one, no alert rule below is armed.'
+                  : 'None yet.',
               )
-              .join('')) +
-        // Both, and why. Watching only one silently misses a category.
-        `<p class="hint">Two: most alerts are issued against the forecast zone, and ` +
-        `flood warnings in particular are issued by county.</p>` +
+            : zones
+                .map((zone) =>
+                  card(
+                    `<h2>${escapeHtml(zone.code)}</h2>` +
+                      `<p class="sub">${zone.kind === 'county' ? 'County' : 'Forecast zone'}` +
+                      `${zone.lastPolledAt === null ? '' : ' · checked ' + escapeHtml(ago(zone.lastPolledAt, now()))}</p>` +
+                      (zone.lastError === null ? '' : errorBlock(zone.lastError)),
+                    // The edge follows the same branch the errorBlock inside
+                    // it is already on — never a second opinion about it. See
+                    // `card`'s own note on why a tone is an edge and not a
+                    // ground.
+                    zone.lastError === null ? {} : { tone: 'danger' },
+                  ),
+                )
+                .join('')) +
+            // Both, and why. Watching only one silently misses a category.
+            `<p class="hint">Two: most alerts are issued against the forecast zone, and ` +
+            `flood warnings in particular are issued by county.</p>`,
+        ) +
 
         (live.length === 0
           ? ''
-          : `<h2 class="add">In force now</h2>` +
-            live
-              .map(
-                (alert) =>
-                  `<article class="card"><h2>${escapeHtml(alert.event)}</h2>` +
-                  `<p class="sub">${escapeHtml(alert.severity ?? 'Unknown')}` +
-                  `${alert.areaDesc === null ? '' : ' · ' + escapeHtml(alert.areaDesc)}</p></article>`,
-              )
-              .join('')) +
+          : section(
+              'In force now',
+              undefined,
+              live
+                .map((alert) =>
+                  card(
+                    `<h2>${escapeHtml(alert.event)}</h2>` +
+                      `<p class="sub">${escapeHtml(alert.severity ?? 'Unknown')}` +
+                      `${alert.areaDesc === null ? '' : ' · ' + escapeHtml(alert.areaDesc)}</p>`,
+                  ),
+                )
+                .join(''),
+            )) +
 
-        `<h2 class="add">What each level does</h2>` +
-        `<p class="hint">Shipped this way because the shape of the ladder matters more ` +
-        `than any one row: the loudest thing the wall can do is reserved for the ` +
-        `rarest. Moderate alerts are weekly in some counties, and a takeover for one ` +
-        `would be meaningless within a month.</p>` +
-        rules(hasSomethingToWatch(deps.db)) +
-        `<p class="hint">Turning one off means the wall says nothing at that level.</p>`,
+        section(
+          'What each level does',
+          'Shipped this way because the shape of the ladder matters more than any ' +
+            'one row: the loudest thing the wall can do is reserved for the rarest. ' +
+            'Moderate alerts are weekly in some counties, and a takeover for one ' +
+            'would be meaningless within a month.',
+          rules(hasSomethingToWatch(deps.db)) +
+            `<p class="hint">Turning one off means the wall says nothing at that level.</p>`,
+        ),
     });
   }
 
@@ -753,8 +783,14 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         const off = row.enabled !== 1;
         const armed = !off && watching;
         const stateLabel = off ? 'Off' : armed ? 'On' : 'Not armed';
-        const stateClass = off ? 'tag' : armed ? 'tag tag-ok' : 'tag tag-warn';
-        const stateTitle = off || armed ? '' : ' title="No zone is being watched yet"';
+        // The word carries the whole meaning (tag()'s own rule), and the tone
+        // is the same neutral/ok/warn scheme this row always used. The one
+        // thing tag() has no slot for is the hover title that names *why* an
+        // unarmed rule is unarmed — so that still wraps the chip rather than
+        // being dropped.
+        const stateChip = tag(stateLabel, off ? 'neutral' : armed ? 'ok' : 'warn');
+        const state =
+          off || armed ? stateChip : `<span title="No zone is being watched yet">${stateChip}</span>`;
         return (
           `<tr>` +
           `<td><div class="rname">${escapeHtml(row.name)}</div>` +
@@ -763,7 +799,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="sub">${escapeHtml(ACTION_WORDS[row.action] ?? row.action)}` +
           `${row.piercesNightMode === 1 ? ' · may wake a dark wall' : ''}` +
           `${row.dismissible === 0 ? ' · cannot be cleared from the wall' : ''}</div></td>` +
-          `<td><span class="${stateClass}"${stateTitle}>${stateLabel}</span></td>` +
+          `<td>${state}</td>` +
           `<td class="ovfcell"><details class="ovf" data-overflow>` +
           `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
           `aria-label="More actions for ${escapeHtml(row.name)}" title="More">${icon('more')}</summary>` +

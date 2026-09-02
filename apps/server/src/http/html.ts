@@ -278,8 +278,8 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
  * and same offset, so it is one treatment rather than a second one. :focus
  * and not :focus-visible: this is reached by keyboard by definition, and
  * :focus-visible computes to nothing after a tap or a switch press. */
-.skip{position:fixed;top:0;left:56px;z-index:60;margin:8px;
-  display:inline-flex;align-items:center;height:40px;padding:0 16px;
+.skip{position:fixed;top:0;left:56px;z-index:60;margin:var(--mw-s-2);
+  display:inline-flex;align-items:center;height:40px;padding:0 var(--mw-s-4);
   border-radius:var(--mw-r-2);border:1px solid var(--mw-line-strong);
   background:var(--mw-surface-3);color:var(--mw-ink);box-shadow:var(--mw-shadow-2);
   font-family:var(--sans);font-size:var(--mw-t-label-size);
@@ -291,18 +291,18 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
   border-right:1px solid var(--mw-line);
   display:flex;flex-direction:column;min-height:100vh;position:sticky;top:0;
   max-height:100vh;overflow:hidden}
-.side .brand{display:flex;align-items:center;gap:12px;padding:20px 20px 16px;
+.side .brand{display:flex;align-items:center;gap:var(--mw-s-3);padding:calc(var(--mw-s-4) + var(--mw-s-1)) calc(var(--mw-s-4) + var(--mw-s-1)) var(--mw-s-4);
   text-decoration:none;color:inherit}
-.side .brand svg{width:34px;height:34px;flex:0 0 auto;border-radius:8px}
+.side .brand svg{width:34px;height:34px;flex:0 0 auto;border-radius:var(--mw-r-4)}
 .side .brand b{font-family:var(--wordmark);font-weight:700;font-size:var(--mw-t-h2-size);
   letter-spacing:.02em;line-height:1;display:block}
-.side .brand small{display:block;color:var(--mw-ink-muted);font-size:11px;
-  letter-spacing:.16em;text-transform:uppercase;margin-top:4px}
-.nav{flex:1;overflow-y:auto;padding:8px 12px 12px}
-.nav-group{margin-top:16px}
+.side .brand small{display:block;color:var(--mw-ink-muted);font-size:var(--mw-t-label-xs-size);
+  letter-spacing:.16em;text-transform:uppercase;margin-top:var(--mw-s-1)}
+.nav{flex:1;overflow-y:auto;padding:var(--mw-s-2) var(--mw-s-3) var(--mw-s-3)}
+.nav-group{margin-top:var(--mw-s-4)}
 /* Drawer section headers: the eyebrow role, in caps. A group of navigation
  * links needs its heading to be unmistakably not a link. */
-.nav-group>span{display:block;padding:0 12px 8px;text-transform:uppercase;
+.nav-group>span{display:block;padding:0 var(--mw-s-3) var(--mw-s-2);text-transform:uppercase;
   font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-ink-muted)}
@@ -311,8 +311,8 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
  * most of a nav item on a phone. The active row is a tinted ground with a 2px
  * accent bar down its leading edge — a bar states "you are here" at a glance
  * from further away than a fill does, and it survives both schemes. */
-.nav-item{position:relative;display:flex;align-items:center;gap:12px;height:48px;
-  padding:0 12px;margin:0;
+.nav-item{position:relative;display:flex;align-items:center;gap:var(--mw-s-3);height:48px;
+  padding:0 var(--mw-s-3);margin:0;
   border-radius:var(--mw-r-2);
   color:var(--mw-ink-2);
   text-decoration:none;font-size:var(--mw-t-label-size);
@@ -340,15 +340,15 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-ink-2);
   background:var(--mw-surface-3);
-  border-radius:var(--mw-r-1);padding:4px 8px}
-.side-foot{border-top:1px solid var(--rule);padding:16px 16px;display:flex;
-  flex-direction:column;gap:12px}
-.side-foot-id{display:flex;align-items:center;gap:12px}
+  border-radius:var(--mw-r-1);padding:var(--mw-s-1) var(--mw-s-2)}
+.side-foot{border-top:1px solid var(--rule);padding:var(--mw-s-4) var(--mw-s-4);display:flex;
+  flex-direction:column;gap:var(--mw-s-3)}
+.side-foot-id{display:flex;align-items:center;gap:var(--mw-s-3)}
 .side-foot .fmark{width:32px;height:32px;flex:0 0 auto}
-.side-foot .fmark svg{width:32px;height:32px;border-radius:7px;display:block}
+.side-foot .fmark svg{width:32px;height:32px;border-radius:calc(var(--mw-r-3) + var(--mw-hairline));display:block}
 .side-foot .who{min-width:0;flex:1}
 .side-foot .who b{font-size:var(--mw-t-label-size);font-weight:600;display:block;line-height:1.2}
-.side-foot .who small{font-size:11px;color:var(--mw-ink-muted)}
+.side-foot .who small{font-size:var(--mw-t-label-xs-size);color:var(--mw-ink-muted)}
 .side-foot form{margin:0;flex:0 0 auto}
 /* An icon button: 40px visual, 4px corner, and a 48px pointer target from the
  * shared ::after extension. */
@@ -369,14 +369,14 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
  * bar cannot restyle itself on scroll — the rule is there always, which is
  * honest and costs nothing: no blur, no translucency, no shadow. */
 .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;
-  justify-content:space-between;gap:16px;min-height:64px;padding:8px 28px;
+  justify-content:space-between;gap:var(--mw-s-4);min-height:64px;padding:var(--mw-s-2) calc(var(--mw-s-5) + var(--mw-s-1));
   background:var(--mw-surface)}
 .topbar .crumb{font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
-  color:var(--mw-ink-2);margin:0 0 4px}
+  color:var(--mw-ink-2);margin:0 0 var(--mw-s-1)}
 /* The same crumb as a real link back up a level, with the arrow that says so.
  * Its pointer target is stretched the way every sub-48px control here is. */
-.crumb-back{position:relative;display:inline-flex;align-items:center;gap:4px;
+.crumb-back{position:relative;display:inline-flex;align-items:center;gap:var(--mw-s-1);
   color:var(--mw-accent);text-decoration:none}
 .crumb-back::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;
   height:44px;transform:translateY(-50%)}
@@ -393,7 +393,7 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 /* The modal drawer's three parts, all of them placement below 900px and none
  * of them drawn at this width, where the drawer is in flow and always there. */
 .nav-toggle,.nav-scrim,.navbtn{display:none}
-.content{padding:24px 28px 52px;max-width:1180px;width:100%}
+.content{padding:var(--mw-s-5) calc(var(--mw-s-5) + var(--mw-s-1)) calc(var(--mw-s-7) + var(--mw-s-1));max-width:1180px;width:100%}
 /* The wall editor's column, and only it -- see the wide flag on
  * ShellPageOptions. 1600px is where a 1920px monitor, which is the common
  * desktop, runs out of page beside the inspector, rather than a taste number;
@@ -405,7 +405,7 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 .content>form:first-child,.content>.card:first-child,.content>.note:first-child{margin-top:0}
 /* The page's lead line. Used to sit in the topbar as .sub; moved into the
  * content so the sticky bar stays a compact kicker+title and gives ~40px back. */
-.note{color:var(--muted);font-size:14px;line-height:1.55;margin:0 0 20px;max-width:64ch}
+.note{color:var(--muted);font-size:var(--mw-t-h4-size);line-height:1.55;margin:0 0 calc(var(--mw-s-4) + var(--mw-s-1));max-width:64ch}
 
 /* ---- Compact width: the same drawer, modal ------------------------------
  * 900px, up from 820: the drawer is 264px, and the main column must keep at
@@ -478,36 +478,36 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
     var(--mw-ink-2) var(--mw-wash-hover),transparent)}
   .navbtn:active{background:color-mix(in srgb,
     var(--mw-ink-2) var(--mw-wash-press),transparent)}
-  .topbar{padding:8px 20px 8px 12px;gap:8px}
-  .content{padding:20px 20px 48px}
+  .topbar{padding:var(--mw-s-2) calc(var(--mw-s-4) + var(--mw-s-1)) var(--mw-s-2) var(--mw-s-3);gap:var(--mw-s-2)}
+  .content{padding:calc(var(--mw-s-4) + var(--mw-s-1)) calc(var(--mw-s-4) + var(--mw-s-1)) var(--mw-s-7)}
 }
 
 /* ---- Wizard / sign-in: a centred column, no sidebar --------------------- */
 body.wiz{display:flex;align-items:flex-start;justify-content:center;
-  padding:40px 20px;min-height:100vh}
+  padding:calc(var(--mw-s-6) + var(--mw-s-2)) calc(var(--mw-s-4) + var(--mw-s-1));min-height:100vh}
 .wizbox{width:100%;max-width:520px}
-.wizbox .brand{display:flex;align-items:center;gap:12px;text-decoration:none;
-  color:inherit;margin:0 0 4px}
-.wizbox .brand svg{width:34px;height:34px;border-radius:8px}
+.wizbox .brand{display:flex;align-items:center;gap:var(--mw-s-3);text-decoration:none;
+  color:inherit;margin:0 0 var(--mw-s-1)}
+.wizbox .brand svg{width:34px;height:34px;border-radius:var(--mw-r-4)}
 .wizbox .brand b{font-family:var(--wordmark);font-weight:700;font-size:var(--mw-t-h2-size)}
 /* The step indicator as a plain linear measure: a 4px square-ended
  * track per step on surface-container-highest, filled primary once a step is
  * reached. Captions are label-medium mixed case, coloured by state — the
  * current step primary, done steps on-surface-variant, upcoming ones
  * outline. */
-.steps{display:flex;gap:8px;margin:24px 0 28px;padding:0;list-style:none}
+.steps{display:flex;gap:var(--mw-s-2);margin:var(--mw-s-5) 0 calc(var(--mw-s-5) + var(--mw-s-1));padding:0;list-style:none}
 .steps .step{flex:1;text-align:center}
 .steps .step .bar{height:4px;border-radius:var(--mw-r-0);
   background:var(--mw-surface-3)}
 .steps .step.done .bar,.steps .step.on .bar{background:var(--mw-accent)}
-.steps .step span{display:block;margin-top:8px;
+.steps .step span{display:block;margin-top:var(--mw-s-2);
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
   color:var(--mw-ink-muted)}
 .steps .step.on span{color:var(--mw-accent)}
 .steps .step.done span{color:var(--mw-ink-2)}
 .wizbox .card{margin:0}
-.wizbox>form,.wizbox>.error{margin-top:20px}
+.wizbox>form,.wizbox>.error{margin-top:calc(var(--mw-s-4) + var(--mw-s-1))}
 
 /* ---- Typography ----------------------------------------------------------
  * Mapped onto the M3 scale: page titles are headline roles, section heads are
@@ -520,27 +520,27 @@ body.wiz{display:flex;align-items:flex-start;justify-content:center;
  * the job: every component style is on the scale, the --cond token is gone,
  * and Roboto Condensed survives only in the wordmark's fallback stack. */
 h1{font:var(--mw-t-h1);
-  letter-spacing:var(--mw-t-h1-tracking);margin:0 0 4px}
-p{color:var(--muted);margin:.5rem 0;line-height:1.55}
+  letter-spacing:var(--mw-t-h1-tracking);margin:0 0 var(--mw-s-1)}
+p{color:var(--muted);margin:var(--mw-s-2) 0;line-height:1.55}
 a.link{color:var(--accent);text-decoration:none;font-weight:600}
 a.link:hover{text-decoration:underline}
 /* Any inline arrow inside a link (list "Open →", "Manage →") stays small. */
-.link{display:inline-flex;align-items:center;gap:4px}
+.link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .link svg{width:14px;height:14px;flex:0 0 auto}
 .kick{font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
   color:var(--mw-ink-2)}
 /* overflow-wrap so a pasted URL or long code wraps instead of widening the
  * page — a phone must never scroll sideways for a release address. */
-.code{font-family:var(--mono);font-size:16px;letter-spacing:.08em;
-  background:var(--panel2);padding:0.25rem 0.5rem;border-radius:.25rem;color:var(--accent);
+.code{font-family:var(--mono);font-size:var(--mw-t-body-lg-size);letter-spacing:.08em;
+  background:var(--panel2);padding:var(--mw-s-1) var(--mw-s-2);border-radius:var(--mw-r-2);color:var(--accent);
   overflow-wrap:anywhere}
 
 /* ---- Forms --------------------------------------------------------------- */
-form{margin:1.5rem 0 0}
+form{margin:var(--mw-s-5) 0 0}
 /* Bare labels outside the .field system (bundle-built rows, specialist
  * controls). Mixed case: the uppercase kicker treatment is retired. */
-label{display:block;margin:1rem 0 0.25rem;
+label{display:block;margin:var(--mw-s-4) 0 var(--mw-s-1);
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);color:var(--muted)}
 /* The generic input skin stays for inputs the display bundle builds at
@@ -549,16 +549,16 @@ label{display:block;margin:1rem 0 0.25rem;
  * are body-large: the one place the M3 spec names a role outright. */
 input[type=text],input[type=email],input[type=password],input[type=number],
 input[type=time],select,textarea{
-  width:100%;padding:0.5rem 0.75rem;border-radius:var(--mw-r-1);
+  width:100%;padding:var(--mw-s-2) var(--mw-s-3);border-radius:var(--mw-r-1);
   border:1px solid var(--mw-ink-3);
   background:transparent;color:var(--mw-ink);font-family:inherit;
   font-size:var(--mw-t-body-lg-size)}
 textarea{resize:vertical;line-height:1.45}
 input::placeholder,textarea::placeholder{color:var(--mw-ink-2)}
-input[type=color]{width:100%;height:2.6rem;padding:0.25rem;
+input[type=color]{width:100%;height:2.6rem;padding:var(--mw-s-1);
   border-radius:var(--mw-r-1);
   border:1px solid var(--mw-ink-3);background:transparent}
-input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
+input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
   border:1px solid var(--mw-ink-3);background:transparent;
   color:var(--mw-ink-2);font-size:var(--mw-t-body-size)}
 
@@ -591,7 +591,7 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 .field{position:relative;display:block;margin:var(--mw-s-4) 0 0;color:var(--mw-ink)}
 .field-label{display:block;margin:0 0 var(--mw-s-1);color:var(--mw-ink-2);
   font:var(--mw-t-label);letter-spacing:var(--mw-t-label-tracking)}
-.field .field-input{width:100%;height:40px;padding:0 12px;
+.field .field-input{width:100%;height:40px;padding:0 var(--mw-s-3);
   border:1px solid var(--mw-ink-3);border-radius:var(--mw-r-2);
   background:transparent;
   color:var(--mw-ink);caret-color:var(--mw-accent);
@@ -619,7 +619,7 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
  * inside a .field — the border is the focus affordance here, and two rings on
  * one control reads as a fault. */
 .field .field-input:focus,.field .field-input:focus-visible{outline:none;
-  border:2px solid var(--mw-accent);padding:0 12px}
+  border:2px solid var(--mw-accent);padding:0 var(--mw-s-3)}
 .field:focus-within .field-label{color:var(--mw-accent)}
 /* The error variant, for pages that re-render with a field at fault. */
 .field.field-error .field-input{border-color:var(--mw-danger)}
@@ -629,16 +629,16 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 /* Selects hide the native chrome and get a drawn caret in the wrapper. The
  * caret is offset by the label's height so it lands on the control, not on
  * the label above it. */
-.field select.field-input{appearance:none;-webkit-appearance:none;padding-right:36px}
+.field select.field-input{appearance:none;-webkit-appearance:none;padding-right:calc(var(--mw-s-6) + var(--mw-s-1))}
 .field-select::after{content:"";position:absolute;right:14px;bottom:16px;width:7px;height:7px;
   border-right:2px solid var(--mw-ink-2);
   border-bottom:2px solid var(--mw-ink-2);
   transform:rotate(45deg);pointer-events:none}
-.field textarea.field-input{height:auto;min-height:80px;padding:8px 12px;resize:vertical;
+.field textarea.field-input{height:auto;min-height:80px;padding:var(--mw-s-2) var(--mw-s-3);resize:vertical;
   line-height:var(--mw-t-body-lh)}
-.field textarea.field-input:focus{padding:8px 12px}
-.field input[type=color].field-input{padding:4px 8px}
-.field input[type=file].field-input{padding:8px 12px;height:auto;
+.field textarea.field-input:focus{padding:var(--mw-s-2) var(--mw-s-3)}
+.field input[type=color].field-input{padding:var(--mw-s-1) var(--mw-s-2)}
+.field input[type=file].field-input{padding:var(--mw-s-2) var(--mw-s-3);height:auto;
   color:var(--mw-ink-2)}
 /* Supporting text, aligned to the field edge rather than indented — there is
  * no 16px inset to line up with any more. Body, not body-sm: this is a
@@ -661,14 +661,14 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
  * ours. The 18px box grows its pointer target to 48px with a pseudo-element
  * that also carries the hover state layer, drawn as a radial so the visible
  * circle stays 40px inside the 48px square target. */
-.checks{margin-top:1rem}
-.checks label{display:flex;gap:.75rem;align-items:center;margin:0;min-height:48px;
-  font-family:var(--sans);font-weight:400;font-size:14px;letter-spacing:0;
+.checks{margin-top:var(--mw-s-4)}
+.checks label{display:flex;gap:var(--mw-s-3);align-items:center;margin:0;min-height:48px;
+  font-family:var(--sans);font-weight:400;font-size:var(--mw-t-h4-size);letter-spacing:0;
   color:var(--mw-ink);cursor:pointer}
 .checks input[type=checkbox],.hep-row input[type=checkbox],
 .le-cfg-check input[type=checkbox]{
   appearance:none;-webkit-appearance:none;position:relative;flex:0 0 auto;margin:0;
-  width:18px;height:18px;border-radius:2px;cursor:pointer;background:transparent;
+  width:18px;height:18px;border-radius:var(--mw-r-1);cursor:pointer;background:transparent;
   border:2px solid var(--mw-ink-2)}
 .checks input[type=checkbox]::before,.hep-row input[type=checkbox]::before,
 .le-cfg-check input[type=checkbox]::before{
@@ -700,7 +700,7 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
  * rows: on a 390px phone the picker alone was taller than the viewport, and a
  * list of chores stopped being a list. Wrapped, the 48px pointer targets are
  * untouched; only the flow changes. */
-.checks-inline{display:flex;flex-wrap:wrap;gap:0 20px}
+.checks-inline{display:flex;flex-wrap:wrap;gap:0 calc(var(--mw-s-4) + var(--mw-s-1))}
 .checks-inline legend{width:100%}
 .checks-inline label{min-width:4.5rem}
 /* Same [hidden] override as .row-fields and .grid above, for the same reason. */
@@ -711,7 +711,7 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
    in the heading is what says so; this only stops it competing with the ones
    that are actually running. */
 .card.is-paused>*:not(.row){opacity:.62}
-.card.is-paused h2 .tag{margin-left:12px;vertical-align:middle}
+.card.is-paused h2 .tag{margin-left:var(--mw-s-3);vertical-align:middle}
 /* The action row keeps full contrast. Dimming the whole card also dimmed
    *Resume*, which is the one control somebody opens a paused chore to press —
    quieting the content is the point, quieting the way back out is not. */
@@ -721,9 +721,9 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
  * script — the same reason the overflow menu is one. The point is that a list
  * of things reads as a list: the summary carries the affordance and the card's
  * own heading above it carries the facts, so nothing has to be opened to scan. */
-.disclose{margin-top:1rem;border-top:1px solid var(--mw-line);padding-top:.25rem}
-.disclose>summary{list-style:none;display:inline-flex;align-items:center;gap:8px;
-  min-height:48px;padding:0 4px;cursor:pointer;font-family:var(--sans);font-size:14px;
+.disclose{margin-top:var(--mw-s-4);border-top:1px solid var(--mw-line);padding-top:var(--mw-s-1)}
+.disclose>summary{list-style:none;display:inline-flex;align-items:center;gap:var(--mw-s-2);
+  min-height:48px;padding:0 var(--mw-s-1);cursor:pointer;font-family:var(--sans);font-size:var(--mw-t-h4-size);
   font-weight:500;color:var(--mw-accent)}
 .disclose>summary::-webkit-details-marker{display:none}
 .disclose>summary::marker{content:""}
@@ -738,14 +738,14 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
  * the input itself is the 52x32 track and its ::before is the thumb, growing
  * from 16px (outline colour) to 24px (on-primary) when checked. The row is
  * 48px tall, which is the pointer target. */
-.switch{display:flex;align-items:center;justify-content:space-between;gap:16px;
-  min-height:48px;margin:0.25rem 0;cursor:pointer;
+.switch{display:flex;align-items:center;justify-content:space-between;gap:var(--mw-s-4);
+  min-height:48px;margin:var(--mw-s-1) 0;cursor:pointer;
   font:var(--mw-t-body);
   letter-spacing:var(--mw-t-body-tracking);text-transform:none}
 .switch .switch-text{min-width:0}
-.switch .switch-text b{display:block;font-weight:500;font-size:14px;
+.switch .switch-text b{display:block;font-weight:500;font-size:var(--mw-t-h4-size);
   color:var(--mw-ink)}
-.switch .switch-text small{display:block;font-size:12px;line-height:1.4;
+.switch .switch-text small{display:block;font-size:var(--mw-t-label-sm-size);line-height:1.4;
   color:var(--mw-ink-2)}
 .switch input[type=checkbox]{appearance:none;-webkit-appearance:none;position:relative;
   flex:0 0 auto;margin:0;width:52px;height:32px;cursor:pointer;
@@ -753,7 +753,7 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
   background:var(--mw-surface-3);
   border:2px solid var(--mw-ink-3)}
 .switch input[type=checkbox]::before{content:"";position:absolute;top:50%;left:6px;
-  width:16px;height:16px;border-radius:50%;background:var(--mw-ink-3);
+  width:16px;height:16px;border-radius:var(--mw-r-full);background:var(--mw-ink-3);
   transform:translateY(-50%)}
 .switch input[type=checkbox]:checked{background:var(--mw-accent);
   border-color:var(--mw-accent)}
@@ -762,9 +762,9 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
 .switch input[type=checkbox]:active::before{width:22px;height:22px}
 .switch input[type=checkbox]:checked:active::before{width:28px;height:28px;left:20px}
 
-.row-fields{display:flex;gap:1rem;flex-wrap:wrap}
+.row-fields{display:flex;gap:var(--mw-s-4);flex-wrap:wrap}
 .row-fields span,.row-fields .field{flex:1 1 12rem}
-.row-fields .field{margin-top:1rem}
+.row-fields .field{margin-top:var(--mw-s-4)}
 /* Spelled out against the class rather than left to the browser, the same
  * reason the settings-form foot does below: display:flex here wins over the
  * user agent's [hidden]{display:none}, so a hidden row-fields would sit
@@ -784,7 +784,7 @@ input[type=file]{width:100%;padding:0.5rem;border-radius:var(--mw-r-1);
  * variant is the same anatomy at 32px, and every control smaller than 48px
  * extends its pointer target with an ::after pseudo, never its visual. */
 button,.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
-  gap:8px;margin-top:1.5rem;height:40px;padding:0 24px;
+  gap:var(--mw-s-2);margin-top:var(--mw-s-5);height:40px;padding:0 var(--mw-s-5);
   border-radius:var(--mw-r-2);border:1px solid transparent;
   background:var(--mw-accent);color:var(--mw-accent-ink);
   font-family:var(--sans);
@@ -804,7 +804,7 @@ button:hover,.btn:hover{background:color-mix(in srgb,
 button:active,.btn:active{background:color-mix(in srgb,
   var(--mw-accent-ink) var(--mw-wash-press),
   var(--mw-accent))}
-button:has(svg),.btn:has(svg){padding-left:16px}
+button:has(svg),.btn:has(svg){padding-left:var(--mw-s-4)}
 button svg,.btn svg{width:18px;height:18px}
 button.secondary,.btn-ghost{background:transparent;color:var(--mw-accent);
   border-color:var(--mw-ink-3)}
@@ -823,7 +823,7 @@ button.tonal:active,.btn-tonal:active{background:color-mix(in srgb,
 /* A text button: no container at rest, accent label, a tint on interaction —
  * the lowest-emphasis action, e.g. the wizard's "Skip for now". */
 button.text,.btn-text{background:transparent;color:var(--mw-accent);
-  border-color:transparent;padding:0 12px}
+  border-color:transparent;padding:0 var(--mw-s-3)}
 button.text:hover,.btn-text:hover{background:color-mix(in srgb,
   var(--mw-accent) var(--mw-wash-hover),transparent)}
 button.text:active,.btn-text:active{background:color-mix(in srgb,
@@ -836,7 +836,7 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
   var(--mw-danger) var(--mw-wash-press),transparent)}
 /* Compact density: the same button at a 32px container, with the pointer
  * target stretched back to 48px by a pseudo-element. */
-.btn-sm{margin-top:0;height:32px;padding:0 16px}
+.btn-sm{margin-top:0;height:32px;padding:0 var(--mw-s-4)}
 /* ---- Segmented buttons: .seg (Store alerts), .le-orient, .themebar --------
  * One outlined container, full corner on the outer ends, 40px height; the
  * selected segment is secondary-container with a leading check drawn in CSS.
@@ -845,13 +845,13 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 .seg,.le-orient,.themebar{display:inline-flex;margin:0;border:1px solid var(--mw-ink-3);
   border-radius:var(--mw-r-2);background:transparent;overflow:visible}
 .seg button,.le-orient-btn,.themebtn{position:relative;flex:1;margin:0;height:38px;
-  padding:0 16px;border:0;border-left:1px solid var(--mw-ink-3);border-radius:0;
+  padding:0 var(--mw-s-4);border:0;border-left:1px solid var(--mw-ink-3);border-radius:0;
   background:transparent;color:var(--mw-ink);
   font-family:var(--sans);
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
   letter-spacing:var(--mw-t-label-tracking);
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--mw-s-2);cursor:pointer}
 .seg button:first-child,.le-orient-btn:first-child,.themebtn:first-child{border-left:0;
   border-radius:var(--mw-r-2) 0 0 var(--mw-r-2)}
 .seg button:last-child,.le-orient-btn:last-child,.themebtn:last-child{
@@ -871,13 +871,13 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 /* The selected segment's leading check, drawn rather than fetched: a small box
  * with two borders, rotated into a tick. */
 .seg button.on::before,.le-orient-btn.is-on::before,.themebtn[data-active="true"]::before{
-  content:"";width:9px;height:5px;margin-top:-4px;flex:0 0 auto;
+  content:"";width:9px;height:5px;margin-top:calc(-1 * var(--mw-s-1));flex:0 0 auto;
   border-left:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(-45deg)}
 /* The sidebar's theme toggle fills its row, and its segments carry short
  * labels in a tight column, so they trade the 16px padding for 10px. */
 .themebar{display:flex}
-.themebtn{padding:0 12px}
+.themebtn{padding:0 var(--mw-s-3)}
 .seg button::after,.le-orient-btn::after,.themebtn::after{content:"";position:absolute;
   left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
 
@@ -889,18 +889,18 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * on-error-container role too — not just the strong/span children below. */
 .error{background:var(--mw-danger-soft);
   color:var(--mw-danger);
-  padding:1rem 1rem;border-radius:var(--mw-r-3);margin:1rem 0}
+  padding:var(--mw-s-4) var(--mw-s-4);border-radius:var(--mw-r-3);margin:var(--mw-s-4) 0}
 .error strong{color:var(--mw-danger);display:block;
-  font-size:14px;font-weight:600;margin-bottom:4px}
+  font-size:var(--mw-t-h4-size);font-weight:600;margin-bottom:var(--mw-s-1)}
 .error span{color:var(--mw-danger);font-size:var(--mw-t-label-size);line-height:1.5}
 
 /* .error's calm twin for a notice or a disclaimer: same shape, the warn hue
  * rather than danger, so a warning that is not a failure does not read as one. */
 .notice{background:var(--mw-warn-soft);
   color:var(--mw-warn);
-  padding:1rem 1rem;border-radius:var(--mw-r-3);margin:1rem 0}
+  padding:var(--mw-s-4) var(--mw-s-4);border-radius:var(--mw-r-3);margin:var(--mw-s-4) 0}
 .notice strong{color:var(--mw-warn);display:block;
-  font-size:14px;font-weight:600;margin-bottom:4px}
+  font-size:var(--mw-t-h4-size);font-weight:600;margin-bottom:var(--mw-s-1)}
 .notice span{color:var(--mw-warn);font-size:var(--mw-t-label-size);line-height:1.5}
 
 /* ---- The confirmation strip (RFC 009 Phase 3.1) --------------------------
@@ -914,10 +914,10 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * pressed states: button,.btn is the *filled* variant and its state rules
  * would otherwise fill this with the accent and draw the glyph gold on gold
  * (see test/admin-button-states.test.ts). */
-.saved{display:flex;align-items:center;gap:.75rem;
+.saved{display:flex;align-items:center;gap:var(--mw-s-3);
   background:var(--mw-ok-soft);color:var(--mw-ok);
-  padding:0.75rem 0.75rem 0.75rem 1rem;border-radius:var(--mw-r-3);margin:0 0 1rem}
-.saved-text{flex:1;font-size:14px;font-weight:600;line-height:1.4}
+  padding:var(--mw-s-3) var(--mw-s-3) var(--mw-s-3) var(--mw-s-4);border-radius:var(--mw-r-3);margin:0 0 var(--mw-s-4)}
+.saved-text{flex:1;font-size:var(--mw-t-h4-size);font-weight:600;line-height:1.4}
 .saved-x{display:inline-flex;align-items:center;justify-content:center;
   flex:none;width:32px;height:32px;background:none;border:0;padding:0;
   border-radius:var(--mw-r-2);color:var(--mw-ok);cursor:pointer;text-decoration:none}
@@ -945,7 +945,7 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * any doubt. Proven by pressing Enter in a real one (browser-admin.test.ts). */
 .formdefault{position:absolute;width:1px;height:1px;min-height:0;padding:0;margin:0px;
   border:0;overflow:hidden;clip-path:inset(50%)}
-.saverow{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
+.saverow{display:flex;align-items:center;gap:var(--mw-s-2);flex-wrap:wrap;margin-top:var(--mw-s-4)}
 .saverow>button{margin-top:0}
 .saverow [hidden]{display:none}
 .dirtyflag{font:var(--mw-t-label-sm);letter-spacing:var(--mw-t-label-sm-tracking);
@@ -971,12 +971,12 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * — Remove beside Sync now at the same weight is one mis-tap apart. Nothing
  * here clears a background or sets a cursor, so it adds no control to the set
  * admin-button-states.test.ts derives; .ovf already declares its own states. */
-.card-head{display:flex;align-items:flex-start;gap:8px}
+.card-head{display:flex;align-items:flex-start;gap:var(--mw-s-2)}
 .card-head>.card-head-main{flex:1 1 auto;min-width:0}
 /* Pulled up and out so the 48px hit area sits against the card's own padding
  * rather than pushing the heading down a row. On the 4px grid, which
  * admin-design-drift.test.ts is right to insist on. */
-.card-head>.ovf{margin:-8px -8px 0 0}
+.card-head>.ovf{margin:calc(-1 * var(--mw-s-2)) calc(-1 * var(--mw-s-2)) 0 0}
 /* Two classes, because .host used to be one class doing two jobs.
  *
  * It was built for hostnames, where a quiet monospace line is exactly right,
@@ -1001,10 +1001,10 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * fact like .host earns and a sentence does not. .host stays: a hostname, an
  * id, a version string is not what a household reads for meaning. .sub
  * promotes to body. */
-.card .host,.host{color:var(--mw-ink-muted);font-size:12.5px;font-family:var(--mono);
-  margin:0.25rem 0}
+.card .host,.host{color:var(--mw-ink-muted);font-size:var(--mw-t-body-sm-size);font-family:var(--mono);
+  margin:var(--mw-s-1) 0}
 .card .sub,.sub{color:var(--mw-ink-muted);font-size:var(--mw-t-body-size);line-height:1.5;
-  margin:0.25rem 0}
+  margin:var(--mw-s-1) 0}
 /* A machine token inside a sentence — "800×480 · rotated 90° · last seen 2
  * minutes ago", or a hostname before a count. It keeps the mono face, which is
  * the whole of what .host means, and nothing else: a block's margin on an
@@ -1013,29 +1013,29 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * body-sm by declaration — an inherit here would pick up .sub's promoted
  * size, which is off the type scale for a hostname the same way the old
  * literal was, just in the other direction. */
-.sub .host{margin:0;font-size:12.5px}
-.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-.row form{margin:.75rem 0 0}
+.sub .host{margin:0;font-size:var(--mw-t-body-sm-size)}
+.row{display:flex;gap:var(--mw-s-2);flex-wrap:wrap;align-items:center}
+.row form{margin:var(--mw-s-3) 0 0}
 .row button{margin-top:0}
 h2.add{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
-  margin:2rem 0 0;padding-top:1.5rem;border-top:1px solid var(--rule)}
+  margin:var(--mw-s-6) 0 0;padding-top:var(--mw-s-5);border-top:1px solid var(--rule)}
 /* A hint is a sentence telling a household what to type — prose, promoted
    with .sub and .field-hint rather than left at the machine-fact size. */
-p.hint,.hint{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);margin:0.25rem 0 0;line-height:1.5}
+p.hint,.hint{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);margin:var(--mw-s-1) 0 0;line-height:1.5}
 
 /* ---- Grids and section headers ------------------------------------------ */
-.grid{display:grid;gap:16px;margin:1rem 0}
+.grid{display:grid;gap:var(--mw-s-4);margin:var(--mw-s-4) 0}
 /* Same [hidden] override as .row-fields above, for the same reason. */
 .grid[hidden]{display:none}
 .g3{grid-template-columns:repeat(3,1fr)}
 .g2{grid-template-columns:repeat(2,1fr)}
 @media(max-width:1040px){.g3{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.g3,.g2{grid-template-columns:1fr}}
-.sect{margin-top:32px}
+.sect{margin-top:var(--mw-s-6)}
 .sect:first-child{margin-top:0}
 .sect-head{display:flex;align-items:baseline;justify-content:space-between;
-  gap:1rem;margin-bottom:16px}
+  gap:var(--mw-s-4);margin-bottom:var(--mw-s-4)}
 .sect-head h2{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);margin:0}
 
@@ -1043,8 +1043,8 @@ p.hint,.hint{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);margin:0.25re
 a.card{display:block;text-decoration:none;color:inherit}
 a.card:hover{background:var(--mw-surface-2);border-color:var(--mw-line-strong)}
 a.card:active{background:var(--mw-surface-3)}
-.stat .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.stat .subrow .link{display:inline-flex;align-items:center;gap:4px}
+.stat .top{display:flex;align-items:center;justify-content:space-between;gap:var(--mw-s-3)}
+.stat .subrow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .stat .subrow .link svg{width:13px;height:13px}
 /* The .ic tile — 34px, rounded, accent-coloured, a glyph in it — is gone, from
  * the Overview's stat cards and status rows and from beside two wall names. An
@@ -1054,33 +1054,33 @@ a.card:active{background:var(--mw-surface-3)}
  * the heading was always what named the card. See admin-icon-rules.test.ts. */
 
 /* ---- Overview status + today cards --------------------------------------- */
-.status-card .frow{display:flex;align-items:center;gap:12px;padding:12px 0;
+.status-card .frow{display:flex;align-items:center;gap:var(--mw-s-3);padding:var(--mw-s-3) 0;
   border-top:1px solid var(--ruleSoft)}
 .status-card .frow:first-child{padding-top:0;border-top:0}
 .status-card .frow:last-child{padding-bottom:0}
-.rname{font-weight:600;font-size:14px}
-.status-card .frow .link{display:inline-flex;align-items:center;gap:4px}
+.rname{font-weight:600;font-size:var(--mw-t-h4-size)}
+.status-card .frow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .status-card .frow .link svg{width:13px;height:13px}
 .today-card{display:flex;flex-direction:column}
 /* line-height guards: body's role line-height is a px length, which inherits
  * as-is into any larger text that does not set its own. */
 .today-big{font:var(--mw-t-h2);
-  letter-spacing:var(--mw-t-h2-tracking);margin:8px 0 4px}
+  letter-spacing:var(--mw-t-h2-tracking);margin:var(--mw-s-2) 0 var(--mw-s-1)}
 .stat .big{font:var(--mw-t-h1);
-  letter-spacing:var(--mw-t-h1-tracking);margin:12px 0 4px}
-.stat .lab{color:var(--muted);font-size:13.5px}
-.stat .subrow{margin-top:12px;padding-top:12px;border-top:1px solid var(--ruleSoft);
-  font-size:12.5px;color:var(--mw-ink-muted);display:flex;align-items:center;
-  justify-content:space-between;gap:.5rem}
+  letter-spacing:var(--mw-t-h1-tracking);margin:var(--mw-s-3) 0 var(--mw-s-1)}
+.stat .lab{color:var(--muted);font-size:var(--mw-t-label-size)}
+.stat .subrow{margin-top:var(--mw-s-3);padding-top:var(--mw-s-3);border-top:1px solid var(--ruleSoft);
+  font-size:var(--mw-t-body-sm-size);color:var(--mw-ink-muted);display:flex;align-items:center;
+  justify-content:space-between;gap:var(--mw-s-2)}
 
 /* ---- Status dots and tags ------------------------------------------------ */
-.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;display:inline-block}
+.dot{width:8px;height:8px;border-radius:var(--mw-r-full);flex:0 0 auto;display:inline-block}
 .dot-ok{background:var(--ok)}.dot-bad{background:var(--danger)}
 .dot-idle{background:var(--faint)}
 .pulse{position:relative}
 /* The ring itself; its animation binds in the Motion section, so a reduced-
  * motion setting stills it to a plain ring. */
-.pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;
+.pulse::after{content:"";position:absolute;inset:-4px;border-radius:var(--mw-r-full);
   border:1px solid var(--ok);opacity:.6}
 @keyframes pl{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.7);opacity:0}}
 /* Status tags: a tinted ground and the hue's own text, never a solid fill.
@@ -1088,7 +1088,7 @@ a.card:active{background:var(--mw-surface-3)}
  * caps: "On, working out your zones" is a sentence, and a sentence in caps on
  * a settings page reads as an alarm. */
 /* .tag and its four tones moved to the component layer too — see tag(). */
-.swatch{display:inline-block;width:12px;height:12px;border-radius:3px;
+.swatch{display:inline-block;width:12px;height:12px;border-radius:calc(var(--mw-r-1) + var(--mw-hairline));
   background:var(--swatch);flex:0 0 auto;vertical-align:baseline}
 
 /* ---- The alert rules table (RFC 009 Phase 7) ------------------------------
@@ -1096,12 +1096,12 @@ a.card:active{background:var(--mw-surface-3)}
  * button — 900px of a 2,400px page, and the on/off state was communicated
  * only by the button label. A row's state is its own chip now; the action
  * moves to an overflow, which is the same .ovf every wall's header uses. */
-.rules-table{width:100%;border-collapse:collapse;margin:1rem 0}
-.rules-table td{padding:12px 8px;border-bottom:1px solid var(--mw-line);vertical-align:middle}
+.rules-table{width:100%;border-collapse:collapse;margin:var(--mw-s-4) 0}
+.rules-table td{padding:var(--mw-s-3) var(--mw-s-2);border-bottom:1px solid var(--mw-line);vertical-align:middle}
 .rules-table tr:last-child td{border-bottom:0}
 .rules-table .ovfcell{width:48px;text-align:right}
-img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
-  margin-right:0.5rem;vertical-align:-.4rem;background:var(--panel2)}
+img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:cover;
+  margin-right:var(--mw-s-2);vertical-align:-.4rem;background:var(--panel2)}
 
 /* ---- Sub-view switcher (per-wall Appearance | Layout) -------------------- */
 /* ---- Store card mark ------------------------------------------------------ */
@@ -1116,36 +1116,36 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 /* A little inset tile beside the icon, styled like a wall stat panel: a big
  * headline line then a caption or two. First-party glyphs only, no image. */
 .cpreview{flex:0 0 auto;width:118px;min-height:64px;display:flex;flex-direction:column;
-  justify-content:center;gap:4px;padding:8px 12px;border-radius:var(--mw-r-2);
+  justify-content:center;gap:var(--mw-s-1);padding:var(--mw-s-2) var(--mw-s-3);border-radius:var(--mw-r-2);
   background:var(--panel2);border:1px solid var(--rule);overflow:hidden}
 .cpreview b{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
   color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cpreview i{font-style:normal;font-size:11px;line-height:1.25;color:var(--muted);
+.cpreview i{font-style:normal;font-size:var(--mw-t-label-xs-size);line-height:1.25;color:var(--muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:560px){.cpreview{display:none}}
 
 /* ---- Theme builder (custom themes) --------------------------------------- */
-.theme-builder{display:grid;grid-template-columns:1fr 320px;gap:28px;align-items:start;margin-top:.5rem}
+.theme-builder{display:grid;grid-template-columns:1fr 320px;gap:calc(var(--mw-s-5) + var(--mw-s-1));align-items:start;margin-top:var(--mw-s-2)}
 /* 1000px, not the shell's 900: below this the 320px preview column starves
  * the controls beside the 264px drawer. */
 @media(max-width:1000px){.theme-builder{grid-template-columns:1fr}}
 .tb-controls{min-width:0}
-.tb-controls>.tb-group{display:block;margin:1.5rem 0 0.25rem;
+.tb-controls>.tb-group{display:block;margin:var(--mw-s-5) 0 var(--mw-s-1);
   font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);
   color:var(--mw-ink-2)}
-.tf-row{display:flex;align-items:center;gap:12px;margin:8px 0}
-.tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:4px;margin:0}
-.tf-row b{display:block;font-size:14px;font-weight:600}
-.tf-row small{display:block;color:var(--mw-ink-muted);font-size:12px;line-height:1.35}
+.tf-row{display:flex;align-items:center;gap:var(--mw-s-3);margin:var(--mw-s-2) 0}
+.tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:var(--mw-s-1);margin:0}
+.tf-row b{display:block;font-size:var(--mw-t-h4-size);font-weight:600}
+.tf-row small{display:block;color:var(--mw-ink-muted);font-size:var(--mw-t-label-sm-size);line-height:1.35}
 .tb-preview{position:sticky;top:88px}
 #theme-preview{width:300px;max-width:100%;min-height:220px;border:1px solid var(--rule);
   border-radius:var(--mw-r-2);overflow:hidden;background:var(--panel2)}
-#theme-contrast{margin-top:12px}
+#theme-contrast{margin-top:var(--mw-s-3)}
 
 /* ---- Theme picker cards (Display) ---------------------------------------- */
-.themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:0.5rem}
+.themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--mw-s-4);margin-top:var(--mw-s-2)}
 @media(max-width:560px){.themegrid{grid-template-columns:1fr}}
 /* A selectable filled card: the swatch strip bleeds to the corner, the chosen
  * one carries a 2px primary ring (a shadow, so nothing shifts). */
@@ -1155,7 +1155,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 .themecard input{position:absolute;opacity:0;pointer-events:none}
 .themecard .sw{height:60px;display:flex}
 .themecard .sw i{flex:1}
-.themecard .cap{padding:12px 16px}
+.themecard .cap{padding:var(--mw-s-3) var(--mw-s-4)}
 .themecard .cap b{
   font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);display:block;
@@ -1167,30 +1167,30 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;
 
 /* ---- Preview panel (calendar test, update-available, shift preview) ------ */
 .preview{position:relative;border:1px solid var(--rule);border-radius:var(--mw-r-2);
-  padding:16px 20px;margin:1rem 0;background:var(--panel2)}
+  padding:var(--mw-s-4) calc(var(--mw-s-4) + var(--mw-s-1));margin:var(--mw-s-4) 0;background:var(--panel2)}
 .preview h3{font:var(--mw-t-h3);
-  letter-spacing:var(--mw-t-h3-tracking);margin:0 0 0.25rem}
-.preview ul{list-style:none;margin:0.5rem 0 0;padding:0}
-.preview li{display:flex;gap:1rem;padding:.5rem 0;font-size:14px;
+  letter-spacing:var(--mw-t-h3-tracking);margin:0 0 var(--mw-s-1)}
+.preview ul{list-style:none;margin:var(--mw-s-2) 0 0;padding:0}
+.preview li{display:flex;gap:var(--mw-s-4);padding:var(--mw-s-2) 0;font-size:var(--mw-t-h4-size);
   border-top:1px solid var(--ruleSoft)}
 .preview li:first-child{border-top:0}
-.preview .when{color:var(--mw-ink-muted);flex:0 0 12rem;font-family:var(--mono);font-size:12.5px}
-.preview .warn{color:var(--warn);font-size:var(--mw-t-body-size);margin-top:0.5rem}
-ul.plain{margin:0.5rem 0 0.5rem 1rem;color:var(--muted)}
-ul.plain li{margin:0.5rem 0}
+.preview .when{color:var(--mw-ink-muted);flex:0 0 12rem;font-family:var(--mono);font-size:var(--mw-t-body-sm-size)}
+.preview .warn{color:var(--warn);font-size:var(--mw-t-body-size);margin-top:var(--mw-s-2)}
+ul.plain{margin:var(--mw-s-2) 0 var(--mw-s-2) var(--mw-s-4);color:var(--muted)}
+ul.plain li{margin:var(--mw-s-2) 0}
 ul.plain strong{color:var(--ink)}
 /* The log block on the inverse roles: the one deliberately inverted surface,
  * which is what makes it read as a terminal in either scheme. */
 pre.log{background:var(--mw-ink);
-  border-radius:var(--mw-r-2);padding:0.75rem 1rem;
+  border-radius:var(--mw-r-2);padding:var(--mw-s-3) var(--mw-s-4);
   font-family:var(--mono);font-size:var(--mw-t-body-sm-size);line-height:var(--mw-t-body-sm-lh);color:var(--mw-bg);
   max-height:22rem;overflow:auto;white-space:pre-wrap;word-break:break-word}
 
 /* ---- QR + short code (pairing) ------------------------------------------ */
 /* Deliberately white in both schemes: a QR needs its quiet zone on a light
  * plate, or half the phones in the house refuse to read it. */
-.qr{background:#fff;padding:0.75rem;border-radius:var(--mw-r-3);
-  display:inline-block;margin:0.5rem 0}
+.qr{background:#fff;padding:var(--mw-s-3);border-radius:var(--mw-r-3);
+  display:inline-block;margin:var(--mw-s-2) 0}
 .qr svg{display:block}
 /* The e-paper preview stands on the same argument as the QR plate: the
  * physical panel is white paper in either scheme, so its frame is shown on
@@ -1202,22 +1202,22 @@ pre.log{background:var(--mw-ink);
  * container — not the log's inverse plate, because this is text to copy into
  * an editor, not terminal output. */
 pre.code{background:var(--mw-surface-2);
-  border-radius:var(--mw-r-2);padding:12px;
+  border-radius:var(--mw-r-2);padding:var(--mw-s-3);
   font-family:var(--mono);font-size:var(--mw-t-body-sm-size);line-height:var(--mw-t-body-sm-lh);color:var(--mw-ink);
   overflow-x:auto;white-space:pre}
 
 /* ---- Shift slot pickers -------------------------------------------------- */
-.slots{display:flex;flex-wrap:wrap;gap:.5rem}
+.slots{display:flex;flex-wrap:wrap;gap:var(--mw-s-2)}
 .slots span{flex:0 0 6.2rem}
-.slots label{margin:0.5rem 0 0.25rem;font-size:var(--mw-t-label-xs-size);color:var(--mw-ink-muted);
+.slots label{margin:var(--mw-s-2) 0 var(--mw-s-1);font-size:var(--mw-t-label-xs-size);color:var(--mw-ink-muted);
   font-weight:600;letter-spacing:.04em}
-.slots select{padding:0.5rem 0.25rem;font-size:var(--mw-t-body-size)}
+.slots select{padding:var(--mw-s-2) var(--mw-s-1);font-size:var(--mw-t-body-size)}
 .title-cell{display:flex;align-items:center;font-weight:600;min-width:0;
   overflow-wrap:anywhere}
 
 /* ---- Shift preview / cycle grid ------------------------------------------ */
-.pv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:0.75rem}
-.pv-cell{background:var(--panel2);border-radius:5px;padding:8px 4px;text-align:center;
+.pv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--mw-s-1);margin-top:var(--mw-s-3)}
+.pv-cell{background:var(--panel2);border-radius:calc(var(--mw-r-2) + var(--mw-hairline));padding:var(--mw-s-2) var(--mw-s-1);text-align:center;
   border-top:3px solid var(--accent)}
 .pv-cell.pv-off{border-top-color:var(--ok);
   background:color-mix(in srgb,var(--ok) 8%,var(--panel2))}
@@ -1225,7 +1225,7 @@ pre.code{background:var(--mw-surface-2);
 .pv-dow{display:block;font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);color:var(--mw-ink-muted)}
 .pv-num{display:block;font:var(--mw-t-h3);
-  letter-spacing:var(--mw-t-h3-tracking);margin:4px 0}
+  letter-spacing:var(--mw-t-h3-tracking);margin:var(--mw-s-1) 0}
 .pv-code{display:block;font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);color:var(--accent)}
 .pv-off .pv-code{color:var(--ok)}
@@ -1234,9 +1234,9 @@ pre.code{background:var(--mw-surface-2);
 /* ---- Wall switcher above the layout editor ------------------------------- */
 /* The wall switcher is a row of filter chips: the current wall is the
  * selected chip. Same anatomy as .hep-chip above. */
-.walls{display:flex;flex-wrap:wrap;gap:8px;margin:0.5rem 0 1rem}
-.walls a{position:relative;height:32px;display:inline-flex;align-items:center;gap:8px;
-  padding:0 16px;border-radius:var(--mw-r-2);
+.walls{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin:var(--mw-s-2) 0 var(--mw-s-4)}
+.walls a{position:relative;height:32px;display:inline-flex;align-items:center;gap:var(--mw-s-2);
+  padding:0 var(--mw-s-4);border-radius:var(--mw-r-2);
   font-family:var(--sans);
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
@@ -1249,7 +1249,7 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-ink-2) var(--mw-wash-hover),transparent)}
 .walls a.active{color:var(--mw-accent-soft-ink);
   background:var(--mw-accent-soft);border-color:transparent}
-.walls a.active::before{content:"";width:9px;height:5px;margin-top:-4px;flex:0 0 auto;
+.walls a.active::before{content:"";width:9px;height:5px;margin-top:calc(-1 * var(--mw-s-1));flex:0 0 auto;
   border-left:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(-45deg)}
 
@@ -1257,13 +1257,13 @@ pre.code{background:var(--mw-surface-2);
 /* position:relative so a popover can never anchor on <body> and float over
  * the settings pane; the row inside is what they actually anchor to. */
 .le-toolbar{position:relative;display:flex;flex-direction:column;align-items:stretch;
-  gap:12px;margin:0 0 12px}
+  gap:var(--mw-s-3);margin:0 0 var(--mw-s-3)}
 /* One row (RFC 009 Phase 5): which canvas, add a widget, undo, the layers
  * list, and the canvas's own settings behind one button. It was two rows and
  * four clusters, two of whose items duplicated the page overflow menu a few
  * pixels above — 124px of an 844px phone before the canvas began.
  * position:relative so the Layers and Layout popovers anchor to the row. */
-.le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
 /* The canvas's shape, on the Layout button. Hidden on a phone (below), where
  * the row has to fit and the popover states it anyway. */
 .le-tool-note{color:var(--mw-ink-2)}
@@ -1271,14 +1271,14 @@ pre.code{background:var(--mw-surface-2);
 /* Toolbar tools are compact outlined buttons — the shared anatomy at 32px
  * density, targets stretched back to 48px. */
 .le-tool-link,.le-tool-btn,.le-layers-btn{position:relative;margin:0;height:32px;
-  padding:0 16px;background:transparent;color:var(--mw-accent);
+  padding:0 var(--mw-s-4);background:transparent;color:var(--mw-accent);
   border:1px solid var(--mw-ink-3);border-radius:var(--mw-r-2);
   font-family:var(--sans);
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
   letter-spacing:var(--mw-t-label-tracking);
   cursor:pointer;text-decoration:none;display:inline-flex;
-  align-items:center;gap:8px;line-height:1}
+  align-items:center;gap:var(--mw-s-2);line-height:1}
 .le-tool-link::after,.le-tool-btn::after,.le-layers-btn::after{content:"";position:absolute;
   left:50%;top:50%;width:max(100%,48px);height:48px;transform:translate(-50%,-50%)}
 .le-tool-link:hover,.le-tool-btn:hover,.le-layers-btn:hover{background:color-mix(in srgb,
@@ -1306,25 +1306,25 @@ pre.code{background:var(--mw-surface-2);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1);overflow:hidden}
 .le-layers-pop[hidden]{display:none}
-.le-layers-head{padding:12px 16px;border-bottom:1px solid var(--ruleSoft)}
+.le-layers-head{padding:var(--mw-s-3) var(--mw-s-4);border-bottom:1px solid var(--ruleSoft)}
 .le-layers-title{font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);color:var(--ink)}
-.le-layers-sub{font-size:12px;color:var(--mw-ink-muted);margin-top:4px}
-.le-layers-empty{padding:16px 16px;font-size:var(--mw-t-label-size);color:var(--mw-ink-muted)}
-.le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:3px}
+.le-layers-sub{font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted);margin-top:var(--mw-s-1)}
+.le-layers-empty{padding:var(--mw-s-4) var(--mw-s-4);font-size:var(--mw-t-label-size);color:var(--mw-ink-muted)}
+.le-layer-swatch{flex:0 0 auto;width:12px;height:12px;border-radius:calc(var(--mw-r-1) + var(--mw-hairline))}
 /* Deliberately under the 48px target rule: the editor toolbar is compact
  * density (32px buttons whose pointer targets stretch via ::after), and a
  * select is a replaced element that cannot carry a pseudo target — stretching
  * the control itself to 48px would break the toolbar's rhythm. The written
  * exception the target audit allows. */
-.le-aspect{width:auto;padding:0.5rem 0.5rem;background:var(--panel2);color:var(--ink);
-  border:1px solid var(--rule);border-radius:7px}
+.le-aspect{width:auto;padding:var(--mw-s-2) var(--mw-s-2);background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:calc(var(--mw-r-3) + var(--mw-hairline))}
 /* Portrait | Landscape: styled with the segmented buttons above. */
 /* The palette sits inline in the toolbar (the display bundle builds it there),
    so it is a row of dashed add-chips rather than the mockup's side column. */
-.le-palette{display:flex;flex-wrap:wrap;gap:8px}
-.le-add{position:relative;display:inline-flex;align-items:center;gap:8px;margin:0;
-  height:32px;padding:0 16px;border:1px solid var(--mw-ink-3);
+.le-palette{display:flex;flex-wrap:wrap;gap:var(--mw-s-2)}
+.le-add{position:relative;display:inline-flex;align-items:center;gap:var(--mw-s-2);margin:0;
+  height:32px;padding:0 var(--mw-s-4);border:1px solid var(--mw-ink-3);
   border-radius:var(--mw-r-2);background:none;
   color:var(--mw-accent);
   font-family:var(--sans);
@@ -1349,7 +1349,7 @@ pre.code{background:var(--mw-surface-2);
  * needs a heavier scrim than the light one to separate a panel from the page,
  * and one literal cannot be both. */
 .le-modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;
-  justify-content:center;padding:24px;background:var(--mw-scrim)}
+  justify-content:center;padding:var(--mw-s-5);background:var(--mw-scrim)}
 .le-modal[hidden]{display:none}
 .le-modal-card{width:min(560px,100%);max-height:85vh;overflow:auto;
   background:var(--mw-surface-2);
@@ -1357,7 +1357,7 @@ pre.code{background:var(--mw-surface-2);
   border-radius:var(--mw-r-4);
   box-shadow:var(--mw-shadow-2)}
 .le-modal-head{display:flex;align-items:center;justify-content:space-between;
-  padding:20px 24px 12px;
+  padding:calc(var(--mw-s-4) + var(--mw-s-1)) var(--mw-s-5) var(--mw-s-3);
   font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
   color:var(--mw-ink)}
@@ -1369,10 +1369,10 @@ pre.code{background:var(--mw-surface-2);
   transform:translate(-50%,-50%)}
 .le-modal-close:hover{color:var(--mw-ink);background:color-mix(in srgb,
   var(--mw-ink-2) var(--mw-wash-hover),transparent)}
-.le-modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px}
+.le-modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--mw-s-3);padding:calc(var(--mw-s-4) + var(--mw-s-1))}
 @media(max-width:520px){.le-modal-grid{grid-template-columns:repeat(2,1fr)}}
 .le-modal-item{display:flex;align-items:center;justify-content:center;text-align:center;
-  min-height:64px;padding:12px;background:var(--mw-surface-3);
+  min-height:64px;padding:var(--mw-s-3);background:var(--mw-surface-3);
   color:var(--mw-ink);border:0;
   border-radius:var(--mw-r-3);
   font-family:var(--sans);
@@ -1387,31 +1387,31 @@ pre.code{background:var(--mw-surface-2);
  * outlined buttons for each gave a canvas control the same weight as "add a
  * widget", which is the whole complaint the redesign answers. */
 .le-canvas-pop{position:absolute;top:calc(100% + 6px);right:0;width:min(340px,92vw);z-index:30;
-  padding:16px 16px 16px;background:var(--mw-surface);
+  padding:var(--mw-s-4) var(--mw-s-4) var(--mw-s-4);background:var(--mw-surface);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1)}
 .le-canvas-pop[hidden]{display:none}
 .le-pop-title{
   font:var(--mw-t-h3);
-  letter-spacing:var(--mw-t-h3-tracking);color:var(--ink);margin-bottom:4px}
-.le-pop-sub{font-size:12px;color:var(--mw-ink-2);margin-bottom:12px}
-.le-pop-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  letter-spacing:var(--mw-t-h3-tracking);color:var(--ink);margin-bottom:var(--mw-s-1)}
+.le-pop-sub{font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-2);margin-bottom:var(--mw-s-3)}
+.le-pop-row{display:flex;align-items:center;justify-content:space-between;gap:var(--mw-s-3);
   min-height:44px;font-size:var(--mw-t-label-size);color:var(--mw-ink)}
 .le-pop-row>span:first-child{flex:1;min-width:0}
 .le-pop-row select{width:auto;max-width:60%}
-.le-pop-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;
+.le-pop-actions{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin-top:var(--mw-s-3);padding-top:var(--mw-s-3);
   border-top:1px solid var(--ruleSoft)}
-.le-pop-sep{height:1px;margin:12px 0;background:var(--ruleSoft)}
+.le-pop-sep{height:1px;margin:var(--mw-s-3) 0;background:var(--ruleSoft)}
 /* The tools row's own switch, at the row density the popover uses. */
 .le-pop-row .switch{flex:1;margin:0;min-height:44px}
 /* The state of the canvas, stated once on the preview header rather than
  * repeated under every widget panel. */
-.le-canvas-state{font-size:12px;color:var(--mw-ink-2)}
+.le-canvas-state{font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-2)}
 /* No min-height: the canvas is width-driven and must not push into the settings
    pane. The stage sizes to whatever the canvas needs. */
-.le-stage{display:flex;justify-content:center;align-items:flex-start;padding:16px;
-  background:var(--panel2);border:1px solid var(--rule);border-radius:10px}
-.le-canvas{position:relative;background:var(--bg);border-radius:6px;overflow:hidden;
+.le-stage{display:flex;justify-content:center;align-items:flex-start;padding:var(--mw-s-4);
+  background:var(--panel2);border:1px solid var(--rule);border-radius:calc(var(--mw-r-1) * 2 + var(--mw-r-3))}
+.le-canvas{position:relative;background:var(--bg);border-radius:var(--mw-r-3);overflow:hidden;
   box-shadow:inset 0 0 0 1px var(--rule);touch-action:none}
 /* The snap grid, on the overlay so it sits over the live preview but under the
  * draggable boxes. Shown only while snapping; background-size is set in script to
@@ -1423,7 +1423,7 @@ pre.code{background:var(--mw-surface-2);
 /* What a panel shows instead of the wall's orientation tabs and aspect list:
  * its geometry, stated. Read-only on purpose — 800x480 landscape is a fact
  * about the hardware, not a choice. */
-.le-panel-chip{display:inline-flex;align-items:center;height:38px;padding:0 16px;
+.le-panel-chip{display:inline-flex;align-items:center;height:38px;padding:0 var(--mw-s-4);
   border:1px solid var(--mw-line);border-radius:var(--mw-r-2);
   color:var(--mw-ink-2);
   font-size:var(--mw-t-label-size);
@@ -1489,7 +1489,7 @@ pre.code{background:var(--mw-surface-2);
   font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-bg);
-  background:var(--mw-ink-2);padding:4px 8px;border-radius:var(--mw-r-2);
+  background:var(--mw-ink-2);padding:var(--mw-s-1) var(--mw-s-2);border-radius:var(--mw-r-2);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   visibility:hidden;pointer-events:none;user-select:none}
 .le-widget-label.is-below{bottom:auto;top:calc(100% + 2px)}
@@ -1516,15 +1516,15 @@ pre.code{background:var(--mw-surface-2);
   font:var(--mw-t-label-xs);
   letter-spacing:var(--mw-t-label-xs-tracking);
   color:var(--mw-bg);background:var(--mw-ink-2);opacity:.85;
-  padding:4px 8px;border-radius:0 var(--mw-r-2) 0 0;
+  padding:var(--mw-s-1) var(--mw-s-2);border-radius:0 var(--mw-r-2) 0 0;
   pointer-events:none;user-select:none}
 /* The reason, at the head of the inspector — read before any of its options,
  * because none of them matter while nothing draws the widget. */
-.le-not-drawn{margin:0 0 12px;padding:12px 12px;border-radius:var(--mw-r-2);
+.le-not-drawn{margin:0 0 var(--mw-s-3);padding:var(--mw-s-3) var(--mw-s-3);border-radius:var(--mw-r-2);
   background:var(--mw-surface-2);border:1px solid var(--mw-line);
   font:var(--mw-t-body);color:var(--mw-ink-2)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
-  border-radius:3px 0 3px 0;cursor:se-resize;touch-action:none}
+  border-radius:calc(var(--mw-r-1) + var(--mw-hairline)) 0 calc(var(--mw-r-1) + var(--mw-hairline)) 0;cursor:se-resize;touch-action:none}
 /* A 12px corner is a pointer target on a mouse and nothing at all on a
  * phone — in an editor this project redesigned for phones. The mark stays
  * 12px and the *target* grows around it, which moves nothing and paints
@@ -1542,34 +1542,34 @@ pre.code{background:var(--mw-surface-2);
  * reachable rather than trusting this line. */
 .le-handle::before{content:"";position:absolute;inset:-16px -2px -2px -16px}
 /* The canvas background control — none / solid / gradient, per canvas. */
-.le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:12px 0 0}
+.le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-3);margin:var(--mw-s-3) 0 0}
 .le-bg-label{
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
   color:var(--mw-ink-2)}
-.le-bg select{width:auto;padding:0.5rem 0.5rem;background:var(--panel2);color:var(--ink);
-  border:1px solid var(--rule);border-radius:7px}
-.le-bg input[type=color]{width:36px;height:32px;padding:4px;border:1px solid var(--rule);
-  border-radius:7px;background:var(--panel2)}
-.le-bg input[type=number]{width:5rem;padding:0.5rem 0.5rem;background:var(--panel2);color:var(--ink);
-  border:1px solid var(--rule);border-radius:7px}
+.le-bg select{width:auto;padding:var(--mw-s-2) var(--mw-s-2);background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:calc(var(--mw-r-3) + var(--mw-hairline))}
+.le-bg input[type=color]{width:36px;height:32px;padding:var(--mw-s-1);border:1px solid var(--rule);
+  border-radius:calc(var(--mw-r-3) + var(--mw-hairline));background:var(--panel2)}
+.le-bg input[type=number]{width:5rem;padding:var(--mw-s-2) var(--mw-s-2);background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);border-radius:calc(var(--mw-r-3) + var(--mw-hairline))}
 .le-bg .le-media{flex-basis:100%}
 
 /* The image picker — a grid of uploaded pictures plus an upload input. */
-.le-media{display:flex;flex-direction:column;gap:12px;margin-top:4px}
-.le-media-grid{display:flex;flex-wrap:wrap;gap:8px}
+.le-media{display:flex;flex-direction:column;gap:var(--mw-s-3);margin-top:var(--mw-s-1)}
+.le-media-grid{display:flex;flex-wrap:wrap;gap:var(--mw-s-2)}
 .le-media-item{width:64px;height:64px;padding:0;margin:0;border-radius:var(--mw-r-2);cursor:pointer;
   border:2px solid var(--rule);background-size:cover;background-position:center}
 .le-media-item:hover{border-color:var(--faint)}
 .le-media-item.is-on{border-color:var(--accent)}
-.le-media-upload{display:inline-flex;align-items:center;gap:8px;font-size:var(--mw-t-label-size);color:var(--muted)}
-.le-media-upload input{font-size:12px}
-.le-media-status{font-family:var(--mono);font-size:12px;color:var(--mw-ink-muted)}
+.le-media-upload{display:inline-flex;align-items:center;gap:var(--mw-s-2);font-size:var(--mw-t-label-size);color:var(--muted)}
+.le-media-upload input{font-size:var(--mw-t-label-sm-size)}
+.le-media-status{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}
 
 /* The layers list — every widget, front on top; drag a row to restack. It is
    the body of the anchored popover above. */
-.le-layers{max-height:340px;overflow:auto;padding:8px}
-.le-layer{display:flex;align-items:center;gap:12px;padding:8px 12px;
+.le-layers{max-height:340px;overflow:auto;padding:var(--mw-s-2)}
+.le-layer{display:flex;align-items:center;gap:var(--mw-s-3);padding:var(--mw-s-2) var(--mw-s-3);
   border-radius:var(--mw-r-1);
   cursor:pointer;user-select:none}
 .le-layer:hover{background:color-mix(in srgb,
@@ -1577,7 +1577,7 @@ pre.code{background:var(--mw-surface-2);
 .le-layer.is-selected{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
 .le-layer-grip{flex:0 0 auto;color:var(--mw-ink-muted);cursor:grab;letter-spacing:-2px;
-  font-size:14px;touch-action:none;padding:0 4px}
+  font-size:var(--mw-t-h4-size);touch-action:none;padding:0 var(--mw-s-1)}
 .le-layer-name{flex:1;min-width:0;
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
@@ -1594,17 +1594,17 @@ pre.code{background:var(--mw-surface-2);
  * opinions about what fits. (No backticks in here: this stylesheet lives in a
  * template literal, and one would end it.)
  */
-.le-ladder{display:flex;flex-direction:column;gap:4px;
+.le-ladder{display:flex;flex-direction:column;gap:var(--mw-s-1);
   border:1px solid var(--mw-line);
-  border-radius:var(--mw-r-2);padding:4px}
-.le-ladder-row{display:flex;align-items:center;gap:8px;padding:8px 8px;
+  border-radius:var(--mw-r-2);padding:var(--mw-s-1)}
+.le-ladder-row{display:flex;align-items:center;gap:var(--mw-s-2);padding:var(--mw-s-2) var(--mw-s-2);
   border-radius:var(--mw-r-1);min-height:40px}
 .le-ladder-row.is-off{opacity:.55}
 .le-ladder-row.is-off .le-ladder-eg{visibility:hidden}
 /* Dashed, not hidden: the row is still on the ladder and comes back the moment
    the box grows. Struck through says "not drawn here" without saying "gone". */
 .le-ladder-row.is-cut{opacity:.6;
-  border:1px dashed var(--mw-ink-3);padding:4px 8px}
+  border:1px dashed var(--mw-ink-3);padding:var(--mw-s-1) var(--mw-s-2)}
 .le-ladder-row.is-cut .le-ladder-name{text-decoration:line-through}
 .le-ladder-name{flex:0 0 auto;
   font-size:var(--mw-t-label-size);
@@ -1618,12 +1618,12 @@ pre.code{background:var(--mw-surface-2);
  * the card. On the e-paper design page there is no inspector column, so the
  * same panel is built into .le-inspect-card under the stage instead. */
 .le-config{margin:0}
-.le-config>.kick{margin-bottom:12px}
-.le-inspect-card{margin-top:16px;border:1px solid var(--rule);
+.le-config>.kick{margin-bottom:var(--mw-s-3)}
+.le-inspect-card{margin-top:var(--mw-s-4);border:1px solid var(--rule);
   border-radius:var(--mw-r-3);background:var(--panel)}
 .le-inspect-card .insp-head{background:var(--panel);
   border-radius:var(--mw-r-3) var(--mw-r-3) 0 0}
-.le-inspect-card .insp-empty{padding:16px 20px}
+.le-inspect-card .insp-empty{padding:var(--mw-s-4) calc(var(--mw-s-4) + var(--mw-s-1))}
 /* A segmented control inside the inspector fills the column rather than
  * hugging its labels — the boxes are the target, and the column is narrow.
  *
@@ -1643,49 +1643,49 @@ pre.code{background:var(--mw-surface-2);
  * deliberately so a focus ring is not clipped, and this scope had quietly put
  * it back. */
 .le-cfg-field .seg{display:flex;width:100%;max-width:100%}
-.le-cfg-field .seg button{padding:0 8px;white-space:normal;overflow-wrap:anywhere;
+.le-cfg-field .seg button{padding:0 var(--mw-s-2);white-space:normal;overflow-wrap:anywhere;
   height:auto;min-height:38px;line-height:1.15;text-align:center;overflow:visible}
-.le-config .switch{margin:.5rem 0}
-.le-cfg-field{display:block;margin:12px 0 0}
+.le-config .switch{margin:var(--mw-s-2) 0}
+.le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
 .le-cfg-field>span{display:block;
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
-  color:var(--mw-ink-2);margin-bottom:8px}
+  color:var(--mw-ink-2);margin-bottom:var(--mw-s-2)}
 .le-cfg-field select,.le-cfg-field input[type=number]{width:auto;min-width:9rem}
 /* Position and size, in per cent of the canvas — the unit that is stored, so
  * what is typed is what is saved. Four across on a column inspector, two by two
  * when the inspector is a phone's sheet. */
-.le-box-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.le-box-cell{display:flex;flex-direction:column;gap:4px;margin:0;min-width:0}
-.le-box-cell span{font-size:11px;color:var(--mw-ink-2);letter-spacing:.02em}
+.le-box-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--mw-s-2)}
+.le-box-cell{display:flex;flex-direction:column;gap:var(--mw-s-1);margin:0;min-width:0}
+.le-box-cell span{font-size:var(--mw-t-label-xs-size);color:var(--mw-ink-2);letter-spacing:.02em}
 /* 16px, like every other field here: below that iOS Safari zooms the page on
  * focus, and a settings screen that jumps on every tap is its own bug. */
 .le-box-cell input[type=number]{width:100%;min-width:0;box-sizing:border-box;
-  height:40px;padding:0 8px;font-size:16px;
+  height:40px;padding:0 var(--mw-s-2);font-size:var(--mw-t-body-lg-size);
   background:var(--panel2);color:var(--ink);
   border:1px solid var(--rule);border-radius:var(--mw-r-1)}
 /* A view a widget cannot change: stated, not offered as a dropdown of one. */
-.le-cfg-fact{font-size:14px;line-height:1.4;color:var(--mw-ink)}
-.le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 12px;
+.le-cfg-fact{font-size:var(--mw-t-h4-size);line-height:1.4;color:var(--mw-ink)}
+.le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:var(--mw-s-2) var(--mw-s-3);
   border:1px solid var(--rule);border-radius:var(--mw-r-1);background:var(--panel2);color:var(--ink);
   resize:vertical;line-height:1.4}
-.le-cfg-checks{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:4px}
-.le-cfg-check{display:inline-flex;align-items:center;gap:0.5rem;font-size:14px;
+.le-cfg-checks{display:flex;flex-wrap:wrap;gap:var(--mw-s-2) var(--mw-s-4);margin-top:var(--mw-s-1)}
+.le-cfg-check{display:inline-flex;align-items:center;gap:var(--mw-s-2);font-size:var(--mw-t-h4-size);
   color:var(--mw-ink);cursor:pointer;margin:0}
 
 /* ---- Home Assistant entity picker (first-party JS) ----------------------- */
-#ha-entity-picker{margin-top:0.5rem}
+#ha-entity-picker{margin-top:var(--mw-s-2)}
 /* 48px pointer targets: the picker's search box and its "show as" row are
  * script-built bare controls (no .field construction), so the height that the
  * 56px fields get from their anatomy is set here directly. */
-.hep-search{width:100%;margin-bottom:12px;min-height:48px}
+.hep-search{width:100%;margin-bottom:var(--mw-s-3);min-height:48px}
 #ha-entity-picker select{min-height:48px}
-.hep-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.hep-chips{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin-bottom:var(--mw-s-3)}
 /* Filter chips: 32px, 4px corner, outlined at rest; selected fills with
  * secondary-container and gains a drawn leading check. The pointer target is
  * stretched to 48px tall by a pseudo-element. */
 .hep-chip{position:relative;margin:0;height:32px;display:inline-flex;align-items:center;
-  gap:8px;padding:0 16px;border-radius:var(--mw-r-2);
+  gap:var(--mw-s-2);padding:0 var(--mw-s-4);border-radius:var(--mw-r-2);
   border:1px solid var(--mw-ink-3);
   background:transparent;color:var(--mw-ink-2);
   font-family:var(--sans);
@@ -1699,75 +1699,75 @@ pre.code{background:var(--mw-surface-2);
   color:var(--mw-ink)}
 .hep-chip.active{background:var(--mw-accent-soft);border-color:transparent;
   color:var(--mw-accent-soft-ink)}
-.hep-chip.active::before{content:"";width:9px;height:5px;margin-top:-4px;flex:0 0 auto;
+.hep-chip.active::before{content:"";width:9px;height:5px;margin-top:calc(-1 * var(--mw-s-1));flex:0 0 auto;
   border-left:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(-45deg)}
 .hep-chip.active:hover{background:color-mix(in srgb,
   var(--mw-accent-soft-ink) var(--mw-wash-hover),
   var(--mw-accent-soft))}
-.hep-selected{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:1.4rem}
+.hep-selected{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin-bottom:var(--mw-s-3);min-height:1.4rem}
 /* Input chips: outlined, 32px, a trailing remove icon button whose pointer
  * target is 48px even though the visual glyph is 18px. */
-.hep-pill{display:inline-flex;align-items:center;gap:0.5rem;height:32px;
-  padding:0 8px 0 12px;border-radius:var(--mw-r-2);
+.hep-pill{display:inline-flex;align-items:center;gap:var(--mw-s-2);height:32px;
+  padding:0 var(--mw-s-2) 0 var(--mw-s-3);border-radius:var(--mw-r-2);
   background:transparent;border:1px solid var(--mw-ink-3);
   color:var(--mw-ink);font-size:var(--mw-t-label-size)}
 .hep-pill-x{position:relative;margin:0;padding:0;width:18px;height:18px;
   display:grid;place-items:center;border:0;border-radius:var(--mw-r-full);
   background:transparent;color:var(--mw-ink-2);
-  cursor:pointer;font-size:14px;line-height:1}
+  cursor:pointer;font-size:var(--mw-t-h4-size);line-height:1}
 .hep-pill-x::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:48px;
   transform:translate(-50%,-50%)}
 .hep-pill-x:hover{background:color-mix(in srgb,
   var(--mw-ink-2) var(--mw-wash-hover),transparent);
   color:var(--mw-ink)}
-.hep-list{border:1px solid var(--rule);border-radius:8px;background:var(--panel2);
+.hep-list{border:1px solid var(--rule);border-radius:var(--mw-r-4);background:var(--panel2);
   max-height:22rem;overflow-y:auto}
-.hep-row{display:flex;align-items:center;gap:12px;padding:0.5rem 0.75rem;cursor:pointer;
+.hep-row{display:flex;align-items:center;gap:var(--mw-s-3);padding:var(--mw-s-2) var(--mw-s-3);cursor:pointer;
   border-top:1px solid var(--ruleSoft);margin:0}
 .hep-row:first-child{border-top:0}
 .hep-row:hover{background:var(--panel)}
 /* The row's checkbox takes the shared checkbox styling above. */
 .hep-main{flex:1;min-width:0}
-.hep-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hep-name{font-weight:600;font-size:var(--mw-t-h4-size);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hep-id{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-.hep-state{font-family:var(--mono);font-size:12.5px;color:var(--muted);flex:0 0 auto;
+.hep-state{font-family:var(--mono);font-size:var(--mw-t-body-sm-size);color:var(--muted);flex:0 0 auto;
   max-width:10rem;overflow:hidden;text-overflow:ellipsis;text-align:right}
-.hep-footer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-top:16px}
-.hep-field{display:flex;flex-direction:column;gap:8px;margin:0}
+.hep-footer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--mw-s-4);margin-top:var(--mw-s-4)}
+.hep-field{display:flex;flex-direction:column;gap:var(--mw-s-2);margin:0}
 .hep-field>span{
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);
   color:var(--mw-ink-2)}
 .hep-field select,.hep-field input{width:auto;min-width:14rem}
 .hep-footer .btn-primary{margin-top:0}
-.hep-status{font-family:var(--mono);font-size:12.5px;color:var(--mw-ink-muted)}
+.hep-status{font-family:var(--mono);font-size:var(--mw-t-body-sm-size);color:var(--mw-ink-muted)}
 .hep-status.is-error{color:var(--danger)}
 
 /* ---- Template gallery (RFC 005) — blueprint cards ----------------------- */
 .tpl-cat{
   font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);
-  color:var(--mw-ink-2);margin:28px 0 16px}
-.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px}
+  color:var(--mw-ink-2);margin:calc(var(--mw-s-5) + var(--mw-s-1)) 0 var(--mw-s-4)}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--mw-s-5)}
 /* Template cards are ordinary cards: a flat panel with a hairline border. */
-.tpl-card{position:relative;display:flex;flex-direction:column;gap:16px;
+.tpl-card{position:relative;display:flex;flex-direction:column;gap:var(--mw-s-4);
   background:var(--mw-surface);border:1px solid var(--mw-line);
   border-radius:var(--mw-r-3);padding:var(--mw-s-4)}
 .tpl-thumb{position:relative;width:100%;aspect-ratio:3/4;background:var(--panel2);
   overflow:hidden;border-radius:var(--mw-r-2);
   display:flex;align-items:center;justify-content:center}
 .tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  padding:12px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--mw-ink-muted)}
-.tpl-body{padding:0;display:flex;flex-direction:column;gap:8px;flex:1}
+  padding:var(--mw-s-3);text-align:center;font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}
+.tpl-body{padding:0;display:flex;flex-direction:column;gap:var(--mw-s-2);flex:1}
 .tpl-name{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking)}
-.tpl-blurb{font-size:13.5px;color:var(--muted);line-height:1.45;flex:1;margin:0}
+.tpl-blurb{font-size:var(--mw-t-label-size);color:var(--muted);line-height:1.45;flex:1;margin:0}
 .tpl-card form{margin:0}
-.tpl-card .btn-sm{align-self:flex-start;margin-top:4px}
-.tpl-copy{margin-top:36px;padding-top:24px;border-top:1px solid var(--rule)}
-.tpl-copy .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.tpl-card .btn-sm{align-self:flex-start;margin-top:var(--mw-s-1)}
+.tpl-copy{margin-top:calc(var(--mw-s-6) + var(--mw-s-1));padding-top:var(--mw-s-5);border-top:1px solid var(--rule)}
+.tpl-copy .row{display:flex;gap:var(--mw-s-3);align-items:flex-end;flex-wrap:wrap}
 
 /* ---- Wall editor: local header, two modes, canvas + inspector -----------
  * The editor used to be one continuous page: status and pairing, the canvas,
@@ -1777,13 +1777,13 @@ pre.code{background:var(--mw-surface-2);
  * on. It is three contexts now: Layout, the selected widget's inspector, and
  * Wall settings, and only one of them is on screen at a time. */
 /* Room for the sticky save bar, plus the phone's home indicator. */
-.disp-editor{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+.disp-editor{padding-bottom:calc(calc(var(--mw-s-7) + var(--mw-s-7)) + env(safe-area-inset-bottom))}
 
 /* The wall's identity is the app bar's: the crumb links back to Walls and the
  * heading is the wall's name, so the page adds no second header and no second
  * hamburger. What it does add is one row — what you are editing, whether the
  * screen is up, and an overflow for the infrequent and the destructive. */
-.wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:8px;
+.wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:var(--mw-s-2);
   font-size:var(--mw-t-body-size);color:var(--mw-ink-2);min-width:0}
 .wall-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wall-status b{color:var(--mw-ink);font-weight:500}
@@ -1801,12 +1801,12 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-ink-2) var(--mw-wash-hover),transparent);
   color:var(--mw-ink)}
 .ovf-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:min(280px,88vw);
-  padding:8px 0;background:var(--mw-surface);
+  padding:var(--mw-s-2) 0;background:var(--mw-surface);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1)}
 .ovf-menu form{margin:0}
-.ovf-item{position:static;display:flex;width:100%;align-items:center;gap:12px;margin:0;
-  height:48px;padding:0 16px;background:none;border:0;border-radius:0;
+.ovf-item{position:static;display:flex;width:100%;align-items:center;gap:var(--mw-s-3);margin:0;
+  height:48px;padding:0 var(--mw-s-4);background:none;border:0;border-radius:0;
   color:var(--mw-ink);text-decoration:none;text-align:left;
   justify-content:flex-start;
   font-family:var(--sans);
@@ -1819,11 +1819,11 @@ pre.code{background:var(--mw-surface-2);
 .ovf-item.is-danger{color:var(--mw-danger)}
 .ovf-item.is-danger:hover{background:color-mix(in srgb,
   var(--mw-danger) var(--mw-wash-hover),transparent)}
-.ovf-sep{height:1px;margin:8px 0;background:var(--ruleSoft)}
+.ovf-sep{height:1px;margin:var(--mw-s-2) 0;background:var(--ruleSoft)}
 
 /* Layout | Wall settings. Two contexts, one control, and it is the segmented
  * button the rest of the admin already uses. */
-.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 16px}
+.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--mw-s-2) var(--mw-s-3);margin:0 0 var(--mw-s-4)}
 .modeswitch{flex:1 1 260px;max-width:440px;display:flex}
 .modebar .ovf{margin-left:auto}
 .mode[hidden]{display:none}
@@ -1832,24 +1832,24 @@ pre.code{background:var(--mw-surface-2);
 /* Canvas left, the selected widget's inspector right. The inspector is a
  * sheet below 1200px — see the compact block at the foot of this section. */
 .lay-panes{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,.9fr);
-  gap:24px;align-items:start}
+  gap:var(--mw-s-5);align-items:start}
 .lay-canvas{min-width:0}
 /* Said once, here — it used to be repeated under every widget panel. */
-.prev-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
-  flex-wrap:wrap;margin:0 0 12px}
+.prev-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--mw-s-2);
+  flex-wrap:wrap;margin:0 0 var(--mw-s-3)}
 .prev-head b{font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);color:var(--ink)}
-.prev-head small{font-size:12px;color:var(--mw-ink-2)}
+.prev-head small{font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-2)}
 .lay-inspector{position:sticky;top:96px;min-width:0;
   background:var(--panel);border:1px solid var(--rule);
   border-radius:var(--mw-r-3);
   max-height:calc(100vh - 150px);overflow:auto}
-.insp-empty{padding:24px 20px;font-size:var(--mw-t-label-size);
+.insp-empty{padding:var(--mw-s-5) calc(var(--mw-s-4) + var(--mw-s-1));font-size:var(--mw-t-label-size);
   color:var(--mw-ink-2);line-height:1.55}
 .insp-empty[hidden],.insp-head[hidden],.insp-body[hidden]{display:none}
 /* The inspector's own header: which widget this is, and the way out. */
-.insp-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;
-  padding:12px 8px 12px 20px;background:var(--panel);
+.insp-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:var(--mw-s-3);
+  padding:var(--mw-s-3) var(--mw-s-2) var(--mw-s-3) calc(var(--mw-s-4) + var(--mw-s-1));background:var(--panel);
   border-bottom:1px solid var(--ruleSoft)}
 .insp-title{flex:1;min-width:0;
   font:var(--mw-t-h3);
@@ -1863,7 +1863,7 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-ink-2) var(--mw-wash-hover),transparent);
   color:var(--mw-ink)}
 .insp-close svg{width:20px;height:20px}
-.insp-body{padding:4px 20px 20px}
+.insp-body{padding:var(--mw-s-1) calc(var(--mw-s-4) + var(--mw-s-1)) calc(var(--mw-s-4) + var(--mw-s-1))}
 /* The two lanes: the wall's settings, and what the widget says on ink.
  *
  * Above the tabs rather than beside them, because it does not choose a tab —
@@ -1874,9 +1874,9 @@ pre.code{background:var(--mw-surface-2);
  * admin-button-states.test.ts, which derives that requirement from this
  * stylesheet rather than from a list somebody remembers to update. */
 .insp-lanes[hidden]{display:none}
-.insp-lanes{display:flex;gap:8px;margin:8px 0 12px}
-.insp-lane{position:relative;margin:0;height:36px;padding:0 16px;background:none;border:0;
-  border-radius:18px;color:var(--mw-ink-2);cursor:pointer;
+.insp-lanes{display:flex;gap:var(--mw-s-2);margin:var(--mw-s-2) 0 var(--mw-s-3)}
+.insp-lane{position:relative;margin:0;height:36px;padding:0 var(--mw-s-4);background:none;border:0;
+  border-radius:calc(var(--mw-r-2) * 3 + var(--mw-r-3));color:var(--mw-ink-2);cursor:pointer;
   font-family:var(--sans);
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
@@ -1891,24 +1891,24 @@ pre.code{background:var(--mw-surface-2);
 /* A widget that says something different on ink says so on the chip, so the
  * lane can be read without opening it. */
 .insp-lane.has-override::before{content:"";position:absolute;top:8px;right:7px;width:6px;
-  height:6px;border-radius:50%;background:var(--mw-accent)}
-.insp-ink-head{margin:0 0 8px}
+  height:6px;border-radius:var(--mw-r-full);background:var(--mw-accent)}
+.insp-ink-head{margin:0 0 var(--mw-s-2)}
 /* The real frame the panel would draw, from the server. A white plate on both
  * schemes, on the same argument as the QR and the e-paper preview: a physically
  * white medium drawn honestly. */
-.insp-ink-frame{display:block;width:100%;height:auto;margin:0 0 12px;background:#fff;
-  border:1px solid var(--mw-line);border-radius:8px;
+.insp-ink-frame{display:block;width:100%;height:auto;margin:0 0 var(--mw-s-3);background:#fff;
+  border:1px solid var(--mw-line);border-radius:var(--mw-r-4);
   image-rendering:pixelated}
-.insp-ink-note{margin:16px 0 4px}
-.insp-ink-list{margin:0 0 4px;padding-left:20px;
+.insp-ink-note{margin:var(--mw-s-4) 0 var(--mw-s-1)}
+.insp-ink-list{margin:0 0 var(--mw-s-1);padding-left:calc(var(--mw-s-4) + var(--mw-s-1));
   color:var(--mw-ink-2);
   font-size:var(--mw-t-body-size);line-height:1.45}
-.insp-ink-reset{margin-top:12px;width:100%}
+.insp-ink-reset{margin-top:var(--mw-s-3);width:100%}
 /* Content | Style, inside the inspector. Only drawn when both apply. */
 .insp-tabs[hidden]{display:none}
 .insp-tabs{display:flex;gap:0;border-bottom:1px solid var(--mw-line);
-  margin:0 0 8px}
-.insp-tab{position:relative;margin:0;height:44px;padding:0 16px;background:none;border:0;
+  margin:0 0 var(--mw-s-2)}
+.insp-tab{position:relative;margin:0;height:44px;padding:0 var(--mw-s-4);background:none;border:0;
   border-radius:0;color:var(--mw-ink-2);cursor:pointer;
   font-family:var(--sans);
   font-size:var(--mw-t-label-size);
@@ -1918,16 +1918,16 @@ pre.code{background:var(--mw-surface-2);
 .insp-tab:hover{color:var(--mw-ink)}
 .insp-tab.is-on{color:var(--mw-accent)}
 .insp-tab.is-on::before{content:"";position:absolute;left:8px;right:8px;bottom:0;height:3px;
-  border-radius:3px 3px 0 0;background:var(--mw-accent)}
+  border-radius:calc(var(--mw-r-1) + var(--mw-hairline)) calc(var(--mw-r-1) + var(--mw-hairline)) 0 0;background:var(--mw-accent)}
 /* Duplicate: the cheapest thing on this panel, so it sits above the rule and
  * not inside the danger row — "Reset layout" beside "Add widget" is the
  * mistake this avoids, one panel along. */
 .insp-actions[hidden]{display:none}
-.insp-actions{margin-top:16px}
+.insp-actions{margin-top:var(--mw-s-4)}
 .insp-actions .le-add{width:100%;justify-content:center}
 /* Removing the selected widget lives with the widget, not in the toolbar —
  * a disabled "Remove selected" beside the everyday tools said nothing. */
-.insp-danger{margin-top:20px;padding-top:16px;border-top:1px solid var(--ruleSoft)}
+.insp-danger{margin-top:calc(var(--mw-s-4) + var(--mw-s-1));padding-top:var(--mw-s-4);border-top:1px solid var(--ruleSoft)}
 .insp-remove{margin:0;width:100%;height:44px;background:transparent;
   color:var(--mw-danger);border:1px solid var(--mw-ink-3)}
 .insp-remove:hover{background:color-mix(in srgb,
@@ -1937,11 +1937,11 @@ pre.code{background:var(--mw-surface-2);
 /* Categories, not one long form. A rail beside the panel on a wide screen; a
  * list that opens one focused screen on a phone. */
 .wset{display:grid;grid-template-columns:minmax(230px,290px) minmax(0,1fr);
-  gap:28px;align-items:start}
-.wset-nav{display:flex;flex-direction:column;gap:4px;position:sticky;top:96px}
+  gap:calc(var(--mw-s-5) + var(--mw-s-1));align-items:start}
+.wset-nav{display:flex;flex-direction:column;gap:var(--mw-s-1);position:sticky;top:96px}
 .wset-nav[hidden]{display:none}
-.wset-navrow{position:relative;display:flex;align-items:center;gap:12px;width:100%;
-  min-height:56px;margin:0;padding:8px 16px;background:none;border:0;
+.wset-navrow{position:relative;display:flex;align-items:center;gap:var(--mw-s-3);width:100%;
+  min-height:56px;margin:0;padding:var(--mw-s-2) var(--mw-s-4);background:none;border:0;
   border-radius:var(--mw-r-2);color:var(--ink);cursor:pointer;
   text-align:left;justify-content:flex-start}
 .wset-navrow::after{content:none}
@@ -1951,7 +1951,7 @@ pre.code{background:var(--mw-surface-2);
   font-size:var(--mw-t-label-size);
   font-weight:var(--mw-t-label-weight);
   letter-spacing:var(--mw-t-label-tracking)}
-.wset-navrow small{display:block;font-size:12px;line-height:1.4;
+.wset-navrow small{display:block;font-size:var(--mw-t-label-sm-size);line-height:1.4;
   color:var(--mw-ink-2);font-weight:400;letter-spacing:0}
 .wset-navrow:hover{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
@@ -1962,15 +1962,15 @@ pre.code{background:var(--mw-surface-2);
 .wset-navrow .rowchev svg{width:20px;height:20px}
 .wset-panels{min-width:0;max-width:720px}
 .wset-panel[hidden]{display:none}
-.wset-panel>h3{margin:0 0 4px;
+.wset-panel>h3{margin:0 0 var(--mw-s-1);
   font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking)}
 .wset-panel>form{margin:0}
 .wset-back{display:none}
-.wset-lead{margin:0 0 16px;font-size:var(--mw-t-label-size);line-height:1.55;color:var(--muted)}
-.wset-group{position:relative;margin:24px 0 0}
-.wset-group:first-of-type{margin-top:16px}
-.wset-group>.kick{margin:0 0 8px}
+.wset-lead{margin:0 0 var(--mw-s-4);font-size:var(--mw-t-label-size);line-height:1.55;color:var(--muted)}
+.wset-group{position:relative;margin:var(--mw-s-5) 0 0}
+.wset-group:first-of-type{margin-top:var(--mw-s-4)}
+.wset-group>.kick{margin:0 0 var(--mw-s-2)}
 
 /* ---- Compact settings rows ---------------------------------------------- */
 /* A grouped surface of rows, with dividers rather than a box round each one. */
@@ -1978,62 +1978,62 @@ pre.code{background:var(--mw-surface-2);
   border:1px solid var(--rule);border-radius:var(--mw-r-3)}
 .rows>*+*{border-top:1px solid var(--ruleSoft)}
 .rows>.field,.rows>.field-hint{border-top:0}
-.rows .switch{margin:0;padding:8px 16px;min-height:56px}
-.rows .field{margin:16px 16px}
-.rows .field-hint{margin:-4px 16px 12px}
-.rows>.rowsub{padding:0 16px 12px}
-.rows>.rowsub>.field{margin:8px 0 0}
-.rows>.rowsub>.field-hint{margin:4px 0 0}
+.rows .switch{margin:0;padding:var(--mw-s-2) var(--mw-s-4);min-height:56px}
+.rows .field{margin:var(--mw-s-4) var(--mw-s-4)}
+.rows .field-hint{margin:calc(-1 * var(--mw-s-1)) var(--mw-s-4) var(--mw-s-3)}
+.rows>.rowsub{padding:0 var(--mw-s-4) var(--mw-s-3)}
+.rows>.rowsub>.field{margin:var(--mw-s-2) 0 0}
+.rows>.rowsub>.field-hint{margin:var(--mw-s-1) 0 0}
 .rows>.rowsub[hidden]{display:none}
-.srow{display:flex;align-items:center;gap:12px;min-height:56px;margin:0;padding:8px 16px;
+.srow{display:flex;align-items:center;gap:var(--mw-s-3);min-height:56px;margin:0;padding:var(--mw-s-2) var(--mw-s-4);
   cursor:pointer;text-transform:none;letter-spacing:normal}
 .srow:hover{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .srow-text{flex:1;min-width:0}
 .srow-text b{display:block;font-weight:500;font-size:var(--mw-t-body-size);line-height:1.35;
   color:var(--mw-ink)}
-.srow-text small{display:block;font-size:12px;line-height:1.4;
+.srow-text small{display:block;font-size:var(--mw-t-label-sm-size);line-height:1.4;
   color:var(--mw-ink-2)}
-.srow-value{display:flex;align-items:center;gap:4px;min-width:0;max-width:56%}
+.srow-value{display:flex;align-items:center;gap:var(--mw-s-1);min-width:0;max-width:56%}
 /* A native select wearing the row: no box, the value right-aligned beside the
  * chevron. It keeps its name, its options and its platform picker. */
 /* 16px, not 14: below 16px iOS Safari zooms the page when a form control takes
  * focus, and a settings screen that jumps on every tap is its own bug. */
 .srow-select{width:auto;max-width:100%;margin:0;padding:0;border:0;background:transparent;
-  color:var(--mw-ink-2);font-family:inherit;font-size:16px;
+  color:var(--mw-ink-2);font-family:inherit;font-size:var(--mw-t-body-lg-size);
   text-align:right;text-align-last:right;text-overflow:ellipsis;cursor:pointer;
   appearance:none;-webkit-appearance:none}
 .srow-chev{display:inline-flex;flex:0 0 auto;color:var(--mw-ink-muted)}
 .srow-chev svg{width:18px;height:18px}
 /* A row that opens something rather than choosing a value (Advanced actions). */
-.arow{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;margin:0;
-  padding:8px 16px;background:none;border:0;border-radius:0;color:var(--ink);
+.arow{display:flex;align-items:center;gap:var(--mw-s-3);width:100%;min-height:56px;margin:0;
+  padding:var(--mw-s-2) var(--mw-s-4);background:none;border:0;border-radius:0;color:var(--ink);
   text-align:left;justify-content:flex-start;cursor:pointer;text-decoration:none;
-  font-family:inherit;font-size:14px;font-weight:500;letter-spacing:normal}
+  font-family:inherit;font-size:var(--mw-t-h4-size);font-weight:500;letter-spacing:normal}
 .arow::after{content:none}
 .arow:hover{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
-.arow small{display:block;font-size:12px;line-height:1.4;font-weight:400;
+.arow small{display:block;font-size:var(--mw-t-label-sm-size);line-height:1.4;font-weight:400;
   color:var(--mw-ink-2)}
 .arow.is-danger{color:var(--mw-danger)}
 .arow.is-danger small{color:var(--mw-danger);opacity:.8}
 .arow-text{flex:1;min-width:0}
 .rows form{margin:0}
 /* A read-only fact (the pairing id), not a control. */
-.frow{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  min-height:52px;padding:8px 16px;font-size:14px;color:var(--ink)}
-.frow code{font-family:var(--mono);font-size:12.5px;
+.frow{display:flex;align-items:center;justify-content:space-between;gap:var(--mw-s-3);
+  min-height:52px;padding:var(--mw-s-2) var(--mw-s-4);font-size:var(--mw-t-h4-size);color:var(--ink)}
+.frow code{font-family:var(--mono);font-size:var(--mw-t-body-sm-size);
   color:var(--mw-ink-2)}
 
 /* ---- Tabs (kept for the widget inspector's Content/Style pair) ----------- */
 .tabpanel[hidden]{display:none}
 .tabpanel>form{margin:0}
-.two-up{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.two-up{display:grid;grid-template-columns:1fr 1fr;gap:var(--mw-s-4)}
 /* A single-line hint replaces the old multi-line grey prose. On the
  * on-surface-variant role rather than the faint token: measured, faint came
  * out at 3.87:1 on a card in the light scheme, which is under AA for text. */
 .hint-1{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);
-  margin:.5rem 0 0;line-height:1.5}
+  margin:var(--mw-s-2) 0 0;line-height:1.5}
 /* The "?" help affordance and its popover, in place of a prose paragraph.
  * (It rides a .field-with-help wrapper now — see the field rules.) */
 /* A small icon button; the visual stays 20px, the target is 48px. */
@@ -2049,14 +2049,14 @@ pre.code{background:var(--mw-surface-2);
 .fieldhelp svg{width:16px;height:16px}
 /* A menu surface, like the layers popover. */
 .helppop{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:min(320px,80vw);
-  padding:12px 16px;background:var(--mw-surface);
+  padding:var(--mw-s-3) var(--mw-s-4);background:var(--mw-surface);
   border-radius:var(--mw-r-1);
   box-shadow:var(--mw-shadow-1);
   font-size:var(--mw-t-body-size);line-height:1.5;
   color:var(--mw-ink-2);
   text-transform:none;font-weight:400;letter-spacing:0}
 .helppop[hidden]{display:none}
-.helppop p{margin:0.25rem 0}
+.helppop p{margin:var(--mw-s-1) 0}
 .helppop p:first-child{margin-top:0}
 
 /* ---- The one sticky save bar -------------------------------------------- */
@@ -2064,8 +2064,8 @@ pre.code{background:var(--mw-surface-2);
  * is a token because the widget sheet has to sit exactly on top of it. */
 :root{--savebar-h:64px}
 .savebar{position:fixed;left:264px;right:0;bottom:0;z-index:40;display:flex;align-items:center;
-  justify-content:flex-end;gap:16px;padding:12px 28px;
-  padding-bottom:calc(12px + env(safe-area-inset-bottom));
+  justify-content:flex-end;gap:var(--mw-s-4);padding:var(--mw-s-3) calc(var(--mw-s-5) + var(--mw-s-1));
+  padding-bottom:calc(var(--mw-s-3) + env(safe-area-inset-bottom));
   background:var(--mw-surface)}
 .savebar-flag{margin-right:auto;
   font:var(--mw-t-label);
@@ -2113,7 +2113,7 @@ pre.code{background:var(--mw-surface-2);
   .le-box-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   /* A long value takes the line under its label rather than being clipped to
    * the half that says nothing. */
-  .srow.is-wide{flex-wrap:wrap;align-items:flex-start;padding-top:12px;padding-bottom:12px}
+  .srow.is-wide{flex-wrap:wrap;align-items:flex-start;padding-top:var(--mw-s-3);padding-bottom:var(--mw-s-3)}
   .srow.is-wide .srow-value{max-width:100%;width:100%;justify-content:space-between}
   .srow.is-wide .srow-select{flex:1;text-align:left;text-align-last:left}
 }
@@ -2126,16 +2126,14 @@ pre.code{background:var(--mw-surface-2);
     border:1px solid var(--rule);border-radius:var(--mw-r-3)}
   .wset-navrow{border-radius:0}
   .wset-navrow+.wset-navrow{border-top:1px solid var(--ruleSoft)}
-  .wset-navrow:first-child{border-radius:var(--mw-r-3)
-    var(--mw-r-3) 0 0}
-  .wset-navrow:last-child{border-radius:0 0 var(--mw-r-3)
-    var(--mw-r-3)}
+  .wset-navrow:first-child{border-radius:var(--mw-r-3) var(--mw-r-3) 0 0}
+  .wset-navrow:last-child{border-radius:0 0 var(--mw-r-3) var(--mw-r-3)}
   .wset-navrow .rowchev{display:inline-flex}
   /* One screen at a time: the list, or the category you opened. */
   .wset:not(.is-drilled) .wset-panels{display:none}
   .wset.is-drilled .wset-nav{display:none}
-  .wset-back{display:inline-flex;align-items:center;gap:8px;height:44px;margin:0 0 4px;
-    padding:0 12px 0 8px;background:none;border:0;border-radius:var(--mw-r-2);
+  .wset-back{display:inline-flex;align-items:center;gap:var(--mw-s-2);height:44px;margin:0 0 var(--mw-s-1);
+    padding:0 var(--mw-s-3) 0 var(--mw-s-2);background:none;border:0;border-radius:var(--mw-r-2);
     color:var(--mw-accent);cursor:pointer;
     font-family:var(--sans);
     font-size:var(--mw-t-label-size);
@@ -2165,7 +2163,7 @@ pre.code{background:var(--mw-surface-2);
   .insp-empty{display:none}
 }
 @media(max-width:900px){
-  .savebar{left:0;padding:12px 20px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  .savebar{left:0;padding:var(--mw-s-3) calc(var(--mw-s-4) + var(--mw-s-1));padding-bottom:calc(var(--mw-s-3) + env(safe-area-inset-bottom))}
 }
 
 /* ---- Touch targets below 900px (RFC 009 Phase 7) --------------------------
@@ -2332,7 +2330,7 @@ ${COMPONENT_STYLE}
    * pointer-target pseudo outside it is untouched. */
   .ripple-host{position:absolute;inset:0;border-radius:inherit;overflow:hidden;
     pointer-events:none}
-  .ripple{position:absolute;border-radius:50%;background:currentColor;
+  .ripple{position:absolute;border-radius:var(--mw-r-full);background:currentColor;
     opacity:0;transform:scale(0);
     animation:mw-ripple var(--mw-dur-2) var(--mw-ease) forwards}
   @keyframes mw-ripple{

@@ -1,5 +1,6 @@
 import type { Context, Hono } from 'hono';
 import { confirmDestroyPage, escapeHtml, errorBlock, page, textField } from './html.js';
+import { card, destructive, listRow, section, tag } from './components.js';
 import {
   createShiftType,
   deleteShiftType,
@@ -158,44 +159,66 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
     return savedRedirect(c, '/admin/shifts/types', 'order-saved');
   });
 
+  /**
+   * A type is a `card`: a name, its reorder and remove controls, and the
+   * always-open form that renames and recolours it.
+   *
+   * The identifying line is a `listRow` rather than the `<h2>` it used to be —
+   * the swatch as its lead, the name as its title, and everything that acts on
+   * *this type* (its off-state, reorder, remove) in the trail, which is what a
+   * trail is for. `isWorking === false` used to be two words appended to the
+   * name ("Swing · off"), the exact shape the calendars screen already fixed
+   * for "(off)": a state folded into the string it describes reads as part of
+   * the name on a quick scan. It is a `tag` now, in the trail beside the
+   * controls rather than a fill, because "off" here is an ordinary
+   * configuration — a rest day or a time-off type is meant to say so — and not
+   * a fault the way a calendar failing to sync is.
+   */
   function typeCard(type: ShiftTypeRow, first: boolean, last: boolean): string {
     const id = encodeURIComponent(type.id);
     const swatch = type.color ?? SLOT_HEX[type.colorToken] ?? '#6b7684';
     const matching = type.color === undefined;
-    return (
-      `<article class="card">` +
-      `<h2><span class="swatch" style="--swatch:${escapeHtml(swatch)}"></span>` +
-      `${escapeHtml(type.label)}${type.isWorking ? '' : ' · off'}</h2>` +
-      `<form method="post" action="admin/shifts/types/${id}">` +
-      `<div class="row-fields">` +
-      textField({ label: 'Name', name: 'label', required: true, value: type.label, attrs: 'maxlength="40"' }) +
-      textField({ label: 'Short code', name: 'short_code', required: true, value: type.shortCode, attrs: 'maxlength="3"' }) +
-      textField({ label: 'Colour', name: 'color', type: 'color', value: swatch }) +
-      `</div>` +
-      `<div class="row-fields">` +
-      textField({ label: 'Starts (optional)', name: 'start_time', type: 'time', value: type.startTime ?? '' }) +
-      textField({ label: 'Ends (optional)', name: 'end_time', type: 'time', value: type.endTime ?? '' }) +
-      `</div>` +
-      `<div class="checks">` +
-      `<label><input type="checkbox" name="is_working" value="1"${type.isWorking ? ' checked' : ''}> This is a working shift</label>` +
-      `<label><input type="checkbox" name="match_theme" value="1"${matching ? ' checked' : ''}> Match the theme’s shift colour instead</label>` +
-      `</div>` +
-      `<p class="hint">The short code is what the compact month cells show. “Match ` +
-      `the theme” follows the theme’s shift colour, so a custom theme re-colours ` +
-      `it; otherwise the colour above is used.</p>` +
-      `<button type="submit">Save</button></form>` +
-      `<div class="row">` +
-      (first
-        ? ''
-        : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="up">` +
-          `<button class="secondary" type="submit">↑ Up</button></form>`) +
-      (last
-        ? ''
-        : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="down">` +
-          `<button class="secondary" type="submit">↓ Down</button></form>`) +
-      `<form method="get" action="admin/shifts/types/${id}/delete">` +
-      `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
-      `</div></article>`
+    return card(
+      listRow(
+        `<span class="swatch" style="--swatch:${escapeHtml(swatch)}"></span>`,
+        { title: type.label },
+        (type.isWorking ? '' : tag('Off')) +
+          (first
+            ? ''
+            : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="up">` +
+              `<button class="secondary" type="submit">↑ Up</button></form>`) +
+          (last
+            ? ''
+            : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="down">` +
+              `<button class="secondary" type="submit">↓ Down</button></form>`) +
+          // A GET to a confirmation page, exactly the shape `destructive`
+          // assumes: `/admin/shifts/types/:id/delete` already answers with
+          // `confirmDestroyPage` below. `variant: 'button'` because this row
+          // has no overflow menu to hold it.
+          destructive('Remove', {
+            thing: type.label,
+            confirmAction: `admin/shifts/types/${id}/delete`,
+            variant: 'button',
+          }),
+      ) +
+        `<form method="post" action="admin/shifts/types/${id}">` +
+        `<div class="row-fields">` +
+        textField({ label: 'Name', name: 'label', required: true, value: type.label, attrs: 'maxlength="40"' }) +
+        textField({ label: 'Short code', name: 'short_code', required: true, value: type.shortCode, attrs: 'maxlength="3"' }) +
+        textField({ label: 'Colour', name: 'color', type: 'color', value: swatch }) +
+        `</div>` +
+        `<div class="row-fields">` +
+        textField({ label: 'Starts (optional)', name: 'start_time', type: 'time', value: type.startTime ?? '' }) +
+        textField({ label: 'Ends (optional)', name: 'end_time', type: 'time', value: type.endTime ?? '' }) +
+        `</div>` +
+        `<div class="checks">` +
+        `<label><input type="checkbox" name="is_working" value="1"${type.isWorking ? ' checked' : ''}> This is a working shift</label>` +
+        `<label><input type="checkbox" name="match_theme" value="1"${matching ? ' checked' : ''}> Match the theme’s shift colour instead</label>` +
+        `</div>` +
+        `<p class="hint">The short code is what the compact month cells show. “Match ` +
+        `the theme” follows the theme’s shift colour, so a custom theme re-colours ` +
+        `it; otherwise the colour above is used.</p>` +
+        `<button type="submit">Save</button></form>`,
     );
   }
 
@@ -217,35 +240,53 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
         (error === undefined ? '' : errorBlock(error)) +
         types.map((type, i) => typeCard(type, i === 0, i === types.length - 1)).join('') +
 
-        `<h2 class="add" id="add">Add a shift type</h2>` +
-        `<form method="post" action="admin/shifts/types">` +
-        `<div class="row-fields">` +
-        textField({ label: 'Name', name: 'label', required: true, placeholder: 'Swing', attrs: 'maxlength="40"' }) +
-        textField({ label: 'Short code', name: 'short_code', required: true, placeholder: 'Sw', attrs: 'maxlength="3"' }) +
-        textField({ label: 'Colour', name: 'color', type: 'color', value: '#6b7684' }) +
-        `</div>` +
-        `<div class="row-fields">` +
-        textField({ label: 'Starts (optional)', name: 'start_time', type: 'time' }) +
-        textField({ label: 'Ends (optional)', name: 'end_time', type: 'time' }) +
-        `</div>` +
-        `<p class="hint">A window like 07:00–19:00 shows on the wall. Leave blank for ` +
-        `a shift with no set time.</p>` +
-        `<div class="checks"><label><input type="checkbox" name="is_working" value="1" checked> ` +
-        `This is a working shift</label></div>` +
-        `<button type="submit">Add</button></form>` +
+        section(
+          'Add a shift type',
+          undefined,
+          `<form method="post" action="admin/shifts/types">` +
+            `<div class="row-fields">` +
+            textField({ label: 'Name', name: 'label', required: true, placeholder: 'Swing', attrs: 'maxlength="40"' }) +
+            textField({ label: 'Short code', name: 'short_code', required: true, placeholder: 'Sw', attrs: 'maxlength="3"' }) +
+            textField({ label: 'Colour', name: 'color', type: 'color', value: '#6b7684' }) +
+            `</div>` +
+            `<div class="row-fields">` +
+            textField({ label: 'Starts (optional)', name: 'start_time', type: 'time' }) +
+            textField({ label: 'Ends (optional)', name: 'end_time', type: 'time' }) +
+            `</div>` +
+            `<p class="hint">A window like 07:00–19:00 shows on the wall. Leave blank for ` +
+            `a shift with no set time.</p>` +
+            `<div class="checks"><label><input type="checkbox" name="is_working" value="1" checked> ` +
+            `This is a working shift</label></div>` +
+            `<button type="submit">Add</button></form>`,
+          // The original heading carried `id="add"`; `section`'s own `id`
+          // lands on the whole run rather than the heading, so anything that
+          // already links to `admin/shifts/types#add` still resolves.
+          'add',
+        ) +
 
-        `<h2 class="add">Add a common type</h2>` +
-        `<p class="hint">One-click time-off and on-call types you can then use in a rotation.</p>` +
-        `<div class="row">` +
-        Object.entries(PRESETS)
-          .map(
-            ([key, p]) =>
-              `<form method="post" action="admin/shifts/types/preset">` +
-              `<input type="hidden" name="preset" value="${key}">` +
-              `<button class="secondary" type="submit">Add ${escapeHtml(p.label)}</button></form>`,
-          )
-          .join('') +
-        `</div>`,
+        /*
+         * One row per preset rather than a row of same-weight buttons — the
+         * shape `listRow` was already built for at the Home Assistant
+         * calendar offer: a name, and the one action that adds it. The button
+         * itself says only "Add", because the row's own title already says
+         * which; the full sentence survives as the accessible name, the same
+         * trade `destructive` makes the other way round.
+         */
+        section(
+          'Add a common type',
+          'One-click time-off and on-call types you can then use in a rotation.',
+          Object.entries(PRESETS)
+            .map(([key, p]) =>
+              listRow(
+                '',
+                { title: p.label },
+                `<form method="post" action="admin/shifts/types/preset">` +
+                  `<input type="hidden" name="preset" value="${key}">` +
+                  `<button class="secondary" type="submit" aria-label="Add ${escapeHtml(p.label)}">Add</button></form>`,
+              ),
+            )
+            .join(''),
+        ),
     });
   }
 }

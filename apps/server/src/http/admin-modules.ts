@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { glyphSvg } from '../glyphs.js';
 import { FETCH_LIMITS } from '@maverick-wall/core';
 import { confirmDestroyPage, errorBlock, escapeHtml, page, textField, textareaField } from './html.js';
+import { card, destructive, section, tag } from './components.js';
 import { ago, navModules } from './admin.js';
 import type { AdminDeps } from './admin.js';
 import {
@@ -319,8 +320,14 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     }
   }
 
-  function card(module: ExternalModuleRow): string {
+  function moduleCard(module: ExternalModuleRow): string {
     const at = now();
+    // Left as hand-built HTML: a status tag carrying a colour dot ahead of its
+    // word, which is the one shape `tag()` deliberately does not offer — its own
+    // doc comment bans a glyph beside the word that already says it. The rest of
+    // the admin still draws this exact dot-plus-tag pairing on every screen
+    // phase 10A did not touch, so leaving it here matches what is actually
+    // shipped rather than inventing a look this component layer never adopted.
     const health =
       module.lastPolledAt === 0
         ? `<span class="tag"><span class="dot dot-idle"></span>Not checked yet</span>`
@@ -329,19 +336,39 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           : `<span class="tag tag-ok"><span class="dot dot-ok"></span>Working · updated ${escapeHtml(ago(module.lastPolledAt, at))}</span>`;
     const action = `admin/modules/${encodeURIComponent(module.id)}`;
     return (
-      // The id is the anchor the sidebar's per-module nav entries link to.
-      `<article class="card" id="mod-${escapeHtml(module.id)}">` +
-      `<div style="display:flex;align-items:center;gap:12px">` +
-      `<div style="flex:1;min-width:0"><div class="rname" style="font-size:16px">` +
-      `${escapeHtml(module.name)}${module.enabled === 1 ? '' : ' (off)'}</div>` +
-      `<div class="host">${escapeHtml(module.url)}</div></div>${health}</div>` +
-      alertsControl(module, action) +
-      `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
-      `<form method="post" action="${action}/toggle">` +
-      `<button class="secondary" type="submit">${module.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
-      `<form method="get" action="${action}/remove">` +
-      `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
-      `</div></article>`
+      // The id is the anchor the sidebar's per-module nav entries link to
+      // (`admin/modules#mod-<id>` in html.ts's navBar) — card() has nowhere to
+      // carry it, so the id lives on a thin wrapper around the component instead
+      // of being dropped.
+      `<div id="mod-${escapeHtml(module.id)}">` +
+      card(
+        `<div style="display:flex;align-items:center;gap:12px">` +
+          `<div style="flex:1;min-width:0"><div class="rname" style="font-size:16px">` +
+          // "(off)" used to be appended straight onto the name — the same
+          // anti-pattern the calendar card had, and the same fix: its own tag,
+          // its own ground, still a word a colour-blind reader or a monochrome
+          // screenshot both get right.
+          `${escapeHtml(module.name)}</div>` +
+          (module.enabled === 1 ? '' : tag('Off', 'warn')) +
+          `<div class="host">${escapeHtml(module.url)}</div></div>${health}</div>` +
+          alertsControl(module, action) +
+          `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
+          `<form method="post" action="${action}/toggle">` +
+          `<button class="secondary" type="submit">${module.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
+          // A standalone button, not the overflow menu variant — this card has no
+          // ⋮ to put it in, which is exactly what destructive()'s `button` variant
+          // is for. The wrapping div carries the margin-left:auto that used to sit
+          // on the button itself, to keep it pinned to the row's trailing edge.
+          `<div style="margin-left:auto">` +
+          destructive('Remove', {
+            thing: module.name,
+            confirmAction: `${action}/remove`,
+            variant: 'button',
+          }) +
+          `</div>` +
+          `</div>`,
+      ) +
+      `</div>`
     );
   }
 
@@ -404,9 +431,10 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         'shows what a module supplies; it never runs anything a module sends.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        (modules.length === 0 ? '' : `<h2 class="add">Installed</h2>${modules.map(card).join('')}`) +
-        `<h2 class="add">Store</h2>` +
-        CATALOG.modules.map(catalogCard).join('') +
+        (modules.length === 0
+          ? ''
+          : section('Installed', undefined, modules.map(moduleCard).join(''))) +
+        section('Store', undefined, CATALOG.modules.map(catalogCard).join('')) +
         `<p class="hint" style="margin-top:18px">This store ships with Maverick Wall ` +
         `and grows by contribution — anyone can add a module with a pull request ` +
         `(see <span class="code">docs/adding-to-the-store.md</span>). To run a module ` +
@@ -419,17 +447,19 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   function advancedPage(c: Context, error?: string, prefill?: ServiceEntry): string {
     const urlValue = prefill?.install.url ?? '';
     const nameValue = prefill?.name ?? '';
+    // A hairline-bordered note is exactly what card() already draws — a region
+    // of the page with an edge, never a shadow — so the hand-rolled box this
+    // used to be is the component rather than a look beside it.
     const prefillHint =
       prefill === undefined
         ? ''
-        : `<div style="margin:0 0 14px;padding:12px 14px;border:1px solid var(--ruleSoft);` +
-          `border-radius:8px;background:var(--panel)"><strong>${escapeHtml(prefill.name)}</strong> — ` +
-          `${escapeHtml(prefill.install.hint)}` +
-          (prefill.install.source === undefined
-            ? ''
-            : ` <a class="link" href="${escapeHtml(prefill.install.source)}" ` +
-              `rel="noreferrer noopener">Where to get it</a>`) +
-          `</div>`;
+        : card(
+            `<strong>${escapeHtml(prefill.name)}</strong> — ${escapeHtml(prefill.install.hint)}` +
+              (prefill.install.source === undefined
+                ? ''
+                : ` <a class="link" href="${escapeHtml(prefill.install.source)}" ` +
+                  `rel="noreferrer noopener">Where to get it</a>`),
+          );
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
@@ -442,38 +472,48 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         'module that runs as its own service on your network.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<article class="card"><div class="rname" style="font-size:16px">Build a recipe</div>` +
-        `<p style="margin:8px 0 0">A recipe is data, never code — it names a public web ` +
-        `feed and how to draw it, and Maverick Wall does the fetching. Write one to try, ` +
-        `or to contribute to the store.</p>` +
-        `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
-        `<a class="btn" href="admin/modules/recipe">Open the recipe builder</a></div></article>` +
-        `<h2 class="add" id="add">Add a module by URL</h2>` +
-        prefillHint +
-        `<form method="post" action="admin/modules">` +
-        textField({
-          label: 'Module address',
-          name: 'url',
-          required: true,
-          value: urlValue,
-          placeholder: 'http://192.168.1.10:9000',
-          hint:
-            'The address of a module you run yourself as its own service. ' +
-            'Maverick Wall reads its /panel on a few-minute cycle and draws what ' +
-            'it returns — a small set of shapes, never a web page.',
-          ...(prefill === undefined ? {} : { attrs: 'autofocus' }),
-        }) +
-        textField({
-          label: 'Call it (optional)',
-          name: 'name',
-          value: nameValue,
-          placeholder: 'Leave empty to use the module’s own name',
-          attrs: 'maxlength="60"',
-        }) +
-        `<button type="submit">Add module</button></form>` +
-        `<p class="hint">Only add a module you trust and run yourself. It never ` +
-        `receives your calendars or your Home Assistant token; it only supplies ` +
-        `values for the wall to show.</p>`,
+        card(
+          `<div class="rname" style="font-size:16px">Build a recipe</div>` +
+            `<p style="margin:8px 0 0">A recipe is data, never code — it names a public web ` +
+            `feed and how to draw it, and Maverick Wall does the fetching. Write one to try, ` +
+            `or to contribute to the store.</p>` +
+            `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
+            `<a class="btn" href="admin/modules/recipe">Open the recipe builder</a></div>`,
+        ) +
+        section(
+          'Add a module by URL',
+          undefined,
+          prefillHint +
+            `<form method="post" action="admin/modules">` +
+            textField({
+              label: 'Module address',
+              name: 'url',
+              required: true,
+              value: urlValue,
+              placeholder: 'http://192.168.1.10:9000',
+              hint:
+                'The address of a module you run yourself as its own service. ' +
+                'Maverick Wall reads its /panel on a few-minute cycle and draws what ' +
+                'it returns — a small set of shapes, never a web page.',
+              ...(prefill === undefined ? {} : { attrs: 'autofocus' }),
+            }) +
+            textField({
+              label: 'Call it (optional)',
+              name: 'name',
+              value: nameValue,
+              placeholder: 'Leave empty to use the module’s own name',
+              attrs: 'maxlength="60"',
+            }) +
+            `<button type="submit">Add module</button></form>` +
+            `<p class="hint">Only add a module you trust and run yourself. It never ` +
+            `receives your calendars or your Home Assistant token; it only supplies ` +
+            `values for the wall to show.</p>`,
+          // The id is what `catalogCard`'s service Install link points at
+          // (`admin/modules/advanced?install=<id>#add`) — on the section rather
+          // than the heading, per section()'s own doc comment, so the anchor
+          // lands on the whole run rather than one line of it.
+          'add',
+        ),
     });
   }
 
@@ -573,29 +613,32 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
             .map((line, i) => (i === 0 ? `<b>${escapeHtml(line)}</b>` : `<i>${escapeHtml(line)}</i>`))
             .join('') +
           `</div>`;
-    return (
-      `<article class="card">` +
+    return card(
       `<div style="display:flex;align-items:flex-start;gap:12px">` +
-      `<div class="cglyph">${glyphSvg(entry.glyph, 'gl')}</div>` +
-      preview +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
-      `<div class="sub">by ${escapeHtml(entry.author)}</div>` +
-      `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div>` +
-      `<span class="tag" style="align-self:flex-start">${entry.kind === 'recipe' ? 'Recipe' : 'Service'}</span>` +
-      `</div>` +
-      `<div class="row" style="margin-top:14px;padding-top:14px;` +
-      `border-top:1px solid var(--ruleSoft)">` +
-      // A recipe installs in a click and a couple of fields; a service (which you
-      // run yourself) hands off to the Advanced add-by-URL form, pre-filled.
-      (entry.kind === 'recipe'
-        ? `<a class="btn" href="admin/modules/install/${encodeURIComponent(entry.id)}">Install</a>`
-        : `<a class="btn" href="admin/modules/advanced?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
-          (entry.install.source === undefined
-            ? ''
-            : `<a class="link" style="margin-left:auto;align-self:center" ` +
-              `href="${escapeHtml(entry.install.source)}" rel="noreferrer noopener">Source</a>`)) +
-      `</div></article>`
+        `<div class="cglyph">${glyphSvg(entry.glyph, 'gl')}</div>` +
+        preview +
+        `<div style="flex:1;min-width:0">` +
+        `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
+        `<div class="sub">by ${escapeHtml(entry.author)}</div>` +
+        `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div>` +
+        // Wrapped rather than passing the alignment to tag() itself — tag()
+        // takes no style hook, and this is the one flex item in the row that
+        // has to stay pinned to the top rather than stretching with its taller
+        // siblings.
+        `<div style="align-self:flex-start">${tag(entry.kind === 'recipe' ? 'Recipe' : 'Service')}</div>` +
+        `</div>` +
+        `<div class="row" style="margin-top:14px;padding-top:14px;` +
+        `border-top:1px solid var(--ruleSoft)">` +
+        // A recipe installs in a click and a couple of fields; a service (which you
+        // run yourself) hands off to the Advanced add-by-URL form, pre-filled.
+        (entry.kind === 'recipe'
+          ? `<a class="btn" href="admin/modules/install/${encodeURIComponent(entry.id)}">Install</a>`
+          : `<a class="btn" href="admin/modules/advanced?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
+            (entry.install.source === undefined
+              ? ''
+              : `<a class="link" style="margin-left:auto;align-self:center" ` +
+                `href="${escapeHtml(entry.install.source)}" rel="noreferrer noopener">Source</a>`)) +
+        `</div>`,
     );
   }
 

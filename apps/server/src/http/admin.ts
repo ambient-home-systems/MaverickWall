@@ -919,11 +919,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="big">${escapeHtml(String(big))}</div><div class="lab">${escapeHtml(lab)}</div>` +
       `<div class="subrow"><span>${sub}</span>${manage()}</div></a>`;
 
-    const statusRow = (name: string, meta: string, tag: string): string =>
-      `<div class="frow">` +
-      `<div style="flex:1;min-width:0"><div class="rname">${escapeHtml(name)}</div>` +
-      (meta === '' ? '' : `<div class="host">${escapeHtml(meta)}</div>`) +
-      `</div>${tag}</div>`;
+    // `.frow` restated a lead-less row with a title, an optional second line
+    // and a trailing control — exactly `listRow`'s shape, so it is one now.
+    const statusRow = (name: string, meta: string, trail: string): string =>
+      listRow('', { title: name, ...(meta === '' ? {} : { detail: meta }) }, trail);
 
     const uptime = Math.max(0, Math.round((at - deps.startedAt) / 1000));
     const uptimeText =
@@ -2367,19 +2366,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const people = readPeopleAdmin(deps.db);
     const sources = readAdminSources(deps.db);
 
-    const card = (plan: typeof plans[number]): string =>
-      `<article class="card">` +
-      `<h2>${escapeHtml(plan.personName ?? 'Nobody')}</h2>` +
-      `<p class="sub">` +
-      (plan.kind === 'pattern'
-        ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
-        : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
-      `</p>` +
-      `<div class="row">` +
-      `<a class="btn secondary btn-sm" href="admin/shifts/${encodeURIComponent(plan.id)}/edit">Edit</a>` +
-      `<form method="get" action="admin/shifts/${encodeURIComponent(plan.id)}/delete">` +
-      `<button class="btn-danger" type="submit">Remove</button></form>` +
-      `</div></article>`;
+    const planCard = (plan: typeof plans[number]): string =>
+      card(
+        `<h2>${escapeHtml(plan.personName ?? 'Nobody')}</h2>` +
+        `<p class="sub">` +
+        (plan.kind === 'pattern'
+          ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
+          : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
+        `</p>` +
+        `<div class="row">` +
+        `<a class="btn secondary btn-sm" href="admin/shifts/${encodeURIComponent(plan.id)}/edit">Edit</a>` +
+        // The GET this leads to already answers with `confirmDestroyPage`, so
+        // `destructive()` is the control that gets there rather than a plain
+        // one-click POST.
+        destructive('Remove', {
+          thing: plan.personName ?? 'this rotation',
+          confirmAction: `admin/shifts/${encodeURIComponent(plan.id)}/delete`,
+          variant: 'button',
+        }) +
+        `</div>`,
+      );
 
     const canAdd = people.length > 0;
     return page({
@@ -2396,41 +2402,45 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'that repeats. Name and colour the shift types on the Shift types page.',
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
-        plans.map(card).join('') +
+        plans.map(planCard).join('') +
         (canAdd
-          ? `<h2 class="add" id="add">Add a rotation</h2>` +
-            `<form method="post" action="admin/shifts/new">` +
-            selectField({
-              label: 'Who',
-              name: 'person_id',
-              optionsHtml: people
-                .map(
-                  (candidate) =>
-                    `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}</option>`,
-                )
-                .join(''),
-            }) +
-            selectField({
-              label: 'Where the shifts come from',
-              name: 'kind',
-              optionsHtml:
-                `<option value="calendar">A calendar that already has them</option>` +
-                `<option value="pattern">A pattern that repeats</option>`,
-            }) +
-            selectField({
-              label: 'Which calendar',
-              name: 'source_id',
-              hint: 'Only needed when the shifts come from a calendar.',
-              optionsHtml:
-                `<option value="">—</option>` +
-                sources
-                  .map(
-                    (source) =>
-                      `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
-                  )
-                  .join(''),
-            }) +
-            `<button type="submit">Continue</button></form>`
+          ? section(
+              'Add a rotation',
+              undefined,
+              `<form method="post" action="admin/shifts/new">` +
+                selectField({
+                  label: 'Who',
+                  name: 'person_id',
+                  optionsHtml: people
+                    .map(
+                      (candidate) =>
+                        `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}</option>`,
+                    )
+                    .join(''),
+                }) +
+                selectField({
+                  label: 'Where the shifts come from',
+                  name: 'kind',
+                  optionsHtml:
+                    `<option value="calendar">A calendar that already has them</option>` +
+                    `<option value="pattern">A pattern that repeats</option>`,
+                }) +
+                selectField({
+                  label: 'Which calendar',
+                  name: 'source_id',
+                  hint: 'Only needed when the shifts come from a calendar.',
+                  optionsHtml:
+                    `<option value="">—</option>` +
+                    sources
+                      .map(
+                        (source) =>
+                          `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
+                      )
+                      .join(''),
+                }) +
+                `<button type="submit">Continue</button></form>`,
+              'add',
+            )
           : `<p>Add someone on the <a class="link" href="admin/people">People</a> page first — ` +
             `a rotation belongs to a person.</p>`),
     });
@@ -2752,66 +2762,74 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function peoplePage(c: Context, error?: string, suggestion?: string): string {
     const people = readPeopleAdmin(deps.db);
 
-    const card = (person: PersonRecord, first: boolean, last: boolean): string =>
-      `<article class="card">` +
-      `<h2>` +
-      (person.avatarPath === null
-        ? `<span class="swatch" style="--swatch:${escapeHtml(person.color)}"></span>`
-        : `<img class="avatar" alt="" src="/admin/media/${escapeHtml(person.avatarPath)}">`) +
-      `${escapeHtml(person.name)}</h2>` +
-      `<p class="sub">` +
-      (person.sourceCount === 0
-        ? 'No calendars assigned'
-        : `${person.sourceCount} calendar${person.sourceCount === 1 ? '' : 's'}`) +
-      (person.hasShiftRotation === 1 ? ' · has a shift rotation' : '') +
-      `</p>` +
+    const personCard = (person: PersonRecord, first: boolean, last: boolean): string =>
+      card(
+        `<h2>` +
+        (person.avatarPath === null
+          ? `<span class="swatch" style="--swatch:${escapeHtml(person.color)}"></span>`
+          : `<img class="avatar" alt="" src="/admin/media/${escapeHtml(person.avatarPath)}">`) +
+        `${escapeHtml(person.name)}</h2>` +
+        `<p class="sub">` +
+        (person.sourceCount === 0
+          ? 'No calendars assigned'
+          : `${person.sourceCount} calendar${person.sourceCount === 1 ? '' : 's'}`) +
+        (person.hasShiftRotation === 1 ? ' · has a shift rotation' : '') +
+        `</p>` +
 
-      /*
-       * Folded away, same idiom as `choreCard` and the calendar row: the name,
-       * colour and picture are set once and rarely revisited, so a household
-       * with several people should see a list of people, not a stack of two
-       * open forms per person.
-       */
-      `<details class="disclose"><summary>Edit ${escapeHtml(person.name)}</summary>` +
-      `<form method="post" action="admin/people/${encodeURIComponent(person.id)}">` +
-      `<div class="row-fields">` +
-      textField({ label: 'Name', name: 'name', required: true, value: person.name }) +
-      textField({ label: 'Colour', name: 'color', type: 'color', value: person.color }) +
-      `</div>` +
-      `<button type="submit">Save</button></form>` +
+        /*
+         * Folded away, same idiom as `choreCard` and the calendar row: the name,
+         * colour and picture are set once and rarely revisited, so a household
+         * with several people should see a list of people, not a stack of two
+         * open forms per person.
+         */
+        `<details class="disclose"><summary>Edit ${escapeHtml(person.name)}</summary>` +
+        `<form method="post" action="admin/people/${encodeURIComponent(person.id)}">` +
+        `<div class="row-fields">` +
+        textField({ label: 'Name', name: 'name', required: true, value: person.name }) +
+        textField({ label: 'Colour', name: 'color', type: 'color', value: person.color }) +
+        `</div>` +
+        `<button type="submit">Save</button></form>` +
 
-      `<form method="post" enctype="multipart/form-data" ` +
-      `action="admin/people/${encodeURIComponent(person.id)}/avatar">` +
-      textField({
-        label: 'Picture',
-        name: 'avatar',
-        type: 'file',
-        hint:
-          'PNG, JPEG, GIF or WebP, up to 2 MB. Leave the box empty and save to ' +
-          'remove the picture. SVG is not accepted — it can carry code.',
-        attrs: 'accept="image/png,image/jpeg,image/gif,image/webp"',
-      }) +
-      `<button class="secondary" type="submit">` +
-      `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
-      `</details>` +
+        `<form method="post" enctype="multipart/form-data" ` +
+        `action="admin/people/${encodeURIComponent(person.id)}/avatar">` +
+        textField({
+          label: 'Picture',
+          name: 'avatar',
+          type: 'file',
+          hint:
+            'PNG, JPEG, GIF or WebP, up to 2 MB. Leave the box empty and save to ' +
+            'remove the picture. SVG is not accepted — it can carry code.',
+          attrs: 'accept="image/png,image/jpeg,image/gif,image/webp"',
+        }) +
+        `<button class="secondary" type="submit">` +
+        `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
+        `</details>` +
 
-      // Up/Down reorder the wall's legend and its shift order; the ends drop
-      // the button that would do nothing, the way the shift-type card does.
-      `<div class="row">` +
-      (first
-        ? ''
-        : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
-          `<input type="hidden" name="dir" value="up">` +
-          `<button class="secondary" type="submit">↑ Up</button></form>`) +
-      (last
-        ? ''
-        : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
-          `<input type="hidden" name="dir" value="down">` +
-          `<button class="secondary" type="submit">↓ Down</button></form>`) +
-      `<form method="get" action="admin/people/${encodeURIComponent(person.id)}/delete">` +
-      `<button class="btn-danger" type="submit" style="margin-left:auto">Remove</button></form>` +
-      `</div>` +
-      `</article>`;
+        // Up/Down reorder the wall's legend and its shift order; the ends drop
+        // the button that would do nothing, the way the shift-type card does.
+        // Remove moves through `destructive()`, which is what this GET-then-
+        // confirm-then-POST shape is for — margin-left:auto moves with it onto
+        // a plain wrapper, since the component takes no className of its own.
+        `<div class="row">` +
+        (first
+          ? ''
+          : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
+            `<input type="hidden" name="dir" value="up">` +
+            `<button class="secondary" type="submit">↑ Up</button></form>`) +
+        (last
+          ? ''
+          : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
+            `<input type="hidden" name="dir" value="down">` +
+            `<button class="secondary" type="submit">↓ Down</button></form>`) +
+        `<div style="margin-left:auto">` +
+        destructive('Remove', {
+          thing: person.name,
+          confirmAction: `admin/people/${encodeURIComponent(person.id)}/delete`,
+          variant: 'button',
+        }) +
+        `</div>` +
+        `</div>`,
+      );
 
     return page({
       self: selfHref(c),
@@ -2826,19 +2844,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'their shifts, so pick ones that are easy to tell apart from across a room.',
       body:
         (error === undefined ? '' : errorBlock(error, suggestion)) +
-        people.map((person, index) => card(person, index === 0, index === people.length - 1)).join('') +
-        `<h2 class="add" id="add">Add someone</h2>` +
-        `<form method="post" action="admin/people">` +
-        `<div class="row-fields">` +
-        textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sam' }) +
-        // Pre-filled with the colour this person would be given anyway, so the
-        // picker agrees with what a household who never touches it gets. A
-        // fixed literal here was half of the bug: everyone came out blue.
-        textField({ label: 'Colour', name: 'color', type: 'color', value: nextPersonColor(deps.db) }) +
-        `</div>` +
-        `<p class="hint">A picture can be added once they exist. The colour is what ` +
-        `marks their events either way.</p>` +
-        `<button type="submit">Add</button></form>`,
+        people.map((person, index) => personCard(person, index === 0, index === people.length - 1)).join('') +
+        section(
+          'Add someone',
+          undefined,
+          `<form method="post" action="admin/people">` +
+            `<div class="row-fields">` +
+            textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sam' }) +
+            // Pre-filled with the colour this person would be given anyway, so
+            // the picker agrees with what a household who never touches it
+            // gets. A fixed literal here was half of the bug: everyone came
+            // out blue.
+            textField({ label: 'Colour', name: 'color', type: 'color', value: nextPersonColor(deps.db) }) +
+            `</div>` +
+            `<p class="hint">A picture can be added once they exist. The colour is what ` +
+            `marks their events either way.</p>` +
+            `<button type="submit">Add</button></form>`,
+          'add',
+        ),
     });
   }
 
@@ -3539,13 +3562,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // Reachable from nothing before this (RFC 009 Phase 4) — the device-flow
     // approve/decline page existed only as a URL a QR or a hand-typed link
     // could reach, with no form anywhere in the admin to get there.
-    const approveForm =
-      `<h2 class="add">Approve a pairing code</h2>` +
-      `<p class="hint">A wall starting its own pairing flow shows an eight-character ` +
-      `code. Type it here to approve or decline it.</p>` +
+    const approveForm = section(
+      'Approve a pairing code',
+      'A wall starting its own pairing flow shows an eight-character code. Type ' +
+        'it here to approve or decline it.',
       `<form method="get" action="admin/screens/approve"><div class="row">` +
-      textField({ label: 'Pairing code', name: 'code', placeholder: 'ABCD-EFGH', attrs: 'maxlength="12"' }) +
-      `<button class="secondary" type="submit">Continue</button></div></form>`;
+        textField({ label: 'Pairing code', name: 'code', placeholder: 'ABCD-EFGH', attrs: 'maxlength="12"' }) +
+        `<button class="secondary" type="submit">Continue</button></div></form>`,
+    );
 
     return page({
       self: selfHref(c),
@@ -3568,24 +3592,31 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? ''
           : `<p class="hint">${revoked} unpaired wall${revoked === 1 ? '' : 's'} kept ` +
             `for the record. Their tokens no longer work.</p>`) +
-        `<h2 class="add" id="add">Pair a new wall</h2>` +
-        `<form method="post" action="admin/screens">` +
-        textField({
-          label: 'Name',
-          name: 'name',
-          required: true,
-          placeholder: 'Kitchen',
-          hint:
-            'You get a QR code and a short code to enter on the wall itself. ' +
-            'Open its page afterwards to arrange its layout and settings.',
-          attrs: 'maxlength="80"',
-        }) +
-        `<button type="submit">Add wall</button></form>` +
+        section(
+          'Pair a new wall',
+          undefined,
+          `<form method="post" action="admin/screens">` +
+            textField({
+              label: 'Name',
+              name: 'name',
+              required: true,
+              placeholder: 'Kitchen',
+              hint:
+                'You get a QR code and a short code to enter on the wall itself. ' +
+                'Open its page afterwards to arrange its layout and settings.',
+              attrs: 'maxlength="80"',
+            }) +
+            `<button type="submit">Add wall</button></form>`,
+          'add',
+        ) +
         approveForm +
-        `<h2 class="add">Add an e-paper wall</h2>` +
-        `<p class="hint">Low-power e-paper panels are added on their own page, with ` +
-        `a panel size and rotation to choose. ` +
-        `<a class="link" href="admin/epaper#add">Add an e-paper wall →</a></p>`,
+        section(
+          'Add an e-paper wall',
+          undefined,
+          `<p class="hint">Low-power e-paper panels are added on their own page, with ` +
+            `a panel size and rotation to choose. ` +
+            `<a class="link" href="admin/epaper#add">Add an e-paper wall →</a></p>`,
+        ),
     });
   }
 

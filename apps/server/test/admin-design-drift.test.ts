@@ -192,7 +192,6 @@ const UNREFERENCED_TOKENS: readonly string[] = [
   '--mw-t-h3-size',
   '--mw-t-h3-weight',
   '--mw-t-h4-lh',
-  '--mw-t-h4-size',
   '--mw-t-h4-weight',
   '--mw-t-label-lh',
   '--mw-t-label-sm-lh',

@@ -62,7 +62,24 @@ describe('the admin stylesheet', () => {
     // A fully rounded rectangle was Material's loudest tell and the thing the
     // brief named first. `--mw-r-full` survives for genuinely round
     // affordances: the switch track, and the 18px close dot on an input chip.
-    const ROUND_BY_DESIGN = ['.switch input[type=checkbox]', '.hep-pill-x'];
+    // A fully rounded rectangle was Material's loudest tell and the thing the
+    // brief named first. `--mw-r-full` survives for genuinely round
+    // affordances: the switch track, the 18px close dot on an input chip, and
+    // the handful of actual circles below — a status dot, its pulse ring, an
+    // avatar photo, an override indicator and a ripple. All of these drew as
+    // `border-radius:50%` before the admin's spacing/radius/font-size sweep
+    // moved every literal onto a token; they were invisible to this check
+    // until then; it was never that they became pills, only that they became
+    // visible to the assertion that rules out pills.
+    const ROUND_BY_DESIGN = [
+      '.switch input[type=checkbox]',
+      '.hep-pill-x',
+      '.dot',
+      '.pulse::after',
+      'img.avatar',
+      '.insp-lane.has-override::before',
+      '.ripple',
+    ];
     const offenders: string[] = [];
     for (const rule of rulesOf(await stylesheet())) {
       if (!/border-radius:[^;]*--mw-r-full/.test(rule.body)) continue;
