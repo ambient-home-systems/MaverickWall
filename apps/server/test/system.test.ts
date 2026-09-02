@@ -375,9 +375,14 @@ describe('restore', () => {
     const originalKeyring = createKeyring(loadOrCreateMasterKey(original).key);
 
     const feedUrl = await icsServer();
-    const added = addCalendarSource(originalDb, originalKeyring, {
-      name: 'Family', url: feedUrl, allowLoopback: true, allowHttp: true,
-    });
+    const added = addCalendarSource(
+      originalDb,
+      originalKeyring,
+      { name: 'Family', url: feedUrl, allowLoopback: true, allowHttp: true },
+      // This test is about what a backup carries, not about when. One clock,
+      // stated, because the function no longer picks one for its caller.
+      Date.now(),
+    );
     if (!added.ok) throw new Error(added.message);
 
     // Proves the source is real and reachable before anything is backed up —

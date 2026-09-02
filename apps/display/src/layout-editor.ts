@@ -55,6 +55,7 @@ import {
   type Surface,
 } from './omission.js';
 import { inspectorView } from './inspector.js';
+import { TIER_NAMES, type TierName } from './tiers.js';
 import { PALETTE, SWATCH, describeWidget } from './widget-labels.js';
 import {
   HOUSE_FIELDS,
@@ -1295,8 +1296,11 @@ function boot(): void {
     }, EDITOR_MEDIA_BASE);
 
     // The ladder's cut marker is read back out of what was just drawn, so the
-    // editor and the wall cannot disagree about what fits.
+    // editor and the wall cannot disagree about what fits. The tier note is the
+    // same read-back one control along, and it moves when a box is resized —
+    // which is the moment a household most wants to be told what they bought.
     markLadderCut();
+    refreshDensityNote();
   }
 
   /**
@@ -2370,6 +2374,7 @@ function boot(): void {
       tab: inspectorTab,
       notDrawn,
       surface: surfaceWord(),
+      ...(selected === undefined ? {} : { drawnTier: drawnTierOf(selected) }),
     });
     if (view.kind === 'empty') {
       closeInspector();
@@ -2417,6 +2422,25 @@ function boot(): void {
       note.className = 'le-not-drawn';
       note.textContent = view.note;
       configPanel.appendChild(note);
+    }
+
+    /*
+     * And what this box has room to say, which is a fact about the size the
+     * household dragged it to rather than about anything they can set here.
+     *
+     * Read back out of the preview — see `drawnTierOf` — for the reason the
+     * ladder's strike-through is: the preview renders the household's real
+     * manifest through the wall's own `renderFreeform`, which is what resolves
+     * the tier, so reading what it drew is the same answer the screen gives.
+     * A second opinion about what fits is the whole class of bug this project
+     * keeps finding, and one with a rung's name on it would be that bug wearing
+     * a label.
+     */
+    if (view.density !== undefined) {
+      const density = document.createElement('p');
+      density.className = 'hint le-density';
+      density.textContent = view.density;
+      configPanel.appendChild(density);
     }
 
     // Both tabs, always: every widget has a view to state, so neither tab is
@@ -3552,6 +3576,25 @@ function boot(): void {
   }
 
   /**
+   * The tier the live preview resolved for one widget, or nothing.
+   *
+   * `renderFreeform` stamps it on what it drew — `data-tier` on a month grid's
+   * own section, and on the box for an agenda — so this is a read-back and
+   * never a prediction. Nothing before the preview has loaded, and nothing for
+   * a widget that has no tier, which is every type but the calendar.
+   */
+  function drawnTierOf(id: string): TierName | undefined {
+    const box = previewShadow?.querySelector(`[data-widget-id="${id}"]`);
+    if (!(box instanceof HTMLElement)) return undefined;
+    const found = box.querySelector('[data-tier]') ?? (box.hasAttribute('data-tier') ? box : null);
+    const value = found instanceof HTMLElement ? found.getAttribute('data-tier') : null;
+    if (value === null) return undefined;
+    // Checked against the table rather than cast, so a rung a newer bundle
+    // stamped reads as absent instead of reaching a lookup that has no entry.
+    return (TIER_NAMES as readonly string[]).indexOf(value) < 0 ? undefined : (value as TierName);
+  }
+
+  /**
    * Mark the rows the box is currently too small to draw.
    *
    * Read out of the *real* preview rather than predicted: the preview renders
@@ -3560,6 +3603,32 @@ function boot(): void {
    * gives. A slider that guessed would be a second opinion about fit, and two
    * opinions about fit is the whole class of bug this project keeps finding.
    */
+  /**
+   * Re-read the tier note after the preview has redrawn.
+   *
+   * The panel itself is not rebuilt — rebuilding it on every drag would take
+   * focus off whatever the household is typing in — so the one line whose
+   * answer the drag changed is refreshed in place, which is the same rule
+   * `refreshLabels` follows for a box's accessible name.
+   */
+  function refreshDensityNote(): void {
+    const note = configPanel.querySelector('.le-density');
+    if (!(note instanceof HTMLElement) || selected === undefined) return;
+    const widget = state.widgets.find((one) => one.id === selected);
+    if (widget === undefined) return;
+    const view = inspectorView({
+      widgets: state.widgets,
+      selected,
+      lane,
+      inkAvailable: ink !== undefined,
+      tab: inspectorTab,
+      notDrawn,
+      surface: surfaceWord(),
+      ...(drawnTierOf(selected) === undefined ? {} : { drawnTier: drawnTierOf(selected) }),
+    });
+    if (view.kind === 'widget' && view.density !== undefined) note.textContent = view.density;
+  }
+
   function markLadderCut(): void {
     for (const { widget, list } of ladderPanels) {
       // The unit a ladder fills: one badge for a shift, one day's column for a

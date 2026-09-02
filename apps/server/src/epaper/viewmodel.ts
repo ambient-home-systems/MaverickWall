@@ -169,6 +169,16 @@ export interface EpaperModel {
   readonly upcoming: readonly EpaperUpcomingItem[];
   /** Weekday labels for the grid header, in the household's week order. */
   readonly weekdayLabels: readonly string[];
+  /**
+   * The same days spelled out, for the tiers with a column wide enough.
+   *
+   * One spelling rather than two: `weekdayHead` cuts it, and in this locale the
+   * first three letters of the long name *are* the short name, so a second
+   * array would be one more thing to keep in step for no answer it can give.
+   * The single letters above stay because the week widget's own columns are
+   * drawn to hold exactly one.
+   */
+  readonly weekdayLabelsLong: readonly string[];
   /** Rows of exactly seven cells, in the household's week order. */
   readonly weeks: readonly (readonly EpaperGridCell[])[];
   readonly timezone: string;
@@ -183,6 +193,8 @@ export interface EpaperViewOptions {
 /** en-GB, matching the rest of the server's formatting. Sunday- or Monday-first. */
 const WEEKDAY_LABELS_SUNDAY = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
 const WEEKDAY_LABELS_MONDAY = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
+const WEEKDAY_LONG_SUNDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const WEEKDAY_LONG_MONDAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
 /** A civil date at UTC noon, so day-label formatting never drifts a day. */
 function civilToUtcDate(date: CivilDate): Date {
@@ -331,6 +343,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
     agendaTotal: todaysEvents.length,
     upcoming,
     weekdayLabels: [...(weekStart === 'monday' ? WEEKDAY_LABELS_MONDAY : WEEKDAY_LABELS_SUNDAY)],
+    weekdayLabelsLong: [...(weekStart === 'monday' ? WEEKDAY_LONG_MONDAY : WEEKDAY_LONG_SUNDAY)],
     weeks,
     timezone,
     generatedAt: manifest.generatedAt,

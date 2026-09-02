@@ -814,13 +814,28 @@ export const HOUSEHOLD_CALENDARS: readonly NamedFeed[] = [
       { title: 'Dentist', day: 1, from: '0900', to: '1000' },
       { title: 'Car service', day: 11, from: '0800', to: '1200' },
       /*
-       * A week, not a day — a half term that lasts one day describes nothing a
-       * household has, and the one-day version left this fixture with no
-       * multi-day event at all. That mattered the moment the month grid started
-       * drawing a multi-day event as one bar across its days: with nothing to
-       * span, the density ratchet could not see that rule being removed.
+       * A week and a day, and the extra day is not decoration.
+       *
+       * A week, not a day, because a half term that lasts one day describes
+       * nothing a household has, and the one-day version left this fixture with
+       * no multi-day event at all — which mattered the moment the month grid
+       * started drawing a multi-day event as one bar across its days: with
+       * nothing to span, the density ratchet could not see that rule removed.
+       *
+       * **Eight days rather than seven, because seven is a property of the
+       * calendar and not of the code.** A run of exactly seven days lands on
+       * one grid row whenever it happens to start on the household's week
+       * start, and on two rows every other day of the week — so `spanBars` in
+       * `wall-density.test.ts` reads 2 for six days out of seven and 1 on the
+       * seventh, and the ratchet goes red for a day at a time with nothing
+       * changed. Measured: the same clean worktree passed at 22:46 UTC and
+       * failed at 23:10, when the fixture's dates rolled into the next London
+       * day and the run's start slid onto a Sunday. Eight days cannot fit in
+       * one row whatever weekday it begins on. Same shape as the hour
+       * `HARNESS_HOUR` pins, one unit up: a test that reads the calendar as
+       * though it were reading the code.
        */
-      { title: 'Half term', day: 18, days: 7 },
+      { title: 'Half term', day: 18, days: 8 },
       { title: 'Swimming lesson', day: 0, from: '0730', to: '0830' },
       { title: 'Book club', day: 5, from: '1930', to: '2130' },
     ],
@@ -902,7 +917,7 @@ export function equipHousehold(db: SqliteDatabase, at: number): void {
 /**
  * Load a paired wall in a fresh browser context at `size`, past the font race.
  *
- * `fitToBox` and `trimCellRows` (`render.ts`) measure once, synchronously, as
+ * `fitToBox` and `applyMonthTier` (`render.ts`) measure once, synchronously, as
  * their section is appended, and nothing re-runs them — so on a cold context
  * whose web fonts have not arrived the wall settles on a fit computed against
  * fallback metrics and keeps it, which measured anywhere from 2 to 13 named
@@ -1499,7 +1514,7 @@ export async function measureMonthGrid(page: Page): Promise<MonthGrid> {
         /*
          * The counter, wherever it ended up.
          *
-         * `trimCellRows` moves it *into* the last row it counts for, so a
+         * the tier pass moves it *into* the last row it counts for, so a
          * search rooted at the cell is the only one that finds it either way —
          * and "is it visible" has to be asked of the element rather than of
          * the cell, because an empty one is `display:none` by stylesheet.

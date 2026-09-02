@@ -23,7 +23,9 @@
 
 import { inkOf } from './ink.js';
 import { omittedReason, omissionNote, type NotDrawn, type Surface } from './omission.js';
+import { tierNamed, type TierName } from './tiers.js';
 import { labelFor } from './widget-labels.js';
+import { calendarView } from './widget-views.js';
 
 export type InspectorTab = 'content' | 'style';
 export type InspectorLane = 'wall' | 'ink';
@@ -47,6 +49,19 @@ export interface InspectorInput {
   readonly tab: InspectorTab;
   readonly notDrawn: NotDrawn;
   readonly surface: Surface;
+  /**
+   * The density tier the *preview* resolved for the selected widget, read back
+   * out of what `renderFreeform` actually drew.
+   *
+   * Read back rather than predicted, exactly as the ladder's strike-through
+   * counts the rows that survived rather than working out which ones should
+   * have: two opinions about what fits is the whole class of bug this project
+   * keeps finding, and a household reading "M2" beside a box drawing one name
+   * would be that bug with a label on it. Absent while the preview has not
+   * loaded, on a widget that has no tier, and in this package's own tests —
+   * where the honest answer is that nothing has been drawn to read.
+   */
+  readonly drawnTier?: TierName | undefined;
 }
 
 /**
@@ -75,6 +90,11 @@ export interface WidgetInspector {
   readonly hasInkOverrides: boolean;
   /** Why the wall leaves this box out, said in full. Wall lane only. */
   readonly note?: string | undefined;
+  /**
+   * What this box has room to say, in the household's words. Wall lane only,
+   * and absent unless the preview drew a tier to read.
+   */
+  readonly density?: string | undefined;
   /**
    * Which tab supplies the body — and its absence is the ink lane, which has no
    * Content/Style split: a panel honours a handful of keys and they are one
@@ -105,9 +125,53 @@ export function inspectorView(input: InspectorInput): InspectorView {
   if (lane === 'ink') return base;
 
   const why = omittedReason(widget, input.widgets, input.notDrawn);
+  const density = densityNote(widget, input.drawnTier);
   return {
     ...base,
     ...(why === undefined ? {} : { note: omissionNote(why, input.surface) }),
+    ...(density === undefined ? {} : { density }),
     tab: input.tab,
   };
 }
+
+/**
+ * What each tier says a household will see, in their words rather than in the
+ * table's.
+ *
+ * A rung's name is on the left because it is what a support answer and a bug
+ * report can both point at, and because it is what the renderer stamps; the
+ * sentence beside it is what the household actually reads. Neither is a
+ * prediction — the tier comes from the drawn preview.
+ */
+const TIER_MEANING: Readonly<Record<TierName, string>> = {
+  M0: 'too small for names \u2014 a mark shows how busy each day is',
+  M1: 'showing one name per day',
+  M2: 'showing 2\u20133 names per day',
+  M3: 'showing 4\u20135 names per day',
+  M4: 'showing 6 or more names per day, with times',
+};
+
+/** The same, for a list, where a "day" is a row and there are no cells. */
+const LIST_MEANING: Readonly<Record<TierName, string>> = {
+  M0: 'room for one event',
+  M1: 'room for one event',
+  M2: 'room for 2\u20133 events',
+  M3: 'room for 4\u20135 events',
+  M4: 'room for 6 or more events',
+};
+
+function densityNote(
+  widget: InspectableWidget,
+  drawn: TierName | undefined,
+): string | undefined {
+  if (drawn === undefined || widget.type !== 'calendar') return undefined;
+  // Named from the tier the renderer stamped rather than looked up by string,
+  // so a rung this build does not know reads as the quiet one instead of
+  // throwing inside a panel the household is looking at.
+  const tier = tierNamed(drawn).tier;
+  const shape = calendarView(widget.config);
+  if (shape.view === 'list') return `Upcoming list, ${tier}, ${LIST_MEANING[tier]}`;
+  const what = shape.view === 'week' ? 'Week columns' : 'Month grid';
+  return `${what}, ${tier}, ${TIER_MEANING[tier]}`;
+}
+

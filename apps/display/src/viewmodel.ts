@@ -215,6 +215,16 @@ export interface HorizonEvent {
 export interface HorizonCell {
   readonly date: CivilDate;
   readonly weekday: string;
+  /**
+   * The same weekday spelled out, for the one tier with a column wide enough
+   * for it.
+   *
+   * Derived here rather than travelling in the manifest: it is the household's
+   * own zone and locale applied to a date this model already has, and adding a
+   * field to the document would churn every stored ETag for a string the server
+   * cannot spell better than the page can.
+   */
+  readonly weekdayLong: string;
   readonly dayNumber: string;
   /** The week this cell is in, when the server said. Drawn once per row. */
   readonly weekNumber: number | undefined;
@@ -792,6 +802,26 @@ function parts(date: CivilDate, timezone: string): { weekday: string; day: strin
   return { weekday: find('weekday'), day: find('day'), month: find('month') };
 }
 
+/**
+ * The weekday spelled out, in the household's own zone.
+ *
+ * A formatter of its own rather than a second option on `parts`, because
+ * `formatToParts` answers one width per call and every other reader of `parts`
+ * wants the short one. Cached per zone: this runs 35 times a draw, once per
+ * cell in the grid, and a fresh `Intl.DateTimeFormat` is not cheap.
+ */
+const LONG_WEEKDAYS = new Map<string, Intl.DateTimeFormat>();
+function longWeekday(date: CivilDate, timezone: string): string {
+  let formatter = LONG_WEEKDAYS.get(timezone);
+  if (formatter === undefined) {
+    formatter = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, weekday: 'long' });
+    LONG_WEEKDAYS.set(timezone, formatter);
+  }
+  // Noon UTC, so the date cannot slide across a boundary in either direction
+  // when it is reinterpreted in the household's zone — `parts`' own rule.
+  return formatter.format(new Date(Date.parse(`${date}T12:00:00Z`)));
+}
+
 function eventTime(event: ManifestEvent, timezone: string, hour12: boolean): string {
   if (event.allDay) return 'All day';
   return localTime(event.startsAt, timezone, hour12);
@@ -1095,6 +1125,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
       date,
       // Short weekday for the week-columns header (Mon, Tue, …).
       weekday: parts(date, timezone).weekday,
+      weekdayLong: longWeekday(date, timezone),
       dayNumber: String(Number(date.slice(8, 10))),
       weekNumber: day?.weekNumber,
       isToday: date === today,

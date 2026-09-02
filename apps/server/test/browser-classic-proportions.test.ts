@@ -98,7 +98,7 @@ interface Box {
 /**
  * Draw the paired wall at one size and measure every widget box on it.
  *
- * The reload is not ceremony. `fitToBox` and `trimCellRows` measure once,
+ * The reload is not ceremony. `fitToBox` and `applyMonthTier` measure once,
  * synchronously, as their section is appended, and nothing re-runs them — so on
  * a cold context whose web fonts have not arrived the wall settles on a fit
  * computed against fallback metrics and keeps it. Measured, that makes the same

@@ -61,13 +61,15 @@ if (master.unusableKeyWarning) {
 }
 const keyring = createKeyring(master.key);
 
-const added = addCalendarSource(db, keyring, {
-  name,
-  url,
-  allowPrivateNetwork,
-  allowLoopback,
-  allowHttp,
-});
+const added = addCalendarSource(
+  db,
+  keyring,
+  { name, url, allowPrivateNetwork, allowLoopback, allowHttp },
+  // A one-shot command with no server around it, so the wall clock *is* this
+  // process's clock. Stated rather than defaulted, which is the whole point:
+  // the next caller has to think about which clock it is handing over.
+  Date.now(),
+);
 if (!added.ok) {
   // Rejected before anything is stored, and the message is the same one the
   // admin UI shows.

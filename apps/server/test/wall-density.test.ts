@@ -20,10 +20,10 @@
  * Three measurement traps this file exists to avoid, all paid for already by
  * `browser-harness.ts` and `browser-classic-proportions.test.ts`:
  *
- *  - **Hidden is not absent.** `trimCellRows` hides month rows it cannot fit
- *    with `display: none` and leaves them in the DOM, so a bare
+ *  - **Hidden is not absent.** The tier pass hides the month rows a cell has
+ *    no form for with `display: none` and leaves them in the DOM, so a bare
  *    `querySelectorAll` count reports every title in the fixture at every
- *    viewport regardless of what actually fits. `measureMonthGrid` already
+ *    viewport regardless of what is drawn. `measureMonthGrid` already
  *    filters on computed `display`/`visibility`, which is the whole reason to
  *    call it rather than count nodes here.
  *  - **`font-size` is not what is drawn.** `fitToBox` writes a `scale()`
@@ -32,7 +32,7 @@
  *    `measureWall`'s `scaleOf` walker multiplies every ancestor transform back
  *    in, which is the only honest way to ask "how big is this on the glass".
  *  - **The first draw is not the steady state.** `fitToBox` and
- *    `trimCellRows` measure once, synchronously, against whatever font metrics
+ *    the tier pass measure once, synchronously, against whatever font metrics
  *    have arrived by then — a cold context can report anywhere from 2 to 13
  *    named month cells for the *identical* wall. `loadWallSettled` holds the
  *    first manifest back and reloads, which is the state a wall that has been
@@ -171,7 +171,7 @@ afterAll(async () => {
  * is inside `.fw-clock`, whose rule is box-relative, so a bare probe measures
  * the stacked layout's retired rem rule and cannot go red for anything a
  * household would see. The month grid keeps its probe below for the opposite
- * reason — `trimCellRows` can hide every real title in a small cell.
+ * reason — the tier pass draws no title at all in a small cell.
  */
 interface DrawnRuns {
   readonly title: number;
@@ -235,7 +235,7 @@ interface ViewportMeasurement {
  * Everything this file asks about one screen size, in one settled load.
  *
  * `monthNamesVisible` and `plusNCells` come from `measureMonthGrid`, which
- * already excludes rows `trimCellRows` has hidden. `runsUnderFloor` comes from
+ * already excludes rows the tier pass has hidden. `runsUnderFloor` comes from
  * `measureWall`, whose `effectivePx` is the cascade size times every ancestor
  * transform — the number a household's eye actually meets, not the number the
  * stylesheet asked for. The agenda counts are the one measurement neither
@@ -448,9 +448,48 @@ interface Baseline {
  * says nothing — the revert the comment below names as passing silently — and
  * at 480x800 and 800x480 `monthNamesVisible` is 0 either way, so the pairing
  * does not catch it there. `spanBars` is what a multi-day event costs the grid:
- * 2 at the three larger sizes (a seven-day half term crossing a week boundary
- * is two bars) and 0 at the two smallest, where a cell has no room for a lane
- * and `trimCellRows` measures the bars back out again.
+ * 2 at the three larger sizes (an eight-day half term always crosses a week
+ * boundary, which is why it is eight) and 0 at the two smallest, where a cell
+ * has no room for a lane and the tier pass measures the bars back out again.
+ *
+ * **Raised again, by the density tiers.** A month cell reads its own inner box
+ * in characters of the type it would draw and takes a *form* from a table
+ * (`tiers.ts`) rather than drawing everything and hiding what spilled. The
+ * "before" column here is a clean worktree of `main` running this *same*
+ * fixture at the same hour — not the numbers above it, which were taken when
+ * the half term lasted seven days rather than eight:
+ *
+ *   |     viewport | distinct | names |  +N  | marked |
+ *   |--------------|----------|-------|------|--------|
+ *   |      480x800 |   0 →  0 |  0→ 0 | 0→ 0 |  20→20 |
+ *   |      800x480 |   0 →  0 |  0→ 0 | 0→ 0 |  20→20 |
+ *   |    1080x1920 |   9 →  9 | 11→11 | 4→ 1 |  20→20 |
+ *   |    1920x1080 |   8 →  8 |  8→10 | 2→ 1 |  20→20 |
+ *   |    2560x1440 |   8 →  9 | 10→11 | 1→ 1 |  20→20 |
+ *
+ * Two things about it are worth saying out loud.
+ *
+ * **`markedCells` went 19 → 20 for a reason that is not this change.** The
+ * fixture's half term is eight days rather than seven now, so it touches one
+ * more square — and the reason it is eight is that seven was a property of the
+ * *calendar*: a run of exactly seven days lands on one grid row whenever it
+ * happens to start on the household's week start and on two rows every other
+ * day of the week, so `spanBars` read 2 for six days out of seven and 1 on the
+ * seventh. Measured: the same clean worktree passed at 22:46 UTC and failed at
+ * 23:10, when the fixture's dates rolled into the next London day. That is the
+ * hour `HARNESS_HOUR` pins, one unit up — a test reading the calendar as though
+ * it were reading the code — and it is the third time this file's own history
+ * has had to record one.
+ *
+ * **`plusNCells` falls at three sizes and none of them is a name lost**, which
+ * is the direction this metric is asserted in and is worth checking rather than
+ * assuming: `monthNamesVisible` rises or holds at every one of the five, and
+ * the two are asserted together for exactly that reason. Under a tier a cell
+ * knows how many rows it is drawing before it draws them, so the counter no
+ * longer arrives as an experiment that can push a title onto a line the cell
+ * has not got — it shares the last name's line where that costs nothing, takes
+ * a line of its own out of room the names declined, and otherwise says nothing
+ * and leaves the density mark to say the day is busy.
  *
  * The audit that this file exists to make repeatable reported, at these same
  * five sizes: 6 agenda events across 3 days at every size; 0 month names
@@ -472,9 +511,9 @@ export const BASELINE: Record<string, Baseline> = {
     monthNamesVisible: 0,
     distinctNames: 0,
     plusNCells: 0,
-    markedCells: 19,
+    markedCells: 20,
     // No room for a lane under the numeral at this cell size, so the bars are
-    // measured out by `trimCellRows` and the events go back to being rows.
+    // measured back out by the tier pass and the events go back to being rows.
     spanBars: 0,
     runsUnderFloor: 45,
     agendaDays: 2,
@@ -486,7 +525,7 @@ export const BASELINE: Record<string, Baseline> = {
     monthNamesVisible: 0,
     distinctNames: 0,
     plusNCells: 0,
-    markedCells: 19,
+    markedCells: 20,
     spanBars: 0,
     runsUnderFloor: 46,
     agendaDays: 2,
@@ -497,8 +536,8 @@ export const BASELINE: Record<string, Baseline> = {
   '1080x1920': {
     monthNamesVisible: 11,
     distinctNames: 9,
-    plusNCells: 4,
-    markedCells: 19,
+    plusNCells: 1,
+    markedCells: 20,
     spanBars: 2,
     runsUnderFloor: 7,
     agendaDays: 2,
@@ -507,10 +546,10 @@ export const BASELINE: Record<string, Baseline> = {
     contentSharePercent: 85.5,
   },
   '1920x1080': {
-    monthNamesVisible: 8,
+    monthNamesVisible: 10,
     distinctNames: 8,
-    plusNCells: 2,
-    markedCells: 19,
+    plusNCells: 1,
+    markedCells: 20,
     spanBars: 2,
     runsUnderFloor: 15,
     agendaDays: 2,
@@ -519,10 +558,10 @@ export const BASELINE: Record<string, Baseline> = {
     contentSharePercent: 80,
   },
   '2560x1440': {
-    monthNamesVisible: 10,
-    distinctNames: 8,
+    monthNamesVisible: 11,
+    distinctNames: 9,
     plusNCells: 1,
-    markedCells: 19,
+    markedCells: 20,
     spanBars: 2,
     runsUnderFloor: 0,
     agendaDays: 2,
@@ -641,7 +680,7 @@ describe('the Classic wall, measured for density', () => {
          *
          * Zero at the two smallest sizes is the honest answer rather than a
          * missing case: a cell there has no room for a lane under its numeral,
-         * so `trimCellRows` measures the bars back out and the events return to
+         * so the tier pass measures the bars back out and the events return to
          * being rows. Asserting the larger three is what makes removing the
          * rule fail here rather than only in its own file.
          */
@@ -880,16 +919,23 @@ const ARCMIN_SLACK = 0.05;
  *   |--------------|---------------|----------|-------|------|-------|
  *   |      480x800 |  7.5" e-ink   |   0 →  1 |  0→ 0 |  0→0 |   0→2 |
  *   |      800x480 |  7.5" e-ink   |   0 →  1 |  0→ 0 |  0→0 |   0→2 |
- *   |    1080x1920 |  32" TV       |   9 → 10 | 11→12 |  4→3 |   2→2 |
- *   |    1920x1080 |  32" TV       |   8 →  9 |  8→10 |  2→4 |   2→2 |
- *   |    2560x1440 |  43" TV       |   8 →  9 | 10→10 |  1→4 |   2→2 |
+ *   |    1080x1920 |  32" TV       |   9 → 10 | 11→12 |  1→0 |   2→2 |
+ *   |    1920x1080 |  32" TV       |   8 →  9 | 10→11 |  1→4 |   2→2 |
+ *   |    2560x1440 |  43" TV       |   9 →  9 | 11→11 |  1→4 |   2→2 |
+ *
+ * Re-measured against the unmeasured wall the tiers left, so the two tables
+ * read against each other rather than against two different trees. What the
+ * tiers move here is smaller than on the wall nobody has measured, which is the
+ * honest shape of it: a measured wall already draws its type at the reader's
+ * angle, so the tier mostly agrees with what the box was doing and disagrees
+ * where the *box* was the binding constraint rather than the type.
  *
  * Three columns need saying out loud, and the third is the one that would
  * otherwise read as a regression.
  *
  * **The two e-ink sizes name their first thing.** `spanBars` goes 0 → 2 at
  * both: at 22px a bar's lane is taller than a cell of that grid has, so
- * `trimCellRows` measured every bar back out and the panel drew a month with
+ * the trim measured every bar back out and the panel drew a month with
  * no words in it at all. At the event role's 16.9px the lane fits, the half
  * term is drawn once across its days, and `distinctNames` goes 0 → 1. It is
  * one name, and it is the first name either of those panels has ever had on
@@ -897,7 +943,7 @@ const ARCMIN_SLACK = 0.05;
  *
  * **`plusNCells` goes *up* at the two largest sizes, and that is the counter
  * getting cheaper rather than a name being lost.** A cell that can name
- * nothing draws no counter at all (`trimCellRows`: "+3" alone is a number with
+ * nothing draws no counter at all ("+3" alone is a number with
  * no subject), so a cell that starts naming something also becomes a cell that
  * can carry a count — which is the whole of 1920x1080, where names go 8 → 10
  * and counters 2 → 4. At 2560x1440 the names are unchanged and the counters
@@ -922,7 +968,7 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     monthNamesVisible: 0,
     distinctNames: 1,
     plusNCells: 0,
-    markedCells: 19,
+    markedCells: 20,
     spanBars: 2,
     agendaDays: 2,
     agendaEvents: 6,
@@ -933,7 +979,7 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     monthNamesVisible: 0,
     distinctNames: 1,
     plusNCells: 0,
-    markedCells: 19,
+    markedCells: 20,
     spanBars: 2,
     agendaDays: 2,
     agendaEvents: 6,
@@ -943,8 +989,8 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
   '1080x1920': {
     monthNamesVisible: 12,
     distinctNames: 10,
-    plusNCells: 3,
-    markedCells: 19,
+    plusNCells: 0,
+    markedCells: 20,
     spanBars: 2,
     agendaDays: 2,
     agendaEvents: 6,
@@ -952,10 +998,10 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     contentSharePercent: 85.5,
   },
   '1920x1080': {
-    monthNamesVisible: 10,
+    monthNamesVisible: 11,
     distinctNames: 9,
     plusNCells: 4,
-    markedCells: 19,
+    markedCells: 20,
     spanBars: 2,
     agendaDays: 2,
     agendaEvents: 6,
@@ -963,10 +1009,10 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     contentSharePercent: 80,
   },
   '2560x1440': {
-    monthNamesVisible: 10,
+    monthNamesVisible: 11,
     distinctNames: 9,
     plusNCells: 4,
-    markedCells: 19,
+    markedCells: 20,
     spanBars: 2,
     agendaDays: 2,
     agendaEvents: 6,
@@ -1262,7 +1308,7 @@ describe('a 12-hour clock on a measured landscape wall', () => {
  *    explicitly out of scope here (token changes only), so this holds the
  *    ratio this phase actually owns rather than a number no CSS-only change
  *    could satisfy.
- *  - a real month cell's `.hz-rowtext`, which `trimCellRows` may hide
+ *  - a real month cell's `.hz-rowtext`, which the tier pass may hide
  *    entirely at a small enough box — measured, every cell on the same paired
  *    wall at 480x800 and 800x480 (this file's own smallest sizes) falls back
  *    to "+N" with no event text drawn at all, which is a pre-existing fact

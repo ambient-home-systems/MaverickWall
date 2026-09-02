@@ -33,11 +33,24 @@ export type AddSourceResult =
  * The URL goes through the same guard the fetcher uses — rule four — and is
  * stored as a keyring envelope. Only the hostname is kept in clear, because
  * the path is the credential.
+ *
+ * **`at` is the caller's clock and is deliberately not defaulted**, which is
+ * the same rule `equipHousehold` states and for the same reason: a default is
+ * how a second clock comes back. This function used to read `Date.now()` and
+ * the row it stamps is read back by `firstSyncPending`, which asks whether a
+ * source was added within the last two minutes — against the *app's* injected
+ * `now`. In production those are one clock and no household ever saw anything.
+ * Under a harness that pins the hour they are hours apart, so a calendar added
+ * a moment ago reported "0 events · synced never" instead of "Syncing…", and
+ * two tests were red for all but a couple of minutes a day. That is the
+ * bootstrap code's fault again — stamped by one clock and read by another —
+ * and the cure is to hand the clock in rather than to widen the window.
  */
 export function addCalendarSource(
   db: SqliteDatabase,
   keyring: Keyring,
   input: AddSourceInput,
+  at: number,
 ): AddSourceResult {
   const policy = {
     ...(input.allowPrivateNetwork === true ? { allowPrivateNetwork: true } : {}),
@@ -51,7 +64,6 @@ export function addCalendarSource(
   }
 
   const id = randomBytes(8).toString('hex');
-  const now = Date.now();
 
   // Rotated rather than left to the column default, which is one fixed blue:
   // three calendars all drawing the same colour is a wall that cannot say whose
@@ -71,8 +83,8 @@ export function addCalendarSource(
     input.allowPrivateNetwork === true ? 1 : 0,
     input.allowLoopback === true ? 1 : 0,
     input.allowHttp === true ? 1 : 0,
-    now,
-    now,
+    at,
+    at,
   );
 
   // A few seconds out rather than immediately, so adding several in a row does
@@ -80,7 +92,7 @@ export function addCalendarSource(
   db.prepare(
     `INSERT INTO job_state (key, kind, next_run_at, consecutive_failures, created_at, updated_at)
      VALUES (?, 'ics-sync', ?, 0, ?, ?) ON CONFLICT(key) DO NOTHING`,
-  ).run(`ics-sync:${id}`, now + 3_000, now, now);
+  ).run(`ics-sync:${id}`, at + 3_000, at, at);
 
   return { ok: true, id, host: validated.value.hostname };
 }

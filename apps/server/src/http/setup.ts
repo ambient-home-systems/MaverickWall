@@ -583,13 +583,12 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       );
     }
 
-    const added = addCalendarSource(deps.db, deps.keyring, {
-      name,
-      url,
-      allowPrivateNetwork,
-      allowLoopback,
-      allowHttp,
-    });
+    const added = addCalendarSource(
+      deps.db,
+      deps.keyring,
+      { name, url, allowPrivateNetwork, allowLoopback, allowHttp },
+      now(),
+    );
     if (!added.ok) {
       return c.html(calendarForm(values, { message: added.message }), 400);
     }

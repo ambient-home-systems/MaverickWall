@@ -60,8 +60,31 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * not optional even for the panel nothing else moved on. Two bumps on the
  * branch (the frame, then the widgets) collapse to this one, because they
  * reach a household together and no panel ever served the state between them.
+ *
+ * 6: density tiers (`epaper/tiers.ts`, the wall's table transcribed). A month
+ * cell reads its own inner box in characters of the type it would draw, and
+ * takes a *form* — how many names, how many lines each may wrap to, whether a
+ * time is drawn beside one, how much of a weekday head there is room for —
+ * rather than drawing everything and truncating. `pillMinCell`/`pillMinWidth`
+ * are what it replaces, and the width half of that pair was 32px: three and a
+ * half characters of this font, so on every panel in the range a household who
+ * asked for labelled cells got "Denti" and "Assem" — a truncation this
+ * project's own rule calls a different string rather than a shortened title,
+ * and one the wall stopped drawing when flat names replaced pills. Measured,
+ * the built-in layout's cells are 3.8 to 9.7 characters wide.
+ *
+ * It also closes a divergence rather than only a fault: at 800x480 the wall
+ * draws no names in a cell of that size and the panel drew four. One stored
+ * value, two renderers, two answers — which is the shape of `shifts[0]`,
+ * `display_mode`, `cellEvents` and `mode`, and the fourth time the cure has
+ * been to resolve it once and hand over the answer.
+ *
+ * Every panel that draws a month grid moves. A cell that can name nothing
+ * draws its density mark, which was already there; a multi-day bar keeps its
+ * words wherever the bar's *own* width can hold them, which on a 7.5" panel is
+ * the only name its grid has ever had.
  */
-export const EPAPER_RENDERER_VERSION = 5;
+export const EPAPER_RENDERER_VERSION = 6;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

@@ -421,18 +421,19 @@ describe('rules 2 and 3 on a panel', () => {
 
   it('shares the last name\'s line with the count rather than taking one', () => {
     /*
-     * 46px cells: the numeral, the mark and its gap leave room for exactly one
-     * line of scale-1 text. With four events on the day, that line has to hold
-     * a *name* and a "+3" hard right — a counter on a line of its own has no
-     * line to take at this size, so the name is what it would cost.
+     * A cell that can name something, and four events on the day: the last name
+     * drawn has to hold a "+N" hard right, because a counter on a line of its
+     * own costs a name and a count is a summary of what is missing — it cannot
+     * be worth more than the thing itself.
      *
-     * The bounds are read off a dump of the drawn cell rather than reasoned
-     * about. With the counter on the line, "Yoga" is fitted to "Yo" and "+3"
-     * runs to two pixels of the cell's right inset; with the counter anywhere
-     * else, the full "Yoga" stops eight pixels short of that. So the last few
-     * columns of the line are the discriminator and the left of it is the
-     * guard against a cell that drew only a count — the first version of this
-     * measured a wider strip and passed on the tail of the title itself.
+     * **The box is bigger than it was, and the reason is the tier table.** This
+     * used to run on 46px cells, which is four characters of this font — so
+     * "Yoga" was fitted to "Yo" and this assertion's own comment described
+     * reading the tail of a two-letter stub. A cell that narrow now draws its
+     * density mark and no names at all (`tiers.ts`, M0), which is what the wall
+     * draws in a cell of the same width and is the divergence this phase
+     * closed. The rule under test is untouched; it needs a cell that can hold a
+     * name to be *about* anything, so the panel is one that can.
      */
     const busy = fakeManifest([
       {
@@ -443,24 +444,44 @@ describe('rules 2 and 3 on a panel', () => {
         ),
       },
     ]);
-    const model = buildEpaperModel(busy, { now: Date.parse(`${TODAY}T12:00:00Z`) });
-    const box = { x: 0, y: 0, w: 322, h: 252 };
-    const fb = new Framebuffer(box.w, box.h);
-    drawMonthBox(fb, model, panelMetrics({ width: box.w, height: box.h }), box, { pills: true });
-    const rows = decode(encodePng1bit(fb));
-    const cell = Math.max(12, Math.floor(Math.min(box.w / 7, (box.h - 22) / model.weeks.length)));
-    expect(cell, 'the box did not produce the cell size this measurement assumes').toBe(46);
-    const left = Math.floor((box.w - cell * 7) / 2) + 2 * cell;
-    // The one title line: the numeral's line, the mark, and the gap after it.
-    const line = 22 + 4 + 8 * 2 + 2 + 3 + 3;
+    const box = { x: 0, y: 0, w: 700, h: 420 };
+    const { rows, cellW, cellH, gx, gridTop, numberBand } = grid(busy, box);
+    const m = panelMetrics({ width: box.w, height: box.h });
+    const left = gx + 2 * cellW;
+    // The first title line: the numeral's band, then the mark and its gap.
+    const top = gridTop + numberBand + m.markH + m.markGap;
+    const glyph = 8 * m.smallScale;
+    /*
+     * Which lines were actually drawn, found by looking rather than by working
+     * out how many the box affords — a test that recomputes the renderer's own
+     * row arithmetic is the second opinion `grid()` above exists to avoid, and
+     * working it out is how this file came to describe a stub as a name.
+     */
+    // Bounded by the cell, which is not fussiness: the line after the last one
+    // that fits runs into the next week's border and numeral, and a scan that
+    // walked into it read the row below as a line of this cell's.
+    const bottom = gridTop + cellH;
+    const drawn: number[] = [];
+    for (let y = top; y + glyph <= bottom; y += m.cellTitleLineH) {
+      if (ink(rows, left + m.cellInset, y, left + cellW - 1, y + glyph) > 0) drawn.push(y);
+    }
+    expect(drawn.length, 'the cell named nothing, so there is no rule to test').toBeGreaterThan(0);
+    const last = drawn[drawn.length - 1] as number;
     expect(
-      ink(rows, left + 3, line, left + 24, line + 8),
-      'the cell spent its one line on a count and drew no name',
+      ink(rows, left + m.cellInset, last, left + Math.floor(cellW / 2), last + glyph),
+      'the cell spent its last line on a count and drew no name on it',
     ).toBeGreaterThan(0);
     expect(
-      ink(rows, left + cell - 8, line, left + cell - 1, line + 8),
+      ink(rows, left + cellW - 3 * m.cellInset, last, left + cellW - 1, last + glyph),
       'the count is not on the name\'s line, so it either took one or vanished',
     ).toBeGreaterThan(0);
+    // And it took no line of its own under the names, which is the whole rule.
+    const under = last + m.cellTitleLineH;
+    expect(under + glyph, 'the cell has no room below its last name to test').toBeLessThan(bottom);
+    expect(
+      ink(rows, left + m.cellInset, under, left + cellW - 1, under + glyph),
+      'the count took a line of its own under the names',
+    ).toBe(0);
   });
 
   it('never draws a count in a cell that names nothing', () => {

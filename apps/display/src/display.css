@@ -2,10 +2,16 @@
  * The wall, from `maverick-wall-design-directions.html`.
  *
  * Portrait 1080x1920 is the design target. ES2019-era CSS only: no :has(), no
- * container queries, no subgrid, no @layer — and no color-mix(), which is the
- * same vintage as :has() and which the design used. The tints it produced are
- * pre-mixed per theme in theme.ts instead, against that theme's own
- * background, which is what sits behind every tinted surface here.
+ * subgrid, no @layer — and no color-mix(), which is the same vintage as :has()
+ * and which the design used. The tints it produced are pre-mixed per theme in
+ * theme.ts instead, against that theme's own background, which is what sits
+ * behind every tinted surface here.
+ *
+ * Container queries are the one exception, and hard rule 2 was amended to
+ * permit them rather than worked around: a free-form canvas does not reflow, so
+ * the only thing that can adapt a widget to its box is the widget reading that
+ * box. `tiers.ts` is where that reading is turned into a decision; the queries
+ * themselves are narrow and are declared beside the widget they size.
  *
  * Rule three: no web font is *fetched*. A curated set ships inside the image
  * and is served same-origin from `/assets/fonts` (licences beside the files),
@@ -912,7 +918,44 @@ body {
 /* Rows are clipped whole rather than halfway through a line of text. */
 .next { align-content: start; }
 
+/*
+ * The grid's gutter is a fraction of the grid, and this is what hard rule 2 was
+ * amended for.
+ *
+ * A free-form canvas does not reflow: what the household dragged is what is
+ * drawn, so nothing above a widget can give it room, and the only thing that
+ * can adapt a widget to its box is the widget reading that box. `rem` here is
+ * 1% of the *canvas height*, so a gutter stated in it takes a fixed share of
+ * the wall and an arbitrary share of a cell — measured on the shipped Classic
+ * wall, `0.35rem` is 6.7px between two 114px cells in portrait and 3.8px
+ * between two 91px cells in landscape, which is the same declaration spending
+ * twice the fraction of a cell on one wall as on the other. `cqw` is a fraction
+ * of the grid, which is what a gutter between its columns should be, and there
+ * is no way to say that without a container.
+ *
+ * `min()` and not `cqw` alone, so the gutter can only ever get *tighter* than
+ * the wall already draws: this phase is about giving a cell room for words, and
+ * a container query that widened somebody's gutters would be a redesign
+ * arriving with a mechanism. An engine that cannot read either drops the whole
+ * declaration and keeps today's 0.35rem — the fallback is the shipped wall.
+ *
+ * **The cell's own padding is deliberately left in `rem`**, which looks like an
+ * inconsistency and is a measurement: `.hz-cell.is-today` draws a `0.25rem`
+ * outline inset into that padding, so the padding is what keeps a title off it.
+ * Proportional padding on the shipped portrait wall computes to 3.5px against a
+ * 4.8px outline, and a name drawn over the marker for today reads as a broken
+ * renderer. Making the outline proportional too is a change to what today looks
+ * like, which is a different decision from giving a cell room.
+ *
+ * `inline-size` and not `size`: block containment would make the grid's height
+ * independent of its contents, and `.fw-fill` needs it to fill the box. Only
+ * the flat-text grid is a container — the Swiss mode's gutter *is* its
+ * structure ("no cards; structure comes from the week rule and the column
+ * gutter"), so tightening it there would be tightening the design.
+ */
 .hz-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.35rem; }
+.horizon-text { container: mwcal / inline-size; }
+.horizon-text .hz-grid { gap: min(0.35rem, 0.45cqw); }
 /* A narrow column ahead of the seven, only when every row carries a number. */
 .hz-grid.has-weeks { grid-template-columns: 2.6rem repeat(7, 1fr); }
 .hz-wk {
@@ -1080,13 +1123,15 @@ body {
   /* An event name is the one thing this wall draws at full ink. */
   color: var(--ink-event);
   /*
-   * Two lines, and no ellipsis anywhere.
+   * The wrap allowance, and no ellipsis anywhere.
    *
-   * `--cell-lines` is read by `trimCellRows` as well as by the `max-height`
-   * below, so the script and the stylesheet cannot disagree about the
-   * allowance. The clamp is the belt: the script decides, and hides a row that
-   * needs a third line, but a frame measured at zero width must not draw a
-   * six-line title over its neighbours.
+   * `--tier-lines` is written on the grid by the tier pass, which reads the
+   * same number out of `tiers.ts` — so the script and the stylesheet cannot
+   * disagree about the allowance, and a grid nothing has tiered yet (a frame
+   * measured at zero width, a bundle whose script failed) keeps the two lines
+   * the grid has always drawn. The clamp is the belt: the script decides, and
+   * hides a row that needs another line, but nothing may draw a six-line title
+   * over its neighbours.
    *
    * `overflow-wrap` is deliberate and narrow. It only ever acts on a single
    * word too long for the column — "Physiotherapy" in a 115px cell — and the
@@ -1094,7 +1139,7 @@ body {
    * the event not being on the wall at all. A word carried over two lines is
    * still every letter of it.
    */
-  --cell-lines: 2;
+  --cell-lines: var(--tier-lines, 2);
   white-space: normal;
   overflow-wrap: break-word;
   overflow: hidden;
@@ -1136,6 +1181,45 @@ body {
   align-self: flex-end;
 }
 .hz-more:empty { display: none; }
+
+/*
+ * An all-day event's colour at the cell's own edge, which is what M0 draws.
+ *
+ * A cell too narrow for a name is not too narrow for a colour, and whose day it
+ * is is most of what a family wall is for. Out of flow — the cell is
+ * `position: relative` — so it costs no row and takes nothing off the density
+ * mark beside the numeral, which is this project's own rule about anything that
+ * annotates an event, paid for twice already.
+ *
+ * Left, not right: it lines up with `.hz-row.allday`'s own rule, so a cell that
+ * gains a row as its box grows keeps the colour in the same column.
+ */
+.hz-edge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.22rem;
+  background: var(--pc);
+}
+
+/*
+ * The time beside a name, which only the widest tier draws.
+ *
+ * Scaffold rather than event ink, and the time role's own size: a clock beside
+ * an event is what labels it, and the words are what somebody walked over to
+ * read. Tabular, because a figure that changes width changes the row's
+ * geometry.
+ */
+.hz-rowtime {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: var(--t-wall-time, max(var(--t-micro), var(--t-floor)));
+  line-height: 1.25;
+  color: var(--ink-scaffold);
+  font-variant-numeric: tabular-nums;
+  margin-right: 0.3rem;
+}
 
 /* ------------------------------------------------ THE DENSITY MARK ------- */
 /*

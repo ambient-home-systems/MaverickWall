@@ -25,6 +25,17 @@ import { IDENTITY_PALETTE } from '../src/api/palette.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = join(here, '..', 'migrations');
 
+/**
+ * When these calendars were added. Nothing here turns on it.
+ *
+ * `addCalendarSource` takes the caller's clock rather than reading one, so
+ * every call has to say which clock it is — and a colour test's honest answer
+ * is "a fixed instant, because this is not about time". Stating it beats a
+ * default: a default is how the row's stamp and the page that reads it came to
+ * be two different clocks in the first place.
+ */
+const ADDED_AT = Date.UTC(2026, 7, 13, 11, 0, 0);
+
 const roots: string[] = [];
 afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
@@ -66,7 +77,12 @@ describe('a new calendar source', () => {
   it('gives four calendars four different colours', () => {
     const { db, keyring } = migrated();
     for (const name of ['Work', 'School', 'Bins', 'Football']) {
-      const added = addCalendarSource(db, keyring, { name, url: `https://example.com/${name}.ics` });
+      const added = addCalendarSource(
+        db,
+        keyring,
+        { name, url: `https://example.com/${name}.ics` },
+        ADDED_AT,
+      );
       expect(added.ok, JSON.stringify(added)).toBe(true);
     }
 
@@ -80,9 +96,9 @@ describe('a new calendar source', () => {
     // Two kinds, one wall. A HA entity that took a colour an ICS feed already
     // holds is the same indistinguishable pill, arrived at by another door.
     const { db, keyring } = migrated();
-    addCalendarSource(db, keyring, { name: 'Work', url: 'https://example.com/w.ics' });
+    addCalendarSource(db, keyring, { name: 'Work', url: 'https://example.com/w.ics' }, ADDED_AT);
     addHaCalendarSource(db, { entityId: 'calendar.bins', name: 'Bins' });
-    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' });
+    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' }, ADDED_AT);
 
     expect(new Set(colours(db)).size).toBe(3);
   });
@@ -93,7 +109,7 @@ describe('a new calendar source', () => {
       const added = addCalendarSource(db, keyring, {
         name: `Feed ${i}`,
         url: `https://example.com/${i}.ics`,
-      });
+      }, ADDED_AT);
       expect(added.ok, `insert ${i}: ${JSON.stringify(added)}`).toBe(true);
     }
 
@@ -109,13 +125,18 @@ describe('a new calendar source', () => {
 
   it("leaves an existing row's colour alone", () => {
     const { db, keyring } = migrated();
-    const first = addCalendarSource(db, keyring, { name: 'Work', url: 'https://example.com/w.ics' });
+    const first = addCalendarSource(
+      db,
+      keyring,
+      { name: 'Work', url: 'https://example.com/w.ics' },
+      ADDED_AT,
+    );
     expect(first.ok).toBe(true);
     const before = colours(db)[0];
 
     // A household who recoloured it by hand, which they may still do.
     db.prepare('UPDATE calendar_sources SET color = ? WHERE name = ?').run('#123456', 'Work');
-    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' });
+    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' }, ADDED_AT);
 
     const kept = (
       db.prepare('SELECT color FROM calendar_sources WHERE name = ?').get('Work') as {
@@ -128,12 +149,12 @@ describe('a new calendar source', () => {
 
   it('skips a hue a household has already taken by hand', () => {
     const { db, keyring } = migrated();
-    addCalendarSource(db, keyring, { name: 'Work', url: 'https://example.com/w.ics' });
+    addCalendarSource(db, keyring, { name: 'Work', url: 'https://example.com/w.ics' }, ADDED_AT);
     // Recoloured to the palette's *second* entry: the next insert must step
     // over it rather than hand out a duplicate.
     db.prepare('UPDATE calendar_sources SET color = ?').run(IDENTITY_PALETTE[1]);
 
-    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' });
+    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' }, ADDED_AT);
     expect(new Set(colours(db)).size).toBe(2);
   });
 });
@@ -166,8 +187,8 @@ describe('a new person', () => {
     // A shared rotation would skip them past two hues for no reason a household
     // could see.
     const { db, keyring } = migrated();
-    addCalendarSource(db, keyring, { name: 'Work', url: 'https://example.com/w.ics' });
-    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' });
+    addCalendarSource(db, keyring, { name: 'Work', url: 'https://example.com/w.ics' }, ADDED_AT);
+    addCalendarSource(db, keyring, { name: 'School', url: 'https://example.com/s.ics' }, ADDED_AT);
     createPerson(db, 'p1', 'Amy');
 
     expect(readPeopleAdmin(db)[0]?.color).toBe(IDENTITY_PALETTE[0]);
