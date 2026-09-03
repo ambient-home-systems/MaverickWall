@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, errorBlock, escapeHtml, networkAccessLabel, page, selectField, textField } from './html.js';
+import { confirmDestroyPage, errorBlock, escapeHtml, icon, networkAccessLabel, page, selectField, textField } from './html.js';
 import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
 import { call, resolveConnection, testConnection, type ConnectionMode } from '../modules/homeassistant/client.js';
 import {
@@ -835,29 +835,43 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const watched = readWatched(deps.db).filter((row) => row.watched === 1);
 
     /*
-     * Left as a hand-built form rather than `destructive()`: the target here
-     * is `?entity_id=…`, a query parameter, and `destructive()`'s lead button
-     * has nowhere to carry a hidden field — its form has no fields at all,
-     * only an action. A GET form with no fields replaces the action URL's own
-     * query with the (empty) serialised field set on submission, so embedding
-     * the id in `confirmAction`'s query string would silently submit with no
-     * `entity_id` at all. The rule and calendar deletes below take their id
-     * from the *path* instead, which is exactly what `destructive()` expects.
+     * The destructive Remove is a hand-built form rather than `destructive()`,
+     * because the target here is `?entity_id=…`, a query parameter, and
+     * `destructive()`'s lead button has nowhere to carry a hidden field — its
+     * form has no fields at all, only an action. A GET form with no fields
+     * replaces the action URL's own query with the (empty) serialised field set
+     * on submission, so embedding the id in `confirmAction`'s query string would
+     * silently submit with no `entity_id` at all. The rule and calendar deletes
+     * below take their id from the *path* instead, which is exactly what
+     * `destructive()` expects.
+     *
+     * It rides in the ⋮ overflow all the same, matching every other list of
+     * cards here — a household scanning a list of watched entities should not
+     * read a full-weight Remove per row — with the ellipsis and the entity-
+     * naming accessible name `destructive()` would have given it.
      */
     const rows = watched
-      .map(
-        (row) =>
-          card(
-            `<h2>${escapeHtml(row.label ?? row.friendlyName ?? row.entityId)}</h2>` +
-            `<p>${escapeHtml(row.state ?? '—')}` +
-            `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
-            `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(ago(row.fetchedAt, now()))}</p>` +
-            `<p class="host">${escapeHtml(row.entityId)}</p>` +
-            `<form method="get" action="admin/home-assistant/entities/remove">` +
-            `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
-            `<button class="btn-danger" type="submit">Remove</button></form>`,
-          ),
-      )
+      .map((row) => {
+        const label = row.label ?? row.friendlyName ?? row.entityId;
+        return card(
+          `<div class="card-head"><div class="card-head-main">` +
+          `<h2>${escapeHtml(label)}</h2>` +
+          `<p class="sub">${escapeHtml(row.state ?? '—')}` +
+          `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
+          `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(ago(row.fetchedAt, now()))}</p>` +
+          `<p class="host">${escapeHtml(row.entityId)}</p>` +
+          `</div>` +
+          `<details class="ovf" data-overflow>` +
+          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+          `aria-label="More actions for ${escapeHtml(label)}" title="More">${icon('more')}</summary>` +
+          `<div class="ovf-menu" role="menu">` +
+          `<form method="get" action="admin/home-assistant/entities/remove">` +
+          `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
+          `<button class="ovf-item is-danger" type="submit" ` +
+          `aria-label="Remove ${escapeHtml(label)}">Remove…</button></form>` +
+          `</div></details></div>`,
+        );
+      })
       .join('');
 
     // What the picker needs, and no more — a resolved value and a label, never
@@ -973,30 +987,38 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           match?.condition?.between != null
             ? `, ${match.condition.between.from}–${match.condition.between.to}`
             : '';
+        const id = encodeURIComponent(row.id);
         return card(
-          `<h2>${escapeHtml(row.name)}</h2>` +
-          // The same "(off)" fault the calendar row shipped with — a state
-          // appended to the name it belongs to, invisible scanning a list and
-          // indistinguishable from a rule somebody actually named that. A tag
-          // is its own element on its own ground and still a word, so a
-          // monochrome screenshot and a colour-blind reader both get it.
+          // The same card head every list uses: the rule on the left, the ⋮
+          // holding the destructive Delete. Turn on/off stays the one visible
+          // control (the Store card's call), so a toggle is never a neighbour of
+          // a delete. "(off)" is a tag beside the name — its own element on its
+          // own ground, still a word a monochrome screenshot and a colour-blind
+          // reader both get — never appended to the name it belongs to.
+          `<div class="card-head"><div class="card-head-main">` +
+          `<h2>${escapeHtml(row.name)}` +
           (row.enabled === 1 ? '' : tag('Off', 'warn')) +
+          `</h2>` +
           `<p class="host">${escapeHtml(match?.entityId ?? 'unknown entity')} ` +
           `${escapeHtml(match?.condition?.kind ?? '?')} ` +
           `${escapeHtml(match?.condition?.value ?? '?')}` +
           `${escapeHtml(wait)}${escapeHtml(window)}</p>` +
-          `<p>${escapeHtml(ACTIONS.find((a) => a.key === row.action)?.label ?? row.action)}</p>` +
-          `<div class="row">` +
-          `<form method="post" action="admin/home-assistant/rules/${encodeURIComponent(row.id)}/toggle">` +
-          `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +
-          `<button class="secondary" type="submit">${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button>` +
-          `</form>` +
+          `<p class="sub">${escapeHtml(ACTIONS.find((a) => a.key === row.action)?.label ?? row.action)}</p>` +
+          `</div>` +
+          `<details class="ovf" data-overflow>` +
+          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+          `aria-label="More actions for ${escapeHtml(row.name)}" title="More">${icon('more')}</summary>` +
+          `<div class="ovf-menu" role="menu">` +
           destructive('Delete', {
             thing: row.name,
-            confirmAction: `admin/home-assistant/rules/${encodeURIComponent(row.id)}/delete`,
-            variant: 'button',
+            confirmAction: `admin/home-assistant/rules/${id}/delete`,
           }) +
-          `</div>`,
+          `</div></details></div>` +
+          `<div class="row">` +
+          `<form method="post" action="admin/home-assistant/rules/${id}/toggle">` +
+          `<input type="hidden" name="enabled" value="${row.enabled === 1 ? '' : '1'}">` +
+          `<button class="secondary" type="submit">${row.enabled === 1 ? 'Turn off' : 'Turn on'}</button>` +
+          `</form></div>`,
         );
       })
       .join('');
