@@ -3970,7 +3970,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="tpl-name">${escapeHtml(t.name)}</div>` +
       `<div class="tpl-blurb">${escapeHtml(t.blurb)}</div>` +
       (t.theme !== undefined
-        ? `<div class="hint-1" style="margin:0 0 .2rem">Looks best in ` +
+        ? `<div class="hint-1">Looks best in ` +
           `<b style="color:var(--accent)">${escapeHtml(themeName(t.theme))}</b> ` +
           `— change it after.</div>`
         : '') +
