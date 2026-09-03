@@ -3386,6 +3386,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
       `<span class="tag">Browser</span></div>` +
       `<div class="sub">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
+      (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`) +
       (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
       `</div></div>` +
       `<span class="link">Open ${icon('arrow')}</span>` +
@@ -3401,7 +3402,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * (RFC 006), reused here rather than rebuilt for the merge.
    */
   function epaperListCard(screen: AdminScreenRow): string {
-    const seen = screen.lastSeenAt === null ? 'never connected' : `last seen ${ago(screen.lastSeenAt, now())}`;
+    const seen =
+      screen.lastSeenAt === null
+        ? 'never connected'
+        : `last seen ${ago(screen.lastSeenAt, now())}` +
+          (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`);
     return (
       `<div class="card"><div style="display:flex;align-items:center;gap:12px">` +
       `<div class="ic">${icon('screens')}</div>` +
