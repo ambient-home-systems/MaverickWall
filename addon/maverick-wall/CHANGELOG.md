@@ -14,6 +14,26 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**The settings screens now look like one app instead of a dozen.** Overview,
+Calendars, People, Shifts, Chores, Weather, Home Assistant, Themes, the Store,
+System and Walls each used to draw their cards, lists and buttons slightly
+differently. They now share one consistent look, and the Walls page — which
+had three different-looking buttons doing the same job — is fixed.
+
+**A settings-screen animation that never stopped now does.** A pulsing "online"
+dot next to each wall used to animate forever unless your browser was set to
+reduce motion; it now settles down after a few seconds for everyone, the way
+the rest of the app's motion already did.
+
+**Screen readers can make more sense of the settings.** A heading on the shift
+rotation screen was nested out of order, which could confuse anyone navigating
+by heading; it now reads in the right order.
+
+Nothing changed about how a wall itself looks or draws — this release is the
+settings screens only.
+
 ## 0.56.0
 
 **The wall now sizes its text to your room, not to one screen.** Before this,
