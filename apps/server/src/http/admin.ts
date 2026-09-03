@@ -4267,10 +4267,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * indistinguishable from a calendar somebody had actually named that. It
        * is a tag now: its own element, its own ground, and still a *word*,
        * which is what a monochrome screenshot and a colour-blind reader both
-       * need. The colour is never the signal on its own.
+       * need. The colour is never the signal on its own. It rides in the head's
+       * flex row beside the name — the same place the Walls kind chip and the
+       * Store card's "Off" sit — rather than dropping to its own line.
        */
-      `${escapeHtml(source.name)}</h2>` +
+      `${escapeHtml(source.name)}` +
       (source.enabled === 1 ? '' : tag('Not syncing', 'warn')) +
+      `</h2>` +
       // The host and never the path. The path is the credential. A Home
       // Assistant calendar has neither — it is an entity read through the one
       // connection — so it says what it is rather than "unknown host".
