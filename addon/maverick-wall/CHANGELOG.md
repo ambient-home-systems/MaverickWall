@@ -14,6 +14,44 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**The wall now sizes its text to your room, not to one screen.** Before this,
+everything on the wall was drawn at a size that was right on one television and
+wrong on all the others — too big to fit on a small panel, so events vanished,
+and too small to read across a kitchen on a large one. There is a new setting
+for each wall: pick roughly how big the screen is and how far away you stand to
+read it. Everything on that wall — event names, the date, the clock, the
+forecast — is then drawn at the size that is actually legible from where you
+stand. If you leave it unset, your walls look exactly as they did before.
+
+**A bigger screen now shows more, not just bigger.** Once a wall knows its size,
+a widget with more room draws more of your day rather than the same handful of
+items blown up. On a large television the agenda can show a couple of weeks of
+events across several days where it used to stop at six; a small panel shows
+fewer, at a size you can still read, instead of clipping.
+
+**Weather and device icons are drawn into the wall now.** The little weather and
+sensor symbols used to be emoji, which meant they looked different on every
+screen and showed up as nothing at all on e-paper panels. They are hand-drawn
+monochrome symbols now — the same on every wall, and they finally appear on
+e-paper where the forecast used to have a blank gap.
+
+**The month grid reads more like a calendar.** A holiday or a trip that spans
+several days is drawn once, as a single labelled bar across those days, instead
+of repeating its name in every square. When a day has more events than fit, the
+"+2" no longer takes the place of an event you could have read — you get the
+event, and the count rides alongside it.
+
+**E-paper panels fill the screen and read sharper.** Larger e-paper displays no
+longer leave the bottom half blank, and text is drawn in fonts sized to the
+panel rather than one fixed size, so more of an event title fits on a line. A
+running event's progress bar no longer quietly shrinks the whole agenda.
+
+**Under the hood:** the wall's fonts are now bundled and self-hosted rather than
+relying on whatever the screen happened to have, and the settings screens were
+rebuilt on a shared set of components so they stay consistent as they grow.
+
 ## 0.55.0
 
 **Maverick Wall is smaller, and a security scanner has nothing to say about
