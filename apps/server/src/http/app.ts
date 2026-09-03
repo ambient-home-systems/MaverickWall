@@ -1177,7 +1177,7 @@ export function createApp(deps: AppDeps): Hono {
     // shows as last seen. Failing to update this would make a broken display
     // look like an absent one.
     try {
-      touchScreen(deps.db, screen.id, null, c.req.header('user-agent') ?? null);
+      touchScreen(deps.db, screen.id, clientAddress(c) ?? null, c.req.header('user-agent') ?? null);
       // The wall reports its viewport so the editor can offer "match this
       // screen's size" (RFC 005). Bounds here, not in the query — a rubbish
       // string cannot write a rubbish size, and nothing depends on it to draw.
@@ -1283,7 +1283,7 @@ export function createApp(deps: AppDeps): Hono {
     // Diagnostics only — a panel that renders must still show as last seen, and
     // a failure to record it must never fail the frame.
     try {
-      touchScreen(deps.db, screen.id, null, c.req.header('user-agent') ?? null);
+      touchScreen(deps.db, screen.id, clientAddress(c) ?? null, c.req.header('user-agent') ?? null);
     } catch {
       /* not worth failing a frame over */
     }

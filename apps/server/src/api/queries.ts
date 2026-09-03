@@ -860,6 +860,8 @@ export function deleteShiftPlan(db: SqliteDatabase, id: string): void {
 
 export interface AdminScreenRow extends ScreenRow {
   readonly lastSeenAt: number | null;
+  /** Who last used this screen's token — a household's own detective control. */
+  readonly lastSeenIp: string | null;
   readonly appVersion: string | null;
   /** The viewport this screen last reported, for the editor's "match" (RFC 005). */
   readonly reportW: number | null;
@@ -889,7 +891,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
               report_w AS reportW, report_h AS reportH,
-              last_seen_at AS lastSeenAt, app_version AS appVersion
+              last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp, app_version AS appVersion
          FROM screens ORDER BY name`,
     )
     .all() as AdminScreenRow[];

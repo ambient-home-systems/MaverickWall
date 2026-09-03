@@ -137,7 +137,18 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
   };
   const frameUrlFor = (token: string, c: Context): string => `${epaperOrigin(c)}/d/epaper/${token}.png`;
 
-  const esphomeRecipe = (url: string): string =>
+  /**
+   * The secret this wall's URL is stored as, in both recipes below.
+   *
+   * Neither recipe interpolates the URL into the config it prints — a pasted
+   * `still_image_url` or `online_image.url` is exactly the kind of line that
+   * ends up in a forum post or a committed dotfiles repo when somebody asks
+   * for help with their ESPHome or Home Assistant config, and the token rides
+   * along with it. `secretsSnippet` is the one place the real value appears.
+   */
+  const secretsSnippet = (url: string): string => `eink_url: "${url}"`;
+
+  const esphomeRecipe = (): string =>
     `esphome:\n` +
     `  name: kitchen-eink\n` +
     `esp32:\n` +
@@ -157,7 +168,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     `      it.image(0, 0, id(wall_image));\n\n` +
     `online_image:\n` +
     `  - id: wall_image\n` +
-    `    url: "${url}"\n` +
+    `    url: !secret eink_url   # add to secrets.yaml — this URL carries the wall's token\n` +
     `    format: PNG\n` +
     `    type: BINARY\n\n` +
     `deep_sleep:            # drop this block for a mains panel that carries alerts\n` +
@@ -169,17 +180,21 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     `      - component.update: wall_image\n` +
     `      - component.update: display`;
 
-  const haRecipe = (url: string): string =>
+  const haRecipe = (): string =>
     `# configuration.yaml — Home Assistant fetches this URL; the wall is never called back\n` +
     `camera:\n` +
     `  - platform: generic\n` +
     `    name: eInk source\n` +
-    `    still_image_url: "${url}"\n\n` +
+    `    still_image_url: !secret eink_url\n\n` +
     `# automation — runs entirely inside Home Assistant\n` +
     `triggers:\n` +
     `  - trigger: time_pattern\n` +
     `    minutes: "/15"\n` +
     `actions:\n` +
+    `  # OpenDisplay only accepts an image from a media source, not a URL directly,\n` +
+    `  # so this snapshot has to land somewhere Home Assistant can read it back from —\n` +
+    `  # which means the rendered calendar picture (not the token above) sits in your\n` +
+    `  # media library, visible to anyone who can browse HA's local media.\n` +
     `  - action: camera.snapshot\n` +
     `    target:\n` +
     `      entity_id: camera.eink_source\n` +
@@ -232,14 +247,17 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
           : '') +
         `<p>This is the wall's image URL. It contains the wall's token, so it is ` +
         `shown <strong>once</strong> — copy it now. Regenerating makes a new one and ` +
-        `retires this.</p>` +
+        `retires this. Treat it like a password: it belongs in your ESPHome or Home ` +
+        `Assistant <code>secrets.yaml</code>, never pasted inline into a config you ` +
+        `might share in a forum post or a public repo.</p>` +
         `<input readonly onclick="this.select()" value="${escapeHtml(url)}" ` +
         `style="width:100%;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace" aria-label="Frame URL">` +
         `<p class="hint">A device pulls this image; Home Assistant can push it to a BLE tag. ` +
         `On battery, an e-paper panel is a glance — it sleeps, so it cannot show a weather ` +
         `takeover the moment it fires. A mains panel that polls can.</p>` +
-        codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe(url)) +
-        codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(url)) +
+        codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(url)) +
+        codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
+        codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // GET-then-POST, behind confirmDestroyPage — exactly destructive()'s
@@ -286,8 +304,9 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         `URL is regenerated — and is never stored anywhere it could be shown again. ` +
         `If the panel or Home Assistant already has it configured, there is nothing ` +
         `to do here.</p>` +
-        codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe(placeholder)) +
-        codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe(placeholder)) +
+        codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(placeholder)) +
+        codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
+        codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // Same GET-then-POST shape as the config page's button above, and now
