@@ -48,6 +48,12 @@ longer leave the bottom half blank, and text is drawn in fonts sized to the
 panel rather than one fixed size, so more of an event title fits on a line. A
 running event's progress bar no longer quietly shrinks the whole agenda.
 
+**E-paper panels can be locked to your home network.** If you pair an e-paper
+display, the link it fetches its picture from can now be restricted so it only
+works from devices on your own network — off by default, so nothing changes
+unless you turn it on. The address a panel was last seen from is recorded too,
+so you can tell which screen is which.
+
 **Under the hood:** the wall's fonts are now bundled and self-hosted rather than
 relying on whatever the screen happened to have, and the settings screens were
 rebuilt on a shared set of components so they stay consistent as they grow.
