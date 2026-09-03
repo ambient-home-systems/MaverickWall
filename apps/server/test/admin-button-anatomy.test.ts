@@ -101,15 +101,18 @@ async function harness() {
     expect(check.status, 'the harness must reach a signed-in /admin').toBe(200);
   };
 
-  /** Pair one browser and one e-paper wall, so the Walls list draws real cards. */
-  const seedWalls = async () => {
+  /** Draw real cards: a browser + e-paper wall, and one installed module. */
+  const seedCards = async () => {
     await form('/admin/screens', { name: 'Kitchen' });
     // The e-paper wall is added on its own page's form: a name, a panel preset
     // and a rotation (newEpaperBody).
     await form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
+    // Install the key-less catalogue recipe so the Store draws an installed
+    // moduleCard (its config defaults fill in when omitted).
+    await form('/admin/modules/install/outside-temperature', { name: 'Outside temperature' });
   };
 
-  return { call, form, signedIn, seedWalls };
+  return { call, form, signedIn, seedCards };
 }
 
 const PAGES = [
@@ -149,7 +152,7 @@ describe('button anatomy on anchors', () => {
   it('every <a> carrying a button variant also carries the base .btn class', async () => {
     const h = await harness();
     await h.signedIn();
-    await h.seedWalls();
+    await h.seedCards();
 
     const offenders: string[] = [];
     for (const path of PAGES) {
@@ -180,26 +183,32 @@ describe('button anatomy on anchors', () => {
   });
 });
 
-describe('the Walls list carries no inline layout style', () => {
+describe('the card screens carry no inline layout style', () => {
+  // The Walls and Store card builders were hand-typed `<div style="…gap:10px…">`
+  // trees — invisible to `admin-component-drift.test.ts`, which scans the served
+  // stylesheet and never route output. This holds those screens to zero inline
+  // layout styles so the drift cannot creep back on them. A custom property
+  // (`--swatch`, `--w`) is a legitimate inline value a token cannot express and
+  // is allowed; a raw `gap`/`margin`/`display`/`font-size` is not. The recipe
+  // and install *forms* (their own URLs) keep a monospace code field and are not
+  // in scope here.
+  const CARD_PAGES = ['/admin/walls', '/admin/modules'] as const;
+  const layout = /(^|;)\s*(display|flex|flex-wrap|gap|margin|padding|font-size|align-items|justify-content)\s*:/i;
+
   it('sets spacing, flex and font through classes, not style attributes', async () => {
-    // The three Walls card builders were hand-typed `<div style="…gap:10px…">`
-    // trees — invisible to `admin-component-drift.test.ts`, which scans the
-    // served stylesheet and never route output. This holds the fixed screen to
-    // zero inline layout styles so the drift cannot creep back on it. A custom
-    // property (`--swatch`, `--w`) is a legitimate inline value a token cannot
-    // express and is allowed; a raw `gap`/`margin`/`display`/`font-size` is not.
     const h = await harness();
     await h.signedIn();
-    await h.seedWalls();
-    const html = await (await h.call('/admin/walls')).text();
+    await h.seedCards();
 
-    const layout = /(^|;)\s*(display|flex|flex-wrap|gap|margin|padding|font-size|align-items|justify-content)\s*:/i;
-    const offenders: string[] = [];
-    const re = /style="([^"]*)"/g;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(html)) !== null) {
-      if (layout.test(match[1]!)) offenders.push(match[1]!);
+    for (const path of CARD_PAGES) {
+      const html = await (await h.call(path)).text();
+      const offenders: string[] = [];
+      const re = /style="([^"]*)"/g;
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(html)) !== null) {
+        if (layout.test(match[1]!)) offenders.push(match[1]!);
+      }
+      expect(offenders, `${path}\n${offenders.join('\n')}`).toEqual([]);
     }
-    expect(offenders, offenders.join('\n')).toEqual([]);
   });
 });

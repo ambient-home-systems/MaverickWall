@@ -986,6 +986,15 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * rather than pushing the heading down a row. On the 4px grid, which
  * admin-design-drift.test.ts is right to insist on. */
 .card-head>.ovf{margin:calc(-1 * var(--mw-s-2)) calc(-1 * var(--mw-s-2)) 0 0}
+/* A ruled subsection inside a card — a footer action row or a labelled control
+ * row set off from the body by a hairline. Replaces the inline
+ * margin-top/padding-top/border-top that was hand-typed onto every module and
+ * store card; compose it with .row for a flex action row. */
+.card-divide{margin-top:var(--mw-s-4);padding-top:var(--mw-s-4);
+  border-top:var(--mw-hairline) solid var(--mw-line)}
+/* Push a trailing control to the far edge of a flex row (a store card's
+ * secondary "Source" link) without an inline margin. */
+.push{margin-left:auto}
 /* Two classes, because .host used to be one class doing two jobs.
  *
  * It was built for hostnames, where a quiet monospace line is exactly right,
@@ -1089,8 +1098,9 @@ a.card:active{background:var(--mw-surface-3)}
 .wall-head{display:flex;align-items:center;gap:var(--mw-s-3)}
 .wall-head-main{flex:1 1 auto;min-width:0}
 /* The name reads at the card-title size the rest of the admin uses (a calendar
- * card's own heading is this role), from the role rather than a one-off px. */
-.wall-head .rname{font:var(--mw-t-h3);letter-spacing:var(--mw-t-h3-tracking)}
+ * card's own heading is this role), from the role rather than a one-off px. The
+ * same holds for a .rname in any card head — the module and store cards. */
+.wall-head .rname,.card-head .rname{font:var(--mw-t-h3);letter-spacing:var(--mw-t-h3-tracking)}
 /* The "Open" affordance on a whole-card link: accent, a chevron, no container
  * of its own — decoration inside the card's own <a>, never a nested link. It
  * sets no background and no cursor, so it is not a control the button-state
