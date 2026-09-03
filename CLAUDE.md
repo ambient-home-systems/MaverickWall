@@ -5243,6 +5243,67 @@ looser numeric one `admin-design-drift.test.ts` already asked. `pnpm test`
 stays green under it. Still unproven where it counts: nobody has used any of
 these converted screens on a real phone either.
 
+**eInk had a per-screen token exactly like the wall's, and the gap was never
+that it was weak — it was how the secret has to travel.** Both `/d/manifest`
+(a wall's `HttpOnly` cookie) and `/d/epaper/:file` (a panel's URL) check the
+identical 256-bit, hashed, constant-time-compared token, so "eInk has no
+security" was wrong about the mechanism and right about the actual risk: a
+wall's cookie never has to be looked at by a person, and an eInk URL has to be
+hand-copied into an ESPHome or Home Assistant config, which is a structurally
+leakier place for a secret to live even though guessing it is exactly as
+infeasible either way. Three changes came out of that distinction.
+
+**First, the shipped recipes were teaching households to paste the token
+inline.** `esphomeRecipe`/`haRecipe` interpolated the frame URL straight into
+`still_image_url`/`online_image.url` — precisely the line that ends up in a
+forum post or a committed dotfiles repo when somebody asks for help with their
+config, the token riding along with it. Both now reference `!secret eink_url`,
+with a `secrets.yaml` snippet as the one place the real value is shown,
+mirroring the `!secret wifi_password` two lines above it that was already
+doing this correctly. Reading Home Assistant's own docs settled a second
+question the same recipe raises: `opendisplay.upload_image` accepts only a
+media source, never a remote URL, so the rendered calendar picture — not the
+token — has to land in Home Assistant's own media library before it can reach
+a tag. There is no better mechanism for that, so the recipe says so now rather
+than leaving a household to discover it by reading their own media folder.
+
+**Second, `screens.last_seen_ip` had existed since the `screens` table did and
+had never once been written.** Both `/d/manifest` and `/d/epaper/:file` called
+`touchScreen` with a literal `null` for the address, so the column was
+`display_blocks`'s shape one table over — present, read by nothing, silently
+doing nothing. It is populated now from `clientAddress()`, the same getter
+`isTrustedIngress` already uses rather than a second way of asking Node for
+the same fact, and the Walls list shows it next to "last seen" for both kinds
+of screen — a household's own cheap way to notice an unfamiliar address using
+a token. Deliberately left out of the diagnostics export: that document is
+built to be safe to hand to a stranger, and a household's own network layout,
+while not calendar content, is not this app's to hand over either.
+
+**Third — the one that actually changes what a leaked URL is worth — a panel
+can now refuse any connection from outside the household's own network.**
+`screens.lan_only` (migration 0038, additive, off by default) is checked in
+`/d/epaper/:file` against the same address `isTrustedIngress` reads, classified
+by the SSRF guard's own `classifyIp`/`parseIp` rather than a second classifier
+— but asked a different question of it than the guard does: loopback counts as
+home here, where `isLocalNetwork` excludes it for a reason that has nothing to
+do with this (a feed loopback points at is never a legitimate calendar; a
+request from the same host is still not "the internet"). A refusal answers
+`403`, not the `404` an unrecognised token gets, because the caller has already
+proved possession of the secret and there is nothing left for a `404` to
+protect. An address that cannot be determined fails closed, the same posture
+`isTrustedIngress` already takes for the identical reason: a check that cannot
+tell is not a green light.
+
+**It stays off by default, and says so in terms of the actual trade.** The
+token is exactly as hard to guess whether the switch is on or off; what
+changes is only what a copy of it is worth once it has left the household. The
+admin copy warns explicitly about a panel reached through a relay — Nabu Casa,
+a VPN, a cloud-hosted Home Assistant — because that household must not have a
+panel go dark over a setting they never opened (rule nine), and it is
+deliberately not extended to the browser wall's `/d/manifest`: a cookie cannot
+leave a browser the way a URL leaves a device, so that is a separate decision
+rather than an oversight.
+
 ---
 
 ## Open decisions
