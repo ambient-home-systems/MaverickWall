@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.56.0
 
 **The wall now sizes its text to your room, not to one screen.** Before this,
 everything on the wall was drawn at a size that was right on one television and
