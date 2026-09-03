@@ -117,6 +117,8 @@ async function harness() {
     // A shift type, so a typeCard draws (the boot's default types are seeded in
     // main.ts, not the test harness, so this screen is otherwise empty here).
     await form('/admin/shifts/types', { label: 'Day', short_code: 'D', color: '#4C7FD1', is_working: '1' });
+    // A chore, so a choreCard draws (a daily chore needs only a name and kind).
+    await form('/admin/chores', { name: 'Dishes', kind: 'daily' });
   };
 
   return { call, form, signedIn, seedCards };
@@ -201,7 +203,7 @@ describe('the card screens carry no inline layout style', () => {
   // is allowed; a raw `gap`/`margin`/`display`/`font-size` is not. The recipe
   // and install *forms* (their own URLs) keep a monospace code field and are not
   // in scope here.
-  const CARD_PAGES = ['/admin/walls', '/admin/modules', '/admin/people', '/admin/shifts/types'] as const;
+  const CARD_PAGES = ['/admin/walls', '/admin/modules', '/admin/people', '/admin/shifts/types', '/admin/chores'] as const;
   const layout = /(^|;)\s*(display|flex|flex-wrap|gap|margin|padding|font-size|align-items|justify-content)\s*:/i;
 
   it('sets spacing, flex and font through classes, not style attributes', async () => {
