@@ -1561,6 +1561,57 @@ cell could hold one row. It has three calendars' worth of different events now,
 which is both the realistic case and the only one where "do I see three
 different things?" means anything.
 
+**The default wall tiles its canvas now, and its proportions were re-derived
+against the tiers — this is the current state, and the two paragraphs after it
+are the scale-to-fit derivation they replaced, kept as history.** Classic used to
+lose a third of itself to whitespace it did not need, in three separate ways all
+measured on a real wall: an **inter-widget gutter** of 13.5–19.5% of the canvas,
+because every box carried a 5% side margin *and* a gap between boxes *and* the
+`.fw` padding every box already has; **intra-box slack** left by `fitToBox`'s
+centred scale (a shift badge floating at 55% of its box); and up to a **6.3%
+letterbox** on a panel whose aspect did not match Classic's nominal 9:16/16:9.
+Measured, 63.6% of a 1080x1920 canvas carried content and 66.2% at 1920x1080.
+All three are closed:
+
+- **The rectangles tile the canvas.** They share edges and reach the canvas
+  edge, so the only gutter is the space between two boxes' *content* — twice the
+  `.fw` padding and nothing else — and the box union (`wall-density`'s
+  `contentSharePercent`) is ~100%, up from 85.5%/80%. The same rework was applied
+  to the twelve gallery templates.
+- **The month/agenda split was re-derived against the density tiers**, not
+  against scale-to-fit and the 22px floor, both of which are gone (`fitToBox` is
+  deleted). The measurement is the file's own and the constraints are the same
+  two the old derivation found — the agenda's smallest run clearing the 22px
+  floor on an unmeasured wall, and the month keeping a colour in every busy cell
+  — so the portrait agenda is 0.33 of the height (was 0.305) and the month 0.48
+  (was 0.435). The one thing that changed is that the old 0.38 colour cliff no
+  longer binds: the numeral is demoted (Phase 1) and the type distance-derived
+  (Phase 5), so the month at 0.48 clears it with room over. The utility strip is
+  tighter so the clock, forecast and rota badge fill their boxes rather than
+  floating in them.
+- **A screen whose panel facts are set is seeded at its panel's own aspect**
+  (`classicSeed`), so there is no letterbox: a 7.5" e-ink panel's canvas fills
+  99.8% of its viewport where the nominal aspect filled 93.8%. Only at seed time
+  — a new screen, Reset, the boot backfill, or the boot re-seed — and never over
+  an arrangement: `reseedClassicForSetUp` recognises a still-seeded canvas by
+  print, at the nominal *and* the panel aspect, and leaves everything else where
+  it is.
+
+Measured on the shipped Classic wall, drawn content covers 89.8% of the portrait
+canvas and 86.4% of the landscape one, up from 63.6% and 66.2%, and the two
+calendar boxes — the product — fill their box to at least 85%.
+`browser-classic-proportions.test.ts` is that measurement, and its five original
+assertions are re-derived against the tiers rather than deleted.
+
+> **The two paragraphs that follow are the scale-to-fit derivation of Classic's
+> proportions and are kept as history**, the way the retired `auto` layout's
+> paragraphs are. The 0.45→0.435 and 0.20→0.305 numbers, and the "a transform
+> multiplies straight through the floor" mechanism, are all superseded — the
+> boxes tile and `fitToBox` is gone. What survives, and is why they are worth
+> reading, is the *pair of constraints* they found: the agenda's floor and the
+> month's colour, which are exactly the two the tiled derivation above measures
+> against.
+
 **Classic's own proportions were the wrong way round, and finding out why took
 measuring the runs nobody had measured.** The default wall gave the month 45% of
 the portrait height and the whole right-hand column in landscape, and the agenda

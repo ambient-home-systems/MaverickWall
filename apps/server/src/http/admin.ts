@@ -76,8 +76,7 @@ import type { LogBuffer } from '../logbuffer.js';
 import { parseBackground, widgetIsSetUp, WIDGET_TYPES } from '../api/manifest.js';
 import { householdSetUp } from '../modules/index.js';
 import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
-import { applyTemplate, copyLayout, findTemplate } from '../api/templates.js';
-import { classicFor } from '../templates/classic.js';
+import { applyTemplate, classicSeed, copyLayout, findTemplate } from '../api/templates.js';
 import { TEMPLATES } from '../templates/index.js';
 import {
   candidatesFor,
@@ -1955,11 +1954,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // Seed the new screen with Classic, so it opens on the standard kitchen
     // calendar the household can rearrange — never a blank editor.
     //
-    // `classicFor`, not the fully-equipped Classic: a canvas is absolutely
+    // `classicSeed`, not the fully-equipped Classic: a canvas is absolutely
     // positioned, so a box for something the household has not set up is not a
     // placeholder, it is a hole the manifest leaves behind when it drops it.
-    // Seeding is the one moment adapting to that is safe, so it happens here.
-    applyTemplate(deps.db, id, classicFor(householdSetUp(deps.db)));
+    // Seeding is the one moment adapting to that — and to the screen's own panel
+    // aspect — is safe, so it happens here.
+    applyTemplate(deps.db, id, classicSeed(deps.db, id, householdSetUp(deps.db)));
     return c.html(pairingPage(id, shaped.value.name, issued.token, issued.shortCode, c));
   });
 
@@ -2169,7 +2169,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     applyTemplate(
       deps.db,
       owner,
-      template.id === 'classic' ? classicFor(householdSetUp(deps.db)) : template,
+      template.id === 'classic' ? classicSeed(deps.db, owner, householdSetUp(deps.db)) : template,
     );
     return savedRedirect(c, layoutUrl(owner), 'layout-template-applied');
   });
@@ -2205,9 +2205,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const owner = resolveOwner(id === 'default' ? null : id);
     if (isEpaperOwner(owner)) clearLayout(deps.db, owner as string);
     // Classic as this household would be seeded with it today — so Reset is
-    // also the way to pick up a location or a rota added since, without waiting
-    // for a restart.
-    else applyTemplate(deps.db, owner, classicFor(householdSetUp(deps.db)));
+    // also the way to pick up a location, a rota, or a panel size entered since,
+    // without waiting for a restart.
+    else applyTemplate(deps.db, owner, classicSeed(deps.db, owner, householdSetUp(deps.db)));
     return savedRedirect(c, layoutUrl(owner), 'layout-reset');
   });
 
