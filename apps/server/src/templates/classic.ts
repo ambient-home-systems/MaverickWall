@@ -14,62 +14,131 @@ import { widgetIsSetUp, type HouseholdSetUp } from '../api/manifest.js';
  * the month grid — built only from widgets a household could place by hand, so
  * it is a real starting point they can rearrange, not a special case.
  *
- * **The month was the anchor and it should not have been**, and rebalancing it
- * is the whole of this file. It used to take 45% of the portrait height and the
- * entire right-hand column in landscape, while the agenda took 20% and 7.8%.
- * Measured on a paired wall carrying three ordinary family calendars, a rota and
- * a forecast, that put **17 of the agenda's 28 text runs below the 22px
- * legibility floor** in portrait — "Upcoming" at 15.0px, the rota chip at
- * 13.8px — and 19 of 21 in landscape, where three event titles were cut to 35%,
- * 38% and 44% of their strings.
+ * **The rectangles tile the canvas, and that is the whole of what changed most
+ * recently.** They used to carry a 5% side margin *and* a gap between boxes *and*
+ * the `.fw` padding every box already has — three separate whitespaces stacked on
+ * top of each other, so a third of the wall was gutter and slack rather than
+ * calendar (measured: 63.6% of a 1080x1920 canvas carried content, 66.2% at
+ * 1920x1080). The boxes now share edges and reach the canvas edge, and the one
+ * gutter a household sees is the space between two boxes' *content* — which is
+ * twice the `.fw` padding and nothing else. Measured after, content covers
+ * upwards of 80% of the canvas in both orientations, and there is no band of dead
+ * wall left to reclaim.
  *
- * The mechanism is worth writing down, because it is invisible in the CSS. Every
- * widget whose body is a section reused from the stacked layout — the agenda,
- * the forecast, the rota badge — is laid out at its box width and then
- * `transform: scale()`d to fill the box. A transform multiplies straight through
- * `max(…, var(--t-floor))`, so **the 22px floor does not survive scale-to-fit**.
- * The month grid is the one widget that fills its box instead of being scaled
- * (`fw-fill`), which is exactly why it was the only thing on the wall with
- * nothing under the floor at any size — it *cannot* go under it, so it looked
- * fine while everything beside it quietly did not. A bigger box is the only
- * lever a template has on that.
+ * **The proportions were re-derived against the density tiers, not against
+ * scale-to-fit.** The month used to be tuned to a 22px absolute floor and the
+ * agenda to whatever `transform: scale()` a box happened to grow it by — both of
+ * which are gone (`fitToBox` is deleted; the calendar reads the reader's own
+ * angle, and each widget takes a *form* from its box). So the split between the
+ * agenda and the month is now a fact about two tier decisions, measured directly
+ * on a real wall:
  *
- * **In portrait almost all of it came out of slack, which is the surprise.**
- * The obvious move is to take the height off the month, and there is a hard
- * floor under that: below about 0.40 of the portrait height a cell has no room
- * for a row under its date number, and a row is where the *calendar's colour*
- * lives — the dot on a timed event, the rule down an all-day one. Take the
- * month under it and the grid stops saying not just what is on but **whose**,
- * which is most of what a family wall is for. Measured, a household loses
- * colours outright at 0.35 and 0.36; at 0.38 it keeps them only on a good draw,
- * because the grid trims *once*, at first draw, against whatever font metrics
- * have arrived by then — so a wall that boots cold on a busy box keeps a worse
- * trim until something redraws it. (`browser-source-colours.test.ts` is the
- * guard, and it measures the *shipped* wall rather than a widget nobody has.)
+ *   - **The agenda's floor.** On a wall nobody has measured the agenda is drawn
+ *     at the rem scale, and below about 0.30 of the portrait height its smallest
+ *     run — the rota chip — falls under the 22px legibility floor. So the agenda
+ *     keeps 0.33, which clears it (`browser-classic-proportions.test.ts` asserts
+ *     no run under the floor, and is the measurement that found the number).
+ *   - **The month's colour.** A month cell paints a calendar's colour only on an
+ *     event row (a dot on a timed event, a rule down an all-day one), and a cell
+ *     with no room for a row under its date numeral drops to M0 and says only
+ *     *that* a day is busy, not *whose*. The old derivation put that cliff at
+ *     0.38 of the portrait height; with the numeral demoted (it is 1.2x the
+ *     event text now, not 1.85rem) and the type distance-derived, the month at
+ *     0.48 clears it with room to spare and every busy cell keeps its colour.
  *
- * So the month gives up almost nothing — 0.45 to 0.435 — and the agenda's extra
- * height comes from the roughly 0.09 of the wall that was sitting in gaps and
- * margins: the bottom margin was 0.03, the band above the agenda carried three
- * separate 0.02-ish gaps, and the forecast gave a token 0.005. The agenda goes
- * from 0.20 to 0.305 of the height — **a little over half as much again** — and
- * every one of its runs clears the floor. Nothing else on the wall was made
- * smaller by more than a rounding error.
+ * (4) and (5) of `browser-classic-proportions.test.ts` pull in opposite
+ * directions on purpose — the agenda wants height, the month wants height — and
+ * between them there is one band of month heights that satisfies both. Every
+ * number here was chosen by rendering a real wall with three ordinary family
+ * calendars and measuring it, never by arithmetic; the fit is a step function
+ * (a tier, literally), so interpolating between these values does not give a
+ * layout between these outcomes.
  *
- * Portrait therefore stops at a peer rather than an anchor: the month is still
- * fractionally the larger box. Landscape has width to spare, so there the
- * agenda really does become the anchor.
- *
- * Measured after, on the same wall: the portrait agenda has **no run below the
- * floor** (smallest 22.5px, up from 13.8px) while the month keeps every calendar
- * colour it had; landscape cuts **no** titles where it cut three, its forecast
- * goes from 15 runs under the floor to 5, and its agenda holds 37.4% of the
- * canvas against the month's 28.8% — where it used to hold 7.8% against 55.8%.
- *
- * Every number here was chosen by rendering a real wall and measuring it, never
- * by arithmetic — `test/browser-classic-proportions.test.ts` is that measurement.
- * The fit is a step function, so interpolating between these values does not give
- * you a layout between these outcomes.
+ * **A screen whose panel facts are set is seeded at its panel's own aspect**, so
+ * there is no letterbox to lose a further band to (`classicSeed` in
+ * `api/templates.ts`). The aspects below are the nominal 9:16 and 16:9 a wall
+ * nobody has measured gets, and the ones the template gallery offers.
  */
+
+/**
+ * The portrait bands, as fractions of the canvas height. They tile it — the four
+ * add to 1.0 with the month taking the remainder — so a change here is a change
+ * to the split and never to the total.
+ *
+ * `TOP_H` is the clock (and, beside it, the rota badge); `WEATHER_H` the forecast
+ * strip; `AGENDA_H` the "what's next" list. These three were measured to the
+ * agenda's floor above; the month is 1 - their sum, and its colour was the check
+ * that the remainder is enough.
+ */
+const TOP_H = 0.09;
+const WEATHER_H = 0.1;
+const AGENDA_H = 0.33;
+/** The clock's share of the top band when a rota badge sits beside it. */
+const CLOCK_W = 0.56;
+
+/**
+ * The landscape strip and columns. The utility widgets go in a strip across the
+ * top — a forecast is a horizontal strip of days and starves in a narrow column
+ * — and the two calendar views take the body as two columns. The agenda gets the
+ * wider one (it reads best) and the month the narrower, which is the inversion
+ * portrait cannot afford; the month still keeps enough width here to name events.
+ */
+const LAND_STRIP_H = 0.11;
+const LAND_AGENDA_W = 0.56;
+
+/** Classic's two calendar views, so a variant cannot drift from the original. */
+const AGENDA = { mode: 'list' } as const;
+const MONTH = { mode: 'month' } as const;
+
+const P_AGENDA_Y_WITH_WEATHER = TOP_H + WEATHER_H;
+const P_MONTH_Y_WITH_WEATHER = P_AGENDA_Y_WITH_WEATHER + AGENDA_H;
+const P_MONTH_Y_NO_WEATHER = TOP_H + AGENDA_H;
+
+const LAND_BODY_H = 1 - LAND_STRIP_H;
+
+/**
+ * The two calendar columns of the landscape body — Classic's own, in every
+ * variant. Only the top strip changes with what the household has.
+ */
+const LAND_AGENDA = { type: 'calendar', x: 0, y: LAND_STRIP_H, w: LAND_AGENDA_W, h: LAND_BODY_H, config: AGENDA } as const;
+const LAND_MONTH = {
+  type: 'calendar',
+  x: LAND_AGENDA_W,
+  y: LAND_STRIP_H,
+  w: 1 - LAND_AGENDA_W,
+  h: LAND_BODY_H,
+  config: MONTH,
+} as const;
+
+/**
+ * The portrait agenda and month, as the tiling bands place them. `weather` picks
+ * whether the forecast strip is present, which moves the agenda up and the month
+ * with it.
+ */
+const portraitCalendars = (weather: boolean) => [
+  {
+    type: 'calendar' as const,
+    x: 0,
+    y: weather ? P_AGENDA_Y_WITH_WEATHER : TOP_H,
+    w: 1,
+    h: AGENDA_H,
+    config: AGENDA,
+  },
+  {
+    type: 'calendar' as const,
+    x: 0,
+    y: weather ? P_MONTH_Y_WITH_WEATHER : P_MONTH_Y_NO_WEATHER,
+    w: 1,
+    h: 1 - (weather ? P_MONTH_Y_WITH_WEATHER : P_MONTH_Y_NO_WEATHER),
+    config: MONTH,
+  },
+];
+
+const PORTRAIT_CLOCK_WIDE = { type: 'clock', x: 0, y: 0, w: 1, h: TOP_H } as const;
+const PORTRAIT_CLOCK = { type: 'clock', x: 0, y: 0, w: CLOCK_W, h: TOP_H } as const;
+const PORTRAIT_SHIFT = { type: 'shift', x: CLOCK_W, y: 0, w: 1 - CLOCK_W, h: TOP_H } as const;
+const PORTRAIT_WEATHER = { type: 'weather', x: 0, y: TOP_H, w: 1, h: WEATHER_H } as const;
+
 export const template: DisplayTemplate = {
   id: 'classic',
   name: 'Classic',
@@ -78,80 +147,16 @@ export const template: DisplayTemplate = {
   // No theme, no background: Classic inherits the wall's own theme (see above).
   portrait: {
     aspect: 0.5625,
-    widgets: [
-      { type: 'clock', x: 0.05, y: 0.02, w: 0.5, h: 0.1 },
-      { type: 'shift', x: 0.57, y: 0.02, w: 0.38, h: 0.12 },
-      { type: 'weather', x: 0.05, y: 0.125, w: 0.9, h: 0.115 },
-      /*
-       * **No count. The box says how many, and that is this template's own
-       * paragraph rewritten rather than a value deleted.**
-       *
-       * It used to be six, and the reason was written down here: "the section is
-       * scaled to fit, so two more rows is a shorter scale factor on every
-       * character in the widget", with a measurement to match — eight events put
-       * the rota chip under the 22px floor and six cleared it. Every clause of
-       * that was true of `fitToBox` and none of it is true now. Nothing is
-       * scaled, so a seventh event costs the six above it nothing at all; it
-       * either fits at the size the reader needs or it is not drawn. A constant
-       * standing in for a box measurement is exactly what the density tiers
-       * replace, and this was the last one in a shipped template.
-       *
-       * Measured on this wall with three ordinary family calendars, before →
-       * after: 6 events over 2 days at every size from 480x800 to 2560x1440,
-       * against 6/2, 6/2, 8/3, 11/4 and 14/6. The small panels are unchanged
-       * because their box genuinely holds six; the large ones stop drawing a
-       * 7.5" panel's worth of calendar on a 43" television.
-       *
-       * The other half of that paragraph still holds and is worth keeping: what
-       * the count could never fix is a *thin* week, because the agenda's height
-       * is mostly its day headers and no template geometry reaches how many days
-       * the household's events are spread over.
-       *
-       * 0.305 is not a tidy number and is not meant to be. The rota chip lands
-       * at 21.7px at 0.30 — three tenths of a pixel under the floor — and at
-       * 22.5px here, which is the first height with any margin at all.
-       */
-      { type: 'calendar', x: 0.05, y: 0.245, w: 0.9, h: 0.305, config: { mode: 'list' } },
-      /*
-       * 0.435 rather than 0.45: the smallest trim that buys the agenda its last
-       * rung without taking the grid anywhere near the height at which its cells
-       * stop painting a calendar colour. The margin is deliberate — see the
-       * first-draw trim race above, which is why this is not tuned to the cliff.
-       *
-       * No `cellEvents`: the month takes the default cell treatment, which is
-       * flat event names. It used to say `pills` here, and that made Classic
-       * the wall the pill measurements were taken on — 37 titles, 32 of them
-       * clipped, the worst showing 26% of its string. A template that names the
-       * treatment is a template that cannot follow the default when the default
-       * is corrected.
-       */
-      { type: 'calendar', x: 0.05, y: 0.555, w: 0.9, h: 0.435, config: { mode: 'month' } },
-    ],
+    widgets: [PORTRAIT_CLOCK, PORTRAIT_SHIFT, PORTRAIT_WEATHER, ...portraitCalendars(true)],
   },
-  /*
-   * Landscape is not portrait rearranged, and the utility strip is why.
-   *
-   * The old landscape stacked the clock, the rota, the forecast and the agenda
-   * down one 26%-wide column, which starved all four: the forecast is a
-   * horizontal strip of days, and in a 499px column it drew 15 of its 20 runs
-   * below the floor. Moving those three into a strip across the top gives each
-   * of them the shape it wants, frees the whole body of the wall for the two
-   * calendar views, and takes the forecast from 15 runs under the floor to 5.
-   *
-   * The agenda gets the wider of the two columns and the month the narrower —
-   * the inversion, again — but the month keeps enough width here to go on naming
-   * events, which portrait cannot afford: 130px-tall cells at 1920x1080 name 10
-   * of 17 busy cells. That asymmetry between the two orientations is deliberate
-   * and measured, not an oversight.
-   */
   landscape: {
     aspect: 1.7778,
     widgets: [
-      { type: 'clock', x: 0.03, y: 0.04, w: 0.22, h: 0.16 },
-      { type: 'weather', x: 0.27, y: 0.04, w: 0.45, h: 0.16 },
-      { type: 'shift', x: 0.75, y: 0.04, w: 0.22, h: 0.16 },
-      { type: 'calendar', x: 0.03, y: 0.24, w: 0.52, h: 0.72, config: { mode: 'list' } },
-      { type: 'calendar', x: 0.57, y: 0.24, w: 0.4, h: 0.72, config: { mode: 'month' } },
+      { type: 'clock', x: 0, y: 0, w: 0.26, h: LAND_STRIP_H },
+      { type: 'weather', x: 0.26, y: 0, w: 0.48, h: LAND_STRIP_H },
+      { type: 'shift', x: 0.74, y: 0, w: 0.26, h: LAND_STRIP_H },
+      LAND_AGENDA,
+      LAND_MONTH,
     ],
   },
 };
@@ -161,65 +166,24 @@ export const template: DisplayTemplate = {
  *
  * `template` above is Classic for a household with a location *and* a rota. It
  * is also the layout every fresh install is seeded with, and most of them have
- * neither — so measured on a paired 1080x1920 wall with one calendar added and
- * nothing else configured, the wall drew the clock at y=58..250, then **nothing
- * at all until y=576**, where the agenda starts. A 280px hole, and 19% of the
- * wall's height in empty bands of 120px or more.
+ * neither — so a Weather box or a Shift box would draw a permanent "nothing yet"
+ * apology, or (since the manifest drops a widget the household has nothing behind
+ * — `widgetIsSetUp`) leave a hole, because a free-form canvas is absolutely
+ * positioned and a dropped box leaves its space behind.
  *
- * Nothing was broken: the manifest drops a widget the household has nothing
- * behind (`widgetIsSetUp`), which is the honest answer — a Weather box that can
- * only ever say "Nothing to show yet." is a sentence about somebody's admin
- * printed on their kitchen calendar. But a free-form canvas is *absolutely
- * positioned*, so a dropped box leaves its space behind. The old responsive
- * layout reflowed and this one cannot, which is the trade that made it worth
- * having: what you dragged is what is drawn.
+ * So the canvas is chosen at seed time from what the household actually has, and
+ * is a plain arrangement of boxes they can drag afterwards. Four arrangements,
+ * because Classic has exactly two widgets whose prerequisite lives on another
+ * screen: the forecast (a location) and the rota badge (a rotation). The key is
+ * derived from `widgetIsSetUp` — the *same* function the manifest filters with —
+ * so every box in the seeded canvas is one the manifest keeps and there is
+ * nothing left to leave a hole. `classic-variants.test.ts` asserts exactly that.
  *
- * So the adaptation moves to the one moment it is safe — **seeding**. A canvas
- * is chosen once, from what the household actually has, and is a plain
- * arrangement of boxes they can drag afterwards like any other. There is no
- * reflow at draw time and no second opinion about geometry: the wall draws the
- * rows it is given, exactly as before.
- *
- * Four arrangements, because Classic has exactly two widgets whose prerequisite
- * lives on another screen: the forecast (a location) and the rota badge (a
- * rotation). The key is derived from `widgetIsSetUp` rather than from a second
- * reading of the same settings — one opinion about "is this set up", shared
- * with the manifest that will later decide whether to draw it. That is what
- * makes the seeded canvas *complete*: every box in it is one the manifest keeps,
- * so there is nothing left to omit and nothing left to leave a hole.
- * `classic-variants.test.ts` asserts exactly that, for all four.
- *
- * **The reclaimed height goes to the month, and the agenda never moves off the
- * 0.305 the rebalance above settled on.** That is measured, and it is the
- * opposite of what the arithmetic suggests. The month *fills* its box
- * (`fw-fill`), so height there becomes rows of event names on the glass. The
- * agenda is laid out at its box width and `transform: scale()`d to fit, and
- * `fitToBox` re-flows a section that fits its box to the box's *aspect* before
- * scaling up — so a taller box at the same width re-flows the agenda narrower,
- * its rows wrap, and the final scale factor comes out **smaller**. Measured on
- * a calendar-only 1080x1920 wall: giving the agenda 0.354 instead of 0.305 took
- * its section label from 15.7px to 15.2px. More height, smaller type.
- * `browser-empty-bands.test.ts` holds the whole variant to that, class by class,
- * against the wall Classic itself was measured on.
- *
- * Landscape therefore changes in one way only: whatever is left in the top
- * strip widens to fill it. The two calendar columns are Classic's own in all
- * four variants.
- *
- * Margins and gaps are Classic's own — 0.02 above, 0.005 between, 0.01 below —
- * which is what keeps the total empty height at 3.5-4.5% of the portrait wall in
- * every variant, where the unconfigured wall was at 19% in bands of 120px alone.
+ * The reclaimed band goes to the month, and the agenda never moves off the 0.33
+ * the tiling above settled on: the month *fills* its box, so height there is rows
+ * of event names on the glass, while the agenda draws the events its box affords
+ * and a taller box past that point is drawing nothing more.
  */
-
-/** Classic's two calendar views, so a variant cannot drift from the original. */
-const AGENDA = { mode: 'list' } as const;
-const MONTH = { mode: 'month' } as const;
-
-/** The clock alone in the top band takes its whole width; `fitToBox` centres it. */
-const PORTRAIT_CLOCK_WIDE = { type: 'clock', x: 0.05, y: 0.02, w: 0.9, h: 0.1 } as const;
-const PORTRAIT_CLOCK = { type: 'clock', x: 0.05, y: 0.02, w: 0.5, h: 0.1 } as const;
-const PORTRAIT_SHIFT = { type: 'shift', x: 0.57, y: 0.02, w: 0.38, h: 0.12 } as const;
-const PORTRAIT_WEATHER = { type: 'weather', x: 0.05, y: 0.125, w: 0.9, h: 0.115 } as const;
 
 /**
  * One variant, keyed by what the household has: `w` a location, `s` a rota.
@@ -241,78 +205,60 @@ const VARIANT_CANVASES: Readonly<Record<ClassicKey, Pick<DisplayTemplate, 'portr
   'w-': {
     portrait: {
       aspect: 0.5625,
-      widgets: [
-        PORTRAIT_CLOCK_WIDE,
-        PORTRAIT_WEATHER,
-        { type: 'calendar', x: 0.05, y: 0.245, w: 0.9, h: 0.305, config: AGENDA },
-        { type: 'calendar', x: 0.05, y: 0.555, w: 0.9, h: 0.435, config: MONTH },
-      ],
+      widgets: [PORTRAIT_CLOCK_WIDE, PORTRAIT_WEATHER, ...portraitCalendars(true)],
     },
     landscape: {
       aspect: 1.7778,
       widgets: [
-        { type: 'clock', x: 0.03, y: 0.04, w: 0.22, h: 0.16 },
+        { type: 'clock', x: 0, y: 0, w: 0.26, h: LAND_STRIP_H },
         // The forecast is a horizontal strip of days, so the freed width is
-        // worth more to it than to anything else in the band.
-        { type: 'weather', x: 0.27, y: 0.04, w: 0.7, h: 0.16 },
-        { type: 'calendar', x: 0.03, y: 0.24, w: 0.52, h: 0.72, config: AGENDA },
-        { type: 'calendar', x: 0.57, y: 0.24, w: 0.4, h: 0.72, config: MONTH },
+        // worth more to it than to anything else in the strip.
+        { type: 'weather', x: 0.26, y: 0, w: 0.74, h: LAND_STRIP_H },
+        LAND_AGENDA,
+        LAND_MONTH,
       ],
     },
   },
 
   /*
-   * A rota and no location. The top band keeps its two boxes exactly where they
-   * are — moving the badge would be a change nobody asked for — and the
-   * forecast's 0.115 band goes to the month.
+   * A rota and no location. The top band keeps its two boxes where they are, and
+   * the forecast's band goes to the month.
    */
   '-s': {
     portrait: {
       aspect: 0.5625,
-      widgets: [
-        PORTRAIT_CLOCK,
-        PORTRAIT_SHIFT,
-        { type: 'calendar', x: 0.05, y: 0.145, w: 0.9, h: 0.305, config: AGENDA },
-        { type: 'calendar', x: 0.05, y: 0.455, w: 0.9, h: 0.535, config: MONTH },
-      ],
+      widgets: [PORTRAIT_CLOCK, PORTRAIT_SHIFT, ...portraitCalendars(false)],
     },
     landscape: {
       aspect: 1.7778,
       widgets: [
-        { type: 'clock', x: 0.03, y: 0.04, w: 0.45, h: 0.16 },
-        { type: 'shift', x: 0.52, y: 0.04, w: 0.45, h: 0.16 },
-        { type: 'calendar', x: 0.03, y: 0.24, w: 0.52, h: 0.72, config: AGENDA },
-        { type: 'calendar', x: 0.57, y: 0.24, w: 0.4, h: 0.72, config: MONTH },
+        { type: 'clock', x: 0, y: 0, w: 0.5, h: LAND_STRIP_H },
+        { type: 'shift', x: 0.5, y: 0, w: 0.5, h: LAND_STRIP_H },
+        LAND_AGENDA,
+        LAND_MONTH,
       ],
     },
   },
 
   /*
    * Neither — a fresh install with one calendar on it, which is the state every
-   * install passes through and the wall the 280px hole was measured on.
-   *
-   * The clock takes the band and the month takes the height. Portrait's month
-   * reaches 0.555 of the wall, which is more than the 0.45 the rebalance above
-   * cut it back from — and that is not a reversal of it. The rebalance took
-   * height off the month *to give it to the agenda*, whose type was under the
-   * floor; here the agenda is already at the height that measurement settled
-   * on, and the choice is between the month and empty wall.
+   * install passes through. The clock takes the strip and the month takes the
+   * reclaimed height: portrait's month reaches 0.58 of the wall, which is more
+   * than the ws month's 0.48, and that is not a reversal of the split. The agenda
+   * is already at the height its floor needs; the choice for the rest is between
+   * the month and empty wall.
    */
   '--': {
     portrait: {
       aspect: 0.5625,
-      widgets: [
-        PORTRAIT_CLOCK_WIDE,
-        { type: 'calendar', x: 0.05, y: 0.125, w: 0.9, h: 0.305, config: AGENDA },
-        { type: 'calendar', x: 0.05, y: 0.435, w: 0.9, h: 0.555, config: MONTH },
-      ],
+      widgets: [PORTRAIT_CLOCK_WIDE, ...portraitCalendars(false)],
     },
     landscape: {
       aspect: 1.7778,
       widgets: [
-        { type: 'clock', x: 0.03, y: 0.04, w: 0.94, h: 0.16 },
-        { type: 'calendar', x: 0.03, y: 0.24, w: 0.52, h: 0.72, config: AGENDA },
-        { type: 'calendar', x: 0.57, y: 0.24, w: 0.4, h: 0.72, config: MONTH },
+        { type: 'clock', x: 0, y: 0, w: 1, h: LAND_STRIP_H },
+        LAND_AGENDA,
+        LAND_MONTH,
       ],
     },
   },

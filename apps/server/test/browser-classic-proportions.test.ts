@@ -1,39 +1,57 @@
 /**
  * The default wall's proportions, measured on a real wall.
  *
- * Classic used to give the month 45% of the portrait height and the whole
- * right-hand column in landscape, and the agenda 20% and 7.8%. That is the most
- * space to the view that reads worst and the least to the one that reads best,
- * and the numbers are not close: measured on a paired wall carrying three
- * ordinary family calendars, a rota and a forecast, **17 of the agenda's 28 text
- * runs sat below the 22px legibility floor** in portrait — "Upcoming" at 15.0px,
- * the rota chip at 13.8px — and 19 of 21 in landscape, where three event titles
- * were cut to 35%, 38% and 44% of their strings.
+ * Classic used to lose a third of itself to whitespace it did not need. Three
+ * separate losses, all measured: an **inter-widget gutter** of 13.5–19.5% of the
+ * canvas, because every box carried a 5% side margin *and* there was a gap
+ * between boxes *and* the `.fw` padding every box already has; **intra-box
+ * slack**, a shift badge floating in the middle of a box twice its size, left
+ * over from `fitToBox`'s centred scale; and a **letterbox** of up to 6.3% on a
+ * panel whose aspect did not match Classic's nominal 9:16 or 16:9. Measured, the
+ * canvas carried 63.6% content at 1080x1920 and 66.2% at 1920x1080.
  *
- * The mechanism, because it explains why only the template can fix it: every
- * widget reusing a section from the stacked layout is `transform: scale()`d to
- * fill its box, and a transform multiplies straight through
- * `max(…, var(--t-floor))`. The floor does not survive scale-to-fit. The month
- * grid fills its box rather than being scaled, so it is the one widget that
- * *cannot* fall below the floor — which is why it looked fine at any size while
- * everything beside it quietly did not.
+ * All three are closed, and this file is the measurement that closes them:
  *
- * So this file measures five things, all in a real browser against computed
- * geometry and computed font sizes — never against class names, because this
- * project has shipped a bug where the class was right and the pixels were wrong:
+ *  - **The rectangles tile the canvas.** They share edges and reach the canvas
+ *    edge, so the only gutter is the space between two boxes' *content* — twice
+ *    the `.fw` padding, and nothing else. The stored boxes now cover the whole
+ *    canvas, and the drawn content covers upwards of 80% of it in both
+ *    orientations.
+ *  - **The proportions were re-derived against the density tiers**, not against
+ *    scale-to-fit and a 22px absolute floor, both of which are gone (`fitToBox`
+ *    is deleted; the calendar reads the reader's own angle and each widget takes
+ *    a *form* from its box). The split between the agenda and the month is now a
+ *    fact about two tier decisions: the agenda keeps the height at which its
+ *    smallest run clears the 22px floor on a wall nobody has measured (0.33 of
+ *    the portrait height), and the month keeps enough to paint a colour in every
+ *    busy cell (0.48). The old 0.38 colour cliff no longer binds — the numeral is
+ *    demoted and the type is distance-derived — so the month at 0.48 clears it
+ *    with room over.
+ *  - **A screen whose panel facts are set is seeded at its panel's own aspect**
+ *    (`classicSeed`), so there is no letterbox to lose a band to. Only at seed
+ *    time, and never over an arrangement.
  *
- *  1. a display created through the real admin route is seeded with the new
- *     proportions, in both orientations;
+ * So this file measures, all in a real browser against computed geometry and
+ * computed font sizes — never against class names, because this project has
+ * shipped a bug where the class was right and the pixels were wrong:
+ *
+ *  1. a display created through the real admin route is seeded with the tiled,
+ *     tier-derived proportions, in both orientations;
  *  2. a wall that already arranged its own canvas is byte-identical across the
- *     boot backfill — this changes the seed for new canvases and nothing else;
- *  3. the agenda's drawn area exceeds the month's in landscape;
- *  4. every run in the portrait agenda clears the 22px floor, and no landscape
+ *     boot backfill *and* the boot re-seed — this changes the seed for new
+ *     canvases and nothing else, even the panel-aspect re-seed;
+ *  3. a screen with no panel facts is seeded exactly as before;
+ *  4. the agenda's drawn area exceeds the month's in landscape;
+ *  5. every run in the portrait agenda clears the 22px floor, and no landscape
  *     title is cut;
- *  5. the portrait month still paints its calendars' colours — which is the
- *     floor the portrait rebalance deliberately stops at, and the assertion that
- *     turns red on anybody who later "finishes the job" by shrinking it further.
+ *  6. the portrait month still paints its calendars' colours — the floor the
+ *     portrait split deliberately stops at;
+ *  7. the drawn content covers at least 78% of the canvas in both orientations;
+ *  8. a canvas seeded at a known panel's aspect fills the viewport;
+ *  9. every widget box's content fills its box — the calendars to the reader's
+ *     edge, and no box left the fitToBox dead band behind.
  *
- * (4) is the reason for the change and (5) is its limit. They pull in opposite
+ * (5) is the reason for the split and (6) is its limit. They pull in opposite
  * directions on purpose: between them there is one band of month heights that
  * satisfies both, and this file is what found it.
  */
@@ -47,8 +65,8 @@ import {
   shutDownBrowser,
   type Installation,
 } from './browser-harness.js';
-import { backfillClassic } from '../src/api/templates.js';
-import { readLayoutWidgets } from '../src/api/queries.js';
+import { backfillClassic, panelCanvasAspects, reseedClassicForSetUp } from '../src/api/templates.js';
+import { readLayoutWidgets, replaceLayout } from '../src/api/queries.js';
 import { householdSetUp } from '../src/modules/index.js';
 
 /* A container installs with no `TZ` and the wizard is told Europe/London. */
@@ -60,9 +78,11 @@ const SLOW = 180_000;
 /** The floor, in CSS pixels. `--t-floor` in `display.css` carries the reason. */
 const FLOOR_PX = 22;
 
+/** The 7.5" e-ink panel this file seeds a panel-aspect wall for (mm). */
+const EINK_75 = { widthMm: 163, heightMm: 98, distanceMm: 600 } as const;
+
 let wall: Installation;
 let link: string;
-let screenId: string;
 
 beforeAll(async () => {
   wall = await install({ calendars: HOUSEHOLD_CALENDARS });
@@ -71,7 +91,6 @@ beforeAll(async () => {
   // is seeded with Classic — so this exercises the seed rather than asserting
   // on the constant.
   link = await wall.pairLink('Kitchen');
-  screenId = (wall.db.prepare('SELECT id FROM screens ORDER BY created_at LIMIT 1').get() as { id: string }).id;
 }, SLOW);
 
 afterAll(async () => {
@@ -92,17 +111,21 @@ interface Box {
   readonly w: number;
   readonly h: number;
   readonly area: number;
+  /** The painted content's bounding box, as a fraction of the box's own area. */
+  readonly fill: number;
+  /** The painted content's span on each axis, as a fraction of the box. */
+  readonly fillW: number;
+  readonly fillH: number;
   readonly runs: readonly Run[];
 }
 
 /**
  * Draw the paired wall at one size and measure every widget box on it.
  *
- * The reload is not ceremony. `applyMonthTier` and the widget tier pass measure once,
- * synchronously, as their section is appended, and nothing re-runs them — so on
- * a cold context whose web fonts have not arrived the wall settles on a fit
- * computed against fallback metrics and keeps it. Measured, that makes the same
- * geometry report anything from 2 to 13 named month cells across runs. The
+ * The settle (`loadWallSettled`) is not ceremony. `applyMonthTier` and the widget
+ * tier pass measure once, synchronously, as their section is appended, and
+ * nothing re-runs them — so on a cold context whose web fonts have not arrived
+ * the wall settles on a form computed against fallback metrics and keeps it. The
  * second load has the fonts in the HTTP cache, which is the steady state a wall
  * that has been hanging for a while is actually in, and it is repeatable.
  */
@@ -110,6 +133,8 @@ async function measureWallBoxes(size: { readonly width: number; readonly height:
   readonly canvas: { readonly w: number; readonly h: number };
   readonly boxes: readonly Box[];
   readonly monthColours: readonly string[];
+  /** The union of every box's painted content, as a fraction of the canvas. */
+  readonly contentShare: number;
 }> {
   const { page, close } = await loadWallSettled(link, size);
   try {
@@ -130,6 +155,56 @@ async function measureWallBoxes(size: { readonly width: number; readonly height:
         return scale;
       };
 
+      /**
+       * Whether an element puts ink on the glass: text, an image, a filled
+       * background, or a visible border. A transparent wrapper that merely holds
+       * its children is *not* ink — measuring one as filled is exactly how a
+       * centred badge in a stretched container reads as full when it is not.
+       */
+      const paints = (element: Element): boolean => {
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+        const tag = element.tagName.toLowerCase();
+        if (tag === 'img' || tag === 'svg' || tag === 'canvas') return true;
+        for (const node of Array.from(element.childNodes)) {
+          if (node.nodeType === 3 && (node.nodeValue ?? '').trim() !== '') return true;
+        }
+        const bg = style.backgroundColor;
+        if (bg !== '' && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return true;
+        for (const side of ['Top', 'Right', 'Bottom', 'Left']) {
+          const width = parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`));
+          const colour = style.getPropertyValue(`border-${side.toLowerCase()}-color`);
+          if (width > 0 && colour !== '' && colour !== 'rgba(0, 0, 0, 0)' && colour !== 'transparent') return true;
+        }
+        return false;
+      };
+
+      interface Rect { left: number; top: number; right: number; bottom: number }
+      const rel = (r: DOMRect): Rect => ({
+        left: r.left - canvasRect.left, top: r.top - canvasRect.top,
+        right: r.right - canvasRect.left, bottom: r.bottom - canvasRect.top,
+      });
+      const area = (r: Rect): number => Math.max(0, r.right - r.left) * Math.max(0, r.bottom - r.top);
+
+      /** The bounding box of everything a box paints, clamped to the box. */
+      const paintedRect = (box: HTMLElement): Rect | null => {
+        const frame = box.getBoundingClientRect();
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity, any = false;
+        box.querySelectorAll('*').forEach((el) => {
+          if (!paints(el)) return;
+          const rc = el.getBoundingClientRect();
+          if (rc.width <= 0 || rc.height <= 0) return;
+          any = true;
+          l = Math.min(l, rc.left); t = Math.min(t, rc.top); r = Math.max(r, rc.right); b = Math.max(b, rc.bottom);
+        });
+        if (!any) return null;
+        return rel(new DOMRect(
+          Math.max(l, frame.left), Math.max(t, frame.top),
+          Math.min(r, frame.right) - Math.max(l, frame.left),
+          Math.min(b, frame.bottom) - Math.max(t, frame.top),
+        ));
+      };
+
       const runsIn = (root: Element) => {
         const out: { where: string; text: string; font: number; fit: number; cut: boolean }[] = [];
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -141,12 +216,6 @@ async function measureWallBoxes(size: { readonly width: number; readonly height:
           seen.add(element);
           const style = getComputedStyle(element);
           if (style.display === 'none' || style.visibility === 'hidden') continue;
-          /*
-           * Half a line of slack down, a pixel across. A block whose
-           * `line-height` is under 1 reports a `scrollHeight` past its
-           * `clientHeight` by the leading alone with nothing hidden; text can
-           * only be lost a line at a time, so half a line is the bar.
-           */
           const lineHeight = parseFloat(style.lineHeight);
           const slack = Number.isFinite(lineHeight) ? Math.max(1, lineHeight / 2) : 1;
           const needed = Math.max(element.scrollWidth, element.clientWidth);
@@ -163,13 +232,6 @@ async function measureWallBoxes(size: { readonly width: number; readonly height:
         return out;
       };
 
-      /*
-       * Every place a calendar's own colour reaches the glass inside the month
-       * grid: the dot ahead of a timed event, and the rule down the left of an
-       * all-day row, which has no dot because the words get that column. Read
-       * from the computed paint, not from the class — a row the trim has hidden
-       * still carries its class and paints nothing.
-       */
       const monthColours: string[] = [];
       document.querySelectorAll('.horizon .hz-rowdot, .horizon .hz-row.allday').forEach((node) => {
         const element = node as HTMLElement;
@@ -180,30 +242,49 @@ async function measureWallBoxes(size: { readonly width: number; readonly height:
         );
       });
 
-      const boxes = Array.from(document.querySelectorAll('.fw')).map((element) => {
+      const paintedRects: Rect[] = [];
+      const boxes = Array.from(document.querySelectorAll('.canvas > .fw')).map((element) => {
         const box = element as HTMLElement;
         const rect = box.getBoundingClientRect();
-        /*
-         * Which of the two calendar widgets this is, read from what it actually
-         * drew rather than from its stored config — the agenda is the `next`
-         * section and the month is the `horizon` grid, and a widget that fell
-         * through to the wrong renderer is exactly the bug worth catching here.
-         */
         const inner = box.querySelector('.next, .horizon');
         const kind = box.classList.contains('fw-calendar')
           ? inner !== null && String(inner.className).split(/\s+/)[0] === 'next'
             ? 'agenda'
             : 'month'
           : (Array.from(box.classList).find((c) => c.startsWith('fw-') && c !== 'fw-fill')?.slice(3) ?? '?');
+        const painted = paintedRect(box);
+        if (painted !== null) paintedRects.push(painted);
         return {
           kind,
           w: rect.width,
           h: rect.height,
           area: rect.width * rect.height,
+          fill: painted !== null && rect.width * rect.height > 0 ? area(painted) / (rect.width * rect.height) : 0,
+          fillW: painted !== null && rect.width > 0 ? (painted.right - painted.left) / rect.width : 0,
+          fillH: painted !== null && rect.height > 0 ? (painted.bottom - painted.top) / rect.height : 0,
           runs: runsIn(box),
         };
       });
-      return { canvas: { w: canvasRect.width, h: canvasRect.height }, boxes, monthColours };
+
+      // Content share: the union of every box's painted rect, exhaustively (the
+      // boxes barely overlap, but the union is exact and cheap either way).
+      const W = canvasRect.width, H = canvasRect.height;
+      const xs = [...new Set([0, W, ...paintedRects.flatMap((r) => [r.left, r.right])])].filter((x) => x >= 0 && x <= W).sort((a, b) => a - b);
+      const ys = [...new Set([0, H, ...paintedRects.flatMap((r) => [r.top, r.bottom])])].filter((y) => y >= 0 && y <= H).sort((a, b) => a - b);
+      let covered = 0;
+      for (let i = 0; i < xs.length - 1; i++) for (let k = 0; k < ys.length - 1; k++) {
+        const cell = { left: xs[i]!, right: xs[i + 1]!, top: ys[k]!, bottom: ys[k + 1]! };
+        if (paintedRects.some((r) => r.left < cell.right && r.right > cell.left && r.top < cell.bottom && r.bottom > cell.top)) {
+          covered += (cell.right - cell.left) * (cell.bottom - cell.top);
+        }
+      }
+
+      return {
+        canvas: { w: W, h: H },
+        boxes,
+        monthColours,
+        contentShare: W * H > 0 ? covered / (W * H) : 0,
+      };
     });
   } finally {
     await close();
@@ -219,86 +300,135 @@ const describeRuns = (runs: readonly Run[]): string =>
     .map((run) => `  "${run.text}" (${run.where}) at ${run.font.toFixed(1)}px, ${Math.round(run.fit * 100)}% shown`)
     .join('\n');
 
+/**
+ * The fraction of the unit canvas a set of stored widget rects covers.
+ *
+ * The tiling assertion at the seed level: exhaustive, so it is exact for a
+ * handful of boxes, and it is the union — two boxes that overlap are not counted
+ * twice — so "covers 0.99" means the boxes reach every corner and share edges
+ * rather than pile up in one.
+ */
+function coverage(widgets: readonly { x: number; y: number; w: number; h: number }[]): number {
+  const xs = [...new Set([0, 1, ...widgets.flatMap((b) => [b.x, b.x + b.w])])].filter((x) => x >= 0 && x <= 1).sort((a, b) => a - b);
+  const ys = [...new Set([0, 1, ...widgets.flatMap((b) => [b.y, b.y + b.h])])].filter((y) => y >= 0 && y <= 1).sort((a, b) => a - b);
+  let covered = 0;
+  for (let i = 0; i < xs.length - 1; i++) for (let k = 0; k < ys.length - 1; k++) {
+    const cell = { left: xs[i]!, right: xs[i + 1]!, top: ys[k]!, bottom: ys[k + 1]! };
+    if (widgets.some((b) => b.x < cell.right && b.x + b.w > cell.left && b.y < cell.bottom && b.y + b.h > cell.top)) {
+      covered += (cell.right - cell.left) * (cell.bottom - cell.top);
+    }
+  }
+  return covered;
+}
+
 describe('the Classic seed', () => {
-  it('seeds a new display with the rebalanced proportions', () => {
+  it('seeds a new display with the tiled, tier-derived proportions', async () => {
     // A second display, created through the same admin route a household uses.
     const before = new Set((wall.db.prepare('SELECT id FROM screens').all() as { id: string }[]).map((r) => r.id));
-    return wall.pairLink('Hall').then(() => {
-      const hall = (wall.db.prepare('SELECT id FROM screens').all() as { id: string }[])
-        .map((r) => r.id)
-        .find((id) => !before.has(id));
-      expect(hall, 'the admin route created a display').toBeDefined();
+    await wall.pairLink('Hall');
+    const hall = (wall.db.prepare('SELECT id FROM screens').all() as { id: string }[])
+      .map((r) => r.id)
+      .find((id) => !before.has(id));
+    expect(hall, 'the admin route created a display').toBeDefined();
 
-      const areas: Record<string, { agenda: number; month: number }> = {};
-      for (const orientation of ['portrait', 'landscape'] as const) {
-        const widgets = readLayoutWidgets(wall.db, hall!, orientation);
-        const calendars = widgets.filter((widget) => widget.type === 'calendar');
-        const agenda = calendars.find((widget) => (widget.config as { mode?: string } | undefined)?.mode === 'list');
-        const month = calendars.find((widget) => (widget.config as { mode?: string } | undefined)?.mode !== 'list');
-        expect(agenda, `${orientation} agenda`).toBeDefined();
-        expect(month, `${orientation} month`).toBeDefined();
-        // Area, not height: in landscape the two are columns rather than rows,
-        // so height alone would say nothing about which is the anchor.
-        areas[orientation] = { agenda: agenda!.w * agenda!.h, month: month!.w * month!.h };
-      }
-
-      // Landscape inverts outright: the agenda is the larger of the two.
+    const areas: Record<string, { agenda: number; month: number }> = {};
+    for (const orientation of ['portrait', 'landscape'] as const) {
+      const widgets = readLayoutWidgets(wall.db, hall!, orientation);
+      // The boxes tile the canvas: they share edges and reach every corner, so
+      // no gutter band is left as dead wall. This is the seed-level statement of
+      // the content-share measured on the drawn wall below.
       expect(
-        areas['landscape']!.agenda,
-        `landscape: agenda ${areas['landscape']!.agenda.toFixed(3)} vs month ${areas['landscape']!.month.toFixed(3)}`,
-      ).toBeGreaterThan(areas['landscape']!.month);
+        coverage(widgets),
+        `${orientation}: the seeded boxes cover ${(coverage(widgets) * 100).toFixed(1)}% of the canvas — they must tile it`,
+      ).toBeGreaterThanOrEqual(0.98);
 
-      /*
-       * Portrait stops at a peer rather than an anchor, so the claim here is
-       * about the agenda's own size rather than about which box is bigger.
-       *
-       * 0.30 is not a taste: it is the height at which the agenda's smallest
-       * run reaches the 22px floor, measured — at 0.30 the rota chip lands at
-       * 21.7px and at 0.305 it lands at 22.5px. So this and the rendered floor
-       * assertion are the same claim from two sides, and either one alone would
-       * let a well-meaning tidy-up of the seed through. The shipped seed was
-       * 0.20, so a revert fails it by a wide margin.
-       */
-      const portrait = readLayoutWidgets(wall.db, hall!, 'portrait')
-        .filter((widget) => widget.type === 'calendar')
-        .find((widget) => (widget.config as { mode?: string } | undefined)?.mode === 'list');
-      expect(
-        portrait!.h,
-        `portrait: the agenda is ${portrait!.h} of the wall's height, below the 0.30 its type needs`,
-      ).toBeGreaterThanOrEqual(0.3);
-    });
+      const calendars = widgets.filter((widget) => widget.type === 'calendar');
+      const agenda = calendars.find((widget) => (widget.config as { mode?: string } | undefined)?.mode === 'list');
+      const month = calendars.find((widget) => (widget.config as { mode?: string } | undefined)?.mode !== 'list');
+      expect(agenda, `${orientation} agenda`).toBeDefined();
+      expect(month, `${orientation} month`).toBeDefined();
+      // Area, not height: in landscape the two are columns rather than rows.
+      areas[orientation] = { agenda: agenda!.w * agenda!.h, month: month!.w * month!.h };
+    }
+
+    // Landscape inverts outright: the agenda is the larger of the two.
+    expect(
+      areas['landscape']!.agenda,
+      `landscape: agenda ${areas['landscape']!.agenda.toFixed(3)} vs month ${areas['landscape']!.month.toFixed(3)}`,
+    ).toBeGreaterThan(areas['landscape']!.month);
+
+    /*
+     * Portrait stops at a peer rather than an anchor, so the claim here is about
+     * the agenda's own size rather than about which box is bigger. 0.30 is the
+     * height at which the agenda's smallest run reaches the 22px floor on a wall
+     * nobody has measured (see the rendered floor assertion below — the two are
+     * the same claim from two sides). The tiled seed gives it 0.33.
+     */
+    const portrait = readLayoutWidgets(wall.db, hall!, 'portrait')
+      .filter((widget) => widget.type === 'calendar')
+      .find((widget) => (widget.config as { mode?: string } | undefined)?.mode === 'list');
+    expect(
+      portrait!.h,
+      `portrait: the agenda is ${portrait!.h} of the wall's height, below the 0.30 its type needs`,
+    ).toBeGreaterThanOrEqual(0.3);
   }, SLOW);
 
-  it('leaves a wall that arranged its own canvas byte-identical', () => {
+  it('seeds a screen with no panel facts exactly as before', () => {
     /*
-     * The hard constraint: this changes the seed for *new* canvases only.
-     *
-     * A household who dragged their own wall into shape must not find it
-     * rearranged by an upgrade, so the check is byte-identity of the stored
-     * rows across the boot backfill — not "it still has widgets", which every
-     * re-seed would also satisfy. Run twice: once with the one-shot flag set
-     * (the state every upgraded database is in), and once with it cleared,
-     * because an arranged canvas has to survive even the run that is allowed
-     * to seed.
+     * The Kitchen screen was paired with no panel facts, so it must be seeded at
+     * the nominal aspects — the ones the template gallery offers and every wall
+     * nobody has measured gets. This is the "with them null, behaviour is
+     * unchanged" half of the letterbox change.
+     */
+    const kitchen = (wall.db.prepare('SELECT id FROM screens ORDER BY created_at LIMIT 1').get() as { id: string }).id;
+    for (const [orientation, aspect] of [['portrait', 0.5625], ['landscape', 1.7778]] as const) {
+      const stored = wall.db
+        .prepare(`SELECT layout_aspect AS p, layout_landscape_aspect AS l FROM screens WHERE id = ?`)
+        .get(kitchen) as { p: number; l: number };
+      expect(orientation === 'portrait' ? stored.p : stored.l, `${orientation} aspect is nominal`).toBeCloseTo(aspect, 4);
+    }
+  });
+
+  it('leaves a wall that arranged its own canvas byte-identical across the backfill and re-seed', () => {
+    /*
+     * The hard constraint, strengthened because this phase changes a seed: this
+     * changes the seed for *new* canvases only, and neither the boot backfill nor
+     * the boot re-seed — the one that now also adopts a panel's aspect — may
+     * touch a canvas a household has arranged.
      */
     const dump = (): string =>
-      JSON.stringify(
-        wall.db.prepare('SELECT * FROM layout_widgets ORDER BY screen_id, orientation, id').all(),
-      );
+      JSON.stringify(wall.db.prepare('SELECT * FROM layout_widgets ORDER BY screen_id, orientation, id').all());
 
     /*
-     * And a wall the household *cleared* stays cleared, which is the case the
-     * one-shot flag exists for — the emptiness check cannot protect it, because
-     * an empty canvas is exactly what the backfill is looking for.
+     * A wall the household *cleared* stays cleared (the one-shot flag's whole
+     * job), and — new here — a wall with panel facts that the household then
+     * *arranged* stays put across the panel-aspect re-seed.
      */
     const emptied = 'emptied-wall';
+    const arranged = 'arranged-panel-wall';
     const at = Date.now();
-    wall.db
-      .prepare(
-        `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(emptied, 'Spare', `hash-${emptied}`, at, at, at);
+    for (const id of [emptied, arranged]) {
+      wall.db
+        .prepare(`INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(id, id, `hash-${id}`, at, at, at);
+    }
+    // The arranged wall has panel facts *and* a canvas that is nobody's seed: one
+    // box dragged off the tiling. It must survive both the backfill and the
+    // re-seed untouched.
+    wall.db.prepare(`UPDATE screens SET panel_width_mm=?, panel_height_mm=?, read_distance_mm=? WHERE id=?`)
+      .run(EINK_75.widthMm, EINK_75.heightMm, EINK_75.distanceMm, arranged);
+    // A deliberately non-seed arrangement, written through the real layout
+    // writer: a single clock nudged off any tiling, at the nominal aspect, so it
+    // prints as none of the seeds (nominal or panel) and must never be rewritten.
+    for (const [orientation, aspect] of [['portrait', 0.5625], ['landscape', 1.7778]] as const) {
+      replaceLayout(wall.db, arranged, orientation, {
+        mode: 'freeform',
+        aspect,
+        widgets: [{ id: `aw-${orientation[0]}`, type: 'clock', x: 0.111, y: 0.222, w: 0.3, h: 0.1, z: 0 }],
+        background: null,
+      });
+    }
 
     const before = dump();
     backfillClassic(wall.db, householdSetUp(wall.db));
@@ -307,29 +437,65 @@ describe('the Classic seed', () => {
 
     wall.db.prepare(`UPDATE household_settings SET layout_backfilled = 0 WHERE id = 'singleton'`).run();
     backfillClassic(wall.db, householdSetUp(wall.db));
-    const arranged = JSON.parse(dump()) as { screen_id: string | null }[];
+    const afterBackfill = JSON.parse(dump()) as { screen_id: string | null }[];
     expect(
-      JSON.stringify(arranged.filter((row) => row.screen_id !== emptied)),
-      'an arranged canvas is untouched even by a run that is allowed to seed',
+      JSON.stringify(afterBackfill.filter((row) => row.screen_id !== emptied)),
+      'an arranged canvas is untouched even by a backfill allowed to seed',
     ).toBe(before);
     expect(
       (wall.db.prepare(`SELECT layout_backfilled AS f FROM household_settings WHERE id = 'singleton'`).get() as { f: number }).f,
       'the one-shot flag is set again',
     ).toBe(1);
+
+    // And the re-seed, which is the path that adopts a panel aspect, also leaves
+    // the arranged wall's two rows exactly where they are.
+    const arrangedRows = (): string =>
+      JSON.stringify(wall.db.prepare(`SELECT * FROM layout_widgets WHERE screen_id = ? ORDER BY orientation, id`).all(arranged));
+    const arrangedBefore = arrangedRows();
+    reseedClassicForSetUp(wall.db, householdSetUp(wall.db));
+    expect(arrangedRows(), 'the panel-aspect re-seed does not touch an arranged wall').toBe(arrangedBefore);
+
+    // Clean up so the drawn-wall measurements below see only the Kitchen wall.
+    for (const id of [emptied, arranged]) wall.db.prepare('DELETE FROM screens WHERE id = ?').run(id);
+    wall.db.prepare('DELETE FROM layout_widgets WHERE screen_id = ? OR screen_id = ?').run(emptied, arranged);
   });
+
+  it('moves a still-seeded wall onto its panel aspect when the facts are entered', () => {
+    /*
+     * The other side of the guard above: a wall that is *provably still the one
+     * we seeded* (nominal aspect, Classic's own boxes) is re-seeded at the panel
+     * aspect once the household enters their panel size. That is the letterbox
+     * fix reaching a wall created before the facts were known, and it is a
+     * *re-seed* of an unarranged canvas — never a rewrite of an arrangement.
+     */
+    const before = new Set((wall.db.prepare('SELECT id FROM screens').all() as { id: string }[]).map((r) => r.id));
+    // Pair a fresh screen (seeded nominal, no facts), then give it panel facts.
+    return wall.pairLink('E-ink').then(() => {
+      const panel = (wall.db.prepare('SELECT id FROM screens').all() as { id: string }[])
+        .map((r) => r.id)
+        .find((id) => !before.has(id))!;
+      const nominal = wall.db.prepare(`SELECT layout_aspect AS p FROM screens WHERE id = ?`).get(panel) as { p: number };
+      expect(nominal.p, 'seeded nominal before facts').toBeCloseTo(0.5625, 4);
+
+      wall.db.prepare(`UPDATE screens SET panel_width_mm=?, panel_height_mm=?, read_distance_mm=? WHERE id=?`)
+        .run(EINK_75.widthMm, EINK_75.heightMm, EINK_75.distanceMm, panel);
+      reseedClassicForSetUp(wall.db, householdSetUp(wall.db));
+
+      const after = wall.db.prepare(`SELECT layout_aspect AS p, layout_landscape_aspect AS l FROM screens WHERE id = ?`).get(panel) as { p: number; l: number };
+      const want = panelCanvasAspects(EINK_75.widthMm, EINK_75.heightMm)!;
+      expect(after.p, 'portrait canvas now at the panel aspect').toBeCloseTo(want.portrait, 4);
+      expect(after.l, 'landscape canvas now at the panel aspect').toBeCloseTo(want.landscape, 4);
+
+      wall.db.prepare('DELETE FROM layout_widgets WHERE screen_id = ?').run(panel);
+      wall.db.prepare('DELETE FROM screens WHERE id = ?').run(panel);
+    });
+  }, SLOW);
 });
 
 describe('the Classic wall, drawn', () => {
   it(
     'draws the agenda larger than the month in landscape',
     async () => {
-      /*
-       * Landscape only, and the asymmetry is measured rather than an oversight.
-       * A landscape wall has width to spare, so the agenda can take the larger
-       * column and the month still keeps the cell *height* it needs to name and
-       * colour its events. Portrait has no such slack — see the colour test
-       * below, which is the floor portrait stops at.
-       */
       const { boxes } = await measureWallBoxes({ width: 1920, height: 1080 });
       const agenda = boxes.find((box) => box.kind === 'agenda');
       const month = boxes.find((box) => box.kind === 'month');
@@ -347,15 +513,6 @@ describe('the Classic wall, drawn', () => {
   it(
     'draws every word of the portrait agenda at or above the legibility floor',
     async () => {
-      /*
-       * The assertion this whole change exists for, and the one that bites.
-       *
-       * The floor is a CSS clamp that `transform: scale()` multiplies straight
-       * through, so a scaled section can be drawn under it with nothing in the
-       * stylesheet to complain and nothing clipped to look at. At the height
-       * this layout used to have, 17 of these 28 runs were under it — the
-       * smallest at 13.8px on a wall read from five to ten feet.
-       */
       const { boxes } = await measureWallBoxes({ width: 1080, height: 1920 });
       const agenda = boxes.find((box) => box.kind === 'agenda');
       expect(agenda).toBeDefined();
@@ -372,40 +529,17 @@ describe('the Classic wall, drawn', () => {
   );
 
   it(
-    'keeps the calendars\u2019 own colours on the portrait month grid',
+    'keeps the calendars’ own colours on the portrait month grid',
     async () => {
-      /*
-       * The floor the portrait rebalance stops at, and the reason it does not
-       * simply keep going.
-       *
-       * A month cell paints a calendar's colour only on an event *row* — a dot
-       * on a timed one, a rule down an all-day one. Below about 0.38 of the
-       * portrait height there is no room for a row under the date number, so
-       * every busy cell collapses to a date and a "+N" and the grid stops
-       * saying *whose* day is busy, which is most of what a family wall is for.
-       * Measured, a household with a rota loses all three of its colours at
-       * 0.35 and 0.36 and keeps them at 0.38 — deterministically, three runs
-       * each way — and this household has a rota, so it is that harder case.
-       *
-       * Asserted on the computed paint rather than on the row's class: a row
-       * the trim pass has hidden still carries every class it was built with
-       * and puts no colour on the glass. That distinction is this repository's
-       * oldest measurement lesson and it is exactly the failure being guarded.
-       */
       const { monthColours } = await measureWallBoxes({ width: 1080, height: 1920 });
 
       const hex = (colour: string): string => {
         const parsed = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(colour);
         if (parsed === null) return colour;
-        return (
-          '#' +
-          [1, 2, 3].map((index) => Number(parsed[index]).toString(16).padStart(2, '0')).join('').toUpperCase()
-        );
+        return '#' + [1, 2, 3].map((index) => Number(parsed[index]).toString(16).padStart(2, '0')).join('').toUpperCase();
       };
       const stored = new Set(
-        (wall.db.prepare('SELECT color FROM calendar_sources').all() as { color: string }[]).map((row) =>
-          row.color.toUpperCase(),
-        ),
+        (wall.db.prepare('SELECT color FROM calendar_sources').all() as { color: string }[]).map((row) => row.color.toUpperCase()),
       );
       const drawn = new Set(monthColours.map(hex));
 
@@ -413,15 +547,6 @@ describe('the Classic wall, drawn', () => {
         monthColours.length,
         'the portrait month grid painted no calendar colour at all — its cells have no room for a row',
       ).toBeGreaterThan(0);
-      /*
-       * Every colour on the glass is one of the household's. Deliberately not
-       * "all three of them": which calendars keep a row is a fact about which
-       * days this fixture fills and which of them the rota shades, not about
-       * the height — and the height is what this asserts. The number that
-       * matters is the one above, because the failure being guarded takes it to
-       * exactly zero. `browser-source-colours.test.ts` makes the stronger claim
-       * about all three, on a household with no rota.
-       */
       for (const colour of drawn) {
         expect(stored.has(colour), `the month painted ${colour}, which is no calendar's colour`).toBe(true);
       }
@@ -432,15 +557,6 @@ describe('the Classic wall, drawn', () => {
   it(
     'cuts no event title out of the landscape agenda',
     async () => {
-      /*
-       * Landscape's own fault, and a different one. Stacked at the foot of a
-       * 26%-wide column, the agenda drew "Swimming lesson" as 35% of itself —
-       * and a truncation that deep is not a shortened title, it is a different
-       * string. Nothing here asserts a font size: landscape's scale factor is
-       * pinned at 1.0 by the section's own width, so its type is a fact about
-       * the canvas rather than about this box, and asserting on it would be
-       * asserting on something no template can move.
-       */
       const { boxes } = await measureWallBoxes({ width: 1920, height: 1080 });
       const agenda = boxes.find((box) => box.kind === 'agenda');
       expect(agenda).toBeDefined();
@@ -450,6 +566,121 @@ describe('the Classic wall, drawn', () => {
 
       const cut = titles.filter((run) => run.cut);
       expect(cut.length, `${cut.length} landscape agenda titles are cut off:\n${describeRuns(cut)}`).toBe(0);
+    },
+    SLOW,
+  );
+
+  it(
+    'covers at least 78% of the canvas with content in both orientations',
+    async () => {
+      /*
+       * The whole point of the tiling, measured on the drawn wall rather than on
+       * the stored boxes: the union of every widget's *painted* content — not its
+       * box — as a fraction of the canvas. Before, this was 63.6% at 1080x1920
+       * and 66.2% at 1920x1080; a third of the wall was gutter, slack and
+       * letterbox. The target is 78% and both orientations clear it comfortably.
+       */
+      for (const size of [{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }] as const) {
+        const { contentShare } = await measureWallBoxes(size);
+        expect(
+          contentShare * 100,
+          `${size.width}x${size.height}: content covers ${(contentShare * 100).toFixed(1)}% of the canvas, below 78%`,
+        ).toBeGreaterThanOrEqual(78);
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    'fills the viewport when the panel size is known',
+    async () => {
+      /*
+       * The letterbox, closed at seed time. A 7.5" e-ink panel is 5:3, so
+       * Classic's nominal 16:9 loses a 6.3% band top and bottom. Seed the canvas
+       * at the panel's own aspect and the canvas fills the frame — not to the
+       * last pixel, because millimetres and CSS pixels are two different rulers,
+       * but to within a whisker of it.
+       *
+       * Driven through the real Reset-layout route on a screen that has facts, so
+       * this is `classicSeed` on the path a household reaches.
+       */
+      const before = new Set((wall.db.prepare('SELECT id FROM screens').all() as { id: string }[]).map((r) => r.id));
+      const panelLink = await wall.pairLink('Panel');
+      const panel = (wall.db.prepare('SELECT id FROM screens').all() as { id: string }[])
+        .map((r) => r.id)
+        .find((id) => !before.has(id))!;
+      wall.db.prepare(`UPDATE screens SET panel_width_mm=?, panel_height_mm=?, read_distance_mm=? WHERE id=?`)
+        .run(EINK_75.widthMm, EINK_75.heightMm, EINK_75.distanceMm, panel);
+      const reset = await wall.post(`/admin/displays/${panel}/reset-layout`, {});
+      expect(reset.status, 'reset-layout redirected').toBe(302);
+
+      try {
+        for (const size of [{ width: 800, height: 480 }, { width: 480, height: 800 }] as const) {
+          const { page, close } = await loadWallSettled(panelLink, size);
+          try {
+            const share = await page.evaluate((vp) => {
+              const canvas = document.querySelector('.canvas') as HTMLElement;
+              const rect = canvas.getBoundingClientRect();
+              return ((rect.width * rect.height) / (vp.width * vp.height)) * 100;
+            }, size);
+            expect(
+              share,
+              `${size.width}x${size.height}: the panel-seeded canvas filled ${share.toFixed(1)}% of the viewport`,
+            ).toBeGreaterThanOrEqual(99);
+          } finally {
+            await close();
+          }
+        }
+      } finally {
+        wall.db.prepare('DELETE FROM layout_widgets WHERE screen_id = ?').run(panel);
+        wall.db.prepare('DELETE FROM screens WHERE id = ?').run(panel);
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    'fills each widget box, the calendars to the reader’s edge',
+    async () => {
+      /*
+       * The intra-box slack, closed — but the right statement of it is not one
+       * threshold for every box, because two of the box's shapes are genuinely
+       * different questions.
+       *
+       * **The calendars fill their box.** The month and the agenda are the
+       * product ("the calendar is the product"), and where `fitToBox` centred a
+       * scaled month at ~30% of its box, the tier fills it: both cover at least
+       * 85% of their box's *area*, at the design size of each orientation. That is
+       * the assertion that would have failed on the old scale-to-fit wall.
+       *
+       * **Every other box reaches its edge on at least one axis.** The fitToBox
+       * fault was a section scaled small and centred, leaving dead space on
+       * *both* axes — a shift badge at 55% of its box was ~74% on each side. A
+       * forecast is a horizontal strip: it fills its box's *width* and is short,
+       * which is the shape of a forecast and not a hole. A clock is a centred
+       * readout whose element still spans its box's width. So the honest test for
+       * these is that the painted content spans ≥85% of *one* axis — the widget
+       * reaches its box in some direction rather than floating in the middle of
+       * it. A regression to the centred-scale fault fills neither axis and fails
+       * here; the aggregate content-share above is what proves the wall as a whole
+       * carries no dead band.
+       */
+      for (const size of [{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }] as const) {
+        const { boxes } = await measureWallBoxes(size);
+        for (const box of boxes) {
+          const where = `${size.width}x${size.height}: the ${box.kind} box (${Math.round(box.w)}x${Math.round(box.h)})`;
+          if (box.kind === 'agenda' || box.kind === 'month') {
+            expect(box.fill, `${where} is ${(box.fill * 100).toFixed(0)}% filled, below 85%`).toBeGreaterThanOrEqual(0.85);
+            continue;
+          }
+          const axis = Math.max(box.fillW, box.fillH);
+          expect(
+            axis,
+            `${where} spans only ${(box.fillW * 100).toFixed(0)}% wide and ${(box.fillH * 100).toFixed(0)}% tall — ` +
+              `it floats in its box rather than reaching an edge`,
+          ).toBeGreaterThanOrEqual(0.85);
+        }
+      }
     },
     SLOW,
   );

@@ -593,69 +593,104 @@ interface Baseline {
  * are this fixture's own numbers, measured directly and not copied from the
  * audit's report. Every value below was read off a real run of this file, not
  * estimated.
+ *
+ * **Raised again, by the tiling and the re-derived Classic proportions.** The
+ * template's boxes tile the canvas now — they share edges and reach the canvas
+ * edge, so `contentSharePercent` (the box union) is ~100% at every size, up from
+ * 85.5% and 80% — and the month/agenda split was re-derived against the tiers
+ * rather than scale-to-fit: the portrait month is 0.48 of the height where it
+ * was 0.435, the agenda 0.33 where it was 0.305, and the utility strip is
+ * tighter. More of the wall is calendar, so almost every number below improves —
+ * `distinctNames`, `spanBars`, `agendaDays`, `agendaEvents` and the two shares —
+ * and three move the worsening way and are recorded rather than buried, which is
+ * this file's own rule. `runsUnderFloor` rises at 480x800 (41 → 48) and
+ * 1920x1080 (18 → 20): both are sizes whose agenda drew more events, at type the
+ * unmeasured rem already puts under the floor, and no individual run got smaller
+ * — the fix for a 7.5" panel under the floor is to measure it, which is the
+ * block further down. `plusNCells` rises at 1080x1920 (0 → 3) and 1920x1080
+ * (1 → 3), paired with `monthNamesVisible` and `distinctNames` both rising: the
+ * bigger month names more, and a cell that can name something can also carry a
+ * count, so the counter got cheaper rather than a name being lost. The two e-ink
+ * sizes gained their first span bar (0 → 2) because the 0.48 month box finally
+ * fits a lane under the numeral at that cell size. `AGENDA_BASELINE`'s clock
+ * falls at the two portrait sizes (99.8 → 89.9 at 1080x1920) because the clock's
+ * box changed shape in the tiled top band; every other drawn run is a role and
+ * did not move.
  */
 export const BASELINE: Record<string, Baseline> = {
   '480x800': {
     monthNamesVisible: 0,
-    distinctNames: 0,
+    // 0 → 1, and 0 → 2 spans: the tiled Classic gives the month box 0.48 of the
+    // portrait height where the old one gave it 0.435, so at this cell size the
+    // grid now fits a bar lane and the half term draws once across its days.
+    distinctNames: 1,
     plusNCells: 0,
     markedCells: 20,
-    // No room for a lane under the numeral at this cell size, so the bars are
-    // measured back out by the tier pass and the events go back to being rows.
-    spanBars: 0,
-    runsUnderFloor: 41,
-    agendaDays: 2,
-    agendaEvents: 6,
+    spanBars: 2,
+    // 41 → 48: the agenda went 6 → 8 events and the month grew, so there is more
+    // text on the glass at a size where the unmeasured rem is under 22px anyway —
+    // the honest cost of a fuller wall on a 7.5" panel, which should be measured.
+    runsUnderFloor: 48,
+    agendaDays: 3,
+    agendaEvents: 8,
     canvasSharePercent: 93.5,
-    contentSharePercent: 85.5,
+    contentSharePercent: 99.5,
   },
   '800x480': {
     monthNamesVisible: 0,
-    distinctNames: 0,
+    distinctNames: 1,
     plusNCells: 0,
     markedCells: 20,
-    spanBars: 0,
-    runsUnderFloor: 58,
+    spanBars: 2,
+    // 58 → 48: the tighter, tiled top band leaves the agenda a box whose rows
+    // land nearer the floor rather than under it.
+    runsUnderFloor: 48,
     agendaDays: 4,
     agendaEvents: 11,
     canvasSharePercent: 93.5,
-    contentSharePercent: 80,
+    contentSharePercent: 99.5,
   },
   '1080x1920': {
-    monthNamesVisible: 12,
-    distinctNames: 10,
-    plusNCells: 0,
+    monthNamesVisible: 13,
+    distinctNames: 11,
+    // 0 → 3, paired with names 12 → 13 and distinct 10 → 11: the bigger month
+    // names *more*, and a cell that can name something can also carry a count, so
+    // the counter got cheaper rather than a name being lost (the pairing the two
+    // are asserted together for).
+    plusNCells: 3,
     markedCells: 20,
     spanBars: 2,
     runsUnderFloor: 0,
-    agendaDays: 2,
-    agendaEvents: 6,
+    agendaDays: 3,
+    agendaEvents: 9,
     canvasSharePercent: 99.5,
-    contentSharePercent: 85.5,
+    contentSharePercent: 99.5,
   },
   '1920x1080': {
-    monthNamesVisible: 10,
-    distinctNames: 8,
-    plusNCells: 1,
-    markedCells: 20,
-    spanBars: 2,
-    runsUnderFloor: 18,
-    agendaDays: 4,
-    agendaEvents: 11,
-    canvasSharePercent: 99.5,
-    contentSharePercent: 80,
-  },
-  '2560x1440': {
     monthNamesVisible: 12,
     distinctNames: 10,
     plusNCells: 3,
     markedCells: 20,
     spanBars: 2,
-    runsUnderFloor: 0,
-    agendaDays: 4,
-    agendaEvents: 11,
+    // 18 → 20: two more runs under the floor at a size whose agenda went 11 → 12
+    // events, none of them smaller than before — more content, not smaller type.
+    runsUnderFloor: 20,
+    agendaDays: 5,
+    agendaEvents: 12,
     canvasSharePercent: 99.5,
-    contentSharePercent: 80,
+    contentSharePercent: 99.5,
+  },
+  '2560x1440': {
+    monthNamesVisible: 15,
+    distinctNames: 13,
+    plusNCells: 1,
+    markedCells: 20,
+    spanBars: 2,
+    runsUnderFloor: 0,
+    agendaDays: 5,
+    agendaEvents: 12,
+    canvasSharePercent: 99.5,
+    contentSharePercent: 99.5,
   },
 };
 
@@ -694,9 +729,9 @@ const DRAWN_RUNS = ['title', 'time', 'numeral', 'weekday', 'rota', 'label', 'clo
  * somebody did.
  */
 const AGENDA_BASELINE: Record<string, Record<(typeof DRAWN_RUNS)[number], number>> = {
-  '480x800': { title: 15.6, time: 12.0, numeral: 18.7, weekday: 13.2, rota: 9.2, label: 10.0, clock: 41.6 },
+  '480x800': { title: 15.6, time: 12.0, numeral: 18.7, weekday: 13.2, rota: 9.2, label: 10.0, clock: 37.4 },
   '800x480': { title: 14.0, time: 10.8, numeral: 16.8, weekday: 11.9, rota: 8.3, label: 9.0, clock: 25.3 },
-  '1080x1920': { title: 37.4, time: 28.8, numeral: 44.9, weekday: 31.7, rota: 22.1, label: 24.0, clock: 99.8 },
+  '1080x1920': { title: 37.4, time: 28.8, numeral: 44.9, weekday: 31.7, rota: 22.1, label: 24.0, clock: 89.9 },
   '1920x1080': { title: 31.6, time: 24.3, numeral: 37.9, weekday: 26.7, rota: 18.6, label: 20.3, clock: 56.9 },
   '2560x1440': { title: 42.1, time: 32.4, numeral: 50.5, weekday: 35.6, rota: 24.8, label: 27.0, clock: 75.8 },
 };
@@ -1102,10 +1137,10 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 1,
-    agendaEvents: 3,
+    agendaDays: 2,
+    agendaEvents: 5,
     canvasSharePercent: 93.5,
-    contentSharePercent: 85.5,
+    contentSharePercent: 99.5,
   },
   '800x480': {
     monthNamesVisible: 0,
@@ -1113,43 +1148,43 @@ const MEASURED_BASELINE: Record<string, Omit<Baseline, 'runsUnderFloor'>> = {
     plusNCells: 0,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 2,
-    agendaEvents: 5,
+    agendaDays: 3,
+    agendaEvents: 8,
     canvasSharePercent: 93.5,
-    contentSharePercent: 80,
+    contentSharePercent: 99.5,
   },
   '1080x1920': {
-    monthNamesVisible: 14,
-    distinctNames: 12,
-    plusNCells: 3,
+    monthNamesVisible: 18,
+    distinctNames: 16,
+    plusNCells: 1,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 3,
-    agendaEvents: 10,
+    agendaDays: 4,
+    agendaEvents: 11,
     canvasSharePercent: 99.5,
-    contentSharePercent: 85.5,
+    contentSharePercent: 99.5,
   },
   '1920x1080': {
-    monthNamesVisible: 12,
-    distinctNames: 10,
-    plusNCells: 3,
+    monthNamesVisible: 15,
+    distinctNames: 13,
+    plusNCells: 1,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 5,
-    agendaEvents: 12,
+    agendaDays: 7,
+    agendaEvents: 15,
     canvasSharePercent: 99.5,
-    contentSharePercent: 80,
+    contentSharePercent: 99.5,
   },
   '2560x1440': {
-    monthNamesVisible: 12,
-    distinctNames: 10,
-    plusNCells: 3,
+    monthNamesVisible: 16,
+    distinctNames: 14,
+    plusNCells: 1,
     markedCells: 20,
     spanBars: 2,
-    agendaDays: 6,
-    agendaEvents: 14,
+    agendaDays: 7,
+    agendaEvents: 15,
     canvasSharePercent: 99.5,
-    contentSharePercent: 80,
+    contentSharePercent: 99.5,
   },
 };
 

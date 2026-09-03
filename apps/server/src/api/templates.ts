@@ -116,6 +116,76 @@ export function applyTemplate(
 }
 
 /**
+ * The two canvas aspects a screen with known panel facts should be seeded at.
+ *
+ * Classic authors its two canvases at a nominal 9:16 and 16:9, and any panel of
+ * a different shape loses a letterbox band — worst on the smallest panels, a
+ * 7.5" e-ink screen giving up 6.3% of itself to two grey bars. A screen whose
+ * physical size the household has entered (RFC 009 Phase 4) can be seeded at
+ * *that* shape instead, so the canvas fills the frame and there is no band to
+ * lose.
+ *
+ * The aspect ratio is a fact about the hardware and orientation-independent — a
+ * quarter turn cannot change `long / short` — so the two canvases follow from
+ * it directly: the portrait canvas is `short / long` (< 1) and the landscape one
+ * `long / short` (> 1), whichever way the panel is actually hung. Clamped to the
+ * template schema's own `[0.2, 5]`, so a hand-entered pair that is degenerate
+ * cannot write a canvas the gallery would then refuse.
+ *
+ * `undefined` when the facts are absent, which is every household until they
+ * open the setting — and there the nominal aspects stand, unchanged.
+ */
+export function panelCanvasAspects(
+  panelWidthMm: number | null,
+  panelHeightMm: number | null,
+): { readonly portrait: number; readonly landscape: number } | undefined {
+  if (panelWidthMm === null || panelHeightMm === null) return undefined;
+  if (!(panelWidthMm > 0) || !(panelHeightMm > 0)) return undefined;
+  const long = Math.max(panelWidthMm, panelHeightMm);
+  const short = Math.min(panelWidthMm, panelHeightMm);
+  if (!(long > 0) || !(short > 0)) return undefined;
+  const clamp = (value: number): number => Math.min(5, Math.max(0.2, value));
+  return { portrait: clamp(short / long), landscape: clamp(long / short) };
+}
+
+/** A screen's own panel aspects, or `undefined` (the household, or no facts). */
+function ownerPanelAspects(
+  db: SqliteDatabase,
+  owner: string | null,
+): { readonly portrait: number; readonly landscape: number } | undefined {
+  if (owner === null) return undefined;
+  const screen = readScreens(db).find((candidate) => candidate.id === owner);
+  if (screen === undefined) return undefined;
+  return panelCanvasAspects(screen.panelWidthMm, screen.panelHeightMm);
+}
+
+/**
+ * Classic for this household **and this screen** — the variant matching what is
+ * set up, at the panel's own aspect where the household has entered one.
+ *
+ * This is the one seeding function every default-Classic path calls: the new
+ * screen route, Reset layout, the boot backfill, the boot re-seed, and Classic
+ * picked from the gallery. Sharing it is what keeps them consistent — a screen
+ * seeded at its panel aspect by one path and recognised as still-seeded by
+ * another only works if both compute the same canvas — and it is why the
+ * letterbox fix is a *seed-time* change and never a rewrite: nothing here
+ * touches a canvas, it only decides what a fresh one is.
+ *
+ * The household (`owner === null`) has no physical panel, so it always gets the
+ * nominal aspects, which are also the ones the template gallery offers.
+ */
+export function classicSeed(db: SqliteDatabase, owner: string | null, setUp: HouseholdSetUp): DisplayTemplate {
+  const base = classicFor(setUp);
+  const aspects = ownerPanelAspects(db, owner);
+  if (aspects === undefined) return base;
+  return {
+    ...base,
+    portrait: { ...base.portrait, aspect: aspects.portrait },
+    landscape: { ...base.landscape, aspect: aspects.landscape },
+  };
+}
+
+/**
  * One-shot migration of every "auto" wall onto the Classic template.
  *
  * The responsive stacked layout was retired; every wall draws a free-form canvas
@@ -140,14 +210,16 @@ export function backfillClassic(db: SqliteDatabase, setUp: HouseholdSetUp): void
   // No settings row yet (setup has not run) or already backfilled: nothing to do.
   if (row === undefined || row.done === 1) return;
 
-  // Classic for *this* household, not the fully-equipped one (`classicFor`).
-  // A wall seeded with boxes the manifest will drop is a wall with holes in it.
-  const seed = classicFor(setUp);
+  // Classic for *this* household and *this* screen — not the fully-equipped one
+  // (`classicFor`), because a wall seeded with boxes the manifest will drop is a
+  // wall with holes in it; and at the screen's own panel aspect where it has one
+  // (`classicSeed`), because seeding is the one moment fitting the canvas to the
+  // panel is safe.
   const seedIfEmpty = (owner: string | null): void => {
     const hasWidgets =
       readLayoutWidgets(db, owner, 'portrait').length > 0 ||
       readLayoutWidgets(db, owner, 'landscape').length > 0;
-    if (!hasWidgets) applyTemplate(db, owner, seed);
+    if (!hasWidgets) applyTemplate(db, owner, classicSeed(db, owner, setUp));
   };
 
   seedIfEmpty(null);
@@ -289,6 +361,33 @@ interface OwnLayoutRow {
 const SEEDED_PRINTS: readonly string[] = CLASSIC_VARIANTS.map(templatePrint);
 
 /**
+ * The prints a *particular owner*'s still-seeded canvas could match — the four
+ * variants at the nominal aspects, and, when the screen has panel facts, the
+ * same four at its panel's aspect.
+ *
+ * A screen seeded before its facts were entered prints as a nominal variant; one
+ * seeded (or re-seeded) after prints as a panel-aspect one. Both are ours and
+ * both should be adapted when the household's set-up changes, so recognition has
+ * to admit either — and *only* either, so a household who deliberately set their
+ * own aspect (a 16:9 canvas on a 5:3 panel) prints as neither and is left alone.
+ * Changing the facts to a *different* panel is the one case this does not chase:
+ * a canvas at the old panel's aspect matches nothing here and Reset is the way
+ * to move it, which is the same "when in doubt, do nothing" this whole gate is.
+ */
+function seededPrintsForOwner(db: SqliteDatabase, owner: string | null): readonly string[] {
+  const aspects = ownerPanelAspects(db, owner);
+  if (aspects === undefined) return SEEDED_PRINTS;
+  const paneled = CLASSIC_VARIANTS.map((variant) =>
+    templatePrint({
+      ...variant,
+      portrait: { ...variant.portrait, aspect: aspects.portrait },
+      landscape: { ...variant.landscape, aspect: aspects.landscape },
+    }),
+  );
+  return [...SEEDED_PRINTS, ...paneled];
+}
+
+/**
  * Move a still-seeded wall onto the Classic variant matching what the household
  * has set up now.
  *
@@ -322,16 +421,19 @@ export function reseedClassicForSetUp(db: SqliteDatabase, setUp: HouseholdSetUp)
     .get() as { done: number } | undefined;
   if (flag === undefined || flag.done !== 1) return;
 
-  const want = classicFor(setUp);
-  const wantPrint = templatePrint(want);
   const owners: (string | null)[] = [null, ...readScreens(db).map((screen) => screen.id)];
   for (const owner of owners) {
     const current = ownerPrint(db, owner);
     if (current === undefined) continue;
+    // What this owner would be seeded with today: the right variant, at its own
+    // panel aspect. `classicSeed` is the same function every seed path uses, so
+    // a screen re-seeded here draws exactly what a fresh one would.
+    const want = classicSeed(db, owner, setUp);
+    const wantPrint = templatePrint(want);
     // Already the right arrangement: nothing to write, and a write would mint
     // fresh widget ids for no reason.
     if (current === wantPrint) continue;
-    if (!SEEDED_PRINTS.includes(current)) continue;
+    if (!seededPrintsForOwner(db, owner).includes(current)) continue;
     applyTemplate(db, owner, want);
   }
 }
