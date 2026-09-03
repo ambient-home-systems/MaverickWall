@@ -101,7 +101,7 @@ async function harness() {
     expect(check.status, 'the harness must reach a signed-in /admin').toBe(200);
   };
 
-  /** Draw real cards: a browser + e-paper wall, and one installed module. */
+  /** Draw real cards: walls, an installed module, and two people. */
   const seedCards = async () => {
     await form('/admin/screens', { name: 'Kitchen' });
     // The e-paper wall is added on its own page's form: a name, a panel preset
@@ -110,6 +110,10 @@ async function harness() {
     // Install the key-less catalogue recipe so the Store draws an installed
     // moduleCard (its config defaults fill in when omitted).
     await form('/admin/modules/install/outside-temperature', { name: 'Outside temperature' });
+    // Two people, so a personCard draws with its reorder footer (a single
+    // person has neither Up nor Down and no footer at all).
+    await form('/admin/people', { name: 'Sam', color: '#4C7FD1' });
+    await form('/admin/people', { name: 'Alex', color: '#D14C7F' });
   };
 
   return { call, form, signedIn, seedCards };
@@ -184,15 +188,16 @@ describe('button anatomy on anchors', () => {
 });
 
 describe('the card screens carry no inline layout style', () => {
-  // The Walls and Store card builders were hand-typed `<div style="…gap:10px…">`
-  // trees — invisible to `admin-component-drift.test.ts`, which scans the served
+  // The Walls, Store and People card builders were hand-typed
+  // `<div style="…gap:10px…">` trees (or a `margin-left:auto` wrapper) —
+  // invisible to `admin-component-drift.test.ts`, which scans the served
   // stylesheet and never route output. This holds those screens to zero inline
   // layout styles so the drift cannot creep back on them. A custom property
   // (`--swatch`, `--w`) is a legitimate inline value a token cannot express and
   // is allowed; a raw `gap`/`margin`/`display`/`font-size` is not. The recipe
   // and install *forms* (their own URLs) keep a monospace code field and are not
   // in scope here.
-  const CARD_PAGES = ['/admin/walls', '/admin/modules'] as const;
+  const CARD_PAGES = ['/admin/walls', '/admin/modules', '/admin/people'] as const;
   const layout = /(^|;)\s*(display|flex|flex-wrap|gap|margin|padding|font-size|align-items|justify-content)\s*:/i;
 
   it('sets spacing, flex and font through classes, not style attributes', async () => {

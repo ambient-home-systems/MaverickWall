@@ -2762,8 +2762,28 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function peoplePage(c: Context, error?: string, suggestion?: string): string {
     const people = readPeopleAdmin(deps.db);
 
-    const personCard = (person: PersonRecord, first: boolean, last: boolean): string =>
-      card(
+    const personCard = (person: PersonRecord, first: boolean, last: boolean): string => {
+      const id = encodeURIComponent(person.id);
+      // Up/Down reorder the wall's legend and its shift order; the ends drop the
+      // button that would do nothing. Drawn only when there is one — a single
+      // person has neither, and an empty footer is a flex box carrying margins.
+      const reorder =
+        (first
+          ? ''
+          : `<form method="post" action="admin/people/${id}/move">` +
+            `<input type="hidden" name="dir" value="up">` +
+            `<button class="secondary" type="submit">↑ Up</button></form>`) +
+        (last
+          ? ''
+          : `<form method="post" action="admin/people/${id}/move">` +
+            `<input type="hidden" name="dir" value="down">` +
+            `<button class="secondary" type="submit">↓ Down</button></form>`);
+      return card(
+        // The same card head every other list uses: the person on the left, the
+        // ⋮ overflow on the right holding the destructive Remove — so a reorder
+        // tap is never a neighbour of a delete, and Remove goes through
+        // destructive() (a confirmation, an accessible name that says who).
+        `<div class="card-head"><div class="card-head-main">` +
         `<h2>` +
         (person.avatarPath === null
           ? `<span class="swatch" style="--swatch:${escapeHtml(person.color)}"></span>`
@@ -2775,6 +2795,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           : `${person.sourceCount} calendar${person.sourceCount === 1 ? '' : 's'}`) +
         (person.hasShiftRotation === 1 ? ' · has a shift rotation' : '') +
         `</p>` +
+        `</div>` +
+        `<details class="ovf" data-overflow>` +
+        `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+        `aria-label="More actions for ${escapeHtml(person.name)}" title="More">${icon('more')}</summary>` +
+        `<div class="ovf-menu" role="menu">` +
+        destructive('Remove', {
+          thing: person.name,
+          confirmAction: `admin/people/${id}/delete`,
+        }) +
+        `</div></details></div>` +
 
         /*
          * Folded away, same idiom as `choreCard` and the calendar row: the name,
@@ -2783,7 +2813,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * open forms per person.
          */
         `<details class="disclose"><summary>Edit ${escapeHtml(person.name)}</summary>` +
-        `<form method="post" action="admin/people/${encodeURIComponent(person.id)}">` +
+        `<form method="post" action="admin/people/${id}">` +
         `<div class="row-fields">` +
         textField({ label: 'Name', name: 'name', required: true, value: person.name }) +
         textField({ label: 'Colour', name: 'color', type: 'color', value: person.color }) +
@@ -2791,7 +2821,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<button type="submit">Save</button></form>` +
 
         `<form method="post" enctype="multipart/form-data" ` +
-        `action="admin/people/${encodeURIComponent(person.id)}/avatar">` +
+        `action="admin/people/${id}/avatar">` +
         textField({
           label: 'Picture',
           name: 'avatar',
@@ -2805,31 +2835,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
         `</details>` +
 
-        // Up/Down reorder the wall's legend and its shift order; the ends drop
-        // the button that would do nothing, the way the shift-type card does.
-        // Remove moves through `destructive()`, which is what this GET-then-
-        // confirm-then-POST shape is for — margin-left:auto moves with it onto
-        // a plain wrapper, since the component takes no className of its own.
-        `<div class="row">` +
-        (first
-          ? ''
-          : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
-            `<input type="hidden" name="dir" value="up">` +
-            `<button class="secondary" type="submit">↑ Up</button></form>`) +
-        (last
-          ? ''
-          : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
-            `<input type="hidden" name="dir" value="down">` +
-            `<button class="secondary" type="submit">↓ Down</button></form>`) +
-        `<div style="margin-left:auto">` +
-        destructive('Remove', {
-          thing: person.name,
-          confirmAction: `admin/people/${encodeURIComponent(person.id)}/delete`,
-          variant: 'button',
-        }) +
-        `</div>` +
-        `</div>`,
+        (reorder === '' ? '' : `<div class="row">${reorder}</div>`),
       );
+    };
 
     return page({
       self: selfHref(c),
