@@ -114,6 +114,9 @@ async function harness() {
     // person has neither Up nor Down and no footer at all).
     await form('/admin/people', { name: 'Sam', color: '#4C7FD1' });
     await form('/admin/people', { name: 'Alex', color: '#D14C7F' });
+    // A shift type, so a typeCard draws (the boot's default types are seeded in
+    // main.ts, not the test harness, so this screen is otherwise empty here).
+    await form('/admin/shifts/types', { label: 'Day', short_code: 'D', color: '#4C7FD1', is_working: '1' });
   };
 
   return { call, form, signedIn, seedCards };
@@ -125,6 +128,7 @@ const PAGES = [
   '/admin/walls',
   '/admin/people',
   '/admin/shifts',
+  '/admin/shifts/types',
   '/admin/chores',
   '/admin/alerts',
   '/admin/modules',
@@ -197,7 +201,7 @@ describe('the card screens carry no inline layout style', () => {
   // is allowed; a raw `gap`/`margin`/`display`/`font-size` is not. The recipe
   // and install *forms* (their own URLs) keep a monospace code field and are not
   // in scope here.
-  const CARD_PAGES = ['/admin/walls', '/admin/modules', '/admin/people'] as const;
+  const CARD_PAGES = ['/admin/walls', '/admin/modules', '/admin/people', '/admin/shifts/types'] as const;
   const layout = /(^|;)\s*(display|flex|flex-wrap|gap|margin|padding|font-size|align-items|justify-content)\s*:/i;
 
   it('sets spacing, flex and font through classes, not style attributes', async () => {

@@ -2366,26 +2366,35 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const people = readPeopleAdmin(deps.db);
     const sources = readAdminSources(deps.db);
 
-    const planCard = (plan: typeof plans[number]): string =>
-      card(
+    const planCard = (plan: typeof plans[number]): string => {
+      const id = encodeURIComponent(plan.id);
+      return card(
+        // The same card head every other list uses: the rotation on the left,
+        // the ⋮ overflow on the right holding the destructive Remove. Edit — the
+        // frequent action — stays the one visible button. The GET Remove leads
+        // to already answers with `confirmDestroyPage`.
+        `<div class="card-head"><div class="card-head-main">` +
         `<h2>${escapeHtml(plan.personName ?? 'Nobody')}</h2>` +
         `<p class="sub">` +
         (plan.kind === 'pattern'
           ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
           : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
         `</p>` +
-        `<div class="row">` +
-        `<a class="btn secondary btn-sm" href="admin/shifts/${encodeURIComponent(plan.id)}/edit">Edit</a>` +
-        // The GET this leads to already answers with `confirmDestroyPage`, so
-        // `destructive()` is the control that gets there rather than a plain
-        // one-click POST.
+        `</div>` +
+        `<details class="ovf" data-overflow>` +
+        `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+        `aria-label="More actions for ${escapeHtml(plan.personName ?? 'this rotation')}" title="More">${icon('more')}</summary>` +
+        `<div class="ovf-menu" role="menu">` +
         destructive('Remove', {
           thing: plan.personName ?? 'this rotation',
-          confirmAction: `admin/shifts/${encodeURIComponent(plan.id)}/delete`,
-          variant: 'button',
+          confirmAction: `admin/shifts/${id}/delete`,
         }) +
+        `</div></details></div>` +
+        `<div class="row">` +
+        `<a class="btn btn-ghost btn-sm" href="admin/shifts/${id}/edit">Edit</a>` +
         `</div>`,
       );
+    };
 
     const canAdd = people.length > 0;
     return page({
