@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, escapeHtml, errorBlock, page, textField } from './html.js';
+import { confirmDestroyPage, escapeHtml, errorBlock, icon, page, textField } from './html.js';
 import { card, destructive, listRow, section, tag } from './components.js';
 import {
   createShiftType,
@@ -163,16 +163,19 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
    * A type is a `card`: a name, its reorder and remove controls, and the
    * always-open form that renames and recolours it.
    *
-   * The identifying line is a `listRow` rather than the `<h2>` it used to be —
-   * the swatch as its lead, the name as its title, and everything that acts on
-   * *this type* (its off-state, reorder, remove) in the trail, which is what a
-   * trail is for. `isWorking === false` used to be two words appended to the
-   * name ("Swing · off"), the exact shape the calendars screen already fixed
-   * for "(off)": a state folded into the string it describes reads as part of
-   * the name on a quick scan. It is a `tag` now, in the trail beside the
-   * controls rather than a fill, because "off" here is an ordinary
-   * configuration — a rest day or a time-off type is meant to say so — and not
-   * a fault the way a calendar failing to sync is.
+   * The identifying line is a `listRow` — the swatch as its lead, the name as
+   * its title, and everything that acts on *this type* (its off-state, reorder,
+   * remove) in the trail, which is what a trail is for. `isWorking === false`
+   * used to be two words appended to the name ("Swing · off"), the exact shape
+   * the calendars screen already fixed for "(off)": a state folded into the
+   * string it describes reads as part of the name on a quick scan. It is a `tag`
+   * now, beside the controls rather than a fill, because "off" here is an
+   * ordinary configuration — a rest day or a time-off type is meant to say so —
+   * and not a fault the way a calendar failing to sync is.
+   *
+   * Reorder stays visible; the destructive Remove moves into the ⋮ overflow the
+   * rest of the admin's cards use, so a reorder tap is never a neighbour of a
+   * delete. The GET it leads to already answers with `confirmDestroyPage`.
    */
   function typeCard(type: ShiftTypeRow, first: boolean, last: boolean): string {
     const id = encodeURIComponent(type.id);
@@ -191,15 +194,15 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
             ? ''
             : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="down">` +
               `<button class="secondary" type="submit">↓ Down</button></form>`) +
-          // A GET to a confirmation page, exactly the shape `destructive`
-          // assumes: `/admin/shifts/types/:id/delete` already answers with
-          // `confirmDestroyPage` below. `variant: 'button'` because this row
-          // has no overflow menu to hold it.
+          `<details class="ovf" data-overflow>` +
+          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+          `aria-label="More actions for ${escapeHtml(type.label)}" title="More">${icon('more')}</summary>` +
+          `<div class="ovf-menu" role="menu">` +
           destructive('Remove', {
             thing: type.label,
             confirmAction: `admin/shifts/types/${id}/delete`,
-            variant: 'button',
-          }),
+          }) +
+          `</div></details>`,
       ) +
         `<form method="post" action="admin/shifts/types/${id}">` +
         `<div class="row-fields">` +

@@ -2,7 +2,7 @@ import type { Context, Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { glyphSvg } from '../glyphs.js';
 import { FETCH_LIMITS } from '@maverick-wall/core';
-import { confirmDestroyPage, errorBlock, escapeHtml, page, textField, textareaField } from './html.js';
+import { confirmDestroyPage, errorBlock, escapeHtml, icon, page, textField, textareaField } from './html.js';
 import { card, destructive, section, tag } from './components.js';
 import { ago, navModules } from './admin.js';
 import type { AdminDeps } from './admin.js';
@@ -342,30 +342,36 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       // of being dropped.
       `<div id="mod-${escapeHtml(module.id)}">` +
       card(
-        `<div style="display:flex;align-items:center;gap:12px">` +
-          `<div style="flex:1;min-width:0"><div class="rname" style="font-size:16px">` +
+        // The same card head every other list uses: name and status on the left,
+        // the ⋮ overflow on the right holding the destructive Remove — so a
+        // one-tap Turn off is never a neighbour of a Remove, and Remove goes
+        // through destructive() (a confirmation, an accessible name that says
+        // which module) rather than a full-weight danger button in the footer.
+        `<div class="card-head"><div class="card-head-main">` +
           // "(off)" used to be appended straight onto the name — the same
           // anti-pattern the calendar card had, and the same fix: its own tag,
           // its own ground, still a word a colour-blind reader or a monochrome
           // screenshot both get right.
-          `${escapeHtml(module.name)}</div>` +
+          `<div class="rname">${escapeHtml(module.name)} ` +
           (module.enabled === 1 ? '' : tag('Off', 'warn')) +
-          `<div class="host">${escapeHtml(module.url)}</div></div>${health}</div>` +
-          alertsControl(module, action) +
-          `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
-          `<form method="post" action="${action}/toggle">` +
-          `<button class="secondary" type="submit">${module.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
-          // A standalone button, not the overflow menu variant — this card has no
-          // ⋮ to put it in, which is exactly what destructive()'s `button` variant
-          // is for. The wrapping div carries the margin-left:auto that used to sit
-          // on the button itself, to keep it pinned to the row's trailing edge.
-          `<div style="margin-left:auto">` +
+          `</div>` +
+          `<div class="host">${escapeHtml(module.url)}</div>` +
+          health +
+          `</div>` +
+          `<details class="ovf" data-overflow>` +
+          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+          `aria-label="More actions for ${escapeHtml(module.name)}" title="More">${icon('more')}</summary>` +
+          `<div class="ovf-menu" role="menu">` +
           destructive('Remove', {
             thing: module.name,
             confirmAction: `${action}/remove`,
-            variant: 'button',
           }) +
+          `</div></details>` +
           `</div>` +
+          alertsControl(module, action) +
+          `<div class="row card-divide">` +
+          `<form method="post" action="${action}/toggle">` +
+          `<button class="secondary" type="submit">${module.enabled === 1 ? 'Turn off' : 'Turn on'}</button></form>` +
           `</div>`,
       ) +
       `</div>`
@@ -399,8 +405,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
             ? '1 alert is showing on the wall.'
             : `${count} alerts are showing on the wall.`;
     return (
-      `<div class="row" style="margin-top:14px;padding-top:14px;` +
-      `border-top:1px solid var(--ruleSoft);align-items:center;gap:10px">` +
+      `<div class="row card-divide">` +
       `<span class="kick">Alerts</span>` +
       `<form method="post" action="${action}/alerts" class="seg" ` +
       `aria-label="What this module may do to the wall">` +
@@ -408,7 +413,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       seg('banner', 'Banner') +
       seg('takeover', 'Take over') +
       `</form></div>` +
-      `<p class="hint" style="margin-top:6px">${escapeHtml(status)} A module can raise ` +
+      `<p class="hint">${escapeHtml(status)} A module can raise ` +
       `a banner or cover the wall, but never wake a wall that has gone dark for ` +
       `the night, and you can always clear it from the wall.</p>`
     );
@@ -435,7 +440,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           ? ''
           : section('Installed', undefined, modules.map(moduleCard).join(''))) +
         section('Store', undefined, CATALOG.modules.map(catalogCard).join('')) +
-        `<p class="hint" style="margin-top:18px">This store ships with Maverick Wall ` +
+        `<p class="hint">This store ships with Maverick Wall ` +
         `and grows by contribution — anyone can add a module with a pull request ` +
         `(see <span class="code">docs/adding-to-the-store.md</span>). To run a module ` +
         `of your own, or write a recipe by hand, use ` +
@@ -473,11 +478,11 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       body:
         (error === undefined ? '' : errorBlock(error)) +
         card(
-          `<div class="rname" style="font-size:16px">Build a recipe</div>` +
-            `<p style="margin:8px 0 0">A recipe is data, never code — it names a public web ` +
+          `<h2>Build a recipe</h2>` +
+            `<p>A recipe is data, never code — it names a public web ` +
             `feed and how to draw it, and Maverick Wall does the fetching. Write one to try, ` +
             `or to contribute to the store.</p>` +
-            `<div class="row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ruleSoft)">` +
+            `<div class="row card-divide">` +
             `<a class="btn" href="admin/modules/recipe">Open the recipe builder</a></div>`,
         ) +
         section(
@@ -614,21 +619,20 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
             .join('') +
           `</div>`;
     return card(
-      `<div style="display:flex;align-items:flex-start;gap:12px">` +
+      // The same card head the module and calendar cards use: the identifying
+      // block on the left (here a glyph, an optional preview and the name /
+      // author / description), the kind tag pinned top-right. card-head is
+      // align-items:flex-start, so the tag needs no alignment hook of its own.
+      `<div class="card-head">` +
         `<div class="cglyph">${glyphSvg(entry.glyph, 'gl')}</div>` +
         preview +
-        `<div style="flex:1;min-width:0">` +
-        `<div class="rname" style="font-size:16px">${escapeHtml(entry.name)}</div>` +
+        `<div class="card-head-main">` +
+        `<div class="rname">${escapeHtml(entry.name)}</div>` +
         `<div class="sub">by ${escapeHtml(entry.author)}</div>` +
-        `<p style="margin:8px 0 0">${escapeHtml(entry.description)}</p></div>` +
-        // Wrapped rather than passing the alignment to tag() itself — tag()
-        // takes no style hook, and this is the one flex item in the row that
-        // has to stay pinned to the top rather than stretching with its taller
-        // siblings.
-        `<div style="align-self:flex-start">${tag(entry.kind === 'recipe' ? 'Recipe' : 'Service')}</div>` +
+        `<p>${escapeHtml(entry.description)}</p></div>` +
+        tag(entry.kind === 'recipe' ? 'Recipe' : 'Service') +
         `</div>` +
-        `<div class="row" style="margin-top:14px;padding-top:14px;` +
-        `border-top:1px solid var(--ruleSoft)">` +
+        `<div class="row card-divide">` +
         // A recipe installs in a click and a couple of fields; a service (which you
         // run yourself) hands off to the Advanced add-by-URL form, pre-filled.
         (entry.kind === 'recipe'
@@ -636,7 +640,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           : `<a class="btn" href="admin/modules/advanced?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
             (entry.install.source === undefined
               ? ''
-              : `<a class="link" style="margin-left:auto;align-self:center" ` +
+              : `<a class="link push" ` +
                 `href="${escapeHtml(entry.install.source)}" rel="noreferrer noopener">Source</a>`)) +
         `</div>`,
     );

@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { confirmDestroyPage, escapeHtml, errorBlock, icon, page, selectField, textField } from './html.js';
 import { destructive, emptyState, listRow, section } from './components.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
@@ -209,24 +209,32 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     // that operate on it. Small enough that `listRow` — a lead, a title, a
     // trail — fits exactly; there is no second line of detail to show, so
     // `body.detail` is left unset.
-    const themeRow = (theme: ThemeRow): string =>
-      listRow(
-        `<div style="display:flex;width:66px;height:34px;border-radius:6px;overflow:hidden;flex:0 0 auto">` +
-          swatch(theme.tokens).map((c) => `<i style="flex:1;background:${escapeHtml(c)}"></i>`).join('') +
+    const themeRow = (theme: ThemeRow): string => {
+      const id = encodeURIComponent(theme.id);
+      return listRow(
+        // The swatch strip: a tokenised class rather than an inline flex box, and
+        // each bar carries only its colour, as a custom property.
+        `<div class="theme-swatch">` +
+          swatch(theme.tokens).map((c) => `<i style="--swatch:${escapeHtml(c)}"></i>`).join('') +
           `</div>`,
         { title: theme.name },
-        `<a class="btn btn-sm" href="admin/themes/${encodeURIComponent(theme.id)}">Edit</a>` +
-          // `destructive()` is what this GET+POST /admin/themes/:id/delete
-          // shape is for — the confirmation page names exactly which walls
-          // change, which is what used to make this a two-step control at
-          // all. `variant: 'button'` because this row has no overflow menu to
-          // put it in.
+        // Edit stays the one visible control; the destructive Delete moves into
+        // the ⋮ the rest of the admin's lists use, so a click on Edit is never a
+        // neighbour of a delete. The GET it leads to names exactly which walls
+        // change (`destructive()`, its confirm page), which is what made this a
+        // two-step control at all.
+        `<a class="btn btn-ghost btn-sm" href="admin/themes/${id}">Edit</a>` +
+          `<details class="ovf" data-overflow>` +
+          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+          `aria-label="More actions for ${escapeHtml(theme.name)}" title="More">${icon('more')}</summary>` +
+          `<div class="ovf-menu" role="menu">` +
           destructive('Delete', {
             thing: theme.name,
-            confirmAction: `admin/themes/${encodeURIComponent(theme.id)}/delete`,
-            variant: 'button',
-          }),
+            confirmAction: `admin/themes/${id}/delete`,
+          }) +
+          `</div></details>`,
       );
+    };
 
     return page({
       self: selfHref(c),

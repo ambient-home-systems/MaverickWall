@@ -596,8 +596,12 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
   background:transparent;
   color:var(--mw-ink);caret-color:var(--mw-accent);
   font-family:var(--sans);
-  font-size:var(--mw-t-body-size);
-  letter-spacing:var(--mw-t-body-tracking)}
+  /* body-large (16px), not body: below 16px iOS Safari zooms the page on
+   * focus, and this is the component every server-rendered field flows
+   * through — the wizard included. The bare-element fallback above is already
+   * 16px; this override used to drop it back to 14.5 and reintroduce the zoom. */
+  font-size:var(--mw-t-body-lg-size);
+  letter-spacing:var(--mw-t-body-lg-tracking)}
 /* Placeholder text is ink-muted, not ink-3.
  *
  * These placeholders are not decoration: the wizard's are "e.g. 38.8894" and
@@ -754,13 +758,18 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
   border:2px solid var(--mw-ink-3)}
 .switch input[type=checkbox]::before{content:"";position:absolute;top:50%;left:6px;
   width:16px;height:16px;border-radius:var(--mw-r-full);background:var(--mw-ink-3);
-  transform:translateY(-50%)}
+  /* Position and size ride on transform (translate + scale), never on left/
+     width/height, so the thumb slides and grows on the compositor instead of
+     triggering layout on every frame of the toggle. The four states below are
+     one function list (translate3d + scale) so they interpolate cleanly, and
+     the centres match the old left/size values: 16px at x14, 24px at x34. */
+  transform:translate3d(0,-50%,0) scale(1)}
 .switch input[type=checkbox]:checked{background:var(--mw-accent);
   border-color:var(--mw-accent)}
-.switch input[type=checkbox]:checked::before{left:22px;width:24px;height:24px;
+.switch input[type=checkbox]:checked::before{transform:translate3d(20px,-50%,0) scale(1.5);
   background:var(--mw-accent-ink)}
-.switch input[type=checkbox]:active::before{width:22px;height:22px}
-.switch input[type=checkbox]:checked:active::before{width:28px;height:28px;left:20px}
+.switch input[type=checkbox]:active::before{transform:translate3d(0,-50%,0) scale(1.375)}
+.switch input[type=checkbox]:checked:active::before{transform:translate3d(20px,-50%,0) scale(1.75)}
 
 .row-fields{display:flex;gap:var(--mw-s-4);flex-wrap:wrap}
 .row-fields span,.row-fields .field{flex:1 1 12rem}
@@ -977,6 +986,15 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * rather than pushing the heading down a row. On the 4px grid, which
  * admin-design-drift.test.ts is right to insist on. */
 .card-head>.ovf{margin:calc(-1 * var(--mw-s-2)) calc(-1 * var(--mw-s-2)) 0 0}
+/* A ruled subsection inside a card — a footer action row or a labelled control
+ * row set off from the body by a hairline. Replaces the inline
+ * margin-top/padding-top/border-top that was hand-typed onto every module and
+ * store card; compose it with .row for a flex action row. */
+.card-divide{margin-top:var(--mw-s-4);padding-top:var(--mw-s-4);
+  border-top:var(--mw-hairline) solid var(--mw-line)}
+/* Push a trailing control to the far edge of a flex row (a store card's
+ * secondary "Source" link) without an inline margin. */
+.push{margin-left:auto}
 /* Two classes, because .host used to be one class doing two jobs.
  *
  * It was built for hostnames, where a quiet monospace line is exactly right,
@@ -1062,6 +1080,44 @@ a.card:active{background:var(--mw-surface-3)}
 .status-card .frow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .status-card .frow .link svg{width:13px;height:13px}
 .today-card{display:flex;flex-direction:column}
+/* A standalone note set off below the page's content — the Overview's ingress
+ * "signed in through Home Assistant" line, which belongs to no section. A
+ * token, not an inline margin. */
+.ov-footnote{margin-top:var(--mw-s-5)}
+/* A footer pinned to the bottom of a flex-column card (the today card's action
+ * row). Tokenised so the gap above it is a rung of the scale, not a literal. */
+.card-foot{margin-top:auto;padding-top:var(--mw-s-4)}
+
+/* ---- Walls list: one card idiom for both kinds -------------------------
+ * A browser or Default wall is a whole-card link to its own page; an e-paper
+ * wall has no single page, so it carries its actions on the card itself. Both
+ * kinds share one head, so the list reads as one thing rather than three
+ * button treatments in one grid — which is what it was: a filled link, a
+ * bare-text link that had lost its button anatomy, and a form-wrapped danger
+ * button that sat a row lower than its neighbour. The e-paper card's one
+ * visible action is in its own row and its destroy is in the head's ⋮, so a
+ * safe tap and a destructive one are never neighbours — the rule every other
+ * list here already follows. */
+.wall-card{display:flex;flex-direction:column;gap:var(--mw-s-3)}
+.wall-head{display:flex;align-items:center;gap:var(--mw-s-3)}
+.wall-head-main{flex:1 1 auto;min-width:0}
+/* The name reads at the card-title size the rest of the admin uses (a calendar
+ * card's own heading is this role), from the role rather than a one-off px. The
+ * same holds for a .rname in any card head — the module and store cards. */
+.wall-head .rname,.card-head .rname{font:var(--mw-t-h3);letter-spacing:var(--mw-t-h3-tracking)}
+/* The "Open" affordance on a whole-card link: accent, a chevron, no container
+ * of its own — decoration inside the card's own <a>, never a nested link. It
+ * sets no background and no cursor, so it is not a control the button-state
+ * rule has to cover, and the card's own :focus-visible ring is the keyboard
+ * affordance (a.card is in the ring's selector list). */
+.card-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--mw-s-1);
+  color:var(--mw-accent);font:var(--mw-t-label);
+  letter-spacing:var(--mw-t-label-tracking)}
+.card-go svg{width:16px;height:16px}
+/* The e-paper card's action row: one button today, in a row so a second never
+ * lands beside the first at a different height the way the hand-typed version
+ * did. */
+.wall-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
 /* line-height guards: body's role line-height is a px length, which inherits
  * as-is into any larger text that does not set its own. */
 .today-big{font:var(--mw-t-h2);
@@ -1161,6 +1217,13 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
   letter-spacing:var(--mw-t-h4-tracking);display:block;
   color:var(--mw-ink)}
 .themecard .cap small{color:var(--mw-ink-2);font-size:var(--mw-t-label-xs-size)}
+/* The Themes list row's swatch strip — a 66x34 three-colour preview as the
+ * listRow lead. The dimensions are a fixed preview size (like .cpreview's
+ * width), the corner is a token, and each bar carries only its colour, as a
+ * custom property, so the row has no inline layout style. */
+.theme-swatch{display:flex;width:66px;height:34px;border-radius:var(--mw-r-3);
+  overflow:hidden;flex:0 0 auto}
+.theme-swatch i{flex:1;background:var(--swatch)}
 .themecard:hover .cap{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .themecard:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
@@ -1168,7 +1231,10 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 /* ---- Preview panel (calendar test, update-available, shift preview) ------ */
 .preview{position:relative;border:1px solid var(--rule);border-radius:var(--mw-r-2);
   padding:var(--mw-s-4) calc(var(--mw-s-4) + var(--mw-s-1));margin:var(--mw-s-4) 0;background:var(--panel2)}
-.preview h3{font:var(--mw-t-h3);
+/* h2 or h3: the shift preview's heading is an <h2> so it does not skip a level
+   under the page <h1> (it renders before the form's own <h2>), but it keeps the
+   h3 type role — heading level is the document outline, size is visual. */
+.preview h2,.preview h3{font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);margin:0 0 var(--mw-s-1)}
 .preview ul{list-style:none;margin:var(--mw-s-2) 0 0;padding:0}
 .preview li{display:flex;gap:var(--mw-s-4);padding:var(--mw-s-2) 0;font-size:var(--mw-t-h4-size);
@@ -2233,7 +2299,7 @@ ${COMPONENT_STYLE}
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
+:is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
 .themecard:has(input:focus-visible){outline:3px solid var(--mw-accent);
   outline-offset:2px}
@@ -2274,9 +2340,7 @@ ${COMPONENT_STYLE}
     transition:background-color var(--mw-dur-2) var(--mw-ease),
       border-color var(--mw-dur-2) var(--mw-ease)}
   .switch input[type=checkbox]::before{
-    transition:left var(--mw-dur-2) var(--mw-ease),
-      width var(--mw-dur-2) var(--mw-ease),
-      height var(--mw-dur-2) var(--mw-ease),
+    transition:transform var(--mw-dur-2) var(--mw-ease),
       background-color var(--mw-dur-2) var(--mw-ease)}
   /* Checkboxes fill. */
   .checks input[type=checkbox],.hep-row input[type=checkbox],
@@ -2323,8 +2387,13 @@ ${COMPONENT_STYLE}
   @starting-style{
     .le-layers-pop:not([hidden]),.helppop:not([hidden]){opacity:0;transform:translateY(-4px)}
   }
-  /* The online pulse ring. */
-  .pulse::after{animation:pl 2.4s ease-out infinite}
+  /* The online status ring: a brief arrival confirmation, not an ambient loop.
+   * Two pings (~4.4s, under the WCAG 2.2.2 five-second bar) then it settles
+   * quiet, so the motion stops for everyone rather than leaning on this
+   * reduced-motion block alone to stop it. The "forwards" fill freezes it at
+   * the keyframe's faded-out end, so it fades to nothing instead of snapping
+   * back to the static ring; the green dot is the persistent state. */
+  .pulse::after{animation:pl 2.2s var(--mw-ease-out) 2 forwards}
   /* The ripple the shell script draws from the press point. The circle is
    * clipped by a host layer that inherits the control's corner, so the 48px
    * pointer-target pseudo outside it is untouched. */

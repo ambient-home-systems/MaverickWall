@@ -33,6 +33,9 @@ export const BOOTING_HTML = `<!doctype html>
   .dot{width:16px;height:16px;border-radius:50%;background:#E8A33D;display:inline-block;
     animation:pulse 1.2s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+  /* A loading indicator, but still give reduced-motion a still, visible dot
+     rather than a pulsing one — the page already refreshes on its own. */
+  @media (prefers-reduced-motion:reduce){.dot{animation:none;opacity:1}}
   h1{font-size:1.6rem;font-weight:700;letter-spacing:.02em;margin:20px 0 10px}
   p{color:#7E8C9C;font-size:1.05rem;line-height:1.5;margin:0}
 </style>

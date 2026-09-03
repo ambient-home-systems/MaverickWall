@@ -977,7 +977,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="kick">Today on the wall</div>` +
           `<div class="today-big">${escapeHtml(todayLine)}</div>` +
           `<div class="sub">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'} · ${escapeHtml(household.timezone)}</div>` +
-          `<div class="row" style="margin-top:auto;padding-top:16px">` +
+          `<div class="row card-foot">` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
           `</div></div></div>` +
@@ -987,7 +987,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           // the note for the ingress case, where signing out is a Home Assistant
           // action rather than ours.
           (c.get('viaIngress') === true
-            ? `<p class="hint" style="margin-top:24px">Signed in through Home Assistant.</p>`
+            ? `<p class="hint ov-footnote">Signed in through Home Assistant.</p>`
             : ''),
       }),
     );
@@ -2366,26 +2366,35 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const people = readPeopleAdmin(deps.db);
     const sources = readAdminSources(deps.db);
 
-    const planCard = (plan: typeof plans[number]): string =>
-      card(
+    const planCard = (plan: typeof plans[number]): string => {
+      const id = encodeURIComponent(plan.id);
+      return card(
+        // The same card head every other list uses: the rotation on the left,
+        // the ⋮ overflow on the right holding the destructive Remove. Edit — the
+        // frequent action — stays the one visible button. The GET Remove leads
+        // to already answers with `confirmDestroyPage`.
+        `<div class="card-head"><div class="card-head-main">` +
         `<h2>${escapeHtml(plan.personName ?? 'Nobody')}</h2>` +
         `<p class="sub">` +
         (plan.kind === 'pattern'
           ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
           : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
         `</p>` +
-        `<div class="row">` +
-        `<a class="btn secondary btn-sm" href="admin/shifts/${encodeURIComponent(plan.id)}/edit">Edit</a>` +
-        // The GET this leads to already answers with `confirmDestroyPage`, so
-        // `destructive()` is the control that gets there rather than a plain
-        // one-click POST.
+        `</div>` +
+        `<details class="ovf" data-overflow>` +
+        `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+        `aria-label="More actions for ${escapeHtml(plan.personName ?? 'this rotation')}" title="More">${icon('more')}</summary>` +
+        `<div class="ovf-menu" role="menu">` +
         destructive('Remove', {
           thing: plan.personName ?? 'this rotation',
-          confirmAction: `admin/shifts/${encodeURIComponent(plan.id)}/delete`,
-          variant: 'button',
+          confirmAction: `admin/shifts/${id}/delete`,
         }) +
+        `</div></details></div>` +
+        `<div class="row">` +
+        `<a class="btn btn-ghost btn-sm" href="admin/shifts/${id}/edit">Edit</a>` +
         `</div>`,
       );
+    };
 
     const canAdd = people.length > 0;
     return page({
@@ -2762,8 +2771,28 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function peoplePage(c: Context, error?: string, suggestion?: string): string {
     const people = readPeopleAdmin(deps.db);
 
-    const personCard = (person: PersonRecord, first: boolean, last: boolean): string =>
-      card(
+    const personCard = (person: PersonRecord, first: boolean, last: boolean): string => {
+      const id = encodeURIComponent(person.id);
+      // Up/Down reorder the wall's legend and its shift order; the ends drop the
+      // button that would do nothing. Drawn only when there is one — a single
+      // person has neither, and an empty footer is a flex box carrying margins.
+      const reorder =
+        (first
+          ? ''
+          : `<form method="post" action="admin/people/${id}/move">` +
+            `<input type="hidden" name="dir" value="up">` +
+            `<button class="secondary" type="submit">↑ Up</button></form>`) +
+        (last
+          ? ''
+          : `<form method="post" action="admin/people/${id}/move">` +
+            `<input type="hidden" name="dir" value="down">` +
+            `<button class="secondary" type="submit">↓ Down</button></form>`);
+      return card(
+        // The same card head every other list uses: the person on the left, the
+        // ⋮ overflow on the right holding the destructive Remove — so a reorder
+        // tap is never a neighbour of a delete, and Remove goes through
+        // destructive() (a confirmation, an accessible name that says who).
+        `<div class="card-head"><div class="card-head-main">` +
         `<h2>` +
         (person.avatarPath === null
           ? `<span class="swatch" style="--swatch:${escapeHtml(person.color)}"></span>`
@@ -2775,6 +2804,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           : `${person.sourceCount} calendar${person.sourceCount === 1 ? '' : 's'}`) +
         (person.hasShiftRotation === 1 ? ' · has a shift rotation' : '') +
         `</p>` +
+        `</div>` +
+        `<details class="ovf" data-overflow>` +
+        `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+        `aria-label="More actions for ${escapeHtml(person.name)}" title="More">${icon('more')}</summary>` +
+        `<div class="ovf-menu" role="menu">` +
+        destructive('Remove', {
+          thing: person.name,
+          confirmAction: `admin/people/${id}/delete`,
+        }) +
+        `</div></details></div>` +
 
         /*
          * Folded away, same idiom as `choreCard` and the calendar row: the name,
@@ -2783,7 +2822,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * open forms per person.
          */
         `<details class="disclose"><summary>Edit ${escapeHtml(person.name)}</summary>` +
-        `<form method="post" action="admin/people/${encodeURIComponent(person.id)}">` +
+        `<form method="post" action="admin/people/${id}">` +
         `<div class="row-fields">` +
         textField({ label: 'Name', name: 'name', required: true, value: person.name }) +
         textField({ label: 'Colour', name: 'color', type: 'color', value: person.color }) +
@@ -2791,7 +2830,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<button type="submit">Save</button></form>` +
 
         `<form method="post" enctype="multipart/form-data" ` +
-        `action="admin/people/${encodeURIComponent(person.id)}/avatar">` +
+        `action="admin/people/${id}/avatar">` +
         textField({
           label: 'Picture',
           name: 'avatar',
@@ -2805,31 +2844,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
         `</details>` +
 
-        // Up/Down reorder the wall's legend and its shift order; the ends drop
-        // the button that would do nothing, the way the shift-type card does.
-        // Remove moves through `destructive()`, which is what this GET-then-
-        // confirm-then-POST shape is for — margin-left:auto moves with it onto
-        // a plain wrapper, since the component takes no className of its own.
-        `<div class="row">` +
-        (first
-          ? ''
-          : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
-            `<input type="hidden" name="dir" value="up">` +
-            `<button class="secondary" type="submit">↑ Up</button></form>`) +
-        (last
-          ? ''
-          : `<form method="post" action="admin/people/${encodeURIComponent(person.id)}/move">` +
-            `<input type="hidden" name="dir" value="down">` +
-            `<button class="secondary" type="submit">↓ Down</button></form>`) +
-        `<div style="margin-left:auto">` +
-        destructive('Remove', {
-          thing: person.name,
-          confirmAction: `admin/people/${encodeURIComponent(person.id)}/delete`,
-          variant: 'button',
-        }) +
-        `</div>` +
-        `</div>`,
+        (reorder === '' ? '' : `<div class="row">${reorder}</div>`),
       );
+    };
 
     return page({
       self: selfHref(c),
@@ -3489,51 +3506,67 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function displayListCard(screen: AdminScreenRow, at: number): string {
     const href = `admin/walls/${encodeURIComponent(screen.id)}`;
     return (
-      `<a class="card" href="${href}">` +
-      `<div style="display:flex;align-items:center;gap:12px">` +
+      `<a class="card wall-card" href="${href}">` +
+      `<div class="wall-head">` +
       seenDot(screen.lastSeenAt, at) +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
+      `<div class="wall-head-main">` +
+      `<div class="rname">${escapeHtml(screen.name)} ` +
       `<span class="tag">Browser</span></div>` +
       `<div class="sub">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
       (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`) +
       (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
       `</div></div>` +
-      `<span class="link">Open</span>` +
+      `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
       `</div></a>`
     );
   }
 
   /**
    * An e-paper wall on the unified Walls list — the "E-paper" twin of
-   * `displayListCard`. Its actions stay inline on the card rather than behind
-   * one link, because an e-paper wall has no single settings page the way a
-   * browser wall does: design, recipes and removal are three separate places
-   * (RFC 006), reused here rather than rebuilt for the merge.
+   * `displayListCard`. It carries its own actions rather than opening one page,
+   * because an e-paper wall has no single settings page the way a browser wall
+   * does: design, recipes and removal are separate places (RFC 006). One
+   * visible action (arranging the layout, the frequent one); the recipes link
+   * and the destructive Remove live in the ⋮, so a safe tap is never a
+   * neighbour of a destructive one and Remove goes through `destructive()`
+   * rather than a hand-rolled danger button. It reads the same as a browser
+   * card because it is built from the same head.
    */
   function epaperListCard(screen: AdminScreenRow): string {
+    const id = encodeURIComponent(screen.id);
     const seen =
       screen.lastSeenAt === null
         ? 'never connected'
         : `last seen ${ago(screen.lastSeenAt, now())}` +
           (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`);
     return (
-      `<div class="card"><div style="display:flex;align-items:center;gap:12px">` +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
+      `<article class="card wall-card">` +
+      `<div class="wall-head">` +
+      `<div class="wall-head-main">` +
+      `<div class="rname">${escapeHtml(screen.name)} ` +
       `<span class="tag">E-paper</span></div>` +
       `<div class="sub"><span class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}</span>` +
       `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`}` +
       `${screen.lanOnly === 1 ? ' · LAN only' : ''} · ${seen}</div>` +
-      `</div></div>` +
-      `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">` +
-      // One filled action per card; the rest are outlined ("btn ghost" here
-      // never matched the .btn-ghost rule, so all three used to render filled).
-      `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
-      `<a class="btn-ghost" href="admin/epaper/${encodeURIComponent(screen.id)}">URL &amp; recipes</a>` +
-      `<form method="get" action="admin/epaper/${encodeURIComponent(screen.id)}/delete">` +
-      `<button class="btn-danger" type="submit">Remove</button></form>` +
-      `</div></div>`
+      `</div>` +
+      `<details class="ovf" data-overflow>` +
+      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+      `aria-label="More actions for ${escapeHtml(screen.name)}" title="More">${icon('more')}</summary>` +
+      `<div class="ovf-menu" role="menu">` +
+      `<a class="ovf-item" href="admin/epaper/${id}">URL &amp; recipes</a>` +
+      // The GET this leads to already answers with `confirmDestroyPage`, so
+      // `destructive()` is the control that gets there — a confirmation, an
+      // accessible name that says which wall — rather than a one-click danger
+      // button sitting a row lower than its neighbour.
+      destructive('Remove', {
+        thing: screen.name,
+        confirmAction: `admin/epaper/${id}/delete`,
+      }) +
+      `</div></details>` +
+      `</div>` +
+      `<div class="wall-actions">` +
+      `<a class="btn btn-ghost btn-sm" href="admin/epaper/${id}/design">Arrange layout</a>` +
+      `</div></article>`
     );
   }
 
@@ -3554,12 +3587,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const revoked = all.length - active.length;
 
     const defaultCard =
-      `<a class="card" href="admin/walls/default">` +
-      `<div style="display:flex;align-items:center;gap:12px">` +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">Default wall</div>` +
+      `<a class="card wall-card" href="admin/walls/default">` +
+      `<div class="wall-head">` +
+      `<div class="wall-head-main">` +
+      `<div class="rname">Default wall</div>` +
       `<div class="sub">The layout every wall shows until it has one of its own</div></div>` +
-      `<span class="link">Open</span>` +
+      `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
       `</div></a>`;
 
     const cardFor = (screen: AdminScreenRow): string =>
@@ -3937,7 +3970,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="tpl-name">${escapeHtml(t.name)}</div>` +
       `<div class="tpl-blurb">${escapeHtml(t.blurb)}</div>` +
       (t.theme !== undefined
-        ? `<div class="hint-1" style="margin:0 0 .2rem">Looks best in ` +
+        ? `<div class="hint-1">Looks best in ` +
           `<b style="color:var(--accent)">${escapeHtml(themeName(t.theme))}</b> ` +
           `— change it after.</div>`
         : '') +
@@ -4251,10 +4284,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * indistinguishable from a calendar somebody had actually named that. It
        * is a tag now: its own element, its own ground, and still a *word*,
        * which is what a monochrome screenshot and a colour-blind reader both
-       * need. The colour is never the signal on its own.
+       * need. The colour is never the signal on its own. It rides in the head's
+       * flex row beside the name — the same place the Walls kind chip and the
+       * Store card's "Off" sit — rather than dropping to its own line.
        */
-      `${escapeHtml(source.name)}</h2>` +
+      `${escapeHtml(source.name)}` +
       (source.enabled === 1 ? '' : tag('Not syncing', 'warn')) +
+      `</h2>` +
       // The host and never the path. The path is the credential. A Home
       // Assistant calendar has neither — it is an entity read through the one
       // connection — so it says what it is rather than "unknown host".

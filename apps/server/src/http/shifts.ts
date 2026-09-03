@@ -210,7 +210,7 @@ export function renderPreview(days: readonly PreviewDay[]): string {
 
   return (
     `<div class="preview">` +
-    `<h3>The next four weeks</h3>` +
+    `<h2>The next four weeks</h2>` +
     `<p class="hint">${escapeHtml(previewSummary(days))}</p>` +
     `<div class="pv-grid">${cells}</div>` +
     `<p class="hint">Nothing has been saved yet. If this matches your rota, save it.</p>` +
