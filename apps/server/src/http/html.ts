@@ -1213,6 +1213,13 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
   letter-spacing:var(--mw-t-h4-tracking);display:block;
   color:var(--mw-ink)}
 .themecard .cap small{color:var(--mw-ink-2);font-size:var(--mw-t-label-xs-size)}
+/* The Themes list row's swatch strip — a 66x34 three-colour preview as the
+ * listRow lead. The dimensions are a fixed preview size (like .cpreview's
+ * width), the corner is a token, and each bar carries only its colour, as a
+ * custom property, so the row has no inline layout style. */
+.theme-swatch{display:flex;width:66px;height:34px;border-radius:var(--mw-r-3);
+  overflow:hidden;flex:0 0 auto}
+.theme-swatch i{flex:1;background:var(--swatch)}
 .themecard:hover .cap{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .themecard:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
