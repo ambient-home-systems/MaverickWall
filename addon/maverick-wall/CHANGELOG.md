@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.57.0
 
 **The settings screens now look like one app instead of a dozen.** Overview,
 Calendars, People, Shifts, Chores, Weather, Home Assistant, Themes, the Store,
