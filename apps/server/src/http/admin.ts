@@ -977,7 +977,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="kick">Today on the wall</div>` +
           `<div class="today-big">${escapeHtml(todayLine)}</div>` +
           `<div class="sub">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'} · ${escapeHtml(household.timezone)}</div>` +
-          `<div class="row" style="margin-top:auto;padding-top:16px">` +
+          `<div class="row card-foot">` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
           `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
           `</div></div></div>` +
@@ -3489,51 +3489,67 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function displayListCard(screen: AdminScreenRow, at: number): string {
     const href = `admin/walls/${encodeURIComponent(screen.id)}`;
     return (
-      `<a class="card" href="${href}">` +
-      `<div style="display:flex;align-items:center;gap:12px">` +
+      `<a class="card wall-card" href="${href}">` +
+      `<div class="wall-head">` +
       seenDot(screen.lastSeenAt, at) +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
+      `<div class="wall-head-main">` +
+      `<div class="rname">${escapeHtml(screen.name)} ` +
       `<span class="tag">Browser</span></div>` +
       `<div class="sub">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
       (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`) +
       (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
       `</div></div>` +
-      `<span class="link">Open</span>` +
+      `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
       `</div></a>`
     );
   }
 
   /**
    * An e-paper wall on the unified Walls list — the "E-paper" twin of
-   * `displayListCard`. Its actions stay inline on the card rather than behind
-   * one link, because an e-paper wall has no single settings page the way a
-   * browser wall does: design, recipes and removal are three separate places
-   * (RFC 006), reused here rather than rebuilt for the merge.
+   * `displayListCard`. It carries its own actions rather than opening one page,
+   * because an e-paper wall has no single settings page the way a browser wall
+   * does: design, recipes and removal are separate places (RFC 006). One
+   * visible action (arranging the layout, the frequent one); the recipes link
+   * and the destructive Remove live in the ⋮, so a safe tap is never a
+   * neighbour of a destructive one and Remove goes through `destructive()`
+   * rather than a hand-rolled danger button. It reads the same as a browser
+   * card because it is built from the same head.
    */
   function epaperListCard(screen: AdminScreenRow): string {
+    const id = encodeURIComponent(screen.id);
     const seen =
       screen.lastSeenAt === null
         ? 'never connected'
         : `last seen ${ago(screen.lastSeenAt, now())}` +
           (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`);
     return (
-      `<div class="card"><div style="display:flex;align-items:center;gap:12px">` +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
+      `<article class="card wall-card">` +
+      `<div class="wall-head">` +
+      `<div class="wall-head-main">` +
+      `<div class="rname">${escapeHtml(screen.name)} ` +
       `<span class="tag">E-paper</span></div>` +
       `<div class="sub"><span class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}</span>` +
       `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`}` +
       `${screen.lanOnly === 1 ? ' · LAN only' : ''} · ${seen}</div>` +
-      `</div></div>` +
-      `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">` +
-      // One filled action per card; the rest are outlined ("btn ghost" here
-      // never matched the .btn-ghost rule, so all three used to render filled).
-      `<a class="btn" href="admin/epaper/${encodeURIComponent(screen.id)}/design">Design layout</a>` +
-      `<a class="btn-ghost" href="admin/epaper/${encodeURIComponent(screen.id)}">URL &amp; recipes</a>` +
-      `<form method="get" action="admin/epaper/${encodeURIComponent(screen.id)}/delete">` +
-      `<button class="btn-danger" type="submit">Remove</button></form>` +
-      `</div></div>`
+      `</div>` +
+      `<details class="ovf" data-overflow>` +
+      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+      `aria-label="More actions for ${escapeHtml(screen.name)}" title="More">${icon('more')}</summary>` +
+      `<div class="ovf-menu" role="menu">` +
+      `<a class="ovf-item" href="admin/epaper/${id}">URL &amp; recipes</a>` +
+      // The GET this leads to already answers with `confirmDestroyPage`, so
+      // `destructive()` is the control that gets there — a confirmation, an
+      // accessible name that says which wall — rather than a one-click danger
+      // button sitting a row lower than its neighbour.
+      destructive('Remove', {
+        thing: screen.name,
+        confirmAction: `admin/epaper/${id}/delete`,
+      }) +
+      `</div></details>` +
+      `</div>` +
+      `<div class="wall-actions">` +
+      `<a class="btn btn-ghost btn-sm" href="admin/epaper/${id}/design">Arrange layout</a>` +
+      `</div></article>`
     );
   }
 
@@ -3554,12 +3570,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const revoked = all.length - active.length;
 
     const defaultCard =
-      `<a class="card" href="admin/walls/default">` +
-      `<div style="display:flex;align-items:center;gap:12px">` +
-      `<div style="flex:1;min-width:0">` +
-      `<div class="rname" style="font-size:16px">Default wall</div>` +
+      `<a class="card wall-card" href="admin/walls/default">` +
+      `<div class="wall-head">` +
+      `<div class="wall-head-main">` +
+      `<div class="rname">Default wall</div>` +
       `<div class="sub">The layout every wall shows until it has one of its own</div></div>` +
-      `<span class="link">Open</span>` +
+      `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
       `</div></a>`;
 
     const cardFor = (screen: AdminScreenRow): string =>

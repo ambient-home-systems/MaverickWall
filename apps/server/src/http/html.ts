@@ -596,8 +596,12 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
   background:transparent;
   color:var(--mw-ink);caret-color:var(--mw-accent);
   font-family:var(--sans);
-  font-size:var(--mw-t-body-size);
-  letter-spacing:var(--mw-t-body-tracking)}
+  /* body-large (16px), not body: below 16px iOS Safari zooms the page on
+   * focus, and this is the component every server-rendered field flows
+   * through — the wizard included. The bare-element fallback above is already
+   * 16px; this override used to drop it back to 14.5 and reintroduce the zoom. */
+  font-size:var(--mw-t-body-lg-size);
+  letter-spacing:var(--mw-t-body-lg-tracking)}
 /* Placeholder text is ink-muted, not ink-3.
  *
  * These placeholders are not decoration: the wizard's are "e.g. 38.8894" and
@@ -1067,6 +1071,39 @@ a.card:active{background:var(--mw-surface-3)}
 .status-card .frow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .status-card .frow .link svg{width:13px;height:13px}
 .today-card{display:flex;flex-direction:column}
+/* A footer pinned to the bottom of a flex-column card (the today card's action
+ * row). Tokenised so the gap above it is a rung of the scale, not a literal. */
+.card-foot{margin-top:auto;padding-top:var(--mw-s-4)}
+
+/* ---- Walls list: one card idiom for both kinds -------------------------
+ * A browser or Default wall is a whole-card link to its own page; an e-paper
+ * wall has no single page, so it carries its actions on the card itself. Both
+ * kinds share one head, so the list reads as one thing rather than three
+ * button treatments in one grid — which is what it was: a filled link, a
+ * bare-text link that had lost its button anatomy, and a form-wrapped danger
+ * button that sat a row lower than its neighbour. The e-paper card's one
+ * visible action is in its own row and its destroy is in the head's ⋮, so a
+ * safe tap and a destructive one are never neighbours — the rule every other
+ * list here already follows. */
+.wall-card{display:flex;flex-direction:column;gap:var(--mw-s-3)}
+.wall-head{display:flex;align-items:center;gap:var(--mw-s-3)}
+.wall-head-main{flex:1 1 auto;min-width:0}
+/* The name reads at the card-title size the rest of the admin uses (a calendar
+ * card's own heading is this role), from the role rather than a one-off px. */
+.wall-head .rname{font:var(--mw-t-h3);letter-spacing:var(--mw-t-h3-tracking)}
+/* The "Open" affordance on a whole-card link: accent, a chevron, no container
+ * of its own — decoration inside the card's own <a>, never a nested link. It
+ * sets no background and no cursor, so it is not a control the button-state
+ * rule has to cover, and the card's own :focus-visible ring is the keyboard
+ * affordance (a.card is in the ring's selector list). */
+.card-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--mw-s-1);
+  color:var(--mw-accent);font:var(--mw-t-label);
+  letter-spacing:var(--mw-t-label-tracking)}
+.card-go svg{width:16px;height:16px}
+/* The e-paper card's action row: one button today, in a row so a second never
+ * lands beside the first at a different height the way the hand-typed version
+ * did. */
+.wall-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
 /* line-height guards: body's role line-height is a px length, which inherits
  * as-is into any larger text that does not set its own. */
 .today-big{font:var(--mw-t-h2);
@@ -2241,7 +2278,7 @@ ${COMPONENT_STYLE}
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
+:is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
 .themecard:has(input:focus-visible){outline:3px solid var(--mw-accent);
   outline-offset:2px}
