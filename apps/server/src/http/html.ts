@@ -754,13 +754,18 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
   border:2px solid var(--mw-ink-3)}
 .switch input[type=checkbox]::before{content:"";position:absolute;top:50%;left:6px;
   width:16px;height:16px;border-radius:var(--mw-r-full);background:var(--mw-ink-3);
-  transform:translateY(-50%)}
+  /* Position and size ride on transform (translate + scale), never on left/
+     width/height, so the thumb slides and grows on the compositor instead of
+     triggering layout on every frame of the toggle. The four states below are
+     one function list (translate3d + scale) so they interpolate cleanly, and
+     the centres match the old left/size values: 16px at x14, 24px at x34. */
+  transform:translate3d(0,-50%,0) scale(1)}
 .switch input[type=checkbox]:checked{background:var(--mw-accent);
   border-color:var(--mw-accent)}
-.switch input[type=checkbox]:checked::before{left:22px;width:24px;height:24px;
+.switch input[type=checkbox]:checked::before{transform:translate3d(20px,-50%,0) scale(1.5);
   background:var(--mw-accent-ink)}
-.switch input[type=checkbox]:active::before{width:22px;height:22px}
-.switch input[type=checkbox]:checked:active::before{width:28px;height:28px;left:20px}
+.switch input[type=checkbox]:active::before{transform:translate3d(0,-50%,0) scale(1.375)}
+.switch input[type=checkbox]:checked:active::before{transform:translate3d(20px,-50%,0) scale(1.75)}
 
 .row-fields{display:flex;gap:var(--mw-s-4);flex-wrap:wrap}
 .row-fields span,.row-fields .field{flex:1 1 12rem}
@@ -1168,7 +1173,10 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 /* ---- Preview panel (calendar test, update-available, shift preview) ------ */
 .preview{position:relative;border:1px solid var(--rule);border-radius:var(--mw-r-2);
   padding:var(--mw-s-4) calc(var(--mw-s-4) + var(--mw-s-1));margin:var(--mw-s-4) 0;background:var(--panel2)}
-.preview h3{font:var(--mw-t-h3);
+/* h2 or h3: the shift preview's heading is an <h2> so it does not skip a level
+   under the page <h1> (it renders before the form's own <h2>), but it keeps the
+   h3 type role — heading level is the document outline, size is visual. */
+.preview h2,.preview h3{font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);margin:0 0 var(--mw-s-1)}
 .preview ul{list-style:none;margin:var(--mw-s-2) 0 0;padding:0}
 .preview li{display:flex;gap:var(--mw-s-4);padding:var(--mw-s-2) 0;font-size:var(--mw-t-h4-size);
@@ -2274,9 +2282,7 @@ ${COMPONENT_STYLE}
     transition:background-color var(--mw-dur-2) var(--mw-ease),
       border-color var(--mw-dur-2) var(--mw-ease)}
   .switch input[type=checkbox]::before{
-    transition:left var(--mw-dur-2) var(--mw-ease),
-      width var(--mw-dur-2) var(--mw-ease),
-      height var(--mw-dur-2) var(--mw-ease),
+    transition:transform var(--mw-dur-2) var(--mw-ease),
       background-color var(--mw-dur-2) var(--mw-ease)}
   /* Checkboxes fill. */
   .checks input[type=checkbox],.hep-row input[type=checkbox],
@@ -2323,8 +2329,13 @@ ${COMPONENT_STYLE}
   @starting-style{
     .le-layers-pop:not([hidden]),.helppop:not([hidden]){opacity:0;transform:translateY(-4px)}
   }
-  /* The online pulse ring. */
-  .pulse::after{animation:pl 2.4s ease-out infinite}
+  /* The online status ring: a brief arrival confirmation, not an ambient loop.
+   * Two pings (~4.4s, under the WCAG 2.2.2 five-second bar) then it settles
+   * quiet, so the motion stops for everyone rather than leaning on this
+   * reduced-motion block alone to stop it. The "forwards" fill freezes it at
+   * the keyframe's faded-out end, so it fades to nothing instead of snapping
+   * back to the static ring; the green dot is the persistent state. */
+  .pulse::after{animation:pl 2.2s var(--mw-ease-out) 2 forwards}
   /* The ripple the shell script draws from the press point. The circle is
    * clipped by a host layer that inherits the control's corner, so the 48px
    * pointer-target pseudo outside it is untouched. */

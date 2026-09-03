@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-03T00:00:00.000Z",
+  "title": "Design System: Maverick Wall — Admin",
+  "extensions": {
+    "colorMeta": {
+      "bg": { "role": "neutral", "displayName": "Ground (Graphite)", "canonical": "#14161A", "tonalRamp": ["#0E1013", "#14161A", "#1A1D22", "#22262C", "#2A2F36", "#3D444D", "#7C848E", "#C3C8CE"] },
+      "surface": { "role": "neutral", "displayName": "Surface", "canonical": "#1A1D22", "tonalRamp": ["#101216", "#16191D", "#1A1D22", "#22262C", "#2A2F36", "#3D444D", "#7C848E", "#C3C8CE"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#E9EBEE", "tonalRamp": ["#25282C", "#3A3E43", "#53585E", "#71767D", "#949AA1", "#B9BEC4", "#E9EBEE", "#F6F7F8"] },
+      "accent": { "role": "primary", "displayName": "Brand Amber (dark) / Walked-Down Amber #8C5C0C (light)", "canonical": "#E8A33D", "tonalRamp": ["#3A2809", "#5C3F10", "#84591A", "#AD7623", "#CE8E2E", "#E8A33D", "#F0BE73", "#F7DBAC"] },
+      "danger": { "role": "tertiary", "displayName": "Danger", "canonical": "#FF8A80", "tonalRamp": ["#3A0906", "#5C1712", "#84241D", "#AD332A", "#D65043", "#FF8A80", "#FFB1AA", "#FFD6D2"] },
+      "ok": { "role": "tertiary", "displayName": "OK", "canonical": "#5FD08A", "tonalRamp": ["#0C2419", "#123726", "#1B5138", "#256E4C", "#2C825C", "#3F9E72", "#5FD08A", "#A7E6C2"] },
+      "warn": { "role": "tertiary", "displayName": "Warn", "canonical": "#F0B429", "tonalRamp": ["#3A2A05", "#5C4310", "#84611A", "#AD7F23", "#CE982E", "#F0B429", "#F5CE6E", "#FAE6AF"] },
+      "night": { "role": "tertiary", "displayName": "Night (shift blue, shared with the wall)", "canonical": "#7CA0E0", "tonalRamp": ["#152238", "#1F3457", "#2C4C7C", "#3B68A8", "#5484CC", "#7CA0E0", "#A6C0EC", "#CFDDF6"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The wizard's big moments." },
+      "h1": { "displayName": "H1", "purpose": "Page heading — 650 weight, negative tracking." },
+      "h3": { "displayName": "H3", "purpose": "Section / card heading." },
+      "body": { "displayName": "Body", "purpose": "Prose; body-sm for the secondary layer." },
+      "label": { "displayName": "Label", "purpose": "Control and field labels." },
+      "label-xs": { "displayName": "Eyebrow", "purpose": "The one role tracked OUT (caps): section kickers and nav group heads." }
+    },
+    "shadows": [
+      { "name": "shadow-1", "value": "0 1px 2px rgba(0,0,0,.16)", "purpose": "Subtle lift for a card that must read as pickable, and the focused skip link. Not default." },
+      { "name": "shadow-2", "value": "0 8px 24px rgba(0,0,0,.28)", "purpose": "The modal drawer and the layout editor's widget sheet — surfaces that overlay content." }
+    ],
+    "motion": [
+      { "name": "dur-1", "value": "120ms", "purpose": "A control acknowledging a press (field label/border, small state)." },
+      { "name": "dur-2", "value": "180ms", "purpose": "A panel opening, a state layer, the nav bar / inspector." },
+      { "name": "dur-3", "value": "260ms", "purpose": "A sheet travelling the height of a phone." },
+      { "name": "ease", "value": "cubic-bezier(.2,0,0,1)", "purpose": "Default easing for state transitions." },
+      { "name": "ease-out", "value": "cubic-bezier(.05,.7,.1,1)", "purpose": "Enters (a panel/inspector opening, a tab underline)." },
+      { "name": "ease-in", "value": "cubic-bezier(.3,0,.8,.15)", "purpose": "Exits." },
+      { "name": "reduced-motion-gate", "value": "@media (prefers-reduced-motion: no-preference)", "purpose": "EVERY transition and animation lives inside this one block, so a reduced-motion visitor gets a still admin." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "900px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The filled action: accent ground, accent-ink label. Hover/press are color-mix washes; keyboard focus draws a ring.",
+      "html": "<button class=\"ds-btn\">Save changes</button>",
+      "css": ".ds-btn { font-family: Roboto, system-ui, sans-serif; font-weight: 600; font-size: 14.5px; height: 40px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 4px; background: #E8A33D; color: #241703; cursor: pointer; } .ds-btn:hover { background: color-mix(in srgb, #E8A33D 94%, #000); } .ds-btn:active { background: color-mix(in srgb, #E8A33D 89%, #000); } .ds-btn:focus-visible { outline: 2px solid #E8A33D; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Outlined secondary. Clears the filled ground, so it must also clear the filled hover/press (else it flashes gold-on-gold on touch).",
+      "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
+      "css": ".ds-btn-ghost { font-family: Roboto, system-ui, sans-serif; font-weight: 600; font-size: 14.5px; height: 40px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #3D444D; border-radius: 4px; background: transparent; color: #E8A33D; cursor: pointer; } .ds-btn-ghost:hover { background: color-mix(in srgb, #E8A33D 6%, transparent); } .ds-btn-ghost:active { background: color-mix(in srgb, #E8A33D 11%, transparent); } .ds-btn-ghost:focus-visible { outline: 2px solid #E8A33D; outline-offset: 2px; }"
+    },
+    {
+      "name": "Tonal Button",
+      "kind": "button",
+      "refersTo": "button-tonal",
+      "description": "A weightier secondary: soft accent ground, soft-accent ink.",
+      "html": "<button class=\"ds-btn-tonal\">Sync now</button>",
+      "css": ".ds-btn-tonal { font-family: Roboto, system-ui, sans-serif; font-weight: 600; font-size: 14.5px; height: 40px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 4px; background: #3B3226; color: #F3C079; cursor: pointer; } .ds-btn-tonal:hover { background: color-mix(in srgb, #3B3226 92%, #fff); } .ds-btn-tonal:focus-visible { outline: 2px solid #E8A33D; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field-input",
+      "description": "Label ABOVE a bordered input (not a floating label). Focus shifts the border to accent; the border width is not transitioned (a 1px→2px step would shimmer). 16px text avoids iOS zoom.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Latitude</span><input class=\"ds-field-input\" type=\"text\" placeholder=\"e.g. 38.8894\"></label>",
+      "css": ".ds-field { display: block; font-family: Roboto, system-ui, sans-serif; } .ds-field-label { display: block; font-size: 13.5px; font-weight: 600; color: #E9EBEE; margin-bottom: 8px; } .ds-field-input { width: 100%; height: 44px; padding: 0 12px; font-size: 16px; color: #E9EBEE; background: transparent; border: 1px solid #7C848E; border-radius: 4px; } .ds-field-input::placeholder { color: #8E97A3; } .ds-field-input:focus { outline: none; border-color: #E8A33D; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A settings card: surface ground, hairline, 8px radius, 16px padding. Separated from the page by a ground step, not a shadow.",
+      "html": "<div class=\"ds-card\"><h3 class=\"ds-card-h\">Home Assistant</h3><p class=\"ds-card-p\">Connected · read-only</p></div>",
+      "css": ".ds-card { font-family: Roboto, system-ui, sans-serif; background: #1A1D22; border: 1px solid #2E333A; border-radius: 8px; padding: 16px; color: #E9EBEE; } .ds-card-h { margin: 0; font-size: 16px; line-height: 22px; font-weight: 650; letter-spacing: -0.005em; } .ds-card-p { margin: 4px 0 0; font-size: 12.5px; line-height: 18px; color: #8E97A3; }"
+    },
+    {
+      "name": "Tag",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "A tinted status chip (soft ground + hue), never a solid fill. A state is a tag, never a parenthesis baked into a heading. Tones: neutral / ok / warn / danger.",
+      "html": "<span class=\"ds-tag ds-tag-ok\">Connected</span> <span class=\"ds-tag ds-tag-warn\">Syncing</span> <span class=\"ds-tag ds-tag-bad\">Failed</span> <span class=\"ds-tag\">Off</span>",
+      "css": ".ds-tag { font-family: Roboto, system-ui, sans-serif; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 600; background: #22262C; color: #A9B0B9; } .ds-tag-ok { background: #253A33; color: #5FD08A; } .ds-tag-warn { background: #3C3523; color: #F0B429; } .ds-tag-bad { background: #3F2E31; color: #FF8A80; }"
+    },
+    {
+      "name": "Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "A sidebar row: 48px, ink-2 label, a 2px accent bar for the active route (not a tinted pill). Hover is a wash.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item is-on\" href=\"#\">Calendars</a><a class=\"ds-nav-item\" href=\"#\">Walls</a><a class=\"ds-nav-item\" href=\"#\">System</a></nav>",
+      "css": ".ds-nav { font-family: Roboto, system-ui, sans-serif; display: flex; flex-direction: column; gap: 2px; } .ds-nav-item { position: relative; display: flex; align-items: center; height: 48px; padding: 0 12px; border-radius: 4px; color: #A9B0B9; text-decoration: none; font-size: 14.5px; } .ds-nav-item:hover { background: color-mix(in srgb, #E9EBEE 6%, transparent); } .ds-nav-item.is-on { color: #E9EBEE; } .ds-nav-item.is-on::before { content: \"\"; position: absolute; left: 0; top: 12px; bottom: 12px; width: 2px; border-radius: 2px; background: #E8A33D; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Fixture's Settings",
+    "overview": "This is the settings surface for a fixture in a house — the wizard that stands the wall up and the admin that keeps it running — and it is built to look like one. A household opens it briefly, months apart, usually on a phone in a kitchen in the evening, so the register is calm, precise, and hand-set: neutral grounds, exactly one brand hue, and a small, reviewable vocabulary. The defining decision is that the tokens are hand-picked facts, not generated outputs; this replaced a Material 3 tonal palette that tinted every surface with the brand seed and read as an app wearing somebody's wallpaper. The confirmed anti-reference is exactly that Material tonal wallpaper. It is a modern-browser surface (color-mix, :has()), and it is the one place in the product that permits motion — a settings screen is something a person is touching, where ~180ms confirms a tap landed — which is the deliberate inverse of the wall, and all of it lives inside a single prefers-reduced-motion: no-preference block.",
+    "keyCharacteristics": [
+      "Hand-picked tokens as reviewable facts; nothing is generated or seed-tinted.",
+      "Neutral grounds, one brand hue; a small vocabulary, not a tonal sprawl.",
+      "Two full schemes (dark default, light), one set of component rules across both.",
+      "Phone-first: 44/48px targets, 16px inputs, a script-free modal drawer, a skip link.",
+      "Motion allowed but pointer-scoped and reduced-motion-gated — the inverse of the wall.",
+      "Depth is a hairline and a ground step; two single-layer shadows, only for surfaces that truly float."
+    ],
+    "rules": [
+      { "name": "The Hand-Picked Rule", "body": "Colours are facts, not outputs. Nothing regenerates them; changing one is a reviewable diff, held by a contrast test.", "section": "colors" },
+      { "name": "The One-Hue Rule", "body": "Exactly one hue carries the brand; every other surface is a true neutral. The admin is a fixture, not an app wearing wallpaper.", "section": "colors" },
+      { "name": "The Ink-Line Rule", "body": "ink-line is the single role allowed below 4.5:1, and it draws control boundaries only — never text.", "section": "colors" },
+      { "name": "The Legible-Heading Rule", "body": "Headings are weight 650 with negative tracking, not airy 400. A settings screen must read at a glance, sometimes across a kitchen.", "section": "typography" },
+      { "name": "The Muted-Floor Rule", "body": "A sentence is never set below ink-muted; ink-line is a border colour, not a text colour.", "section": "typography" },
+      { "name": "The Token-Spacing Rule", "body": "Every spacing, radius, and font-size is a token — no raw pixel literals. A drift test fails the build on one.", "section": "elevation" },
+      { "name": "The Script-Free-Nav Rule", "body": "The mobile drawer and the wizard run with zero JavaScript. Someone who cannot reach the navigation cannot reach anything else.", "section": "elevation" },
+      { "name": "The Two-Shadow Rule", "body": "Shadows are single-layer and reserved for the modal drawer and the widget sheet. Everything else separates by ground step and hairline.", "section": "elevation" },
+      { "name": "The No-Pill Rule", "body": "full radius is for circles only. A rounded-rectangle pill button or nav row is banned — that was the Material look this system removed.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do compose every screen from the component vocabulary; spend tokens, never raw px/radius/font-size literals.",
+      "Do keep colours hand-picked and contrast-tested; add every role to both schemes.",
+      "Do convey depth with a ground step and a hairline; reserve the two shadows for the drawer and the widget sheet.",
+      "Do put every transition inside prefers-reduced-motion: no-preference, on the three duration / three easing tokens.",
+      "Do set a sentence in ink-muted at the quietest; keep ink-line for control borders only.",
+      "Do use 44/48px targets and 16px inputs; keep the wizard and mobile nav script-free.",
+      "Do show state as a tag, and write empty states that name the list and match the handler's branch."
+    ],
+    "donts": [
+      "Don't reintroduce a Material tonal palette, a 15-role scale, an elevation ladder, or pill-shaped nav/buttons.",
+      "Don't use full radius on anything that isn't a circle.",
+      "Don't let a control that clears the filled button keep the filled hover/press (gold-on-gold on touch).",
+      "Don't set text in ink-line, or a sentence below ink-muted.",
+      "Don't bake a state into a heading's text ('(off)') — use a tag.",
+      "Don't put an icon, illustration, or cheer in an empty state.",
+      "Don't copy the walked-down light accent back to the brand amber, or add a raw one-off spacing/radius/font-size value."
+    ]
+  }
+}

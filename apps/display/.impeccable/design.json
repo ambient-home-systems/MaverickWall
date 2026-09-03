@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-03T00:00:00.000Z",
+  "title": "Design System: Maverick Wall — Display",
+  "extensions": {
+    "colorMeta": {
+      "ground-slate": { "role": "neutral", "displayName": "Ground Slate", "canonical": "#14181E", "tonalRamp": ["#0C0E12", "#14181E", "#1B212A", "#2A323E", "#3C4756", "#5A6675", "#8A94A2", "#C6CCD4"] },
+      "panel-slate": { "role": "neutral", "displayName": "Panel Slate", "canonical": "#1B212A", "tonalRamp": ["#0F131A", "#171C24", "#1B212A", "#232B36", "#2F3A47", "#485563", "#7A8798", "#BAC2CC"] },
+      "ink-bone": { "role": "neutral", "displayName": "Ink Bone", "canonical": "#EDEBE6", "tonalRamp": ["#2B2A27", "#43413C", "#5D5A53", "#7B776E", "#9C978C", "#C0BBB0", "#EDEBE6", "#F7F6F2"] },
+      "accent-sky": { "role": "primary", "displayName": "Sky Blue", "canonical": "#5C93E0", "tonalRamp": ["#122239", "#1B3557", "#264C7C", "#3468A8", "#4A82CC", "#5C93E0", "#8DB4EA", "#C2D6F4"] },
+      "shift-day-amber": { "role": "secondary", "displayName": "Day Amber", "canonical": "#E8A33D", "tonalRamp": ["#3A2809", "#5C3F10", "#84591A", "#AD7623", "#CE8E2E", "#E8A33D", "#F0BE73", "#F7DBAC"] },
+      "shift-night-blue": { "role": "secondary", "displayName": "Night Blue", "canonical": "#5C93E0", "tonalRamp": ["#122239", "#1B3557", "#264C7C", "#3468A8", "#4A82CC", "#5C93E0", "#8DB4EA", "#C2D6F4"] },
+      "shift-break-green": { "role": "secondary", "displayName": "Break Green", "canonical": "#35916A", "tonalRamp": ["#0C2419", "#123726", "#1B5138", "#256E4C", "#2C825C", "#35916A", "#5FB08D", "#98CDB6"] },
+      "shift-straight-slate": { "role": "secondary", "displayName": "Straight Slate", "canonical": "#6B7684", "tonalRamp": ["#1B1F24", "#2B3138", "#3E454E", "#535C67", "#697380", "#6B7684", "#98A1AC", "#C6CCD3"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Clock / Display", "purpose": "The largest thing allowed on the wall (40′, capped at 1.8× the event). A placed widget never exceeds it." },
+      "headline": { "displayName": "Headline", "purpose": "The shift badge's own headline — bold, uppercase, in the rota hue." },
+      "title": { "displayName": "Lede / Event title", "purpose": "The one thing a household does not already know (22′). Every other role is stated against it." },
+      "body": { "displayName": "Body", "purpose": "General wall body text on the canvas-relative rem scale." },
+      "label": { "displayName": "Label", "purpose": "A section label / identifier — the smallest rung (10′), uppercase, widely tracked, faint." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Clock",
+      "kind": "custom",
+      "refersTo": "display",
+      "description": "The time widget — large, tabular, and deliberately capped beneath the event name.",
+      "html": "<div class=\"ds-clock\">20:26</div>",
+      "css": ".ds-clock { font-family: 'Roboto Flex','Roboto Condensed','Roboto',system-ui,sans-serif; font-stretch: 75%; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 64px; line-height: 0.82; letter-spacing: -0.03em; color: #EDEBE6; }"
+    },
+    {
+      "name": "Shift Badge",
+      "kind": "card",
+      "description": "The single most important element on the wall: who is on, and what shift. Rota-tinted card with a right edge in the rota hue.",
+      "html": "<div class=\"ds-shift-badge\"><div class=\"ds-sb-who\">AMY</div><div class=\"ds-sb-what\">DAYS</div><div class=\"ds-sb-when\">07:00–19:00</div></div>",
+      "css": ".ds-shift-badge { font-family: 'Roboto Flex','Roboto Condensed','Roboto',system-ui,sans-serif; background: #3E3424; border-right: 6px solid #E8A33D; border-radius: 8px; padding: 14px 26px; text-align: right; min-width: 220px; } .ds-sb-who { font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: #9AA5B2; } .ds-sb-what { font-stretch: 75%; font-size: 40px; font-weight: 700; line-height: 1.05; text-transform: uppercase; letter-spacing: 0.005em; color: #E8A33D; margin-top: 2px; } .ds-sb-when { font-size: 15px; color: #9AA5B2; font-variant-numeric: tabular-nums; margin-top: 4px; }"
+    },
+    {
+      "name": "Agenda Event",
+      "kind": "custom",
+      "refersTo": "title",
+      "description": "One event in the day list: a calendar-coloured left border, a right-aligned tabular time, and the title as the lede. 'Next' is the wall's one accent.",
+      "html": "<div class=\"ds-agenda\"><div class=\"ds-ev\"><span class=\"ds-ev-time\">09:30</span><span class=\"ds-ev-title\">Dentist — Sam</span></div><div class=\"ds-ev ds-ev-next\"><span class=\"ds-ev-time\">13:00</span><span class=\"ds-ev-title\">Lunch with Priya</span></div></div>",
+      "css": ".ds-agenda { font-family: 'Roboto Flex','Roboto Condensed','Roboto',system-ui,sans-serif; display: grid; gap: 10px; } .ds-ev { display: grid; grid-template-columns: 64px 1fr; align-items: baseline; gap: 4px 14px; border-left: 3px solid #E8A33D; padding-left: 12px; } .ds-ev-time { font-size: 17px; color: #9AA5B2; text-align: right; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; } .ds-ev-title { font-size: 24px; line-height: 1.2; color: #EDEBE6; } .ds-ev-next .ds-ev-title, .ds-ev-next .ds-ev-time { color: #5C93E0; }"
+    },
+    {
+      "name": "Month Cell (flat text)",
+      "kind": "card",
+      "refersTo": "month-cell",
+      "description": "A month-grid cell — NOT a card. Transparent ground; today is an inset outline; whole-word titles with a per-person dot; overflow counted, never truncated.",
+      "html": "<div class=\"ds-cell ds-cell-today\"><div class=\"ds-cell-num\">14</div><div class=\"ds-cell-row\"><span class=\"ds-cell-dot\"></span><span class=\"ds-cell-title\">Bin day</span></div><div class=\"ds-cell-row\"><span class=\"ds-cell-dot ds-dot-b\"></span><span class=\"ds-cell-title\">Swimming</span></div><div class=\"ds-cell-more\">+2</div></div>",
+      "css": ".ds-cell { font-family: 'Roboto Flex','Roboto Condensed','Roboto',system-ui,sans-serif; position: relative; width: 150px; min-height: 108px; padding: 8px 10px; background: transparent; } .ds-cell-today { outline: 4px solid #EDEBE6; outline-offset: -4px; } .ds-cell-num { font-stretch: 75%; font-size: 24px; font-weight: 700; line-height: 1; color: #9B9B9A; } .ds-cell-row { display: flex; align-items: flex-start; gap: 5px; margin-top: 5px; } .ds-cell-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; margin-top: 7px; background: #E8A33D; } .ds-dot-b { background: #5C93E0; } .ds-cell-title { font-size: 22px; line-height: 1.2; color: #EDEBE6; } .ds-cell-more { font-size: 17px; color: #9AA5B2; margin-top: 4px; }"
+    },
+    {
+      "name": "Weather Day",
+      "kind": "custom",
+      "description": "One column of the forecast strip: an uppercase scaffold day name, a first-party glyph in currentColor, and a bold high with a quieter low. No emoji, nothing fetched.",
+      "html": "<div class=\"ds-wx-day\"><div class=\"ds-wx-name\">WED</div><svg class=\"ds-wx-ico\" viewBox=\"0 0 24 24\" width=\"32\" height=\"32\" fill=\"currentColor\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"5\"/><g><rect x=\"11\" y=\"1\" width=\"2\" height=\"4\"/><rect x=\"11\" y=\"19\" width=\"2\" height=\"4\"/><rect x=\"1\" y=\"11\" width=\"4\" height=\"2\"/><rect x=\"19\" y=\"11\" width=\"4\" height=\"2\"/></g></svg><div class=\"ds-wx-temp\">18°<span class=\"ds-wx-lo\">9°</span></div></div>",
+      "css": ".ds-wx-day { font-family: 'Roboto Flex','Roboto Condensed','Roboto',system-ui,sans-serif; text-align: center; color: #EDEBE6; padding: 0 18px; } .ds-wx-name { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #9AA5B2; } .ds-wx-ico { display: block; margin: 6px auto; color: #EDEBE6; } .ds-wx-temp { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; } .ds-wx-lo { color: #9AA5B2; font-weight: 400; font-size: 15px; margin-left: 6px; }"
+    },
+    {
+      "name": "Alert Acknowledge Button",
+      "kind": "button",
+      "refersTo": "alert-ack",
+      "description": "The one interactive control on the wall. Large (pressed with a remote from across a room); its focus ring is the ONLY affordance on a cursor:none wall, so :focus-visible draws an ink outline. No hover — the wall has no pointer.",
+      "html": "<button class=\"ds-alert-ack\">OK</button>",
+      "css": ".ds-alert-ack { font-family: 'Roboto Flex','Roboto Condensed','Roboto',system-ui,sans-serif; display: inline-block; padding: 16px 36px; border: 3px solid #5C93E0; border-radius: 8px; background: transparent; color: #5C93E0; font-size: 18px; font-weight: 600; letter-spacing: 0.04em; } .ds-alert-ack:focus-visible { outline: 4px solid #EDEBE6; outline-offset: 5px; }"
+    },
+    {
+      "name": "Alert Banner",
+      "kind": "custom",
+      "refersTo": "banner-alert",
+      "description": "An interrupt shown as a strip rather than a takeover: a panel card with an accent left border, read at full ink and weight.",
+      "html": "<div class=\"ds-banner\">Garage door open since 23:14</div>",
+      "css": ".ds-banner { font-family: 'Roboto Flex','Roboto Condensed','Roboto',system-ui,sans-serif; background: #1B212A; border-left: 8px solid #5C93E0; border-radius: 8px; padding: 15px 24px; color: #EDEBE6; font-weight: 600; font-size: 28px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Legible Fixture",
+    "overview": "The display is a fixture in a house, not an app on a screen. It hangs on a kitchen or hallway wall, has no pointer, redraws itself on a ~15-second tick, and runs unattended for months. Every decision serves being read at a glance from 1.5–3 metres away, by someone who did not walk over to operate it. The interface recedes and the calendar is the object. The register is quiet, architectural, and exact — restraint is the point, precision lives in the small details, and nothing is allowed to compete with what the household came to read. The system is five pure token themes over one flat, motionless stylesheet: no elevation, no animation, no shadow, no emoji — not as taste but as physics, since the panels are e-ink and OLED as often as tablets. The most radical decision is that type is sized by the angle it subtends at the reader's eye (arc-minutes from the panel's real size and the reader's distance), not by a pixel count, so one design is correct from a 7.5-inch tag to a 43-inch television. The confirmed anti-reference is the SaaS dashboard: no stat tiles, no big-number-plus-caption rows, no KPI cards. This is a calendar.",
+    "keyCharacteristics": [
+      "Read from across a room; legibility is a physical angle, never a fixed pixel.",
+      "Flat and motionless: separation is space, then a 1px rule, then a ground step.",
+      "Five themes, pure token swaps; nothing outside theme.ts names a colour.",
+      "The event name is the hero; the numeral and clock are capped beneath it.",
+      "First-party and offline: every face and glyph ships in the image; nothing is fetched.",
+      "Degrades by showing less, never by overlapping, clipping through a row, or going blank."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "The accent marks the next event and the current-time rule and nothing else. Its scarcity is what makes 'next' and 'now' read as one idea across a room.", "section": "colors" },
+      { "name": "The Scaffold-Contrast Rule", "body": "--ink-scaffold starts at mix(ink, bg, 0.62) and the ratio is raised per theme until the result clears 4.5:1 against that theme's own background, because a fixed wash reads differently on a light ground than a dark one.", "section": "colors" },
+      { "name": "The One Sub-Bar Exception", "body": "Exactly one token may sit below 4.5:1: the out-of-month grey. A day belonging to the next month must be present without being readable across a room.", "section": "colors" },
+      { "name": "The Token-Only Rule", "body": "Nothing outside theme.ts names a colour; color-mix() is banned (ES2019), so tints are pre-mixed per theme against that theme's own background.", "section": "colors" },
+      { "name": "The Angle Rule", "body": "Legibility is the angle type subtends at the eye, not a pixel count. A single hardcoded px floor is right on one screen and wrong on every other.", "section": "typography" },
+      { "name": "The Demotion Rule", "body": "The date numeral is never more than 1.2× the event name beside it; the clock never more than 1.8× the event size. The wall's job is the thing the household does not already know.", "section": "typography" },
+      { "name": "The Tabular Rule", "body": "tabular-nums everywhere — a figure that changes width changes a row's geometry, which forecloses e-ink partial refresh.", "section": "typography" },
+      { "name": "The Calibrated-Leading Rule", "body": "line-height is a number (1.15), never normal, so a row does not move when the webfont lands; 1.15 was measured to sit inside the range normal resolves to.", "section": "typography" },
+      { "name": "The Whole-Word Rule", "body": "A month-cell title is drawn whole or not at all; nothing ellipsises. A row that will not fit is hidden and counted in '+N'.", "section": "typography" },
+      { "name": "The No-Shadow Rule", "body": "No shadow on the display at any size, in any theme. It bands on e-ink and burns in on OLED. Separation is space, then a rule, then a ground step.", "section": "elevation" },
+      { "name": "The No-Motion Rule", "body": "No transition or animation on any surface a screen sees. The wall has no pointer and redraws every 15s; the panel physically cannot animate.", "section": "elevation" },
+      { "name": "The Cell-Is-Not-A-Card Rule", "body": "A month cell has no fill, border, or radius of its own. Structure comes from the week rule and the column gutter; today is an inset outline, a rota day a faint tint plus a top border.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do size every legibility decision from --px-arcmin (panel size + read distance); fall back to the canvas-relative rem scale on an unmeasured wall.",
+      "Do keep the event name the loudest thing; cap the numeral at 1.2× and the clock at 1.8× the event size.",
+      "Do convey depth with space → a 1px rule → a ground step, in that order.",
+      "Do use tabular-nums and a numeric line-height on everything, so geometry is stable for e-ink partial refresh.",
+      "Do degrade by showing less (drop a day, a reading, a row) and always keep the wall drawing something legible.",
+      "Do keep every colour in theme.ts; add the four emphasis roles (and a 4.5:1-checked scaffold) to any new theme.",
+      "Do draw glyphs as first-party silhouettes in currentColor."
+    ],
+    "donts": [
+      "Don't build a dashboard: no stat tiles, no big-number-plus-caption rows, no KPI cards. This is a calendar.",
+      "Don't add any shadow, gradient, transition, or animation to a display surface.",
+      "Don't use an emoji as an icon, weather glyph, or device mark — the image ships no emoji font.",
+      "Don't use transform: scale() to fit a laid-out section, or a hardcoded px legibility floor as anything but a fallback.",
+      "Don't let an overflow '+N' cost a name, repeat a multi-day event per cell, or let anything that annotates an event take a row in flow.",
+      "Don't make a month cell a card, and don't let the date numeral outsize the event beside it by more than 1.2×.",
+      "Don't rely on a pointer, hover, or motion to convey state — the wall has none."
+    ]
+  }
+}
