@@ -10,6 +10,7 @@ import {
   revokeScreen,
   rotateScreenToken,
   setPanelSource,
+  setScreenLanOnly,
   type AdminScreenRow,
 } from '../api/queries.js';
 import { readEnabledExternalModules } from '../api/external-modules.js';
@@ -19,11 +20,11 @@ import { issueDisplayToken } from '../auth/tokens.js';
 import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { householdSetUp } from '../modules/index.js';
-import { optionalText, parse, text, z } from '../validation.js';
+import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { layoutEditorMount, navModules, pairingSecret, widgetsNotDrawn, type AdminDeps } from './admin.js';
 import { bytesOf } from './app.js';
 import { destructive, section } from './components.js';
-import { confirmDestroyPage, errorBlock, escapeHtml, page, selectField, textField } from './html.js';
+import { confirmDestroyPage, errorBlock, escapeHtml, page, selectField, switchRow, textField } from './html.js';
 import { ingressPath } from './ingress.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
@@ -86,6 +87,15 @@ const epaperSourceBody = z.object({
     )
     .transform((value) => String(value)),
 });
+
+/**
+ * Option C: refuse this panel's frame from off the household's own network.
+ *
+ * `checkbox()`, not `.optional()` — an unticked box is not sent at all, and
+ * reading its absence as "leave unchanged" is how a household turning this
+ * off silently leaves it on.
+ */
+const lanOnlyBody = z.object({ lan_only: checkbox() });
 
 const newEpaperBody = z.object({
   name: text('A name for the wall', 80),
@@ -215,6 +225,31 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     `<pre class="code">${escapeHtml(code)}</pre>`;
 
   /**
+   * Option C's toggle, shared by the config and view pages.
+   *
+   * Off by default and stated in terms of what a *leaked* URL is worth,
+   * because that is the actual trade a household is making — the token
+   * itself is no easier to guess either way. Warns about a relayed panel
+   * (a cloud-hosted Home Assistant, a VPN, Nabu Casa) rather than staying
+   * silent about it, since that is exactly the household this would
+   * otherwise go dark for with no visible cause.
+   */
+  const lanOnlyForm = (id: string, lanOnly: boolean): string =>
+    `<h3 style="margin:18px 0 6px">Network access</h3>` +
+    `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/lan-only">` +
+    switchRow({
+      label: 'Restrict this URL to your home network',
+      name: 'lan_only',
+      checked: lanOnly,
+      hint:
+        'A correct URL is refused from outside your network — useful if it ever ends up ' +
+        'somewhere it should not have. Leave off if Home Assistant reaches this panel ' +
+        'through a relay (Nabu Casa, a VPN, a cloud-hosted instance), or this panel will ' +
+        'go dark with no clear reason why.',
+    }) +
+    `<button class="secondary" type="submit">Save</button></form>`;
+
+  /**
    * The page shown once a screen exists, carrying the token in the URL.
    *
    * The token is shown here and never stored in the clear, exactly like a
@@ -227,6 +262,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     name: string,
     token: string,
     geometry: { width: number; height: number; rotation: number },
+    lanOnly: boolean,
     c: Context,
   ): string => {
     const url = frameUrlFor(token, c);
@@ -258,6 +294,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(url)) +
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
+        lanOnlyForm(id, lanOnly) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // GET-then-POST, behind confirmDestroyPage — exactly destructive()'s
@@ -290,6 +327,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     id: string,
     name: string,
     geometry: { width: number; height: number; rotation: number },
+    lanOnly: boolean,
   ): string => {
     const placeholder = "<this wall's frame URL>";
     return page({
@@ -298,6 +336,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
       title: 'E-paper wall — Maverick Wall',
       nav: 'walls',
       heading: name,
+      saved: readSaved(c),
       intro: `${geometry.width}×${geometry.height}, black & white${geometry.rotation === 0 ? '' : `, rotated ${geometry.rotation}°`}.`,
       body:
         `<p>The frame URL is shown only once — when this wall is added, or its ` +
@@ -307,6 +346,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(placeholder)) +
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
+        lanOnlyForm(id, lanOnly) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // Same GET-then-POST shape as the config page's button above, and now
@@ -404,9 +444,13 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
     return c.html(
-      epaperViewPage(c, id, screen.name, {
-        width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation,
-      }),
+      epaperViewPage(
+        c,
+        id,
+        screen.name,
+        { width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation },
+        screen.lanOnly === 1,
+      ),
     );
   });
 
@@ -442,7 +486,14 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
       rotation: shaped.value.rotation,
     });
     return c.html(
-      epaperConfigPage(id, shaped.value.name, issued.token, { width, height, rotation: shaped.value.rotation }, c),
+      epaperConfigPage(
+        id,
+        shaped.value.name,
+        issued.token,
+        { width, height, rotation: shaped.value.rotation },
+        false,
+        c,
+      ),
     );
   });
 
@@ -489,9 +540,28 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         screen.name,
         issued.token,
         { width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation },
+        screen.lanOnly === 1,
         c,
       ),
     );
+  });
+
+  /**
+   * Option C: refuse this panel's frame from off the household's network.
+   *
+   * A settings toggle rather than a destructive action, so it is an ordinary
+   * POST-then-redirect through `savedRedirect` like the layout source above —
+   * no confirmation interstitial, because turning it back off is one visit to
+   * this same page away.
+   */
+  app.post('/admin/epaper/:id/lan-only', async (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = findEpaper(id);
+    if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
+    const shaped = parse(lanOnlyBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(epaperPage(c, shaped.message), 400);
+    setScreenLanOnly(deps.db, id, shaped.value.lan_only);
+    return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}`, 'epaper-lan-only-saved');
   });
 
   /**

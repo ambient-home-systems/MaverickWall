@@ -267,6 +267,13 @@
       "when": 1788248367070,
       "tag": "0037_brainy_hawkeye",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1788410976762,
+      "tag": "0038_typical_human_torch",
+      "breakpoints": true
     }
   ]
 }

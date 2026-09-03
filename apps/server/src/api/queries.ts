@@ -195,6 +195,15 @@ export function setPanelSource(
   );
 }
 
+/** Toggle Option C's LAN-only restriction on an eInk screen's frame endpoint. */
+export function setScreenLanOnly(db: SqliteDatabase, screenId: string, lanOnly: boolean): void {
+  db.prepare(`UPDATE screens SET lan_only = ?, updated_at = ? WHERE id = ?`).run(
+    lanOnly ? 1 : 0,
+    Date.now(),
+    screenId,
+  );
+}
+
 export function replaceLayout(
   db: SqliteDatabase,
   screenId: string | null,
@@ -873,7 +882,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
   return db
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
-              orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores, timezone,
+              orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores,
+              lan_only AS lanOnly, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
               panel_width_mm AS panelWidthMm, panel_height_mm AS panelHeightMm,
@@ -1541,6 +1551,8 @@ export interface ScreenRow {
   readonly daytimeEndsAt: string | null;
   readonly allowDismiss: number;
   readonly allowChores: number;
+  /** Whether `/d/epaper/:file` refuses a connection from off the LAN (Option C). */
+  readonly lanOnly: number;
   /** Per-screen display overrides; null follows the household. */
   readonly displayTodayEvents: number | null;
   readonly displayNextDays: number | null;
@@ -1560,7 +1572,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
   return db
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
-              orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores, timezone,
+              orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores,
+              lan_only AS lanOnly, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
               panel_width_mm AS panelWidthMm, panel_height_mm AS panelHeightMm,

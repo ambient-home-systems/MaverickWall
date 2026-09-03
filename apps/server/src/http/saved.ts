@@ -102,6 +102,7 @@ export const SAVED_MESSAGES = {
   // eInk (e-paper)
   'epaper-screen-removed': 'eInk wall removed.',
   'epaper-source-saved': 'Panel layout source saved.',
+  'epaper-lan-only-saved': 'Network access setting saved.',
   // Home Assistant
   'ha-connected': 'Connected to Home Assistant.',
   'ha-disconnected': 'Disconnected from Home Assistant.',

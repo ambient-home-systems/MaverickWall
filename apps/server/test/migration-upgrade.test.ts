@@ -255,6 +255,47 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('leaves an existing eInk screen refusing nothing by network (0038)', () => {
+    /*
+     * `lan_only` (Option C) has to reach a screen paired long before it
+     * existed, additive and `NOT NULL DEFAULT false` — the cheap direction,
+     * since a default of `true` here would silently stop answering every
+     * eInk panel already hanging in a kitchen the moment this migration ran.
+     * The screen is turned into an eInk one at 0029, the migration that adds
+     * `kind` at all, so this walks the same row `panel_width_mm` (0037) does,
+     * one column further along the same table.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    let becameEpaper = false;
+    for (const entry of entries) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0000')) {
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES ('scr-eink', 'Hallway', 'hash-2', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+      }
+      if (entry.tag.startsWith('0029')) {
+        db.prepare(`UPDATE screens SET kind = 'epaper', panel_width = 800, panel_height = 480 WHERE id = 'scr-eink'`).run();
+        becameEpaper = true;
+      }
+    }
+    // If the tags ever move, this keeps the test from proving nothing by
+    // setting `kind` on a table that already had every later column.
+    expect(becameEpaper).toBe(true);
+
+    const screen = db
+      .prepare(`SELECT kind, lan_only AS lanOnly FROM screens WHERE id = 'scr-eink'`)
+      .get() as Record<string, unknown>;
+
+    expect(screen).toEqual({ kind: 'epaper', lanOnly: 0 });
+
+    db.close();
+  });
+
   it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
     // A wall arranged before the two-canvas split has widgets with no
     // orientation column. The 0024 migration adds it with a `portrait` default,
