@@ -207,7 +207,7 @@ describe('the card screens carry no inline layout style', () => {
   // is allowed; a raw `gap`/`margin`/`display`/`font-size` is not. The recipe
   // and install *forms* (their own URLs) keep a monospace code field and are not
   // in scope here.
-  const CARD_PAGES = ['/admin/walls', '/admin/modules', '/admin/people', '/admin/shifts/types', '/admin/chores', '/admin/themes', '/admin/alerts', '/admin/home-assistant', '/admin/system'] as const;
+  const CARD_PAGES = ['/admin', '/admin/walls', '/admin/modules', '/admin/people', '/admin/shifts/types', '/admin/chores', '/admin/themes', '/admin/alerts', '/admin/home-assistant', '/admin/system'] as const;
   const layout = /(^|;)\s*(display|flex|flex-wrap|gap|margin|padding|font-size|align-items|justify-content)\s*:/i;
 
   it('sets spacing, flex and font through classes, not style attributes', async () => {

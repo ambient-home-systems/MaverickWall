@@ -1080,6 +1080,10 @@ a.card:active{background:var(--mw-surface-3)}
 .status-card .frow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .status-card .frow .link svg{width:13px;height:13px}
 .today-card{display:flex;flex-direction:column}
+/* A standalone note set off below the page's content — the Overview's ingress
+ * "signed in through Home Assistant" line, which belongs to no section. A
+ * token, not an inline margin. */
+.ov-footnote{margin-top:var(--mw-s-5)}
 /* A footer pinned to the bottom of a flex-column card (the today card's action
  * row). Tokenised so the gap above it is a rung of the scale, not a literal. */
 .card-foot{margin-top:auto;padding-top:var(--mw-s-4)}

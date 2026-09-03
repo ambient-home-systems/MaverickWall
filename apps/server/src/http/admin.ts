@@ -987,7 +987,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           // the note for the ingress case, where signing out is a Home Assistant
           // action rather than ours.
           (c.get('viaIngress') === true
-            ? `<p class="hint" style="margin-top:24px">Signed in through Home Assistant.</p>`
+            ? `<p class="hint ov-footnote">Signed in through Home Assistant.</p>`
             : ''),
       }),
     );
