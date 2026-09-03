@@ -552,6 +552,36 @@ export const screens = sqliteTable(
      */
     allowChores: integer('allow_chores', { mode: 'boolean' }).notNull().default(false),
 
+    /**
+     * Whether this screen's frame answers only a connection from the
+     * household's own network.
+     *
+     * The eInk frame (`/d/epaper/:file`) carries its token in the URL path
+     * rather than an `HttpOnly` cookie, because a dumb panel cannot hold one —
+     * and a URL is the one credential in this product that a household is
+     * expected to hand-copy into a device's own config. That makes it more
+     * likely than a wall's cookie to end up somewhere with weaker access
+     * control than this app: a forum post, a committed dotfiles repo, a
+     * screenshot. This does not change the token itself — guessing it is
+     * still infeasible either way — it bounds what a *leaked* one is worth:
+     * off the household's network, a correct token still gets refused.
+     *
+     * Off by default (rule nine: a household with a panel reached through a
+     * relay — a cloud-hosted Home Assistant, a VPN, Nabu Casa — must not have
+     * it go dark because a setting they never opened assumed their network
+     * shape). Per screen, like `rotation` and `allow_dismiss` above: a fact
+     * about how *that* panel is reached, not a household-wide policy.
+     *
+     * Enforced against the same address `isTrustedIngress` already reads
+     * (`clientAddress`, never a header — a reverse-proxied household is a
+     * known limitation, not a bypass, since a forwarded header is exactly what
+     * this must not trust), classified with the SSRF guard's own address
+     * classifier. Deliberately not applied to the browser wall's `/d/manifest`
+     * — its cookie cannot leave a browser the way an eInk URL leaves a device,
+     * so extending this there is a separate decision.
+     */
+    lanOnly: integer('lan_only', { mode: 'boolean' }).notNull().default(false),
+
     /** Rotated when the token is regenerated, invalidating old sessions. */
     tokenIssuedAt: integer('token_issued_at', { mode: 'number' }).notNull().$defaultFn(now),
     revokedAt: integer('revoked_at', { mode: 'number' }),

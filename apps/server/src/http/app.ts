@@ -35,7 +35,7 @@ import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { allModules, householdSetUp, MODULES } from '../modules/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
-import { evaluateInterrupts } from '@maverick-wall/core';
+import { classifyIp, evaluateInterrupts, parseIp } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { ADMIN_STYLESHEET, ADMIN_STYLESHEET_ETAG, errorBlock, escapeHtml, page, textField } from './html.js';
@@ -1206,6 +1206,35 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   /**
+   * Whether an address is one a household's own eInk panel could plausibly
+   * connect from — the opt-in `screens.lan_only` restriction (Option C).
+   *
+   * The eInk frame carries its token in a URL rather than an `HttpOnly`
+   * cookie, because a dumb panel cannot hold one — and a URL is the one
+   * credential in this product a household is expected to hand-copy into a
+   * device's own config, which makes it more likely than a wall's cookie to
+   * end up somewhere with weaker access control than this app. This does not
+   * make a leaked token harder to use *within* the household's network; it
+   * bounds what it is worth outside it.
+   *
+   * Reuses the SSRF guard's own address classifier rather than a second one —
+   * two classifiers agreeing by coincidence is not something to rely on — but
+   * asks a different question than `isLocalNetwork` does there: loopback
+   * counts here (a request from the same host is not "the internet" either),
+   * where the SSRF guard excludes it because a feed loopback points at is
+   * never a legitimate calendar. An address that cannot be determined fails
+   * closed, exactly as `isTrustedIngress` already does for the same reason: a
+   * check that cannot tell is not a green light.
+   */
+  function isFromHomeNetwork(address: string | undefined): boolean {
+    if (address === undefined) return false;
+    const parsed = parseIp(address);
+    if (parsed === undefined) return false;
+    const kind = classifyIp(parsed);
+    return kind === 'private' || kind === 'cgnat' || kind === 'loopback';
+  }
+
+  /**
    * The e-paper frame for a paired screen (RFC 006).
    *
    * A dumb device — an ESPHome panel, or a Home Assistant Generic Camera — does
@@ -1233,6 +1262,21 @@ export function createApp(deps: AppDeps): Hono {
     // 404, not 401: a guesser with no valid token learns nothing about which
     // screens exist, the same reason the media route stays behind the gate.
     if (!screen) return c.body(null, 404);
+
+    /*
+     * The token was right, so a 403 here leaks nothing a 404 would have
+     * protected — the caller already proved possession of the secret, and
+     * what is being refused is where they are connecting from, not whether
+     * the screen exists. A distinct status is what makes this diagnosable
+     * (rule 11) rather than reading like a revoked or mistyped token.
+     */
+    if (screen.lanOnly === 1 && !isFromHomeNetwork(clientAddress(c))) {
+      deps.log?.record(
+        'warn',
+        `epaper frame for screen ${screen.id} refused: lan_only is set and the connecting address is not on the home network`,
+      );
+      return c.body(null, 403);
+    }
 
     /*
      * Whose canvas this panel draws — its own, a wall's, or none at all.

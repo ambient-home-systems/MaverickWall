@@ -1,0 +1,1 @@
+ALTER TABLE `screens` ADD `lan_only` integer DEFAULT false NOT NULL;

@@ -3523,7 +3523,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="rname" style="font-size:16px">${escapeHtml(screen.name)} ` +
       `<span class="tag">E-paper</span></div>` +
       `<div class="sub"><span class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}</span>` +
-      `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`} · ${seen}</div>` +
+      `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`}` +
+      `${screen.lanOnly === 1 ? ' · LAN only' : ''} · ${seen}</div>` +
       `</div></div>` +
       `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">` +
       // One filled action per card; the rest are outlined ("btn ghost" here
