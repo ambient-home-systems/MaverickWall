@@ -953,8 +953,23 @@ export function equipHousehold(db: SqliteDatabase, at: number): void {
 export async function loadWallSettled(
   link: string,
   size: { readonly width: number; readonly height: number },
+  /**
+   * Extra context options — today only the device's locale.
+   *
+   * Here rather than in a caller's own `newContext`, because the settle below
+   * is the whole value of this helper: a test that opens its own context to
+   * pass one option gets a *cold* one, and a cold context resolves its density
+   * tiers against whatever face has arrived. `browser-wall-locale.test.ts`
+   * compared three of those against each other and read the font race as a
+   * language difference — 53 runs "differing" on CI, which was one weekday
+   * head cut to a single letter and every later run shifted by it.
+   */
+  options: { readonly locale?: string } = {},
 ): Promise<{ readonly page: Page; readonly context: BrowserContext; readonly close: () => Promise<void> }> {
-  const context = await (await browser()).newContext({ viewport: size });
+  const context = await (await browser()).newContext({
+    viewport: size,
+    ...(options.locale !== undefined ? { locale: options.locale } : {}),
+  });
   const page: Page = await context.newPage();
   /*
    * **Every** manifest is held, not only the first, and that is a correction

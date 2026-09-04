@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   TEARDOWN,
-  browser,
   equipHousehold,
   HOUSEHOLD_CALENDARS,
   install,
-  settleWall,
+  loadWallSettled,
   shutDownBrowser,
   type Installation,
 } from './browser-harness.js';
@@ -114,18 +113,31 @@ const TEXT = `
   return out;
 })()`;
 
+/**
+ * The wall as a device set to `locale` would draw it, past the font race.
+ *
+ * `loadWallSettled` rather than a `goto` and a settle, and that is not a
+ * tidy-up — it is the whole reason this file was wrong. Every reading here
+ * comes from a *separate browser context*, because a context's locale cannot
+ * be changed after it is made, and a fresh context has a cold HTTP cache: the
+ * density tiers are resolved against whatever face has arrived, so the first
+ * load and the third can cut a weekday head differently for reasons that have
+ * nothing to do with language.
+ *
+ * Measured on CI, that is exactly what happened — the en-GB reading drew
+ * `Sun Mon Tue…` and the fr-FR one drew `S M T W T F S`, which the positional
+ * diff below then reported as 53 differing runs because one insertion shifts
+ * everything after it. The strings were identical; the *forms* were not.
+ * `loadWallSettled` holds the first manifest back and reloads, which is the
+ * steady state a wall that has been hanging for a while is in, and is
+ * repeatable across contexts.
+ */
 async function wallAs(locale: string): Promise<string[]> {
-  const context = await (await browser()).newContext({
-    viewport: { width: 1080, height: 1920 },
-    locale,
-  });
+  const { page, close } = await loadWallSettled(link, { width: 1080, height: 1920 }, { locale });
   try {
-    const page = await context.newPage();
-    await page.goto(link, { waitUntil: 'load' });
-    await settleWall(page);
     return (await page.evaluate(TEXT)) as string[];
   } finally {
-    await context.close();
+    await close();
   }
 }
 
