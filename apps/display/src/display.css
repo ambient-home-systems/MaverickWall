@@ -79,8 +79,18 @@ html {
 body {
   height: 100vh;
   overflow: hidden;
-  background: var(--bg, #0B0E11);
-  color: var(--ink, #E9EEF4);
+  /*
+   * The fallbacks are **Panels'** own values, which is the default theme.
+   *
+   * They used to be `#0B0E11` and `#E9EEF4` — Board's, and Board was retired.
+   * `resolveName` aliases every stored `board` to Panels, so the one moment
+   * this pair is ever on screen — between the stylesheet parsing and
+   * `applyTheme` running on `main.ts`'s first line — was the retired theme
+   * governing the first paint of every wall in the world, and the wrong ground
+   * behind the `<noscript>` message on a wall whose script never runs at all.
+   */
+  background: var(--bg, #14181E);
+  color: var(--ink, #EDEBE6);
   font-family: var(--f-sans);
   font-variant-numeric: tabular-nums;
   /*
@@ -694,16 +704,6 @@ body {
   margin-top: var(--s1); font-variant-numeric: tabular-nums;
 }
 
-.today-events { display: grid; gap: 0.85rem; min-height: 0; overflow: hidden; }
-.te { display: grid; grid-template-columns: 9.5rem 1fr; align-items: baseline; gap: 1.4rem; }
-.te-time {
-  font-family: var(--f-sans);
-  font-size: 1.85rem; color: var(--muted);
-  text-align: right; letter-spacing: var(--ls-time);
-}
-.te-title { font-size: 2.35rem; font-weight: 500; line-height: 1.18; color: var(--ink-event); }
-.te-where { color: var(--faint); font-size: 1.5rem; margin-left: 0.8rem; }
-
 /* --- people: the legend strip and the per-event owner cue ------------- */
 
 /*
@@ -730,7 +730,7 @@ body {
  * dot, the initials chip and the legend agree by construction.
  */
 .ev-dot, .ev-initials, .ev-face { flex: 0 0 auto; }
-.te-mark, .dr-ev-mark { margin-right: 0.9rem; vertical-align: middle; }
+.dr-ev-mark { margin-right: 0.9rem; vertical-align: middle; }
 .ev-dot { display: inline-block; width: 1.15rem; height: 1.15rem; border-radius: 50%; background: var(--ev); }
 .ev-initials {
   display: inline-flex; align-items: center; justify-content: center;
@@ -740,13 +740,9 @@ body {
 .ev-face { display: inline-block; border-radius: 50%; object-fit: cover; }
 /* Below the --t-micro floor by exemption: the size is set by the avatar, not
  * by the scale. Raising the type here spills the initials out of the circle. */
-.te-mark.ev-initials, .te-mark.ev-face { width: 2rem; height: 2rem; font-size: 1.05rem; }
 .dr-ev-mark.ev-initials, .dr-ev-mark.ev-face { width: 1.7rem; height: 1.7rem; font-size: 0.95rem; }
 .dr-ev-mark.ev-dot { width: 1rem; height: 1rem; }
 /* The only highlight on the screen, so it has to mean something. */
-.te.is-next .te-title { color: var(--accent); font-weight: 700; }
-.te.is-next .te-time { color: var(--accent); }
-.te.is-past { opacity: 0.32; }
 
 /* --- WEATHER ---------------------------------------------------------- */
 
@@ -1120,12 +1116,14 @@ body {
  * accent says which event is next and this says where now is, and the two want
  * to read as one idea.
  *
- * The partner is `.te.is-next` just above, and it is worth knowing that that
- * rule currently matches nothing: no renderer has emitted a `.te` since the
- * day block was retired, so the whole `.te*` block is dead styling for markup
- * that is gone. Left where it is rather than swept up here — that is a
- * different change from adding an indicator — but not to be read as the thing
- * this one pairs with today.
+ * **The partner does not exist.** The design pairs this with an accent on the
+ * *next* event — the accent saying which one is next, the rule saying where
+ * now is — and the wall has never drawn one. There used to be a `.te.is-next`
+ * rule for it, matching an element no renderer had emitted since the day block
+ * was retired; that block is deleted rather than left to be read as an
+ * implementation. So this hairline is the only "now" on the wall, it is drawn
+ * to stand on its own, and the accent it was meant to complement is an open
+ * design decision rather than something a selector is quietly waiting for.
  */
 .dr-now {
   /*
@@ -2074,7 +2072,8 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   padding: 1.1rem 1.4rem;
-  border: 0.2rem solid var(--line, var(--muted));
+  /* `--line` was never a token here; this has always resolved to `--muted`. */
+  border: 0.2rem solid var(--muted);
   border-radius: var(--radius);
   background: var(--panel);
   color: var(--ink);
@@ -2345,7 +2344,6 @@ body {
  */
 @media (max-height: 700px) {
   :root[data-layout="landscape"] .day-row:nth-child(n + 6) { display: none; }
-  :root[data-layout="landscape"] .today-events .te:nth-child(n + 7) { display: none; }
 }
 
 /* ------------------------------------------------------------ FREEFORM --- */
@@ -2380,8 +2378,11 @@ body {
   --u: calc(var(--canvas-h) / 100);
   position: relative;
   overflow: hidden;
-  background: var(--panel, rgba(255, 255, 255, 0.03));
-  border-radius: var(--radius, 1.2rem);
+  /* Panels' `--panel` and `--radius`. The radius was `1.2rem`, which is the
+     exact value `theme.ts` records as removed for reading as "a rounded
+     bubble, not a panel" — a retired decision kept alive as a fallback. */
+  background: var(--panel, #1B212A);
+  border-radius: var(--radius, 0.4rem);
 }
 
 /*
@@ -2415,7 +2416,7 @@ body {
 
 .fw-empty {
   margin: auto;
-  color: var(--muted, #8a8a8a);
+  color: var(--muted, #9AA5B2);
   font-family: var(--f-sans);
   font-size: min(calc(var(--buw) * 7), calc(var(--buh) * 12));
   text-align: center;
@@ -2430,7 +2431,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: calc(var(--u) * 6);
-  color: var(--muted, #8a8a8a);
+  color: var(--muted, #9AA5B2);
   font-family: var(--f-sans);
   font-size: calc(var(--u) * 4);
   text-align: center;
@@ -2743,7 +2744,7 @@ body {
 .ch-col-head {
   font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%; font-weight: 700; font-size: 1.5rem;
   text-transform: uppercase; letter-spacing: var(--ls-title); color: var(--who, var(--muted));
-  border-bottom: 0.15rem solid var(--who, var(--line, var(--muted)));
+  border-bottom: 0.15rem solid var(--who, var(--muted));
   padding-bottom: 0.35rem;
 }
 
@@ -2774,7 +2775,17 @@ body {
   align-items: baseline;
   gap: var(--s3);
   padding: var(--s2) 0;
-  border-top: 1px solid var(--ruleSoft, rgba(255, 255, 255, 0.06));
+  /*
+   * `--rule`, because `--ruleSoft` is not a token this bundle has.
+   *
+   * It is the *admin*'s (declared in `http/html.ts`), and it leaked into this
+   * stylesheet — so this divider has never resolved to anything but its own
+   * literal `rgba(255, 255, 255, 0.06)`. White at six per cent is a hairline
+   * on Panels and is invisible on Household, Blueprint and Almanac, which is
+   * three of the five themes: a module panel's readings ran together with no
+   * separation at all, on exactly the grounds that need it most.
+   */
+  border-top: 1px solid var(--rule);
   font-size: 2rem;
 }
 .gp-reading:first-child { border-top: 0; }

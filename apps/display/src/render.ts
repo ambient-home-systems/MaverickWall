@@ -91,7 +91,10 @@ function paintShift(node: HTMLElement, token: string | undefined, color?: string
   // changes with the theme and the daytime switch, so it cannot be baked in the
   // manifest. `shiftTint` is the same maths the theme's own shift tints use.
   if (color !== undefined) {
-    const background = getComputedStyle(node).getPropertyValue('--bg').trim() || '#0B0E11';
+    // Panels' own --bg as the fallback, not Board's: Board is retired and
+    // aliases to Panels, so a literal from it was the wrong ground to derive
+    // a tint against on the one path where the property is somehow unset.
+    const background = getComputedStyle(node).getPropertyValue('--bg').trim() || '#14181E';
     node.style.setProperty('--sc', color);
     node.style.setProperty('--sc-tint', shiftTint(color, background));
     node.classList.add('has-shift');
@@ -505,14 +508,14 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
      * the next event due, which is where `isNext` already points, and at the
      * foot of the list when everything timed has been and gone.
      *
-     * It was meant to complement the `.te.is-next` accent — the accent says
-     * *which* event is next, the rule says where the day has got to — and that
-     * is still the design. It is worth writing down that the accent is not
-     * currently on the glass: `.te.is-next` is a stylesheet rule matching an
-     * element nothing in this file emits, left behind when the day block was
-     * retired. So the rule is the only "now" the wall draws today, and it is
-     * drawn to stand on its own rather than to lean on a partner that is not
-     * there.
+     * It was meant to complement an accent on the *next* event — the accent
+     * saying which event is next, the rule saying where the day has got to —
+     * and that is still the design and still unbuilt. There was a `.te.is-next`
+     * rule for it in the stylesheet, matching an element nothing here has
+     * emitted since the day block was retired; it is deleted rather than left
+     * to read as an implementation. So this rule is the only "now" the wall
+     * draws, and it is drawn to stand on its own rather than to lean on a
+     * partner that does not exist.
      */
     const nowRule = day.isToday && day.events.some((event) => !event.allDay);
     /*
