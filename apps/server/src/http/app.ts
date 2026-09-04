@@ -29,6 +29,7 @@ import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.js';
+import { acceptsGzip, gzipped } from './compress.js';
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
 import { readImage } from '../api/media.js';
@@ -1202,7 +1203,29 @@ export function createApp(deps: AppDeps): Hono {
     }
 
     c.header('etag', etag);
-    return c.json(manifest);
+    /*
+     * Serialised here rather than through `c.json`, so the same bytes can be
+     * gzipped.
+     *
+     * This is the one response on the wall's hot path: about twenty kilobytes,
+     * asked for by every screen in the house every sixty seconds, for months,
+     * and it goes to four under compression. It is deliberately **not**
+     * memoised on the ETag the way the static files are: `manifestEtag` drops
+     * `generatedAt` from its preimage, so two manifests can share an ETag and
+     * differ in their bytes — caching a body against that key would serve a
+     * document this process did not build, which is a worse bug than any
+     * number of milliseconds.
+     */
+    const body = JSON.stringify(manifest);
+    c.header('vary', 'accept-encoding');
+    const bytes = Buffer.from(body, 'utf8');
+    const packed = acceptsGzip(c.req.header('accept-encoding'))
+      ? gzipped(bytes, 'application/json')
+      : undefined;
+    c.header('content-type', 'application/json; charset=utf-8');
+    if (packed === undefined) return c.body(body);
+    c.header('content-encoding', 'gzip');
+    return c.body(bytesOf(packed));
   });
 
   /**
@@ -1644,14 +1667,44 @@ export function createApp(deps: AppDeps): Hono {
    */
   function serveWithEtag(
     c: Context,
-    file: { readonly body: Buffer | string; readonly contentType: string; readonly etag: string },
+    file: {
+      readonly body: Buffer | string;
+      readonly contentType: string;
+      readonly etag: string;
+      /** Precomputed by `static.ts`, so a file is gzipped once per build. */
+      readonly gzip?: Buffer | undefined;
+    },
     cacheControl: string,
   ): Response {
     c.header('cache-control', cacheControl);
+    /*
+     * `Vary` before the 304, and on the 304.
+     *
+     * Two representations of the same file now leave here — the bytes and the
+     * gzipped bytes — chosen from a request header, so anything caching this
+     * between us and the wall has to be told what it was chosen from or it can
+     * hand a compressed body to a client that did not ask for one. A 304
+     * carries it as well, because that is the answer a cache stores against.
+     *
+     * The ETag deliberately does **not** change with the encoding: it names
+     * the file, both representations decode to it, and a wall that cached the
+     * plain bytes and later asks with `Accept-Encoding: gzip` is right to be
+     * told nothing has changed.
+     */
+    c.header('vary', 'accept-encoding');
     if (c.req.header('if-none-match') === file.etag) return c.body(null, 304, { etag: file.etag });
     c.header('content-type', file.contentType);
     c.header('etag', file.etag);
-    return c.body(typeof file.body === 'string' ? file.body : bytesOf(file.body));
+
+    const bytes = typeof file.body === 'string' ? Buffer.from(file.body, 'utf8') : file.body;
+    const packed = acceptsGzip(c.req.header('accept-encoding'))
+      ? (file.gzip ?? gzipped(bytes, file.contentType))
+      : undefined;
+    if (packed === undefined) {
+      return c.body(typeof file.body === 'string' ? file.body : bytesOf(file.body));
+    }
+    c.header('content-encoding', 'gzip');
+    return c.body(bytesOf(packed));
   }
 
   /**

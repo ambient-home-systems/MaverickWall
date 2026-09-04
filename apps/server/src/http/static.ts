@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { gzipped } from './compress.js';
 
 /**
  * Serving the display bundle.
@@ -42,6 +43,17 @@ export interface StaticFile {
   readonly contentType: string;
   /** Content-derived, so a rebuild changes it and a byte-identical file does not. */
   readonly etag: string;
+  /**
+   * The same bytes, gzipped — or absent, for a file not worth compressing.
+   *
+   * Computed here rather than at the route, because this is the one place that
+   * already knows when a file has actually changed: the cache below is keyed on
+   * mtime and size, so a wall that reloads every day pays for this once per
+   * *build* rather than once per request. `display.css` and `render.js` are
+   * 269 KB between them and 83 KB gzipped, and every screen in the house asks
+   * for exactly the same bytes.
+   */
+  readonly gzip: Buffer | undefined;
 }
 
 /** Same construction as `manifestEtag`: a short, quoted content hash. */
@@ -116,7 +128,13 @@ export function createStaticFiles(directory: string): StaticFiles {
           return cached.file;
         }
         const body = readFileSync(path);
-        const file = { body, contentType: contentTypeFor(name), etag: contentEtag(body) };
+        const contentType = contentTypeFor(name);
+        const file = {
+          body,
+          contentType,
+          etag: contentEtag(body),
+          gzip: gzipped(body, contentType),
+        };
         cache.set(name, { mtimeMs: stat.mtimeMs, size: stat.size, file });
         return file;
       } catch {
