@@ -31,8 +31,26 @@ the rest of the app's motion already did.
 rotation screen was nested out of order, which could confuse anyone navigating
 by heading; it now reads in the right order.
 
-Nothing changed about how a wall itself looks or draws — this release is the
-settings screens only.
+**Event names on coloured labels can be read again.** Where the wall writes a
+name on top of a calendar's own colour — a half term running across the month,
+an event chip on a busy day, somebody's initials — it always wrote in white.
+On a pale calendar colour that is close to invisible, and the amber a second
+calendar is given automatically was the worst of them. The wall now looks at
+the colour and writes in black or white, whichever can actually be read from
+across the room. Nothing else about the wall moves: the same names, in the same
+places, at the same size.
+
+**A wall paints much faster the first time it sees your calendar.** Everything
+the screen downloads is now compressed on the way out — about 495 KB down to
+about 165 KB. A wall that has been hanging for a while already kept its own
+copy and was never waiting, so this is for the moments when it cannot: a new
+tablet, a screen you paired this afternoon, or one coming back after you
+reinstalled the add-on.
+
+**The little "+2" on a full day is a readable grey.** On a day with more events
+than fit, the count saying how many were left out was drawn in the same faded
+grey as a date from next month — a colour chosen to be barely there. It now
+matches the other quiet text on the wall.
 
 ## 0.56.0
 
