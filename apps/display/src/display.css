@@ -593,11 +593,22 @@ body {
   gap: 0 2rem;
   margin-top: 2.8rem;
   font-size: 1.7rem;
-  color: var(--muted);
+  /*
+   * `--ink-scaffold`, which is the only role here that clears 4.5:1 on all
+   * five themes — and this is the screen that has replaced the household's
+   * calendar with a tornado warning.
+   *
+   * The foot was `--muted` with the issuing office demoted again to `--faint`,
+   * which measured **2.48:1 on Almanac** at 32.6px: the theme scheduled for
+   * daylight, so the ratio a household reads it at in the middle of the day.
+   * The office's extra quietness is not worth a line nobody can read on the
+   * one screen where "who says so" is the difference between acting and
+   * ignoring it, so all three items read in one register now.
+   */
+  color: var(--ink-scaffold);
 }
 .alert-clock { font-variant-numeric: tabular-nums; }
 .alert-until { font-variant-numeric: tabular-nums; }
-.alert-office { color: var(--faint); }
 
 /* --- BLOCK 1 — NOW ---------------------------------------------------- */
 
@@ -1229,7 +1240,34 @@ body {
 }
 .hz-cell.has-shift { background: var(--sc-tint); border-top-color: var(--sc); }
 .hz-cell.is-today { outline: 0.25rem solid var(--ink); outline-offset: -0.25rem; }
-.hz-cell.dim { opacity: 0.42; }
+/*
+ * A past day softens rather than the whole cell fading.
+ *
+ * This was `opacity: 0.42` on the cell, and Swiss already carried the argument
+ * against it a hundred lines below — "opacity on the cell would take the event
+ * dots and their text down with it, and a past day still has to be readable —
+ * it is only *less* important than today, not gone". That reasoning was
+ * applied to one mode and never generalised, so three treatments went on
+ * fading.
+ *
+ * What it cost is not a matter of taste. `--ink-scaffold` is *derived* per
+ * theme by raising its mix ratio until it clears 4.5:1 against that theme's
+ * own ground — the one piece of contrast engineering in this bundle — and a
+ * literal opacity at the call site multiplies straight through it. Measured on
+ * the shipped wall, a past day's numeral read **2.13:1 on Panels, 1.65:1 on
+ * Household and 1.64:1 on Almanac**, the theme scheduled for daylight. An
+ * out-of-month day that is *also* past took `--faint` and the fade together
+ * and reached 1.44:1.
+ *
+ * So the demotion is stated in tokens, which are the thing the contrast work
+ * governs. `--faint` on the numeral is the documented sub-bar exemption doing
+ * its actual job: a date that has gone is present without being read. The row
+ * text drops to `--ink-quiet`, which is quiet and legible, and everything else
+ * in the cell — the dots, the density mark — keeps the strength it is drawn
+ * at, exactly as Swiss has kept them all along.
+ */
+.hz-cell.dim .hz-num { color: var(--faint); }
+.hz-cell.dim .hz-rowtext { color: var(--ink-quiet); }
 .hz-cell.outside .hz-num { color: var(--faint); }
 .hz-num {
   font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
@@ -1763,12 +1801,9 @@ body {
  * other boxes in it is the loudest possible object on the wall. */
 .horizon-swiss .hz-cell.is-today { outline: none; }
 .horizon-swiss .hz-cell.is-today .hz-num { color: var(--accent); }
-/* Past days soften rather than the whole cell fading: `opacity` on the cell
- * would take the event dots and their text down with it, and a past day still
- * has to be readable — it is only *less* important than today, not gone. */
-.horizon-swiss .hz-cell.dim { opacity: 1; }
-.horizon-swiss .hz-cell.dim .hz-num { color: var(--faint); }
-.horizon-swiss .hz-cell.dim .hz-rowtext { color: var(--muted); }
+/* Past days: nothing here any more. This mode's treatment became the base one
+ * (see `.hz-cell.dim` above) — it was right, and two copies of one treatment
+ * is the drift this file's own note further down warns about. */
 /* Stage 1.5 — a day belonging to the next month is present and not readable
  * across a room, which is the whole of its job. */
 .horizon-swiss .hz-cell.outside .hz-num { color: var(--faint); opacity: 0.55; }
@@ -1849,7 +1884,18 @@ body {
   overflow: hidden; border-left: 1px solid var(--rule);
 }
 .sk-col:first-child { border-left: 0; }
-.sk-col.dim { opacity: 0.55; }
+/*
+ * Demoted in tokens, not faded — see `.hz-cell.dim`.
+ *
+ * Only the head, deliberately. An event here is a *filled chip* on a
+ * household's own colour, and an opacity on that composites the ink and its
+ * ground against the page together, which lowers the very ratio `--pc-ink`
+ * exists to guarantee — the fault above, reintroduced one selector along at a
+ * gentler number. A transparent all-day chip has no such ground and takes the
+ * same `--ink-quiet` the flat grid's rows take.
+ */
+.sk-col.dim .sk-wd, .sk-col.dim .sk-num { color: var(--faint); }
+.sk-col.dim .sk-ev.allday { color: var(--ink-quiet); }
 .sk-head {
   display: flex; align-items: baseline; gap: 0.3rem;
   padding: 0.2rem 0.3rem; border-bottom: 1px solid var(--rule);
@@ -1908,7 +1954,9 @@ body {
 }
 .sk-cell.row-start { border-left: 0; }
 .sk-cell.has-shift { background: var(--sc-tint); }
-.sk-cell.dim { opacity: 0.5; }
+/* Demoted in tokens, not faded — see `.sk-col.dim` and `.hz-cell.dim`. */
+.sk-cell.dim .sk-mnum { color: var(--faint); }
+.sk-cell.dim .sk-bar.allday { color: var(--ink-quiet); }
 .sk-cell.outside .sk-mnum { color: var(--faint); }
 .sk-mnum { font-family: var(--disp); font-stretch: var(--disp-stretch, 100%); font-size: var(--t-wall-numeral, 1.3rem); font-weight: 700; line-height: 1.1; color: var(--ink-scaffold); }
 :root[data-theme="almanac"] .sk-mnum { font-weight: 400; }
@@ -1934,7 +1982,9 @@ body {
 .weekcols { min-height: 0; overflow: hidden; }
 .wc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.4rem; height: 100%; }
 .wc-col { display: flex; flex-direction: column; gap: 0.3rem; min-height: 0; overflow: hidden; }
-.wc-col.dim { opacity: 0.5; }
+/* Demoted in tokens, not faded — see `.sk-col.dim` and `.hz-cell.dim`. */
+.wc-col.dim .wc-wd, .wc-col.dim .wc-num { color: var(--faint); }
+.wc-col.dim .wc-ev.allday { color: var(--ink-quiet); }
 .wc-head {
   text-align: center; padding-bottom: 0.4rem; margin-bottom: 0.15rem;
   border-bottom: 1px solid var(--rule);
@@ -2063,6 +2113,29 @@ body {
   outline-offset: 0.3rem;
 }
 .pair-submit:disabled { opacity: 0.5; }
+
+/*
+ * The live region (`main.ts`), which is read aloud and never drawn.
+ *
+ * The standard visually-hidden recipe rather than `display: none` or
+ * `visibility: hidden`, both of which take it out of the accessibility tree
+ * and so out of the only job it has. `clip` is declared before `clip-path`
+ * because the wall targets ES2019 and runs on whatever tablet the household
+ * already owned; an engine that reads neither still gets a 1px box with
+ * `overflow: hidden` on it.
+ */
+.a11y-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
 .pair-status {
   min-height: 2.4rem;
   margin-top: 1.6rem;
