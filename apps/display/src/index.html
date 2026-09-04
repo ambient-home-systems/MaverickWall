@@ -2,8 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!-- No user scaling: this is screwed to a wall, and a stray touch that
-         zooms the calendar is a fault nobody in the household can undo. -->
+    <!--
+      No user scaling, which is a **deliberate WCAG 1.4.4 deviation** and is
+      written out here so it stays a decision rather than a habit.
+
+      The reason this line used to give was "a stray touch", and that is not
+      quite the risk: a pinch is two fingers and nothing strays into one. A
+      *double tap* does — a sleeve, a cloth, a child — and on a kiosk WebView
+      with no browser chrome there is then no way back. The wall has no pointer
+      (`cursor: none`), is often out of arm's reach, and reloads only on the
+      watchdog's terms, which do not reset a zoom. A wall left magnified is a
+      household's calendar gone until somebody fetches a ladder.
+
+      What makes keeping it defensible rather than lazy is that this product
+      has a *better* answer to the same need, and it is the whole type system:
+      every size on the wall derives from the panel's measured size and the
+      reader's distance, so somebody who cannot read it sets the distance and
+      the wall re-types itself. Pinch-zoom on a fixed, `overflow: hidden`
+      canvas gives a magnified crop with nothing to pan back with.
+
+      Two things this does *not* block, and both are the real escape hatches:
+      desktop browser zoom, and iOS Safari, which has ignored `user-scalable`
+      since iOS 10 precisely because of this rule.
+    -->
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
     <title>Maverick Wall</title>
     <!-- The mark, inline. Rule three again: a favicon fetched from anywhere is
