@@ -52,6 +52,28 @@ than fit, the count saying how many were left out was drawn in the same faded
 grey as a date from next month — a colour chosen to be barely there. It now
 matches the other quiet text on the wall.
 
+**Days that have already happened are readable instead of faded.** The month
+grid dimmed a past day by fading the whole square, which took the event names
+down with it — on the paper themes they were close to invisible. A past day is
+now simply quieter than today rather than half-erased, so you can still see
+what was on Tuesday. The same fix applies to the week and compact calendar
+views.
+
+**The weather-warning screen says who issued the warning, legibly.** On the
+daylight paper theme the issuing office at the foot of a full-screen alert was
+too faint to read — which is the one line that tells you whether to act on it.
+It, the clock and the "time left" beside it are all readable now.
+
+**The wall speaks its warnings.** A weather alert or a full-screen warning was
+drawn but never announced, so anyone using a screen reader on a paired tablet
+got nothing. It is announced once now — once, not every fifteen seconds when
+the wall redraws itself.
+
+**The wall no longer mixes two languages.** On a phone or tablet set to
+anything other than English, one heading on the month view followed the
+device's language while every date around it stayed English. Everything on the
+wall reads in one language now, matching what e-ink panels have always drawn.
+
 ## 0.56.0
 
 **The wall now sizes its text to your room, not to one screen.** Before this,
