@@ -74,6 +74,12 @@ anything other than English, one heading on the month view followed the
 device's language while every date around it stayed English. Everything on the
 wall reads in one language now, matching what e-ink panels have always drawn.
 
+**Add-on readings are separated again on the light themes.** A module's panel
+— an outside temperature, a bin day, anything from the Store — draws its
+readings as a list with a hairline between them, and on the three paper themes
+that hairline was invisible: it was drawn in a faint white that only shows on a
+dark background. It follows the theme now.
+
 ## 0.56.0
 
 **The wall now sizes its text to your room, not to one screen.** Before this,
