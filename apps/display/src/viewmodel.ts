@@ -303,7 +303,7 @@ function horizonMonthLabel(
   if (year === undefined || month === undefined || day === undefined) return undefined;
   // Noon UTC, so a timezone either side of the date line cannot roll the month.
   const at = new Date(Date.UTC(year, month - 1, day, 12));
-  const formatter = new Intl.DateTimeFormat(undefined, {
+  const formatter = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
     timeZone: timezone,
     month: 'long',
     year: 'numeric',
@@ -390,6 +390,62 @@ export interface DisplayModel {
   readonly allowDismiss: boolean;
   /** Whether this screen may tick a chore off (RFC 008 phase 3). */
   readonly allowChores: boolean;
+}
+
+/**
+ * The one sentence this wall speaks rather than draws.
+ *
+ * A takeover replaces the whole document and a banner sits above the calendar,
+ * and neither of them was announced at all: measured on a real wall with a
+ * real CAP alert seeded, `[aria-live]`, `[role=alert]` and `[role=status]`
+ * matched **nothing**, on the banner and on the tornado takeover alike. The
+ * wall is not primarily a screen-reader surface — it has no pointer and
+ * `cursor: none` — but the product ships an Android WebView shell, a paired
+ * tablet is an ordinary browser, and an interrupt is the one thing here that
+ * is safety content rather than a calendar.
+ *
+ * Interrupts only. A notice ("this feed last synced three hours ago") and the
+ * staleness banner are facts about the wall rather than events in the house,
+ * and announcing those assertively would teach somebody to ignore the channel
+ * that carries the tornado warning — the same argument `resolveConflicts`
+ * makes about drawing a takeover and a banner saying one thing twice.
+ *
+ * Pure, and here rather than in `main.ts`, for the reason `widget-options.ts`,
+ * `ink.ts`, `ladder.ts`, `placement.ts` and `omission.ts` are: there is no DOM
+ * in this package's tests, so a rule composed inside a render callback is a
+ * rule nothing can check.
+ */
+export function announcement(model: DisplayModel): string | undefined {
+  const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
+  const loudest = takeover ?? model.interrupts[0];
+  if (loudest === undefined) return undefined;
+  /*
+   * What the screen says, in the order the screen says it. A takeover leads
+   * with its severity and closes with the area because that is what
+   * `renderAlert` draws; a banner has neither on the glass and gets neither
+   * here, so what is spoken and what is drawn cannot drift apart.
+   */
+  const spoken = [
+    takeover === undefined ? undefined : loudest.severity,
+    loudest.title,
+    loudest.headline,
+    takeover === undefined ? undefined : loudest.area,
+  ]
+    .filter((part): part is string => part !== undefined && part.trim() !== '')
+    .map((part) => part.trim());
+  if (spoken.length === 0) return undefined;
+  /*
+   * A full stop between the parts, unless the part already ends a sentence.
+   *
+   * These are a stranger's words: a CAP instruction is written as prose and
+   * arrives with its own punctuation ("...on the lowest floor of a sturdy
+   * building."), while a title and a severity do not. Joining on a bare ". "
+   * produced "on the lowest floor.. Greater London", which a synthesiser reads
+   * as a stumble in the one sentence that says what to do.
+   */
+  return spoken.reduce((sentence, part) =>
+    /[.!?:]$/.test(sentence) ? `${sentence} ${part}` : `${sentence}. ${part}`,
+  );
 }
 
 export interface HouseReadingModel {
@@ -773,6 +829,38 @@ function bounded(value: number | undefined, low: number, high: number, fallback:
 }
 
 /**
+ * The one locale every drawn date and time on this wall is formatted in.
+ *
+ * There were two. Four call sites here said `'en-GB'` and two — the Swiss
+ * month's heading, and the chore board's weekday column in `render.ts` — said
+ * `undefined`, which is the *device's* locale. Measured on a real wall with a
+ * French browser: `<h1>septembre 2026</h1>` drawn directly over
+ * `Sun Mon Tue Wed Thu Fri Sat`. One widget, two languages, adjacent.
+ *
+ * Pinned rather than made to follow the device, and the deciding argument is
+ * the panel rather than the wall. `epaper/viewmodel.ts` and `epaper/render.ts`
+ * format on the *server*, where there is no device to ask, and they are
+ * `en-GB` throughout — so a wall that followed its browser would draw
+ * different weekday names from the panel following that wall. That is
+ * `shifts[0]`, `display_mode` and `cellEvents` for the sixth time: one
+ * question, two renderers, two answers.
+ *
+ * **This makes the wall consistently English rather than localised, and that
+ * is a limit worth stating rather than hiding.** A household locale is a real
+ * feature and a separate one: `household_settings.locale` already exists as a
+ * column, defaults to `'en-US'` — which is not what anything draws — and is
+ * read by nothing and written by no form. Wiring it up naively would change
+ * every date on every wall in the world at one image pull, and move every
+ * paired panel's pixels with it. It wants a manifest field, a control, and a
+ * renderer version bump, not a constant quietly swapped here.
+ *
+ * `localDate` below is deliberately **not** this: it asks `Intl` for numeric
+ * parts to build a `YYYY-MM-DD`, which is arithmetic wearing a formatter and
+ * must never be localised.
+ */
+export const DISPLAY_LOCALE = 'en-GB';
+
+/**
  * The civil date in a zone, from `Intl` rather than from arithmetic.
  *
  * The whole application anchors on this: a wall showing the wrong day is worse
@@ -794,7 +882,7 @@ export function localTime(at: number, timezone: string, hour12 = false): string 
   // what the daytime-theme comparison needs; the clock and event times pass the
   // household's choice (RFC 005). `hour12` (not `hourCycle`) because the display
   // targets ES2019, whose lib types do not know `hourCycle`.
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(DISPLAY_LOCALE, {
     timeZone: timezone,
     hour: '2-digit',
     minute: '2-digit',
@@ -806,7 +894,7 @@ function parts(date: CivilDate, timezone: string): { weekday: string; day: strin
   // Noon UTC, so the date cannot slide across a boundary in either direction
   // when it is reinterpreted in the household's zone.
   const at = Date.parse(`${date}T12:00:00Z`);
-  const formatted = new Intl.DateTimeFormat('en-GB', {
+  const formatted = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
     timeZone: timezone,
     weekday: 'short',
     day: 'numeric',
@@ -828,7 +916,7 @@ const LONG_WEEKDAYS = new Map<string, Intl.DateTimeFormat>();
 function longWeekday(date: CivilDate, timezone: string): string {
   let formatter = LONG_WEEKDAYS.get(timezone);
   if (formatter === undefined) {
-    formatter = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, weekday: 'long' });
+    formatter = new Intl.DateTimeFormat(DISPLAY_LOCALE, { timeZone: timezone, weekday: 'long' });
     LONG_WEEKDAYS.set(timezone, formatter);
   }
   // Noon UTC, so the date cannot slide across a boundary in either direction

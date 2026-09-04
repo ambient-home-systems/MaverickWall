@@ -1147,6 +1147,14 @@ export async function measureWall(page: Page): Promise<WallMeasurement> {
       // Not drawn at all is not drawn too small.
       if (style.display === 'none' || style.visibility === 'hidden') continue;
       if (parseFloat(style.opacity) < 0.05) continue;
+      /*
+       * A live region is spoken, not drawn, so it is not type this file has
+       * an opinion about. It is deliberately *not* `display: none` — that
+       * would take it out of the accessibility tree and out of its only job —
+       * so it survives the checks above as a 1px box and would otherwise be
+       * counted as a run under the floor the moment an interrupt appeared.
+       */
+      if (element.closest('[aria-live], [role="alert"], [role="status"]') !== null) continue;
       const rect = element.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) continue;
       /*

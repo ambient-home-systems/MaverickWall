@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  announcement,
   buildModel,
+  DISPLAY_LOCALE,
   describeAge,
   localDate,
   NEXT_DAY_COUNT,
@@ -919,5 +921,128 @@ describe('how far through a run today is', () => {
     // Pinned as the floor it is, not as a correct answer.
     const built = model([shiftOn('2026-07-14'), shiftOn('2026-07-15'), shiftOn('2026-07-16')]);
     expect(built.todayShifts[0]?.run).toBe('Day 2 of 3 · 1 more');
+  });
+});
+
+/**
+ * What the wall says out loud.
+ *
+ * A takeover replaces the whole document and a banner sits above the calendar,
+ * and neither was announced: measured on a real wall with a real CAP alert,
+ * `[aria-live]`, `[role=alert]` and `[role=status]` matched nothing at all.
+ * These are the rules about *what* is said; `browser-wall-a11y.test.ts` on the
+ * server side is where the region is measured on the glass, including the part
+ * that matters most — that it says it once rather than every fifteen seconds.
+ */
+describe('what the wall announces', () => {
+  const alert = (over: Partial<{ title: string; headline: string; action: string; severity: string }> = {}) => ({
+    ruleId: 'r',
+    key: 'k',
+    title: 'Tornado Warning',
+    headline: 'Move to an interior room on the lowest floor.',
+    action: 'banner',
+    dismissible: true,
+    ...over,
+  });
+
+  it('says nothing when nothing is interrupting', () => {
+    expect(announcement(model([day('2026-07-15')]))).toBeUndefined();
+  });
+
+  it('leads a takeover with its severity and closes with the area, as the screen does', () => {
+    const built = model([day('2026-07-15')], {
+      interrupts: [{ ...alert({ action: 'takeover' }), severity: 'Extreme', area: 'Greater London' }] as never,
+    });
+    expect(announcement(built)).toBe(
+      'Extreme. Tornado Warning. Move to an interior room on the lowest floor. Greater London',
+    );
+  });
+
+  it("does not stumble over a stranger's own punctuation", () => {
+    /*
+     * A CAP instruction is prose and arrives with its own full stop; a title
+     * and a severity do not. Joining on a bare ". " produced "on the lowest
+     * floor.. Greater London", which is a stumble in the one line that says
+     * what to do. Found by reading the string, not by reasoning about it.
+     */
+    const built = model([day('2026-07-15')], {
+      interrupts: [
+        { ...alert({ action: 'takeover', headline: 'Seek shelter now!' }), severity: 'Extreme', area: 'Kent' },
+      ] as never,
+    });
+    expect(announcement(built)).toBe('Extreme. Tornado Warning. Seek shelter now! Kent');
+    expect(announcement(built)).not.toMatch(/\.\./);
+  });
+
+  it('gives a banner neither, because a banner draws neither', () => {
+    /*
+     * What is spoken and what is drawn must not drift apart: `renderAlert`
+     * puts the severity above the title and the area below it, and
+     * `renderBanners` draws "title — headline" and nothing else.
+     */
+    const built = model([day('2026-07-15')], {
+      interrupts: [{ ...alert(), severity: 'Moderate', area: 'Greater London' }] as never,
+    });
+    expect(announcement(built)).toBe('Tornado Warning. Move to an interior room on the lowest floor.');
+  });
+
+  it('reads the takeover even when a banner sorts ahead of it', () => {
+    // The loudest thing showing, not the first in the list: a takeover has
+    // covered the calendar, so it is what somebody is being interrupted about.
+    const built = model([day('2026-07-15')], {
+      interrupts: [
+        { ...alert({ title: 'Flood Advisory', headline: 'Avoid low ground.' }), severity: 'Minor' },
+        { ...alert({ action: 'takeover', title: 'Tornado Warning' }), severity: 'Extreme' },
+      ] as never,
+    });
+    expect(announcement(built)).toContain('Tornado Warning');
+    expect(announcement(built)).not.toContain('Flood Advisory');
+  });
+
+  it('never announces a notice or a stale calendar', () => {
+    /*
+     * Deliberate, and the reason is the same one `resolveConflicts` gives for
+     * collapsing a takeover and its own banner: a channel that cuts in to say
+     * a feed synced three hours ago is a channel somebody learns to ignore,
+     * and it is the channel the tornado warning arrives on.
+     */
+    const built = model([day('2026-07-15')], {
+      notices: [{ code: 'sync-failed', message: 'The School calendar last synced 3 hours ago.' }],
+    });
+    expect(announcement(built)).toBeUndefined();
+  });
+
+  it('says nothing rather than an empty sentence when an interrupt has no words', () => {
+    const built = model([day('2026-07-15')], {
+      interrupts: [{ ruleId: 'r', key: 'k', title: '  ', action: 'banner', dismissible: true }] as never,
+    });
+    expect(announcement(built)).toBeUndefined();
+  });
+});
+
+/**
+ * One locale, and the reason it is pinned rather than followed.
+ *
+ * There were two: four formatters here said `en-GB` and two — the Swiss
+ * month's heading and the chore board's weekday column — said `undefined`,
+ * which is the device's. Measured on a real wall under a French browser, that
+ * drew `septembre 2026` directly over `Sun Mon Tue Wed Thu Fri Sat`.
+ */
+describe('the display locale', () => {
+  it('is the one the e-paper renderer already formats in', () => {
+    // `epaper/viewmodel.ts` and `epaper/render.ts` format server-side, where
+    // there is no device to ask, and are en-GB throughout. A wall that followed
+    // its browser would draw different weekday names from the panel following
+    // that wall — one question, two renderers, two answers.
+    expect(DISPLAY_LOCALE).toBe('en-GB');
+  });
+
+  it('formats every drawn date in it, whatever the runner is set to', () => {
+    const built = model([day('2026-07-15')]);
+    // 15 July 2026 is a Wednesday. en-GB abbreviates it "Wed" and gives the
+    // day before the month; a device locale of en-US would answer "Jul 15".
+    expect(built.today.weekday).toBe('Wed');
+    expect(built.today.month).toBe('Jul');
+    expect(built.today.dayNumber).toBe('15');
   });
 });

@@ -7,7 +7,7 @@ import type {
   InterruptModel,
   TodayShiftModel,
 } from './viewmodel.js';
-import { localDate, localTime } from './viewmodel.js';
+import { DISPLAY_LOCALE, localDate, localTime } from './viewmodel.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
@@ -1357,7 +1357,9 @@ function weekdayOfDate(date: string): string {
   const at = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(at.getTime())) return '';
   try {
-    return new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: 'UTC' }).format(at);
+    // The wall's one locale, never the device's: this column sits on the same
+    // canvas as the month grid's weekday heads, which the viewmodel formats.
+    return new Intl.DateTimeFormat(DISPLAY_LOCALE, { weekday: 'short', timeZone: 'UTC' }).format(at);
   } catch {
     return '';
   }
