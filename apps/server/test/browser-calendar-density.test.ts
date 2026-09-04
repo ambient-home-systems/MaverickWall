@@ -68,24 +68,84 @@ const PORTRAIT = { width: 1080, height: 1920 } as const;
  * family calendars with a couple of dozen events between them is the case the
  * table above was measured on.
  */
+/**
+ * A household's calendars, populated **backwards as well as forwards**, and
+ * thickly enough that some day of the current week always overflows.
+ *
+ * Every event here used to be `day >= 0`, and the week grid draws the current
+ * Monday-to-Sunday week — so how much of that week carried anything depended on
+ * what day it happened to be. On a Friday, `day: 0..2` fill Friday, Saturday and
+ * Sunday and the compact week genuinely shows more than the comfortable one. On
+ * a **Saturday** only `day: 0` and `day: 1` are still inside the week: both
+ * densities draw all eight words there are, `compact > comfortable` is 8 > 8,
+ * and the file goes red with nothing changed.
+ *
+ * Measured rather than reasoned: the identical tree passed on CI at 19:22
+ * London on the Friday and failed at 00:44 London on the Saturday, and passed
+ * and failed the same way on one machine either side of that midnight. It is
+ * the fourth time this repository has recorded a test reading the calendar as
+ * though it were reading the code — `HARNESS_HOUR`, the eight-day half term in
+ * `HOUSEHOLD_CALENDARS`, and `wall-density`'s span bars are the others.
+ *
+ * Two things are needed and the first alone was not enough. The days run from
+ * `-6`, so the window `[today - 6, today + 6]` covers a whole Monday-to-Sunday
+ * week **whatever weekday today is** — the half term's eighth-day argument, one
+ * axis along. And every one of those days carries **two or three** events,
+ * because a density that buys nothing is what the assertion measures: compact
+ * only shows more than comfortable where comfortable has to give something up,
+ * and a week with one event a day is drawn whole at both. Spreading the days
+ * without thickening them moved the reading from 8 > 8 to 9 > 9.
+ *
+ * The back-dated entries are an ordinary household's week just gone, not
+ * padding: the same swimming club, bin day and standup that recur ahead of it.
+ */
 const CALENDARS: readonly NamedFeed[] = [
   {
     name: 'Family',
     events: [
+      { title: 'Recycling collected', day: -6 },
+      { title: 'Swim club', day: -6, from: '1700', to: '1800' },
+      { title: 'Nan visiting', day: -6 },
+      { title: 'Haircut', day: -5, from: '1000', to: '1045' },
+      { title: 'Shopping delivery', day: -5, from: '1800', to: '1900' },
+      { title: 'Boiler service', day: -4, from: '0800', to: '1000' },
+      { title: 'Cinema', day: -4, from: '1930', to: '2200' },
+      { title: 'Football practice', day: -3, from: '1730', to: '1900' },
+      { title: 'Dentist check-up', day: -3, from: '0900', to: '0930' },
+      { title: 'Library books due', day: -2 },
+      { title: 'Yoga', day: -2, from: '1900', to: '2000' },
+      { title: 'Bin day', day: -1 },
+      { title: 'Guitar lesson', day: -1, from: '1600', to: '1645' },
       { title: 'Bin day', day: 0 },
+      { title: 'Swim club', day: 0, from: '1700', to: '1800' },
       { title: 'Sports day', day: 1, from: '0930', to: '1500' },
+      { title: 'Yoga', day: 1, from: '1900', to: '2000' },
       { title: 'Dentist', day: 2, from: '0900', to: '1000' },
+      { title: 'Guitar lesson', day: 2, from: '1600', to: '1645' },
       { title: 'Vet', day: 3, from: '1100', to: '1130' },
+      { title: 'Nan visiting', day: 3 },
+      { title: 'Shopping delivery', day: 4, from: '1800', to: '1900' },
+      { title: 'Cinema', day: 5, from: '1930', to: '2200' },
       { title: 'Book club', day: 6, from: '1930', to: '2130' },
+      { title: 'Football practice', day: 6, from: '1730', to: '1900' },
       { title: 'Piano', day: 9, from: '1600', to: '1700' },
       { title: 'Car service', day: 11, from: '0800', to: '1200' },
       { title: 'Swimming lesson', day: 15, from: '0730', to: '0830' },
-      { title: 'Grandma’s birthday', day: 20 },
+      { title: 'Grandma\'s birthday', day: 20 },
     ],
   },
   {
     name: 'School',
     events: [
+      { title: 'Reading morning', day: -6, from: '0845', to: '0930' },
+      { title: 'Swimming gala', day: -5, from: '0900', to: '1200' },
+      { title: 'Class assembly', day: -4, from: '0915', to: '1000' },
+      { title: 'School photos', day: -3, from: '0900', to: '1100' },
+      { title: 'Parents evening', day: -2, from: '1800', to: '2000' },
+      { title: 'Cake sale', day: -1, from: '1500', to: '1600' },
+      { title: 'Reading morning', day: 0, from: '0845', to: '0930' },
+      { title: 'Class assembly', day: 1, from: '0915', to: '1000' },
+      { title: 'School photos', day: 3, from: '0900', to: '1100' },
       { title: 'INSET day - school closed', day: 4 },
       { title: 'Cake sale', day: 6, from: '1500', to: '1600' },
       { title: 'School trip to the aquarium', day: 8, from: '0830', to: '1600' },
@@ -96,10 +156,17 @@ const CALENDARS: readonly NamedFeed[] = [
   {
     name: 'Work',
     events: [
+      { title: 'Sprint planning', day: -6, from: '0930', to: '1100' },
+      { title: 'Design review', day: -5, from: '1400', to: '1500' },
+      { title: 'Standup', day: -4, from: '0930', to: '0945' },
+      { title: 'One to one', day: -3, from: '0900', to: '0930' },
+      { title: 'Client call', day: -2, from: '1000', to: '1100' },
+      { title: 'Team retro', day: -1, from: '1400', to: '1500' },
+      { title: 'Standup', day: 0, from: '0930', to: '0945' },
+      { title: 'Design review', day: 1, from: '1400', to: '1500' },
       { title: 'Team retro', day: 2, from: '1400', to: '1500' },
       { title: 'Client call', day: 5, from: '1000', to: '1100' },
       { title: 'One to one', day: 9, from: '0900', to: '0930' },
-      { title: 'Planning', day: 16, from: '1300', to: '1400' },
     ],
   },
 ];
