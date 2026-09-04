@@ -723,7 +723,7 @@ body {
 .ev-dot { display: inline-block; width: 1.15rem; height: 1.15rem; border-radius: 50%; background: var(--ev); }
 .ev-initials {
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 50%; background: var(--ev); color: #fff;
+  border-radius: 50%; background: var(--ev); color: var(--ev-ink, #fff);
   font-weight: 700; line-height: 1;
 }
 .ev-face { display: inline-block; border-radius: 50%; object-fit: cover; }
@@ -1264,7 +1264,7 @@ body {
      flat treatment became the default reads their wall at the same size as
      one who did not. */
   font-size: var(--t-wall-event, 1.15rem); line-height: 1.2; padding: 0.12rem 0.42rem;
-  border-radius: 0.28rem; background: var(--pc); color: #fff;
+  border-radius: 0.28rem; background: var(--pc); color: var(--pc-ink, #fff);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* An all-day pill reads as a tint with its own colour, like the agenda's. */
@@ -1272,7 +1272,10 @@ body {
 /* Scaffold, and below the floor by exemption when unmeasured: this rides
  * inside a month cell that is already full, which is why it says "+2" instead
  * of showing them. */
-.hz-pill-more { font-size: var(--t-wall-scaffold, 1.05rem); color: var(--muted); padding-left: 0.42rem; }
+/* The same counter, one treatment along, and so the same role — `--ink-quiet`
+   is `--muted`'s value, and naming the role is what stops the next edit to a
+   theme moving one of these two and not the other. */
+.hz-pill-more { font-size: var(--t-wall-scaffold, 1.05rem); color: var(--ink-quiet); padding-left: 0.42rem; }
 
 /* ------------------------------------------- FLAT-TEXT MONTH CELLS ------- */
 /*
@@ -1406,7 +1409,24 @@ body {
   font-size: var(--t-micro);
   font-size: var(--t-wall-scaffold, max(var(--t-micro), var(--t-floor)));
   line-height: 1.1;
-  color: var(--faint);
+  /*
+   * `--ink-quiet`, which is the role this has always been.
+   *
+   * The four emphasis roles name `--ink-quiet` for exactly two things — an
+   * overflow count and a past event's time — and this is the first of them.
+   * It was `--faint` instead, which is the token whose *documented job* is to
+   * be present without being readable: it is what an out-of-month date is
+   * drawn in, and it is the one value in the bundle deliberately allowed below
+   * the contrast bar. Spending it on a counter measured 3.75:1 on Panels,
+   * 2.04:1 on Household and 1.65:1 on Swiss, and nothing could see it —
+   * `theme.test.ts` proves tokens against grounds and never asks which
+   * selector spends which token.
+   *
+   * A count is quiet. It is not scaffolding, and it is not decoration: it is
+   * the wall saying how much it could not fit, which is the only honest thing
+   * it has left once a cell is full.
+   */
+  color: var(--ink-quiet);
   font-variant-numeric: tabular-nums;
 }
 /* Sharing the last row: hard right, on that row's last line, and never
@@ -1605,9 +1625,16 @@ body {
 .hz-span.is-cont { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .horizon-swiss .hz-span { border-radius: 0; }
 /*
- * `#fff` on the calendar's own colour, the same exemption `.hz-pill` takes and
- * for the same reason: the ground is a per-calendar hue chosen by the
- * household, not a theme surface, so there is no token that is legible on it.
+ * The ink is derived from the calendar's own colour, not written down here.
+ *
+ * The ground is a per-calendar hue the household chose, not a theme surface,
+ * so no token is legible on it — which is why this used to be `#fff` and why
+ * that was wrong: measured on the palette a household is actually given, white
+ * reads 3.99:1 on the first colour a calendar gets and **2.16:1 on the
+ * second**, on this element, at 18.7px, on the default month treatment.
+ * `--pc-ink` is black or white by measuring the ground (`inkOn` in `theme.ts`),
+ * and the fallback stays `#fff` so a bundle drawing a manifest from a renderer
+ * that never set it keeps exactly today's pixels.
  */
 .hz-spantext {
   font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
@@ -1615,7 +1642,7 @@ body {
   font-size: var(--t-wall-event-strong, max(var(--t-micro), var(--t-floor)));
   line-height: 1.1;
   font-weight: 600;
-  color: #fff;
+  color: var(--pc-ink, #fff);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -1843,7 +1870,7 @@ body {
   display: flex; flex-direction: column; gap: 1px; padding: 1px;
 }
 .sk-ev {
-  background: var(--pc); color: #fff; border-radius: 0.15rem;
+  background: var(--pc); color: var(--pc-ink, #fff); border-radius: 0.15rem;
   padding: 0.1rem 0.3rem; min-width: 0; overflow: hidden;
 }
 /* An all-day event is the day's banner: a tinted strip with its colour on the
@@ -1895,7 +1922,7 @@ body {
 .sk-bars { display: flex; flex-direction: column; gap: 1px; margin-top: 0.1rem; min-width: 0; }
 .sk-bar {
   font-size: var(--t-wall-event, 1rem); line-height: 1.2; padding: 0 0.25rem;
-  border-radius: 0.12rem; background: var(--pc); color: #fff;
+  border-radius: 0.12rem; background: var(--pc); color: var(--pc-ink, #fff);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sk-bar.allday {
@@ -1923,7 +1950,7 @@ body {
 :root[data-theme="almanac"] .wc-num { font-weight: 400; }
 .wc-ev {
   font-size: var(--t-wall-event, 1.15rem); line-height: 1.2; padding: 0.16rem 0.42rem;
-  border-radius: 0.28rem; background: var(--pc); color: #fff;
+  border-radius: 0.28rem; background: var(--pc); color: var(--pc-ink, #fff);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .wc-ev.allday { background: transparent; color: var(--ink); border-left: 0.28rem solid var(--pc); border-radius: 0 0.28rem 0.28rem 0; }

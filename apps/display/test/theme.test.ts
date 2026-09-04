@@ -3,6 +3,7 @@ import {
   applyTheme,
   customTokens,
   daytimeActive,
+  inkOn,
   shiftTint,
   THEME_NAMES,
   themeAt,
@@ -372,5 +373,77 @@ describe('the Swiss theme', () => {
 
   it('squares its corners, because a Swiss panel is not a card', () => {
     expect(tokensOf('swiss')['--radius']).toBe('0');
+  });
+});
+
+/**
+ * The ink drawn *on* a colour the household chose.
+ *
+ * Six selectors in `display.css` set text on `--pc` (a calendar's hue) or
+ * `--ev` (a person's), and every one of them used to write `#fff`. Measured on
+ * the palette `api/palette.ts` actually hands out, that fails on three of five
+ * — and the one it fails worst on is the colour a household's **second**
+ * calendar is given without anybody choosing anything.
+ *
+ * The property worth asserting is not "these five hues are right". It is that
+ * there is no colour at all this can answer badly: white and black cross at
+ * 4.58:1, so the better of the two always clears the bar. That is checked over
+ * the whole cube below rather than over a list, because a list is exactly what
+ * shipped `#fff` in the first place.
+ */
+describe('inkOn', () => {
+  /** The palette a household is given, in the order it is given (`palette.ts`). */
+  const PALETTE = ['#4C7FD1', '#E8A33D', '#35916A', '#B3372B', '#6B7684'] as const;
+
+  it('clears 4.5:1 on every colour a household is assigned', () => {
+    const measured = PALETTE.map((hue) => ({
+      hue,
+      ink: inkOn(hue),
+      ratio: Number(contrast(inkOn(hue), hue).toFixed(2)),
+    }));
+    const failing = measured.filter((row) => row.ratio < 4.5);
+    expect(
+      failing,
+      `unreadable: ${failing.map((r) => `${r.ink} on ${r.hue} = ${r.ratio}`).join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('is the fix rather than a repaint: white failed on three of those five', () => {
+    // The non-vacuity guard. If white were fine everywhere this whole function
+    // would be ceremony, and the assertion above would pass with it deleted.
+    const whiteFails = PALETTE.filter((hue) => contrast('#ffffff', hue) < 4.5);
+    expect(whiteFails).toEqual(['#4C7FD1', '#E8A33D', '#35916A']);
+    // And the worst of them is the second colour, not some exotic hue.
+    expect(Number(contrast('#ffffff', '#E8A33D').toFixed(2))).toBe(2.16);
+    expect(Number(contrast(inkOn('#E8A33D'), '#E8A33D').toFixed(2))).toBe(9.74);
+  });
+
+  it('clears 4.5:1 on every colour there is, not just the five', () => {
+    // A household can type any hex into the colour input, so the claim has to
+    // hold over the space rather than over the palette. Stepped at 17 (a
+    // divisor of 255, so 0 and 255 are both hit) — 4,096 colours, which is
+    // enough to catch a threshold written the wrong way round and fast enough
+    // to run on every commit.
+    let worst = { hex: '', ratio: Infinity };
+    for (let r = 0; r <= 255; r += 17) {
+      for (let g = 0; g <= 255; g += 17) {
+        for (let b = 0; b <= 255; b += 17) {
+          const hex = `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+          const ratio = contrast(inkOn(hex), hex);
+          if (ratio < worst.ratio) worst = { hex, ratio };
+        }
+      }
+    }
+    // 4.58:1 is where the two curves cross; nothing can be worse than that.
+    expect(worst.ratio, `worst ground was ${worst.hex}`).toBeGreaterThanOrEqual(4.5);
+    expect(Number(worst.ratio.toFixed(2))).toBe(4.58);
+  });
+
+  it('answers white for a colour it cannot read, which is what it drew before', () => {
+    // Rule nine at the smallest scale: a stored value this cannot parse is a
+    // wall that still draws, exactly as it drew yesterday.
+    expect(inkOn('rebeccapurple')).toBe('#ffffff');
+    expect(inkOn('')).toBe('#ffffff');
+    expect(inkOn('#fff')).toBe('#ffffff');
   });
 });

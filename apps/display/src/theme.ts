@@ -404,6 +404,38 @@ export function customTokens(base: Readonly<Record<string, string>>): Record<str
 }
 
 /**
+ * The ink to draw *on* a colour the household chose.
+ *
+ * A calendar's hue is the one ground on this wall that is not a theme surface:
+ * it is whatever somebody picked in a colour input, or whichever entry
+ * `api/palette.ts` handed them. So there is no token that is legible on it,
+ * and six selectors in `display.css` used to write `#fff` and hope.
+ *
+ * Measured on the palette a household is actually *given*, white fails the
+ * 4.5:1 bar on three of its five entries — 3.99:1 on `#4C7FD1`, the colour a
+ * first calendar is assigned, and **2.16:1 on `#E8A33D`**, the colour a second
+ * one is assigned with nobody having chosen anything. That second number is
+ * the month grid's multi-day bar, at 18.7px, on the default treatment: the one
+ * element a wall draws to say a half term is a half term.
+ *
+ * Black or white, whichever is further from the ground. The useful part is
+ * that the answer is always *sufficient* rather than least-worst: contrast
+ * against white is `1.05 / (L + 0.05)` and against black is `(L + 0.05) / 0.05`,
+ * and those cross at L = 0.1791, where both read **4.58:1**. So the better of
+ * the two clears 4.5:1 for every colour in the space — there is no hue a
+ * household can choose that this answers badly, and no threshold to tune.
+ *
+ * An unparseable value keeps today's `#ffffff` rather than refusing: a stored
+ * colour this cannot read is a wall that should still draw (rule nine).
+ */
+export function inkOn(background: string): string {
+  if (parseHex(background) === undefined) return '#ffffff';
+  return contrastRatio('#ffffff', background) >= contrastRatio('#000000', background)
+    ? '#ffffff'
+    : '#000000';
+}
+
+/**
  * The cell tint (the wash behind a shift) for a single explicit shift colour
  * against a background — the same maths `customTokens` applies to the theme's
  * shift tokens, so a per-type colour tints exactly as a theme colour does. A
