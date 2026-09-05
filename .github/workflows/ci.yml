@@ -11,6 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history and tags, for `changelog-shape.test.ts`. It compares
+          # every shipped release section against the same section at the tag
+          # that shipped it, which needs the tagged commits present — the
+          # default shallow checkout has neither the tags nor the objects.
+          #
+          # The test fails loudly rather than skipping when it cannot read
+          # them, so dropping this line turns the suite red with a message
+          # naming this setting, not green with a check that quietly stopped
+          # looking. That is the point of paying for the fetch.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
