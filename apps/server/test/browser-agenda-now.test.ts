@@ -87,10 +87,10 @@ interface AgendaShape {
    *
    * `at` is the event's start time in minutes past midnight, or -1 for an
    * all-day one. Read off the drawn `.dr-ev-time` rather than off a class,
-   * because **the agenda has no past/next classes at all** — `.te.is-next` is
-   * a rule in the stylesheet matching an element no renderer has emitted since
-   * the day block was retired, and a first draft of this file read those
-   * classes and asserted nothing whatever.
+   * because **the agenda has no past/next classes at all**. It never has: the
+   * stylesheet carried a `.te.is-next` rule for markup no renderer had emitted
+   * since the day block was retired, and that block is now deleted. A first
+   * draft of this file read those classes and asserted nothing whatever.
    *
    * `rule` says whether this event carries the current-time hairline, and
    * `atEnd` whether it carries it underneath. The rule hangs off an event

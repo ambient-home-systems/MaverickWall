@@ -18,8 +18,17 @@ colors:
   shift-break-green: "#35916A"
   shift-straight-slate: "#6B7684"
 typography:
+  # `fontFamily` below is the *body* stack, which every role shares. The
+  # **display** face is a per-theme swap on `--disp`, and four are bundled and
+  # `@font-face`d in `display.css`: Roboto Flex condensed (Panels, Blueprint),
+  # Space Grotesk (Household), Fraunces (Almanac), and Oswald — which is the
+  # brand wordmark's face, outlined to paths at build time, and never a body
+  # face. Naming only the first here is what made the mechanical detector
+  # report three "fonts outside DESIGN.md" that the wall has always shipped.
   display:
     fontFamily: "Roboto Flex, Roboto Condensed, Roboto, system-ui, sans-serif"
+    # Per theme: `var(--disp)` — Roboto Flex condensed · Space Grotesk (Household)
+    # · Fraunces (Almanac). See "Typography" below.
     fontSize: "var(--t-wall-clock, calc(var(--t-event) * 1.8))"
     fontWeight: 700
     lineHeight: 0.82
@@ -49,10 +58,21 @@ typography:
     lineHeight: 1.15
     letterSpacing: "0.22em"
 rounded:
-  none: "0"
-  pill: "0.28rem"
-  card: "0.4rem"
-  full: "50%"
+  # Corners are a **theme property** plus a small set of chip radii, not one
+  # global ladder — `The Cell-Is-Not-A-Card Rule` below is why. Listing only
+  # three values described a scale the wall does not have: seven of its radii
+  # were off it.
+  none: "0"                 # Blueprint, Almanac, Swiss — and every month cell
+  chip-dense: "0.12rem"     # .sk-bar, the compact month's event bar
+  chip: "0.15rem"           # .sk-ev, the compact week's event
+  mark: "0.2rem"            # today's knocked-out numeral on the compact month
+  swatch: "0.25rem"         # the rota legend's colour block
+  pill: "0.28rem"           # .hz-pill and .wc-ev, an event on a month/week cell
+  box: "0.3rem"             # a chore's and a to-do's tick box
+  theme: "var(--radius)"    # 0 · 0.35rem (Household) · 0.4rem (Panels)
+  card: "0.4rem"            # Panels' own --radius, and the fallback for it
+  widget: "0.6rem"          # the household's own "rounded corners" control
+  full: "50%"               # identity dots, initials chips, face crops
 spacing:
   # In em of the wall's event role (--sp), so spacing follows the reader's angle.
   s0: "0"
@@ -156,13 +176,18 @@ Four roles let the stylesheet say which ink a piece of text gets without a colou
 at the call site:
 - **`--ink-event`** = full ink. Event names only.
 - **`--ink-scaffold`** = a demoted ink for date numerals, weekday heads, week numbers, rota chips. Present, legible, never competing. Panels `#9B9B9A`; Household `#706C65`; Blueprint `#6C6D6E`; Almanac `#76716B`; Swiss `#A2A2A2`.
-- **`--ink-quiet`** = overflow counts and past-event times (`= --muted`).
+- **`--ink-quiet`** = an overflow count, and the event names on a day that has already happened (`= --muted`). It read *nothing at all* for a while: both of its documented uses were unwired, so a counter was drawn in `--faint` — the sub-bar token — at 2.04:1 on Household. A past event's *time* still has no treatment; the stylesheet's only rule for one matched markup no renderer had emitted since the day block was retired, and is deleted rather than left to read as an implementation.
 - **`--rule-week`** = the one hairline per week row (`= --rule`).
 
 ### Named Rules
 **The One Accent Rule.** The accent marks the next event and the current-time
 rule and nothing else. Its scarcity is what makes "next" and "now" read as one
-idea across a room.
+idea across a room — **and only half of it is built.** The current-time hairline
+draws; the accent on the *next* event does not, and has not since the day block
+was retired. There was a `.te.is-next` rule for it matching an element nothing
+emits, which is worse than an absence because it reads as an implementation; it
+is deleted. The pairing is still the design and the missing half is an open
+decision, not a selector quietly waiting.
 
 **The Scaffold-Contrast Rule.** `--ink-scaffold` is not a fixed mix ratio. It
 starts at `mix(ink, bg, 0.62)` and the ratio is raised, per theme, until the
@@ -170,10 +195,32 @@ result clears **4.5:1** against that theme's own background — because a fixed
 wash reads as low as 1.90:1 on a cream ground that the same wash reads fine on a
 dark one. A custom theme's scaffold is derived the same way at token-build time.
 
-**The One Sub-Bar Exception.** Exactly one token is allowed below 4.5:1: the
-out-of-month grey (`--faint` on Swiss, `#3F3F46`, ~1.91:1). A day belonging to
-the next month must be *present without being readable* across a room — that is
-its job.
+**The One Sub-Bar Exception.** Exactly one *token* is allowed below 4.5:1:
+`--faint` (on Swiss, `#3F3F46`, ~1.91:1). It has two jobs and both are the same
+job: a day belonging to the next month, and the date numeral of a day that has
+already gone, are **present without being readable** across a room.
+
+The exception is about a token, never about a *composite*. An `opacity` at the
+call site multiplies straight through a tuned ink and is not covered by it —
+`.hz-cell.dim` was `opacity: 0.42` and took the derived scaffold to 1.65:1 on
+Household, which no rule here ever permitted. Depth is space, a rule and a
+ground step; **demotion is a token.**
+
+What *is* still short is measured rather than exempted: on the `--s-*-tint` and
+`--s-*-badge` grounds — a rota-washed cell and a shift badge — every theme falls
+roughly 0.6 of a point below where it sits on the bare background, because a
+tint moves the ground toward the ink by construction. `theme.test.ts` records
+the worst ground each token reaches, so the gap is a number somebody has to move
+rather than a rule somebody can forget.
+
+**The Derived-Ink Rule.** A calendar's or a person's colour is the one ground on
+this wall that is not a theme surface — a household chose it — so no token is
+legible on it and none is used. `--pc-ink` / `--ev-ink` are black or white,
+picked by measuring the ground (`inkOn`), set beside the hue at the moment a
+renderer paints it. The choice is always *sufficient* rather than least-worst:
+white and black cross at 4.58:1, so the better of the two clears 4.5:1 for every
+colour in the space. Before it, `#fff` was written at six sites and measured
+2.16:1 on the second colour a household is auto-assigned.
 
 **The Token-Only Rule.** Nothing outside `theme.ts` names a colour. Every value
 in the stylesheet is a custom property; `color-mix()` is banned (ES2019), so
@@ -230,6 +277,17 @@ every row.
 **The Whole-Word Rule.** A month-cell title is drawn *whole* or not at all;
 nothing ellipsises. A row that will not fit is hidden and counted in "+N", so
 what is on the glass can always be read and what is missing is always numbered.
+
+*The rule governs the **default** flat treatment, and the carve-out is worth
+stating because it was measured rather than chosen.* Four treatments a
+household can still select — `pills` on the month, and the two compact
+(`.sk-ev`, `.sk-bar`) and week-column (`.wc-ev`) views — do ellipsise, because
+a coloured chip cannot wrap without becoming a different shape. That is exactly
+the trade the flat treatment was introduced to end: measured on a 1080×1920
+wall, pills drew 37 event names and cut 32 of them, the worst at 26% of its
+string, so that "Year 6 trip to the Science Museum" and "Year 6 sports day"
+both rendered as "Year 6…". Colour is what carries a clipped chip — see *The
+Derived-Ink Rule* — and the canvases that store these treatments keep them.
 
 ## Layout
 

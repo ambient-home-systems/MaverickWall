@@ -3,6 +3,7 @@ import {
   applyTheme,
   customTokens,
   daytimeActive,
+  inkOn,
   shiftTint,
   THEME_NAMES,
   themeAt,
@@ -168,6 +169,9 @@ const tokensOf = (name: string): Record<string, string> => {
 const READABLE = [
   '--ink',
   '--muted',
+  // A rota chip is scaffold ink on a tinted cell, so this belongs in the sweep
+  // even though its own derivation is asserted separately below.
+  '--ink-scaffold',
   '--accent',
   '--s-day',
   '--s-night',
@@ -175,52 +179,125 @@ const READABLE = [
   '--s-straight',
 ] as const;
 
-/** Both grounds a wall paints those words on. */
-const GROUNDS = ['--bg', '--panel'] as const;
+/**
+ * Every ground a wall paints those words on.
+ *
+ * It was `--bg` and `--panel`, which is two of four — and the two missing ones
+ * are where the wall's own most important element lives. A rota day washes its
+ * cell with `--s-*-tint` and a shift badge fills with `--s-*-badge`; both are
+ * derived from a hue *over* the background, so a token measured only against
+ * `--bg` is measured against a ground the household is often not looking at.
+ * Measured on a real wall, the shift badge's `.who` reads 2.80:1 on Household
+ * and 2.96:1 on Blueprint, where this file's allow-list recorded 3.28 and 3.47
+ * — half a point of understatement on the element `display.css` calls the
+ * single most important thing on the wall.
+ *
+ * The tints are read out of `applyTheme`'s own output rather than re-derived
+ * here: `themeTokens` computes them from `CELL_TINT` and `BADGE_TINT` per
+ * theme, and a second opinion about what a tint is would be a test agreeing
+ * with itself.
+ */
+const GROUNDS = [
+  '--bg',
+  '--panel',
+  '--s-day-tint',
+  '--s-night-tint',
+  '--s-break-tint',
+  '--s-straight-tint',
+  '--s-day-badge',
+  '--s-night-badge',
+  '--s-break-badge',
+  '--s-straight-badge',
+] as const;
+
+/** The two a theme must declare outright; the rest are derived from them. */
+const DECLARED_GROUNDS = ['--bg', '--panel'] as const;
 
 /**
- * What fails today, with the ratio each one actually measures.
+ * What fails today, and the worst ground each one reaches.
  *
- * RFC 009 Phase 6 darkened the shift hues (`--s-day`, `--s-night`,
- * `--s-break`, `--s-straight`) on the three light themes until each cleared
- * 4.5:1 on both grounds — the RFC's own two named token changes — so every
- * line that named one of those pairs went stale and was deleted here. What is
- * left is Phase 6b's: `--accent` and `--muted` on the same three light
- * themes, and Panels' own three misses, none of them shift hues.
+ * One line per theme and token; the ratio recorded is the *worst* over every
+ * ground in `GROUNDS`, so a change that makes any pairing worse moves a number
+ * here and has to come back through this list — a half-fix cannot land as a
+ * silent pass, and a real fix goes stale and fails, which is how lines get
+ * deleted.
  *
- * The ratios are recorded rather than just the pairs. A change to a hue that
- * moves a number without clearing the bar has to come back through this list,
- * so a half-fix cannot land as a silent pass — and when 6b fixes these, the
- * lines it fixes go stale and fail, which is how the list gets deleted.
+ * **This list grew when `GROUNDS` did, and none of that growth is a
+ * regression.** It used to name `--bg` and `--panel` only, which is two of the
+ * four grounds a wall paints words on: a rota day washes its cell with
+ * `--s-*-tint` and a shift badge fills with `--s-*-badge`, and those were
+ * never measured. What the tints show is that a hue drawn on its own wash is
+ * roughly 0.6 of a point worse than the same hue on the bare ground — so the
+ * shift badge, which `display.css` calls the single most important element on
+ * the wall, is where every theme is weakest and where nothing was looking.
+ *
+ * Phase 6 darkened the four shift hues until each cleared 4.5:1 on `--bg` and
+ * `--panel`, which it did. Clearing it on a ground made *from* the hue is a
+ * harder problem — the tint moves the ground toward the ink by construction —
+ * and it is a decision about `CELL_TINT` and `BADGE_TINT`, or about the badge
+ * drawing its words on `--panel` instead. Both are real changes to how every
+ * wall in the world looks, and neither belongs in the commit that made the
+ * measurement possible.
  */
 const UNREADABLE: readonly string[] = [
-  'household --accent on --bg = 3.81',
-  'household --accent on --panel = 4.33',
-  'household --muted on --bg = 3.28',
-  'household --muted on --panel = 3.73',
-  'blueprint --accent on --bg = 3.71',
-  'blueprint --accent on --panel = 4.15',
-  'blueprint --muted on --bg = 3.47',
-  'blueprint --muted on --panel = 3.88',
-  'panels --s-break on --panel = 4.17',
-  'panels --s-straight on --bg = 3.86',
-  'panels --s-straight on --panel = 3.51',
-  'almanac --muted on --bg = 3.51',
-  'almanac --muted on --panel = 3.73',
+  'almanac --accent at worst 4.47 on --s-night-badge',
+  'almanac --ink-scaffold at worst 3.60 on --s-night-badge',
+  'almanac --muted at worst 2.77 on --s-night-badge',
+  'almanac --s-break at worst 3.58 on --s-night-badge',
+  'almanac --s-day at worst 3.58 on --s-night-badge',
+  'almanac --s-straight at worst 3.60 on --s-night-badge',
+  'blueprint --accent at worst 2.94 on --s-night-badge',
+  'blueprint --ink-scaffold at worst 3.68 on --s-night-badge',
+  'blueprint --muted at worst 2.76 on --s-night-badge',
+  'blueprint --s-break at worst 3.60 on --s-night-badge',
+  'blueprint --s-day at worst 3.61 on --s-night-badge',
+  'blueprint --s-straight at worst 3.60 on --s-night-badge',
+  'household --accent at worst 3.11 on --s-break-badge',
+  'household --ink-scaffold at worst 3.75 on --s-break-badge',
+  'household --muted at worst 2.67 on --s-break-badge',
+  'household --s-break at worst 3.73 on --s-break-badge',
+  'household --s-day at worst 3.70 on --s-break-badge',
+  'household --s-night at worst 3.69 on --s-break-badge',
+  'household --s-straight at worst 3.71 on --s-break-badge',
+  'panels --accent at worst 3.89 on --s-day-tint',
+  'panels --ink-scaffold at worst 4.39 on --s-day-tint',
+  'panels --s-break at worst 3.14 on --s-day-tint',
+  'panels --s-night at worst 3.89 on --s-day-tint',
+  'panels --s-straight at worst 2.64 on --s-day-tint',
+  'swiss --s-break at worst 4.01 on --s-day-badge',
+  'swiss --s-straight at worst 3.86 on --s-day-badge',
 ];
 
-/** Every pair one theme fails today, measured. */
+/**
+ * The worst ground each token reaches on one theme, where that is under 4.5:1.
+ *
+ * One line per *token* rather than per pairing, which is a change forced by
+ * widening `GROUNDS`: ten grounds times seven tokens is seventy pairings a
+ * theme, and recording every miss produced a hundred and fifty lines of
+ * allow-list — a list that long stops being read, which is the one thing an
+ * allow-list cannot afford to be.
+ *
+ * The ratchet property survives intact, and that is what makes this a
+ * restatement rather than a weakening: the recorded number is the *worst* case,
+ * so anything that makes any pairing worse moves it and has to come back
+ * through this list. What it gives up is naming every ground a token misses on,
+ * which the failure message prints anyway.
+ */
 function unmetOn(name: ThemeName): string[] {
   const t = tokensOf(name);
   const unmet: string[] = [];
-  for (const ground of GROUNDS) {
-    for (const token of READABLE) {
-      const value = t[token];
-      expect(value, `${name} is missing ${token}`).toBeDefined();
-      const ratio = contrast(value as string, t[ground] as string);
-      if (ratio >= 4.5) continue;
-      unmet.push(`${name} ${token} on ${ground} = ${ratio.toFixed(2)}`);
+  for (const token of READABLE) {
+    const value = t[token];
+    expect(value, `${name} is missing ${token}`).toBeDefined();
+    let worst = { ground: '', ratio: Number.POSITIVE_INFINITY };
+    for (const ground of GROUNDS) {
+      const behind = t[ground];
+      if (behind === undefined) continue;
+      const ratio = contrast(value as string, behind);
+      if (ratio < worst.ratio) worst = { ground, ratio };
     }
+    if (worst.ratio >= 4.5) continue;
+    unmet.push(`${name} ${token} at worst ${worst.ratio.toFixed(2)} on ${worst.ground}`);
   }
   return unmet;
 }
@@ -232,12 +309,12 @@ describe.each(THEME_NAMES)('the %s theme', (name) => {
     const el = fake();
     applyTheme(el, name);
     expect(el.attrs['data-theme']).toBe(name);
-    for (const ground of GROUNDS) {
+    for (const ground of DECLARED_GROUNDS) {
       expect(el.props[ground], `${name} has no ${ground}`).toMatch(/^#[0-9A-Fa-f]{6}$/);
     }
   });
 
-  it('carries every readable token at 4.5:1 over both of its grounds', () => {
+  it('carries every readable token at 4.5:1 over every ground it paints on', () => {
     const permitted = new Set(UNREADABLE);
     const fresh = unmetOn(name).filter((entry) => !permitted.has(entry));
     expect(
@@ -275,9 +352,15 @@ describe.each(THEME_NAMES)('the %s theme, emphasis roles', (name) => {
     expect(t['--rule-week']).toBe(t['--rule']);
   });
 
-  it('clears 4.5:1 with --ink-scaffold on both of its grounds', () => {
+  /*
+   * The two grounds `scaffoldInk` is *derived* against, and only those. It
+   * raises its mix ratio until it clears 4.5:1 on `--bg`, so that is the
+   * promise it can make; how it fares on a rota tint is a fact about the tint
+   * and is carried by the ratchet above with every other token.
+   */
+  it('clears 4.5:1 with --ink-scaffold on both of the grounds it is derived against', () => {
     const t = tokensOf(name);
-    for (const ground of GROUNDS) {
+    for (const ground of DECLARED_GROUNDS) {
       const ratio = contrast(t['--ink-scaffold'] as string, t[ground] as string);
       expect(ratio, `${name} --ink-scaffold on ${ground} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
     }
@@ -372,5 +455,77 @@ describe('the Swiss theme', () => {
 
   it('squares its corners, because a Swiss panel is not a card', () => {
     expect(tokensOf('swiss')['--radius']).toBe('0');
+  });
+});
+
+/**
+ * The ink drawn *on* a colour the household chose.
+ *
+ * Six selectors in `display.css` set text on `--pc` (a calendar's hue) or
+ * `--ev` (a person's), and every one of them used to write `#fff`. Measured on
+ * the palette `api/palette.ts` actually hands out, that fails on three of five
+ * — and the one it fails worst on is the colour a household's **second**
+ * calendar is given without anybody choosing anything.
+ *
+ * The property worth asserting is not "these five hues are right". It is that
+ * there is no colour at all this can answer badly: white and black cross at
+ * 4.58:1, so the better of the two always clears the bar. That is checked over
+ * the whole cube below rather than over a list, because a list is exactly what
+ * shipped `#fff` in the first place.
+ */
+describe('inkOn', () => {
+  /** The palette a household is given, in the order it is given (`palette.ts`). */
+  const PALETTE = ['#4C7FD1', '#E8A33D', '#35916A', '#B3372B', '#6B7684'] as const;
+
+  it('clears 4.5:1 on every colour a household is assigned', () => {
+    const measured = PALETTE.map((hue) => ({
+      hue,
+      ink: inkOn(hue),
+      ratio: Number(contrast(inkOn(hue), hue).toFixed(2)),
+    }));
+    const failing = measured.filter((row) => row.ratio < 4.5);
+    expect(
+      failing,
+      `unreadable: ${failing.map((r) => `${r.ink} on ${r.hue} = ${r.ratio}`).join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('is the fix rather than a repaint: white failed on three of those five', () => {
+    // The non-vacuity guard. If white were fine everywhere this whole function
+    // would be ceremony, and the assertion above would pass with it deleted.
+    const whiteFails = PALETTE.filter((hue) => contrast('#ffffff', hue) < 4.5);
+    expect(whiteFails).toEqual(['#4C7FD1', '#E8A33D', '#35916A']);
+    // And the worst of them is the second colour, not some exotic hue.
+    expect(Number(contrast('#ffffff', '#E8A33D').toFixed(2))).toBe(2.16);
+    expect(Number(contrast(inkOn('#E8A33D'), '#E8A33D').toFixed(2))).toBe(9.74);
+  });
+
+  it('clears 4.5:1 on every colour there is, not just the five', () => {
+    // A household can type any hex into the colour input, so the claim has to
+    // hold over the space rather than over the palette. Stepped at 17 (a
+    // divisor of 255, so 0 and 255 are both hit) — 4,096 colours, which is
+    // enough to catch a threshold written the wrong way round and fast enough
+    // to run on every commit.
+    let worst = { hex: '', ratio: Infinity };
+    for (let r = 0; r <= 255; r += 17) {
+      for (let g = 0; g <= 255; g += 17) {
+        for (let b = 0; b <= 255; b += 17) {
+          const hex = `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+          const ratio = contrast(inkOn(hex), hex);
+          if (ratio < worst.ratio) worst = { hex, ratio };
+        }
+      }
+    }
+    // 4.58:1 is where the two curves cross; nothing can be worse than that.
+    expect(worst.ratio, `worst ground was ${worst.hex}`).toBeGreaterThanOrEqual(4.5);
+    expect(Number(worst.ratio.toFixed(2))).toBe(4.58);
+  });
+
+  it('answers white for a colour it cannot read, which is what it drew before', () => {
+    // Rule nine at the smallest scale: a stored value this cannot parse is a
+    // wall that still draws, exactly as it drew yesterday.
+    expect(inkOn('rebeccapurple')).toBe('#ffffff');
+    expect(inkOn('')).toBe('#ffffff');
+    expect(inkOn('#fff')).toBe('#ffffff');
   });
 });

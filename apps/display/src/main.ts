@@ -21,7 +21,7 @@ import {
   WALL_TYPE_ROLES,
   type ScreenGeometry,
 } from './orientation.js';
-import { buildModel, localTime } from './viewmodel.js';
+import { announcement, buildModel, localTime } from './viewmodel.js';
 import { createManifestStore } from './store.js';
 import { assess, DEFAULT_LIMITS } from './watchdog.js';
 
@@ -242,6 +242,8 @@ function start(): void {
      */
     const canvas = pickCanvas(manifest.layout, geo.layout);
     renderFreeform(root, model, canvas);
+    // What is drawn, said. No-op unless the sentence itself changed.
+    announce(announcement(model));
     lastDrawAt = Date.now();
   };
 
@@ -315,6 +317,9 @@ function start(): void {
       case 'unpaired':
         manifest = undefined;
         heldIsReal = false;
+        // Nothing is being interrupted about any more, and `draw` returns at
+        // its first line from here on, so this is the only place that can say so.
+        announce(undefined);
         /*
          * A marked 401 is proof the server answered, so this is contact. Without
          * it a screen sitting on the pairing form tripped the two-hour
@@ -462,6 +467,43 @@ function start(): void {
     // Straight back to the server rather than waiting out the poll interval,
     // so the wall reacts to a button press the way a person expects.
     await poll();
+  };
+
+  /*
+   * The live region: the one thing on this wall that is spoken.
+   *
+   * It lives on `<body>` rather than inside `#wall`, and that placement is the
+   * whole design. Every renderer here begins `root.textContent = ''`, so a
+   * `role="alert"` element built by `renderAlert` or `renderBanners` would be
+   * a *new node* on every draw — and this wall redraws every fifteen seconds,
+   * for months. A live region that is recreated is a live region that
+   * announces again, so the obvious fix would have read a household a tornado
+   * warning four times a minute until somebody unplugged the screen.
+   *
+   * Outside the subtree that is cleared, and updated only when the sentence
+   * changes, it announces once per warning. That is `focusControl`'s rule
+   * immediately below — keyed on what it is for rather than on the redraw —
+   * and it is the same rule because it is the same hazard.
+   */
+  let liveRegion: HTMLElement | undefined;
+  let announced: string | undefined;
+  const announce = (text: string | undefined): void => {
+    if (text === announced) return;
+    announced = text;
+    if (liveRegion === undefined) {
+      liveRegion = document.createElement('div');
+      liveRegion.className = 'a11y-live';
+      /*
+       * `role="alert"` rather than a polite status: this is only ever an
+       * interrupt (`announcement` in `viewmodel.ts` refuses notices and
+       * staleness), and an interrupt is the one thing here worth cutting in
+       * for. It carries assertive and atomic implicitly, so the region is not
+       * read a word at a time as a sentence is assembled.
+       */
+      liveRegion.setAttribute('role', 'alert');
+      document.body.appendChild(liveRegion);
+    }
+    liveRegion.textContent = text ?? '';
   };
 
   /** The control currently on screen, or nothing. */

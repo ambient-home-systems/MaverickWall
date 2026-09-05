@@ -7,12 +7,12 @@ import type {
   InterruptModel,
   TodayShiftModel,
 } from './viewmodel.js';
-import { localDate, localTime } from './viewmodel.js';
+import { DISPLAY_LOCALE, localDate, localTime } from './viewmodel.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
-import { shiftTint } from './theme.js';
+import { inkOn, shiftTint } from './theme.js';
 import {
   HOUSE_ROLES,
   SHIFT_ROLES,
@@ -91,7 +91,10 @@ function paintShift(node: HTMLElement, token: string | undefined, color?: string
   // changes with the theme and the daytime switch, so it cannot be baked in the
   // manifest. `shiftTint` is the same maths the theme's own shift tints use.
   if (color !== undefined) {
-    const background = getComputedStyle(node).getPropertyValue('--bg').trim() || '#0B0E11';
+    // Panels' own --bg as the fallback, not Board's: Board is retired and
+    // aliases to Panels, so a literal from it was the wrong ground to derive
+    // a tint against on the one path where the property is somehow unset.
+    const background = getComputedStyle(node).getPropertyValue('--bg').trim() || '#14181E';
     node.style.setProperty('--sc', color);
     node.style.setProperty('--sc-tint', shiftTint(color, background));
     node.classList.add('has-shift');
@@ -104,6 +107,30 @@ function paintShift(node: HTMLElement, token: string | undefined, color?: string
 }
 
 /** The shift's `HH:MM` window as one line, or undefined when it has no times. */
+/**
+ * Paint a node with a calendar's or a person's own colour, and with an ink
+ * that can be read on it.
+ *
+ * `--pc` (a calendar) and `--ev` (a person, already resolved to the owner's
+ * colour by the server) are the two grounds on this wall that no theme token
+ * is legible against, because a household chose them. The six selectors that
+ * draw text on one of those used to write `#fff`: measured, that is 3.99:1 on
+ * the colour a first calendar is given and 2.16:1 on the colour a second one
+ * is given. `inkOn` answers black or white by measuring the ground, and always
+ * clears 4.5:1 — see its own comment for why that is a property rather than a
+ * hope.
+ *
+ * One helper rather than two lines at ten call sites, for the reason this file
+ * keeps learning: a rule spelled out per site is a rule the eleventh site
+ * forgets. The `.allday` treatments set it too and never read it, which is
+ * correct — they draw the colour as an edge and their words on the theme's own
+ * ink, and a property nobody reads costs nothing.
+ */
+function paintOwnerColour(node: HTMLElement, property: '--pc' | '--ev', color: string): void {
+  node.style.setProperty(property, color);
+  node.style.setProperty(`${property}-ink`, inkOn(color));
+}
+
 function shiftWindow(shift: { readonly startTime?: string; readonly endTime?: string }): string | undefined {
   if (shift.startTime !== undefined && shift.endTime !== undefined) {
     return `${shift.startTime}–${shift.endTime}`;
@@ -243,11 +270,11 @@ function ownerMark(event: EventModel, className: string): HTMLElement {
   }
   if (owner !== undefined) {
     const chip = el('span', `${className} ev-initials`, owner.initials);
-    chip.style.setProperty('--ev', event.color);
+    paintOwnerColour(chip, '--ev', event.color);
     return chip;
   }
   const dot = el('span', `${className} ev-dot`);
-  dot.style.setProperty('--ev', event.color);
+  paintOwnerColour(dot, '--ev', event.color);
   return dot;
 }
 
@@ -481,14 +508,14 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
      * the next event due, which is where `isNext` already points, and at the
      * foot of the list when everything timed has been and gone.
      *
-     * It was meant to complement the `.te.is-next` accent — the accent says
-     * *which* event is next, the rule says where the day has got to — and that
-     * is still the design. It is worth writing down that the accent is not
-     * currently on the glass: `.te.is-next` is a stylesheet rule matching an
-     * element nothing in this file emits, left behind when the day block was
-     * retired. So the rule is the only "now" the wall draws today, and it is
-     * drawn to stand on its own rather than to lean on a partner that is not
-     * there.
+     * It was meant to complement an accent on the *next* event — the accent
+     * saying which event is next, the rule saying where the day has got to —
+     * and that is still the design and still unbuilt. There was a `.te.is-next`
+     * rule for it in the stylesheet, matching an element nothing here has
+     * emitted since the day block was retired; it is deleted rather than left
+     * to read as an implementation. So this rule is the only "now" the wall
+     * draws, and it is drawn to stand on its own rather than to lean on a
+     * partner that does not exist.
      */
     const nowRule = day.isToday && day.events.some((event) => !event.allDay);
     /*
@@ -636,7 +663,7 @@ function renderCell(
     const banner = cell.events.find((ev) => ev.allDay);
     if (banner !== undefined) {
       const mark = el('div', 'hz-edge');
-      mark.style.setProperty('--pc', banner.color);
+      paintOwnerColour(mark, '--pc', banner.color);
       node.appendChild(mark);
     }
     /*
@@ -732,10 +759,10 @@ function renderCell(
          */
         if (!ev.allDay) {
           const dot = el('span', 'hz-rowdot');
-          dot.style.setProperty('--pc', ev.color);
+          paintOwnerColour(dot, '--pc', ev.color);
           row.appendChild(dot);
         } else {
-          row.style.setProperty('--pc', ev.color);
+          paintOwnerColour(row, '--pc', ev.color);
         }
         /*
          * The clock, for the one tier with a column to spare for it.
@@ -767,7 +794,7 @@ function renderCell(
       const list = el('div', 'hz-pills');
       for (const ev of cell.events.slice(0, 3)) {
         const pill = el('div', ev.allDay ? 'hz-pill allday' : 'hz-pill', ev.title);
-        pill.style.setProperty('--pc', ev.color);
+        paintOwnerColour(pill, '--pc', ev.color);
         list.appendChild(pill);
       }
       if (cell.eventCount > 3) list.appendChild(el('div', 'hz-pill-more', `+${cell.eventCount - 3}`));
@@ -895,7 +922,7 @@ function renderHorizon(
      */
     for (const bar of weekSpans?.bars ?? []) {
       const node = el('div', bar.leading ? 'hz-span' : 'hz-span is-cont');
-      node.style.setProperty('--pc', bar.color);
+      paintOwnerColour(node, '--pc', bar.color);
       node.style.setProperty('--hz-lane-index', String(bar.lane));
       node.style.gridRow = String(weekIndex + 2);
       node.style.gridColumn = `${firstDayColumn + bar.column} / span ${bar.span}`;
@@ -1333,7 +1360,9 @@ function weekdayOfDate(date: string): string {
   const at = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(at.getTime())) return '';
   try {
-    return new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: 'UTC' }).format(at);
+    // The wall's one locale, never the device's: this column sits on the same
+    // canvas as the month grid's weekday heads, which the viewmodel formats.
+    return new Intl.DateTimeFormat(DISPLAY_LOCALE, { weekday: 'short', timeZone: 'UTC' }).format(at);
   } catch {
     return '';
   }
@@ -1676,7 +1705,7 @@ function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
     col.appendChild(head);
     for (const ev of cell.events.filter((e) => keep(e.sourceId))) {
       const pill = el('div', ev.allDay ? 'wc-ev allday' : 'wc-ev', ev.title);
-      pill.style.setProperty('--pc', ev.color);
+      paintOwnerColour(pill, '--pc', ev.color);
       col.appendChild(pill);
     }
     grid.appendChild(col);
@@ -3085,7 +3114,7 @@ function renderSkyWeek(model: DisplayModel, config: unknown): HTMLElement {
     const events = cell.events.filter((e) => keep(e.sourceId));
     for (const ev of [...events.filter((e) => e.allDay), ...events.filter((e) => !e.allDay)]) {
       const chip = el('div', ev.allDay ? 'sk-ev allday' : 'sk-ev');
-      chip.style.setProperty('--pc', ev.color);
+      paintOwnerColour(chip, '--pc', ev.color);
       // The time above the title rather than beside it: a seventh of a wall is
       // narrow, and side by side is what left the agenda breaking words.
       if (!ev.allDay) chip.appendChild(el('span', 'sk-ev-time', ev.time));
@@ -3131,7 +3160,7 @@ function renderSkyMonth(model: DisplayModel, config: unknown): HTMLElement {
         const list = el('div', 'sk-bars');
         for (const ev of events) {
           const bar = el('div', ev.allDay ? 'sk-bar allday' : 'sk-bar', ev.title);
-          bar.style.setProperty('--pc', ev.color);
+          paintOwnerColour(bar, '--pc', ev.color);
           list.appendChild(bar);
         }
         node.appendChild(list);

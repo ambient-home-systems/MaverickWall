@@ -272,3 +272,292 @@ describe('three calendars on a real wall', () => {
     }
   }, 120_000);
 });
+
+/**
+ * The words drawn *on* those colours, measured on the same wall.
+ *
+ * The test above asks whether three calendars reach the glass as three
+ * different colours. This asks the question that had never been asked: once a
+ * hue is on the glass, can the household read what is written on it?
+ *
+ * Six selectors in `display.css` draw text on a calendar's own hue, and every
+ * one of them used to say `#fff`. Measured on the shipped wall with the
+ * palette a household is actually given, that is **3.99:1** on the first
+ * calendar's colour and **2.16:1** on the second's — the latter on
+ * `.hz-spantext`, the label on a multi-day bar, which is the default month
+ * treatment and the one thing a wall draws to say a half term is a half term.
+ * Nothing could see it: `theme.test.ts` sweeps theme tokens against theme
+ * grounds, and a calendar's hue is neither.
+ *
+ * So the sweep below is deliberately not a list of those six selectors. It
+ * walks every text run on the wall, finds the nearest ancestor that actually
+ * paints a ground, and asks whether that ground is one of the household's own
+ * colours — which means a seventh site added later is measured on the day it
+ * is added rather than on the day somebody remembers to add it here.
+ */
+
+/** WCAG contrast between two `rgb(...)` strings, as the browser reports them. */
+function ratioOf(a: string, b: string): number {
+  const channels = (value: string): [number, number, number] => {
+    const parts = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value);
+    return parts === null ? [0, 0, 0] : [Number(parts[1]), Number(parts[2]), Number(parts[3])];
+  };
+  const luminance = (value: string): number =>
+    channels(value)
+      .map((raw) => {
+        const c = raw / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      })
+      .reduce((sum, c, i) => sum + [0.2126, 0.7152, 0.0722][i]! * c, 0);
+  const [la, lb] = [luminance(a), luminance(b)];
+  const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+interface OnHue {
+  readonly text: string;
+  readonly cls: string;
+  readonly color: string;
+  readonly ground: string;
+  readonly px: number;
+}
+
+/**
+ * Three calendars a household would have, where the second one owns a run of
+ * days.
+ *
+ * `days: 8` rather than a single date, because a multi-day event is the only
+ * thing that draws a span bar — and the bar is where the worst reading was.
+ * Eight rather than seven for `HOUSEHOLD_CALENDARS`' own reason: a seven-day
+ * run lands on one grid row or two depending on which weekday it starts on,
+ * which would make this file's result a property of the calendar.
+ *
+ * Which calendar owns it matters as much as that it exists. `palette.ts` hands
+ * the *second* source `#E8A33D`, so putting the run on School is what puts the
+ * 2.16:1 reading under the measurement rather than beside it.
+ */
+const HUE_FEEDS: readonly NamedFeed[] = [
+  {
+    name: 'Family',
+    events: [
+      { title: 'Bin day', day: 2 },
+      { title: 'Dentist', day: 1, from: '0900', to: '1000' },
+      { title: 'Book club', day: 5, from: '1930', to: '2130' },
+      { title: 'Swimming lesson', day: 4, from: '0730', to: '0830' },
+    ],
+  },
+  {
+    name: 'School',
+    events: [
+      { title: 'Half term', day: 3, days: 8 },
+      { title: 'Parents evening', day: 2, from: '1800', to: '2000' },
+      { title: 'Football practice', day: 6, from: '1730', to: '1900' },
+      { title: 'School photos', day: 1, from: '0900', to: '1100' },
+    ],
+  },
+  {
+    name: 'Work',
+    events: [
+      { title: 'Standup', day: 1, from: '0930', to: '0945' },
+      { title: 'Standup', day: 2, from: '0930', to: '0945' },
+      { title: 'Sprint retro', day: 5, from: '1600', to: '1700' },
+      { title: 'One to one', day: 2, from: '1130', to: '1200' },
+    ],
+  },
+];
+
+/**
+ * Every visible run of text sitting on one of the household's own colours.
+ *
+ * The ground is the nearest ancestor that actually paints one, because the
+ * element carrying the words is rarely the element carrying the hue —
+ * `.hz-spantext` is a span inside `.hz-span`, which is where `--pc` is set.
+ * Reading the text node's own `background-color` would report `transparent`
+ * and quietly measure nothing, which is how this fault survived.
+ */
+const SWEEP_ON_HUE = `
+(() => {
+  const hues = new Set(HUES);
+  const hex = (value) => {
+    const p = /rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?/.exec(value);
+    if (p === null) return null;
+    if (p[4] !== undefined && Number(p[4]) === 0) return null;
+    return '#' + [1, 2, 3].map((i) => Number(p[i]).toString(16).padStart(2, '0')).join('').toUpperCase();
+  };
+  const out = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    const text = (node.textContent || '').trim();
+    if (text === '') continue;
+    const el = node.parentElement;
+    if (el === null) continue;
+    let hidden = false;
+    for (let p = el; p !== null; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.display === 'none' || cs.visibility === 'hidden') { hidden = true; break; }
+    }
+    if (hidden) continue;
+    const box = el.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1) continue;
+    let ground = null;
+    for (let p = el; p !== null && ground === null; p = p.parentElement) {
+      ground = hex(getComputedStyle(p).backgroundColor);
+    }
+    if (ground === null || !hues.has(ground)) continue;
+    const cs = getComputedStyle(el);
+    out.push({
+      text: text.slice(0, 40),
+      cls: String(el.className || el.tagName.toLowerCase()),
+      color: cs.color,
+      ground: 'rgb(' + [1, 3, 5].map((i) => parseInt(ground.slice(i, i + 2), 16)).join(', ') + ')',
+      px: Math.round(parseFloat(cs.fontSize) * 10) / 10,
+    });
+  }
+  return out;
+})()`;
+
+describe('words drawn on a calendar’s own colour', () => {
+  it('are readable on every hue a household is given, on the wall and on a pills canvas', async () => {
+    const home = await install({ calendars: HUE_FEEDS });
+    try {
+      const stored = home.db
+        .prepare('SELECT name, color FROM calendar_sources ORDER BY created_at, rowid')
+        .all() as { name: string; color: string }[];
+      // The premise: this fixture really does put the worst hue under the test.
+      expect(stored.map((row) => row.color.toUpperCase())).toContain('#E8A33D');
+
+      const hues = JSON.stringify(stored.map((row) => row.color.toUpperCase()));
+      const link = await home.pairLink();
+      const screen = (home.db.prepare('SELECT id FROM screens').get() as { id: string }).id;
+
+      const page = await (await browser()).newPage();
+      await page.setViewportSize({ width: 1080, height: 1920 });
+
+      const measure = async (): Promise<OnHue[]> => {
+        await page.goto(link, { waitUntil: 'load' });
+        await settleWall(page);
+        return (await page.evaluate(SWEEP_ON_HUE.replace('HUES', hues))) as OnHue[];
+      };
+
+      // 1 — the wall a household gets. The span bar is the reading that failed.
+      const wall = await measure();
+      expect(
+        wall.map((run) => run.cls),
+        'no text was drawn on a calendar colour, so this measured nothing',
+      ).toContain('hz-spantext');
+
+      // 2 — and a canvas that stored `pills`, which is the other five selectors'
+      //     shape and a treatment households still have.
+      replaceLayout(home.db, screen, 'portrait', {
+        mode: 'freeform',
+        aspect: 0.5625,
+        widgets: [
+          {
+            id: 'cal-portrait',
+            type: 'calendar',
+            x: 0.02, y: 0.02, w: 0.96, h: 0.96, z: 0,
+            config: { mode: 'month', cellEvents: 'pills' },
+          },
+        ],
+        background: null,
+      });
+      const pills = await measure();
+      expect(
+        pills.map((run) => run.cls),
+        'the pills canvas drew no pill, so this measured nothing',
+      ).toContain('hz-pill');
+
+      const runs = [...wall, ...pills];
+      const unreadable = runs
+        .map((run) => ({ ...run, ratio: Number(ratioOf(run.color, run.ground).toFixed(2)) }))
+        .filter((run) => run.ratio < 4.5)
+        .sort((a, b) => a.ratio - b.ratio);
+
+      expect(
+        unreadable,
+        `${unreadable.length} run(s) below 4.5:1 on a household's own colour:\n` +
+          unreadable
+            .map((r) => `  ${r.ratio}:1  ${r.px}px  .${r.cls}  ${r.color} on ${r.ground}  "${r.text}"`)
+            .join('\n'),
+      ).toEqual([]);
+
+      // The non-vacuity guard, and the reason this file measures `pills` too:
+      // the amber has to be one of the grounds actually swept, or "nothing was
+      // below 4.5" is a statement about a wall that never drew the bad case.
+      const grounds = new Set(runs.map((run) => run.ground));
+      expect([...grounds], 'the 2.16:1 ground was never drawn').toContain('rgb(232, 163, 61)');
+
+      await page.close();
+    } finally {
+      await home.dispose();
+    }
+  }, 180_000);
+
+  it('spends `--ink-quiet` on the overflow count, not the out-of-month grey', async () => {
+    /*
+     * The other half of the same fault: a token declared in five themes and
+     * read by no rule at all.
+     *
+     * `--ink-quiet` is one of four emphasis roles, and the design names it for
+     * exactly two things — an overflow count and a past event's time. The count
+     * was drawn in `--faint` instead, which is the one token in the bundle
+     * deliberately allowed below the contrast bar because its job is to be
+     * present without being readable. Measured on the shipped wall that is
+     * 3.75:1 on Panels and 2.04:1 on Household.
+     *
+     * Read off the glass rather than out of the stylesheet, and compared
+     * against the theme's own two values rather than against a literal: the
+     * claim is "this counter is drawn in the quiet role", which survives a
+     * theme changing what either colour is.
+     */
+    const home = await install({ calendars: HUE_FEEDS });
+    try {
+      const link = await home.pairLink();
+      const page = await (await browser()).newPage();
+      await page.setViewportSize({ width: 1080, height: 1920 });
+      await page.goto(link, { waitUntil: 'load' });
+      await settleWall(page);
+
+      const seen = await page.evaluate(`
+        (() => {
+          const root = getComputedStyle(document.documentElement);
+          const quiet = root.getPropertyValue('--ink-quiet').trim();
+          const faint = root.getPropertyValue('--faint').trim();
+          const counters = [...document.querySelectorAll('.hz-more, .hz-pill-more')]
+            .filter((el) => el.textContent.trim() !== '')
+            .filter((el) => {
+              const cs = getComputedStyle(el);
+              return cs.display !== 'none' && cs.visibility !== 'hidden';
+            })
+            .map((el) => ({ text: el.textContent.trim(), color: getComputedStyle(el).color }));
+          const asRgb = (hex) => {
+            const n = parseInt(hex.replace('#', ''), 16);
+            return 'rgb(' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(', ') + ')';
+          };
+          return { quiet: asRgb(quiet), faint: asRgb(faint), counters };
+        })()`);
+
+      const { quiet, faint, counters } = seen as {
+        quiet: string;
+        faint: string;
+        counters: { text: string; color: string }[];
+      };
+      // The premise. A wall with room for everything draws no counter, and a
+      // test that found none would pass having measured nothing.
+      expect(counters.length, 'no overflow counter was drawn, so this proves nothing').toBeGreaterThan(0);
+      // And the two roles have to be telling apart in the first place.
+      expect(quiet, 'this theme draws --ink-quiet and --faint the same, so this cannot fail').not.toBe(faint);
+
+      expect(
+        counters.filter((c) => c.color !== quiet),
+        `an overflow count is not drawn in --ink-quiet (${quiet}): ` +
+          counters.map((c) => `"${c.text}" is ${c.color}`).join(', '),
+      ).toEqual([]);
+
+      await page.close();
+    } finally {
+      await home.dispose();
+    }
+  }, 180_000);
+});
