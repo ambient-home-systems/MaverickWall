@@ -218,6 +218,26 @@ export interface InstallOptions {
   /** The zone the wizard is told. Ignored when `wizard` is false. */
   readonly timezone?: string;
   /**
+   * Run this installation as though today were `dayShift` days from now.
+   *
+   * The harness pins the *hour* (`HARNESS_HOUR`) and deliberately lets the
+   * *date* move, so the month grid goes on meeting whatever shape of month it
+   * actually has. That freedom is where four bugs have come from: a fixture
+   * whose events all sit at `day >= 0` fills a different amount of the current
+   * Monday-to-Sunday week depending on what weekday it is, and a seven-day run
+   * lands on one grid row or two for the same reason.
+   *
+   * Finding that out used to mean hand-patching this file, running, and
+   * reverting — which is exactly the kind of investigation nobody repeats. It
+   * is a parameter now, so "does this depend on the weekday?" is answered by
+   * running the test seven times.
+   *
+   * Applied as *civil* days through `fixtureDate`, never as milliseconds: a day
+   * is not 86,400,000 ms across a daylight-saving boundary, and adding one that
+   * way lands on the same date twice a year.
+   */
+  readonly dayShift?: number;
+  /**
    * Extra calendars, each served on its own loopback port and added through the
    * admin form the way a household adds one.
    *
@@ -315,7 +335,7 @@ export interface Installation {
 }
 
 export async function install(options: InstallOptions = {}): Promise<Installation> {
-  const { wizard = true, feed = false, timezone = 'Europe/London', calendars = [] } = options;
+  const { wizard = true, feed = false, timezone = 'Europe/London', calendars = [], dayShift = 0 } = options;
   const address = `10.44.0.${(clientNumber++ % 250) + 1}`;
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-browser-'));
 
@@ -334,7 +354,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
    * one deciding today, past/next, and whether an event is running — follows
    * this one. Pinning the server pins the wall.
    */
-  const at = fixtureNow(timezone);
+  const at = fixtureNow(timezone, new Date(), dayShift);
   const skew = at - Date.now();
   const now = (): number => Date.now() + skew;
 
@@ -696,6 +716,113 @@ export function fixtureDate(zone: string, days: number, now: Date = new Date()):
 export const HARNESS_HOUR = 11;
 
 /**
+ * Whether a fixture describes a household whose week looks the same shape
+ * whatever day you look at it.
+ *
+ * Four bugs in this repository have been one test reading the calendar as
+ * though it were reading the code, and every one was the fixture rather than
+ * the renderer:
+ *
+ *  - `browser-calendar-density`'s feeds were all `day >= 0`, so on a Friday
+ *    three days of the current Monday-to-Sunday week carried events and on a
+ *    Saturday only two did. Both densities then drew everything there was and
+ *    "compact shows more than comfortable" was 8 > 8. It passed on CI at 19:22
+ *    London and failed at 00:44.
+ *  - `HOUSEHOLD_CALENDARS`' half term lasted seven days, which lands on **one**
+ *    grid row when it happens to start on the household's week start and two on
+ *    every other weekday, so `wall-density`'s `spanBars` read 2 for six days a
+ *    week and 1 on the seventh.
+ *
+ * Both are properties of the *offsets*, so both are decidable here — no server,
+ * no browser, microseconds — by asking the fixture the same question seven
+ * times, once for each weekday today could be.
+ *
+ * The span arithmetic is worth stating because it is exact rather than a rule
+ * of thumb. A run of `n` days starting `s` days into its week occupies
+ * `floor((s + n - 1) / 7) + 1` rows, and that is constant over every `s` in
+ * `0..6` **iff `n` is one more than a multiple of 7** — so 1, 8 and 15 are safe
+ * and 7 is the worst length there is. That is the half term's eighth day,
+ * derived rather than discovered.
+ */
+export interface WeekdayRules {
+  /**
+   * Every day of the drawn week carries at least this many events, on every
+   * weekday. One stops a column being *empty*; a test measuring a density needs
+   * more, because a density only shows more where the roomy one had to give
+   * something up — spreading `browser-calendar-density`'s days without
+   * thickening them moved it from 8 > 8 to 9 > 9.
+   */
+  readonly weekCoverage?: number;
+  /** Every multi-day run occupies the same number of grid rows on every weekday. */
+  readonly stableSpans?: boolean;
+}
+
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/** How many of a fixture's events fall on one day offset from today. */
+function eventsOn(feeds: readonly NamedFeed[], offset: number): number {
+  let count = 0;
+  for (const feed of feeds) {
+    for (const event of feed.events) {
+      const last =
+        event.days !== undefined ? event.day + event.days - 1 : (event.toDay ?? event.day);
+      if (offset >= event.day && offset <= last) count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * What is wrong with a fixture, in the terms the consuming test needs. Empty
+ * means nothing is, which is this file's own idiom for a ratchet.
+ */
+export function weekdayFaults(feeds: readonly NamedFeed[], rules: WeekdayRules): string[] {
+  const faults: string[] = [];
+
+  if (rules.weekCoverage !== undefined) {
+    const need = rules.weekCoverage;
+    for (let today = 0; today < 7; today++) {
+      // The drawn week runs from `-today` to `6 - today` in offsets from now.
+      const thin: string[] = [];
+      for (let position = 0; position < 7; position++) {
+        const count = eventsOn(feeds, position - today);
+        if (count < need) thin.push(`${WEEK_DAYS[position] as string} has ${count}`);
+      }
+      if (thin.length > 0) {
+        faults.push(
+          `with today a ${WEEK_DAYS[today] as string}, the drawn week wants ` +
+            `${need} event(s) a day and ${thin.join(', ')}`,
+        );
+      }
+    }
+  }
+
+  if (rules.stableSpans === true) {
+    for (const feed of feeds) {
+      for (const event of feed.events) {
+        const length = event.days ?? 1;
+        if (length < 2) continue;
+        const rows = new Set<number>();
+        for (let today = 0; today < 7; today++) {
+          const start = (((today + event.day) % 7) + 7) % 7;
+          rows.add(Math.floor((start + length - 1) / 7) + 1);
+        }
+        if (rows.size > 1) {
+          faults.push(
+            `"${event.title}" runs ${length} days and so occupies ` +
+              `${[...rows].sort().join(' or ')} grid rows depending on the weekday — ` +
+              `a run is row-stable only at a length of 1, 8, 15 …`,
+          );
+        }
+      }
+    }
+  }
+
+  return faults;
+}
+
+
+/**
  * The instant an installation's wall is started at.
  *
  * Today **in the household's own zone**, at `HARNESS_HOUR`. The date still
@@ -715,8 +842,10 @@ export const HARNESS_HOUR = 11;
  * named in `harness-fixture-dates` so the second pass can be deleted and seen
  * to go red.
  */
-export function fixtureNow(zone: string, now: Date = new Date()): number {
-  const day = fixtureDate(zone, 0, now);
+export function fixtureNow(zone: string, now: Date = new Date(), dayShift = 0): number {
+  // `dayShift` goes through the same civil-date arithmetic every fixture uses,
+  // so a shift across a daylight-saving boundary lands on the day it names.
+  const day = fixtureDate(zone, dayShift, now);
   const target = Date.UTC(
     Number(day.slice(0, 4)),
     Number(day.slice(4, 6)) - 1,
