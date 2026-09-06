@@ -21,10 +21,19 @@ import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { householdSetUp } from '../modules/index.js';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
-import { layoutEditorMount, navModules, pairingSecret, widgetsNotDrawn, type AdminDeps } from './admin.js';
+import {
+  ago,
+  EPAPER_SEEN_WINDOW_MS,
+  layoutEditorMount,
+  navModules,
+  pairingSecret,
+  seenDot,
+  widgetsNotDrawn,
+  type AdminDeps,
+} from './admin.js';
 import { bytesOf } from './app.js';
 import { destructive, section } from './components.js';
-import { confirmDestroyPage, errorBlock, escapeHtml, page, selectField, switchRow, textField } from './html.js';
+import { confirmDestroyPage, errorBlock, escapeHtml, icon, page, selectField, switchRow, textField } from './html.js';
 import { ingressPath } from './ingress.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
@@ -335,7 +344,13 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
       modules: navModules(deps.db),
       title: 'E-paper wall — Maverick Wall',
       nav: 'walls',
-      heading: name,
+      // Named for what it is rather than for the panel: the crumb above it
+      // already carries the panel's name, and a heading repeating the word
+      // under it is the kicker fault ("Walls / Walls") one page along.
+      heading: `${name} — device recipes`,
+      // Nested under the panel's own page, which is where the list sends a
+      // household and where the link to this page lives.
+      back: { label: name, href: `admin/walls/${encodeURIComponent(id)}` },
       saved: readSaved(c),
       intro: `${geometry.width}×${geometry.height}, black & white${geometry.rotation === 0 ? '' : `, rotated ${geometry.rotation}°`}.`,
       body:
@@ -938,12 +953,49 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
               }#layout">Open ${escapeHtml(followedName)}</a></p>`,
           );
 
+    /*
+     * The panel's status and its ⋮, on the same mode bar a browser wall's page
+     * carries them on, so the two pages a household reaches by pressing "Open"
+     * on the Walls list read alike. The recipes link and Remove lived on the
+     * list card before this, because a panel had no page of its own for them
+     * to live on; the card is a plain link now and this is where they went.
+     */
+    const at = (deps.now ?? Date.now)();
+    const from = screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`;
+    const statusLine =
+      screen.lastSeenAt === null
+        ? `<b>Never connected</b> · nothing has fetched this panel's picture yet`
+        : at - screen.lastSeenAt < EPAPER_SEEN_WINDOW_MS
+          ? `<b>Online</b> · last seen ${escapeHtml(ago(screen.lastSeenAt, at))}${from}`
+          : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(screen.lastSeenAt, at))}${from}`;
+    const statusAndMenu =
+      `<div class="modebar">` +
+      `<p class="wall-status">${seenDot(screen.lastSeenAt, at, EPAPER_SEEN_WINDOW_MS)}` +
+      `<span>${statusLine}</span></p>` +
+      `<details class="ovf" data-overflow>` +
+      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+      `aria-label="More actions for this panel" title="More">${icon('more')}</summary>` +
+      `<div class="ovf-menu" role="menu">` +
+      `<a class="ovf-item" href="admin/epaper/${encodeURIComponent(id)}">Device recipes</a>` +
+      `<div class="ovf-sep"></div>` +
+      // The GET this leads to answers with `confirmDestroyPage`, so
+      // `destructive()` is the control that gets there — a confirmation, an
+      // accessible name that says which panel.
+      destructive('Remove', {
+        thing: screen.name,
+        confirmAction: `admin/epaper/${encodeURIComponent(id)}/delete`,
+      }) +
+      `</div></details></div>`;
+
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
       title: `${screen.name} layout — Maverick Wall`,
       nav: 'walls',
       heading: `${screen.name} — layout`,
+      // One level under Walls, like a browser wall's page: the crumb is the
+      // way back, so the page adds no header and no second hamburger.
+      back: { label: 'Walls', href: 'admin/walls' },
       saved: readSaved(c),
       intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
       body:
@@ -952,6 +1004,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         // showing the stored value with no message on it is what a *saved*
         // one looks like.
         (error === undefined ? '' : errorBlock(error)) +
+        statusAndMenu +
         sourceForm +
         preview +
         followNote +

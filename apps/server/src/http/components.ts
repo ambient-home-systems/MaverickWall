@@ -57,10 +57,13 @@ export interface PageHeaderOptions {
   /** The page's own name — the `<h1>`. */
   readonly heading: string;
   /**
-   * The kicker above it: which part of the admin this is. Ignored when `back`
-   * is given, because then the crumb *is* the back link.
+   * A kicker above it, where a page has one. The shell passes none for a
+   * top-level page — the sidebar already says which section it is in, and a
+   * kicker repeating the group's label read as a breadcrumb and was wrong as
+   * one ("Walls" over the Walls page). Ignored when `back` is given, because
+   * then the crumb *is* the back link.
    */
-  readonly crumb: string;
+  readonly crumb?: string | undefined;
   /**
    * Where this page sits inside its section — one wall inside Walls. Turns the
    * crumb into a real back link.
@@ -109,7 +112,9 @@ export function pageHeader(options: PageHeaderOptions): string {
     `<label class="navbtn" for="mw-nav" title="Navigation menu">${icon("menu")}</label>` +
     `<div class="topbar-title">` +
     (options.back === undefined
-      ? `<div class="crumb">${escapeHtml(options.crumb)}</div>`
+      ? options.crumb === undefined
+        ? ""
+        : `<div class="crumb">${escapeHtml(options.crumb)}</div>`
       : `<a class="crumb crumb-back" href="${options.back.href}">${icon("back")}` +
         `${escapeHtml(options.back.label)}</a>`) +
     `<h1>${escapeHtml(options.heading)}</h1>` +

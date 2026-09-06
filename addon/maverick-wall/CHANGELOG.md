@@ -16,6 +16,20 @@
 
 ## Unreleased
 
+**The Walls page lists every wall the same way.** An e-paper panel used to
+sit in the list as a different kind of card from a browser wall — a button and
+a menu where the others had "Open" — because it had no page of its own. It
+does now: Open takes you to the panel's layout page, which carries its status,
+its device recipes and Remove, with a link back to Walls like every other
+wall's page.
+
+**The settings menu is grouped by what you are doing.** Overview stands at the
+top on its own; **Household** is your calendars, people, work schedule and
+chores; **Integrations** is the weather, Home Assistant and the Store, with
+anything you install from the Store listed beside them; **Walls** is your walls
+and themes; and System stands at the bottom. The small grey label that used to
+sit above every page title (reading "Walls" above "Walls") is gone.
+
 **Event names on coloured labels can be read again.** Where the wall writes a
 name on top of a calendar's own colour — a half term running across the month,
 an event chip on a busy day, somebody's initials — it always wrote in white.

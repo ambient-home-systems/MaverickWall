@@ -607,6 +607,27 @@ export function ago(from: number | null, now: number): string {
 }
 
 /**
+ * How long since a screen last called in before its dot goes idle.
+ *
+ * A browser wall polls every minute, so five minutes is generous and says
+ * "up" without pretending to diagnose. An e-paper panel on battery sleeps
+ * between pulls — the shipped ESPHome recipe sleeps thirty minutes and the
+ * Home Assistant one pushes every fifteen — so its window is an hour, or
+ * every sleeping panel in the house would read as idle for most of the day.
+ * Exported beside `ago` because the panel's own page (`admin-epaper.ts`)
+ * draws the same dot the Walls list and a browser wall's page do.
+ */
+export const BROWSER_SEEN_WINDOW_MS = 5 * 60_000;
+export const EPAPER_SEEN_WINDOW_MS = 60 * 60_000;
+
+export function seenDot(lastSeenAt: number | null, at: number, windowMs = BROWSER_SEEN_WINDOW_MS): string {
+  const fresh = lastSeenAt !== null && at - lastSeenAt < windowMs;
+  return fresh
+    ? `<span class="dot dot-ok pulse"></span>`
+    : `<span class="dot dot-idle"></span>`;
+}
+
+/**
  * How long after a calendar is added its first sync is still in flight.
  *
  * `addCalendarSource` schedules the job three seconds out and the scheduler
@@ -3488,97 +3509,79 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  /** Online if seen within a few minutes — enough to say "up", not to diagnose. */
-  function seenDot(lastSeenAt: number | null, at: number): string {
-    const fresh = lastSeenAt !== null && at - lastSeenAt < 5 * 60_000;
-    return fresh
-      ? `<span class="dot dot-ok pulse"></span>`
-      : `<span class="dot dot-idle"></span>`;
-  }
-
   /**
-   * A browser wall on the unified Walls list: a summary that opens its own
-   * page, where its status, pairing, settings and layout all live together.
-   * The "Browser" chip is what tells it apart from an e-paper row in the same
-   * grid (`epaperListCard`) — one list, one nav item, a kind chip per row
-   * (RFC 009 Phase 4).
+   * One card for every wall on the list, whatever it is (RFC 009 Phase 4).
+   *
+   * The list used to draw three shapes: the Default wall as a link, a browser
+   * wall as a link with a status dot in its head, and an e-paper panel as a
+   * static card carrying a ⋮ and an "Arrange layout" button — because a panel
+   * had no page of its own to open, so its card had to be that page. It has
+   * one now: its layout page, which carries the recipes link and Remove the
+   * card used to (and which `/admin/walls/:id` sends a panel to). So every
+   * card is the same object — a name, a kind tag, one status line, "Open" —
+   * and the grid composes, which three heights and three affordances never did. The
+   * dot rides the status line rather than the head so a card without one (the
+   * Default wall) keeps its name on the same edge as its neighbours'.
+   *
+   * `status` is already-escaped markup.
    */
-  function displayListCard(screen: AdminScreenRow, at: number): string {
-    const href = `admin/walls/${encodeURIComponent(screen.id)}`;
+  function wallCard(href: string, name: string, tag: string | undefined, status: string): string {
     return (
       `<a class="card wall-card" href="${href}">` +
       `<div class="wall-head">` +
-      seenDot(screen.lastSeenAt, at) +
       `<div class="wall-head-main">` +
-      `<div class="rname">${escapeHtml(screen.name)} ` +
-      `<span class="tag">Browser</span></div>` +
-      `<div class="sub">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
-      (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`) +
-      (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
-      `</div></div>` +
+      `<div class="rname">${escapeHtml(name)}` +
+      (tag === undefined ? '' : ` <span class="tag">${escapeHtml(tag)}</span>`) +
+      `</div>` +
+      `<div class="sub">${status}</div></div>` +
       `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
       `</div></a>`
     );
   }
 
-  /**
-   * An e-paper wall on the unified Walls list — the "E-paper" twin of
-   * `displayListCard`. It carries its own actions rather than opening one page,
-   * because an e-paper wall has no single settings page the way a browser wall
-   * does: design, recipes and removal are separate places (RFC 006). One
-   * visible action (arranging the layout, the frequent one); the recipes link
-   * and the destructive Remove live in the ⋮, so a safe tap is never a
-   * neighbour of a destructive one and Remove goes through `destructive()`
-   * rather than a hand-rolled danger button. It reads the same as a browser
-   * card because it is built from the same head.
-   */
-  function epaperListCard(screen: AdminScreenRow): string {
-    const id = encodeURIComponent(screen.id);
-    const seen =
-      screen.lastSeenAt === null
-        ? 'never connected'
-        : `last seen ${ago(screen.lastSeenAt, now())}` +
-          (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`);
+  /** "● Last seen 3 min ago from 10.0.0.4" — the dot says whether that is recent. */
+  function seenLine(screen: AdminScreenRow, at: number, windowMs?: number): string {
     return (
-      `<article class="card wall-card">` +
-      `<div class="wall-head">` +
-      `<div class="wall-head-main">` +
-      `<div class="rname">${escapeHtml(screen.name)} ` +
-      `<span class="tag">E-paper</span></div>` +
-      `<div class="sub"><span class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}</span>` +
-      `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`}` +
-      `${screen.lanOnly === 1 ? ' · LAN only' : ''} · ${seen}</div>` +
-      `</div>` +
-      `<details class="ovf" data-overflow>` +
-      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
-      `aria-label="More actions for ${escapeHtml(screen.name)}" title="More">${icon('more')}</summary>` +
-      `<div class="ovf-menu" role="menu">` +
-      `<a class="ovf-item" href="admin/epaper/${id}">URL &amp; recipes</a>` +
-      // The GET this leads to already answers with `confirmDestroyPage`, so
-      // `destructive()` is the control that gets there — a confirmation, an
-      // accessible name that says which wall — rather than a one-click danger
-      // button sitting a row lower than its neighbour.
-      destructive('Remove', {
-        thing: screen.name,
-        confirmAction: `admin/epaper/${id}/delete`,
-      }) +
-      `</div></details>` +
-      `</div>` +
-      `<div class="wall-actions">` +
-      `<a class="btn btn-ghost btn-sm" href="admin/epaper/${id}/design">Arrange layout</a>` +
-      `</div></article>`
+      seenDot(screen.lastSeenAt, at, windowMs) +
+      `Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
+      (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`)
     );
   }
 
+  /** A browser wall: its page holds status, pairing, settings and layout together. */
+  function displayListCard(screen: AdminScreenRow, at: number): string {
+    return wallCard(
+      `admin/walls/${encodeURIComponent(screen.id)}`,
+      screen.name,
+      'Browser',
+      seenLine(screen, at) + (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`),
+    );
+  }
 
+  /**
+   * An e-paper panel: the same card, opening its layout page directly (the
+   * `/admin/walls/:id` route would only redirect there, and a crawl of the
+   * admin's own links should reach the page without a hop). The panel's
+   * geometry stays on the status line because it is the one fact that tells
+   * two panels apart, where two browser walls are told apart by their names.
+   */
+  function epaperListCard(screen: AdminScreenRow, at: number): string {
+    return wallCard(
+      `admin/epaper/${encodeURIComponent(screen.id)}/design`,
+      screen.name,
+      'E-paper',
+      seenLine(screen, at, EPAPER_SEEN_WINDOW_MS) +
+        ` · ${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
+        (screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`) +
+        (screen.lanOnly === 1 ? ' · LAN only' : ''),
+    );
+  }
 
   /**
    * The Walls list: the shared Default plus every paired wall, browser and
-   * e-paper alike — one list, one nav item, with a kind chip on each row
-   * rather than two nav entries for one kind of object (RFC 009 Phase 4).
-   * A browser wall's card opens its own page; an e-paper wall's card carries
-   * its own actions inline, reusing `epaperListCard` rather than rebuilding a
-   * settings page e-paper walls do not have.
+   * e-paper alike — one list, one nav item, one card shape, with a kind chip
+   * on each row rather than two nav entries for one kind of object (RFC 009
+   * Phase 4). Every card opens its wall's own page.
    */
   function displaysPage(c: Context, error?: string): string {
     const at = now();
@@ -3586,17 +3589,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const active = all.filter((screen) => screen.revokedAt === null);
     const revoked = all.length - active.length;
 
-    const defaultCard =
-      `<a class="card wall-card" href="admin/walls/default">` +
-      `<div class="wall-head">` +
-      `<div class="wall-head-main">` +
-      `<div class="rname">Default wall</div>` +
-      `<div class="sub">The layout every wall shows until it has one of its own</div></div>` +
-      `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
-      `</div></a>`;
+    const defaultCard = wallCard(
+      'admin/walls/default',
+      'Default wall',
+      undefined,
+      'The layout every wall shows until it has one of its own',
+    );
 
     const cardFor = (screen: AdminScreenRow): string =>
-      screen.kind === 'epaper' ? epaperListCard(screen) : displayListCard(screen, at);
+      screen.kind === 'epaper' ? epaperListCard(screen, at) : displayListCard(screen, at);
 
     // Reachable from nothing before this (RFC 009 Phase 4) — the device-flow
     // approve/decline page existed only as a URL a QR or a hand-typed link

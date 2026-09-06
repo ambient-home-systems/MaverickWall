@@ -456,12 +456,16 @@ describe('the eInk Displays page', () => {
     const url = frameUrl(created)!;
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
 
-    // The list no longer offers a form that POSTs straight to /regenerate —
-    // it is a plain link to the read-only page. It lives on the merged Walls
-    // list now (RFC 009 Phase 4).
+    // The list no longer offers a form that POSTs straight to /regenerate.
+    // It links to the panel's own page (the merged Walls list, RFC 009 Phase
+    // 4, one card shape for every kind), which is its layout page, and that
+    // page is what links to the read-only recipes page.
     const list = await (await h.call(`${B}/admin/walls`)).text();
     expect(list).not.toContain(`action="admin/epaper/${id}/regenerate"`);
-    expect(list).toContain(`href="admin/epaper/${id}"`);
+    expect(list).toContain(`href="admin/epaper/${id}/design"`);
+    const design = await (await h.call(`${B}/admin/epaper/${id}/design`)).text();
+    expect(design).not.toContain(`action="admin/epaper/${id}/regenerate"`);
+    expect(design).toContain(`href="admin/epaper/${id}"`);
 
     // Visiting it — twice, since a GET has to be safe to repeat — leaves the
     // original URL working and shows no token of its own.
