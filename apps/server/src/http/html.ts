@@ -1035,6 +1035,10 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 .row{display:flex;gap:var(--mw-s-2);flex-wrap:wrap;align-items:center}
 .row form{margin:var(--mw-s-3) 0 0}
 .row button{margin-top:0}
+/* A link styled as a button takes the same top offset a form in the row does,
+ * or the two sit a rung apart — which is how "Done" and "Regenerate URL…" on
+ * the e-paper recipes page were drawn at two heights. */
+.row>.btn{margin-top:var(--mw-s-3)}
 h2.add{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
   margin:var(--mw-s-6) 0 0;padding-top:var(--mw-s-5);border-top:1px solid var(--rule)}
@@ -1057,13 +1061,14 @@ p.hint,.hint{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);margin:var(--
 .sect-head h2{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);margin:0}
 
-/* ---- Stat cards: the kind that navigate --------------------------------- */
+/* ---- Cards that navigate ------------------------------------------------ */
 a.card{display:block;text-decoration:none;color:inherit}
 a.card:hover{background:var(--mw-surface-2);border-color:var(--mw-line-strong)}
 a.card:active{background:var(--mw-surface-3)}
-.stat .top{display:flex;align-items:center;justify-content:space-between;gap:var(--mw-s-3)}
-.stat .subrow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
-.stat .subrow .link svg{width:13px;height:13px}
+/* The Overview's stat tiles (.stat) are gone: a big number with a caption is a
+ * dashboard idiom, and the three it drew were three counts the household
+ * already knew. What the page opens on now is what needs attention and what
+ * the wall draws today — see the Overview route. */
 /* The .ic tile — 34px, rounded, accent-coloured, a glyph in it — is gone, from
  * the Overview's stat cards and status rows and from beside two wall names. An
  * icon inside a tinted rounded square is the one placement this admin bans
@@ -1079,6 +1084,16 @@ a.card:active{background:var(--mw-surface-3)}
 .rname{font-weight:600;font-size:var(--mw-t-h4-size)}
 .status-card .frow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .status-card .frow .link svg{width:13px;height:13px}
+/* What the wall draws today, on the Overview: a rota line, then the day's
+ * events with their calendar's colour and time, then the chores due. One
+ * list, so the household reads it the way the wall's agenda reads. */
+.ov-today{list-style:none;margin:var(--mw-s-3) 0 0;padding:0;display:grid;gap:var(--mw-s-1)}
+.ov-today li{display:flex;align-items:baseline;gap:var(--mw-s-2);font-size:var(--mw-t-label-size);
+  line-height:var(--mw-t-body-lh)}
+.ov-today .swatch{flex:0 0 auto}
+.ov-time{flex:0 0 auto;min-width:var(--mw-touch);color:var(--mw-ink-2);font-variant-numeric:tabular-nums}
+.ov-title{min-width:0}
+.ov-more .ov-title,.ov-rota .ov-title{color:var(--mw-ink-2)}
 .today-card{display:flex;flex-direction:column}
 /* A standalone note set off below the page's content — the Overview's ingress
  * "signed in through Home Assistant" line, which belongs to no section. A

@@ -49,6 +49,7 @@ import {
 } from '../auth/tokens.js';
 import type { IssuedToken } from '../auth/tokens.js';
 import type { DeviceFlowStore } from '../auth/device-flow.js';
+import { currentUser } from '../auth/session.js';
 import { encodeQr, qrSvg } from './qr.js';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -91,8 +92,8 @@ import {
   type PlanKind,
 } from './shifts.js';
 import { testFeed, type TestFeedResult } from '../api/test-feed.js';
-import { currentUser } from '../auth/session.js';
-import type { Fetcher, NetworkOption, ShiftPlan } from '@maverick-wall/core';
+import { dueOn, type CivilDate, type Fetcher, type NetworkOption, type ShiftPlan } from '@maverick-wall/core';
+import { activeOn, readChores } from '../api/chores.js';
 import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
@@ -595,6 +596,16 @@ function formatBytes(bytes: number): string {
  * "14 minutes ago" needs no timezone and no locale, and answers the only
  * question anybody asks of it: is this stale?
  */
+/**
+ * A civil date the way the wall writes one — "Sat 19 Sept" — for a line a
+ * person reads. An ISO stamp is a machine's date; it belongs in a date input,
+ * not in prose. UTC because a civil date carries no zone: it is the day itself.
+ */
+export function civilDateLabel(date: string): string {
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    .format(new Date(`${date}T00:00:00Z`));
+}
+
 export function ago(from: number | null, now: number): string {
   if (from === null) return 'never';
   const seconds = Math.max(0, Math.round((now - from) / 1000));
@@ -620,6 +631,10 @@ export function ago(from: number | null, now: number): string {
  */
 export const BROWSER_SEEN_WINDOW_MS = 5 * 60_000;
 export const EPAPER_SEEN_WINDOW_MS = 60 * 60_000;
+/** A wall unseen for this long is worth a row on the Overview, whatever its kind. */
+const DAY_MS = 24 * 60 * 60_000;
+/** How many of today's events the Overview lists before saying "and N more". */
+const TODAY_EVENT_LIMIT = 8;
 
 export function seenDot(lastSeenAt: number | null, at: number, windowMs = BROWSER_SEEN_WINDOW_MS): string {
   const fresh = lastSeenAt !== null && at - lastSeenAt < windowMs;
@@ -907,42 +922,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   };
 
   app.get('/admin', (c: Context) => {
-    const user = currentUser(c);
     const household = readHousehold(deps.db);
     const sources = readAdminSources(deps.db);
     const screens = readAdminScreens(deps.db).filter((screen) => screen.revokedAt === null);
-    const failing = sources.filter((source) => source.lastError !== null).length;
     const plans = readShiftPlansAdmin(deps.db);
     const at = now();
-    // "Online" is loose on purpose: a wall polls on a minute, so anything seen
-    // inside a few minutes is up. Enough to say "both online" rather than to
-    // diagnose one that is not.
+    const zone = household.timezone;
     const online = screens.filter(
-      (screen) => screen.lastSeenAt !== null && at - screen.lastSeenAt < 5 * 60_000,
+      (screen) =>
+        screen.lastSeenAt !== null &&
+        at - screen.lastSeenAt <
+          (screen.kind === 'epaper' ? EPAPER_SEEN_WINDOW_MS : BROWSER_SEEN_WINDOW_MS),
     ).length;
-
-    // A span, not an anchor: the whole stat card is already an <a>, and a
-    // nested anchor is invalid HTML the browser hoists out of the card.
-    // The word, and no arrow after it. An icon is allowed where it is the
-    // primary identifier of a destination; beside a word that already names the
-    // destination it is the same sentence twice.
-    const manage = (): string => `<span class="link">Manage</span>`;
-
-    /*
-     * Zero calendars is its own branch, and it needs one.
-     *
-     * `failing === 0` is true of a household with nothing connected, so the
-     * card read "0 Calendars connected" under a green "All syncing" — a claim
-     * about a set that is empty, in the colour that means everything is well.
-     * The neutral pill is the same shape "None paired" already uses for
-     * screens, and the card beneath it is a link to go and fix it.
-     */
-    const calTag =
-      sources.length === 0
-        ? `<span class="tag">None yet</span>`
-        : failing === 0
-          ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>All syncing</span>`
-          : `<span class="tag tag-bad"><span class="dot dot-bad"></span>${failing} failing</span>`;
 
     /*
      * Today, in the household's own zone.
@@ -956,39 +947,179 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * changes shape with the server's locale is a stamp nobody can test.
      */
     const todayLine = new Intl.DateTimeFormat('en-GB', {
-      timeZone: household.timezone,
+      timeZone: zone,
       weekday: 'long',
       day: 'numeric',
       month: 'long',
     }).format(new Date(at));
-    const scrTag =
-      screens.length === 0
-        ? `<span class="tag">None paired</span>`
-        : online === screens.length
-          ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>${screens.length === 1 ? 'Online' : 'All online'}</span>`
-          : `<span class="tag"><span class="dot dot-idle"></span>${online} of ${screens.length} online</span>`;
 
     /*
-     * No icon on a stat card, and that is the rule rather than a tidy-up.
-     *
-     * Each of these carried its nav row's glyph inside `.ic` — a 34px
-     * accent-coloured rounded tile on a panel ground — beside the card's own
-     * number and label. Two of the three bans in one element: an icon inside a
-     * tinted rounded square, and an icon standing next to a heading rather than
-     * identifying a destination. The card is a link to that destination; the
-     * heading is what names it.
+     * What needs attention — the first of the two questions somebody opening
+     * this page actually has, and the one it used to answer with three stat
+     * tiles: "4 Calendars connected", "2 Walls paired", "1 Rotation". Those
+     * are three counts the household already knows, restated in a sentence
+     * under a card that repeated them; a big number with a caption is a
+     * dashboard idiom, and this is a calendar. Each row here is something the
+     * household can go and do, in the tone the Status card uses: red only for
+     * a thing that is on and not doing its job.
      */
-    const statCard = (
-      href: string,
-      tag: string,
-      big: string | number,
-      lab: string,
-      sub: string,
-    ): string =>
-      `<a class="card stat" href="${href}">` +
-      `<div class="top">${tag}</div>` +
-      `<div class="big">${escapeHtml(String(big))}</div><div class="lab">${escapeHtml(lab)}</div>` +
-      `<div class="subrow"><span>${sub}</span>${manage()}</div></a>`;
+    interface Attention {
+      readonly title: string;
+      readonly detail: string;
+      readonly href: string;
+      readonly tag: string;
+      readonly bad: boolean;
+    }
+    const attention: Attention[] = [];
+    if (sources.length === 0) {
+      attention.push({
+        title: 'No calendars yet',
+        detail: 'The wall has nothing to draw until one is added.',
+        href: 'admin/calendars', tag: 'Not set up', bad: false,
+      });
+    }
+    for (const source of sources) {
+      if (source.lastError === null) continue;
+      attention.push({
+        title: `${source.name} is not syncing`,
+        detail: source.lastError,
+        href: 'admin/calendars', tag: 'Not syncing', bad: true,
+      });
+    }
+    if (screens.length === 0) {
+      attention.push({
+        title: 'No walls paired yet',
+        detail: 'Pair a tablet, a television or an e-paper panel to put the calendar on a screen.',
+        href: 'admin/walls', tag: 'Not set up', bad: false,
+      });
+    }
+    for (const screen of screens) {
+      const href =
+        screen.kind === 'epaper'
+          ? `admin/epaper/${encodeURIComponent(screen.id)}/design`
+          : `admin/walls/${encodeURIComponent(screen.id)}`;
+      if (screen.lastSeenAt === null) {
+        attention.push({
+          title: `${screen.name} has never connected`,
+          detail:
+            screen.kind === 'epaper'
+              ? 'Nothing has fetched its picture yet. Its device recipes are on its page.'
+              : 'Open its pairing link on the wall.',
+          href, tag: 'Never connected', bad: false,
+        });
+      } else if (at - screen.lastSeenAt > DAY_MS) {
+        attention.push({
+          title: `${screen.name} last seen ${ago(screen.lastSeenAt, at)}`,
+          detail: 'It may be off, or unable to reach this box.',
+          href, tag: 'Not seen', bad: false,
+        });
+      }
+    }
+    if (alertSummary().includes('needs')) {
+      attention.push({
+        title: 'Weather alerts are on with no location',
+        detail: 'They cannot watch anything until the Weather page has a latitude and longitude.',
+        href: 'admin/alerts', tag: 'Needs location', bad: true,
+      });
+    }
+    if (haSummary().includes('problem')) {
+      attention.push({
+        title: 'Home Assistant is connected, with a problem',
+        detail: 'The last read failed. The Home Assistant page says what came back.',
+        href: 'admin/home-assistant', tag: 'Problem', bad: true,
+      });
+    }
+    const update = readUpdateState(deps.db);
+    if (update.enabled && update.latestVersion !== null && update.latestVersion !== deps.appVersion) {
+      attention.push({
+        title: `Version ${update.latestVersion} is available`,
+        detail: `This box runs ${deps.appVersion}. Updating stays yours to do.`,
+        href: 'admin/system', tag: 'Update', bad: false,
+      });
+    }
+    const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+    const attentionRows =
+      attention.length === 0
+        ? listRow(
+            '',
+            {
+              title: 'Everything is running',
+              detail: `${plural(sources.length, 'calendar')} syncing · ${online} of ${plural(screens.length, 'wall')} online`,
+            },
+            `<span class="tag tag-ok"><span class="dot dot-ok"></span>All good</span>`,
+          )
+        : attention
+            .map((item) =>
+              listRow(
+                '',
+                { title: item.title, detail: item.detail, href: item.href },
+                item.bad
+                  ? `<span class="tag tag-bad"><span class="dot dot-bad"></span>${escapeHtml(item.tag)}</span>`
+                  : `<span class="tag">${escapeHtml(item.tag)}</span>`,
+              ),
+            )
+            .join('');
+
+    /*
+     * What the wall draws today — the second question, answered from the same
+     * manifest the Default wall polls, so this list and the glass agree by
+     * construction: who is working, what is on, which chores fall due. Capped,
+     * because a busy Saturday is not what this card is for; the wall is.
+     */
+    const today = localToday() as CivilDate;
+    const manifest = deps.previewManifest?.(null) as
+      | {
+          days?: readonly {
+            date: string;
+            events: readonly { title: string; startsAt: number; allDay: boolean; color: string }[];
+            shifts: readonly { personName: string; label: string }[];
+          }[];
+        }
+      | undefined;
+    const day = manifest?.days?.find((candidate) => candidate.date === today);
+    const timeOf = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: household.clock24 === 1 ? 'h23' : 'h12',
+    });
+    const events = [...(day?.events ?? [])].sort(
+      (a, b) => Number(b.allDay) - Number(a.allDay) || a.startsAt - b.startsAt,
+    );
+    const shown = events.slice(0, TODAY_EVENT_LIMIT);
+    const rota = (day?.shifts ?? []).map((shift) => `${shift.personName}: ${shift.label}`);
+    const chores = readChores(deps.db).filter(
+      (chore) => activeOn(chore, today) && dueOn(chore.schedule, today),
+    );
+    const todayList =
+      rota.length + shown.length + chores.length === 0
+        ? `<p class="hint">Nothing on today.</p>`
+        : `<ul class="ov-today">` +
+          (rota.length === 0
+            ? ''
+            : `<li class="ov-rota"><span class="ov-time">Working</span>` +
+              `<span class="ov-title">${escapeHtml(rota.join(' · '))}</span></li>`) +
+          shown
+            .map(
+              (event) =>
+                `<li><span class="swatch" style="--swatch:${escapeHtml(event.color)}"></span>` +
+                `<span class="ov-time">${event.allDay ? 'All day' : escapeHtml(timeOf.format(new Date(event.startsAt)))}</span>` +
+                `<span class="ov-title">${escapeHtml(event.title)}</span></li>`,
+            )
+            .join('') +
+          (events.length > shown.length
+            ? `<li class="ov-more"><span class="ov-time"></span>` +
+              `<span class="ov-title">and ${events.length - shown.length} more</span></li>`
+            : '') +
+          chores
+            .map(
+              (chore) =>
+                `<li><span class="ov-time">Chore</span><span class="ov-title">${escapeHtml(chore.name)}` +
+                (chore.dueTime === null ? '' : ` · by ${escapeHtml(chore.dueTime)}`) +
+                `</span></li>`,
+            )
+            .join('') +
+          `</ul>`;
 
     // `.frow` restated a lead-less row with a title, an optional second line
     // and a trailing control — exactly `listRow`'s shape, so it is one now.
@@ -1006,34 +1137,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(
       page({
         self: selfHref(c),
-      modules: navModules(deps.db),
+        modules: navModules(deps.db),
         title: 'Maverick Wall',
         nav: 'home',
         heading: 'Overview',
-        intro: `Signed in as ${user.name}.`,
         body:
-          `<div class="grid g3">` +
-          statCard(
-            'admin/calendars', calTag, sources.length,
-            `Calendar${sources.length === 1 ? '' : 's'} connected`,
-            `Timezone ${escapeHtml(household.timezone)}`,
-          ) +
-          statCard(
-            'admin/walls', scrTag, screens.length,
-            `Wall${screens.length === 1 ? '' : 's'} paired`,
-            screens.length === 0 ? 'Pair one on the Walls page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
-          ) +
-          statCard(
-            'admin/shifts',
-            plans.length === 0 ? '<span class="tag">None set</span>' : `<span class="tag tag-accent">${plans.length} active</span>`,
-            plans.length, `Rotation${plans.length === 1 ? '' : 's'}`,
-            plans.length === 0 ? 'Colour each day by who is working' : escapeHtml(plans.map((p) => p.personName ?? 'Someone').join(' · ')),
-          ) +
-          `</div>` +
+          section('Needs attention', undefined, `<div class="card status-card">${attentionRows}</div>`) +
 
-          `<div class="sect"><div class="sect-head"><h2>Status</h2>` +
-          `<span class="kick">Household · ${escapeHtml(household.timezone)}</span></div>` +
+          `<div class="sect"><div class="sect-head"><h2>Today</h2>` +
+          `<span class="kick">Household · ${escapeHtml(zone)}</span></div>` +
           `<div class="grid g2">` +
+          `<div class="card today-card">` +
+          `<div class="kick">Today on the wall</div>` +
+          `<div class="today-big">${escapeHtml(todayLine)}</div>` +
+          `<div class="sub">${plural(sources.length, 'calendar')} · ${plural(plans.length, 'rotation')} · ${plural(screens.length, 'wall')} · ${escapeHtml(zone)}</div>` +
+          todayList +
+          `<div class="row card-foot">` +
+          `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
+          `</div>` +
           `<div class="card status-card">` +
           // Linked, because the summary can name something to go and do and a
           // pill that says "needs your location" with no way to it is a nag.
@@ -1045,21 +1167,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           statusRow('Home Assistant', '', tagFor(haSummary())) +
           statusRow('System', `${escapeHtml(deps.appVersion)} · up ${uptimeText}`, `<a class="link" href="admin/system">Open</a>`) +
           `</div>` +
-          `<div class="card today-card">` +
-          `<div class="kick">Today on the wall</div>` +
-          `<div class="today-big">${escapeHtml(todayLine)}</div>` +
-          `<div class="sub">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'} · ${escapeHtml(household.timezone)}</div>` +
-          `<div class="row card-foot">` +
-          `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
-          `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
-          `</div></div></div>` +
+          `</div></div>` +
 
-          // Sign-out lives in the sidebar footer now, shown on every page for a
-          // plain docker install and stripped under ingress. Here we only keep
-          // the note for the ingress case, where signing out is a Home Assistant
-          // action rather than ours.
+          // Sign-out lives in the sidebar footer, shown on every page for a
+          // plain docker install and stripped under ingress. Under ingress the
+          // one line here says who the supervisor's request resolved to and
+          // that signing out is a Home Assistant action rather than ours; on a
+          // plain install the sidebar already says both. ("Signed in as …" used
+          // to open every Overview as its intro line, which was a fact the
+          // sidebar footer states on every page.)
           (c.get('viaIngress') === true
-            ? `<p class="hint ov-footnote">Signed in through Home Assistant.</p>`
+            ? `<p class="hint ov-footnote">Signed in as ${escapeHtml(currentUser(c).name)} through Home Assistant.</p>`
             : ''),
       }),
     );
@@ -2449,7 +2567,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2>${escapeHtml(plan.personName ?? 'Nobody')}</h2>` +
         `<p class="sub">` +
         (plan.kind === 'pattern'
-          ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
+          ? `Repeating pattern from ${plan.anchorDate === null ? '?' : escapeHtml(civilDateLabel(plan.anchorDate))}`
           : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
         `</p>` +
         `</div>` +
@@ -2476,13 +2594,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'shifts',
       heading: 'Work Schedule',
       saved: readSaved(c),
-      action: { label: 'Shift types', href: 'admin/shifts/types' },
+      // No app-bar action: see the Calendars page for the rule. "Shift types"
+      // used to sit here — a filled button in the app bar for what is
+      // navigation, not an action — and is a link in the body now.
       intro:
         'The wall colours each day by who is working. A rotation is either read ' +
         'from a calendar that already has the shifts in it, or set as a pattern ' +
-        'that repeats. Name and colour the shift types on the Shift types page.',
+        'that repeats.',
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        `<p class="hint"><a class="link" href="admin/shifts/types">Shift types</a> — ` +
+        `name and colour the kinds of shift the wall knows about.</p>` +
         plans.map(planCard).join('') +
         (canAdd
           ? section(
@@ -2914,7 +3036,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'people',
       heading: 'People',
       saved: readSaved(c),
-      action: { label: 'Add someone', href: 'admin/people#add' },
+      // No app-bar action: see the Calendars page for the rule. The add form
+      // is on this page, with the one filled Add.
       intro:
         'Everyone the wall knows about. Their colour marks their events and ' +
         'their shifts, so pick ones that are easy to tell apart from across a room.',
@@ -3659,7 +3782,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'walls',
       heading: 'Walls',
       saved: readSaved(c),
-      action: { label: 'Pair a new wall', href: 'admin/walls#add' },
+      // No app-bar action: see the Calendars page for the rule. The pairing
+      // form is on this page, with the one filled Add wall.
       ...(active.length === 0
         ? { intro: 'No walls paired yet. The Default wall below holds the layout a wall shows until you pair one and give it a layout of its own.' }
         : {}),
@@ -4620,13 +4744,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       heading: 'Calendars',
       saved: readSaved(c),
       /*
-       * No app-bar action, deliberately.
+       * No app-bar action, deliberately — and the same rule now holds on
+       * People, Chores, Walls and Work Schedule, which used to carry one each.
        *
        * `page()`'s action is a *filled* button for the top-right of the shell,
-       * and it read "Add a calendar" while the add form was already on screen
-       * further down the same page — a second primary competing with the real
-       * one, whose whole effect was to scroll. One primary per screen, and on
-       * this screen it is the Add at the foot of the form.
+       * and a filled "Add a calendar" there competes with the form's own
+       * filled Add while the form it would scroll to is already on the page:
+       * two primaries for one act. The app bar's slot is for an action that
+       * leads somewhere else (Themes' "New theme" opens the builder), not
+       * for a scroll. Half the pages had one and half did not, which read as
+       * the button meaning something different on each.
        */
       body:
         /*

@@ -384,11 +384,20 @@ describe('the chores screen', () => {
       every_from: addDays(localToday('Europe/London'), 10),
     });
     const start = addDays(localToday('Europe/London'), 10);
+    // Written the way the wall writes a date ("Sat 19 Sept"), not as an ISO
+    // stamp — computed here the same way, so the assertion is about the
+    // dates and not about a locale's spelling of a month.
+    const written = (date: string): string =>
+      new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+        .format(new Date(`${date}T00:00:00Z`));
     const body = await (await h.call('/admin/chores')).text();
     expect(body).toContain('Every 3 days');
-    expect(body).toContain(start);
-    expect(body).toContain(addDays(start, 3));
-    expect(body).toContain(addDays(start, 6));
+    expect(body).toContain(written(start));
+    expect(body).toContain(written(addDays(start, 3)));
+    expect(body).toContain(written(addDays(start, 6)));
+    // The ISO form still belongs in the folded editor's date input; it is
+    // the readout that must not carry it.
+    expect(/Next: [^<]*/.exec(body)?.[0]).not.toContain(start);
   });
 
   it('says how far it looked, rather than claiming a chore is never due again', async () => {

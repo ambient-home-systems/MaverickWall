@@ -169,6 +169,49 @@ describe('the Overview does not cry wolf', () => {
   });
 });
 
+describe('the Overview says what needs attention and what the wall draws today', () => {
+  it('opens on attention rows rather than stat tiles, and names what a fresh install lacks', async () => {
+    const h = await harness();
+    const html = await h.text('/admin');
+    expect(html).not.toContain('class="card stat"');
+    expect(html).not.toContain('Calendars connected');
+    expect(html).not.toContain('Signed in as');
+    expect(html).toContain('Needs attention');
+    expect(html).toContain('No calendars yet');
+    expect(html).toContain('No walls paired yet');
+    // Each row is a link to where the thing is done.
+    expect(html).toContain('href="admin/calendars"');
+    expect(html).toContain('href="admin/walls"');
+  });
+
+  it('lists a wall that has never connected, and links to its page', async () => {
+    const h = await harness();
+    await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    const html = await h.text('/admin');
+    expect(html).toContain('Kitchen tablet has never connected');
+    expect(html).not.toContain('No walls paired yet');
+    const id = (h.db.prepare(`SELECT id FROM screens`).get() as { id: string }).id;
+    expect(html).toContain(`href="admin/walls/${id}"`);
+  });
+
+  it("says today's chores and rota in the Today card, and keeps the zone on its supporting line", async () => {
+    const h = await harness();
+    await h.form('/admin/chores', { name: 'Empty the dishwasher', kind: 'daily', due_time: '19:00' });
+    const html = await h.text('/admin');
+    const card = /<div class="card today-card">([\s\S]*?)<div class="row card-foot">/.exec(html)?.[1] ?? '';
+    expect(card).toContain('<ul class="ov-today">');
+    expect(card).toContain('Empty the dishwasher · by 19:00');
+    expect(card).toContain('Europe/London');
+  });
+
+  it('says "Nothing on today" rather than drawing an empty list', async () => {
+    const h = await harness();
+    const html = await h.text('/admin');
+    expect(html).toContain('Nothing on today.');
+    expect(html).not.toContain('<ul class="ov-today">');
+  });
+});
+
 describe('a new pairing link is asked for, never stumbled into', () => {
   const screenId = (h: Awaited<ReturnType<typeof harness>>): string =>
     (h.db.prepare(`SELECT id FROM screens WHERE revoked_at IS NULL`).get() as { id: string }).id;

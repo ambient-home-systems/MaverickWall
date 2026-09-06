@@ -690,9 +690,12 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       saved: readSaved(c),
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
-        boundary() +
+        // Status and the form first; the explainer of what the token is and
+        // is not used for sits under them, where somebody deciding whether to
+        // paste one can read it and somebody already connected can skip it.
         status(live, settings.lastSyncAt) +
         (live.mode === 'supervisor' ? '' : connectionForm(settings)) +
+        boundary() +
         (connected ? readings(live) : '') +
         (connected ? calendars(live) : '') +
         (connected ? rules(live, template) : ''),

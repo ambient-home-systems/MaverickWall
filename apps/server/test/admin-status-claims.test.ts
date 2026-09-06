@@ -165,12 +165,14 @@ describe('the Overview calendar chip', () => {
       const html = await (await home.call('/admin')).text();
       const text = textOf(html);
 
-      expect(text).toContain('0 Calendars connected');
-      expect(text).not.toContain('All syncing');
-      expect(text).toContain('None yet');
-      // Neutral, not green: the dot is what carries the colour, and a chip with
-      // no calendars behind it must not draw the well one.
-      expect(html).toMatch(/<span class="tag">None yet<\/span>/);
+      // The stat tile that said "0 Calendars connected" under a green "All
+      // syncing" is gone; what the Overview opens on now is what needs
+      // attention, and a household with no calendars is told so, in the
+      // neutral tag — not the well one, and not the red one either.
+      expect(text).toContain('No calendars yet');
+      expect(text).not.toContain('syncing');
+      expect(text).not.toContain('Everything is running');
+      expect(html).toMatch(/<span class="tag">Not set up<\/span>/);
     },
     SLOW,
   );
@@ -180,9 +182,19 @@ describe('the Overview calendar chip', () => {
     async () => {
       const home = await fresh({ feed: true });
       const text = textOf(await (await home.call('/admin')).text());
-      expect(text).toContain('1 Calendars connected'.replace('Calendars', 'Calendar'));
-      expect(text).toContain('All syncing');
-      expect(text).not.toContain('None yet');
+      // One calendar: "No calendars yet" is gone, and with no wall paired the
+      // page still has something to say — so it is not yet all good.
+      expect(text).not.toContain('No calendars yet');
+      expect(text).toContain('No walls paired yet');
+      expect(text).not.toContain('Everything is running');
+
+      // Pair a wall and have it call in, and the page has nothing left to
+      // ask: one row, in the well tone, that names what is syncing and online.
+      await home.post('/admin/screens', { name: 'Kitchen' });
+      home.db.prepare('UPDATE screens SET last_seen_at = ?').run(home.now());
+      const allGood = textOf(await (await home.call('/admin')).text());
+      expect(allGood).toContain('Everything is running');
+      expect(allGood).toContain('1 calendar syncing · 1 of 1 wall online');
     },
     SLOW,
   );

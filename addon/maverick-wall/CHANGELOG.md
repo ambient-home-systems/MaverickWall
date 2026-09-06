@@ -27,6 +27,26 @@ widget you tap opens beside the layout instead of at the very bottom; and the
 "restrict to my home network" switch has moved onto the Panel settings tab
 from the device-recipes page.
 
+**The Overview tells you what needs doing and what is on the wall today.**
+It used to open on three big numbers — calendars connected, walls paired,
+rotations — which you already knew, and said nothing about today. It now
+opens on a short list of anything that needs attention (a calendar that is
+not syncing, a wall that has never connected or has not been seen for a day,
+alerts with no location, a newer version), or one line saying everything is
+running. The Today card lists who is working, today's events with their
+calendar's colour, and any chores due, read from the same place the wall
+reads them.
+
+**Small words, tidied.** Dates on the Chores and Work Schedule pages are
+written the way the wall writes them ("Mon 7 Sept") rather than as
+"2026-09-07"; two notes meant for whoever maintains the forms no longer show
+to you; the Home Assistant page puts the connection form before the
+explanation of what the token is used for; the Weather page's note about
+zones is a sentence; the Themes page says where a theme is chosen; the
+Store's "Advanced" is no longer dressed as the page's main button; and the
+"Add" button in the app bar is gone from the pages whose add form is already
+on screen, so there is one Add per page.
+
 **Lists are easier to read.** People, chores and shift types put their
 "move up" and "move down" buttons in the row itself, which made the thing you
 do least the biggest thing on the card. Reordering is in each row's ⋮ menu

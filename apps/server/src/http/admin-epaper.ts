@@ -305,7 +305,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(url)) +
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
-        `<div style="display:flex;gap:10px;margin-top:18px">` +
+        `<div class="row">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // GET-then-POST, behind confirmDestroyPage — exactly destructive()'s
         // shape, and the old one-off "btn ghost" label repeated below with a
@@ -361,7 +361,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(placeholder)) +
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
-        `<div style="display:flex;gap:10px;margin-top:18px">` +
+        `<div class="row">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // Same GET-then-POST shape as the config page's button above, and now
         // the same component — the "re-flashing" consequence is what the
@@ -424,8 +424,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         `</div><div>` +
         textField({ label: 'Height (px)', name: 'height', placeholder: '480', attrs: 'inputmode="numeric"' }) +
         `</div></div>` +
-        `<p class="hint">Width and height are only used for a Custom panel — with script ` +
-        `off, both boxes show regardless of the panel chosen above. In the panel's ` +
+        `<p class="hint">Width and height are only used for a Custom panel, in its ` +
         `native (landscape) resolution — rotation is separate.</p>` +
         selectField({
           label: 'Rotation',

@@ -386,14 +386,17 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       return `Nothing due in the next ${PREVIEW_DAYS} days`;
     }
     const shown = dates.slice(0, PREVIEW_COUNT);
+    // "Mon 7 Sept", the way the wall writes a date, not "Mon 2026-09-07" —
+    // an ISO stamp is a machine's date, and this line is read by a person
+    // checking that what they set up means what they meant. UTC because a
+    // civil date carries no zone: it is the calendar day itself.
     const label = (date: CivilDate): string =>
-      date === from ? 'today' : `${DAY_NAMES[weekdayOf(date)]} ${date}`;
+      date === from
+        ? 'today'
+        : new Intl.DateTimeFormat('en-GB', {
+            weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+          }).format(new Date(`${date}T00:00:00Z`));
     return `Next: ${shown.map(label).join(' · ')}`;
-  }
-
-  /** The weekday of a civil date, without pulling the whole date machinery in. */
-  function weekdayOf(date: CivilDate): number {
-    return new Date(`${date}T00:00:00Z`).getUTCDay();
   }
 
   function choreCard(chore: ChoreRow, from: CivilDate, first: boolean, last: boolean): string {
@@ -514,8 +517,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="row-fields" data-cond-show="once">` +
       textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: onceDate }) +
       `</div>` +
-      `<p class="hint">Only the boxes belonging to the “Repeats” choice above are used ` +
-      `— with script off, every box shows and this still holds. ` +
+      `<p class="hint">Only the boxes belonging to the “Repeats” choice above are used. ` +
       `A day of the month goes up to 28, so the chore lands in February the same ` +
       `way it lands in every other month.</p>` +
       `<button type="submit">Save</button></form></details>` +
@@ -542,7 +544,8 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'chores',
       heading: 'Chores',
       saved: readSaved(c),
-      action: { label: 'Add a chore', href: 'admin/chores#add' },
+      // No app-bar action: see the Calendars page for the rule. The add form
+      // is on this page, with the one filled Add.
       intro:
         'What gets done around the house, and when. Chores are set up here and ' +
         'shown on the wall — this is the page you come back to twice a year, ' +
@@ -600,7 +603,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
             textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: from }) +
             `</div>` +
             `<p class="hint">Pick how it repeats, then fill in only the boxes that ` +
-            `belong to it — with script off, every box shows and this still holds. ` +
+            `belong to it. ` +
             `“By” is a time of day the wall shows beside the chore; ` +
             `leave it blank for any time that day.</p>` +
             `<button type="submit">Add</button></form>`,

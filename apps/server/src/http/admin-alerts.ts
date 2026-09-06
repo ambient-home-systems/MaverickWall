@@ -734,7 +734,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
                 )
                 .join('')) +
             // Both, and why. Watching only one silently misses a category.
-            `<p class="hint">Two: most alerts are issued against the forecast zone, and ` +
+            `<p class="hint">There are usually two: most alerts are issued against the forecast zone, and ` +
             `flood warnings in particular are issued by county.</p>`,
         ) +
 

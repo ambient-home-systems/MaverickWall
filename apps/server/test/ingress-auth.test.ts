@@ -116,7 +116,7 @@ describe('the supervisor is trusted without a cookie', () => {
     const html = await response.text();
     expect(html).toContain('Signed in as Household');
     // No sign-out button under ingress — the supervisor would hand it back.
-    expect(html).toContain('Signed in through Home Assistant');
+    expect(html).toContain('through Home Assistant');
     expect(html).not.toContain('action="admin/sign-out"');
   });
 });
