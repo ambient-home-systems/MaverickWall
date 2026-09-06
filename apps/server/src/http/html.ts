@@ -1848,7 +1848,13 @@ pre.code{background:var(--mw-surface-2);
  * screen is up, and an overflow for the infrequent and the destructive. */
 .wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:var(--mw-s-2);
   font-size:var(--mw-t-body-size);color:var(--mw-ink-2);min-width:0}
-.wall-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The status wraps rather than eliding. It used to be one line with an
+ * ellipsis, and on a phone the one sentence telling a household what to do
+ * next ("Never connected · open its pairing link on the wall…") was cut off at
+ * the verb, measured at 390px; at 1280px the same sentence lost its second
+ * clause to the ⋮ beside it. The mode bar it sits in already wraps, so a
+ * two-line status costs a row and no words. */
+.wall-status>span{min-width:0}
 .wall-status b{color:var(--mw-ink);font-weight:500}
 
 /* The overflow menu. A <details>, so it opens with no script at all; the page

@@ -214,7 +214,10 @@ describe('the Weather screen', () => {
       await page.fill('input[name="latitude"]', '999');
       await page.fill('input[name="longitude"]', '-0.1278');
       await page.check('input[name="alerts_enabled"]');
-      await page.selectOption('select[name="weather_provider"]', 'openmeteo');
+      // NWS rather than Open-Meteo: this household ran the wizard as London, so
+      // Open-Meteo is what the wizard stored, and choosing it here would make
+      // "nothing was written" indistinguishable from "it was".
+      await page.selectOption('select[name="weather_provider"]', 'nws');
       await Promise.all([
         page.waitForNavigation({ timeout: 20_000 }),
         page.locator('.saverow [data-dirty-save]').click(),
@@ -226,7 +229,7 @@ describe('the Weather screen', () => {
       expect(await page.inputValue('input[name="latitude"]'), 'the number to correct').toBe('999');
       expect(await page.inputValue('input[name="longitude"]')).toBe('-0.1278');
       expect(await page.isChecked('input[name="alerts_enabled"]')).toBe(true);
-      expect(await page.inputValue('select[name="weather_provider"]')).toBe('openmeteo');
+      expect(await page.inputValue('select[name="weather_provider"]')).toBe('nws');
       /*
        * And the hints under the form read the *form*, not the database. Asking
        * the stored row would put "Fill in the latitude and longitude above"
@@ -237,8 +240,9 @@ describe('the Weather screen', () => {
         'the coordinates are on screen, so nothing should ask for them',
       ).not.toContain('Fill in the latitude and longitude above');
 
-      // And nothing was written: a refused form changes nothing.
-      expect(readWeatherSettings(home.db).provider).toBe('nws');
+      // And nothing was written: a refused form changes nothing — the provider
+      // is still the one the wizard chose for a London household.
+      expect(readWeatherSettings(home.db).provider).toBe('openmeteo');
 
       /*
        * The re-rendered form is *already* dirty, and only the server knows it.
@@ -271,7 +275,12 @@ describe('the Weather screen', () => {
         (home.db
           .prepare(`SELECT alerts_enabled AS enabled FROM household_settings WHERE id = 'singleton'`)
           .get() as { enabled: number }).enabled;
-      expect(alertsOf(), 'alerts ship on, which is what made this a deadlock').toBe(1);
+      // The switch shipped on for every household, which is what made this a
+      // deadlock. The wizard now turns it off outside the United States (this
+      // household ran it as London), so put it back the way a US install has
+      // it: on, with no location.
+      home.db.prepare(`UPDATE household_settings SET alerts_enabled = 1 WHERE id = 'singleton'`).run();
+      expect(alertsOf(), 'on with no location: the deadlock case').toBe(1);
 
       await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
       expect(await page.inputValue('input[name="latitude"]'), 'and no location').toBe('');
@@ -527,7 +536,9 @@ describe('a settings form', () => {
       seedDefaultRules(home.db);
       await page.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
 
-      await page.selectOption('select[name="weather_units"]', 'metric');
+      // Imperial, because metric is what the wizard stored for this London
+      // household and choosing the stored value is not an edit.
+      await page.selectOption('select[name="weather_units"]', 'imperial');
       await expect
         .poll(() => page.locator('.saverow [data-dirty-save]').isEnabled(), { timeout: 10_000 })
         .toBe(true);
@@ -553,7 +564,7 @@ describe('a settings form', () => {
       expect(prompts, 'the units change was about to go, and nothing said so').toBe(1);
       expect(off(), 'and "Stay" means stay').toBe(before);
       expect(await page.inputValue('select[name="weather_units"]'), 'the edit is still here').toBe(
-        'metric',
+        'imperial',
       );
     },
     SLOW,

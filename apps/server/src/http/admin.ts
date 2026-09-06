@@ -302,6 +302,7 @@ import { readEnabledExternalModules, readExternalModules } from '../api/external
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
 import { fetchCalendarEntities } from '../modules/homeassistant/index.js';
+import { isUnitedStatesZone } from '../timezone.js';
 
 /**
  * The admin screens.
@@ -628,6 +629,24 @@ export function seenDot(lastSeenAt: number | null, at: number, windowMs = BROWSE
 }
 
 /**
+ * What making a new pairing link costs, said before it is done.
+ *
+ * The control used to be labelled "Pairing link…" and posted straight to
+ * `/regenerate` with no confirmation — so a household who tapped it to *look
+ * at* the link revoked the one they had just printed, and on a wall that was
+ * already paired cut that wall off. The wall page's own status line sent
+ * them there ("open its pairing link on the wall"). The consequence differs
+ * by state and the sentence says which: an unspent link that stops working,
+ * or a wall that drops off until the new link is opened on it. Plain text —
+ * the callers put it in a `data-confirm` attribute and escape it there.
+ */
+export function regenerateWarning(name: string, connected: boolean): string {
+  return connected
+    ? `Make a new pairing link for ${name}? ${name} drops off the wall and shows its pairing screen until the new link is opened on it.`
+    : `Make a new pairing link for ${name}? The link and code you were given stop working — use the new ones on the wall.`;
+}
+
+/**
  * How long after a calendar is added its first sync is still in flight.
  *
  * `addCalendarSource` schedules the job three seconds out and the scheduler
@@ -822,12 +841,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // while the evaluator treated every rule as off — permanently, if the new
     // location turns out to be outside the service.
     const zones = countWatchedZones(deps.db);
-    return zones === 0 ? 'on — no zones yet' : `watching ${zones} zones`;
+    if (zones > 0) return `watching ${zones} zones`;
+    // Outside the United States there will never be a zone, and "no zones
+    // yet" promises one. The wizard turns the switch off for such a household
+    // now; this is the one that turned it on, or was set up before it did.
+    return isUnitedStatesZone(readHousehold(deps.db).timezone) ? 'on — no zones yet' : 'not available here';
   };
 
   const haSummary = (): string => {
     const resolved = resolveConnection(deps.db, deps.keyring);
-    if (!resolved.ok) return 'not connected';
+    // "Not set up", not "not connected": most households never connect Home
+    // Assistant, and a connection nobody asked for is not a fault.
+    if (!resolved.ok) return 'not set up';
     if (resolved.connection.mode === 'supervisor') return 'connected as an add-on';
     const settings = readHaSettings(deps.db);
     return settings.lastError === null ? 'connected' : 'connected, with a problem';
@@ -839,16 +864,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   const tagFor = (summary: string): string => {
     const low = summary.toLowerCase();
-    const cls =
-      // "needs" and "no zones" join the bad set rather than the neutral one:
-      // something is switched on and not working, which is the same shape as
-      // "not connected" and not the same shape as "off".
-      low.includes('not connected') || low.includes('problem') || low.includes('error') ||
-      low.includes('needs') || low.includes('no zones')
-        ? 'tag-bad'
-        : low === 'off' || low.startsWith('on,')
-          ? 'tag'
-          : 'tag-ok';
+    // Red is for something that is switched on and not doing its job: a
+    // connection with a problem, an alert switch with no location to work
+    // from. Not for an integration nobody has set up, not for a wait ("no
+    // zones yet" is the minute after a household in the United States saves
+    // a location), and not for a place the service does not cover. Measured
+    // on a fresh install in London, this card used to show two red tags on a
+    // box that had never done anything wrong — and a status that is red on
+    // every install is a colour nobody reads, so the first real fault would
+    // have arrived in the same tone as the two false ones.
+    const bad = low.includes('problem') || low.includes('error') || low.includes('needs');
+    const plain = low === 'off' || low.startsWith('on,') || low.startsWith('on —') || low.startsWith('not ');
+    const cls = bad ? 'tag-bad' : plain ? 'tag' : 'tag-ok';
     const dot = cls === 'tag-ok' ? '<span class="dot dot-ok"></span>' : cls === 'tag-bad' ? '<span class="dot dot-bad"></span>' : '';
     // A capitalised first letter reads as a label rather than a sentence fragment.
     const text = summary.charAt(0).toUpperCase() + summary.slice(1);
@@ -2984,8 +3011,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'walls',
       heading: `Pair ${name}`,
       intro:
-        'Open this on the wall itself. It is shown once — if you lose it, ' +
-        'generate another, which costs nothing.',
+        'Open this on the wall itself. It is shown once. If you lose it, make a ' +
+        'new one from the wall’s menu — this one stops working when you do.',
       body:
         (unreachable
           ? errorBlock(
@@ -3463,9 +3490,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const id = encodeURIComponent(screen.id);
     const advanced =
       `<div class="rows">` +
-      `<form method="post" action="admin/screens/${id}/regenerate">` +
-      `<button class="arow" type="submit"><span class="arow-text">Pairing link` +
-      `<small>Shows a fresh link and code. The old one stops working.</small></span>` +
+      `<form method="post" action="admin/screens/${id}/regenerate" ` +
+      `data-confirm="${escapeHtml(regenerateWarning(screen.name, screen.lastSeenAt !== null))}">` +
+      `<button class="arow${screen.lastSeenAt === null ? '' : ' is-danger'}" type="submit">` +
+      `<span class="arow-text">New pairing link` +
+      `<small>Shows a fresh link and code. The current one stops working` +
+      `${screen.lastSeenAt === null ? '' : ', and this wall drops off until the new one is opened on it'}.</small></span>` +
       `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button></form>` +
       `<a class="arow" href="admin/displays/${id}/gallery"><span class="arow-text">Start from a template` +
       `<small>Replace this wall's layout with one we ship, or copy another wall's.</small></span>` +
@@ -3833,7 +3863,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       owner === null
         ? `<b>Shared default</b> · the layout and settings every wall starts from`
         : owner.lastSeenAt === null
-          ? `<b>Never connected</b> · open its pairing link on the wall`
+          ? `<b>Never connected</b> · open its pairing link on the wall, or make a new one from the menu`
           : online
             ? `<b>Online</b>${owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`}`
             : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(owner.lastSeenAt, at))}`;
@@ -3842,8 +3872,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const menuItems =
       (owner === null
         ? ''
-        : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate">` +
-          `<button class="ovf-item" type="submit">Pairing link…</button></form>`) +
+        : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate" ` +
+          `data-confirm="${escapeHtml(regenerateWarning(owner.name, owner.lastSeenAt !== null))}">` +
+          `<button class="ovf-item${owner.lastSeenAt === null ? '' : ' is-danger'}" type="submit">` +
+          `New pairing link…</button></form>`) +
       `<a class="ovf-item" href="admin/displays/${ownerParam}/gallery">Start from a template…</a>` +
       `<div class="ovf-sep"></div>` +
       `<form method="post" action="admin/displays/${ownerParam}/reset-layout" ` +

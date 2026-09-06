@@ -987,11 +987,15 @@ describe('weather provider', () => {
     expect(page).not.toContain('covers the United States only');
   });
 
-  it('defaults to NWS in imperial, the shipped behaviour', async () => {
+  it('defaults follow the wizard: a London household gets the worldwide provider in metric', async () => {
+    // This used to assert NWS in imperial as "the shipped behaviour". The
+    // columns still default that way; the wizard's timezone step now sets
+    // them from the zone, and this harness runs it with Europe/London. The
+    // United States case is `admin-defaults.test.ts`.
     const h = await harness();
     const w = readWeatherSettings(h.db);
-    expect(w.provider).toBe('nws');
-    expect(w.units).toBe('imperial');
+    expect(w.provider).toBe('openmeteo');
+    expect(w.units).toBe('metric');
   });
 });
 

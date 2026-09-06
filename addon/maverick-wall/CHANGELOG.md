@@ -23,6 +23,27 @@ does now: Open takes you to the panel's layout page, which carries its status,
 its device recipes and Remove, with a link back to Walls like every other
 wall's page.
 
+**A new install outside the United States gets weather that works.** The
+wizard now sets the forecast provider, the units and the weather-alert switch
+from the timezone you choose: a household in the United States keeps the
+National Weather Service, Fahrenheit and alerts on; everyone else gets the
+worldwide forecast, Celsius, and the alert switch off, because those alerts
+cover the United States only. Installs already running are not changed; the
+Weather page now says plainly when alerts are not available where you are.
+
+**The Overview is no longer red on a box that has done nothing wrong.** Home
+Assistant you have not connected reads "Not set up" in grey rather than "Not
+connected" in red, and weather alerts that cannot work where you are say so
+instead of "no zones yet". Red is kept for something that is on and failing.
+
+**Making a new pairing link asks first, and says what it costs.** The menu
+item used to read "Pairing link…" and, when tapped to look at the link, quietly
+replaced it — so the code you had just written down stopped working, and a
+wall that was already paired dropped off. It is "New pairing link…" now, asks
+before it does anything, and says whether it is retiring an unused link or
+disconnecting a wall. On a phone, a wall's status line wraps instead of being
+cut off mid-sentence.
+
 **The settings menu is grouped by what you are doing.** Overview stands at the
 top on its own; **Household** is your calendars, people, work schedule and
 chores; **Integrations** is the weather, Home Assistant and the Store, with
