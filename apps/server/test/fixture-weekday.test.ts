@@ -115,6 +115,10 @@ const NEEDS: Readonly<Record<string, Need>> = {
     rules: {},
     why: 'asks whether three calendars reach the glass as three colours. A count of distinct hues does not depend on which day they land on.',
   },
+  'browser-wall-a11y.test.ts:YESTERDAY': {
+    rules: {},
+    why: "one event on the day before now, measured for the ink a past day is demoted to. Its consuming file pins the household to a Wednesday (`MIDWEEK_SHIFT`) so yesterday is always inside the drawn week — the weekday is answered there, by construction, rather than by the fixture's own shape.",
+  },
   'browser-source-colours.test.ts:HUE_FEEDS': {
     rules: { stableSpans: true },
     why: 'its span bar is the element whose ink is measured, so the bar has to be drawn — and drawn the same way — whatever the weekday.',
@@ -372,5 +376,48 @@ describe('the rule itself', () => {
     // as a single day would make the coverage rule far too strict.
     const run = one([{ title: 'Away', day: -6, days: 13 }]);
     expect(weekdayFaults(run, { weekCoverage: 1 })).toEqual([]);
+  });
+});
+
+describe('fixtures are declared, never assembled at the call site', () => {
+  it('passes no inline events literal to install({ calendars })', () => {
+    /*
+     * The hole this file had, found the hard way.
+     *
+     * The scan above reads `const NAME: readonly NamedFeed[]` declarations, so
+     * a fixture written *inside* an `install({ calendars: [...] })` call is
+     * invisible to it and answers no question about the weekday. One was —
+     * `browser-wall-a11y` appended `{ name: 'Yesterday', events: [...] }` to a
+     * spread — and it went red on `main` on the one weekday where the manifest
+     * window and the grid's week start leave no past cell with an event on it.
+     * Every assertion in this file passed while that fixture was unexamined,
+     * because it was never a fixture this file could see.
+     *
+     * So the rule is the declaration itself: a `const` at the top of a file is
+     * checkable and a literal at a call site is not. Spreading declared
+     * fixtures together is fine and is what the two callers do.
+     */
+    const offenders: string[] = [];
+    for (const file of readdirSync(HERE).filter((name) => name.endsWith('.test.ts'))) {
+      const source = readFileSync(join(HERE, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const match of source.matchAll(/calendars:\s*\[/g)) {
+        // To the bracket that closes it, so a spread on the next line is seen.
+        const from = (match.index ?? 0) + match[0].length;
+        let depth = 1;
+        let to = from;
+        while (to < source.length && depth > 0) {
+          if (source[to] === '[') depth += 1;
+          else if (source[to] === ']') depth -= 1;
+          to += 1;
+        }
+        if (/events:\s*\[/.test(source.slice(from, to))) offenders.push(file);
+      }
+    }
+    expect(
+      [...new Set(offenders)],
+      `${new Set(offenders).size} file(s) build a fixture inside their \`install\` call, where ` +
+        `nothing above can examine it. Lift it to a \`const NAME: readonly NamedFeed[]\` and ` +
+        `declare it in NEEDS`,
+    ).toEqual([]);
   });
 });
