@@ -212,6 +212,65 @@ describe('the Overview says what needs attention and what the wall draws today',
   });
 });
 
+describe('the Add-a-rotation form opens on a choice that can be submitted', () => {
+  /** The options of the named select, in order, with the one a browser would post first. */
+  const options = (html: string, name: string): { value: string; label: string }[] => {
+    const select = new RegExp(`<select[^>]*name="${name}"[^>]*>([\\s\\S]*?)</select>`).exec(html)?.[1] ?? '';
+    return [...select.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => ({
+      value: m[1]!, label: m[2]!,
+    }));
+  };
+  const stamp = Date.now();
+  const addSource = (h: Awaited<ReturnType<typeof harness>>, id: string, name: string): void => {
+    h.db
+      .prepare(`INSERT INTO calendar_sources (id, name, url_encrypted, created_at, updated_at) VALUES (?, ?, 'x', ?, ?)`)
+      .run(id, name, stamp, stamp);
+  };
+
+  it('with no calendar, offers only a pattern, and Continue on the untouched form is accepted', async () => {
+    const h = await harness();
+    await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
+    const html = await h.text('/admin/shifts');
+    expect(options(html, 'kind').map((o) => o.value)).toEqual(['pattern']);
+    expect(html).not.toContain('name="source_id"');
+    // The form as drawn, posted as a browser would post it untouched.
+    const who = options(html, 'person_id')[0]!.value;
+    const response = await h.form('/admin/shifts/new', { person_id: who, kind: 'pattern' });
+    expect(response.status).toBe(200);
+    // The heading escapes the apostrophe.
+    expect(await response.text()).toMatch(/Amy(&#39;|')s rotation/);
+  });
+
+  it('with a calendar, preselects it rather than a placeholder, so the untouched form is accepted', async () => {
+    const h = await harness();
+    await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
+    addSource(h, 'src-work', 'Work');
+    const html = await h.text('/admin/shifts');
+    expect(options(html, 'kind').map((o) => o.value)).toEqual(['calendar', 'pattern']);
+    const calendars = options(html, 'source_id');
+    expect(calendars[0]).toEqual({ value: 'src-work', label: 'Work' });
+    expect(calendars.some((o) => o.value === '')).toBe(false);
+    // The calendar select is disclosed by the kind select, script-free, and
+    // both show with script off exactly as before.
+    expect(html).toContain('name="kind" data-cond');
+    expect(html).toContain('<div data-cond-show="calendar">');
+    const response = await h.form('/admin/shifts/new', {
+      person_id: options(html, 'person_id')[0]!.value, kind: 'calendar', source_id: 'src-work',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain('Choose which calendar');
+  });
+
+  it('preselects whoever has no rotation yet, and says who already has one', async () => {
+    const h = await harness();
+    await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
+    await h.form('/admin/people', { name: 'Ben', color: '#4A90D9' });
+    h.db.prepare(`UPDATE people SET has_shift_rotation = 1 WHERE name = 'Amy'`).run();
+    const who = options(await h.text('/admin/shifts'), 'person_id');
+    expect(who.map((o) => o.label)).toEqual(['Ben', 'Amy (has a rotation)']);
+  });
+});
+
 describe('a new pairing link is asked for, never stumbled into', () => {
   const screenId = (h: Awaited<ReturnType<typeof harness>>): string =>
     (h.db.prepare(`SELECT id FROM screens WHERE revoked_at IS NULL`).get() as { id: string }).id;

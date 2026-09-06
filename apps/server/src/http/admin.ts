@@ -2610,37 +2610,66 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? section(
               'Add a rotation',
               undefined,
+              /*
+               * The form opens on a choice that can be submitted.
+               *
+               * It used to open on "A calendar that already has them" over a
+               * calendar select whose first option was "—", so pressing
+               * Continue on the page as drawn was refused ("Choose which
+               * calendar the shifts are in"), and "Who" preselected whoever
+               * sorted first, who on the shipped fixture already had the only
+               * rotation on the page. Now: whoever has no rotation comes first
+               * and is preselected, a person who has one still can be chosen
+               * and says so; the calendar option is offered only when there is
+               * a calendar, with the first one preselected rather than a
+               * placeholder; and the calendar select is shown only while the
+               * calendar option is chosen — the chores form's script-free
+               * `data-cond`, under which both fields simply show with script
+               * off, as they did before.
+               */
               `<form method="post" action="admin/shifts/new">` +
                 selectField({
                   label: 'Who',
                   name: 'person_id',
-                  optionsHtml: people
+                  optionsHtml: [...people]
+                    .sort(
+                      (a, b) =>
+                        Number(a.hasShiftRotation === 1) - Number(b.hasShiftRotation === 1),
+                    )
                     .map(
                       (candidate) =>
-                        `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}</option>`,
+                        `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}` +
+                        `${candidate.hasShiftRotation === 1 ? ' (has a rotation)' : ''}</option>`,
                     )
                     .join(''),
                 }) +
                 selectField({
                   label: 'Where the shifts come from',
                   name: 'kind',
+                  attrs: 'data-cond',
                   optionsHtml:
-                    `<option value="calendar">A calendar that already has them</option>` +
+                    (sources.length === 0
+                      ? ''
+                      : `<option value="calendar">A calendar that already has them</option>`) +
                     `<option value="pattern">A pattern that repeats</option>`,
+                  ...(sources.length === 0
+                    ? { hint: 'Add a calendar first to read shifts from one.' }
+                    : {}),
                 }) +
-                selectField({
-                  label: 'Which calendar',
-                  name: 'source_id',
-                  hint: 'Only needed when the shifts come from a calendar.',
-                  optionsHtml:
-                    `<option value="">—</option>` +
-                    sources
-                      .map(
-                        (source) =>
-                          `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
-                      )
-                      .join(''),
-                }) +
+                (sources.length === 0
+                  ? ''
+                  : `<div data-cond-show="calendar">` +
+                    selectField({
+                      label: 'Which calendar',
+                      name: 'source_id',
+                      optionsHtml: sources
+                        .map(
+                          (source) =>
+                            `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
+                        )
+                        .join(''),
+                    }) +
+                    `</div>`) +
                 `<button type="submit">Continue</button></form>`,
               'add',
             )

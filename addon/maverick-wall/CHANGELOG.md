@@ -47,6 +47,13 @@ Store's "Advanced" is no longer dressed as the page's main button; and the
 "Add" button in the app bar is gone from the pages whose add form is already
 on screen, so there is one Add per page.
 
+**Adding a rotation no longer refuses the form as it opens.** "Add a
+rotation" used to open on "a calendar that already has them" with no calendar
+chosen, so pressing Continue was refused straight away. It now picks the
+person without a rotation, offers the calendar option only when there is a
+calendar and preselects the first one, and shows the calendar choice only
+while that option is chosen.
+
 **Lists are easier to read.** People, chores and shift types put their
 "move up" and "move down" buttons in the row itself, which made the thing you
 do least the biggest thing on the card. Reordering is in each row's ⋮ menu
