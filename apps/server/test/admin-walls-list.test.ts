@@ -160,6 +160,50 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     const recipes = await h.text(`/admin/epaper/${id}`);
     expect(recipes).toContain(`class="crumb crumb-back" href="admin/walls/${id}"`);
   });
+
+  it("shapes a panel's page like a browser wall's: two tabs, one frame, the inspector beside the canvas", async () => {
+    const h = await harness();
+    await h.form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
+    const id = h.screenId('epaper');
+    const page = await h.text(`/admin/epaper/${id}/design`);
+    // Headed by the panel, as a wall's page is headed by the wall.
+    expect(page).toContain('<h1>Hall panel</h1>');
+    // The same mode bar: Layout and the panel's own settings, wired by the
+    // same chrome the browser wall's page loads.
+    expect(page).toContain('data-mode="layout"');
+    expect(page).toContain('data-mode="settings"');
+    expect(page).toContain('Panel settings');
+    expect(page).toContain('data-mode-panel="settings"');
+    // One frame: the editor's backdrop. No second copy in a Preview section.
+    expect(page).toContain('id="layout-editor"');
+    expect(page).not.toContain('id="ep-preview"');
+    expect(page).not.toContain('<h2>Preview</h2>');
+    // The inspector is the same host the wall gives the editor, beside the
+    // canvas, not a card under it.
+    expect(page).toContain('<aside class="lay-inspector" id="wall-inspector"');
+    // The panel's settings are on the page: what it draws, its network
+    // switch (which used to live on the recipes page), and the way to those.
+    expect(page).toContain('name="source"');
+    expect(page).toContain('name="lan_only"');
+    expect(page).toContain(`href="admin/epaper/${id}"`);
+    // The recipes page no longer carries the switch: one control per setting.
+    expect(await h.text(`/admin/epaper/${id}`)).not.toContain('name="lan_only"');
+  });
+
+  it('gives a following panel the preview and the settings, and no editor to fork the wall with', async () => {
+    const h = await harness();
+    await h.form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
+    const id = h.screenId('epaper');
+    await h.form(`/admin/epaper/${id}/source`, { source: 'follow:default' });
+    const page = await h.text(`/admin/epaper/${id}/design`);
+    expect(page).toContain('id="ep-preview"');
+    expect(page).not.toContain('id="layout-editor"');
+    expect(page).not.toContain('id="savebar"');
+    // No tabs without the chrome to drive them: both parts are on the page.
+    expect(page).not.toContain('data-mode="settings"');
+    expect(page).toContain('name="source"');
+    expect(page).toContain('name="lan_only"');
+  });
 });
 
 describe('the sidebar is grouped by subject', () => {

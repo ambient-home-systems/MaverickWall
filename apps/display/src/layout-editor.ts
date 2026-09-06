@@ -528,7 +528,7 @@ function boot(): void {
   // which was retired with the auto mode in 0.27.0.
   hint.textContent = epaperHost
     ? 'Nothing is placed yet — add a widget above. Until you do, this panel ' +
-      'draws its built-in layout, which is what the preview shows.'
+      'draws its built-in layout, which is what you see here.'
     : 'Nothing is placed yet — add a widget above. Until you do, the wall ' +
       'shows a short note in place of a layout rather than going blank.';
 

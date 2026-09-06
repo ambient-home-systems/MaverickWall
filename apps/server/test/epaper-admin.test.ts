@@ -234,7 +234,10 @@ describe('the eInk Displays page', () => {
     expect(design).toContain('<script type="module" src="assets/layout-editor.js">');
     expect(design).toContain('id="savebar"');
     expect(design).toContain('data-action="save"');
-    expect(design).toContain(`admin/epaper/${id}/preview.png`); // the preview img
+    // The frame is the editor's own backdrop now (rendered from the boxes
+    // being dragged), so the page carries no second <img> of it; what says
+    // the editor draws a panel is the mount being told it is one.
+    expect(design).toContain('&quot;kind&quot;:&quot;epaper&quot;');
 
     // The canvas the editor opens is the panel's, not the wall's. A 800x480
     // panel at rotation 0 shows landscape, and its ratio is 5:3 — the editor

@@ -231,7 +231,7 @@ describe('choosing what a panel draws', () => {
      * wall that is perfectly fine. A status code cannot tell the two apart.
      */
     expect(html).not.toContain('That wall is no longer there.');
-    expect(html).toContain('Ouroboros — layout');
+    expect(html).toContain('<h1>Ouroboros</h1>');
 
     // Still a refusal, not a write.
     const row = h.db.prepare(`SELECT layout_mode AS mode FROM screens WHERE id = ?`).get(p.id) as {
@@ -285,7 +285,7 @@ describe('choosing what a panel draws', () => {
     // The screen the household was standing on. Answering with the
     // add-an-e-paper-wall form threw away where they were and offered them a
     // second panel for an error about the first.
-    expect(html).toContain('Larder — layout');
+    expect(html).toContain('<h1>Larder</h1>');
     expect(html).toContain(DESIGN_ONLY);
     expect(html).not.toContain(ADD_PANEL_ONLY);
   });

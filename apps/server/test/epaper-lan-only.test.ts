@@ -182,7 +182,9 @@ describe('screens.lan_only', () => {
 
     await h.post(`${viewUrl}/lan-only`, { lan_only: '1' });
     expect(lanOnlyOf(h.db, h.screenId)).toBe(1);
-    const html = await (await h.call(viewUrl)).text();
+    // The switch is on the panel's own page (its Panel settings tab), not
+    // the recipes page.
+    const html = await (await h.call(`${viewUrl}/design`)).text();
     expect(/name="lan_only"[^>]*checked/.test(html)).toBe(true);
 
     // A browser sends nothing at all for an unticked checkbox.

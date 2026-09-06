@@ -640,6 +640,30 @@ export function seenDot(lastSeenAt: number | null, at: number, windowMs = BROWSE
  * or a wall that drops off until the new link is opened on it. Plain text —
  * the callers put it in a `data-confirm` attribute and escape it there.
  */
+/**
+ * "Move up" and "Move down" as ⋮ menu items, for a list a household orders.
+ *
+ * Every ordered list here — people, chores, shift types — used to draw its
+ * reorder as one or two buttons in the card's own footer, which made the
+ * rarest thing anybody does to a row the most visible control on it, while
+ * Edit sat behind a disclosure and Remove behind the ⋮. Reorder lives in the
+ * ⋮ now, above the rule that keeps a safe action from being Remove's
+ * neighbour, and the ends drop the move that goes nowhere. One rule for every
+ * row: the name, one status line, the Edit disclosure, at most one visible
+ * action that is the row's own job (Sync now, Pause), and the rest in the ⋮.
+ *
+ * `action` is the relative POST path; the direction rides a hidden field, as
+ * the footer buttons' did. Exported for the chores and shift-type screens,
+ * which draw the same rows from their own files.
+ */
+export function reorderMenuItems(action: string, first: boolean, last: boolean): string {
+  const item = (dir: 'up' | 'down'): string =>
+    `<form method="post" action="${action}"><input type="hidden" name="dir" value="${dir}">` +
+    `<button class="ovf-item" type="submit">Move ${dir}</button></form>`;
+  const items = (first ? '' : item('up')) + (last ? '' : item('down'));
+  return items === '' ? '' : items + `<div class="ovf-sep"></div>`;
+}
+
 export function regenerateWarning(name: string, connected: boolean): string {
   return connected
     ? `Make a new pairing link for ${name}? ${name} drops off the wall and shows its pairing screen until the new link is opened on it.`
@@ -2821,25 +2845,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const personCard = (person: PersonRecord, first: boolean, last: boolean): string => {
       const id = encodeURIComponent(person.id);
-      // Up/Down reorder the wall's legend and its shift order; the ends drop the
-      // button that would do nothing. Drawn only when there is one — a single
-      // person has neither, and an empty footer is a flex box carrying margins.
-      const reorder =
-        (first
-          ? ''
-          : `<form method="post" action="admin/people/${id}/move">` +
-            `<input type="hidden" name="dir" value="up">` +
-            `<button class="secondary" type="submit">↑ Up</button></form>`) +
-        (last
-          ? ''
-          : `<form method="post" action="admin/people/${id}/move">` +
-            `<input type="hidden" name="dir" value="down">` +
-            `<button class="secondary" type="submit">↓ Down</button></form>`);
       return card(
         // The same card head every other list uses: the person on the left, the
-        // ⋮ overflow on the right holding the destructive Remove — so a reorder
-        // tap is never a neighbour of a delete, and Remove goes through
-        // destructive() (a confirmation, an accessible name that says who).
+        // ⋮ overflow on the right holding the rare actions — reorder, which
+        // moves the wall's legend and the shift order, and the destructive
+        // Remove, below a rule so the two are never neighbours. Reorder used to
+        // be two buttons in a footer of their own, which made the rarest thing
+        // a household does to a person the most visible thing on the card.
         `<div class="card-head"><div class="card-head-main">` +
         `<h2>` +
         (person.avatarPath === null
@@ -2857,6 +2869,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
         `aria-label="More actions for ${escapeHtml(person.name)}" title="More">${icon('more')}</summary>` +
         `<div class="ovf-menu" role="menu">` +
+        reorderMenuItems(`admin/people/${id}/move`, first, last) +
         destructive('Remove', {
           thing: person.name,
           confirmAction: `admin/people/${id}/delete`,
@@ -2890,9 +2903,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         }) +
         `<button class="secondary" type="submit">` +
         `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
-        `</details>` +
-
-        (reorder === '' ? '' : `<div class="row">${reorder}</div>`),
+        `</details>`,
       );
     };
 

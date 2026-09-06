@@ -244,19 +244,22 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
    * otherwise go dark for with no visible cause.
    */
   const lanOnlyForm = (id: string, lanOnly: boolean): string =>
-    `<h3 style="margin:18px 0 6px">Network access</h3>` +
-    `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/lan-only">` +
-    switchRow({
-      label: 'Restrict this URL to your home network',
-      name: 'lan_only',
-      checked: lanOnly,
-      hint:
-        'A correct URL is refused from outside your network — useful if it ever ends up ' +
-        'somewhere it should not have. Leave off if Home Assistant reaches this panel ' +
-        'through a relay (Nabu Casa, a VPN, a cloud-hosted instance), or this panel will ' +
-        'go dark with no clear reason why.',
-    }) +
-    `<button class="secondary" type="submit">Save</button></form>`;
+    section(
+      'Network access',
+      undefined,
+      `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/lan-only">` +
+        switchRow({
+          label: 'Restrict this URL to your home network',
+          name: 'lan_only',
+          checked: lanOnly,
+          hint:
+            'A correct URL is refused from outside your network — useful if it ever ends up ' +
+            'somewhere it should not have. Leave off if Home Assistant reaches this panel ' +
+            'through a relay (Nabu Casa, a VPN, a cloud-hosted instance), or this panel will ' +
+            'go dark with no clear reason why.',
+        }) +
+        `<button class="secondary" type="submit">Save</button></form>`,
+    );
 
   /**
    * The page shown once a screen exists, carrying the token in the URL.
@@ -271,7 +274,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     name: string,
     token: string,
     geometry: { width: number; height: number; rotation: number },
-    lanOnly: boolean,
     c: Context,
   ): string => {
     const url = frameUrlFor(token, c);
@@ -303,7 +305,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(url)) +
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
-        lanOnlyForm(id, lanOnly) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // GET-then-POST, behind confirmDestroyPage — exactly destructive()'s
@@ -336,7 +337,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     id: string,
     name: string,
     geometry: { width: number; height: number; rotation: number },
-    lanOnly: boolean,
   ): string => {
     const placeholder = "<this wall's frame URL>";
     return page({
@@ -361,7 +361,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         codeBlock('secrets.yaml — add this line first (either recipe reads it)', secretsSnippet(placeholder)) +
         codeBlock('ESPHome — a wifi panel pulls the image', esphomeRecipe()) +
         codeBlock('Home Assistant — push to an OpenDisplay tag', haRecipe()) +
-        lanOnlyForm(id, lanOnly) +
         `<div style="display:flex;gap:10px;margin-top:18px">` +
         `<a class="btn" href="admin/walls">Done</a>` +
         // Same GET-then-POST shape as the config page's button above, and now
@@ -464,7 +463,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         id,
         screen.name,
         { width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation },
-        screen.lanOnly === 1,
       ),
     );
   });
@@ -506,7 +504,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         shaped.value.name,
         issued.token,
         { width, height, rotation: shaped.value.rotation },
-        false,
         c,
       ),
     );
@@ -555,7 +552,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         screen.name,
         issued.token,
         { width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation },
-        screen.lanOnly === 1,
         c,
       ),
     );
@@ -576,7 +572,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     const shaped = parse(lanOnlyBody, (await c.req.parseBody()) as Record<string, unknown>);
     if (!shaped.ok) return c.html(epaperPage(c, shaped.message), 400);
     setScreenLanOnly(deps.db, id, shaped.value.lan_only);
-    return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}`, 'epaper-lan-only-saved');
+    return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-lan-only-saved');
   });
 
   /**
@@ -918,23 +914,21 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         `<button class="secondary" type="submit">Use this</button></div></form>`,
     );
 
-    const preview = section(
-      'Preview',
-      // `section`'s own `help` is escaped for us, so the ampersand is written
-      // plainly here too, the same reason as the field hint above.
-      'What the panel actually draws, in black & white. Save your changes and it updates within a few seconds.',
+    /*
+     * The real frame, for a panel that follows a wall and so mounts no editor
+     * here to draw one as a backdrop. A panel arranging its own layout gets no
+     * separate preview: the editor's backdrop *is* this PNG, rendered from the
+     * boxes being dragged (`POST …/preview.png`), and the page used to draw
+     * the same frame twice — once in a "Preview" section and once behind the
+     * canvas — so a phone scrolled through a whole frame before reaching the
+     * editor, which then sat under the fixed save bar.
+     */
+    const previewImage =
       `<img id="ep-preview" class="ep-paper" alt="eInk preview of ${escapeHtml(screen.name)}" ` +
-        `src="admin/epaper/${encodeURIComponent(id)}/preview.png">` +
-        `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
-        `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>`,
-    );
+      `src="admin/epaper/${encodeURIComponent(id)}/preview.png">` +
+      `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
+      `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>`;
 
-    // Left as a bare heading, not `section()`: it fronts the drag-and-drop
-    // editor mount below, which this task's brief says to leave alone, and
-    // the two branches (following vs. arranging here) already had to repeat
-    // the identical string rather than share it, since only one is ever
-    // rendered — sharing it now would mean threading it through both.
-    const arrangeHeading = `<h2 class="add">Arrange</h2>`;
     const followNote =
       followed === undefined
         ? ''
@@ -969,7 +963,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
           ? `<b>Online</b> · last seen ${escapeHtml(ago(screen.lastSeenAt, at))}${from}`
           : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(screen.lastSeenAt, at))}${from}`;
     const statusAndMenu =
-      `<div class="modebar">` +
       `<p class="wall-status">${seenDot(screen.lastSeenAt, at, EPAPER_SEEN_WINDOW_MS)}` +
       `<span>${statusLine}</span></p>` +
       `<details class="ovf" data-overflow>` +
@@ -985,42 +978,122 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
         thing: screen.name,
         confirmAction: `admin/epaper/${encodeURIComponent(id)}/delete`,
       }) +
-      `</div></details></div>`;
+      `</div></details>`;
+
+    /*
+     * The same two modes a browser wall's page has — Layout, and the panel's
+     * own settings — on the same mode bar, with the same save bar under them,
+     * so the two pages a household reaches by pressing "Open" on the Walls
+     * list are one shape. This page used to be a single column: a source
+     * form, a Preview section, an "Arrange" heading, the editor, and the
+     * inspector as a card at the very foot of it, 1,800px from the toolbar;
+     * the network switch lived on the recipes page, which also had no way
+     * back here.
+     *
+     * A panel that *follows* a wall has nothing to arrange (see `followNote`),
+     * so it gets no editor, no save bar and no tabs: the preview and the
+     * settings stack, and the way to the wall's editor is in the preview's
+     * own section. The chrome script binds nothing without a save bar, which
+     * is why the tabs cannot be offered there.
+     */
+    const tabbed = followed === undefined;
+    const modeButton = (key: string, label: string, on: boolean): string =>
+      `<button type="button" role="tab" id="mode-tab-${key}" aria-controls="mode-${key}" ` +
+      `aria-selected="${on ? 'true' : 'false'}"${on ? '' : ' tabindex="-1"'} ` +
+      `class="${on ? 'on' : ''}" data-mode="${key}">${escapeHtml(label)}</button>`;
+    // A source error is about the settings, so the page opens on them.
+    const startMode = error === undefined ? 'layout' : 'settings';
+    const pane = (key: string, inner: string): string =>
+      tabbed
+        ? `<section class="mode" id="mode-${key}" role="tabpanel" aria-labelledby="mode-tab-${key}" ` +
+          `data-mode-panel="${key}"${startMode === key ? '' : ' hidden'}>${inner}</section>`
+        : `<section class="mode" id="mode-${key}">${inner}</section>`;
+    const dims = `${pw}×${ph} · ${epaperOrientation(screen)}`;
+
+    const layoutPane = pane(
+      'layout',
+      tabbed
+        ? `<div class="lay-panes">` +
+          `<div class="lay-canvas" id="layout">` +
+          `<div class="prev-head"><b>Live preview</b>` +
+          `<small>${escapeHtml(dims)} · the panel's own frame, redrawn as you arrange</small></div>` +
+          layoutEditorMount(initial) +
+          `</div>` +
+          // The contextual inspector, the same host the browser wall's page
+          // gives the editor: a column beside the canvas on a wide screen and
+          // a bottom sheet on a phone, rather than a card under the stage.
+          `<aside class="lay-inspector" id="wall-inspector" aria-label="Selected widget">` +
+          `<p class="insp-empty">Nothing selected. Tap a widget on the layout to change ` +
+          `what it shows and how it looks.</p>` +
+          `</aside>` +
+          `</div>`
+        : `<div class="lay-canvas" id="layout">` +
+          `<div class="prev-head"><b>Live preview</b>` +
+          `<small>${escapeHtml(dims)} · updates within a few seconds of a change</small></div>` +
+          previewImage +
+          `</div>` +
+          followNote,
+    );
+
+    const settingsPane = pane(
+      'settings',
+      sourceForm +
+        lanOnlyForm(id, screen.lanOnly === 1) +
+        section(
+          'Device recipes',
+          'The ESPHome and Home Assistant configuration that drives this panel, ' +
+            'and a new frame URL if the old one has ended up somewhere it should not have.',
+          `<p><a class="btn btn-ghost btn-sm" href="admin/epaper/${encodeURIComponent(id)}">Device recipes</a></p>`,
+        ),
+    );
 
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
-      title: `${screen.name} layout — Maverick Wall`,
+      title: `${screen.name} — Maverick Wall`,
       nav: 'walls',
-      heading: `${screen.name} — layout`,
+      heading: screen.name,
       // One level under Walls, like a browser wall's page: the crumb is the
       // way back, so the page adds no header and no second hamburger.
       back: { label: 'Walls', href: 'admin/walls' },
       saved: readSaved(c),
-      intro: `${pw}×${ph}, black & white. Drag widgets to build the panel; the preview shows the real result. Colour, gradient and shadow options do not apply on e-paper.`,
+      // The canvas is sized from the room its pane gives it, the same reason
+      // the browser wall's page asks for the wider column.
+      wide: true,
+      intro: `${pw}×${ph}, black & white. Colour, gradient and shadow options do not apply on e-paper.`,
       body:
+        `<div class="disp-editor">` +
         // Above the form it belongs to, which is the whole of the fix: a
         // rejected source used to redirect here saying nothing, and a page
         // showing the stored value with no message on it is what a *saved*
         // one looks like.
         (error === undefined ? '' : errorBlock(error)) +
+        `<div class="modebar">` +
+        (tabbed
+          ? `<div class="seg modeswitch" role="tablist" aria-label="What you are editing">` +
+            modeButton('layout', 'Layout', startMode === 'layout') +
+            modeButton('settings', 'Panel settings', startMode === 'settings') +
+            `</div>`
+          : '') +
         statusAndMenu +
-        sourceForm +
-        preview +
-        followNote +
-        (followed !== undefined ? '' : arrangeHeading + layoutEditorMount(initial) +
-        // The one save bar, same chrome as the display page minus its
-        // settings form — with no form the chrome saves the canvas and
-        // reloads. Chrome first, so its `mwEditorState` hook is registered
-        // before the editor publishes its bridge.
-        `<div class="savebar" id="savebar">` +
-        `<span class="msg" role="alert"></span>` +
-        `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
-        `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
-        `<button type="button" class="btn" data-action="save">Save layout</button>` +
         `</div>` +
-        `<script type="module" src="assets/display-editor.js"></script>` +
-        `<script type="module" src="assets/layout-editor.js"></script>`),
+        layoutPane +
+        settingsPane +
+        (tabbed
+          ? // The one save bar, same chrome as the display page minus its
+            // settings form — with no form the chrome saves the canvas and
+            // reloads. Chrome first, so its `mwEditorState` hook is registered
+            // before the editor publishes its bridge.
+            `<div class="savebar" id="savebar">` +
+            `<span class="msg" role="alert"></span>` +
+            `<span class="savebar-flag" data-dirty-flag hidden>Unsaved changes</span>` +
+            `<button type="button" class="btn-ghost" data-action="discard">Discard</button>` +
+            `<button type="button" class="btn" data-action="save">Save layout</button>` +
+            `</div>` +
+            `<script type="module" src="assets/display-editor.js"></script>` +
+            `<script type="module" src="assets/layout-editor.js"></script>`
+          : '') +
+        `</div>`,
     });
   };
 

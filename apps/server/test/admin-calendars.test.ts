@@ -1038,10 +1038,10 @@ describe('people', () => {
     expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
     expect(order()).toEqual(['Dad', 'Mum']);
 
-    // Dad is first now, so his card offers no "up"; a move that would fall off
-    // the end is a no-op rather than an error.
+    // Dad is first now, so his card offers no "up" (reorder is a ⋮ menu item
+    // now); a move that would fall off the end is a no-op rather than an error.
     const body = await (await h.call('/admin/people')).text();
-    expect(body).toContain('↓ Down');
+    expect(body).toContain('Move down');
     expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
     expect(order()).toEqual(['Dad', 'Mum']);
   });

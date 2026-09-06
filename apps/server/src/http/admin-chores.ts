@@ -24,7 +24,7 @@ import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { escapeHtml, errorBlock, icon, page, selectField, textField } from './html.js';
 import { card, destructive, emptyState, section, tag } from './components.js';
 import { readSaved, savedRedirect } from './saved.js';
-import { navModules, type AdminDeps } from './admin.js';
+import { navModules, type AdminDeps, reorderMenuItems } from './admin.js';
 import { selfHref } from './self.js';
 
 /**
@@ -446,24 +446,13 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
         : `<p class="hint">Done ${record.done} of the last ${record.of} ` +
           `${escapeHtml(record.weekday ?? (record.of === 1 ? 'time' : 'times'))}</p>`;
 
-    // Reorder and Pause/Resume stay visible — Pause is the "keep it" alternative
-    // to Remove, so it is a control, not a rare one (the same call the Store card
-    // makes keeping Turn on/off visible). Only the destructive Remove moves into
-    // the ⋮ the rest of the admin's cards use, so a reorder or a pause is never a
-    // neighbour of a delete. Keeping Pause visible also keeps it usable on a
-    // paused card, whose ⋮ (in the dimmed head) an ancestor's opacity would mute.
-    const reorder =
-      (first
-        ? ''
-        : `<form method="post" action="admin/chores/${id}/move">` +
-          `<input type="hidden" name="dir" value="up">` +
-          `<button class="secondary" type="submit">↑ Up</button></form>`) +
-      (last
-        ? ''
-        : `<form method="post" action="admin/chores/${id}/move">` +
-          `<input type="hidden" name="dir" value="down">` +
-          `<button class="secondary" type="submit">↓ Down</button></form>`);
-
+    // Pause/Resume stays visible — Pause is the "keep it" alternative to Remove,
+    // so it is the row's own action, not a rare one (the same call the Store
+    // card makes keeping Turn on/off visible), and on a paused card it is the
+    // one thing worth pressing, where the ⋮ in the dimmed head would be muted
+    // by an ancestor's opacity. Reorder goes into the ⋮ with Remove
+    // (`reorderMenuItems`): it used to be two more buttons in this footer, and
+    // three visible buttons per row made a list of chores read as a toolbar.
     return card(
       `<div class="card-head"><div class="card-head-main">` +
       `<h2><span class="swatch" style="--swatch:${escapeHtml(swatch)}"></span>` +
@@ -478,6 +467,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
       `aria-label="More actions for ${escapeHtml(chore.name)}" title="More">${icon('more')}</summary>` +
       `<div class="ovf-menu" role="menu">` +
+      reorderMenuItems(`admin/chores/${id}/move`, first, last) +
       destructive('Remove', {
         thing: chore.name,
         confirmAction: `admin/chores/${id}/delete`,
@@ -530,11 +520,8 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       `way it lands in every other month.</p>` +
       `<button type="submit">Save</button></form></details>` +
 
-      // The reorder buttons and Pause/Resume, flowing in one action row the way
-      // every other card's footer controls do. Always drawn, because Pause is
-      // always there.
+      // The row's one visible action, in the footer every card with one uses.
       `<div class="row">` +
-      reorder +
       `<form method="post" action="admin/chores/${id}/pause">` +
       (chore.paused ? `<input type="hidden" name="resume" value="1">` : '') +
       `<button class="secondary" type="submit">${chore.paused ? 'Resume' : 'Pause'}</button></form>` +

@@ -16,12 +16,23 @@
 
 ## Unreleased
 
-**The Walls page lists every wall the same way.** An e-paper panel used to
-sit in the list as a different kind of card from a browser wall — a button and
-a menu where the others had "Open" — because it had no page of its own. It
-does now: Open takes you to the panel's layout page, which carries its status,
-its device recipes and Remove, with a link back to Walls like every other
-wall's page.
+**The Walls page lists every wall the same way, and an e-paper panel has a
+page like any other wall's.** An e-paper panel used to sit in the list as a
+different kind of card from a browser wall — a button and a menu where the
+others had "Open" — because it had no page of its own. It does now: Open takes
+you to the panel's page, with the same two tabs a wall has (Layout, and Panel
+settings), the panel's status and menu, and a link back to Walls. The frame is
+drawn once, as the layout you arrange, rather than twice down the page; the
+widget you tap opens beside the layout instead of at the very bottom; and the
+"restrict to my home network" switch has moved onto the Panel settings tab
+from the device-recipes page.
+
+**Lists are easier to read.** People, chores and shift types put their
+"move up" and "move down" buttons in the row itself, which made the thing you
+do least the biggest thing on the card. Reordering is in each row's ⋮ menu
+now, above Remove. Shift types no longer open every type as a full form: each
+is a folded row showing its name and short code, with Edit one tap away, the
+way chores already were.
 
 **A new install outside the United States gets weather that works.** The
 wizard now sets the forecast provider, the units and the weather-alert switch
