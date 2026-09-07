@@ -694,7 +694,9 @@ describe('the update check setting', () => {
     recordUpdateCheck(h.db, h.at, 'v10.0.0', null);
 
     const page = await (await h.call('/admin/system')).text();
-    expect(page).toContain('Version v10.0.0 is available');
+    // Named without the tag's `v`, so the two versions in this one sentence
+    // are written the same way: "Version 10.0.0 … You are running 9.9.9".
+    expect(page).toContain('Version 10.0.0 is available');
     expect(page).toContain('Nothing has been ');
   });
 });
@@ -761,5 +763,126 @@ describe('a development build', () => {
     });
 
     expect(report.appVersion).toBe(DEV);
+  });
+});
+
+/*
+ * The Overview's own update banner, which had its own opinion.
+ *
+ * A household reported "Needs attention" offering an update they had already
+ * installed. It was not a stale read: the row was drawn by a *second*
+ * predicate, `latestVersion !== appVersion`, against the System page's
+ * `isNewer(latestVersion, appVersion)`. Two renderers holding one rule, which
+ * is `shifts[0]`, `display_mode`, `cellEvents` and `mode` for the sixth time —
+ * and this time the two sides of the comparison are not even the same shape.
+ * `recordUpdateCheck` stores GitHub's tag verbatim (`v0.59.0`) and
+ * `resolveAppVersion` strips the `v` (`0.59.0`), so string inequality is true
+ * of an install that is exactly up to date, every day, for ever.
+ */
+describe('the Overview banner', () => {
+  const overview = async (h: ReturnType<typeof harness>): Promise<string> =>
+    (await h.call('/admin')).text();
+
+  it('says nothing when the release it found is the version already running', async () => {
+    // The household's report, reproduced: they updated, the check ran, and the
+    // row stayed. `v9.9.9` is what GitHub answers for the release this box is.
+    const h = await signedIn(harness('9.9.9'));
+    setUpdateCheckEnabled(h.db, true);
+    recordUpdateCheck(h.db, h.at, 'v9.9.9', null);
+
+    expect(await overview(h)).not.toContain('is available');
+  });
+
+  it('says nothing when this box is ahead of the latest release', async () => {
+    /*
+     * The state in the screenshot: 0.59.0 running, v0.58.0 the newest release.
+     * Real, and not rare — `advertise` writes `config.yaml`'s version last, so
+     * a household who updates the moment Home Assistant offers it is running a
+     * version the releases API has not caught up with. Offering them an older
+     * one is worse than saying nothing.
+     */
+    const h = await signedIn(harness('9.9.9'));
+    setUpdateCheckEnabled(h.db, true);
+    recordUpdateCheck(h.db, h.at, 'v9.9.8', null);
+
+    const page = await overview(h);
+    expect(page).not.toContain('is available');
+    expect(page, 'and it must not offer the older one by name').not.toContain('9.9.8');
+  });
+
+  it('still says so when there really is a newer one', async () => {
+    // The other half: a fix that only ever suppresses the row is a deleted
+    // feature rather than a repair.
+    const h = await signedIn(harness('9.9.9'));
+    setUpdateCheckEnabled(h.db, true);
+    recordUpdateCheck(h.db, h.at, 'v10.0.0', null);
+
+    expect(await overview(h)).toContain('Version 10.0.0 is available');
+  });
+
+  it.each(['v10.0.0', '10.0.0'] as const)(
+    'names a %s release the way this box names itself, on both screens',
+    async (stored) => {
+      /*
+       * One number, written one way. Both screens set the offered version and
+       * the running one in a single sentence — "Version 10.0.0 is available.
+       * This box runs 9.9.9" — and the release tag carries a `v` that this
+       * process strips from its own. Left alone that is one product's version
+       * spelled two ways in consecutive clauses, on the screens whose whole
+       * job is saying which one you have.
+       *
+       * Asserted over *both* stored shapes because the column already holds a
+       * `v` in every household on earth: what a household reads cannot depend
+       * on which of the two a past check happened to write.
+       */
+      const h = await signedIn(harness('9.9.9'));
+      setUpdateCheckEnabled(h.db, true);
+      recordUpdateCheck(h.db, h.at, stored, null);
+
+      for (const [where, page] of [
+        ['the Overview', await overview(h)],
+        ['the System page', await (await h.call('/admin/system')).text()],
+      ] as const) {
+        expect(page, `${where} did not offer it`).toContain('Version 10.0.0 is available');
+        expect(page, `${where} kept the tag's own v`).not.toContain('Version v10.0.0');
+      }
+    },
+  );
+
+  it('says nothing on a development build, as the System page already does', async () => {
+    // `updateSection` suppresses this and says why: a `latestVersion` recorded
+    // while the install was on a release keeps drawing "Version x is available"
+    // for a build that is not one of them. The Overview never got the memo.
+    const h = await signedIn(harness('0.54.2-dev'));
+    setUpdateCheckEnabled(h.db, true);
+    recordUpdateCheck(h.db, h.at, 'v99.0.0', null);
+
+    expect(await overview(h)).not.toContain('is available');
+  });
+
+  it('agrees with the System page, whatever the two versions are', async () => {
+    /*
+     * The property, rather than the four cases above it: one install cannot
+     * report "up to date" on one screen and "update available" on the other.
+     * That is the only assertion here that a third copy of this rule would
+     * also have to satisfy.
+     */
+    for (const [running, latest] of [
+      ['9.9.9', 'v9.9.9'],
+      ['9.9.9', 'v9.9.8'],
+      ['9.9.9', 'v10.0.0'],
+      ['9.9.9', '9.9.9'],
+      ['0.54.2-dev', 'v99.0.0'],
+    ] as const) {
+      const h = await signedIn(harness(running));
+      setUpdateCheckEnabled(h.db, true);
+      recordUpdateCheck(h.db, h.at, latest, null);
+
+      const said = (page: string): boolean => page.includes('is available');
+      expect(
+        said(await overview(h)),
+        `running ${running}, latest ${latest}: the two screens must agree`,
+      ).toBe(said(await (await h.call('/admin/system')).text()));
+    }
   });
 });

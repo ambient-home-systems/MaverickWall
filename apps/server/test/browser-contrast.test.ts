@@ -336,3 +336,157 @@ describe('the admin, read at its own contrast', () => {
     SLOW,
   );
 });
+
+/**
+ * The words inside a `<select>`, which the walk above cannot see.
+ *
+ * A household reported the eInk panel's Layout dropdown as unreadable in dark
+ * mode, and the screenshot says exactly which mechanism: a white popup with
+ * near-white text, every row illegible except the one the OS was highlighting
+ * in blue. The cause is one declaration two hundred lines up in `html.ts` —
+ * the shared field skin sets `background:transparent` on `select`, which is
+ * right for the closed control (it takes whatever ground it sits on, so one
+ * rule works on a card, in a settings row and in the wizard) and cannot work
+ * for the popup. A popup is a separate OS window; it has no page behind it to
+ * be transparent onto, so the platform paints it its own default white while
+ * the options go on inheriting the select's light `color`.
+ *
+ * `color-scheme: dark` is already set on `:root` and does not save it: the
+ * author's own background wins over what the UA would have painted.
+ *
+ * This is a *blind spot* rather than an oversight in the file above. That walk
+ * grades every run of text on the page, and skips anything whose box is zero —
+ * which an `<option>` in a closed select always is. The one dropdown in the
+ * admin that was readable is the layout editor's, and only because `.le-bg
+ * select` happens to set an opaque background of its own.
+ *
+ * So this asks the pair directly. `getComputedStyle` on an `<option>` is what
+ * the popup is drawn from, and it is the only measurement available: the popup
+ * itself is not in the document and cannot be screenshotted.
+ */
+describe('a dropdown, read where a household reads it', () => {
+  interface OptionReading {
+    readonly where: string;
+    readonly text: string;
+    readonly color: string;
+    readonly ground: string;
+    readonly opaque: boolean;
+    readonly ratio: number;
+  }
+
+  /** Every `<option>` on the page, with the pair its popup will be painted in. */
+  async function readOptions(page: Page): Promise<readonly OptionReading[]> {
+    return await page.evaluate(() => {
+      const parse = (value: string): [number, number, number, number] | null => {
+        const m = /^rgba?\(([^)]+)\)$/.exec(value.trim());
+        if (m === null) return null;
+        const parts = (m[1] as string).split(/[,\s/]+/).filter((p) => p !== '');
+        const n = parts.map(Number);
+        if (n.length < 3 || n.slice(0, 3).some((v) => Number.isNaN(v))) return null;
+        return [n[0] as number, n[1] as number, n[2] as number, n.length > 3 ? (n[3] as number) : 1];
+      };
+      const lum = (c: [number, number, number, number]): number => {
+        const ch = (raw: number): number => {
+          const v = raw / 255;
+          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2]);
+      };
+      const ratio = (
+        a: [number, number, number, number],
+        b: [number, number, number, number],
+      ): number => {
+        const [x, y] = [lum(a), lum(b)];
+        const [hi, lo] = x >= y ? [x, y] : [y, x];
+        return (hi + 0.05) / (lo + 0.05);
+      };
+
+      const out: {
+        where: string; text: string; color: string; ground: string;
+        opaque: boolean; ratio: number;
+      }[] = [];
+      for (const el of Array.from(document.querySelectorAll('option'))) {
+        if (el.disabled) continue;
+        const style = getComputedStyle(el);
+        const ink = parse(style.color);
+        const ground = parse(style.backgroundColor);
+        const select = el.closest('select');
+        /*
+         * An option's ground is its own or the select's — and never the page
+         * behind it, which is the whole fault. Compositing up the ancestor
+         * chain the way the walk above does would resolve this to the card
+         * under it and report a pass for a popup that is white.
+         */
+        const own: [number, number, number, number] | null =
+          ground !== null && ground[3] > 0.999
+            ? ground
+            : select === null
+              ? null
+              : (() => {
+                  const s = parse(getComputedStyle(select).backgroundColor);
+                  return s !== null && s[3] > 0.999 ? s : null;
+                })();
+        out.push({
+          where: select?.name ?? select?.id ?? 'select',
+          text: (el.textContent ?? '').trim().slice(0, 40),
+          color: style.color,
+          ground: own === null ? style.backgroundColor : `rgb(${own.slice(0, 3).join(',')})`,
+          opaque: own !== null,
+          ratio: own === null || ink === null ? 0 : Math.round(ratio(ink, own) * 100) / 100,
+        });
+      }
+      return out;
+    });
+  }
+
+  it.each(SCHEMES)(
+    'draws its options on a ground of their own in the %s scheme',
+    async (scheme) => {
+      const home = await fresh();
+      // The page the household reported, made the way they made it.
+      const made = await home.post('/admin/epaper', {
+        name: 'Test HD',
+        preset: 'seeed-7in5',
+        rotation: '0',
+      });
+      expect([302, 303]).toContain(made.status);
+      const panel = (
+        home.db.prepare(`SELECT id FROM screens WHERE kind = 'epaper'`).get() as { id: string }
+      ).id;
+
+      const page = await schemeContext(home, scheme);
+      const failures: string[] = [];
+      let measured = 0;
+      // The eInk panel's settings, and the timezone picker — the same shared
+      // skin, so a fix that only reached the reported screen is not one.
+      for (const path of [`/admin/epaper/${panel}`, '/admin/system'] as const) {
+        await page.goto(`${home.base}${path}`, { waitUntil: 'load' });
+        expect(
+          await page.evaluate(() => document.documentElement.getAttribute('data-theme')),
+          `${path} did not load in the ${scheme} scheme`,
+        ).toBe(scheme);
+
+        for (const seen of await readOptions(page)) {
+          measured += 1;
+          if (!seen.opaque) {
+            failures.push(
+              `${path} ${seen.where} "${seen.text}": no ground of its own ` +
+                `(${seen.ground}), so the platform paints the popup white`,
+            );
+          } else if (seen.ratio < 4.5) {
+            failures.push(
+              `${path} ${seen.where} "${seen.text}": ${seen.ratio}:1 ` +
+                `(${seen.color} on ${seen.ground})`,
+            );
+          }
+        }
+      }
+
+      // A walker that finds nothing passes over everything, which is the
+      // failure mode of the file this sits in.
+      expect(measured, 'no options were measured, so this asserts nothing').toBeGreaterThan(20);
+      expect(failures, `${failures.length} of ${measured} options`).toEqual([]);
+    },
+    SLOW,
+  );
+});

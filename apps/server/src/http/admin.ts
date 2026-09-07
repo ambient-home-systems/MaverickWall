@@ -62,7 +62,7 @@ import { INK_LANE, PANEL_IGNORES } from '../epaper/honours.js';
 import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
-import { checkForUpdate, isNewer, RELEASE_HOST, RELEASE_URL } from '../api/update-check.js';
+import { checkForUpdate, RELEASE_HOST, RELEASE_URL, updateOnOffer } from '../api/update-check.js';
 import { DEV_BUILD_NOTE, isReleaseVersion } from '../version.js';
 import {
   matchWallSize,
@@ -1047,10 +1047,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         href: 'admin/home-assistant', tag: 'Problem', bad: true,
       });
     }
-    const update = readUpdateState(deps.db);
-    if (update.enabled && update.latestVersion !== null && update.latestVersion !== deps.appVersion) {
+    /*
+     * One rule, read rather than restated. This row used to ask
+     * `latestVersion !== appVersion`, which said "update available" to a
+     * household who was already up to date — the stored tag carries a `v` and
+     * this version does not — and offered an older release to one who was
+     * ahead of it. `updateOnOffer` is the same answer the System page draws.
+     */
+    const offeredVersion = updateOnOffer(readUpdateState(deps.db), deps.appVersion);
+    if (offeredVersion !== undefined) {
       attention.push({
-        title: `Version ${update.latestVersion} is available`,
+        title: `Version ${offeredVersion} is available`,
         detail: `This box runs ${deps.appVersion}. Updating stays yours to do.`,
         href: 'admin/system', tag: 'Update', bad: false,
       });
@@ -2980,15 +2987,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   function updateSection(): string {
     const state = readUpdateState(deps.db);
     /*
-     * A dev build is never behind. `isNewer` would read `0.54.2-dev` as
-     * 0.54.2 and answer from a comparison that means nothing here — and a
-     * `latestVersion` recorded while this install was on a release would
-     * otherwise keep drawing "Version x is available" for a build that is not
-     * one of them.
+     * A dev build is never behind, which `updateOnOffer` now owns along with
+     * the comparison itself — the Overview asked this question its own way and
+     * got a different answer. `release` stays a separate reading because the
+     * ladder below says something *different* about a dev build rather than
+     * merely staying quiet about it.
      */
     const release = isReleaseVersion(deps.appVersion);
-    const behind =
-      release && state.latestVersion !== null && isNewer(state.latestVersion, deps.appVersion);
+    const offered = updateOnOffer(state, deps.appVersion);
 
     const status = !state.enabled
       ? `<p class="hint">Off. Maverick Wall is not contacting anyone.</p>`
@@ -2998,8 +3004,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ? errorBlock(`Last check failed: ${state.lastError}`, 'It will try again tomorrow.')
         : state.lastCheckedAt === null
           ? `<p class="hint">On. The first check runs within the day, or press the button.</p>`
-          : behind
-            ? `<div class="preview"><h3>Version ${escapeHtml(state.latestVersion ?? '')} is available</h3>` +
+          : offered !== undefined
+            ? `<div class="preview"><h3>Version ${escapeHtml(offered)} is available</h3>` +
               `<p class="hint">You are running ${escapeHtml(deps.appVersion)}. Nothing has been ` +
               `downloaded — update the container when it suits you.</p></div>`
             : `<p class="hint">Up to date as of ${escapeHtml(ago(state.lastCheckedAt, now()))}. ` +

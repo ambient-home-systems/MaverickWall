@@ -1,5 +1,6 @@
 import { FETCH_LIMITS, type Fetcher } from '@maverick-wall/core';
 import { parseJson, z } from '../validation.js';
+import { bareVersion, isReleaseVersion } from '../version.js';
 
 /**
  * The update check: the only thing in this product that contacts anybody.
@@ -164,4 +165,55 @@ function describeFailure(
     default:
       return response.message;
   }
+}
+
+/**
+ * Whether there is a newer release to tell the household about, and its name.
+ *
+ * The one answer, because there used to be two. The System page asked
+ * `isNewer(latestVersion, appVersion)` and the Overview's "Needs attention"
+ * asked `latestVersion !== appVersion`, which is a different question wearing
+ * the same words — and the wrong one in three separate ways:
+ *
+ *  - the two sides are not the same shape. `recordUpdateCheck` stores GitHub's
+ *    tag verbatim (`v0.59.0`) and `resolveAppVersion` strips the `v`
+ *    (`0.59.0`), so an install that is *exactly* up to date compares unequal.
+ *    That is the bug a household reported: they updated, the daily check ran,
+ *    and the row never went away;
+ *  - inequality is true when this box is *ahead*, which is not rare. The
+ *    release workflow's `advertise` writes `config.yaml`'s version last, so a
+ *    household who updates the moment Home Assistant offers it is briefly
+ *    running a version the releases API has not caught up with — and was shown
+ *    an *older* version as an available update;
+ *  - and it never asked whether this build is a released one, so a dev build
+ *    carrying a `latestVersion` from back when it was on a release drew the
+ *    banner the System page deliberately suppresses.
+ *
+ * Two renderers holding one rule is this project's most repeated bug —
+ * `shifts[0]`, `display_mode`, `cellEvents`, `mode` — and the cure has been
+ * the same every time: resolve it once and hand over the answer. Returning the
+ * *name* rather than a boolean is part of that: a caller cannot re-read
+ * `latestVersion` for the label and quietly disagree about which version it
+ * just decided to offer.
+ *
+ * The name comes back in the same shape as `appVersion`, which is the third
+ * thing that difference was costing. Both screens set the two versions in one
+ * sentence — "Version v0.60.0 is available. This box runs 0.59.0" — so the
+ * stored tag's `v` was one number written two ways in consecutive clauses.
+ * Normalising here rather than at the write is deliberate: every household
+ * already has a `v` in that column, and a read that copes needs no migration
+ * to reach them.
+ */
+export function updateOnOffer(
+  state: { readonly enabled: boolean; readonly latestVersion: string | null },
+  appVersion: string,
+): string | undefined {
+  if (!state.enabled || state.latestVersion === null) return undefined;
+  /*
+   * A build nobody released is never behind. `isNewer` would read
+   * `0.54.2-dev` as 0.54.2 and answer from a comparison that means nothing,
+   * which is the same reason the check itself does not run on one.
+   */
+  if (!isReleaseVersion(appVersion)) return undefined;
+  return isNewer(state.latestVersion, appVersion) ? bareVersion(state.latestVersion) : undefined;
 }

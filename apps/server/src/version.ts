@@ -41,8 +41,28 @@ export interface AppVersion {
  * treating one as a baseline would be the same mistake from the other side.
  */
 export function isReleaseVersion(version: string): boolean {
-  const raw = version.trim().replace(/^v/, '');
+  const raw = bareVersion(version);
   return /^\d+\.\d+\.\d+$/.test(raw) && raw !== '0.0.0';
+}
+
+/**
+ * One version, written one way.
+ *
+ * A release tag is `v0.59.0` and this process calls itself `0.59.0`, and that
+ * difference has already cost one bug: the Overview compared the two as
+ * strings and told a household there was an update available for as long as
+ * they were exactly up to date. The comparison is fixed at the source, but the
+ * two shapes still reach a *sentence* — "Version v0.60.0 is available. This
+ * box runs 0.59.0" — where one number is written two ways in consecutive
+ * clauses, about the same product, on the screen whose whole job is saying
+ * which version you have.
+ *
+ * So the bare form is a function rather than an idiom repeated at each site.
+ * It was three copies of `.trim().replace(/^v/, '')` when this was written,
+ * and a fourth was about to be added.
+ */
+export function bareVersion(version: string): string {
+  return version.trim().replace(/^v/, '');
 }
 
 /**
@@ -51,10 +71,10 @@ export function isReleaseVersion(version: string): boolean {
  * Pure, so the whole rule can be tested without a filesystem or an image.
  */
 export function resolveAppVersion(tag: string | undefined, packageVersion: string): AppVersion {
-  const fromTag = (tag ?? '').trim().replace(/^v/, '');
+  const fromTag = bareVersion(tag ?? '');
   if (isReleaseVersion(fromTag)) return { version: fromTag, isRelease: true };
 
-  const base = packageVersion.trim().replace(/^v/, '');
+  const base = bareVersion(packageVersion);
   /*
    * `-dev` says which side of a release this is without pretending to know how
    * far: a checkout is somewhere after `base` and before the next one, and

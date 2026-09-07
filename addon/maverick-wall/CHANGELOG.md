@@ -14,6 +14,27 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**"Version x is available" no longer stays on the Overview after you have
+updated.** The Needs attention list was comparing the version it found against
+the version you are running as plain text rather than as version numbers, and
+the two are not written the same way — the release is recorded as `v0.59.0` and
+this box calls itself `0.59.0`. They never matched, so the row never went away,
+however many times you updated. It also meant a box that was *ahead* of the
+newest release — which happens for a little while after every release, and to
+anyone running a development build — was offered an older version as an update.
+The Overview now asks the same question the System page has always asked, so
+the two screens can no longer disagree about whether you are up to date. Both
+screens also name the two versions the same way now, rather than offering you
+"v0.60.0" on the same line as "this box runs 0.59.0".
+
+**Dropdowns are readable in dark mode.** Opening any picker in the settings —
+the eInk panel's Layout, the timezone list, and every other one — showed pale
+text on a white list, with only the highlighted row legible. The list is drawn
+by your browser in its own window, and it was not being told which colours the
+rest of the page is using.
+
 ## 0.59.0
 
 **"Restrict this URL to your home network" now says so when it cannot see who
