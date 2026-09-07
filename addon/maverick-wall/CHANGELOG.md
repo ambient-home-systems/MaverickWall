@@ -14,6 +14,8 @@
   saying nothing.
 -->
 
+## Unreleased
+
 ## 0.59.1
 
 **"Version x is available" no longer stays on the Overview after you have

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -98,30 +99,102 @@ const shipped = (parseYaml(read('addon/maverick-wall/config.yaml')) as { version
 const today = sections(read(CHANGELOG));
 
 describe('the changelog a household is shown', () => {
-  it('keeps an ## Unreleased section with words in it', () => {
+  it('keeps an ## Unreleased section to write the next notes under', () => {
     /*
-     * `release.yml` refuses a release without this, before anything is built —
-     * which is right, and is the last place you want to find out. The section
-     * is scaffolding that sits here between releases by design, so the check
-     * is that it *exists* and that it says something: a bare heading would be
-     * renamed by `advertise` and shipped as a release note saying nothing at
-     * all, which is the reason the workflow looks for words rather than for a
-     * heading, and so does this.
+     * Existence only, and the missing half is the point.
+     *
+     * This used to demand *words* as well, and that made it red on `main` for
+     * the whole window between a release finishing and somebody writing the
+     * next note — measured twice, and both times read as a broken build by
+     * whoever arrived next. Two different questions had been folded into one:
+     *
+     *  - **is there somewhere to write notes?** — an invariant, true of `main`
+     *    at every moment, which is this;
+     *  - **are there notes to ship?** — a fact about one release, true only at
+     *    the moment of making one, which is `release.yml`'s `prepare`. It runs
+     *    before anything is built, refuses the release outright, and its own
+     *    comment is the authority here: a bare scaffold "sits in the changelog
+     *    between releases by design".
+     *
+     * Asserting the second one here asserted something the release process
+     * itself makes false. It is not weakened — nothing could ship an empty
+     * section before this change and nothing can now; the check that stops it
+     * is the one that can still act on it.
      */
-    const body = today.get('Unreleased');
     expect(
-      body,
-      'no `## Unreleased` section. `release.yml`\'s `prepare` refuses a release without one, ' +
-        'so the next release would fail on its first job. If a release just renamed it, add a ' +
-        'fresh one above the newest version.',
+      today.get('Unreleased'),
+      'no `## Unreleased` section, so there is nowhere to write the next release\'s notes and ' +
+        '`release.yml`\'s `prepare` would refuse the release. `advertise` opens a fresh one as ' +
+        'it renames the old, so the usual cause is a hand-edit or a bad merge.',
     ).toBeDefined();
+  });
 
-    const words = (body ?? '')
+  it('re-opens the section as the release renames it, by running what ships', () => {
+    /*
+     * The other half of the assertion above, and the reason it can hold.
+     *
+     * `advertise` used to rename `## Unreleased` to the version and stop
+     * there, so the moment a release finished `main` had no such section —
+     * and the check above was red until somebody wrote the next note. Both
+     * halves are needed: re-opening with nothing asserting it would quietly
+     * stop happening, and asserting it with nothing re-opening it is where
+     * this started.
+     *
+     * This runs the workflow's *own* command rather than matching its text.
+     * A substring check passes on a line that has been changed to something
+     * that no longer works, which is the failure mode being fixed one layer
+     * down: the shipped thing and the checked thing have to be the same
+     * thing. If the release stops using sed here, this fails loudly rather
+     * than going quietly blind — which is the outcome to want.
+     */
+    const workflow = parseYaml(read('.github/workflows/release.yml')) as {
+      jobs: Record<string, { steps?: { run?: string }[] }>;
+    };
+    const script = (workflow.jobs['advertise']?.steps ?? [])
+      .map((step) => step.run ?? '')
+      .find((run) => run.includes('## Unreleased'));
+    expect(script, 'no step in `advertise` touches `## Unreleased`').toBeDefined();
+
+    const rename = (script ?? '')
       .split('\n')
-      .filter((line) => line.trim() !== '' && !line.trim().startsWith('<!--') && !line.trim().startsWith('-->'))
-      .join('')
-      .trim();
-    expect(words.length, 'the `## Unreleased` heading is there but empty').toBeGreaterThan(0);
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('sed -i') && line.includes(CHANGELOG));
+    // Non-vacuity: two would mean this exercised one and left the other, and
+    // zero would mean the command moved and nothing below ran on anything.
+    expect(rename, 'expected exactly one sed over the changelog in `advertise`').toHaveLength(1);
+
+    const root = mkdtempSync(join(tmpdir(), 'mw-advertise-'));
+    try {
+      mkdirSync(join(root, 'addon', 'maverick-wall'), { recursive: true });
+      const before = [
+        '# Changelog', '', '<!--', '  A comment the release must not treat as notes.', '-->', '',
+        '## Unreleased', '', '**Something a household is told.**', '',
+        '## 1.2.3', '', 'An older release.', '',
+      ].join('\n');
+      writeFileSync(join(root, CHANGELOG), before);
+
+      execFileSync('bash', ['-c', rename[0] as string], {
+        cwd: root,
+        env: { ...process.env, VERSION: '9.9.9' },
+      });
+      const after = sections(readFileSync(join(root, CHANGELOG), 'utf8'));
+
+      // The notes shipped under the version, which is the rename working.
+      expect(after.get('9.9.9')).toBe('**Something a household is told.**');
+      // And there is somewhere to write the next ones, which is what `main`
+      // was missing for the whole window after every release.
+      expect(
+        after.get('Unreleased'),
+        'the release renamed the section without opening a fresh one',
+      ).toBeDefined();
+      // Bare, deliberately: any words here are words `prepare` accepts as
+      // notes, which would let the next release ship a heading saying nothing.
+      expect(after.get('Unreleased'), 'the fresh section must be empty').toBe('');
+      // Untouched history.
+      expect(after.get('1.2.3')).toBe('An older release.');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('never edits a section after it has shipped', () => {

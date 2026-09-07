@@ -461,8 +461,21 @@ jobs:
           # hand, because a number nobody has to remember is the only kind that
           # stays true — `version.test.ts` fails the build if these two drift.
           python3 -c 'import json, re, sys; p = "apps/server/package.json"; raw = open(p).read(); out = re.sub(r"(\"version\":\s*)\"[^\"]*\"", lambda m: m.group(1) + json.dumps(sys.argv[1]), raw, count=1); assert json.loads(out)["version"] == sys.argv[1]; open(p, "w").write(out)' "$VERSION"
-          # Only the first, and only if somebody wrote one.
-          sed -i "0,/^## Unreleased[[:space:]]*$/s//## ${VERSION}/" addon/maverick-wall/CHANGELOG.md
+          # Only the first, and only if somebody wrote one — and a fresh
+          # `## Unreleased` is opened above it in the same substitution.
+          #
+          # Re-opening is not tidiness. `prepare` above refuses a release whose
+          # notes are empty, and says a bare scaffold "sits in the changelog
+          # between releases by design" — but nothing ever put one back, so
+          # from this commit until somebody wrote the next note there was no
+          # such section at all. `changelog-shape.test.ts` asserts the scaffold
+          # exists, so `main` went red the moment a release finished and stayed
+          # red until the next branch happened to add notes. Twice measured.
+          #
+          # Deliberately bare. Any words here are words `prepare` would accept
+          # as notes, which would defeat the gate that stops a release shipping
+          # a heading that says nothing.
+          sed -i "0,/^## Unreleased[[:space:]]*$/s//## Unreleased\n\n## ${VERSION}/" addon/maverick-wall/CHANGELOG.md
 
           # The same rule the test enforces, checked here so a bad advertisement
           # is never pushed: the newest numbered heading is the shipped version.
