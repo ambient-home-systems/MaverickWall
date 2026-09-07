@@ -108,7 +108,8 @@ function adminScreen(db: SqliteDatabase, id: string) {
 describe('screens.last_seen_ip', () => {
   it('is null until a screen has ever been seen', async () => {
     const h = await harness();
-    const html = await (await h.post(`${B}/admin/screens`, { name: 'Wall' })).text();
+    const made = await h.post(`${B}/admin/screens`, { name: 'Wall' });
+    const html = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     const token = /\/pair\?token=([^<\s"]+)/.exec(html)?.[1];
     if (token === undefined) throw new Error('no pairing token in the admin page');
     const screenId = (h.db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;
@@ -118,7 +119,8 @@ describe('screens.last_seen_ip', () => {
 
   it("records the connecting address for a browser wall's manifest poll", async () => {
     const h = await harness();
-    const html = await (await h.post(`${B}/admin/screens`, { name: 'Wall' })).text();
+    const made = await h.post(`${B}/admin/screens`, { name: 'Wall' });
+    const html = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     const token = /\/pair\?token=([^<\s"]+)/.exec(html)?.[1];
     if (token === undefined) throw new Error('no pairing token in the admin page');
     const screenId = (h.db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;
@@ -131,9 +133,8 @@ describe('screens.last_seen_ip', () => {
 
   it("records the connecting address for an eInk panel's frame fetch", async () => {
     const h = await harness();
-    const configHtml = await (
-      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
-    ).text();
+    const made = await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' });
+    const configHtml = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     const url = frameUrl(configHtml);
     if (url === undefined) throw new Error('no frame URL on the config page');
     const screenId = (h.db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;

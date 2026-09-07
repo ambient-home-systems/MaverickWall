@@ -1233,9 +1233,14 @@ describe('per-screen overrides', () => {
     });
     expect(before.status).toBe(200);
 
+    // The POST mints the link and redirects; the page it lands on shows it
+    // once. (A POST that printed the link itself was a page a reload
+    // resubmitted, retiring the link still on screen.)
     const response = await h.form(`/admin/screens/${screen.id}/regenerate`, {});
-    expect(response.status).toBe(200);
-    const body = await response.text();
+    expect(response.status).toBe(303);
+    const shown = await h.call(response.headers.get('location') ?? '');
+    expect(shown.status).toBe(200);
+    const body = await shown.text();
     expect(body).toContain('/pair?token=');
     expect(body).toContain('<svg');
 
@@ -1248,7 +1253,8 @@ describe('per-screen overrides', () => {
   it('the link it shows actually pairs the screen', async () => {
     const h = await harness();
     const screen = pairOne(h.db, 'Kitchen');
-    const body = await (await h.form(`/admin/screens/${screen.id}/regenerate`, {})).text();
+    const made = await h.form(`/admin/screens/${screen.id}/regenerate`, {});
+    const body = await (await h.call(made.headers.get('location') ?? '')).text();
     const token = /\/pair\?token=([A-Za-z0-9_-]+)/.exec(body)?.[1] ?? '';
 
     expect(token).not.toBe('');

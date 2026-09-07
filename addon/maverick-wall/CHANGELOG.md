@@ -47,6 +47,22 @@ Store's "Advanced" is no longer dressed as the page's main button; and the
 "Add" button in the app bar is gone from the pages whose add form is already
 on screen, so there is one Add per page.
 
+**A pairing link is on a page you can reload.** Pairing a new wall, making
+a new pairing link, and adding or regenerating an e-paper panel's image URL
+all showed the link on the page that answered the button — so reloading that
+page made a second wall, or quietly retired the link still on screen, and
+the Back button could not return to it. Each now takes you to a page of its
+own that shows the link or URL once; reloading it, or coming back to it,
+says the link has already been shown and offers to make a new one, rather
+than showing it twice or making another wall.
+
+**A mistyped pairing code is corrected where you typed it.** Typing a wall's
+pairing code wrongly — or pressing Continue with nothing typed — used to
+answer with a "Nothing to approve" page saying the code had expired, with
+nowhere to try again. The code now comes back in its field with what went
+wrong beside it: nothing typed, no wall waiting with that code, or a code
+already approved or declined.
+
 **Adding a rotation no longer refuses the form as it opens.** "Add a
 rotation" used to open on "a calendar that already has them" with no calendar
 chosen, so pressing Continue was refused straight away. It now picks the

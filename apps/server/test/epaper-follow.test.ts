@@ -131,9 +131,9 @@ const clock = (id: string, x: number, config?: Record<string, unknown>): Record<
 
 /** Create an e-paper panel and answer with its id and its frame URL. */
 async function panel(h: Awaited<ReturnType<typeof harness>>, name: string) {
-  const html = await (
-    await h.post(`${B}/admin/epaper`, { name, preset: 'seeed-7in5', rotation: '0' })
-  ).text();
+  // The POST redirects to the page that shows the URL once; follow it.
+  const made = await h.post(`${B}/admin/epaper`, { name, preset: 'seeed-7in5', rotation: '0' });
+  const html = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
   const id = (
     h.db.prepare(`SELECT id FROM screens WHERE name = ? LIMIT 1`).get(name) as { id: string }
   ).id;
@@ -164,7 +164,8 @@ describe('choosing what a panel draws', () => {
 
   it('draws the wall’s canvas, and follows it as the wall changes', async () => {
     const h = await harness();
-    const wall = await (await h.post(`${B}/admin/screens`, { name: 'Kitchen' })).text();
+    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    const wall = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     expect(wall).toContain('Kitchen');
     const wallId = (
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string }

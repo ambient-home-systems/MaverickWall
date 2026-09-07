@@ -48,7 +48,8 @@ import {
   PAIRING_CODE_TTL_MS,
 } from '../auth/tokens.js';
 import type { IssuedToken } from '../auth/tokens.js';
-import type { DeviceFlowStore } from '../auth/device-flow.js';
+import { DEVICE_FLOW_TTL_MS, type DeviceFlowStore } from '../auth/device-flow.js';
+import { createRevealStore } from './reveal.js';
 import { currentUser } from '../auth/session.js';
 import { encodeQr, qrSvg } from './qr.js';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -679,6 +680,17 @@ export function reorderMenuItems(action: string, first: boolean, last: boolean):
   return items === '' ? '' : items + `<div class="ovf-sep"></div>`;
 }
 
+/**
+ * A code no pending pairing carries. It is either mistyped or expired, and
+ * the store deliberately cannot tell which (`lookupByUserCode` answers the
+ * same for both), so the sentence covers both and names the lifetime from the
+ * flow's own constant rather than a number that would drift from it.
+ */
+const APPROVE_UNKNOWN_CODE =
+  'No wall is waiting with that code. Check the eight characters on the wall — ' +
+  `a code lasts ${Math.round(DEVICE_FLOW_TTL_MS / 60_000)} minutes, so if it has ` +
+  'been longer, start pairing again there and type the new one.';
+
 export function regenerateWarning(name: string, connected: boolean): string {
   return connected
     ? `Make a new pairing link for ${name}? ${name} drops off the wall and shows its pairing screen until the new link is opened on it.`
@@ -833,6 +845,12 @@ export function layoutEditorMount(initial: unknown): string {
 
 export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
+  /**
+   * The pairing link (or e-paper frame URL) a POST just minted, waiting for
+   * the page its redirect lands on to show it once. See `reveal.ts` for why a
+   * secret crosses a redirect rather than being printed in the POST's answer.
+   */
+  const reveals = createRevealStore<IssuedToken>();
 
   registerHaRoutes(app, deps);
   registerAlertRoutes(app, deps);
@@ -1944,15 +1962,33 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * would collide with.
    */
   app.get('/admin/screens/approve', (c: Context) => {
-    const code = c.req.query('code') ?? '';
+    const raw = c.req.query('code');
+    // No code at all is a visit to the form, not a code that failed: the Walls
+    // page links here, and somebody may simply have typed the address.
+    if (raw === undefined) return c.html(approveCodePage(c, ''));
+    const code = raw.trim();
+    /*
+     * Three ways a code can be wrong, each said as what it is and beside the
+     * field it goes in, so the household corrects it rather than reading a
+     * dead-end page — this used to answer every one of them with a 404 saying
+     * the code had "expired", which for a mistyped character is untrue and for
+     * an empty field is baffling.
+     */
+    if (code === '') {
+      return c.html(approveCodePage(c, '', 'Type the code the wall is showing.'), 400);
+    }
     const flow = deps.deviceFlow.lookupByUserCode(code, now());
-    if (flow === undefined || flow.state !== 'pending') {
-      return c.html(approveResultPage(
-      c,
-        'Nothing to approve',
-        'That pairing code has expired or was already used. Start pairing again on ' +
-          'the wall, then approve the new code here.',
-      ), flow === undefined ? 404 : 409);
+    if (flow === undefined) {
+      return c.html(approveCodePage(c, code, APPROVE_UNKNOWN_CODE), 404);
+    }
+    if (flow.state !== 'pending') {
+      return c.html(approveCodePage(
+        c,
+        code,
+        'That code has already been approved or declined, so there is nothing ' +
+          'left to do with it. If the wall is still asking, start pairing again ' +
+          'on it and type the new code.',
+      ), 409);
     }
     return c.html(approvePromptPage(c, flow.userCode));
   });
@@ -1978,11 +2014,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // manual entry), `approve` returns false and no screen is ever written.
     const issued = issueDisplayToken();
     if (!deps.deviceFlow.approve(code, issued.token, name, at)) {
-      return c.html(approveResultPage(
-      c,
-        'Nothing to approve',
-        'That pairing code has expired or was already used. Start pairing again on ' +
-          'the wall, then approve the new code here.',
+      // The code stopped being pending between the prompt and the button —
+      // it expired, or a scan and a typed entry raced. Back to the field with
+      // the reason, so the new code the wall shows has somewhere to go.
+      return c.html(approveCodePage(
+        c,
+        code,
+        'That code expired, or was already approved or declined, so nothing was ' +
+          'paired. Start pairing again on the wall, then type the new code here.',
       ), 409);
     }
     const id = randomBytes(6).toString('hex');
@@ -2150,7 +2189,32 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // Seeding is the one moment adapting to that — and to the screen's own panel
     // aspect — is safe, so it happens here.
     applyTemplate(deps.db, id, classicSeed(deps.db, id, householdSetUp(deps.db)));
-    return c.html(pairingPage(id, shaped.value.name, issued.token, issued.shortCode, c));
+    // Shown on the page the redirect lands on, not here: a POST's own answer
+    // is a page a reload resubmits (a second wall) and Back cannot return to.
+    reveals.put(id, issued, now());
+    return c.redirect(`/admin/walls/${encodeURIComponent(id)}/pair`, 303);
+  });
+
+  /**
+   * The pairing link, once — the page `POST /admin/screens` and
+   * `/regenerate` send the household to.
+   *
+   * `take` is what makes it once: the first visit shows the QR, the code and
+   * the link, and every visit after it — a reload, the Back button, a
+   * bookmark — finds nothing and says so, with a way to make a new one. That
+   * page is a 410 rather than a 404 because the link did exist and was shown;
+   * what is gone is the showing. `no-store` so the browser keeps no copy of a
+   * page with a token on it, which is also what makes Back refetch and reach
+   * the honest answer instead of a cached secret.
+   */
+  app.get('/admin/walls/:id/pair', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = activeScreens().find((s) => s.id === id && s.kind === 'browser');
+    if (screen === undefined) return c.redirect('/admin/walls', 302);
+    c.header('cache-control', 'no-store');
+    const issued = reveals.take(id, now());
+    if (issued === undefined) return c.html(pairingSpentPage(c, screen), 410);
+    return c.html(pairingPage(id, screen.name, issued.token, issued.shortCode, c));
   });
 
   /**
@@ -2167,7 +2231,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
-    return c.html(pairingPage(id, screen.name, issued.token, issued.shortCode, c));
+    // Same one-hop reveal as creating a wall — and here the reload case is
+    // sharper: a POST answer reloaded would retire the link still on screen.
+    reveals.put(id, issued, now());
+    return c.redirect(`/admin/walls/${encodeURIComponent(id)}/pair`, 303);
   });
 
   app.post('/admin/screens/:id/revoke', (c: Context) => {
@@ -2181,7 +2248,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Registered here rather than beside the other modules at the top of this
   // function, because that is where these routes were: Hono answers with the
   // first pattern that matches, so where a group registers is behaviour.
-  registerEpaperRoutes(app, deps);
+  registerEpaperRoutes(app, deps, reveals);
 
   // -------------------------------------------------------------------------
   // Display
@@ -3203,6 +3270,76 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         setUp +
         `<p class="hint">You can arrange its layout now — the wall does not have ` +
         `to be paired first.</p>` +
+        `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
+    });
+  }
+
+  /**
+   * The pairing link has been shown, and this is the same address a second
+   * time — a reload, the Back button, a bookmark.
+   *
+   * Says what happened and offers the only two things worth doing: make a new
+   * link (the same POST the wall's own menu carries, with the same warning)
+   * or go and arrange the wall. It must not offer the link again: the store
+   * gave it up on the first visit, and a page that could show it twice would
+   * be a page that had kept a secret somewhere.
+   */
+  function pairingSpentPage(c: Context, screen: AdminScreenRow): string {
+    const id = encodeURIComponent(screen.id);
+    const connected = screen.lastSeenAt !== null;
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Pair this wall',
+      nav: 'walls',
+      heading: `Pair ${screen.name}`,
+      intro:
+        'This pairing link has been shown already, and it is not kept anywhere ' +
+        'it could be shown again.',
+      body:
+        `<p>If it was opened on the wall, there is nothing to do here. If it was ` +
+        `not — the page was reloaded, or you came back to it — make a new one. ` +
+        `The one you were given stops working${connected ? ', and this wall drops off until the new one is opened on it' : ''}.</p>` +
+        `<form method="post" action="admin/screens/${id}/regenerate" ` +
+        `data-confirm="${escapeHtml(regenerateWarning(screen.name, connected))}">` +
+        `<button${connected ? ' class="btn-danger"' : ''} type="submit">Make a new pairing link</button></form>` +
+        `<p><a class="link" href="admin/walls/${id}">Set up its layout →</a></p>` +
+        `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
+    });
+  }
+
+  /**
+   * Where a typed pairing code goes: the field, with what went wrong beside
+   * it when something did.
+   *
+   * The Walls page carries the same field as its way in; this page is where
+   * it lands when the code is empty, unknown or already spent, so the
+   * household corrects the code where they can see it rather than reading a
+   * dead-end page and finding their way back. A scanned link with a stale
+   * code lands here too, which is right: the wall it came from is showing a
+   * new code by then, and this is the page that takes it.
+   */
+  function approveCodePage(c: Context, code: string, problem?: string): string {
+    return page({
+      modules: navModules(deps.db),
+      title: 'Approve a pairing code',
+      nav: 'walls',
+      self: selfHref(c),
+      heading: 'Approve a pairing code',
+      intro:
+        'A wall starting its own pairing shows an eight-character code. Type it ' +
+        'here to approve or decline it.',
+      body:
+        `<form method="get" action="admin/screens/approve">` +
+        textField({
+          label: 'Pairing code',
+          name: 'code',
+          value: code,
+          placeholder: 'ABCD-EFGH',
+          attrs: 'maxlength="12"',
+          ...(problem === undefined ? {} : { error: problem }),
+        }) +
+        `<button type="submit">Continue</button></form>` +
         `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
     });
   }

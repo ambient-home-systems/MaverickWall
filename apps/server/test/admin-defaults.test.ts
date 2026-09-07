@@ -311,7 +311,8 @@ describe('a new pairing link is asked for, never stumbled into', () => {
 
   it('tells the household on the pairing page itself that a new link retires this one', async () => {
     const h = await harness();
-    const shown = await (await h.form('/admin/screens', { name: 'Kitchen tablet' })).text();
+    const made = await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    const shown = await (await h.call(made.headers.get('location') ?? '')).text();
     expect(shown).not.toContain('costs nothing');
     expect(shown).toContain('this one stops working when you do');
   });

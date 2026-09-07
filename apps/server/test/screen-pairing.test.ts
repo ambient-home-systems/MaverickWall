@@ -91,6 +91,34 @@ async function harness(
   return { db, call, post };
 }
 
+type Harness = Awaited<ReturnType<typeof harness>>;
+
+/**
+ * The page a pairing POST lands on, which is where the link is shown — once.
+ *
+ * The POST itself only redirects there (see `reveal.ts`), so every test that
+ * reads the link follows that one hop, on the same origin and with the same
+ * ingress header the POST carried. Under ingress the redirect comes back with
+ * the supervisor's prefix on it — the middleware puts it there — and the
+ * supervisor would strip it again before forwarding, so this strips it the
+ * same way and asserts it was there to strip.
+ */
+async function shown(
+  h: Harness,
+  made: Response,
+  origin: string,
+  headers: Record<string, string> = {},
+): Promise<string> {
+  expect(made.status).toBe(303);
+  let location = made.headers.get('location') ?? '';
+  const prefix = headers[INGRESS_HEADER];
+  if (prefix !== undefined) {
+    expect(location.startsWith(`${prefix}/`), 'the redirect must carry the ingress prefix').toBe(true);
+    location = location.slice(prefix.length);
+  }
+  return (await h.call(`${origin}${location}`, { headers })).text();
+}
+
 /** The one link a screen is meant to open, pulled out of the pairing page. */
 function pairUrl(html: string): string | undefined {
   return /(https?:\/\/[^<\s]*\/pair\?token=[^<\s"]+)/.exec(html)?.[1];
@@ -100,9 +128,7 @@ describe('adding a screen from the admin UI', () => {
   it('creates a screen and hands back a pairing link', async () => {
     const h = await harness();
     const response = await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Kitchen' });
-    expect(response.status).toBe(200);
-
-    const html = await response.text();
+    const html = await shown(h, response, 'http://192.168.1.10:8080');
     expect(html).toContain('Pair Kitchen');
     // A screen row now exists, unpaired but for its token.
     const count = (h.db.prepare('SELECT count(*) AS n FROM screens').get() as { n: number }).n;
@@ -113,7 +139,11 @@ describe('adding a screen from the admin UI', () => {
     // On the port the request origin is exactly what a screen should use — it
     // is the address the household typed to get here.
     const h = await harness();
-    const html = await (await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Hall' })).text();
+    const html = await shown(
+      h,
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Hall' }),
+      'http://192.168.1.10:8080',
+    );
     expect(pairUrl(html)).toBe(extractToken(html, 'http://192.168.1.10:8080'));
     expect(html).not.toContain('nowhere from a wall');
   });
@@ -122,7 +152,11 @@ describe('adding a screen from the admin UI', () => {
     // The whole point, proven end to end: the link is not decoration, the
     // token behind it authorises the manifest a wall polls.
     const h = await harness();
-    const html = await (await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' })).text();
+    const html = await shown(
+      h,
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' }),
+      'http://192.168.1.10:8080',
+    );
     const token = new URL(pairUrl(html) ?? '').searchParams.get('token');
     expect(token).not.toBeNull();
 
@@ -134,7 +168,11 @@ describe('adding a screen from the admin UI', () => {
 
   it('records the viewport a wall reports on its poll, and ignores rubbish (RFC 005)', async () => {
     const h = await harness();
-    const html = await (await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' })).text();
+    const html = await shown(
+      h,
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' }),
+      'http://192.168.1.10:8080',
+    );
     const token = new URL(pairUrl(html) ?? '').searchParams.get('token');
     const id = () => (h.db.prepare(`SELECT id, report_w AS w, report_h AS h FROM screens LIMIT 1`).get() as { id: string; w: number | null; h: number | null });
 
@@ -156,13 +194,16 @@ describe('pairing through Home Assistant ingress', () => {
   it('uses base_url, not the ingress origin a screen cannot reach', async () => {
     // The request arrives on the supervisor's internal host; the link must not.
     const h = await harness('http://192.168.1.50:8080');
-    const html = await (
+    const html = await shown(
+      h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
         { name: 'Ingress' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
-      )
-    ).text();
+      ),
+      'http://a0d7b954-maverick-wall:8080',
+      { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
+    );
 
     expect(pairUrl(html)).toContain('http://192.168.1.50:8080/pair?token=');
     expect(pairUrl(html)).not.toContain('a0d7b954-maverick-wall');
@@ -173,13 +214,16 @@ describe('pairing through Home Assistant ingress', () => {
     // Under ingress the request origin is useless and base_url is the only
     // source of the address — an unset one is a link to the tablet itself.
     const h = await harness('http://localhost:8080');
-    const html = await (
+    const html = await shown(
+      h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
         { name: 'Unset' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
-      )
-    ).text();
+      ),
+      'http://a0d7b954-maverick-wall:8080',
+      { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
+    );
 
     expect(html).toContain('nowhere from a wall');
     expect(html).toContain('base_url');
@@ -209,13 +253,16 @@ describe('when the supervisor knows the port state', () => {
       portMapped: null,
       explicit: false,
     });
-    const html = await (
+    const html = await shown(
+      h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
         { name: 'TV' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
-      )
-    ).text();
+      ),
+      'http://a0d7b954-maverick-wall:8080',
+      { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
+    );
 
     expect(html).toContain('display port is turned off');
     expect(html).toContain('Network');
@@ -232,13 +279,16 @@ describe('when the supervisor knows the port state', () => {
       portMapped: 8090,
       explicit: false,
     });
-    const html = await (
+    const html = await shown(
+      h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
         { name: 'TV' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
-      )
-    ).text();
+      ),
+      'http://a0d7b954-maverick-wall:8080',
+      { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
+    );
 
     expect(html).toContain('mapped to 8090');
     expect(html).toContain('nowhere from a wall');
@@ -248,9 +298,11 @@ describe('when the supervisor knows the port state', () => {
 describe('pairing a screen by code', () => {
   async function screenWithCode(baseUrl?: string) {
     const h = baseUrl === undefined ? await harness() : await harness(baseUrl);
-    const html = await (
-      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'TV' })
-    ).text();
+    const html = await shown(
+      h,
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'TV' }),
+      'http://192.168.1.10:8080',
+    );
     const code = pairCode(html);
     expect(code, 'the pairing page should show a short code').toBeDefined();
     return { h, code: code as string };

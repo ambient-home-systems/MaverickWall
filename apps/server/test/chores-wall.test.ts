@@ -207,7 +207,9 @@ async function harness() {
   });
   await post('http://localhost/setup/household', { timezone: HOUSEHOLD_TZ });
 
-  const html = await (await post('http://localhost:8080/admin/screens', { name: 'Wall' })).text();
+  // The POST redirects to the page that shows the pairing link once.
+  const made = await post('http://localhost:8080/admin/screens', { name: 'Wall' });
+  const html = await (await call(`http://localhost:8080${made.headers.get('location') ?? ''}`)).text();
   const token = /\/pair\?token=([^<\s"]+)/.exec(html)?.[1];
   if (token === undefined) throw new Error('no pairing token in the admin page');
   const screenId = (db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;

@@ -16,7 +16,7 @@ import {
 import { readEnabledExternalModules } from '../api/external-modules.js';
 import { keepWidgetsWithSomethingToSay, type Manifest, type PlacedWidgetRow } from '../api/manifest.js';
 import { layoutWidgetBody } from '../api/widget-schema.js';
-import { issueDisplayToken } from '../auth/tokens.js';
+import { issueDisplayToken, type IssuedToken } from '../auth/tokens.js';
 import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { householdSetUp } from '../modules/index.js';
@@ -36,6 +36,7 @@ import { destructive, section } from './components.js';
 import { confirmDestroyPage, errorBlock, escapeHtml, icon, page, selectField, switchRow, textField } from './html.js';
 import { ingressPath } from './ingress.js';
 import { readSaved, savedRedirect } from './saved.js';
+import type { RevealStore } from './reveal.js';
 import { selfHref } from './self.js';
 
 /**
@@ -133,7 +134,13 @@ const epaperPreviewBody = z.object({
  * them — which is where it calls this, not at the top with the other modules.
  * Route order decides which pattern answers a path, so a move must not reorder.
  */
-export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
+/**
+ * `reveals` is the admin's one-hop store for a secret shown once (see
+ * `reveal.ts`): the frame URL a POST mints is handed to it here and shown by
+ * `GET /admin/epaper/:id/url`, the same shape a wall's pairing link takes.
+ */
+export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: RevealStore<IssuedToken>): void {
+  const now = deps.now ?? ((): number => Date.now());
   // -------------------------------------------------------------------------
   // eInk (e-paper) displays (RFC 006)
   //
@@ -321,6 +328,39 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
   };
 
   /**
+   * The frame URL has been shown, and this is the same address a second time.
+   *
+   * Says so, and offers what the read-only recipes page offers: regenerate,
+   * behind its own confirmation. It must not print the URL again — the store
+   * gave it up on the first visit, and a page that could show it twice would
+   * be a page that had kept a secret somewhere.
+   */
+  const epaperUrlSpentPage = (c: Context, id: string, name: string): string =>
+    page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'E-paper wall — Maverick Wall',
+      nav: 'walls',
+      heading: name,
+      back: { label: name, href: `admin/walls/${encodeURIComponent(id)}` },
+      intro:
+        'This image URL has been shown already, and it is not kept anywhere it ' +
+        'could be shown again.',
+      body:
+        `<p>If it is already in your <code>secrets.yaml</code> or on the panel, there ` +
+        `is nothing to do here. If it is not — the page was reloaded, or you came ` +
+        `back to it — regenerate it. The panel then needs re-flashing with the new one.</p>` +
+        `<div class="row">` +
+        `<a class="btn" href="admin/walls/${encodeURIComponent(id)}">Back to ${escapeHtml(name)}</a>` +
+        destructive('Regenerate URL', {
+          thing: name,
+          confirmAction: `admin/epaper/${encodeURIComponent(id)}/regenerate`,
+          variant: 'button',
+        }) +
+        `</div>`,
+    });
+
+  /**
    * The read-only view of a screen that already exists — reached by GET, so
    * looking at a panel's recipes is never itself the thing that breaks it
    * (RFC 009, 1.8).
@@ -497,12 +537,35 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
       colour: 'bw',
       rotation: shaped.value.rotation,
     });
+    // Shown on the page the redirect lands on, not here: a POST's own answer
+    // is a page a reload resubmits (a second panel) and Back cannot return to.
+    reveals.put(id, issued, now());
+    return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/url`, 303);
+  });
+
+  /**
+   * The frame URL, once — where `POST /admin/epaper` and `/regenerate` land.
+   *
+   * The first visit takes the token out of the store and prints the URL with
+   * both recipes; every visit after it finds nothing and says so, with the
+   * regenerate control the read-only recipes page already offers. 410 rather
+   * than 404, because the URL existed and was shown — what is gone is the
+   * showing. `no-store` so a page with the token on it is never cached, and so
+   * Back refetches and reaches the honest answer rather than a kept secret.
+   */
+  app.get('/admin/epaper/:id/url', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = findEpaper(id);
+    if (screen === undefined) return c.redirect('/admin/walls', 302);
+    c.header('cache-control', 'no-store');
+    const issued = reveals.take(id, now());
+    if (issued === undefined) return c.html(epaperUrlSpentPage(c, id, screen.name), 410);
     return c.html(
       epaperConfigPage(
         id,
-        shaped.value.name,
+        screen.name,
         issued.token,
-        { width, height, rotation: shaped.value.rotation },
+        { width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation },
         c,
       ),
     );
@@ -545,15 +608,10 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps): void {
     if (screen === undefined) return c.html(epaperPage(c, 'That wall is no longer there.'), 404);
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
-    return c.html(
-      epaperConfigPage(
-        id,
-        screen.name,
-        issued.token,
-        { width: screen.panelWidth ?? 800, height: screen.panelHeight ?? 480, rotation: screen.rotation },
-        c,
-      ),
-    );
+    // The reload case is sharpest here: a POST answer reloaded would retire
+    // the URL still on screen. One hop through the store instead.
+    reveals.put(id, issued, now());
+    return c.redirect(`/admin/epaper/${encodeURIComponent(id)}/url`, 303);
   });
 
   /**

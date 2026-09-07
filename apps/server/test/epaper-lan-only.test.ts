@@ -114,9 +114,9 @@ async function harness() {
   });
   await post('http://localhost/setup/household', { timezone: 'Europe/London' });
 
-  const configHtml = await (
-    await post('http://localhost:8080/admin/epaper', { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
-  ).text();
+  // The POST redirects to the page that shows the URL once; follow it.
+  const made = await post('http://localhost:8080/admin/epaper', { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' });
+  const configHtml = await (await call(`http://localhost:8080${made.headers.get('location') ?? ''}`)).text();
   const url = /(https?:\/\/[^"<\s]*\/d\/epaper\/[^"<\s]+)/.exec(configHtml)?.[1];
   if (url === undefined) throw new Error('no frame URL on the config page');
   const screenId = (db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;
