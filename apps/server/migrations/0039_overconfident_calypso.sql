@@ -1,0 +1,1 @@
+ALTER TABLE `screens` ADD `last_seen_forwarding` text;

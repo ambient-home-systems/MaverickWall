@@ -612,6 +612,27 @@ export const screens = sqliteTable(
     lastSeenUserAgent: text('last_seen_user_agent'),
     appVersion: text('app_version'),
 
+    /**
+     * Whether the last eInk frame request could be traced to a real visitor,
+     * or only to something forwarding on their behalf (`ForwardingNote` in
+     * `http/lan-guard.ts`; null when there is nothing to say).
+     *
+     * It exists because the admin cannot observe this for itself. `lan_only`
+     * is judged on the address a *panel's* request arrives from, and the
+     * household reads the setting on a different request entirely — from a
+     * browser, through ingress or the LAN — which carries none of the headers
+     * that decide it. So the observation is recorded where it is made, and the
+     * settings page reads it back. Without it the only honest warning would be
+     * "if you use a reverse proxy this may do nothing", shown to everybody
+     * forever, which is the weak version nobody acts on.
+     *
+     * Written on every frame request including a refused one — a panel that
+     * has gone dark *because* of the restriction is exactly when a household
+     * needs the reason — and deliberately not part of `last_seen_*` above,
+     * which is set after a successful render and answers a different question.
+     */
+    lastSeenForwarding: text('last_seen_forwarding'),
+
     ...timestamps,
   },
   (table) => ({

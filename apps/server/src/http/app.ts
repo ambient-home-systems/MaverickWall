@@ -32,11 +32,12 @@ import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.
 import { acceptsGzip, gzipped } from './compress.js';
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
+import { FORWARDED_FOR_HEADER, isFromHomeNetwork, resolveFrameSource } from './lan-guard.js';
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { allModules, householdSetUp, MODULES } from '../modules/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
-import { classifyIp, evaluateInterrupts, parseIp } from '@maverick-wall/core';
+import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { ADMIN_STYLESHEET, ADMIN_STYLESHEET_ETAG, errorBlock, escapeHtml, page, textField } from './html.js';
@@ -74,6 +75,7 @@ import {
   readShiftTypes,
   readSources,
   touchScreen,
+  recordFrameForwarding,
   recordScreenViewport,
   type ScreenRow,
 } from '../api/queries.js';
@@ -1229,35 +1231,6 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   /**
-   * Whether an address is one a household's own eInk panel could plausibly
-   * connect from — the opt-in `screens.lan_only` restriction (Option C).
-   *
-   * The eInk frame carries its token in a URL rather than an `HttpOnly`
-   * cookie, because a dumb panel cannot hold one — and a URL is the one
-   * credential in this product a household is expected to hand-copy into a
-   * device's own config, which makes it more likely than a wall's cookie to
-   * end up somewhere with weaker access control than this app. This does not
-   * make a leaked token harder to use *within* the household's network; it
-   * bounds what it is worth outside it.
-   *
-   * Reuses the SSRF guard's own address classifier rather than a second one —
-   * two classifiers agreeing by coincidence is not something to rely on — but
-   * asks a different question than `isLocalNetwork` does there: loopback
-   * counts here (a request from the same host is not "the internet" either),
-   * where the SSRF guard excludes it because a feed loopback points at is
-   * never a legitimate calendar. An address that cannot be determined fails
-   * closed, exactly as `isTrustedIngress` already does for the same reason: a
-   * check that cannot tell is not a green light.
-   */
-  function isFromHomeNetwork(address: string | undefined): boolean {
-    if (address === undefined) return false;
-    const parsed = parseIp(address);
-    if (parsed === undefined) return false;
-    const kind = classifyIp(parsed);
-    return kind === 'private' || kind === 'cgnat' || kind === 'loopback';
-  }
-
-  /**
    * The e-paper frame for a paired screen (RFC 006).
    *
    * A dumb device — an ESPHome panel, or a Home Assistant Generic Camera — does
@@ -1287,16 +1260,47 @@ export function createApp(deps: AppDeps): Hono {
     if (!screen) return c.body(null, 404);
 
     /*
+     * Who is actually asking, once a configured reverse proxy is accounted
+     * for. `resolveFrameSource` is deliberately asked on every frame request
+     * and not only when `lan_only` is on: the note it returns is what the
+     * settings page warns from, and a household has to be able to see that
+     * this restriction cannot see past their proxy *before* they turn it on
+     * and trust it, rather than after.
+     */
+    const source = resolveFrameSource({
+      socketAddress: clientAddress(c),
+      forwardedFor: c.req.header(FORWARDED_FOR_HEADER),
+      trustedProxies,
+    });
+
+    /*
+     * Recorded before the decision below, never after it: a refused request
+     * is the one a household is most likely to be standing in front of asking
+     * why the panel is blank, and the render — and with it `touchScreen` —
+     * is never reached on that path. Diagnostics only, so it must never be
+     * the reason a frame fails.
+     */
+    try {
+      recordFrameForwarding(deps.db, screen.id, source.note);
+    } catch {
+      /* not worth failing a frame over */
+    }
+
+    /*
      * The token was right, so a 403 here leaks nothing a 404 would have
      * protected — the caller already proved possession of the secret, and
      * what is being refused is where they are connecting from, not whether
      * the screen exists. A distinct status is what makes this diagnosable
      * (rule 11) rather than reading like a revoked or mistyped token.
      */
-    if (screen.lanOnly === 1 && !isFromHomeNetwork(clientAddress(c))) {
+    if (screen.lanOnly === 1 && !isFromHomeNetwork(source.client)) {
+      // Addresses and a reason, never the token or the path (rule six). The
+      // note is the half that says whether this is a household off their own
+      // network or a proxy this application cannot see past.
       deps.log?.record(
         'warn',
-        `epaper frame for screen ${screen.id} refused: lan_only is set and the connecting address is not on the home network`,
+        `epaper frame for screen ${screen.id} refused: lan_only is set and the connecting address is not on the home network` +
+          (source.note === null ? '' : ` (${source.note})`),
       );
       return c.body(null, 403);
     }

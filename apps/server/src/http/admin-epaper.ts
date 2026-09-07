@@ -33,7 +33,17 @@ import {
 } from './admin.js';
 import { bytesOf } from './app.js';
 import { destructive, section } from './components.js';
-import { confirmDestroyPage, errorBlock, escapeHtml, icon, page, selectField, switchRow, textField } from './html.js';
+import {
+  confirmDestroyPage,
+  errorBlock,
+  escapeHtml,
+  icon,
+  noticeBlock,
+  page,
+  selectField,
+  switchRow,
+  textField,
+} from './html.js';
 import { ingressPath } from './ingress.js';
 import { readSaved, savedRedirect } from './saved.js';
 import type { RevealStore } from './reveal.js';
@@ -250,11 +260,67 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
    * silent about it, since that is exactly the household this would
    * otherwise go dark for with no visible cause.
    */
-  const lanOnlyForm = (id: string, lanOnly: boolean): string =>
+  /**
+   * What this restriction can currently see, said out loud.
+   *
+   * A household reads this page from a browser; the restriction is judged on
+   * the address a *panel's* frame request arrives from. Those are two
+   * different requests, so the page cannot observe the thing it is describing
+   * — `screens.last_seen_forwarding` is the observation, recorded where it is
+   * made (see `http/lan-guard.ts`), and this is where it is read back.
+   *
+   * Loud when the switch is on, because there the restriction is either
+   * checking the wrong address or blanking the panel, and a household who
+   * turned it on believes neither. Calm when it is off, because then it is
+   * only something to know *before* trusting it — which is the whole reason
+   * the note is recorded whether the switch is on or not.
+   */
+  const lanOnlyWarning = (
+    note: string | null,
+    lanOnly: boolean,
+    lastSeenIp: string | null,
+  ): string => {
+    if (note === null) return '';
+    const block = lanOnly ? errorBlock : noticeBlock;
+    const seen = lastSeenIp === null ? 'an address this application cannot see past' : lastSeenIp;
+
+    if (note === 'untrusted-forwarding') {
+      return block(
+        lanOnly
+          ? 'This restriction is checking the wrong address.'
+          : 'Before you turn this on: this restriction would check the wrong address.',
+        `Frame requests are arriving with proxy headers from ${seen}, which is not named in ` +
+          `TRUSTED_PROXY_SOURCE. Until it is, the check is made against that address rather than ` +
+          `the visitor's — so it is very likely letting everything through, including from ` +
+          `outside your network. Add that address to TRUSTED_PROXY_SOURCE if it is your reverse ` +
+          `proxy.`,
+      );
+    }
+    if (note === 'proxy-sent-no-client') {
+      return block(
+        lanOnly
+          ? 'This panel is being refused, and its frame will be blank.'
+          : 'Before you turn this on: it would blank this panel.',
+        `Frame requests are arriving from your configured reverse proxy, but it is not sending ` +
+          `an X-Forwarded-For header — so there is no visitor address to check, and this ` +
+          `restriction refuses rather than guessing. Configure the proxy to forward the client ` +
+          `address, or leave this off.`,
+      );
+    }
+    return '';
+  };
+
+  const lanOnlyForm = (
+    id: string,
+    lanOnly: boolean,
+    forwarding: string | null,
+    lastSeenIp: string | null,
+  ): string =>
     section(
       'Network access',
       undefined,
-      `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/lan-only">` +
+      lanOnlyWarning(forwarding, lanOnly, lastSeenIp) +
+        `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/lan-only">` +
         switchRow({
           label: 'Restrict this URL to your home network',
           name: 'lan_only',
@@ -1095,7 +1161,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const settingsPane = pane(
       'settings',
       sourceForm +
-        lanOnlyForm(id, screen.lanOnly === 1) +
+        lanOnlyForm(id, screen.lanOnly === 1, screen.lastSeenForwarding, screen.lastSeenIp) +
         section(
           'Device recipes',
           'The ESPHome and Home Assistant configuration that drives this panel, ' +
