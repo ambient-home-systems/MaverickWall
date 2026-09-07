@@ -27,6 +27,12 @@ anyone running a development build — was offered an older version as an update
 The Overview now asks the same question the System page has always asked, so
 the two screens can no longer disagree about whether you are up to date.
 
+**Dropdowns are readable in dark mode.** Opening any picker in the settings —
+the eInk panel's Layout, the timezone list, and every other one — showed pale
+text on a white list, with only the highlighted row legible. The list is drawn
+by your browser in its own window, and it was not being told which colours the
+rest of the page is using.
+
 ## 0.59.0
 
 **"Restrict this URL to your home network" now says so when it cannot see who

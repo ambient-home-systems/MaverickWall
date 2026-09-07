@@ -554,6 +554,24 @@ input[type=time],select,textarea{
   background:transparent;color:var(--mw-ink);font-family:inherit;
   font-size:var(--mw-t-body-lg-size)}
 textarea{resize:vertical;line-height:1.45}
+/*
+ * The options need a ground of their own, and the transparent one above is
+ * exactly why.
+ *
+ * A transparent ground is right for the closed control — it takes whatever
+ * it sits on, so one rule works on a card, in a compact settings row and in
+ * the wizard — and it cannot work for the list. A popup is a separate OS
+ * window with no page behind it to be transparent onto, so the platform
+ * painted it its own default white while the options went on inheriting the
+ * select's light ink: near-white on white, every row illegible but the one the
+ * OS was highlighting. Reported from a real screen on the eInk panel's Layout
+ * picker, and true of every dropdown in the admin including the timezone one.
+ *
+ * color-scheme on :root does not reach this. It tells the platform which
+ * palette to paint UA surfaces in, and an author background wins over the
+ * surface it would have painted — so the scheme has to be stated here.
+ */
+option{background:var(--mw-surface-2);color:var(--mw-ink)}
 input::placeholder,textarea::placeholder{color:var(--mw-ink-2)}
 input[type=color]{width:100%;height:2.6rem;padding:var(--mw-s-1);
   border-radius:var(--mw-r-1);
