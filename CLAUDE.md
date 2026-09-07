@@ -383,7 +383,7 @@ do not invent a ninth component without raising it first.
 > about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
-**0.55.0 is the current release.** `main`, the tag and the published image
+**0.58.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
 signed, pulled anonymously and verified.
@@ -418,8 +418,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2730 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 468 · server 1795. CI runs the whole suite and then the README's
+**2843 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 484 · server 1892. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
