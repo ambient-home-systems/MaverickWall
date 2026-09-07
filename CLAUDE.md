@@ -102,7 +102,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and twenty-five real bugs**, and the pattern in how is the most
+This project has found **one hundred and thirty real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -253,6 +253,11 @@ useful thing in this document:
 | **A panel drawing four specks and a temperature** | Rendering a frame with the glyph at parity with its type, and looking at it |
 | Every nav icon reported as sitting inside a paragraph | `<p` being a prefix of `<path` |
 | The offline shell missing the one module the wall had just started importing | The shell test, which walks the compiled import graph rather than a list |
+| **An e-paper panel offered thirteen colour wall templates, and not its own** | Pressing Templates on a panel, which is the only route to the gallery there |
+| **A fix for a clipped label that broke every long label mid-word instead** | A household's screenshot of "Lab/elle/d pills", then reading which characters landed on which line |
+| A settings sheet lying over a navigation column the save bar under it cleared | Measuring the two at 1024px and reading x=0 against x=264 |
+| A switch 943px from the label it belongs to | Measuring the widest label-to-control gap in a sheet that had no measure |
+| An assertion for content-proportional segments that its own fix could not redden | Reverting the fix and watching the file stay green, then counting starved labels instead |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -418,8 +423,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2843 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 484 · server 1892. CI runs the whole suite and then the README's
+**2904 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 484 · server 1953. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -696,6 +701,102 @@ to write, since it passes just as happily if every widget draws in the corner.
 The test decodes the PNG and holds the ink to the posted box — verify by
 decoding, the QR rule again. Live: the Arrange backdrop and the saved preview
 come back byte-identical.
+
+**A panel has its own template gallery now, and the gap it closed was the
+panel's own default view.** Reported by a household as two things and it is one:
+"there is no way to design or see the default view for an eInk display", and
+"eInk displays don't have templates — when you click templates it shows the
+browser wall templates instead". Both were true. `Templates` is the *only* route
+to the gallery from a panel's toolbar (a panel's page has no overflow menu, so
+the wall's duplicate entries were removed there and this one kept), and what it
+opened was thirteen colour arrangements previewed on a portrait 9:16 canvas for
+an 800x480 black-and-white device, every card but Classic captioned "Looks best
+in <a theme> — change it after" on a screen that has no theme, over an offer to
+copy a wall's layout onto one bit. The one arrangement its household had
+actually *seen* — the built-in agenda-and-month view the panel draws out of the
+box — was not among them, so the layout somebody wanted to start from was the
+only one they could not: the first widget dropped on the empty canvas replaced it
+wholesale, and rebuilding it meant guessing its proportions.
+
+`src/templates/panel/` is the panel's own list and `panel-built-in` leads it —
+the built-in layout as movable widgets, an **approximation** in the same way and
+for the same reasons `classic.ts` is of the retired stacked renderer, with the
+two honest differences written down at the top of the file (a Clock stands in for
+the inverted header band, which has no widget; the boxes tile the canvas rather
+than carrying the renderer's margin as well as the frame's). Its proportions are
+`epaperBlocks`' own, read off every supported panel size rather than picked —
+0.54 to the agenda in landscape, which is that function's constant and the reason
+for it. Four more sit behind it: Month, What is on, Week ahead, and Chores & what
+is on.
+
+Four things about the split are load-bearing and each is a property a test pins
+rather than a convention. **The two catalogues are two lookups, not one list
+filtered** — the page is a convenience and the POST is the boundary, so a
+hand-posted `sky-week` at a panel is a 400 rather than a colour wall arrangement
+on one bit, and a `panel-built-in` at a wall is refused the same way.
+**A panel card previews as a real 1-bit frame**, from the *same*
+`POST /admin/epaper/:id/preview.png` the designer's Arrange backdrop uses — the
+fault that endpoint was built to fix was two renderers disagreeing about one
+canvas, and a card is that fault on a smaller picture. **The applied canvas is
+written at the panel's own aspect**, never the card's nominal 800x480, which is
+`epaperDesignPage`'s rule one screen along ("a panel's resolution is a fact about
+the hardware"). And **copy-from offers a panel only other panels**: a panel that
+wants what a wall shows has `follow`, which keeps the two in step where a copy
+forks them on the first edit and does it in colour.
+
+Two of the tests written for it could not fail as first drafted, which is the
+part worth keeping. The 800x480 aspect assertion agrees with the card's nominal
+value to five decimal places, so removing the override left it green — a 4.2"
+panel at 400x300 is the case that reddens, and the file says so where the weaker
+pair sits rather than quietly relying on the stronger one. And the ink assertion
+exempts the Chores card, because this fixture defines no chores and
+`keepWidgetsWithSomethingToSay` correctly drops an empty board; its *calendar*
+still has to draw, since an exemption covering the whole card would excuse a
+broken one.
+
+**The widget inspector had two faults, and the first was a fix causing the thing
+it prevented.** `admin-seg-labels.test.ts` records a segmented control that drew
+"ollow the househ" — clipped at both ends because `text-overflow` does nothing on
+a flex container — and the cure was to let labels wrap. It wrapped them with
+`overflow-wrap:anywhere`, which does two things rather than one: it lets a break
+fall between *any* two characters, and it drops a flex item's min-content
+contribution to a single glyph, so nothing resists the global `flex:1` squeezing
+every segment to an equal quarter. Reported with a screenshot: the Calendar
+widget's four-up "Events in a day" drawing "Na/mes", "Dots", "Labelle/d pills",
+"Swiss/rows" — the *shortest* label broken mid-word, in a control with 60px of
+slack across it, because the space went to "Dots" rather than to the label that
+needed it.
+
+`break-word` fixes the breaking. What fixes the *starving* is measured rather
+than argued: swept across every segmented control the inspector draws, at nine
+widths, counting the times a label wrapped while a single-line sibling had more
+room than it did — `flex:1` gives **17**, `flex:1 1 auto` with the default
+`min-width:auto` gives **4**, and `flex:1 1 auto` with `min-width:0` gives
+**0**. So both are kept, each with a number behind it, and the second's cost is
+stated: three labels drawn 2-5px wider than their content box, absorbed by the
+8px padding either side, which is the second reason that rule avoids
+`overflow:hidden`.
+
+**The second fault is the sheet, and the save bar directly under it was already
+right.** Below 1200px the inspector becomes a bottom sheet, and it was
+`left:0` across that whole range — but the navigation drawer is a real in-flow
+264px column down to 900px, so between 901 and 1199 the sheet lay over navigation
+that was still on screen while `.savebar` beneath it started at 264. Measured at
+1024px: x=0 against x=264, disagreeing by exactly the drawer. The two are written
+the same way now — `left:264px`, reset to 0 in the same `max-width:900px` block
+where the drawer goes off-canvas. And the sheet had no *measure*: its rows ran the
+width of the viewport, so a switch sat **943px from its own label** at 1199px and
+the four-up control was 1,159px of segmented button. It is capped at 720px and
+centred, which is `.wset-panels`' own number — this editor's answer to the same
+question one pane along, reused rather than re-picked.
+
+**An assertion written for the first of those passed with its own fix removed**,
+and finding that out is why the numbers above exist. "Did a label break inside a
+word" discriminates `anywhere` from `break-word` and nothing else: reverting
+`flex:1 1 auto` leaves it green, because the default `min-width:auto` already
+stops a segment going below its longest word. The starvation count is what can
+see it. Six mutations were checked against `browser-inspector.test.ts` and all
+six are red.
 
 **Every Calendar option on a panel was inert, and the default was the worst of
 them.** The editor stores the default mode by *leaving the key out* — `month`

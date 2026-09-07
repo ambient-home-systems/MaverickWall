@@ -1734,12 +1734,44 @@ pre.code{background:var(--mw-surface-2);
  * themselves, and a choice you cannot read is a choice you cannot make.
  *
  * So: two lines when it needs them, every segment growing together because the
- * row stretches, and overflow-wrap for a single long word that cannot break at
- * a space. overflow:hidden is gone with it — the global rule above avoids it
- * deliberately so a focus ring is not clipped, and this scope had quietly put
- * it back. */
+ * row stretches. overflow:hidden is gone with it — the global rule above avoids
+ * it deliberately so a focus ring is not clipped, and this scope had quietly
+ * put it back.
+ *
+ * **The wrap has to break at a space before it breaks a word, and the first fix
+ * for the clipping got that exactly backwards.** It paired the global
+ * flex:1 — which is flex:1 1 0%, so every segment takes the same share
+ * whatever is written on it — with overflow-wrap:anywhere, which lets a break
+ * fall between any two characters *and* drops the item's min-content
+ * contribution to one glyph, so nothing in the row resists the squeeze. Both
+ * halves are needed to see it, and together they are what a household reported:
+ * measured on the Calendar widget's four-up "Events in a day" at a 258px
+ * inspector, every segment was 64px and the row read "Na/mes", "Dots",
+ * "Labelle/d pills", "Swiss/rows" — the *shortest* label broken mid-word while
+ * the control had 60px of slack across it, because the space went to "Dots"
+ * rather than to the label that needed it.
+ *
+ * break-word is what makes a broken word the last resort rather than the first
+ * choice. One is still reachable — a word wider than its own segment has
+ * nowhere else to go — it is simply no longer what happens while there is a
+ * space to break at.
+ *
+ * The other two decide where the row's space goes, and each is kept because a
+ * number says what it buys. Swept over every segmented control the inspector
+ * draws, at nine widths, counting the times a label wrapped while a
+ * single-line sibling had more room than it did: flex:1 gives 17,
+ * flex:1 1 auto with the default min-width:auto gives 4, and
+ * flex:1 1 auto with min-width:0 gives 0. The first shares the *free* space
+ * rather than the whole width, so a segment starts from what is written on it;
+ * the second then lets the row shrink past its own words, which is what closes
+ * the last four — without it a segment cannot go below its longest word, so the
+ * room a wrapped neighbour needs is held by a sibling that does not need it.
+ * Its cost is three labels drawn 2-5px wider than their content box, absorbed
+ * by the 8px padding either side, which is the second reason this rule avoids
+ * overflow:hidden. Measured in browser-inspector.test.ts. */
 .le-cfg-field .seg{display:flex;width:100%;max-width:100%}
-.le-cfg-field .seg button{padding:0 var(--mw-s-2);white-space:normal;overflow-wrap:anywhere;
+.le-cfg-field .seg button{flex:1 1 auto;min-width:0;padding:0 var(--mw-s-2);
+  white-space:normal;overflow-wrap:break-word;
   height:auto;min-height:38px;line-height:1.15;text-align:center;overflow:visible}
 .le-config .switch{margin:var(--mw-s-2) 0}
 .le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
@@ -1856,6 +1888,22 @@ pre.code{background:var(--mw-surface-2);
   display:flex;align-items:center;justify-content:center}
 .tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   padding:var(--mw-s-3);text-align:center;font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}
+/* An e-paper panel's card is a real 1-bit frame rather than a live wall, so it
+ * is shaped and grounded like the panel and not like a phone: the panel's own
+ * ratio (the card carries it, because the panel's shape is a fact about the
+ * hardware and not the browser's to guess), a white plate because the medium is
+ * physically white in both schemes — the same exception .le-epaper-preview
+ * takes — and pixelated rendering, because a 1-bit frame smoothed is a grey one.
+ *
+ * The ratio is *declared here* and overridden by the card's own inline value,
+ * rather than left to a var() fallback. Same pixels, and it keeps the rule
+ * self-contained: a property this sheet reads and never declares is the exact
+ * dangling-var() shape admin-design-system.test.ts exists to catch, and it
+ * caught this one. 5/3 rather than the portrait 3/4 above, because a panel with
+ * no geometry recorded is 800x480. */
+.tpl-thumb.is-ink{--tpl-ar:5/3;aspect-ratio:var(--tpl-ar);background:#fff}
+.tpl-ink{position:relative;z-index:1;width:100%;height:100%;
+  object-fit:contain;image-rendering:pixelated}
 .tpl-body{padding:0;display:flex;flex-direction:column;gap:var(--mw-s-2);flex:1}
 .tpl-name{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking)}
@@ -2250,8 +2298,27 @@ pre.code{background:var(--mw-surface-2);
   .mw-insp-open .disp-editor{padding-bottom:calc(70vh + env(safe-area-inset-bottom))}
   /* The widget inspector, as a sheet that sits on the save bar rather than
    * over it — Save stays reachable while a widget is open, and the canvas
-   * above stays visible, which is the point of editing it here at all. */
-  .lay-inspector{position:fixed;left:0;right:0;top:auto;
+   * above stays visible, which is the point of editing it here at all.
+   *
+   * It takes the save bar's own column, not the viewport's, and the two are
+   * written the same way for the same reason: the drawer is a real in-flow
+   * 264px column down to 900px, and only below that does it go off-canvas.
+   * The sheet used to be left:0 across its whole 901-1199px range, so between
+   * those two widths it lay over a navigation that was still on screen while
+   * the save bar directly beneath it started at 264 — measured at 1024px, a
+   * sheet at x=0 on a save bar at x=264, disagreeing by exactly the drawer.
+   *
+   * And it keeps a settings row's measure rather than the width it is given.
+   * A sheet is only wide because the viewport is; the rows inside it are the
+   * same per-widget settings the 379px column draws, and stretched across a
+   * tablet they stop being rows — measured at 1199px, a switch sat 943px from
+   * the label it belongs to and the four-up "Events in a day" control was
+   * 1,159px of segmented button. 720px is .wset-panels' cap, which is this
+   * editor's own answer to the same question one pane along, so it is reused
+   * rather than re-picked; centred, because the canvas above it is. A phone is
+   * narrower than the cap and is untouched. */
+  .lay-inspector{position:fixed;left:264px;right:0;top:auto;
+    max-width:720px;margin-left:auto;margin-right:auto;
     bottom:calc(var(--savebar-h) + env(safe-area-inset-bottom));z-index:45;
     max-height:min(58vh,520px);border:0;
     border-radius:var(--mw-r-4) var(--mw-r-4) 0 0;
@@ -2266,6 +2333,9 @@ pre.code{background:var(--mw-surface-2);
 }
 @media(max-width:900px){
   .savebar{left:0;padding:var(--mw-s-3) calc(var(--mw-s-4) + var(--mw-s-1));padding-bottom:calc(var(--mw-s-3) + env(safe-area-inset-bottom))}
+  /* The drawer is off-canvas here, so the column the sheet sits in is the
+     whole viewport — the same move, at the same width, as the line above. */
+  .lay-inspector{left:0}
 }
 
 /* ---- Touch targets below 900px (RFC 009 Phase 7) --------------------------

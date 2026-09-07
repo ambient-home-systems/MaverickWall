@@ -16,6 +16,30 @@
 
 ## Unreleased
 
+**E-paper panels have their own layouts to start from.** Pressing Templates on
+a panel used to open the browser wall's gallery — thirteen colour arrangements
+drawn on a tall phone-shaped canvas, each suggesting a theme a black-and-white
+panel does not have. There is a panel gallery now, and every card is a picture
+of the real frame *your* panel would draw, at your panel's own size.
+
+**Including the one your panel already shows.** A new panel draws a built-in
+view — the date across the top, what is on today, and the month — and until now
+that was all or nothing: the moment you added a widget it was gone, and there
+was no way to nudge it. "Built-in" is the first card in the gallery, so you can
+start from the layout you have been looking at and move it around. Reset layout
+still puts the real built-in view back.
+
+**The widget options panel reads properly again.** Long choices were being
+chopped in the middle of a word — "Labelled pills" came out as "Labelle / d
+pills" — while the button next to it sat on empty space. Choices now break
+between words, and each one takes the room its own label needs.
+
+**And that panel behaves itself on a tablet or a small laptop.** Between about
+900 and 1200 pixels wide it used to slide out over the menu down the left-hand
+side, and its settings stretched right across the screen, so a switch could end
+up most of a screen away from the label it belongs to. It now sits in the same
+column as the Save bar underneath it, at a width you can read across.
+
 ## 0.59.1
 
 **"Version x is available" no longer stays on the Overview after you have

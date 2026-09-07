@@ -77,6 +77,22 @@ function widgetId(): string {
 }
 
 /**
+ * The two aspects to write instead of the template's own.
+ *
+ * A wall's aspect is a guess about a screen nobody measured, so a template's is
+ * as good as any and is used as authored. An **e-paper panel's is a fact about
+ * the hardware** — 800x480 is 800x480 — and the design page already refuses to
+ * honour anything else for exactly the reason a household reported once: boxes
+ * drawn on a canvas the device cannot show land somewhere other than where they
+ * were dragged. So the panel gallery hands its panel's own pair over here
+ * rather than letting a nominal number reach a stored canvas.
+ */
+export interface TemplateAspects {
+  readonly portrait: number;
+  readonly landscape: number;
+}
+
+/**
  * Apply a template to a display, writing both canvases.
  *
  * Ids are minted here, not carried by the template — a template is arrangement,
@@ -89,6 +105,7 @@ export function applyTemplate(
   db: SqliteDatabase,
   owner: string | null,
   template: DisplayTemplate,
+  aspects?: TemplateAspects,
 ): void {
   // Set the designed theme first, so it and the canvas backgrounds are
   // consistent — a template's light background must not land under a dark theme.
@@ -97,7 +114,7 @@ export function applyTemplate(
     const canvas = template[orientation];
     replaceLayout(db, owner, orientation, {
       mode: 'freeform',
-      aspect: canvas.aspect,
+      aspect: aspects?.[orientation] ?? canvas.aspect,
       widgets: canvas.widgets.map((widget, index) => ({
         id: widgetId(),
         type: widget.type,
