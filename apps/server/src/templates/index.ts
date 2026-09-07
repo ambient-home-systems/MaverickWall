@@ -1,4 +1,5 @@
 import type { DisplayTemplate } from '../api/templates.js';
+export { PANEL_TEMPLATES, findPanelTemplate } from './panel/index.js';
 import { template as classic } from './classic.js';
 import { template as skyCalendar } from './sky-calendar.js';
 import { template as skyWeek } from './sky-week.js';

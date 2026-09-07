@@ -78,8 +78,15 @@ import type { LogBuffer } from '../logbuffer.js';
 import { parseBackground, widgetIsSetUp, WIDGET_TYPES } from '../api/manifest.js';
 import { householdSetUp } from '../modules/index.js';
 import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
-import { applyTemplate, classicSeed, copyLayout, findTemplate } from '../api/templates.js';
-import { TEMPLATES } from '../templates/index.js';
+import {
+  applyTemplate,
+  classicSeed,
+  copyLayout,
+  findTemplate,
+  type DisplayTemplate,
+  type TemplateAspects,
+} from '../api/templates.js';
+import { TEMPLATES, PANEL_TEMPLATES, findPanelTemplate } from '../templates/index.js';
 import {
   candidatesFor,
   cycleFrom,
@@ -2386,6 +2393,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const isEpaperOwner = (owner: string | null): boolean =>
     owner !== null && activeScreens().some((s) => s.id === owner && s.kind === 'epaper');
 
+  /**
+   * A panel's two canvas aspects, from its pixels.
+   *
+   * The same arithmetic `epaperDesignPage` does when it seeds the editor, and
+   * for the same stated reason: on a wall the aspect is a guess about a screen
+   * nobody measured and the household may set one, while a panel's resolution
+   * is a fact about the hardware. The design page already ignores a stored
+   * aspect for that reason — reading one drew boxes on a canvas the device
+   * cannot show, so a widget landed somewhere other than where it was dragged —
+   * and a template applied at its nominal 800x480 would put that fault straight
+   * back on the first save. Orientation-independent, because a quarter turn
+   * cannot change long/short.
+   */
+  const panelAspects = (screen: AdminScreenRow): TemplateAspects => {
+    const w = screen.panelWidth ?? 800;
+    const h = screen.panelHeight ?? 480;
+    const long = Math.max(w, h);
+    const short = Math.min(w, h);
+    return { portrait: short / long, landscape: long / short };
+  };
+
   /** The layout view of a wall's page, where apply/copy/reset return to.
    *  Kind-aware: an e-paper panel goes back to its design page — sending it to
    *  the Walls section is how Reset looked like it did nothing. */
@@ -2415,12 +2443,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Apply a template to a display. A plain form POST, because the whole gallery
    * works without script; an unknown id is a no-op with a message rather than a
    * half-applied layout. Writes both canvases (`applyTemplate`).
+   *
+   * **The two catalogues are two lookups, not one list filtered.** A panel is
+   * offered `PANEL_TEMPLATES` and may apply only those; a wall is offered
+   * `TEMPLATES` and may apply only those. Sharing one lookup would make the
+   * gallery's split cosmetic — a hand-posted `templateId` of `sky-week` would
+   * put a colour wall arrangement on a 1-bit panel, which is exactly what the
+   * split exists to stop, and rule five's point is that the shape refuses it
+   * rather than a comment asking nobody to try.
    */
   app.post('/admin/displays/:id/apply-template', async (c: Context) => {
     const id = c.req.param('id') ?? '';
     const owner = resolveOwner(id === 'default' ? null : id);
+    const panel = isEpaperOwner(owner) ? activeScreens().find((s) => s.id === owner) : undefined;
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const template = typeof body['templateId'] === 'string' ? findTemplate(body['templateId']) : undefined;
+    const wanted = typeof body['templateId'] === 'string' ? body['templateId'] : '';
+    const template = panel === undefined ? findTemplate(wanted) : findPanelTemplate(wanted);
     if (template === undefined) {
       return c.html(templateGalleryPage(c, owner, 'That template is not one we ship.'), 400);
     }
@@ -2434,6 +2472,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       deps.db,
       owner,
       template.id === 'classic' ? classicSeed(deps.db, owner, householdSetUp(deps.db)) : template,
+      // A panel's canvas is written at the panel's own shape, never the card's
+      // nominal one — `TemplateAspects` carries why.
+      panel === undefined ? undefined : panelAspects(panel),
     );
     return savedRedirect(c, layoutUrl(owner), 'layout-template-applied');
   });
@@ -2442,6 +2483,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Copy another display's layout onto this one — the "start from another wall"
    * convenience the hybrid model gives in place of shared profiles. A one-shot
    * copy; the source is untouched and the two are not linked.
+   *
+   * A panel copies only from another panel, and the check is here rather than
+   * only in the form that offers the list: the form is a convenience and the
+   * POST is the boundary, which is rule five's whole point. A panel that wants
+   * a wall's arrangement has `follow` — that keeps the two in step, where a
+   * copy forks them on the first edit and does it in colour.
    */
   app.post('/admin/displays/:id/copy-from', async (c: Context) => {
     const id = c.req.param('id') ?? '';
@@ -2449,8 +2496,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const src = typeof body['sourceOwner'] === 'string' ? body['sourceOwner'] : '';
     const from = resolveOwner(src === 'default' ? null : src);
+    const toPanel = isEpaperOwner(to);
     if (from === to) {
-      return c.html(templateGalleryPage(c, to, 'Pick a different wall to copy from.'), 400);
+      return c.html(
+        templateGalleryPage(c, to, `Pick a different ${toPanel ? 'panel' : 'wall'} to copy from.`),
+        400,
+      );
+    }
+    if (toPanel !== isEpaperOwner(from)) {
+      return c.html(
+        templateGalleryPage(
+          c,
+          to,
+          toPanel
+            ? 'A panel can only copy another panel’s layout. To show what a wall shows, set this ' +
+              'panel to follow it on its own page — that keeps the two in step.'
+            : 'A wall can only copy another wall’s layout.',
+        ),
+        400,
+      );
     }
     copyLayout(deps.db, from, to);
     return savedRedirect(c, layoutUrl(to), 'layout-copied');
@@ -4293,23 +4357,74 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    *
    * Server-rendered cards with a plain apply form each, so picking a layout works
    * with no JavaScript. The `template-gallery` mount carries every template's
-   * portrait canvas as JSON; a first-party script draws each card's live preview
-   * through the wall's own renderer, so the card shows what the wall will draw.
+   * canvas as JSON; a first-party script draws each card's live preview through
+   * the renderer that will actually draw it, so the card shows what the display
+   * will draw.
+   *
+   * **It is two galleries, because a panel is not a wall.** Everything below
+   * that reads `panel` is that split. Offered the wall's list, an 800x480
+   * black-and-white e-paper screen got thirteen colour arrangements previewed on
+   * a portrait 9:16 canvas, each captioned with a theme it cannot have, over an
+   * offer to copy a wall's layout onto it — and the one layout it had actually
+   * been drawing since the day it was paired, its built-in view, was not among
+   * them. `PANEL_TEMPLATES` is the panel's own list and `panel-built-in` leads
+   * it, so the arrangement a household has already seen is the one they can
+   * start from.
+   *
+   * Three things follow from the split rather than being separate decisions.
+   * The preview is a real 1-bit frame from `POST /admin/epaper/:id/preview.png`
+   * — the *same* endpoint the designer's backdrop uses and so the same renderer
+   * the device runs, because two renderers disagreeing about one canvas is the
+   * fault the design page already had to fix once. There is no theme line,
+   * because there is no theme. And "copy another display's layout" offers only
+   * other panels: copying a wall's colour arrangement onto one bit is the same
+   * category error the whole split exists to remove, and a panel that wants to
+   * show what a wall shows has `follow` for it, which keeps the two in step
+   * instead of forking them.
    */
   function templateGalleryPage(c: Context, owner: string | null, error?: string): string {
+    const screen = owner === null ? undefined : activeScreens().find((s) => s.id === owner);
+    const panel = isEpaperOwner(owner) ? screen : undefined;
     const ownerName = owner === null
       ? 'Default wall'
-      : activeScreens().find((s) => s.id === owner)?.name ?? 'this wall';
+      : screen?.name ?? 'this wall';
     const ownerParam = owner === null ? 'default' : encodeURIComponent(owner);
+    const catalogue = panel === undefined ? TEMPLATES : PANEL_TEMPLATES;
+    // Relative, like every link here, so the single <base> carries it through
+    // ingress; kind-aware for the reason `layoutUrl` is, one screen along.
+    const backHref = panel === undefined
+      ? `admin/walls/${ownerParam}#layout`
+      : `admin/epaper/${ownerParam}/design`;
 
-    const card = (t: (typeof TEMPLATES)[number]): string =>
+    /*
+     * A panel card's thumbnail is the shape of the frame that comes back.
+     *
+     * The panel's *native* buffer, deliberately, and not the orientation a
+     * viewer sees: `renderScreenFrame` draws the visual canvas and then turns
+     * the raster, so what the preview endpoint answers with is always
+     * `panelWidth x panelHeight` however the panel is hung. The widgets posted
+     * with it are the visual orientation's (`epaperOrientation` above), which is
+     * the same pair the designer's own backdrop uses — so a rotated panel's card
+     * shows its buffer sideways, exactly as the Arrange preview does and exactly
+     * as the device holds it.
+     *
+     * Carried as a custom property rather than a declaration, so the stylesheet
+     * keeps the rule and the markup carries only the number.
+     */
+    const inkRatio = panel === undefined
+      ? ''
+      : ` style="--tpl-ar:${panel.panelWidth ?? 800}/${panel.panelHeight ?? 480}"`;
+
+    const card = (t: DisplayTemplate): string =>
       `<article class="tpl-card">` +
-      `<div class="tpl-thumb" data-tpl="${escapeHtml(t.id)}">` +
+      `<div class="tpl-thumb${panel === undefined ? '' : ' is-ink'}" data-tpl="${escapeHtml(t.id)}"${inkRatio}>` +
       `<div class="tpl-fallback">${escapeHtml(t.name)}</div></div>` +
       `<div class="tpl-body">` +
       `<div class="tpl-name">${escapeHtml(t.name)}</div>` +
       `<div class="tpl-blurb">${escapeHtml(t.blurb)}</div>` +
-      (t.theme !== undefined
+      // No theme line on a panel: it has no theme, and a card advertising one
+      // would be a control that does nothing.
+      (t.theme !== undefined && panel === undefined
         ? `<div class="hint-1">Looks best in ` +
           `<b style="color:var(--accent)">${escapeHtml(themeName(t.theme))}</b> ` +
           `— change it after.</div>`
@@ -4321,20 +4436,28 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</div></article>`;
 
     const group = (label: string, cat: 'home' | 'office'): string => {
-      const cards = TEMPLATES.filter((t) => t.category === cat).map(card).join('');
-      return `<div class="tpl-cat">${label}</div><div class="tpl-grid">${cards}</div>`;
+      const cards = catalogue.filter((t) => t.category === cat).map(card).join('');
+      return cards === '' ? '' : `<div class="tpl-cat">${label}</div><div class="tpl-grid">${cards}</div>`;
     };
 
-    // Every other wall, to copy a layout from. Empty when this is the only one.
+    /*
+     * What this display may copy a layout from.
+     *
+     * A wall may copy any other display's; a panel may copy only another
+     * panel's. That is the split's rule rather than a separate one — a wall's
+     * arrangement is authored in colour on a canvas of its own aspect, and
+     * putting it on one bit is what `follow` is for, where the two stay in step
+     * instead of forking on the first edit.
+     */
     const others = [
-      ...(owner === null ? [] : [{ id: null as string | null, name: 'Default wall' }]),
+      ...(owner === null || panel !== undefined ? [] : [{ id: null as string | null, name: 'Default wall' }]),
       ...activeScreens()
-        .filter((s) => s.id !== owner)
+        .filter((s) => s.id !== owner && (panel === undefined || s.kind === 'epaper'))
         .map((s) => ({ id: s.id as string | null, name: s.name })),
     ];
     const copyFrom = others.length === 0
       ? ''
-      : `<div class="tpl-copy"><div class="tpl-cat">Or copy another wall's layout</div>` +
+      : `<div class="tpl-copy"><div class="tpl-cat">Or copy another ${panel === undefined ? 'wall' : 'panel'}'s layout</div>` +
         `<form method="post" action="admin/displays/${ownerParam}/copy-from" ` +
         `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with a copy?"><div class="row">` +
         selectField({
@@ -4349,18 +4472,36 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         }) +
         `<button class="secondary" type="submit">Copy its layout</button></div></form></div>`;
 
-    // The client needs each template's portrait canvas to draw a preview.
+    /*
+     * What the client needs to draw a preview.
+     *
+     * A wall's card is drawn in the browser through `renderFreeform` off its
+     * *portrait* canvas — that is the shape a wall card has always been. A
+     * panel's is a real frame from the server, so the client needs the
+     * orientation the panel actually draws (its own, after rotation) and the
+     * endpoint to post it to; nothing about the panel's shape is computed in
+     * the browser, because the panel's shape is not the browser's to guess.
+     */
     const galleryData = JSON.stringify({
       owner,
-      templates: TEMPLATES.map((t) => ({
-        id: t.id,
-        aspect: t.portrait.aspect,
-        widgets: t.portrait.widgets,
-        // The template's own theme and background, so the card previews the look
-        // applying it produces, not the household's current one (RFC 005 3c).
-        ...(t.theme !== undefined ? { theme: t.theme } : {}),
-        ...(t.portrait.background !== undefined ? { background: t.portrait.background } : {}),
-      })),
+      ...(panel === undefined
+        ? {}
+        : { panelPreview: `admin/epaper/${ownerParam}/preview.png` }),
+      templates: catalogue.map((t) => {
+        const canvas = panel === undefined ? t.portrait : t[epaperOrientation(panel)];
+        return {
+          id: t.id,
+          aspect: canvas.aspect,
+          widgets: canvas.widgets,
+          // The template's own theme and background, so the card previews the
+          // look applying it produces, not the household's current one (RFC 005
+          // 3c). Neither reaches a panel — it has no theme and one ground.
+          ...(t.theme !== undefined && panel === undefined ? { theme: t.theme } : {}),
+          ...(canvas.background !== undefined && panel === undefined
+            ? { background: canvas.background }
+            : {}),
+        };
+      }),
     });
 
     return page({
@@ -4369,13 +4510,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       title: `Templates — ${ownerName} — Maverick Wall`,
       nav: 'walls',
       heading: 'Start from a template',
-      intro: `Pick a starting layout for ${ownerName}. You can move, remove and add to it afterwards.`,
+      intro:
+        panel === undefined
+          ? `Pick a starting layout for ${ownerName}. You can move, remove and add to it afterwards.`
+          : `Pick a starting layout for ${ownerName}. Each card is the real ${panel.panelWidth ?? 800}×` +
+            `${panel.panelHeight ?? 480} frame this panel would draw. You can move, remove and add to ` +
+            `it afterwards, and Reset layout puts the built-in view back.`,
       body:
-        `<p><a class="link" href="admin/walls/${ownerParam}#layout">← Back to ${escapeHtml(ownerName)}</a></p>` +
+        `<p><a class="link" href="${escapeHtml(backHref)}">← Back to ${escapeHtml(ownerName)}</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
         `<div id="template-gallery" data-json="${escapeHtml(galleryData)}"></div>` +
-        group('Home', 'home') +
-        group('Office', 'office') +
+        (panel === undefined
+          ? group('Home', 'home') + group('Office', 'office')
+          : `<div class="tpl-grid">${catalogue.map(card).join('')}</div>`) +
         copyFrom +
         `<script type="module" src="assets/template-gallery.js"></script>`,
     });
