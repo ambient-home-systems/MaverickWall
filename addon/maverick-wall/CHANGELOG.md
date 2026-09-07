@@ -25,7 +25,9 @@ however many times you updated. It also meant a box that was *ahead* of the
 newest release — which happens for a little while after every release, and to
 anyone running a development build — was offered an older version as an update.
 The Overview now asks the same question the System page has always asked, so
-the two screens can no longer disagree about whether you are up to date.
+the two screens can no longer disagree about whether you are up to date. Both
+screens also name the two versions the same way now, rather than offering you
+"v0.60.0" on the same line as "this box runs 0.59.0".
 
 **Dropdowns are readable in dark mode.** Opening any picker in the settings —
 the eInk panel's Layout, the timezone list, and every other one — showed pale

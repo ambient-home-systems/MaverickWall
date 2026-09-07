@@ -1,6 +1,6 @@
 import { FETCH_LIMITS, type Fetcher } from '@maverick-wall/core';
 import { parseJson, z } from '../validation.js';
-import { isReleaseVersion } from '../version.js';
+import { bareVersion, isReleaseVersion } from '../version.js';
 
 /**
  * The update check: the only thing in this product that contacts anybody.
@@ -195,6 +195,14 @@ function describeFailure(
  * *name* rather than a boolean is part of that: a caller cannot re-read
  * `latestVersion` for the label and quietly disagree about which version it
  * just decided to offer.
+ *
+ * The name comes back in the same shape as `appVersion`, which is the third
+ * thing that difference was costing. Both screens set the two versions in one
+ * sentence — "Version v0.60.0 is available. This box runs 0.59.0" — so the
+ * stored tag's `v` was one number written two ways in consecutive clauses.
+ * Normalising here rather than at the write is deliberate: every household
+ * already has a `v` in that column, and a read that copes needs no migration
+ * to reach them.
  */
 export function updateOnOffer(
   state: { readonly enabled: boolean; readonly latestVersion: string | null },
@@ -207,5 +215,5 @@ export function updateOnOffer(
    * which is the same reason the check itself does not run on one.
    */
   if (!isReleaseVersion(appVersion)) return undefined;
-  return isNewer(state.latestVersion, appVersion) ? state.latestVersion : undefined;
+  return isNewer(state.latestVersion, appVersion) ? bareVersion(state.latestVersion) : undefined;
 }

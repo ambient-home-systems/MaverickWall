@@ -694,7 +694,9 @@ describe('the update check setting', () => {
     recordUpdateCheck(h.db, h.at, 'v10.0.0', null);
 
     const page = await (await h.call('/admin/system')).text();
-    expect(page).toContain('Version v10.0.0 is available');
+    // Named without the tag's `v`, so the two versions in this one sentence
+    // are written the same way: "Version 10.0.0 … You are running 9.9.9".
+    expect(page).toContain('Version 10.0.0 is available');
     expect(page).toContain('Nothing has been ');
   });
 });
@@ -815,8 +817,37 @@ describe('the Overview banner', () => {
     setUpdateCheckEnabled(h.db, true);
     recordUpdateCheck(h.db, h.at, 'v10.0.0', null);
 
-    expect(await overview(h)).toContain('Version v10.0.0 is available');
+    expect(await overview(h)).toContain('Version 10.0.0 is available');
   });
+
+  it.each(['v10.0.0', '10.0.0'] as const)(
+    'names a %s release the way this box names itself, on both screens',
+    async (stored) => {
+      /*
+       * One number, written one way. Both screens set the offered version and
+       * the running one in a single sentence — "Version 10.0.0 is available.
+       * This box runs 9.9.9" — and the release tag carries a `v` that this
+       * process strips from its own. Left alone that is one product's version
+       * spelled two ways in consecutive clauses, on the screens whose whole
+       * job is saying which one you have.
+       *
+       * Asserted over *both* stored shapes because the column already holds a
+       * `v` in every household on earth: what a household reads cannot depend
+       * on which of the two a past check happened to write.
+       */
+      const h = await signedIn(harness('9.9.9'));
+      setUpdateCheckEnabled(h.db, true);
+      recordUpdateCheck(h.db, h.at, stored, null);
+
+      for (const [where, page] of [
+        ['the Overview', await overview(h)],
+        ['the System page', await (await h.call('/admin/system')).text()],
+      ] as const) {
+        expect(page, `${where} did not offer it`).toContain('Version 10.0.0 is available');
+        expect(page, `${where} kept the tag's own v`).not.toContain('Version v10.0.0');
+      }
+    },
+  );
 
   it('says nothing on a development build, as the System page already does', async () => {
     // `updateSection` suppresses this and says why: a `latestVersion` recorded
