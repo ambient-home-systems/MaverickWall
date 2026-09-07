@@ -14,6 +14,19 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**"Version x is available" no longer stays on the Overview after you have
+updated.** The Needs attention list was comparing the version it found against
+the version you are running as plain text rather than as version numbers, and
+the two are not written the same way — the release is recorded as `v0.59.0` and
+this box calls itself `0.59.0`. They never matched, so the row never went away,
+however many times you updated. It also meant a box that was *ahead* of the
+newest release — which happens for a little while after every release, and to
+anyone running a development build — was offered an older version as an update.
+The Overview now asks the same question the System page has always asked, so
+the two screens can no longer disagree about whether you are up to date.
+
 ## 0.59.0
 
 **"Restrict this URL to your home network" now says so when it cannot see who
