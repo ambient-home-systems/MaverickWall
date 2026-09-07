@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.60.0
+
 **E-paper panels have their own layouts to start from.** Pressing Templates on
 a panel used to open the browser wall's gallery — thirteen colour arrangements
 drawn on a tall phone-shaped canvas, each suggesting a theme a black-and-white
