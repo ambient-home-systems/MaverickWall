@@ -148,6 +148,14 @@ async function harness() {
 
 const B = 'http://localhost:8080';
 const frameUrl = (html: string): string | undefined => /(https?:\/\/[^"<\s]*\/d\/epaper\/[^"<\s]+)/.exec(html)?.[1];
+/**
+ * The page a create or regenerate POST lands on, which is where the URL is
+ * shown — once. The POST itself only redirects there (see `reveal.ts`).
+ */
+const shown = async (h: { call: (url: string) => Promise<Response> }, made: Response): Promise<string> => {
+  expect(made.status).toBe(303);
+  return (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
+};
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const bytesOf = async (response: Response): Promise<Uint8Array> => new Uint8Array(await response.arrayBuffer());
 
@@ -162,8 +170,7 @@ describe('the eInk Displays page', () => {
   it('creates a Seeed 7.5" screen and hands over a working URL and both recipes', async () => {
     const h = await harness();
     const res = await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' });
-    expect(res.status).toBe(200);
-    const html = await res.text();
+    const html = await shown(h, res);
 
     // The recipes are both present, pre-filled.
     expect(html).toContain('online_image'); // ESPHome
@@ -194,7 +201,8 @@ describe('the eInk Displays page', () => {
       height: '128',
       rotation: '90',
     });
-    expect(ok.status).toBe(200);
+    // Created: the POST redirects to the page that shows the URL once.
+    expect(ok.status).toBe(303);
     const row = h.db.prepare(`SELECT panel_width AS w, panel_height AS h, rotation FROM screens LIMIT 1`).get() as {
       w: number;
       h: number;
@@ -234,7 +242,10 @@ describe('the eInk Displays page', () => {
     expect(design).toContain('<script type="module" src="assets/layout-editor.js">');
     expect(design).toContain('id="savebar"');
     expect(design).toContain('data-action="save"');
-    expect(design).toContain(`admin/epaper/${id}/preview.png`); // the preview img
+    // The frame is the editor's own backdrop now (rendered from the boxes
+    // being dragged), so the page carries no second <img> of it; what says
+    // the editor draws a panel is the mount being told it is one.
+    expect(design).toContain('&quot;kind&quot;:&quot;epaper&quot;');
 
     // The canvas the editor opens is the panel's, not the wall's. A 800x480
     // panel at rotation 0 shows landscape, and its ratio is 5:3 — the editor
@@ -427,7 +438,7 @@ describe('the eInk Displays page', () => {
 
   it('removing a screen drops it from the list and kills its URL', async () => {
     const h = await harness();
-    const html = await (await h.post(`${B}/admin/epaper`, { name: 'Gone', preset: 'seeed-7in5', rotation: '0' })).text();
+    const html = await shown(h, await h.post(`${B}/admin/epaper`, { name: 'Gone', preset: 'seeed-7in5', rotation: '0' }));
     const url = frameUrl(html)!;
     expect((await h.call(url)).status).toBe(200);
 
@@ -450,18 +461,23 @@ describe('the eInk Displays page', () => {
    */
   it('looking at a screen never rotates its token', async () => {
     const h = await harness();
-    const created = await (
-      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
-    ).text();
+    const created = await shown(
+      h,
+      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' }),
+    );
     const url = frameUrl(created)!;
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
 
-    // The list no longer offers a form that POSTs straight to /regenerate —
-    // it is a plain link to the read-only page. It lives on the merged Walls
-    // list now (RFC 009 Phase 4).
+    // The list no longer offers a form that POSTs straight to /regenerate.
+    // It links to the panel's own page (the merged Walls list, RFC 009 Phase
+    // 4, one card shape for every kind), which is its layout page, and that
+    // page is what links to the read-only recipes page.
     const list = await (await h.call(`${B}/admin/walls`)).text();
     expect(list).not.toContain(`action="admin/epaper/${id}/regenerate"`);
-    expect(list).toContain(`href="admin/epaper/${id}"`);
+    expect(list).toContain(`href="admin/epaper/${id}/design"`);
+    const design = await (await h.call(`${B}/admin/epaper/${id}/design`)).text();
+    expect(design).not.toContain(`action="admin/epaper/${id}/regenerate"`);
+    expect(design).toContain(`href="admin/epaper/${id}"`);
 
     // Visiting it — twice, since a GET has to be safe to repeat — leaves the
     // original URL working and shows no token of its own.
@@ -480,9 +496,10 @@ describe('the eInk Displays page', () => {
 
   it('still offers regeneration from the read-only page, behind its own confirmation', async () => {
     const h = await harness();
-    const created = await (
-      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
-    ).text();
+    const created = await shown(
+      h,
+      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' }),
+    );
     const originalUrl = frameUrl(created)!;
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
 
@@ -500,7 +517,7 @@ describe('the eInk Displays page', () => {
     expect(interstitial).toContain(`action="admin/epaper/${id}/regenerate"`);
     expect(interstitial).toContain('method="post"');
 
-    const regenerated = await (await h.post(`${B}/admin/epaper/${id}/regenerate`, {})).text();
+    const regenerated = await shown(h, await h.post(`${B}/admin/epaper/${id}/regenerate`, {}));
     const newUrl = frameUrl(regenerated)!;
     expect(newUrl).not.toBe(originalUrl);
     expect((await h.call(originalUrl)).status).toBe(404);
@@ -509,9 +526,10 @@ describe('the eInk Displays page', () => {
 
   it('the regenerate interstitial performs no mutation on its own', async () => {
     const h = await harness();
-    const created = await (
-      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
-    ).text();
+    const created = await shown(
+      h,
+      await h.post(`${B}/admin/epaper`, { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' }),
+    );
     const originalUrl = frameUrl(created)!;
     const id = (h.db.prepare(`SELECT id FROM screens LIMIT 1`).get() as { id: string }).id;
 

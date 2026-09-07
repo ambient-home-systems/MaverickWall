@@ -48,7 +48,9 @@ import {
   PAIRING_CODE_TTL_MS,
 } from '../auth/tokens.js';
 import type { IssuedToken } from '../auth/tokens.js';
-import type { DeviceFlowStore } from '../auth/device-flow.js';
+import { DEVICE_FLOW_TTL_MS, type DeviceFlowStore } from '../auth/device-flow.js';
+import { createRevealStore } from './reveal.js';
+import { currentUser } from '../auth/session.js';
 import { encodeQr, qrSvg } from './qr.js';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -91,8 +93,8 @@ import {
   type PlanKind,
 } from './shifts.js';
 import { testFeed, type TestFeedResult } from '../api/test-feed.js';
-import { currentUser } from '../auth/session.js';
-import type { Fetcher, NetworkOption, ShiftPlan } from '@maverick-wall/core';
+import { dueOn, type CivilDate, type Fetcher, type NetworkOption, type ShiftPlan } from '@maverick-wall/core';
+import { activeOn, readChores } from '../api/chores.js';
 import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
@@ -302,6 +304,7 @@ import { readEnabledExternalModules, readExternalModules } from '../api/external
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
 import { fetchCalendarEntities } from '../modules/homeassistant/index.js';
+import { isUnitedStatesZone } from '../timezone.js';
 
 /**
  * The admin screens.
@@ -594,6 +597,16 @@ function formatBytes(bytes: number): string {
  * "14 minutes ago" needs no timezone and no locale, and answers the only
  * question anybody asks of it: is this stale?
  */
+/**
+ * A civil date the way the wall writes one — "Sat 19 Sept" — for a line a
+ * person reads. An ISO stamp is a machine's date; it belongs in a date input,
+ * not in prose. UTC because a civil date carries no zone: it is the day itself.
+ */
+export function civilDateLabel(date: string): string {
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    .format(new Date(`${date}T00:00:00Z`));
+}
+
 export function ago(from: number | null, now: number): string {
   if (from === null) return 'never';
   const seconds = Math.max(0, Math.round((now - from) / 1000));
@@ -604,6 +617,84 @@ export function ago(from: number | null, now: number): string {
   if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
   const days = Math.round(hours / 24);
   return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+/**
+ * How long since a screen last called in before its dot goes idle.
+ *
+ * A browser wall polls every minute, so five minutes is generous and says
+ * "up" without pretending to diagnose. An e-paper panel on battery sleeps
+ * between pulls — the shipped ESPHome recipe sleeps thirty minutes and the
+ * Home Assistant one pushes every fifteen — so its window is an hour, or
+ * every sleeping panel in the house would read as idle for most of the day.
+ * Exported beside `ago` because the panel's own page (`admin-epaper.ts`)
+ * draws the same dot the Walls list and a browser wall's page do.
+ */
+export const BROWSER_SEEN_WINDOW_MS = 5 * 60_000;
+export const EPAPER_SEEN_WINDOW_MS = 60 * 60_000;
+/** A wall unseen for this long is worth a row on the Overview, whatever its kind. */
+const DAY_MS = 24 * 60 * 60_000;
+/** How many of today's events the Overview lists before saying "and N more". */
+const TODAY_EVENT_LIMIT = 8;
+
+export function seenDot(lastSeenAt: number | null, at: number, windowMs = BROWSER_SEEN_WINDOW_MS): string {
+  const fresh = lastSeenAt !== null && at - lastSeenAt < windowMs;
+  return fresh
+    ? `<span class="dot dot-ok pulse"></span>`
+    : `<span class="dot dot-idle"></span>`;
+}
+
+/**
+ * What making a new pairing link costs, said before it is done.
+ *
+ * The control used to be labelled "Pairing link…" and posted straight to
+ * `/regenerate` with no confirmation — so a household who tapped it to *look
+ * at* the link revoked the one they had just printed, and on a wall that was
+ * already paired cut that wall off. The wall page's own status line sent
+ * them there ("open its pairing link on the wall"). The consequence differs
+ * by state and the sentence says which: an unspent link that stops working,
+ * or a wall that drops off until the new link is opened on it. Plain text —
+ * the callers put it in a `data-confirm` attribute and escape it there.
+ */
+/**
+ * "Move up" and "Move down" as ⋮ menu items, for a list a household orders.
+ *
+ * Every ordered list here — people, chores, shift types — used to draw its
+ * reorder as one or two buttons in the card's own footer, which made the
+ * rarest thing anybody does to a row the most visible control on it, while
+ * Edit sat behind a disclosure and Remove behind the ⋮. Reorder lives in the
+ * ⋮ now, above the rule that keeps a safe action from being Remove's
+ * neighbour, and the ends drop the move that goes nowhere. One rule for every
+ * row: the name, one status line, the Edit disclosure, at most one visible
+ * action that is the row's own job (Sync now, Pause), and the rest in the ⋮.
+ *
+ * `action` is the relative POST path; the direction rides a hidden field, as
+ * the footer buttons' did. Exported for the chores and shift-type screens,
+ * which draw the same rows from their own files.
+ */
+export function reorderMenuItems(action: string, first: boolean, last: boolean): string {
+  const item = (dir: 'up' | 'down'): string =>
+    `<form method="post" action="${action}"><input type="hidden" name="dir" value="${dir}">` +
+    `<button class="ovf-item" type="submit">Move ${dir}</button></form>`;
+  const items = (first ? '' : item('up')) + (last ? '' : item('down'));
+  return items === '' ? '' : items + `<div class="ovf-sep"></div>`;
+}
+
+/**
+ * A code no pending pairing carries. It is either mistyped or expired, and
+ * the store deliberately cannot tell which (`lookupByUserCode` answers the
+ * same for both), so the sentence covers both and names the lifetime from the
+ * flow's own constant rather than a number that would drift from it.
+ */
+const APPROVE_UNKNOWN_CODE =
+  'No wall is waiting with that code. Check the eight characters on the wall — ' +
+  `a code lasts ${Math.round(DEVICE_FLOW_TTL_MS / 60_000)} minutes, so if it has ` +
+  'been longer, start pairing again there and type the new one.';
+
+export function regenerateWarning(name: string, connected: boolean): string {
+  return connected
+    ? `Make a new pairing link for ${name}? ${name} drops off the wall and shows its pairing screen until the new link is opened on it.`
+    : `Make a new pairing link for ${name}? The link and code you were given stop working — use the new ones on the wall.`;
 }
 
 /**
@@ -754,6 +845,12 @@ export function layoutEditorMount(initial: unknown): string {
 
 export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
+  /**
+   * The pairing link (or e-paper frame URL) a POST just minted, waiting for
+   * the page its redirect lands on to show it once. See `reveal.ts` for why a
+   * secret crosses a redirect rather than being printed in the POST's answer.
+   */
+  const reveals = createRevealStore<IssuedToken>();
 
   registerHaRoutes(app, deps);
   registerAlertRoutes(app, deps);
@@ -801,12 +898,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // while the evaluator treated every rule as off — permanently, if the new
     // location turns out to be outside the service.
     const zones = countWatchedZones(deps.db);
-    return zones === 0 ? 'on — no zones yet' : `watching ${zones} zones`;
+    if (zones > 0) return `watching ${zones} zones`;
+    // Outside the United States there will never be a zone, and "no zones
+    // yet" promises one. The wizard turns the switch off for such a household
+    // now; this is the one that turned it on, or was set up before it did.
+    return isUnitedStatesZone(readHousehold(deps.db).timezone) ? 'on — no zones yet' : 'not available here';
   };
 
   const haSummary = (): string => {
     const resolved = resolveConnection(deps.db, deps.keyring);
-    if (!resolved.ok) return 'not connected';
+    // "Not set up", not "not connected": most households never connect Home
+    // Assistant, and a connection nobody asked for is not a fault.
+    if (!resolved.ok) return 'not set up';
     if (resolved.connection.mode === 'supervisor') return 'connected as an add-on';
     const settings = readHaSettings(deps.db);
     return settings.lastError === null ? 'connected' : 'connected, with a problem';
@@ -818,16 +921,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   const tagFor = (summary: string): string => {
     const low = summary.toLowerCase();
-    const cls =
-      // "needs" and "no zones" join the bad set rather than the neutral one:
-      // something is switched on and not working, which is the same shape as
-      // "not connected" and not the same shape as "off".
-      low.includes('not connected') || low.includes('problem') || low.includes('error') ||
-      low.includes('needs') || low.includes('no zones')
-        ? 'tag-bad'
-        : low === 'off' || low.startsWith('on,')
-          ? 'tag'
-          : 'tag-ok';
+    // Red is for something that is switched on and not doing its job: a
+    // connection with a problem, an alert switch with no location to work
+    // from. Not for an integration nobody has set up, not for a wait ("no
+    // zones yet" is the minute after a household in the United States saves
+    // a location), and not for a place the service does not cover. Measured
+    // on a fresh install in London, this card used to show two red tags on a
+    // box that had never done anything wrong — and a status that is red on
+    // every install is a colour nobody reads, so the first real fault would
+    // have arrived in the same tone as the two false ones.
+    const bad = low.includes('problem') || low.includes('error') || low.includes('needs');
+    const plain = low === 'off' || low.startsWith('on,') || low.startsWith('on —') || low.startsWith('not ');
+    const cls = bad ? 'tag-bad' : plain ? 'tag' : 'tag-ok';
     const dot = cls === 'tag-ok' ? '<span class="dot dot-ok"></span>' : cls === 'tag-bad' ? '<span class="dot dot-bad"></span>' : '';
     // A capitalised first letter reads as a label rather than a sentence fragment.
     const text = summary.charAt(0).toUpperCase() + summary.slice(1);
@@ -835,42 +940,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   };
 
   app.get('/admin', (c: Context) => {
-    const user = currentUser(c);
     const household = readHousehold(deps.db);
     const sources = readAdminSources(deps.db);
     const screens = readAdminScreens(deps.db).filter((screen) => screen.revokedAt === null);
-    const failing = sources.filter((source) => source.lastError !== null).length;
     const plans = readShiftPlansAdmin(deps.db);
     const at = now();
-    // "Online" is loose on purpose: a wall polls on a minute, so anything seen
-    // inside a few minutes is up. Enough to say "both online" rather than to
-    // diagnose one that is not.
+    const zone = household.timezone;
     const online = screens.filter(
-      (screen) => screen.lastSeenAt !== null && at - screen.lastSeenAt < 5 * 60_000,
+      (screen) =>
+        screen.lastSeenAt !== null &&
+        at - screen.lastSeenAt <
+          (screen.kind === 'epaper' ? EPAPER_SEEN_WINDOW_MS : BROWSER_SEEN_WINDOW_MS),
     ).length;
-
-    // A span, not an anchor: the whole stat card is already an <a>, and a
-    // nested anchor is invalid HTML the browser hoists out of the card.
-    // The word, and no arrow after it. An icon is allowed where it is the
-    // primary identifier of a destination; beside a word that already names the
-    // destination it is the same sentence twice.
-    const manage = (): string => `<span class="link">Manage</span>`;
-
-    /*
-     * Zero calendars is its own branch, and it needs one.
-     *
-     * `failing === 0` is true of a household with nothing connected, so the
-     * card read "0 Calendars connected" under a green "All syncing" — a claim
-     * about a set that is empty, in the colour that means everything is well.
-     * The neutral pill is the same shape "None paired" already uses for
-     * screens, and the card beneath it is a link to go and fix it.
-     */
-    const calTag =
-      sources.length === 0
-        ? `<span class="tag">None yet</span>`
-        : failing === 0
-          ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>All syncing</span>`
-          : `<span class="tag tag-bad"><span class="dot dot-bad"></span>${failing} failing</span>`;
 
     /*
      * Today, in the household's own zone.
@@ -884,39 +965,179 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * changes shape with the server's locale is a stamp nobody can test.
      */
     const todayLine = new Intl.DateTimeFormat('en-GB', {
-      timeZone: household.timezone,
+      timeZone: zone,
       weekday: 'long',
       day: 'numeric',
       month: 'long',
     }).format(new Date(at));
-    const scrTag =
-      screens.length === 0
-        ? `<span class="tag">None paired</span>`
-        : online === screens.length
-          ? `<span class="tag tag-ok"><span class="dot dot-ok"></span>${screens.length === 1 ? 'Online' : 'All online'}</span>`
-          : `<span class="tag"><span class="dot dot-idle"></span>${online} of ${screens.length} online</span>`;
 
     /*
-     * No icon on a stat card, and that is the rule rather than a tidy-up.
-     *
-     * Each of these carried its nav row's glyph inside `.ic` — a 34px
-     * accent-coloured rounded tile on a panel ground — beside the card's own
-     * number and label. Two of the three bans in one element: an icon inside a
-     * tinted rounded square, and an icon standing next to a heading rather than
-     * identifying a destination. The card is a link to that destination; the
-     * heading is what names it.
+     * What needs attention — the first of the two questions somebody opening
+     * this page actually has, and the one it used to answer with three stat
+     * tiles: "4 Calendars connected", "2 Walls paired", "1 Rotation". Those
+     * are three counts the household already knows, restated in a sentence
+     * under a card that repeated them; a big number with a caption is a
+     * dashboard idiom, and this is a calendar. Each row here is something the
+     * household can go and do, in the tone the Status card uses: red only for
+     * a thing that is on and not doing its job.
      */
-    const statCard = (
-      href: string,
-      tag: string,
-      big: string | number,
-      lab: string,
-      sub: string,
-    ): string =>
-      `<a class="card stat" href="${href}">` +
-      `<div class="top">${tag}</div>` +
-      `<div class="big">${escapeHtml(String(big))}</div><div class="lab">${escapeHtml(lab)}</div>` +
-      `<div class="subrow"><span>${sub}</span>${manage()}</div></a>`;
+    interface Attention {
+      readonly title: string;
+      readonly detail: string;
+      readonly href: string;
+      readonly tag: string;
+      readonly bad: boolean;
+    }
+    const attention: Attention[] = [];
+    if (sources.length === 0) {
+      attention.push({
+        title: 'No calendars yet',
+        detail: 'The wall has nothing to draw until one is added.',
+        href: 'admin/calendars', tag: 'Not set up', bad: false,
+      });
+    }
+    for (const source of sources) {
+      if (source.lastError === null) continue;
+      attention.push({
+        title: `${source.name} is not syncing`,
+        detail: source.lastError,
+        href: 'admin/calendars', tag: 'Not syncing', bad: true,
+      });
+    }
+    if (screens.length === 0) {
+      attention.push({
+        title: 'No walls paired yet',
+        detail: 'Pair a tablet, a television or an e-paper panel to put the calendar on a screen.',
+        href: 'admin/walls', tag: 'Not set up', bad: false,
+      });
+    }
+    for (const screen of screens) {
+      const href =
+        screen.kind === 'epaper'
+          ? `admin/epaper/${encodeURIComponent(screen.id)}/design`
+          : `admin/walls/${encodeURIComponent(screen.id)}`;
+      if (screen.lastSeenAt === null) {
+        attention.push({
+          title: `${screen.name} has never connected`,
+          detail:
+            screen.kind === 'epaper'
+              ? 'Nothing has fetched its picture yet. Its device recipes are on its page.'
+              : 'Open its pairing link on the wall.',
+          href, tag: 'Never connected', bad: false,
+        });
+      } else if (at - screen.lastSeenAt > DAY_MS) {
+        attention.push({
+          title: `${screen.name} last seen ${ago(screen.lastSeenAt, at)}`,
+          detail: 'It may be off, or unable to reach this box.',
+          href, tag: 'Not seen', bad: false,
+        });
+      }
+    }
+    if (alertSummary().includes('needs')) {
+      attention.push({
+        title: 'Weather alerts are on with no location',
+        detail: 'They cannot watch anything until the Weather page has a latitude and longitude.',
+        href: 'admin/alerts', tag: 'Needs location', bad: true,
+      });
+    }
+    if (haSummary().includes('problem')) {
+      attention.push({
+        title: 'Home Assistant is connected, with a problem',
+        detail: 'The last read failed. The Home Assistant page says what came back.',
+        href: 'admin/home-assistant', tag: 'Problem', bad: true,
+      });
+    }
+    const update = readUpdateState(deps.db);
+    if (update.enabled && update.latestVersion !== null && update.latestVersion !== deps.appVersion) {
+      attention.push({
+        title: `Version ${update.latestVersion} is available`,
+        detail: `This box runs ${deps.appVersion}. Updating stays yours to do.`,
+        href: 'admin/system', tag: 'Update', bad: false,
+      });
+    }
+    const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+    const attentionRows =
+      attention.length === 0
+        ? listRow(
+            '',
+            {
+              title: 'Everything is running',
+              detail: `${plural(sources.length, 'calendar')} syncing · ${online} of ${plural(screens.length, 'wall')} online`,
+            },
+            `<span class="tag tag-ok"><span class="dot dot-ok"></span>All good</span>`,
+          )
+        : attention
+            .map((item) =>
+              listRow(
+                '',
+                { title: item.title, detail: item.detail, href: item.href },
+                item.bad
+                  ? `<span class="tag tag-bad"><span class="dot dot-bad"></span>${escapeHtml(item.tag)}</span>`
+                  : `<span class="tag">${escapeHtml(item.tag)}</span>`,
+              ),
+            )
+            .join('');
+
+    /*
+     * What the wall draws today — the second question, answered from the same
+     * manifest the Default wall polls, so this list and the glass agree by
+     * construction: who is working, what is on, which chores fall due. Capped,
+     * because a busy Saturday is not what this card is for; the wall is.
+     */
+    const today = localToday() as CivilDate;
+    const manifest = deps.previewManifest?.(null) as
+      | {
+          days?: readonly {
+            date: string;
+            events: readonly { title: string; startsAt: number; allDay: boolean; color: string }[];
+            shifts: readonly { personName: string; label: string }[];
+          }[];
+        }
+      | undefined;
+    const day = manifest?.days?.find((candidate) => candidate.date === today);
+    const timeOf = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: household.clock24 === 1 ? 'h23' : 'h12',
+    });
+    const events = [...(day?.events ?? [])].sort(
+      (a, b) => Number(b.allDay) - Number(a.allDay) || a.startsAt - b.startsAt,
+    );
+    const shown = events.slice(0, TODAY_EVENT_LIMIT);
+    const rota = (day?.shifts ?? []).map((shift) => `${shift.personName}: ${shift.label}`);
+    const chores = readChores(deps.db).filter(
+      (chore) => activeOn(chore, today) && dueOn(chore.schedule, today),
+    );
+    const todayList =
+      rota.length + shown.length + chores.length === 0
+        ? `<p class="hint">Nothing on today.</p>`
+        : `<ul class="ov-today">` +
+          (rota.length === 0
+            ? ''
+            : `<li class="ov-rota"><span class="ov-time">Working</span>` +
+              `<span class="ov-title">${escapeHtml(rota.join(' · '))}</span></li>`) +
+          shown
+            .map(
+              (event) =>
+                `<li><span class="swatch" style="--swatch:${escapeHtml(event.color)}"></span>` +
+                `<span class="ov-time">${event.allDay ? 'All day' : escapeHtml(timeOf.format(new Date(event.startsAt)))}</span>` +
+                `<span class="ov-title">${escapeHtml(event.title)}</span></li>`,
+            )
+            .join('') +
+          (events.length > shown.length
+            ? `<li class="ov-more"><span class="ov-time"></span>` +
+              `<span class="ov-title">and ${events.length - shown.length} more</span></li>`
+            : '') +
+          chores
+            .map(
+              (chore) =>
+                `<li><span class="ov-time">Chore</span><span class="ov-title">${escapeHtml(chore.name)}` +
+                (chore.dueTime === null ? '' : ` · by ${escapeHtml(chore.dueTime)}`) +
+                `</span></li>`,
+            )
+            .join('') +
+          `</ul>`;
 
     // `.frow` restated a lead-less row with a title, an optional second line
     // and a trailing control — exactly `listRow`'s shape, so it is one now.
@@ -934,34 +1155,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(
       page({
         self: selfHref(c),
-      modules: navModules(deps.db),
+        modules: navModules(deps.db),
         title: 'Maverick Wall',
         nav: 'home',
         heading: 'Overview',
-        intro: `Signed in as ${user.name}.`,
         body:
-          `<div class="grid g3">` +
-          statCard(
-            'admin/calendars', calTag, sources.length,
-            `Calendar${sources.length === 1 ? '' : 's'} connected`,
-            `Timezone ${escapeHtml(household.timezone)}`,
-          ) +
-          statCard(
-            'admin/walls', scrTag, screens.length,
-            `Wall${screens.length === 1 ? '' : 's'} paired`,
-            screens.length === 0 ? 'Pair one on the Walls page' : escapeHtml(screens.map((s) => s.name).join(' · ')),
-          ) +
-          statCard(
-            'admin/shifts',
-            plans.length === 0 ? '<span class="tag">None set</span>' : `<span class="tag tag-accent">${plans.length} active</span>`,
-            plans.length, `Rotation${plans.length === 1 ? '' : 's'}`,
-            plans.length === 0 ? 'Colour each day by who is working' : escapeHtml(plans.map((p) => p.personName ?? 'Someone').join(' · ')),
-          ) +
-          `</div>` +
+          section('Needs attention', undefined, `<div class="card status-card">${attentionRows}</div>`) +
 
-          `<div class="sect"><div class="sect-head"><h2>Status</h2>` +
-          `<span class="kick">Household · ${escapeHtml(household.timezone)}</span></div>` +
+          `<div class="sect"><div class="sect-head"><h2>Today</h2>` +
+          `<span class="kick">Household · ${escapeHtml(zone)}</span></div>` +
           `<div class="grid g2">` +
+          `<div class="card today-card">` +
+          `<div class="kick">Today on the wall</div>` +
+          `<div class="today-big">${escapeHtml(todayLine)}</div>` +
+          `<div class="sub">${plural(sources.length, 'calendar')} · ${plural(plans.length, 'rotation')} · ${plural(screens.length, 'wall')} · ${escapeHtml(zone)}</div>` +
+          todayList +
+          `<div class="row card-foot">` +
+          `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
+          `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
+          `</div>` +
           `<div class="card status-card">` +
           // Linked, because the summary can name something to go and do and a
           // pill that says "needs your location" with no way to it is a nag.
@@ -973,21 +1185,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           statusRow('Home Assistant', '', tagFor(haSummary())) +
           statusRow('System', `${escapeHtml(deps.appVersion)} · up ${uptimeText}`, `<a class="link" href="admin/system">Open</a>`) +
           `</div>` +
-          `<div class="card today-card">` +
-          `<div class="kick">Today on the wall</div>` +
-          `<div class="today-big">${escapeHtml(todayLine)}</div>` +
-          `<div class="sub">${sources.length} calendar${sources.length === 1 ? '' : 's'} · ${plans.length} rotation${plans.length === 1 ? '' : 's'} · ${screens.length} wall${screens.length === 1 ? '' : 's'} · ${escapeHtml(household.timezone)}</div>` +
-          `<div class="row card-foot">` +
-          `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
-          `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
-          `</div></div></div>` +
+          `</div></div>` +
 
-          // Sign-out lives in the sidebar footer now, shown on every page for a
-          // plain docker install and stripped under ingress. Here we only keep
-          // the note for the ingress case, where signing out is a Home Assistant
-          // action rather than ours.
+          // Sign-out lives in the sidebar footer, shown on every page for a
+          // plain docker install and stripped under ingress. Under ingress the
+          // one line here says who the supervisor's request resolved to and
+          // that signing out is a Home Assistant action rather than ours; on a
+          // plain install the sidebar already says both. ("Signed in as …" used
+          // to open every Overview as its intro line, which was a fact the
+          // sidebar footer states on every page.)
           (c.get('viaIngress') === true
-            ? `<p class="hint ov-footnote">Signed in through Home Assistant.</p>`
+            ? `<p class="hint ov-footnote">Signed in as ${escapeHtml(currentUser(c).name)} through Home Assistant.</p>`
             : ''),
       }),
     );
@@ -1754,15 +1962,33 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * would collide with.
    */
   app.get('/admin/screens/approve', (c: Context) => {
-    const code = c.req.query('code') ?? '';
+    const raw = c.req.query('code');
+    // No code at all is a visit to the form, not a code that failed: the Walls
+    // page links here, and somebody may simply have typed the address.
+    if (raw === undefined) return c.html(approveCodePage(c, ''));
+    const code = raw.trim();
+    /*
+     * Three ways a code can be wrong, each said as what it is and beside the
+     * field it goes in, so the household corrects it rather than reading a
+     * dead-end page — this used to answer every one of them with a 404 saying
+     * the code had "expired", which for a mistyped character is untrue and for
+     * an empty field is baffling.
+     */
+    if (code === '') {
+      return c.html(approveCodePage(c, '', 'Type the code the wall is showing.'), 400);
+    }
     const flow = deps.deviceFlow.lookupByUserCode(code, now());
-    if (flow === undefined || flow.state !== 'pending') {
-      return c.html(approveResultPage(
-      c,
-        'Nothing to approve',
-        'That pairing code has expired or was already used. Start pairing again on ' +
-          'the wall, then approve the new code here.',
-      ), flow === undefined ? 404 : 409);
+    if (flow === undefined) {
+      return c.html(approveCodePage(c, code, APPROVE_UNKNOWN_CODE), 404);
+    }
+    if (flow.state !== 'pending') {
+      return c.html(approveCodePage(
+        c,
+        code,
+        'That code has already been approved or declined, so there is nothing ' +
+          'left to do with it. If the wall is still asking, start pairing again ' +
+          'on it and type the new code.',
+      ), 409);
     }
     return c.html(approvePromptPage(c, flow.userCode));
   });
@@ -1788,11 +2014,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // manual entry), `approve` returns false and no screen is ever written.
     const issued = issueDisplayToken();
     if (!deps.deviceFlow.approve(code, issued.token, name, at)) {
-      return c.html(approveResultPage(
-      c,
-        'Nothing to approve',
-        'That pairing code has expired or was already used. Start pairing again on ' +
-          'the wall, then approve the new code here.',
+      // The code stopped being pending between the prompt and the button —
+      // it expired, or a scan and a typed entry raced. Back to the field with
+      // the reason, so the new code the wall shows has somewhere to go.
+      return c.html(approveCodePage(
+        c,
+        code,
+        'That code expired, or was already approved or declined, so nothing was ' +
+          'paired. Start pairing again on the wall, then type the new code here.',
       ), 409);
     }
     const id = randomBytes(6).toString('hex');
@@ -1960,7 +2189,32 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // Seeding is the one moment adapting to that — and to the screen's own panel
     // aspect — is safe, so it happens here.
     applyTemplate(deps.db, id, classicSeed(deps.db, id, householdSetUp(deps.db)));
-    return c.html(pairingPage(id, shaped.value.name, issued.token, issued.shortCode, c));
+    // Shown on the page the redirect lands on, not here: a POST's own answer
+    // is a page a reload resubmits (a second wall) and Back cannot return to.
+    reveals.put(id, issued, now());
+    return c.redirect(`/admin/walls/${encodeURIComponent(id)}/pair`, 303);
+  });
+
+  /**
+   * The pairing link, once — the page `POST /admin/screens` and
+   * `/regenerate` send the household to.
+   *
+   * `take` is what makes it once: the first visit shows the QR, the code and
+   * the link, and every visit after it — a reload, the Back button, a
+   * bookmark — finds nothing and says so, with a way to make a new one. That
+   * page is a 410 rather than a 404 because the link did exist and was shown;
+   * what is gone is the showing. `no-store` so the browser keeps no copy of a
+   * page with a token on it, which is also what makes Back refetch and reach
+   * the honest answer instead of a cached secret.
+   */
+  app.get('/admin/walls/:id/pair', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const screen = activeScreens().find((s) => s.id === id && s.kind === 'browser');
+    if (screen === undefined) return c.redirect('/admin/walls', 302);
+    c.header('cache-control', 'no-store');
+    const issued = reveals.take(id, now());
+    if (issued === undefined) return c.html(pairingSpentPage(c, screen), 410);
+    return c.html(pairingPage(id, screen.name, issued.token, issued.shortCode, c));
   });
 
   /**
@@ -1977,7 +2231,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const issued = issueDisplayToken();
     rotateScreenToken(deps.db, id, pairingSecret(issued));
-    return c.html(pairingPage(id, screen.name, issued.token, issued.shortCode, c));
+    // Same one-hop reveal as creating a wall — and here the reload case is
+    // sharper: a POST answer reloaded would retire the link still on screen.
+    reveals.put(id, issued, now());
+    return c.redirect(`/admin/walls/${encodeURIComponent(id)}/pair`, 303);
   });
 
   app.post('/admin/screens/:id/revoke', (c: Context) => {
@@ -1991,7 +2248,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Registered here rather than beside the other modules at the top of this
   // function, because that is where these routes were: Hono answers with the
   // first pattern that matches, so where a group registers is behaviour.
-  registerEpaperRoutes(app, deps);
+  registerEpaperRoutes(app, deps, reveals);
 
   // -------------------------------------------------------------------------
   // Display
@@ -2377,7 +2634,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<h2>${escapeHtml(plan.personName ?? 'Nobody')}</h2>` +
         `<p class="sub">` +
         (plan.kind === 'pattern'
-          ? `Repeating pattern from ${escapeHtml(plan.anchorDate ?? '?')}`
+          ? `Repeating pattern from ${plan.anchorDate === null ? '?' : escapeHtml(civilDateLabel(plan.anchorDate))}`
           : `Read from ${escapeHtml(plan.sourceName ?? 'a calendar that has been removed')}`) +
         `</p>` +
         `</div>` +
@@ -2404,49 +2661,82 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'shifts',
       heading: 'Work Schedule',
       saved: readSaved(c),
-      action: { label: 'Shift types', href: 'admin/shifts/types' },
+      // No app-bar action: see the Calendars page for the rule. "Shift types"
+      // used to sit here — a filled button in the app bar for what is
+      // navigation, not an action — and is a link in the body now.
       intro:
         'The wall colours each day by who is working. A rotation is either read ' +
         'from a calendar that already has the shifts in it, or set as a pattern ' +
-        'that repeats. Name and colour the shift types on the Shift types page.',
+        'that repeats.',
       body:
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        `<p class="hint"><a class="link" href="admin/shifts/types">Shift types</a> — ` +
+        `name and colour the kinds of shift the wall knows about.</p>` +
         plans.map(planCard).join('') +
         (canAdd
           ? section(
               'Add a rotation',
               undefined,
+              /*
+               * The form opens on a choice that can be submitted.
+               *
+               * It used to open on "A calendar that already has them" over a
+               * calendar select whose first option was "—", so pressing
+               * Continue on the page as drawn was refused ("Choose which
+               * calendar the shifts are in"), and "Who" preselected whoever
+               * sorted first, who on the shipped fixture already had the only
+               * rotation on the page. Now: whoever has no rotation comes first
+               * and is preselected, a person who has one still can be chosen
+               * and says so; the calendar option is offered only when there is
+               * a calendar, with the first one preselected rather than a
+               * placeholder; and the calendar select is shown only while the
+               * calendar option is chosen — the chores form's script-free
+               * `data-cond`, under which both fields simply show with script
+               * off, as they did before.
+               */
               `<form method="post" action="admin/shifts/new">` +
                 selectField({
                   label: 'Who',
                   name: 'person_id',
-                  optionsHtml: people
+                  optionsHtml: [...people]
+                    .sort(
+                      (a, b) =>
+                        Number(a.hasShiftRotation === 1) - Number(b.hasShiftRotation === 1),
+                    )
                     .map(
                       (candidate) =>
-                        `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}</option>`,
+                        `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}` +
+                        `${candidate.hasShiftRotation === 1 ? ' (has a rotation)' : ''}</option>`,
                     )
                     .join(''),
                 }) +
                 selectField({
                   label: 'Where the shifts come from',
                   name: 'kind',
+                  attrs: 'data-cond',
                   optionsHtml:
-                    `<option value="calendar">A calendar that already has them</option>` +
+                    (sources.length === 0
+                      ? ''
+                      : `<option value="calendar">A calendar that already has them</option>`) +
                     `<option value="pattern">A pattern that repeats</option>`,
+                  ...(sources.length === 0
+                    ? { hint: 'Add a calendar first to read shifts from one.' }
+                    : {}),
                 }) +
-                selectField({
-                  label: 'Which calendar',
-                  name: 'source_id',
-                  hint: 'Only needed when the shifts come from a calendar.',
-                  optionsHtml:
-                    `<option value="">—</option>` +
-                    sources
-                      .map(
-                        (source) =>
-                          `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
-                      )
-                      .join(''),
-                }) +
+                (sources.length === 0
+                  ? ''
+                  : `<div data-cond-show="calendar">` +
+                    selectField({
+                      label: 'Which calendar',
+                      name: 'source_id',
+                      optionsHtml: sources
+                        .map(
+                          (source) =>
+                            `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
+                        )
+                        .join(''),
+                    }) +
+                    `</div>`) +
                 `<button type="submit">Continue</button></form>`,
               'add',
             )
@@ -2773,25 +3063,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const personCard = (person: PersonRecord, first: boolean, last: boolean): string => {
       const id = encodeURIComponent(person.id);
-      // Up/Down reorder the wall's legend and its shift order; the ends drop the
-      // button that would do nothing. Drawn only when there is one — a single
-      // person has neither, and an empty footer is a flex box carrying margins.
-      const reorder =
-        (first
-          ? ''
-          : `<form method="post" action="admin/people/${id}/move">` +
-            `<input type="hidden" name="dir" value="up">` +
-            `<button class="secondary" type="submit">↑ Up</button></form>`) +
-        (last
-          ? ''
-          : `<form method="post" action="admin/people/${id}/move">` +
-            `<input type="hidden" name="dir" value="down">` +
-            `<button class="secondary" type="submit">↓ Down</button></form>`);
       return card(
         // The same card head every other list uses: the person on the left, the
-        // ⋮ overflow on the right holding the destructive Remove — so a reorder
-        // tap is never a neighbour of a delete, and Remove goes through
-        // destructive() (a confirmation, an accessible name that says who).
+        // ⋮ overflow on the right holding the rare actions — reorder, which
+        // moves the wall's legend and the shift order, and the destructive
+        // Remove, below a rule so the two are never neighbours. Reorder used to
+        // be two buttons in a footer of their own, which made the rarest thing
+        // a household does to a person the most visible thing on the card.
         `<div class="card-head"><div class="card-head-main">` +
         `<h2>` +
         (person.avatarPath === null
@@ -2809,6 +3087,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
         `aria-label="More actions for ${escapeHtml(person.name)}" title="More">${icon('more')}</summary>` +
         `<div class="ovf-menu" role="menu">` +
+        reorderMenuItems(`admin/people/${id}/move`, first, last) +
         destructive('Remove', {
           thing: person.name,
           confirmAction: `admin/people/${id}/delete`,
@@ -2842,9 +3121,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         }) +
         `<button class="secondary" type="submit">` +
         `${person.avatarPath === null ? 'Upload' : 'Replace or remove'}</button></form>` +
-        `</details>` +
-
-        (reorder === '' ? '' : `<div class="row">${reorder}</div>`),
+        `</details>`,
       );
     };
 
@@ -2855,7 +3132,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'people',
       heading: 'People',
       saved: readSaved(c),
-      action: { label: 'Add someone', href: 'admin/people#add' },
+      // No app-bar action: see the Calendars page for the rule. The add form
+      // is on this page, with the one filled Add.
       intro:
         'Everyone the wall knows about. Their colour marks their events and ' +
         'their shifts, so pick ones that are easy to tell apart from across a room.',
@@ -2963,8 +3241,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'walls',
       heading: `Pair ${name}`,
       intro:
-        'Open this on the wall itself. It is shown once — if you lose it, ' +
-        'generate another, which costs nothing.',
+        'Open this on the wall itself. It is shown once. If you lose it, make a ' +
+        'new one from the wall’s menu — this one stops working when you do.',
       body:
         (unreachable
           ? errorBlock(
@@ -2992,6 +3270,76 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         setUp +
         `<p class="hint">You can arrange its layout now — the wall does not have ` +
         `to be paired first.</p>` +
+        `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
+    });
+  }
+
+  /**
+   * The pairing link has been shown, and this is the same address a second
+   * time — a reload, the Back button, a bookmark.
+   *
+   * Says what happened and offers the only two things worth doing: make a new
+   * link (the same POST the wall's own menu carries, with the same warning)
+   * or go and arrange the wall. It must not offer the link again: the store
+   * gave it up on the first visit, and a page that could show it twice would
+   * be a page that had kept a secret somewhere.
+   */
+  function pairingSpentPage(c: Context, screen: AdminScreenRow): string {
+    const id = encodeURIComponent(screen.id);
+    const connected = screen.lastSeenAt !== null;
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Pair this wall',
+      nav: 'walls',
+      heading: `Pair ${screen.name}`,
+      intro:
+        'This pairing link has been shown already, and it is not kept anywhere ' +
+        'it could be shown again.',
+      body:
+        `<p>If it was opened on the wall, there is nothing to do here. If it was ` +
+        `not — the page was reloaded, or you came back to it — make a new one. ` +
+        `The one you were given stops working${connected ? ', and this wall drops off until the new one is opened on it' : ''}.</p>` +
+        `<form method="post" action="admin/screens/${id}/regenerate" ` +
+        `data-confirm="${escapeHtml(regenerateWarning(screen.name, connected))}">` +
+        `<button${connected ? ' class="btn-danger"' : ''} type="submit">Make a new pairing link</button></form>` +
+        `<p><a class="link" href="admin/walls/${id}">Set up its layout →</a></p>` +
+        `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
+    });
+  }
+
+  /**
+   * Where a typed pairing code goes: the field, with what went wrong beside
+   * it when something did.
+   *
+   * The Walls page carries the same field as its way in; this page is where
+   * it lands when the code is empty, unknown or already spent, so the
+   * household corrects the code where they can see it rather than reading a
+   * dead-end page and finding their way back. A scanned link with a stale
+   * code lands here too, which is right: the wall it came from is showing a
+   * new code by then, and this is the page that takes it.
+   */
+  function approveCodePage(c: Context, code: string, problem?: string): string {
+    return page({
+      modules: navModules(deps.db),
+      title: 'Approve a pairing code',
+      nav: 'walls',
+      self: selfHref(c),
+      heading: 'Approve a pairing code',
+      intro:
+        'A wall starting its own pairing shows an eight-character code. Type it ' +
+        'here to approve or decline it.',
+      body:
+        `<form method="get" action="admin/screens/approve">` +
+        textField({
+          label: 'Pairing code',
+          name: 'code',
+          value: code,
+          placeholder: 'ABCD-EFGH',
+          attrs: 'maxlength="12"',
+          ...(problem === undefined ? {} : { error: problem }),
+        }) +
+        `<button type="submit">Continue</button></form>` +
         `<p><a class="link" href="admin/walls">← Back to walls</a></p>`,
     });
   }
@@ -3442,9 +3790,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const id = encodeURIComponent(screen.id);
     const advanced =
       `<div class="rows">` +
-      `<form method="post" action="admin/screens/${id}/regenerate">` +
-      `<button class="arow" type="submit"><span class="arow-text">Pairing link` +
-      `<small>Shows a fresh link and code. The old one stops working.</small></span>` +
+      `<form method="post" action="admin/screens/${id}/regenerate" ` +
+      `data-confirm="${escapeHtml(regenerateWarning(screen.name, screen.lastSeenAt !== null))}">` +
+      `<button class="arow${screen.lastSeenAt === null ? '' : ' is-danger'}" type="submit">` +
+      `<span class="arow-text">New pairing link` +
+      `<small>Shows a fresh link and code. The current one stops working` +
+      `${screen.lastSeenAt === null ? '' : ', and this wall drops off until the new one is opened on it'}.</small></span>` +
       `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button></form>` +
       `<a class="arow" href="admin/displays/${id}/gallery"><span class="arow-text">Start from a template` +
       `<small>Replace this wall's layout with one we ship, or copy another wall's.</small></span>` +
@@ -3488,97 +3839,79 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  /** Online if seen within a few minutes — enough to say "up", not to diagnose. */
-  function seenDot(lastSeenAt: number | null, at: number): string {
-    const fresh = lastSeenAt !== null && at - lastSeenAt < 5 * 60_000;
-    return fresh
-      ? `<span class="dot dot-ok pulse"></span>`
-      : `<span class="dot dot-idle"></span>`;
-  }
-
   /**
-   * A browser wall on the unified Walls list: a summary that opens its own
-   * page, where its status, pairing, settings and layout all live together.
-   * The "Browser" chip is what tells it apart from an e-paper row in the same
-   * grid (`epaperListCard`) — one list, one nav item, a kind chip per row
-   * (RFC 009 Phase 4).
+   * One card for every wall on the list, whatever it is (RFC 009 Phase 4).
+   *
+   * The list used to draw three shapes: the Default wall as a link, a browser
+   * wall as a link with a status dot in its head, and an e-paper panel as a
+   * static card carrying a ⋮ and an "Arrange layout" button — because a panel
+   * had no page of its own to open, so its card had to be that page. It has
+   * one now: its layout page, which carries the recipes link and Remove the
+   * card used to (and which `/admin/walls/:id` sends a panel to). So every
+   * card is the same object — a name, a kind tag, one status line, "Open" —
+   * and the grid composes, which three heights and three affordances never did. The
+   * dot rides the status line rather than the head so a card without one (the
+   * Default wall) keeps its name on the same edge as its neighbours'.
+   *
+   * `status` is already-escaped markup.
    */
-  function displayListCard(screen: AdminScreenRow, at: number): string {
-    const href = `admin/walls/${encodeURIComponent(screen.id)}`;
+  function wallCard(href: string, name: string, tag: string | undefined, status: string): string {
     return (
       `<a class="card wall-card" href="${href}">` +
       `<div class="wall-head">` +
-      seenDot(screen.lastSeenAt, at) +
       `<div class="wall-head-main">` +
-      `<div class="rname">${escapeHtml(screen.name)} ` +
-      `<span class="tag">Browser</span></div>` +
-      `<div class="sub">Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
-      (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`) +
-      (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`) +
-      `</div></div>` +
+      `<div class="rname">${escapeHtml(name)}` +
+      (tag === undefined ? '' : ` <span class="tag">${escapeHtml(tag)}</span>`) +
+      `</div>` +
+      `<div class="sub">${status}</div></div>` +
       `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
       `</div></a>`
     );
   }
 
-  /**
-   * An e-paper wall on the unified Walls list — the "E-paper" twin of
-   * `displayListCard`. It carries its own actions rather than opening one page,
-   * because an e-paper wall has no single settings page the way a browser wall
-   * does: design, recipes and removal are separate places (RFC 006). One
-   * visible action (arranging the layout, the frequent one); the recipes link
-   * and the destructive Remove live in the ⋮, so a safe tap is never a
-   * neighbour of a destructive one and Remove goes through `destructive()`
-   * rather than a hand-rolled danger button. It reads the same as a browser
-   * card because it is built from the same head.
-   */
-  function epaperListCard(screen: AdminScreenRow): string {
-    const id = encodeURIComponent(screen.id);
-    const seen =
-      screen.lastSeenAt === null
-        ? 'never connected'
-        : `last seen ${ago(screen.lastSeenAt, now())}` +
-          (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`);
+  /** "● Last seen 3 min ago from 10.0.0.4" — the dot says whether that is recent. */
+  function seenLine(screen: AdminScreenRow, at: number, windowMs?: number): string {
     return (
-      `<article class="card wall-card">` +
-      `<div class="wall-head">` +
-      `<div class="wall-head-main">` +
-      `<div class="rname">${escapeHtml(screen.name)} ` +
-      `<span class="tag">E-paper</span></div>` +
-      `<div class="sub"><span class="host">${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}</span>` +
-      `${screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`}` +
-      `${screen.lanOnly === 1 ? ' · LAN only' : ''} · ${seen}</div>` +
-      `</div>` +
-      `<details class="ovf" data-overflow>` +
-      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
-      `aria-label="More actions for ${escapeHtml(screen.name)}" title="More">${icon('more')}</summary>` +
-      `<div class="ovf-menu" role="menu">` +
-      `<a class="ovf-item" href="admin/epaper/${id}">URL &amp; recipes</a>` +
-      // The GET this leads to already answers with `confirmDestroyPage`, so
-      // `destructive()` is the control that gets there — a confirmation, an
-      // accessible name that says which wall — rather than a one-click danger
-      // button sitting a row lower than its neighbour.
-      destructive('Remove', {
-        thing: screen.name,
-        confirmAction: `admin/epaper/${id}/delete`,
-      }) +
-      `</div></details>` +
-      `</div>` +
-      `<div class="wall-actions">` +
-      `<a class="btn btn-ghost btn-sm" href="admin/epaper/${id}/design">Arrange layout</a>` +
-      `</div></article>`
+      seenDot(screen.lastSeenAt, at, windowMs) +
+      `Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
+      (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`)
     );
   }
 
+  /** A browser wall: its page holds status, pairing, settings and layout together. */
+  function displayListCard(screen: AdminScreenRow, at: number): string {
+    return wallCard(
+      `admin/walls/${encodeURIComponent(screen.id)}`,
+      screen.name,
+      'Browser',
+      seenLine(screen, at) + (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`),
+    );
+  }
 
+  /**
+   * An e-paper panel: the same card, opening its layout page directly (the
+   * `/admin/walls/:id` route would only redirect there, and a crawl of the
+   * admin's own links should reach the page without a hop). The panel's
+   * geometry stays on the status line because it is the one fact that tells
+   * two panels apart, where two browser walls are told apart by their names.
+   */
+  function epaperListCard(screen: AdminScreenRow, at: number): string {
+    return wallCard(
+      `admin/epaper/${encodeURIComponent(screen.id)}/design`,
+      screen.name,
+      'E-paper',
+      seenLine(screen, at, EPAPER_SEEN_WINDOW_MS) +
+        ` · ${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
+        (screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`) +
+        (screen.lanOnly === 1 ? ' · LAN only' : ''),
+    );
+  }
 
   /**
    * The Walls list: the shared Default plus every paired wall, browser and
-   * e-paper alike — one list, one nav item, with a kind chip on each row
-   * rather than two nav entries for one kind of object (RFC 009 Phase 4).
-   * A browser wall's card opens its own page; an e-paper wall's card carries
-   * its own actions inline, reusing `epaperListCard` rather than rebuilding a
-   * settings page e-paper walls do not have.
+   * e-paper alike — one list, one nav item, one card shape, with a kind chip
+   * on each row rather than two nav entries for one kind of object (RFC 009
+   * Phase 4). Every card opens its wall's own page.
    */
   function displaysPage(c: Context, error?: string): string {
     const at = now();
@@ -3586,17 +3919,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const active = all.filter((screen) => screen.revokedAt === null);
     const revoked = all.length - active.length;
 
-    const defaultCard =
-      `<a class="card wall-card" href="admin/walls/default">` +
-      `<div class="wall-head">` +
-      `<div class="wall-head-main">` +
-      `<div class="rname">Default wall</div>` +
-      `<div class="sub">The layout every wall shows until it has one of its own</div></div>` +
-      `<span class="card-go">Open <span aria-hidden="true">${icon('chev')}</span></span>` +
-      `</div></a>`;
+    const defaultCard = wallCard(
+      'admin/walls/default',
+      'Default wall',
+      undefined,
+      'The layout every wall shows until it has one of its own',
+    );
 
     const cardFor = (screen: AdminScreenRow): string =>
-      screen.kind === 'epaper' ? epaperListCard(screen) : displayListCard(screen, at);
+      screen.kind === 'epaper' ? epaperListCard(screen, at) : displayListCard(screen, at);
 
     // Reachable from nothing before this (RFC 009 Phase 4) — the device-flow
     // approve/decline page existed only as a URL a QR or a hand-typed link
@@ -3617,7 +3948,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'walls',
       heading: 'Walls',
       saved: readSaved(c),
-      action: { label: 'Pair a new wall', href: 'admin/walls#add' },
+      // No app-bar action: see the Calendars page for the rule. The pairing
+      // form is on this page, with the one filled Add wall.
       ...(active.length === 0
         ? { intro: 'No walls paired yet. The Default wall below holds the layout a wall shows until you pair one and give it a layout of its own.' }
         : {}),
@@ -3832,7 +4164,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       owner === null
         ? `<b>Shared default</b> · the layout and settings every wall starts from`
         : owner.lastSeenAt === null
-          ? `<b>Never connected</b> · open its pairing link on the wall`
+          ? `<b>Never connected</b> · open its pairing link on the wall, or make a new one from the menu`
           : online
             ? `<b>Online</b>${owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`}`
             : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(owner.lastSeenAt, at))}`;
@@ -3841,8 +4173,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const menuItems =
       (owner === null
         ? ''
-        : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate">` +
-          `<button class="ovf-item" type="submit">Pairing link…</button></form>`) +
+        : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/regenerate" ` +
+          `data-confirm="${escapeHtml(regenerateWarning(owner.name, owner.lastSeenAt !== null))}">` +
+          `<button class="ovf-item${owner.lastSeenAt === null ? '' : ' is-danger'}" type="submit">` +
+          `New pairing link…</button></form>`) +
       `<a class="ovf-item" href="admin/displays/${ownerParam}/gallery">Start from a template…</a>` +
       `<div class="ovf-sep"></div>` +
       `<form method="post" action="admin/displays/${ownerParam}/reset-layout" ` +
@@ -4576,13 +4910,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       heading: 'Calendars',
       saved: readSaved(c),
       /*
-       * No app-bar action, deliberately.
+       * No app-bar action, deliberately — and the same rule now holds on
+       * People, Chores, Walls and Work Schedule, which used to carry one each.
        *
        * `page()`'s action is a *filled* button for the top-right of the shell,
-       * and it read "Add a calendar" while the add form was already on screen
-       * further down the same page — a second primary competing with the real
-       * one, whose whole effect was to scroll. One primary per screen, and on
-       * this screen it is the Add at the foot of the form.
+       * and a filled "Add a calendar" there competes with the form's own
+       * filled Add while the form it would scroll to is already on the page:
+       * two primaries for one act. The app bar's slot is for an action that
+       * leads somewhere else (Themes' "New theme" opens the builder), not
+       * for a scroll. Half the pages had one and half did not, which read as
+       * the button meaning something different on each.
        */
       body:
         /*

@@ -987,11 +987,15 @@ describe('weather provider', () => {
     expect(page).not.toContain('covers the United States only');
   });
 
-  it('defaults to NWS in imperial, the shipped behaviour', async () => {
+  it('defaults follow the wizard: a London household gets the worldwide provider in metric', async () => {
+    // This used to assert NWS in imperial as "the shipped behaviour". The
+    // columns still default that way; the wizard's timezone step now sets
+    // them from the zone, and this harness runs it with Europe/London. The
+    // United States case is `admin-defaults.test.ts`.
     const h = await harness();
     const w = readWeatherSettings(h.db);
-    expect(w.provider).toBe('nws');
-    expect(w.units).toBe('imperial');
+    expect(w.provider).toBe('openmeteo');
+    expect(w.units).toBe('metric');
   });
 });
 
@@ -1034,10 +1038,10 @@ describe('people', () => {
     expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
     expect(order()).toEqual(['Dad', 'Mum']);
 
-    // Dad is first now, so his card offers no "up"; a move that would fall off
-    // the end is a no-op rather than an error.
+    // Dad is first now, so his card offers no "up" (reorder is a ⋮ menu item
+    // now); a move that would fall off the end is a no-op rather than an error.
     const body = await (await h.call('/admin/people')).text();
-    expect(body).toContain('↓ Down');
+    expect(body).toContain('Move down');
     expect((await h.form(`/admin/people/${dad.id}/move`, { dir: 'up' })).status).toBe(302);
     expect(order()).toEqual(['Dad', 'Mum']);
   });
@@ -1229,9 +1233,14 @@ describe('per-screen overrides', () => {
     });
     expect(before.status).toBe(200);
 
+    // The POST mints the link and redirects; the page it lands on shows it
+    // once. (A POST that printed the link itself was a page a reload
+    // resubmitted, retiring the link still on screen.)
     const response = await h.form(`/admin/screens/${screen.id}/regenerate`, {});
-    expect(response.status).toBe(200);
-    const body = await response.text();
+    expect(response.status).toBe(303);
+    const shown = await h.call(response.headers.get('location') ?? '');
+    expect(shown.status).toBe(200);
+    const body = await shown.text();
     expect(body).toContain('/pair?token=');
     expect(body).toContain('<svg');
 
@@ -1244,7 +1253,8 @@ describe('per-screen overrides', () => {
   it('the link it shows actually pairs the screen', async () => {
     const h = await harness();
     const screen = pairOne(h.db, 'Kitchen');
-    const body = await (await h.form(`/admin/screens/${screen.id}/regenerate`, {})).text();
+    const made = await h.form(`/admin/screens/${screen.id}/regenerate`, {});
+    const body = await (await h.call(made.headers.get('location') ?? '')).text();
     const token = /\/pair\?token=([A-Za-z0-9_-]+)/.exec(body)?.[1] ?? '';
 
     expect(token).not.toBe('');

@@ -429,7 +429,6 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'modules',
       heading: 'Store',
       saved: readSaved(c),
-      action: { label: 'Advanced', href: 'admin/modules/advanced' },
       intro:
         'Modules add a panel to the wall — a countdown, a price, the weather, ' +
         'anything that fits. Pick one below and install it. The wall only ever ' +

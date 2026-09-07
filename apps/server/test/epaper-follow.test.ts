@@ -131,9 +131,9 @@ const clock = (id: string, x: number, config?: Record<string, unknown>): Record<
 
 /** Create an e-paper panel and answer with its id and its frame URL. */
 async function panel(h: Awaited<ReturnType<typeof harness>>, name: string) {
-  const html = await (
-    await h.post(`${B}/admin/epaper`, { name, preset: 'seeed-7in5', rotation: '0' })
-  ).text();
+  // The POST redirects to the page that shows the URL once; follow it.
+  const made = await h.post(`${B}/admin/epaper`, { name, preset: 'seeed-7in5', rotation: '0' });
+  const html = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
   const id = (
     h.db.prepare(`SELECT id FROM screens WHERE name = ? LIMIT 1`).get(name) as { id: string }
   ).id;
@@ -164,7 +164,8 @@ describe('choosing what a panel draws', () => {
 
   it('draws the wall’s canvas, and follows it as the wall changes', async () => {
     const h = await harness();
-    const wall = await (await h.post(`${B}/admin/screens`, { name: 'Kitchen' })).text();
+    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    const wall = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     expect(wall).toContain('Kitchen');
     const wallId = (
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string }
@@ -231,7 +232,7 @@ describe('choosing what a panel draws', () => {
      * wall that is perfectly fine. A status code cannot tell the two apart.
      */
     expect(html).not.toContain('That wall is no longer there.');
-    expect(html).toContain('Ouroboros — layout');
+    expect(html).toContain('<h1>Ouroboros</h1>');
 
     // Still a refusal, not a write.
     const row = h.db.prepare(`SELECT layout_mode AS mode FROM screens WHERE id = ?`).get(p.id) as {
@@ -285,7 +286,7 @@ describe('choosing what a panel draws', () => {
     // The screen the household was standing on. Answering with the
     // add-an-e-paper-wall form threw away where they were and offered them a
     // second panel for an error about the first.
-    expect(html).toContain('Larder — layout');
+    expect(html).toContain('<h1>Larder</h1>');
     expect(html).toContain(DESIGN_ONLY);
     expect(html).not.toContain(ADD_PANEL_ONLY);
   });

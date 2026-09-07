@@ -147,13 +147,20 @@ async function crawl(): Promise<readonly Rendered[]> {
   // Three things the household would have that a bare install does not, so the
   // pages that only exist for them are crawled rather than skipped: a paired
   // browser wall, an e-paper panel, and a wall part-way through pairing.
-  await home.pairLink('Kitchen');
+  const madeWall = await home.post('/admin/screens', { name: 'Kitchen' });
+  expect(madeWall.status, 'the wall must be created for its pages to be crawled').toBe(303);
   const madePanel = await home.post('/admin/epaper', {
     name: 'Hallway tag',
     preset: 'seeed-7in5',
     rotation: '0',
   });
-  expect(madePanel.status, 'the e-paper wall must be created for its pages to be crawled').toBe(200);
+  expect(madePanel.status, 'the e-paper wall must be created for its pages to be crawled').toBe(303);
+  // Where each POST redirects to: the page that shows the link or URL once.
+  // Nothing links to these, so they are queued by hand — and crawled twice,
+  // because the second visit is a different page (the "already shown" one)
+  // with sentences of its own to proofread.
+  const shownOnce = [madeWall, madePanel].map((made) => made.headers.get('location') ?? '');
+  expect(shownOnce.every((path) => path.startsWith('/admin/'))).toBe(true);
   const started = await fetch(`${home.base}/d/pair/device-start`, {
     method: 'POST',
     headers: { origin: home.base },
@@ -162,13 +169,21 @@ async function crawl(): Promise<readonly Rendered[]> {
   expect(userCode, 'a pending pairing code is what makes the approve page reachable').not.toBe('');
 
   const seen = new Set<string>();
-  const queue = ['/admin', `/admin/screens/approve?code=${encodeURIComponent(userCode)}`];
+  const queue = [
+    '/admin',
+    `/admin/screens/approve?code=${encodeURIComponent(userCode)}`,
+    ...shownOnce,
+    ...shownOnce,
+  ];
   const out: Rendered[] = [];
 
   while (queue.length > 0) {
     const path = queue.shift() as string;
-    if (seen.has(path)) continue;
-    seen.add(path);
+    // A once-only page is visited exactly twice — the showing, then the page
+    // that says it has been shown — and `seen` would otherwise stop at one.
+    const revisit = shownOnce.includes(path) && seen.has(path) && !seen.has(`${path}#again`);
+    if (seen.has(path) && !revisit) continue;
+    seen.add(revisit ? `${path}#again` : path);
 
     const res = await home.call(path);
     if (!(res.headers.get('content-type') ?? '').includes('html')) continue;

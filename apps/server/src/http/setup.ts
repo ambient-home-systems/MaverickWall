@@ -25,7 +25,7 @@ import {
   selectField,
   textField,
 } from './html.js';
-import { DEFAULT_TIMEZONE } from '../timezone.js';
+import { DEFAULT_TIMEZONE, isUnitedStatesZone } from '../timezone.js';
 import { ingressPath } from './ingress.js';
 import { checkbox, coordinate, optionalText, parse, text, z } from '../validation.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
@@ -503,14 +503,31 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     }
     const timezone = shapedZone.value;
 
+    /*
+     * The weather defaults follow the zone, and this is the only moment they
+     * are decided for the household rather than by them.
+     *
+     * The columns default to the shipped behaviour — NWS, Fahrenheit, alerts
+     * on — which is right for a household in the United States and wrong
+     * everywhere else in three ways at once: a forecast provider that cannot
+     * forecast for them, units they do not use, and an alert switch that is on
+     * with no zone it could ever watch, which is what put a red "no zones yet"
+     * on the Overview of every install outside one country. The zone is the
+     * first thing the wizard learns, so it decides. Written here and never
+     * again: the Weather page's own controls are the household's from here on,
+     * and changing the timezone on the System page later moves none of them.
+     */
+    const us = isUnitedStatesZone(timezone);
+
     const at = now();
     deps.db
       .prepare(
         `UPDATE household_settings
-            SET timezone = ?, setup_completed_at = ?, updated_at = ?
+            SET timezone = ?, weather_provider = ?, weather_units = ?, alerts_enabled = ?,
+                setup_completed_at = ?, updated_at = ?
           WHERE id = 'singleton'`,
       )
-      .run(timezone, at, at);
+      .run(timezone, us ? 'nws' : 'openmeteo', us ? 'imperial' : 'metric', us ? 1 : 0, at, at);
 
     return c.redirect('/setup/calendar', 302);
   });

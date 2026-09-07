@@ -254,7 +254,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
             // in the app bar above. A second one here would only scroll to it.
             emptyState(
               'No custom themes yet. The four built-in directions (Board, Kitchen Slate, ' +
-                'Paper Almanac, Glance) are always available on the Walls page. Make your ' +
+                'Paper Almanac, Glance) can be chosen in each wall’s settings. Make your ' +
                 'own with “New theme”.',
             )
           : custom.map(themeRow).join('')) +

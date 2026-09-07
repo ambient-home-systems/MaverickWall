@@ -523,7 +523,11 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
       ]);
     },
     async pairLink(name = 'Kitchen'): Promise<string> {
-      const html = await (await post('/admin/screens', { name })).text();
+      // The POST redirects to the page that shows the link once; `call` does
+      // not follow redirects, so this takes the one hop itself.
+      const made = await post('/admin/screens', { name });
+      if (made.status !== 303) throw new Error(`pairing answered ${made.status}, not a redirect to the link`);
+      const html = await (await call(made.headers.get('location') ?? '')).text();
       const link = /(https?:\/\/[^<\s"]*\/pair\?token=[^<\s"]+)/.exec(html)?.[1];
       if (link === undefined) throw new Error('the pairing page printed no link');
       return link;

@@ -24,7 +24,7 @@ import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { escapeHtml, errorBlock, icon, page, selectField, textField } from './html.js';
 import { card, destructive, emptyState, section, tag } from './components.js';
 import { readSaved, savedRedirect } from './saved.js';
-import { navModules, type AdminDeps } from './admin.js';
+import { navModules, type AdminDeps, reorderMenuItems } from './admin.js';
 import { selfHref } from './self.js';
 
 /**
@@ -386,14 +386,17 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       return `Nothing due in the next ${PREVIEW_DAYS} days`;
     }
     const shown = dates.slice(0, PREVIEW_COUNT);
+    // "Mon 7 Sept", the way the wall writes a date, not "Mon 2026-09-07" —
+    // an ISO stamp is a machine's date, and this line is read by a person
+    // checking that what they set up means what they meant. UTC because a
+    // civil date carries no zone: it is the calendar day itself.
     const label = (date: CivilDate): string =>
-      date === from ? 'today' : `${DAY_NAMES[weekdayOf(date)]} ${date}`;
+      date === from
+        ? 'today'
+        : new Intl.DateTimeFormat('en-GB', {
+            weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+          }).format(new Date(`${date}T00:00:00Z`));
     return `Next: ${shown.map(label).join(' · ')}`;
-  }
-
-  /** The weekday of a civil date, without pulling the whole date machinery in. */
-  function weekdayOf(date: CivilDate): number {
-    return new Date(`${date}T00:00:00Z`).getUTCDay();
   }
 
   function choreCard(chore: ChoreRow, from: CivilDate, first: boolean, last: boolean): string {
@@ -446,24 +449,13 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
         : `<p class="hint">Done ${record.done} of the last ${record.of} ` +
           `${escapeHtml(record.weekday ?? (record.of === 1 ? 'time' : 'times'))}</p>`;
 
-    // Reorder and Pause/Resume stay visible — Pause is the "keep it" alternative
-    // to Remove, so it is a control, not a rare one (the same call the Store card
-    // makes keeping Turn on/off visible). Only the destructive Remove moves into
-    // the ⋮ the rest of the admin's cards use, so a reorder or a pause is never a
-    // neighbour of a delete. Keeping Pause visible also keeps it usable on a
-    // paused card, whose ⋮ (in the dimmed head) an ancestor's opacity would mute.
-    const reorder =
-      (first
-        ? ''
-        : `<form method="post" action="admin/chores/${id}/move">` +
-          `<input type="hidden" name="dir" value="up">` +
-          `<button class="secondary" type="submit">↑ Up</button></form>`) +
-      (last
-        ? ''
-        : `<form method="post" action="admin/chores/${id}/move">` +
-          `<input type="hidden" name="dir" value="down">` +
-          `<button class="secondary" type="submit">↓ Down</button></form>`);
-
+    // Pause/Resume stays visible — Pause is the "keep it" alternative to Remove,
+    // so it is the row's own action, not a rare one (the same call the Store
+    // card makes keeping Turn on/off visible), and on a paused card it is the
+    // one thing worth pressing, where the ⋮ in the dimmed head would be muted
+    // by an ancestor's opacity. Reorder goes into the ⋮ with Remove
+    // (`reorderMenuItems`): it used to be two more buttons in this footer, and
+    // three visible buttons per row made a list of chores read as a toolbar.
     return card(
       `<div class="card-head"><div class="card-head-main">` +
       `<h2><span class="swatch" style="--swatch:${escapeHtml(swatch)}"></span>` +
@@ -478,6 +470,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
       `aria-label="More actions for ${escapeHtml(chore.name)}" title="More">${icon('more')}</summary>` +
       `<div class="ovf-menu" role="menu">` +
+      reorderMenuItems(`admin/chores/${id}/move`, first, last) +
       destructive('Remove', {
         thing: chore.name,
         confirmAction: `admin/chores/${id}/delete`,
@@ -524,17 +517,13 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="row-fields" data-cond-show="once">` +
       textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: onceDate }) +
       `</div>` +
-      `<p class="hint">Only the boxes belonging to the “Repeats” choice above are used ` +
-      `— with script off, every box shows and this still holds. ` +
+      `<p class="hint">Only the boxes belonging to the “Repeats” choice above are used. ` +
       `A day of the month goes up to 28, so the chore lands in February the same ` +
       `way it lands in every other month.</p>` +
       `<button type="submit">Save</button></form></details>` +
 
-      // The reorder buttons and Pause/Resume, flowing in one action row the way
-      // every other card's footer controls do. Always drawn, because Pause is
-      // always there.
+      // The row's one visible action, in the footer every card with one uses.
       `<div class="row">` +
-      reorder +
       `<form method="post" action="admin/chores/${id}/pause">` +
       (chore.paused ? `<input type="hidden" name="resume" value="1">` : '') +
       `<button class="secondary" type="submit">${chore.paused ? 'Resume' : 'Pause'}</button></form>` +
@@ -555,7 +544,8 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'chores',
       heading: 'Chores',
       saved: readSaved(c),
-      action: { label: 'Add a chore', href: 'admin/chores#add' },
+      // No app-bar action: see the Calendars page for the rule. The add form
+      // is on this page, with the one filled Add.
       intro:
         'What gets done around the house, and when. Chores are set up here and ' +
         'shown on the wall — this is the page you come back to twice a year, ' +
@@ -613,7 +603,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
             textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: from }) +
             `</div>` +
             `<p class="hint">Pick how it repeats, then fill in only the boxes that ` +
-            `belong to it — with script off, every box shows and this still holds. ` +
+            `belong to it. ` +
             `“By” is a time of day the wall shows beside the chore; ` +
             `leave it blank for any time that day.</p>` +
             `<button type="submit">Add</button></form>`,

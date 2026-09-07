@@ -114,9 +114,9 @@ async function harness() {
   });
   await post('http://localhost/setup/household', { timezone: 'Europe/London' });
 
-  const configHtml = await (
-    await post('http://localhost:8080/admin/epaper', { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' })
-  ).text();
+  // The POST redirects to the page that shows the URL once; follow it.
+  const made = await post('http://localhost:8080/admin/epaper', { name: 'Hallway', preset: 'seeed-7in5', rotation: '0' });
+  const configHtml = await (await call(`http://localhost:8080${made.headers.get('location') ?? ''}`)).text();
   const url = /(https?:\/\/[^"<\s]*\/d\/epaper\/[^"<\s]+)/.exec(configHtml)?.[1];
   if (url === undefined) throw new Error('no frame URL on the config page');
   const screenId = (db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;
@@ -182,7 +182,9 @@ describe('screens.lan_only', () => {
 
     await h.post(`${viewUrl}/lan-only`, { lan_only: '1' });
     expect(lanOnlyOf(h.db, h.screenId)).toBe(1);
-    const html = await (await h.call(viewUrl)).text();
+    // The switch is on the panel's own page (its Panel settings tab), not
+    // the recipes page.
+    const html = await (await h.call(`${viewUrl}/design`)).text();
     expect(/name="lan_only"[^>]*checked/.test(html)).toBe(true);
 
     // A browser sends nothing at all for an unticked checkbox.

@@ -1035,6 +1035,10 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
 .row{display:flex;gap:var(--mw-s-2);flex-wrap:wrap;align-items:center}
 .row form{margin:var(--mw-s-3) 0 0}
 .row button{margin-top:0}
+/* A link styled as a button takes the same top offset a form in the row does,
+ * or the two sit a rung apart — which is how "Done" and "Regenerate URL…" on
+ * the e-paper recipes page were drawn at two heights. */
+.row>.btn{margin-top:var(--mw-s-3)}
 h2.add{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);
   margin:var(--mw-s-6) 0 0;padding-top:var(--mw-s-5);border-top:1px solid var(--rule)}
@@ -1057,13 +1061,14 @@ p.hint,.hint{font-size:var(--mw-t-body-size);color:var(--mw-ink-2);margin:var(--
 .sect-head h2{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking);margin:0}
 
-/* ---- Stat cards: the kind that navigate --------------------------------- */
+/* ---- Cards that navigate ------------------------------------------------ */
 a.card{display:block;text-decoration:none;color:inherit}
 a.card:hover{background:var(--mw-surface-2);border-color:var(--mw-line-strong)}
 a.card:active{background:var(--mw-surface-3)}
-.stat .top{display:flex;align-items:center;justify-content:space-between;gap:var(--mw-s-3)}
-.stat .subrow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
-.stat .subrow .link svg{width:13px;height:13px}
+/* The Overview's stat tiles (.stat) are gone: a big number with a caption is a
+ * dashboard idiom, and the three it drew were three counts the household
+ * already knew. What the page opens on now is what needs attention and what
+ * the wall draws today — see the Overview route. */
 /* The .ic tile — 34px, rounded, accent-coloured, a glyph in it — is gone, from
  * the Overview's stat cards and status rows and from beside two wall names. An
  * icon inside a tinted rounded square is the one placement this admin bans
@@ -1079,6 +1084,16 @@ a.card:active{background:var(--mw-surface-3)}
 .rname{font-weight:600;font-size:var(--mw-t-h4-size)}
 .status-card .frow .link{display:inline-flex;align-items:center;gap:var(--mw-s-1)}
 .status-card .frow .link svg{width:13px;height:13px}
+/* What the wall draws today, on the Overview: a rota line, then the day's
+ * events with their calendar's colour and time, then the chores due. One
+ * list, so the household reads it the way the wall's agenda reads. */
+.ov-today{list-style:none;margin:var(--mw-s-3) 0 0;padding:0;display:grid;gap:var(--mw-s-1)}
+.ov-today li{display:flex;align-items:baseline;gap:var(--mw-s-2);font-size:var(--mw-t-label-size);
+  line-height:var(--mw-t-body-lh)}
+.ov-today .swatch{flex:0 0 auto}
+.ov-time{flex:0 0 auto;min-width:var(--mw-touch);color:var(--mw-ink-2);font-variant-numeric:tabular-nums}
+.ov-title{min-width:0}
+.ov-more .ov-title,.ov-rota .ov-title{color:var(--mw-ink-2)}
 .today-card{display:flex;flex-direction:column}
 /* A standalone note set off below the page's content — the Overview's ingress
  * "signed in through Home Assistant" line, which belongs to no section. A
@@ -1088,19 +1103,20 @@ a.card:active{background:var(--mw-surface-3)}
  * row). Tokenised so the gap above it is a rung of the scale, not a literal. */
 .card-foot{margin-top:auto;padding-top:var(--mw-s-4)}
 
-/* ---- Walls list: one card idiom for both kinds -------------------------
- * A browser or Default wall is a whole-card link to its own page; an e-paper
- * wall has no single page, so it carries its actions on the card itself. Both
- * kinds share one head, so the list reads as one thing rather than three
- * button treatments in one grid — which is what it was: a filled link, a
- * bare-text link that had lost its button anatomy, and a form-wrapped danger
- * button that sat a row lower than its neighbour. The e-paper card's one
- * visible action is in its own row and its destroy is in the head's ⋮, so a
- * safe tap and a destructive one are never neighbours — the rule every other
- * list here already follows. */
+/* ---- Walls list: one card, whatever the wall is -------------------------
+ * Every wall on the list — the Default wall, a browser wall, an e-paper panel
+ * — is the same whole-card link to its own page: a name with a kind tag, one
+ * status line, "Open". The e-paper card used to be a static card carrying a ⋮
+ * and an "Arrange layout" button, because a panel had no page to open and the
+ * card had to be it; it opens its layout page now, which is where those went,
+ * so the grid composes as one object rather than three shapes at three
+ * heights. */
 .wall-card{display:flex;flex-direction:column;gap:var(--mw-s-3)}
 .wall-head{display:flex;align-items:center;gap:var(--mw-s-3)}
 .wall-head-main{flex:1 1 auto;min-width:0}
+/* The status dot rides the status line rather than the head, so a card with
+ * no dot (the Default wall) keeps its name on the same edge as its neighbours'. */
+.wall-head .sub .dot{vertical-align:middle;margin-right:var(--mw-s-1)}
 /* The name reads at the card-title size the rest of the admin uses (a calendar
  * card's own heading is this role), from the role rather than a one-off px. The
  * same holds for a .rname in any card head — the module and store cards. */
@@ -1114,10 +1130,6 @@ a.card:active{background:var(--mw-surface-3)}
   color:var(--mw-accent);font:var(--mw-t-label);
   letter-spacing:var(--mw-t-label-tracking)}
 .card-go svg{width:16px;height:16px}
-/* The e-paper card's action row: one button today, in a row so a second never
- * lands beside the first at a different height the way the hand-typed version
- * did. */
-.wall-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
 /* line-height guards: body's role line-height is a px length, which inherits
  * as-is into any larger text that does not set its own. */
 .today-big{font:var(--mw-t-h2);
@@ -1851,7 +1863,13 @@ pre.code{background:var(--mw-surface-2);
  * screen is up, and an overflow for the infrequent and the destructive. */
 .wall-status{flex:1 1 210px;margin:0;display:flex;align-items:center;gap:var(--mw-s-2);
   font-size:var(--mw-t-body-size);color:var(--mw-ink-2);min-width:0}
-.wall-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The status wraps rather than eliding. It used to be one line with an
+ * ellipsis, and on a phone the one sentence telling a household what to do
+ * next ("Never connected · open its pairing link on the wall…") was cut off at
+ * the verb, measured at 390px; at 1280px the same sentence lost its second
+ * clause to the ⋮ beside it. The mode bar it sits in already wraps, so a
+ * two-line status costs a row and no words. */
+.wall-status>span{min-width:0}
 .wall-status b{color:var(--mw-ink);font-weight:500}
 
 /* The overflow menu. A <details>, so it opens with no script at all; the page
@@ -2602,23 +2620,29 @@ export const SIGNOUT_OPEN = '<!--mw:signout-->';
 export const SIGNOUT_CLOSE = '<!--/mw:signout-->';
 
 /**
- * The admin, in three groups rather than eight flat pages.
+ * The admin, in three labelled groups with the two singletons standing alone.
  *
- * **Content** is everything a wall shows — the calendar first, because the
- * calendar is the product, then the rest as equals whether they are core
- * (People, Work Schedule, Chores) or an integration (Weather, Home
- * Assistant): a household deciding what appears on the wall does not care
- * which of those shipped first. **Walls** is the screens themselves, how
- * they look, and where new content comes from — Store is last in it
- * deliberately, because installing a module is a step on the way to putting
- * something on a wall, not a distinct kind of task. **System** is the box's
- * own housekeeping.
+ * The grouping is by what a household is thinking about, not by what the
+ * code is. **Household** is what they write down themselves — their
+ * calendars, the people, a work rota, the chores — and it comes first because
+ * the calendar is the product. **Integrations** is what the wall pulls in
+ * from outside — the forecast, Home Assistant, and the Store, which is where
+ * more of those come from; an installed module lands here beside the two
+ * built-in ones, because to a household a temperature feed is the same kind
+ * of thing as a forecast. **Walls** is the screens themselves and how they
+ * look. Overview and System sit outside any group: a group of one item that
+ * repeats its own name is a label with nothing to label.
  *
- * Chores used to sit in this first group while Weather and Home Assistant
- * sat in a separate "Extras" group with the Store, even though Chores lives
- * in `modules/chores/` alongside them — the same kind of thing, split
- * across groups by build order rather than by what a household is thinking
- * about. This groups all of it by what it does: content, display, system.
+ * Two earlier shapes are worth recording. An "Extras" group once held
+ * Weather, Home Assistant and the Store while Chores sat with the calendar,
+ * and was folded into one "Content" group on the argument that Chores lives
+ * in `modules/` beside them, so the split was by build order. That was right
+ * about the code and wrong about the household: a chore is something they
+ * write down and a forecast is something the wall fetches, and that is the
+ * distinction they act on. The fold also left the Store under Walls, so an
+ * installed "Outside temperature" module appeared between Themes and Store as
+ * though it were a wall setting, and the topbar's kicker — the group label —
+ * read "Walls" over the Walls page and "Content" over the Overview.
  *
  * A group's tab goes to its first page. `href` is relative, so the single
  * `<base>` carries every link through ingress.
@@ -2647,26 +2671,42 @@ export interface NavModule {
   readonly enabled: boolean;
 }
 
-const GROUPS: readonly { readonly key: string; readonly label: string; readonly items: readonly NavItem[] }[] = [
+/** A group without a `label` draws its items with no heading over them. */
+interface NavGroup {
+  readonly key: string;
+  readonly label?: string;
+  readonly items: readonly NavItem[];
+}
+
+const GROUPS: readonly NavGroup[] = [
   {
-    key: 'content',
-    label: 'Content',
+    // Overview stands alone at the top: it is the first thing a household
+    // wants and belongs to no section, so a heading over it would be a lie.
+    key: 'home',
+    items: [{ key: 'home', label: 'Overview', href: 'admin', icon: 'overview' }],
+  },
+  {
+    key: 'household',
+    label: 'Household',
     items: [
-      // Overview used to sit above every group, in none of them; it is the
-      // first thing a household about their calendar wants, so it is the
-      // first item of the first group rather than a special case in navBar.
-      { key: 'home', label: 'Overview', href: 'admin', icon: 'overview' },
       { key: 'calendars', label: 'Calendars', href: 'admin/calendars', icon: 'calendars' },
       { key: 'people', label: 'People', href: 'admin/people', icon: 'people' },
       { key: 'shifts', label: 'Work Schedule', href: 'admin/shifts', icon: 'shifts' },
       // Defining a chore is admin work; ticking one off is the wall's, and
       // deliberately not here (RFC 008).
       { key: 'chores', label: 'Chores', href: 'admin/chores', icon: 'chores' },
-      // Weather and Home Assistant are modules exactly like Chores is — see
-      // the group doc comment above for why they sit here rather than off
-      // in a separate group with the Store.
+    ],
+  },
+  {
+    key: 'integrations',
+    label: 'Integrations',
+    items: [
       { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
       { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
+      // Store is last deliberately: navBar attaches installed modules to
+      // whichever group's last item has key 'modules', in front of it — so
+      // the group reads as what is installed, then where to get more.
+      { key: 'modules', label: 'Store', href: 'admin/modules', icon: 'addons' },
     ],
   },
   {
@@ -2676,34 +2716,26 @@ const GROUPS: readonly { readonly key: string; readonly label: string; readonly 
       // One list, one nav item, for every screen kind — browser and e-paper
       // alike carry a kind chip on their row rather than a nav entry each
       // (RFC 009 Phase 4). `/admin/walls` is canonical; the old `/admin/displays`
-      // and `/admin/epaper` routes redirect into it.
+      // and `/admin/screens` routes redirect into it.
       { key: 'walls', label: 'Walls', href: 'admin/walls', icon: 'screens' },
       { key: 'themes', label: 'Themes', href: 'admin/themes', icon: 'palette' },
-      // Store is last deliberately: navBar attaches installed modules to
-      // whichever group's last item has key 'modules'.
-      { key: 'modules', label: 'Store', href: 'admin/modules', icon: 'addons' },
     ],
   },
   {
+    // System stands alone at the bottom for the same reason Overview does at
+    // the top: "System" over "System" labelled nothing.
     key: 'system',
-    label: 'System',
     items: [{ key: 'system', label: 'System', href: 'admin/system', icon: 'system' }],
   },
 ];
 
-/** The group title shown as the topbar kicker for a given active page. */
-function groupLabelFor(active: string): string {
-  const group = GROUPS.find((g) => g.items.some((i) => i.key === active));
-  return group?.label ?? 'Overview';
-}
-
 /**
  * The sidebar nav, driven by `GROUPS` and the active key.
  *
- * An Overview item on top, then each group under its uppercase label. Every item
- * is a plain `<a>` — one route per screen, marked active server-side — with a
- * line icon and its label. `href` is relative so the single `<base>` carries it
- * through Home Assistant ingress.
+ * Each group under its uppercase label where it has one; Overview and System
+ * carry none. Every item is a plain `<a>` — one route per screen, marked
+ * active server-side — with a line icon and its label. `href` is relative so
+ * the single `<base>` carries it through Home Assistant ingress.
  */
 function navBar(active: string, modules: readonly NavModule[]): string {
   const item = (i: NavItem): string =>
@@ -2734,7 +2766,8 @@ function navBar(active: string, modules: readonly NavModule[]): string {
     } else {
       body = g.items.map(item).join('');
     }
-    return `<div class="nav-group"><span>${escapeHtml(g.label)}</span>${body}</div>`;
+    const heading = g.label === undefined ? '' : `<span>${escapeHtml(g.label)}</span>`;
+    return `<div class="nav-group">${heading}${body}</div>`;
   }).join('');
 
   return `<nav class="nav" aria-label="Admin">${groups}</nav>`;
@@ -3057,9 +3090,13 @@ export function page(options: PageOptions): string {
     // a question every nested screen asks and one nobody should answer twice —
     // the answer being: in the crumb, so the page adds no header of its own
     // and, in particular, no second hamburger.
+    // No kicker on a top-level page: it used to print the nav group's label
+    // there, which read as a breadcrumb and was wrong as one — "Walls" over
+    // the Walls page, "Content" over the Overview — and the sidebar already
+    // says which section this is. A nested page still gets its crumb, as the
+    // back link.
     pageHeader({
       heading: options.heading,
-      crumb: groupLabelFor(options.nav),
       back: options.back,
       action: options.action,
     }) +

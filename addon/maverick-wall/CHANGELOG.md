@@ -16,6 +16,95 @@
 
 ## Unreleased
 
+**The Walls page lists every wall the same way, and an e-paper panel has a
+page like any other wall's.** An e-paper panel used to sit in the list as a
+different kind of card from a browser wall — a button and a menu where the
+others had "Open" — because it had no page of its own. It does now: Open takes
+you to the panel's page, with the same two tabs a wall has (Layout, and Panel
+settings), the panel's status and menu, and a link back to Walls. The frame is
+drawn once, as the layout you arrange, rather than twice down the page; the
+widget you tap opens beside the layout instead of at the very bottom; and the
+"restrict to my home network" switch has moved onto the Panel settings tab
+from the device-recipes page.
+
+**The Overview tells you what needs doing and what is on the wall today.**
+It used to open on three big numbers — calendars connected, walls paired,
+rotations — which you already knew, and said nothing about today. It now
+opens on a short list of anything that needs attention (a calendar that is
+not syncing, a wall that has never connected or has not been seen for a day,
+alerts with no location, a newer version), or one line saying everything is
+running. The Today card lists who is working, today's events with their
+calendar's colour, and any chores due, read from the same place the wall
+reads them.
+
+**Small words, tidied.** Dates on the Chores and Work Schedule pages are
+written the way the wall writes them ("Mon 7 Sept") rather than as
+"2026-09-07"; two notes meant for whoever maintains the forms no longer show
+to you; the Home Assistant page puts the connection form before the
+explanation of what the token is used for; the Weather page's note about
+zones is a sentence; the Themes page says where a theme is chosen; the
+Store's "Advanced" is no longer dressed as the page's main button; and the
+"Add" button in the app bar is gone from the pages whose add form is already
+on screen, so there is one Add per page.
+
+**A pairing link is on a page you can reload.** Pairing a new wall, making
+a new pairing link, and adding or regenerating an e-paper panel's image URL
+all showed the link on the page that answered the button — so reloading that
+page made a second wall, or quietly retired the link still on screen, and
+the Back button could not return to it. Each now takes you to a page of its
+own that shows the link or URL once; reloading it, or coming back to it,
+says the link has already been shown and offers to make a new one, rather
+than showing it twice or making another wall.
+
+**A mistyped pairing code is corrected where you typed it.** Typing a wall's
+pairing code wrongly — or pressing Continue with nothing typed — used to
+answer with a "Nothing to approve" page saying the code had expired, with
+nowhere to try again. The code now comes back in its field with what went
+wrong beside it: nothing typed, no wall waiting with that code, or a code
+already approved or declined.
+
+**Adding a rotation no longer refuses the form as it opens.** "Add a
+rotation" used to open on "a calendar that already has them" with no calendar
+chosen, so pressing Continue was refused straight away. It now picks the
+person without a rotation, offers the calendar option only when there is a
+calendar and preselects the first one, and shows the calendar choice only
+while that option is chosen.
+
+**Lists are easier to read.** People, chores and shift types put their
+"move up" and "move down" buttons in the row itself, which made the thing you
+do least the biggest thing on the card. Reordering is in each row's ⋮ menu
+now, above Remove. Shift types no longer open every type as a full form: each
+is a folded row showing its name and short code, with Edit one tap away, the
+way chores already were.
+
+**A new install outside the United States gets weather that works.** The
+wizard now sets the forecast provider, the units and the weather-alert switch
+from the timezone you choose: a household in the United States keeps the
+National Weather Service, Fahrenheit and alerts on; everyone else gets the
+worldwide forecast, Celsius, and the alert switch off, because those alerts
+cover the United States only. Installs already running are not changed; the
+Weather page now says plainly when alerts are not available where you are.
+
+**The Overview is no longer red on a box that has done nothing wrong.** Home
+Assistant you have not connected reads "Not set up" in grey rather than "Not
+connected" in red, and weather alerts that cannot work where you are say so
+instead of "no zones yet". Red is kept for something that is on and failing.
+
+**Making a new pairing link asks first, and says what it costs.** The menu
+item used to read "Pairing link…" and, when tapped to look at the link, quietly
+replaced it — so the code you had just written down stopped working, and a
+wall that was already paired dropped off. It is "New pairing link…" now, asks
+before it does anything, and says whether it is retiring an unused link or
+disconnecting a wall. On a phone, a wall's status line wraps instead of being
+cut off mid-sentence.
+
+**The settings menu is grouped by what you are doing.** Overview stands at the
+top on its own; **Household** is your calendars, people, work schedule and
+chores; **Integrations** is the weather, Home Assistant and the Store, with
+anything you install from the Store listed beside them; **Walls** is your walls
+and themes; and System stands at the bottom. The small grey label that used to
+sit above every page title (reading "Walls" above "Walls") is gone.
+
 **Event names on coloured labels can be read again.** Where the wall writes a
 name on top of a calendar's own colour — a half term running across the month,
 an event chip on a busy day, somebody's initials — it always wrote in white.

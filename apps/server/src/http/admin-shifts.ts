@@ -11,7 +11,7 @@ import {
 } from '../api/queries.js';
 import { checkbox, colour, optionalText, parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
-import { navModules, type AdminDeps } from './admin.js';
+import { navModules, type AdminDeps, reorderMenuItems } from './admin.js';
 import { selfHref } from './self.js';
 
 /**
@@ -160,12 +160,13 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
-   * A type is a `card`: a name, its reorder and remove controls, and the
-   * always-open form that renames and recolours it.
+   * A type is a `card`: a name with its swatch and code, the ⋮ holding reorder
+   * and Remove, and the form that renames and recolours it folded behind an
+   * Edit disclosure.
    *
    * The identifying line is a `listRow` — the swatch as its lead, the name as
-   * its title, and everything that acts on *this type* (its off-state, reorder,
-   * remove) in the trail, which is what a trail is for. `isWorking === false`
+   * its title, the short code beside it, and everything that acts on *this
+   * type* in the trail, which is what a trail is for. `isWorking === false`
    * used to be two words appended to the name ("Swing · off"), the exact shape
    * the calendars screen already fixed for "(off)": a state folded into the
    * string it describes reads as part of the name on a quick scan. It is a `tag`
@@ -173,9 +174,13 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
    * ordinary configuration — a rest day or a time-off type is meant to say so —
    * and not a fault the way a calendar failing to sync is.
    *
-   * Reorder stays visible; the destructive Remove moves into the ⋮ overflow the
-   * rest of the admin's cards use, so a reorder tap is never a neighbour of a
-   * delete. The GET it leads to already answers with `confirmDestroyPage`.
+   * The form used to be always open, so three types were three full forms with
+   * three Save buttons — 2,657px on a desktop and 4,286px on a phone for a
+   * page whose content is three names, three codes and three colours. That is
+   * the fault the chores screen had already fixed with a `<details>`, and it
+   * is the same fold here. Reorder used to be two buttons in the trail; it is
+   * in the ⋮ now (`reorderMenuItems`), above the rule that keeps it from being
+   * Remove's neighbour. The Remove GET already answers with `confirmDestroyPage`.
    */
   function typeCard(type: ShiftTypeRow, first: boolean, last: boolean): string {
     const id = encodeURIComponent(type.id);
@@ -184,26 +189,22 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
     return card(
       listRow(
         `<span class="swatch" style="--swatch:${escapeHtml(swatch)}"></span>`,
-        { title: type.label },
+        // The code is what the compact month cells draw, so it is the one fact
+        // worth reading off the folded row.
+        { title: type.label, detail: `Short code ${type.shortCode}` },
         (type.isWorking ? '' : tag('Off')) +
-          (first
-            ? ''
-            : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="up">` +
-              `<button class="secondary" type="submit">↑ Up</button></form>`) +
-          (last
-            ? ''
-            : `<form method="post" action="admin/shifts/types/${id}/move"><input type="hidden" name="dir" value="down">` +
-              `<button class="secondary" type="submit">↓ Down</button></form>`) +
           `<details class="ovf" data-overflow>` +
           `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
           `aria-label="More actions for ${escapeHtml(type.label)}" title="More">${icon('more')}</summary>` +
           `<div class="ovf-menu" role="menu">` +
+          reorderMenuItems(`admin/shifts/types/${id}/move`, first, last) +
           destructive('Remove', {
             thing: type.label,
             confirmAction: `admin/shifts/types/${id}/delete`,
           }) +
           `</div></details>`,
       ) +
+        `<details class="disclose"><summary>Edit ${escapeHtml(type.label)}</summary>` +
         `<form method="post" action="admin/shifts/types/${id}">` +
         `<div class="row-fields">` +
         textField({ label: 'Name', name: 'label', required: true, value: type.label, attrs: 'maxlength="40"' }) +
@@ -221,7 +222,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">The short code is what the compact month cells show. “Match ` +
         `the theme” follows the theme’s shift colour, so a custom theme re-colours ` +
         `it; otherwise the colour above is used.</p>` +
-        `<button type="submit">Save</button></form>`,
+        `<button type="submit">Save</button></form></details>`,
     );
   }
 

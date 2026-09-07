@@ -6,12 +6,13 @@ import {
 import { card, emptyState, section, tag } from './components.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
-import { readWeatherSettings, writeWeatherSettings } from '../api/queries.js';
+import { readWeatherSettings, writeWeatherSettings, readHousehold } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { ago, navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
+import { isUnitedStatesZone } from '../timezone.js';
 
 /**
  * The screen's one form (RFC 009 Phase 3.1).
@@ -696,17 +697,25 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           (zones.length === 0
             ? emptyState(
                 enabled && located
-                  ? /*
-                     * Not "working them out on the next check", which was said
-                     * for every zero-zone case and is only true of one of
-                     * them. A location outside the service resolves to
-                     * nothing at all, and from here the two are
-                     * indistinguishable — so both are named rather than the
-                     * hopeful one asserted (RFC 009 Phase 2).
-                     */
-                    'None yet — either the first check has not run, or this location ' +
-                      'is outside National Weather Service coverage. Until there is ' +
-                      'one, no alert rule below is armed.'
+                  ? isUnitedStatesZone(readHousehold(deps.db).timezone)
+                    ? /*
+                       * Not "working them out on the next check", which was said
+                       * for every zero-zone case and is only true of one of
+                       * them. A location outside the service resolves to
+                       * nothing at all, and from here the two are
+                       * indistinguishable — so both are named rather than the
+                       * hopeful one asserted (RFC 009 Phase 2).
+                       */
+                      'None yet — either the first check has not run, or this location ' +
+                        'is outside National Weather Service coverage. Until there is ' +
+                        'one, no alert rule below is armed.'
+                    : // A household whose timezone is outside the United States
+                      // is told the plain thing rather than left waiting for a
+                      // check that cannot succeed. The switch above is theirs
+                      // to turn off; the wizard now starts it off for them.
+                      'None — the National Weather Service covers the United States only, ' +
+                        'and this household’s timezone is elsewhere. The forecast still ' +
+                        'works; no alert rule below can be armed here.'
                   : 'None yet.',
               )
             : zones
@@ -725,7 +734,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
                 )
                 .join('')) +
             // Both, and why. Watching only one silently misses a category.
-            `<p class="hint">Two: most alerts are issued against the forecast zone, and ` +
+            `<p class="hint">There are usually two: most alerts are issued against the forecast zone, and ` +
             `flood warnings in particular are issued by county.</p>`,
         ) +
 

@@ -145,7 +145,9 @@ describe('a calendar-derived run, through the real endpoint', () => {
 
     h.db.prepare(`UPDATE household_settings SET shift_enabled = 1 WHERE id = 'singleton'`).run();
 
-    const html = await (await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' })).text();
+    // The POST redirects to the page that shows the link once; follow it.
+    const made = await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' });
+    const html = await (await h.call(`http://192.168.1.10:8080${made.headers.get('location') ?? ''}`)).text();
     const token = /\/pair\?token=([^<\s"&]+)/.exec(html)?.[1];
     expect(token).toBeDefined();
 
