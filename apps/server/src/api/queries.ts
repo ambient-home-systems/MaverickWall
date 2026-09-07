@@ -204,6 +204,27 @@ export function setScreenLanOnly(db: SqliteDatabase, screenId: string, lanOnly: 
   );
 }
 
+/**
+ * Record whether the last frame request could be traced to a real visitor.
+ *
+ * Its own writer rather than a fifth argument to `touchScreen`, and the reason
+ * is the difference between the two absences: `touchScreen` runs *after* a
+ * successful render, and this has to run on a **refused** request too, since a
+ * panel that has gone dark because of `lan_only` is exactly when a household
+ * needs to be told what the guard could see. Deliberately not defaulted —
+ * `null` clears the note, so a proxy that goes away stops being reported.
+ *
+ * `updated_at` is left alone: nobody edited this screen, and moving it would
+ * report an observation about the network as a change the household made.
+ */
+export function recordFrameForwarding(
+  db: SqliteDatabase,
+  screenId: string,
+  note: string | null,
+): void {
+  db.prepare(`UPDATE screens SET last_seen_forwarding = ? WHERE id = ?`).run(note, screenId);
+}
+
 export function replaceLayout(
   db: SqliteDatabase,
   screenId: string | null,
@@ -871,6 +892,12 @@ export interface AdminScreenRow extends ScreenRow {
   readonly lastSeenAt: number | null;
   /** Who last used this screen's token — a household's own detective control. */
   readonly lastSeenIp: string | null;
+  /**
+   * Whether `lan_only` could see past a proxy on the last frame request — a
+   * `ForwardingNote` from `http/lan-guard.ts`, or null when there is nothing
+   * to say. Read by the panel's settings page, which cannot observe it itself.
+   */
+  readonly lastSeenForwarding: string | null;
   readonly appVersion: string | null;
   /** The viewport this screen last reported, for the editor's "match" (RFC 005). */
   readonly reportW: number | null;
@@ -901,7 +928,8 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
               report_w AS reportW, report_h AS reportH,
-              last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp, app_version AS appVersion
+              last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp,
+              last_seen_forwarding AS lastSeenForwarding, app_version AS appVersion
          FROM screens ORDER BY name`,
     )
     .all() as AdminScreenRow[];

@@ -14,6 +14,19 @@
   saying nothing.
 -->
 
+## Unreleased
+
+**"Restrict this URL to your home network" now says so when it cannot see who
+is visiting.** If you run Maverick Wall behind a reverse proxy — Caddy,
+Traefik, Nginx Proxy Manager — every request reaches it from the proxy rather
+than from the visitor, so this switch was checking the proxy's address and
+very likely letting everything through, while reading as though it were
+protecting the panel. It now reads the visitor's real address when you have
+named your proxy in `TRUSTED_PROXY_SOURCE`, and where it still cannot tell, the
+panel's own settings page says so plainly and names what to set, rather than
+leaving you to trust a restriction that was doing nothing. Nothing changes for
+a household that reaches the box directly, which is most of them.
+
 ## 0.58.0
 
 **The Walls page lists every wall the same way, and an e-paper panel has a

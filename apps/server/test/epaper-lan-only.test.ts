@@ -42,7 +42,7 @@ const TEST_ADDRESS_HEADER = 'x-test-address';
 const UNDETERMINED = '__undetermined__';
 let nextHarness = 0;
 
-async function harness() {
+async function harness(trustedProxies: readonly string[] = []) {
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-lanonly-'));
   roots.push(dataDir);
   const { db } = openDatabase({ dataDir });
@@ -79,6 +79,7 @@ async function harness() {
       if (header === UNDETERMINED) return undefined;
       return header ?? defaultAddress;
     },
+    trustedProxySources: trustedProxies,
     setupToken,
     dataDir,
   });
@@ -96,8 +97,19 @@ async function harness() {
     }
     return response;
   };
-  const from = (url: string, address: string | undefined): Promise<Response> =>
-    call(url, address === undefined ? {} : { headers: { [TEST_ADDRESS_HEADER]: address } });
+  const from = (
+    url: string,
+    address: string | undefined,
+    forwardedFor?: string,
+  ): Promise<Response> =>
+    call(url, {
+      headers: {
+        ...(address === undefined ? {} : { [TEST_ADDRESS_HEADER]: address }),
+        // The real header a reverse proxy sends, so these drive the same path
+        // a Caddy or Traefik household does rather than a stand-in for it.
+        ...(forwardedFor === undefined ? {} : { 'x-forwarded-for': forwardedFor }),
+      },
+    });
   const post = (url: string, fields: Record<string, string>) =>
     call(url, {
       method: 'POST',
@@ -190,5 +202,134 @@ describe('screens.lan_only', () => {
     // A browser sends nothing at all for an unticked checkbox.
     await h.post(`${viewUrl}/lan-only`, {});
     expect(lanOnlyOf(h.db, h.screenId)).toBe(0);
+  });
+});
+
+/**
+ * Behind a reverse proxy, driven through the real app.
+ *
+ * `forwarded.ts` explicitly supports a household fronting the box with Caddy,
+ * Traefik or NPM. When they do, every request reaches the container from the
+ * *proxy's* address — loopback or a private Docker address — so the guard as
+ * first shipped answered "on the home network" for every request in the world,
+ * including ones arriving from the public internet through that proxy. The
+ * switch said it was protecting them and it was not.
+ *
+ * The trust rule is the one `forwarded.ts` and `ingress.ts` already state: the
+ * header is read only when the *socket* is an address the household named in
+ * `TRUSTED_PROXY_SOURCE`. A forgeable header is not a credential.
+ */
+describe('screens.lan_only behind a reverse proxy', () => {
+  const PROXY = '10.77.0.1';
+
+  const forwardingOf = (db: SqliteDatabase, id: string): string | null => {
+    const row = readAdminScreens(db).find((s) => s.id === id);
+    if (row === undefined) throw new Error(`no admin row for screen ${id}`);
+    return row.lastSeenForwarding;
+  };
+
+  it('reads the visitor a *configured* proxy forwards for, not the proxy', async () => {
+    const h = await harness([PROXY]);
+    h.db.prepare(`UPDATE screens SET lan_only = 1 WHERE id = ?`).run(h.screenId);
+
+    // The whole point: the socket is a private address either way, so a
+    // socket-only guard answers 200 to both of these.
+    expect((await h.from(h.url, PROXY, '203.0.113.9')).status).toBe(403);
+    expect((await h.from(h.url, PROXY, '192.168.1.42')).status).toBe(200);
+  });
+
+  it('reads a proxy chain at its first hop, the one the browser was', async () => {
+    const h = await harness([PROXY]);
+    h.db.prepare(`UPDATE screens SET lan_only = 1 WHERE id = ?`).run(h.screenId);
+
+    const res = await h.from(h.url, PROXY, '203.0.113.9, 172.18.0.4');
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses when a configured proxy forwards nobody, and says which fault it was', async () => {
+    const h = await harness([PROXY]);
+    h.db.prepare(`UPDATE screens SET lan_only = 1 WHERE id = ?`).run(h.screenId);
+
+    // No `X-Forwarded-For` at all: the socket is known to be the proxy's own
+    // address, so there is nothing to judge and guessing is not an option.
+    expect((await h.from(h.url, PROXY, undefined)).status).toBe(403);
+    expect(forwardingOf(h.db, h.screenId)).toBe('proxy-sent-no-client');
+  });
+
+  it('stays permissive when the header is not trusted — and records that it did', async () => {
+    // No proxy configured, so the header is ignored and the socket is judged,
+    // exactly as before. That is the *permissive* half of "warn loudly": a
+    // household who has not configured anything keeps a working panel.
+    const h = await harness();
+    h.db.prepare(`UPDATE screens SET lan_only = 1 WHERE id = ?`).run(h.screenId);
+
+    const res = await h.from(h.url, '127.0.0.1', '203.0.113.9');
+    expect(res.status).toBe(200);
+    expect(forwardingOf(h.db, h.screenId)).toBe('untrusted-forwarding');
+  });
+
+  it('records the note on a refused request, which is when it is most needed', async () => {
+    // `touchScreen` runs after a successful render, so a panel that has gone
+    // dark *because* of this restriction would otherwise leave the household
+    // no explanation anywhere.
+    const h = await harness([PROXY]);
+    h.db.prepare(`UPDATE screens SET lan_only = 1 WHERE id = ?`).run(h.screenId);
+
+    expect((await h.from(h.url, PROXY, undefined)).status).toBe(403);
+    expect(forwardingOf(h.db, h.screenId)).toBe('proxy-sent-no-client');
+  });
+
+  it('notes nothing when there is nothing to say, and clears a note that has passed', async () => {
+    const h = await harness();
+    expect(forwardingOf(h.db, h.screenId)).toBeNull();
+
+    await h.from(h.url, '192.168.1.42', '203.0.113.9');
+    expect(forwardingOf(h.db, h.screenId)).toBe('untrusted-forwarding');
+
+    // A proxy that goes away stops being reported: the note is written on
+    // every frame request, never only set.
+    await h.from(h.url, '192.168.1.42', undefined);
+    expect(forwardingOf(h.db, h.screenId)).toBeNull();
+  });
+
+  it('is recorded whether or not the restriction is on, so the page can warn first', async () => {
+    // Turning a restriction on and only *then* being told it cannot see
+    // anything is the wrong way round.
+    const h = await harness();
+    expect(lanOnlyOf(h.db, h.screenId)).toBe(0);
+
+    await h.from(h.url, '192.168.1.42', '203.0.113.9');
+    expect(forwardingOf(h.db, h.screenId)).toBe('untrusted-forwarding');
+  });
+
+  it('warns loudly on the panel page when the switch is on, calmly when it is off', async () => {
+    const h = await harness();
+    const design = `${B}/admin/epaper/${h.screenId}/design`;
+
+    await h.from(h.url, '192.168.1.42', '203.0.113.9');
+
+    // Off: worth knowing before trusting it, not an alarm.
+    const calm = await (await h.call(design)).text();
+    expect(calm).toContain('TRUSTED_PROXY_SOURCE');
+    expect(calm).toContain('class="notice"');
+    expect(calm).not.toContain('class="error"');
+
+    // On: the restriction is checking the wrong address, which is the loud one.
+    h.db.prepare(`UPDATE screens SET lan_only = 1 WHERE id = ?`).run(h.screenId);
+    const loud = await (await h.call(design)).text();
+    expect(loud).toContain('class="error"');
+    expect(loud).toContain('checking the wrong address');
+    // The address it saw, so the household can paste it straight into the
+    // setting the message names.
+    expect(loud).toContain('192.168.1.42');
+  });
+
+  it('says nothing at all on a panel with nothing to report', async () => {
+    const h = await harness();
+    h.db.prepare(`UPDATE screens SET lan_only = 1 WHERE id = ?`).run(h.screenId);
+    await h.from(h.url, '192.168.1.42', undefined);
+
+    const html = await (await h.call(`${B}/admin/epaper/${h.screenId}/design`)).text();
+    expect(html).not.toContain('TRUSTED_PROXY_SOURCE');
   });
 });

@@ -288,10 +288,20 @@ describe('upgrading a database that is already in use', () => {
     expect(becameEpaper).toBe(true);
 
     const screen = db
-      .prepare(`SELECT kind, lan_only AS lanOnly FROM screens WHERE id = 'scr-eink'`)
+      .prepare(
+        `SELECT kind, lan_only AS lanOnly, last_seen_forwarding AS forwarding
+           FROM screens WHERE id = 'scr-eink'`,
+      )
       .get() as Record<string, unknown>;
 
-    expect(screen).toEqual({ kind: 'epaper', lanOnly: 0 });
+    /*
+     * `last_seen_forwarding` (0039) rides along on the same row, and null is
+     * the whole of its meaning: it is an *observation* about a request, and no
+     * request has been made. A default of anything else would put a warning on
+     * a settings page about a proxy nobody has, on every panel in the world at
+     * one image pull — the `kind = 'kind'` shape one column along.
+     */
+    expect(screen).toEqual({ kind: 'epaper', lanOnly: 0, forwarding: null });
 
     db.close();
   });
