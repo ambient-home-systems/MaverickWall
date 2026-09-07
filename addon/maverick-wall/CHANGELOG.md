@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.59.0
 
 **"Restrict this URL to your home network" now says so when it cannot see who
 is visiting.** If you run Maverick Wall behind a reverse proxy — Caddy,
