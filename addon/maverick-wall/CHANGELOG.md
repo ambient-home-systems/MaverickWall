@@ -14,7 +14,7 @@
   saying nothing.
 -->
 
-## Unreleased
+## 0.58.0
 
 **The Walls page lists every wall the same way, and an e-paper panel has a
 page like any other wall's.** An e-paper panel used to sit in the list as a
