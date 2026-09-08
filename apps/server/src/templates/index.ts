@@ -1,5 +1,6 @@
 import type { DisplayTemplate } from '../api/templates.js';
 export { PANEL_TEMPLATES, findPanelTemplate } from './panel/index.js';
+import { template as blank } from './blank.js';
 import { template as classic } from './classic.js';
 import { template as skyCalendar } from './sky-calendar.js';
 import { template as skyWeek } from './sky-week.js';
@@ -34,6 +35,7 @@ import { template as reception } from './reception.js';
 export const CLASSIC_TEMPLATE: DisplayTemplate = classic;
 
 export const TEMPLATES: readonly DisplayTemplate[] = [
+  blank,
   classic,
   skyCalendar,
   skyWeek,

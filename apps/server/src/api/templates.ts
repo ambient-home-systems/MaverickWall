@@ -292,6 +292,69 @@ export function backfillClassic(db: SqliteDatabase, setUp: HouseholdSetUp): void
 }
 
 /**
+ * Retire the shared "Default wall" as a thing a household designs, once.
+ *
+ * That canvas was two jobs in one row: the layout a wall drew until it had one
+ * of its own, and a display on the Walls list with its own page, gallery and
+ * Reset. The second is gone — a wall picks its starting layout on the page that
+ * pairs it, and every path that creates a screen now seeds one — so the admin
+ * offers no way to arrange it and `resolveOwner` will not name it.
+ *
+ * **Not reading the row is not the same as retiring it.** A wall that never
+ * arranged a canvas is drawing the household's, so simply dropping the fallback
+ * would take a working kitchen calendar off the wall the next time the container
+ * restarted — rule nine, in the one shape that shows up on somebody's wall
+ * rather than in a log. So every screen with no canvas of its own gets a *copy*
+ * of what it was already drawing: `copyLayout` from the household where there is
+ * something to copy, and `classicSeed` where there is not (an install whose
+ * household row was never seeded either). After this, no wall depends on the
+ * shared canvas and no screen's pixels changed.
+ *
+ * The household's own widgets are deliberately **left in place**. Deleting them
+ * is a rewrite of stored state to no end, and `effectiveDisplay` still falls
+ * back to them for a screen with no canvas — which, after this and after the
+ * seeding on every creating path, is a row nothing in this codebase writes. It
+ * is the belt, not the mechanism.
+ *
+ * Runs at boot after `backfillClassic`, inside the same file lock, and is
+ * guarded by its own column so a household who later empties a wall is not
+ * re-seeded from a canvas they can no longer see.
+ */
+export function retireDefaultWall(db: SqliteDatabase, setUp: HouseholdSetUp): void {
+  const row = db
+    .prepare(`SELECT default_wall_retired AS done FROM household_settings WHERE id = 'singleton'`)
+    .get() as { done: number } | undefined;
+  // No settings row yet (setup has not run) or already retired: nothing to do.
+  if (row === undefined || row.done === 1) return;
+
+  const householdHasCanvas =
+    readLayoutWidgets(db, null, 'portrait').length > 0 ||
+    readLayoutWidgets(db, null, 'landscape').length > 0;
+
+  for (const screen of readScreens(db)) {
+    if (screen.revokedAt !== null) continue;
+    const hasOwn =
+      readLayoutWidgets(db, screen.id, 'portrait').length > 0 ||
+      readLayoutWidgets(db, screen.id, 'landscape').length > 0;
+    if (hasOwn) continue;
+    /*
+     * An e-paper panel with no canvas is not inheriting anything — it draws its
+     * built-in view, which is a fact about the renderer rather than a fallback
+     * to this row — so copying a colour wall's arrangement onto one bit would
+     * *change* what it draws rather than preserve it. `panelCanvasOwner` says
+     * the same thing from the other side and is why this asks the kind.
+     */
+    if (screen.kind === 'epaper') continue;
+    if (householdHasCanvas) copyLayout(db, null, screen.id);
+    else applyTemplate(db, screen.id, classicSeed(db, screen.id, setUp));
+  }
+
+  db.prepare(
+    `UPDATE household_settings SET default_wall_retired = 1, updated_at = ? WHERE id = 'singleton'`,
+  ).run(Date.now());
+}
+
+/**
  * Six decimal places, as a string. Far finer than any control that writes these
  * — the editor snaps to a twenty-fourth (0.041667) and its number fields take
  * whole percent — and coarse enough that no float noise can make a canvas look

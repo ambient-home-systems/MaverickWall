@@ -349,6 +349,24 @@ describe('adding a browser wall', () => {
     }
   });
 
+  it('starts from nothing when Blank is picked', async () => {
+    /*
+     * A gallery of starting points could not start from nothing: every card was
+     * somebody else's arrangement, so building your own meant picking the
+     * nearest and deleting its boxes.
+     *
+     * A blank wall is a *canvas* with no widgets, not the absence of one —
+     * `layout_mode` says free-form, which is what stops it reading as a wall
+     * that was never seeded, and is what makes `renderFreeform` draw its
+     * "Nothing on this wall yet." note rather than nothing at all.
+     */
+    const h = await harness();
+    await h.post(`${B}/admin/screens`, { name: 'Fresh', template: 'blank' });
+    const screen = h.newest();
+    expect(screen.layoutMode).toBe('freeform');
+    expect(h.widgetTypes(screen.id)).toEqual([]);
+  });
+
   it('refuses a panel’s template at a wall, and makes no wall doing it', async () => {
     const h = await harness();
     const before = h.screens().length;
@@ -446,6 +464,40 @@ describe('adding an e-paper panel', () => {
     expect(screen.layoutLandscapeAspect ?? 0).toBeCloseTo(296 / 128, 4);
     const card = PANEL_TEMPLATES.find((one) => one.id === 'panel-agenda');
     expect(screen.layoutAspect, 'took the card’s nominal aspect').not.toBe(card?.portrait.aspect);
+  });
+
+  it('starts a panel from nothing when Blank is picked, and that is not Built-in', async () => {
+    /*
+     * The one place this needed the renderer rather than a card.
+     * `renderScreenFrame` decided what to draw with `widgets.length > 0`, so an
+     * empty canvas drew the *built-in* view — which would have made Blank and
+     * Built-in the same frame and the choice between them a control that does
+     * nothing. `undefined` is no canvas and `[]` is an empty one now.
+     */
+    const h = await harness();
+    await h.post(`${B}/admin/epaper`, {
+      name: 'Empty tag',
+      preset: 'seeed-7in5',
+      rotation: '0',
+      layout: 'panel-blank',
+    });
+    const blank = h.newest();
+    expect(blank.layoutMode, 'a blank panel has a canvas, it is just empty').toBe('freeform');
+    expect(h.widgetTypes(blank.id)).toEqual([]);
+
+    await h.post(`${B}/admin/epaper`, { name: 'Stock tag', preset: 'seeed-7in5', rotation: '0' });
+    const builtIn = h.newest();
+    expect(builtIn.layoutMode).toBeNull();
+
+    // And the two draw different frames, which is the whole point of the card.
+    const frames = await Promise.all(
+      [blank.id, builtIn.id].map(async (id) => {
+        const res = await h.call(`${B}/admin/epaper/${id}/preview.png`);
+        expect(res.status).toBe(200);
+        return Buffer.from(await res.arrayBuffer()).toString('base64');
+      }),
+    );
+    expect(frames[0], 'Blank drew the built-in view').not.toBe(frames[1]);
   });
 
   it('refuses a wall’s template at a panel, and makes no panel doing it', async () => {

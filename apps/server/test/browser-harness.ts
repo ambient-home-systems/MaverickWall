@@ -318,6 +318,16 @@ export interface Installation {
   /** A new screen and the pairing link the admin prints for it. */
   pairLink(name?: string): Promise<string>;
   /**
+   * A new wall, and its id — the thing most of these tests actually want.
+   *
+   * They used to reach for `/admin/walls/default`, the shared Default wall,
+   * because it was the one wall that existed without pairing anything. It is
+   * retired: it was never a display (nothing is paired to it and nothing draws
+   * it), and a suite that measures the editor, the settings sheet and the ink
+   * lane against it was measuring them against a row no household has.
+   */
+  pairWall(name?: string): Promise<string>;
+  /**
    * The loopback ICS feed's address — **only with `feed: true`**.
    *
    * Exposed so a test can add a *second* and *third* calendar through the real
@@ -521,6 +531,14 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
         page.waitForURL((url) => !url.pathname.endsWith('/sign-in'), { timeout: 20_000 }),
         page.click('button[type="submit"]'),
       ]);
+    },
+    async pairWall(name = 'Kitchen'): Promise<string> {
+      const made = await post('/admin/screens', { name });
+      if (made.status !== 303) throw new Error(`pairing answered ${made.status}, not a redirect`);
+      // `/admin/walls/<id>/pair` — the id is what a test needs to open its page.
+      const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1];
+      if (id === undefined) throw new Error('pairing did not redirect to a wall');
+      return decodeURIComponent(id);
     },
     async pairLink(name = 'Kitchen'): Promise<string> {
       // The POST redirects to the page that shows the link once; `call` does

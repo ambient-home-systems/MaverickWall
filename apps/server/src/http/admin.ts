@@ -1979,7 +1979,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/walls/new', (c: Context) => c.html(newWallPage(c)));
   app.get('/admin/walls/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
-    if (id === 'default') return c.html(displayDetailPage(null, undefined, c));
+    /*
+     * The Default wall is retired. It was two things in one row — what every
+     * wall inherits, and a canvas walls fell back to — and neither is a display:
+     * nothing is paired to it and nothing draws it. Its settings are on System
+     * and its canvas is copied onto the walls that were using it
+     * (`retireDefaultWall`). Kept as a redirect rather than a 404, because this
+     * address is in bookmarks and in every "Household default" hint shipped so
+     * far.
+     */
+    if (id === 'default') return c.redirect('/admin/system', 302);
     if (!activeScreens().some((s) => s.id === id)) return c.redirect('/admin/walls', 302);
     // An e-paper panel's page is its design page — a panel landing here (an
     // old link, or the shared layout routes before they were kind-aware) gets
@@ -2078,6 +2087,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
     const id = randomBytes(6).toString('hex');
     createScreen(deps.db, id, name, pairingSecret(issued));
+    /*
+     * Seed it, like every other door that makes a wall.
+     *
+     * This one did not, and nothing said so: the wall drew the shared Default
+     * canvas instead, which looked identical and was somebody else's row. With
+     * that canvas retired the same omission is a wall that draws "Nothing on
+     * this wall yet." for ever, because `backfillClassic` has already run on
+     * this database and never runs again. Classic rather than a choice, because
+     * this flow is a household approving a code on a screen they are not
+     * standing at — the wall's own page is where they pick something else.
+     */
+    applyTemplate(deps.db, id, classicSeed(deps.db, id, householdSetUp(deps.db)));
     return c.html(approveResultPage(
       c,
       `${escapeHtml(name)} is paired`,
@@ -2374,12 +2395,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
     const shaped = parse(displayBody, body);
-    if (!shaped.ok) return c.html(displayDetailPage(null, shaped.message, c), 400);
+    if (!shaped.ok) return c.html(systemPage(c, shaped.message), 400);
 
     // A built-in or a custom theme that still exists — the schema let any string
     // through so the check could see the database.
     if (!isValidThemeRef(deps.db, shaped.value.theme, themeKeys)) {
-      return c.html(displayDetailPage(null, 'Choose a theme from the list.', c), 400);
+      return c.html(systemPage(c, 'Choose a theme from the list.'), 400);
     }
 
     /*
@@ -2392,11 +2413,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const daytimeRaw = shaped.value.daytime_theme;
     const scheduled = daytimeRaw !== undefined && daytimeRaw !== 'none';
     if (scheduled && !isValidThemeRef(deps.db, daytimeRaw, themeKeys)) {
-      return c.html(displayDetailPage(null, 'Choose a daylight theme from the list.', c), 400);
+      return c.html(systemPage(c, 'Choose a daylight theme from the list.'), 400);
     }
 
     const order = blockOrder(body, readHousehold(deps.db).displayBlocks);
-    if ('error' in order) return c.html(displayDetailPage(null, order.error, c), 400);
+    if ('error' in order) return c.html(systemPage(c, order.error), 400);
 
     writeDisplaySettings(deps.db, {
       theme: shaped.value.theme,
@@ -2414,8 +2435,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       weekStart: shaped.value.week_start,
     });
 
-    // Back to the Default wall; it picks the change up on its next poll.
-    return savedRedirect(c, '/admin/walls/default', 'screen-settings');
+    /*
+     * Back to System, which is where these live now. They were the Default
+     * wall's settings sheet, on a page that presented the shared household row
+     * as a display somebody could design; the layout half of that row is
+     * retired and this half was always settings.
+     */
+    return savedRedirect(c, '/admin/system', 'screen-settings');
   });
 
   // -------------------------------------------------------------------------
@@ -2423,18 +2449,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // -------------------------------------------------------------------------
 
   /**
-   * The owner a `?screen=` or a posted `screen` names — a real paired wall, or
-   * the shared default. A stranger's id resolves to the default rather than
-   * writing onto, or reading, a wall that is not theirs.
+   * The wall a `?screen=` or a posted `screen` names, or `undefined`.
+   *
+   * It used to answer `null` — the shared Default wall — for anything it did
+   * not recognise: an absent parameter, a blank one, a stranger's id, an
+   * unpaired wall. That was a sensible default while there *was* a shared
+   * canvas, and with the Default wall retired it is the opposite of one: a
+   * mistyped id would have read, and in `POST /admin/layout` **written**, the
+   * household row nothing can see any more. Unknown is unknown now, and every
+   * caller answers it rather than acting on a wall nobody named.
    */
-  function resolveOwner(id: string | null | undefined): string | null {
-    if (id === null || id === undefined || id === '') return null;
-    return activeScreens().some((s) => s.id === id) ? id : null;
+  function resolveOwner(id: string | null | undefined): string | undefined {
+    if (id === null || id === undefined || id === '') return undefined;
+    return activeScreens().some((s) => s.id === id) ? id : undefined;
   }
 
   app.get('/admin/layout', (c: Context) => {
     const owner = resolveOwner(c.req.query('screen'));
-    return c.redirect(owner === null ? '/admin/walls/default' : `/admin/walls/${encodeURIComponent(owner)}`, 302);
+    // No wall named, or one that is gone: the list, which is the only thing
+    // left to offer now that there is no shared canvas to fall back to.
+    return c.redirect(owner === undefined ? '/admin/walls' : `/admin/walls/${encodeURIComponent(owner)}`, 302);
   });
 
   /**
@@ -2447,7 +2481,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.get('/admin/layout/preview.json', (c: Context) => {
     if (deps.previewManifest === undefined) return c.json({ error: 'unavailable' }, 404);
-    return c.json(deps.previewManifest(resolveOwner(c.req.query('screen'))));
+    const owner = resolveOwner(c.req.query('screen'));
+    // A preview of no wall is not the household's any more; there is nothing to
+    // render, and saying so beats rendering somebody else's document.
+    if (owner === undefined) return c.json({ error: 'unknown wall' }, 404);
+    return c.json(deps.previewManifest(owner));
   });
 
   /**
@@ -2470,11 +2508,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const shaped = parse(layoutBody, raw);
     if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
 
-    // Null is the shared default; a valid screen id is that wall's own canvas.
-    // An id that is not a real wall falls back to the default rather than
-    // conjuring a row for a screen that does not exist. The editor posts one
-    // orientation at a time; absent is portrait (RFC 005).
-    replaceLayout(deps.db, resolveOwner(shaped.value.screen), shaped.value.orientation ?? 'portrait', {
+    /*
+     * A canvas belongs to a wall, and only to a wall.
+     *
+     * This used to fall back to the shared default for an id it did not
+     * recognise, which was the one place that fallback could *write*: a stale
+     * editor tab, or a wall unpaired in another window, would have saved its
+     * canvas onto the row every other wall inherited. With the Default wall
+     * retired there is nothing to fall back to and the honest answer is a 404.
+     * The editor posts one orientation at a time; absent is portrait (RFC 005).
+     */
+    const owner = resolveOwner(shaped.value.screen);
+    if (owner === undefined) {
+      return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
+    }
+    replaceLayout(deps.db, owner, shaped.value.orientation ?? 'portrait', {
       mode: shaped.value.mode,
       aspect: shaped.value.aspect,
       widgets: shaped.value.widgets,
@@ -2486,8 +2534,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   /** Whether an owner id is an e-paper panel — their layout lives on its own
    *  design page, not in the Walls section. */
-  const isEpaperOwner = (owner: string | null): boolean =>
-    owner !== null && activeScreens().some((s) => s.id === owner && s.kind === 'epaper');
+  const isEpaperOwner = (owner: string | undefined): boolean =>
+    owner !== undefined && activeScreens().some((s) => s.id === owner && s.kind === 'epaper');
 
   /**
    * A panel's two canvas aspects, from its pixels.
@@ -2506,10 +2554,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   /** The layout view of a wall's page, where apply/copy/reset return to.
    *  Kind-aware: an e-paper panel goes back to its design page — sending it to
    *  the Walls section is how Reset looked like it did nothing. */
-  const layoutUrl = (owner: string | null): string =>
+  const layoutUrl = (owner: string): string =>
     isEpaperOwner(owner)
-      ? `/admin/epaper/${encodeURIComponent(owner as string)}/design`
-      : `/admin/walls/${owner === null ? 'default' : encodeURIComponent(owner)}#layout`;
+      ? `/admin/epaper/${encodeURIComponent(owner)}/design`
+      : `/admin/walls/${encodeURIComponent(owner)}#layout`;
 
   /**
    * The template gallery — pick a starting layout for this display (RFC 005).
@@ -2521,11 +2569,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * a requirement.
    */
   app.get('/admin/displays/:id/gallery', (c: Context) => {
-    const id = c.req.param('id') ?? '';
-    if (id !== 'default' && !activeScreens().some((s) => s.id === id)) {
-      return c.redirect('/admin/walls', 302);
-    }
-    return c.html(templateGalleryPage(c, resolveOwner(id === 'default' ? null : id)));
+    /*
+     * `default` used to be a wall here and is not one now, so it lands in the
+     * same place a stranger's id does: the list. Kept as one branch rather than
+     * a special case, because "the shared canvas" and "a wall that was unpaired
+     * since this link was made" are the same answer — there is nothing to
+     * arrange.
+     */
+    const owner = resolveOwner(c.req.param('id'));
+    if (owner === undefined) return c.redirect('/admin/walls', 302);
+    return c.html(templateGalleryPage(c, owner));
   });
 
   /**
@@ -2542,8 +2595,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * rather than a comment asking nobody to try.
    */
   app.post('/admin/displays/:id/apply-template', async (c: Context) => {
-    const id = c.req.param('id') ?? '';
-    const owner = resolveOwner(id === 'default' ? null : id);
+    const owner = resolveOwner(c.req.param('id'));
+    if (owner === undefined) return c.redirect('/admin/walls', 302);
     const panel = isEpaperOwner(owner) ? activeScreens().find((s) => s.id === owner) : undefined;
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const wanted = typeof body['templateId'] === 'string' ? body['templateId'] : '';
@@ -2580,17 +2633,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * copy forks them on the first edit and does it in colour.
    */
   app.post('/admin/displays/:id/copy-from', async (c: Context) => {
-    const id = c.req.param('id') ?? '';
-    const to = resolveOwner(id === 'default' ? null : id);
+    const to = resolveOwner(c.req.param('id'));
+    if (to === undefined) return c.redirect('/admin/walls', 302);
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const src = typeof body['sourceOwner'] === 'string' ? body['sourceOwner'] : '';
-    const from = resolveOwner(src === 'default' ? null : src);
+    const from = resolveOwner(src);
     const toPanel = isEpaperOwner(to);
     if (from === to) {
       return c.html(
         templateGalleryPage(c, to, `Pick a different ${toPanel ? 'panel' : 'wall'} to copy from.`),
         400,
       );
+    }
+    if (from === undefined) {
+      return c.html(templateGalleryPage(c, to, 'That display is no longer there.'), 400);
     }
     if (toPanel !== isEpaperOwner(from)) {
       return c.html(
@@ -2618,9 +2674,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * rather than applying a wall template to a 1-bit panel.
    */
   app.post('/admin/displays/:id/reset-layout', (c: Context) => {
-    const id = c.req.param('id') ?? '';
-    const owner = resolveOwner(id === 'default' ? null : id);
-    if (isEpaperOwner(owner)) clearLayout(deps.db, owner as string);
+    const owner = resolveOwner(c.req.param('id'));
+    if (owner === undefined) return c.redirect('/admin/walls', 302);
+    if (isEpaperOwner(owner)) clearLayout(deps.db, owner);
     // Classic as this household would be seeded with it today — so Reset is
     // also the way to pick up a location, a rota, or a panel size entered since,
     // without waiting for a restart.
@@ -2905,6 +2961,133 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
+  /**
+   * What every wall inherits — theme, daylight schedule, how much to show, and
+   * the clock — as sections on the System page.
+   *
+   * These used to be the Default wall's settings sheet, which made the shared
+   * household row look like a *display*: a card in the Walls list, a page, a
+   * template gallery and a Reset. It was never a display — nothing is paired to
+   * it and nothing draws it — and reading it as one is what let the two halves
+   * of that row (defaults, and a layout walls fell back to) go on being one
+   * thing. The layout half is retired (`retireDefaultWall`); this is the half
+   * that was always settings, on the page the household's other settings are on.
+   *
+   * **One form across three sections, and that is load-bearing.**
+   * `POST /admin/display` writes every field it is given and an unticked
+   * checkbox is not sent at all, so a form carrying only the clock would save a
+   * 12-hour clock *and* silently take the daylight schedule off every wall.
+   * Sections are markup; the form spans them.
+   *
+   * The daylight window is drawn whatever the daytime theme says, unlike on the
+   * wall's own settings sheet where a script reveals it. That page loads
+   * `display-editor.js` and this one does not, so a `hidden` group here would be
+   * a control nobody could ever reach — the chores form's rule, which is that no
+   * group is rendered hidden and the hint carries the condition instead.
+   */
+  function wallDefaultsForm(): string {
+    const household = readHousehold(deps.db);
+    const custom = readThemes(deps.db);
+    const scheduled = household.daytimeTheme !== null && household.daytimeTheme !== '';
+
+    const number = (
+      name: string,
+      label: string,
+      value: number,
+      low: number,
+      high: number,
+      hint: string,
+    ): string =>
+      textField({
+        label,
+        name,
+        type: 'number',
+        required: true,
+        value: String(value),
+        hint,
+        attrs: `inputmode="numeric" min="${low}" max="${high}"`,
+      });
+
+    const themeOption = (value: string, label: string, selected: boolean): string =>
+      `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    const daytimeSelected = scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '';
+
+    return (
+      `<form method="post" action="admin/display"${dirtyForm()}>` +
+      section(
+        'Wall appearance',
+        'The look every wall starts from. A wall can override any of it on its own page.',
+        `<p class="hint">How a wall looks — its colours and type. Panels separates the ` +
+          `shift colours best from across a room. Build your own on the ` +
+          `<a class="link" href="admin/themes">Themes</a> page.</p>` +
+          themeCards(displayThemeRef(household.theme), custom) +
+          selectField({
+            label: 'Daytime theme',
+            name: 'daytime_theme',
+            hint: 'A lighter theme during the hours below. A dark theme at noon is a hole in the wall; a light one at 2am is a lamp.',
+            optionsHtml:
+              themeOption('none', 'The same theme all day', daytimeSelected === '') +
+              THEMES.map((theme) =>
+                themeOption(theme.key, theme.label, theme.key === daytimeSelected),
+              ).join('') +
+              custom
+                .map((theme) =>
+                  themeOption(`custom:${theme.id}`, theme.name, `custom:${theme.id}` === daytimeSelected),
+                )
+                .join(''),
+          }) +
+          `<div class="grid g2"><div>` +
+          textField({
+            label: 'From',
+            name: 'daytime_starts_at',
+            type: 'time',
+            value: household.daytimeStartsAt ?? '07:00',
+            hint: 'Only used when a daytime theme is set.',
+          }) +
+          `</div><div>` +
+          textField({
+            label: 'Until',
+            name: 'daytime_ends_at',
+            type: 'time',
+            value: household.daytimeEndsAt ?? '21:00',
+          }) +
+          `</div></div>`,
+      ) +
+      section(
+        'Wall content',
+        'How much the calendars show, on every wall that has not said otherwise.',
+        number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
+          'Anything past this is counted rather than listed.') +
+          number('next_days', 'Days an agenda looks ahead', household.displayNextDays, 0, 14,
+            'How many upcoming days a Calendar agenda can list.') +
+          number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
+            'How many weeks a month Calendar draws. Five covers a month at a glance.') +
+          selectField({
+            label: 'Week starts on',
+            name: 'week_start',
+            hint: 'The left-hand column of the month grid, on every wall.',
+            optionsHtml:
+              `<option value="sunday"${household.weekStart !== 'monday' ? ' selected' : ''}>Sunday</option>` +
+              `<option value="monday"${household.weekStart === 'monday' ? ' selected' : ''}>Monday</option>`,
+          }),
+      ) +
+      section(
+        'Wall clock',
+        'The clock every wall inherits until it sets its own.',
+        `<div class="rows">` +
+          switchRow({
+            label: '24-hour clock',
+            name: 'clock_24',
+            checked: household.clock24 !== 0,
+            hint: 'Off shows a 12-hour clock (9:30 pm) on the wall; on shows 24-hour (21:30).',
+          }) +
+          `</div>` +
+          saveRow('admin/system'),
+      ) +
+      `</form>`
+    );
+  }
+
   function systemPage(c: Context, error?: string): string {
     const household = readHousehold(deps.db);
     const at = now();
@@ -2981,6 +3164,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           // here and not a ground.
           integrity.ok ? {} : { tone: 'danger' },
         ) +
+
+        wallDefaultsForm() +
 
         section(
           'Timezone',
@@ -3985,7 +4170,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the Default wall.', appearance, true) +
+      wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the wall defaults on System.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
       // Both switches, not just the alert one — this panel is now where every
@@ -4008,9 +4193,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * one now: its layout page, which carries the recipes link and Remove the
    * card used to (and which `/admin/walls/:id` sends a panel to). So every
    * card is the same object — a name, a kind tag, one status line, "Open" —
-   * and the grid composes, which three heights and three affordances never did. The
-   * dot rides the status line rather than the head so a card without one (the
-   * Default wall) keeps its name on the same edge as its neighbours'.
+   * and the grid composes, which three heights and three affordances never did.
+   *
+   * The Default wall is gone from the list altogether: it was a card for a row
+   * nothing is paired to and nothing draws, counted among a household's walls.
+   * The dot still rides the status line rather than the head, which is now what
+   * keeps a never-connected wall's name on the same edge as its neighbours'.
    *
    * `status` is already-escaped markup.
    */
@@ -4232,13 +4420,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const active = all.filter((screen) => screen.revokedAt === null);
     const revoked = all.length - active.length;
 
-    const defaultCard = wallCard(
-      'admin/walls/default',
-      'Default wall',
-      undefined,
-      'The layout every wall shows until it has one of its own',
-    );
-
     const cardFor = (screen: AdminScreenRow): string =>
       screen.kind === 'epaper' ? epaperListCard(screen, at) : displayListCard(screen, at);
 
@@ -4264,14 +4445,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // No app-bar action: see the Calendars page for the rule. The pairing
       // form is on this page, with the one filled Add wall.
       ...(active.length === 0
-        ? { intro: 'No walls paired yet. The Default wall below holds the layout a wall shows until you pair one and give it a layout of its own.' }
+        ? { intro: 'No walls paired yet. Add one below and it will start on the layout you pick for it.' }
         : {}),
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<div class="grid g2">` +
-        defaultCard +
-        active.map(cardFor).join('') +
-        `</div>` +
+        /*
+         * Every card here is a real, paired display. The Default wall used to
+         * lead the grid and was neither — nothing is paired to it and nothing
+         * draws it — so a household counting their walls counted one that does
+         * not exist. What it held is split: the settings every wall inherits are
+         * on System, and the canvas walls fell back to was copied onto them.
+         */
+        (active.length === 0 ? '' : `<div class="grid g2">` + active.map(cardFor).join('') + `</div>`) +
         (revoked === 0
           ? ''
           : `<p class="hint">${revoked} unpaired wall${revoked === 1 ? '' : 's'} kept ` +
@@ -4348,7 +4533,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Everything about that wall in one place — its status and pairing, the
    * layout editor for its canvas, and (for a real screen) its own settings. The
    * Default has no hardware, so no status or pairing; the household-wide stacked
-   * defaults still live on the Default wall's own page and are linked to from here.
+   * defaults live on System now and are linked to from here.
    */
   /**
    * One wall's editor: its identity, its layout, and its settings.
@@ -4365,10 +4550,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Device, then Save. On a phone nobody could tell which of the three they
    * were editing, and pairing sat beside the everyday tools as an equal.
    */
-  function displayDetailPage(ownerId: string | null, error: string | undefined, c: Context): string {
+  function displayDetailPage(ownerId: string, error: string | undefined, c: Context): string {
     const at = now();
     const household = readHousehold(deps.db);
-    const owner = ownerId === null ? null : activeScreens().find((s) => s.id === ownerId) ?? null;
+    /*
+     * A real, paired wall — never the shared household row.
+     *
+     * This took `string | null`, and `null` rendered the Default wall: the same
+     * page, the same editor, the same gallery, over a row nothing is paired to
+     * and nothing draws. That is retired. `?? null` survives for an id that has
+     * been unpaired since the page was linked, which the route ahead of this
+     * already redirects; the `owner?.x ?? household.x` reads below are the real
+     * per-wall inheritance and are untouched.
+     */
+    const owner = activeScreens().find((s) => s.id === ownerId) ?? null;
     const ownerKey = owner?.id ?? null;
 
     const mode = owner?.layoutMode ?? household.layoutMode;
@@ -4402,8 +4597,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * The e-paper panels drawing *this* canvas, for the ink lane's preview.
      *
      * `panelCanvasOwner` again, from the other side: a panel following this
-     * wall (or the Default wall, when that is what is open) is a screen whose
-     * canvas owner is this one. The first is the lane's preview target, since
+     * wall is a screen whose canvas owner is this one. The first is the lane's
+     * preview target, since
      * its `preview.png` renders any posted canvas at that panel's geometry.
      */
     const inkPanels = readAdminScreens(deps.db)
@@ -4478,7 +4673,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             ? `<b>Online</b>${owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`}`
             : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(owner.lastSeenAt, at))}`;
 
-    const ownerParam = owner === null ? 'default' : encodeURIComponent(owner.id);
+    const ownerParam = encodeURIComponent(owner?.id ?? '');
     const menuItems =
       (owner === null
         ? ''
@@ -4490,7 +4685,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="ovf-sep"></div>` +
       `<form method="post" action="admin/displays/${ownerParam}/reset-layout" ` +
       `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(
-        owner === null ? 'the Default wall' : owner.name,
+        owner?.name ?? 'this wall',
       )} to the Classic layout? Everything arranged here is replaced.">` +
       `<button class="ovf-item is-danger" type="submit">Reset layout…</button></form>` +
       (owner === null
@@ -4548,15 +4743,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const settingsPane =
       `<section class="mode" id="mode-settings" role="tabpanel" aria-labelledby="mode-tab-settings" ` +
       `data-mode-panel="settings"${startMode === 'settings' ? '' : ' hidden'}>` +
-      (owner === null ? defaultsForm() : wallSettingsForm(owner)) +
+      (owner === null ? '' : wallSettingsForm(owner)) +
       `</section>`;
 
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
-      title: `${owner ? owner.name : 'Default wall'} — Maverick Wall`,
+      title: `${owner?.name ?? 'Wall'} — Maverick Wall`,
       nav: 'walls',
-      heading: owner ? owner.name : 'Default wall',
+      heading: owner?.name ?? 'Wall',
       saved: readSaved(c),
       back: { label: 'Walls', href: 'admin/walls' },
       // The canvas is sized from the room its pane gives it, so this screen is
@@ -4621,13 +4816,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * show what a wall shows has `follow` for it, which keeps the two in step
    * instead of forking them.
    */
-  function templateGalleryPage(c: Context, owner: string | null, error?: string): string {
-    const screen = owner === null ? undefined : activeScreens().find((s) => s.id === owner);
+  function templateGalleryPage(c: Context, owner: string, error?: string): string {
+    // Always a real wall now. The gallery used to take `null` and title itself
+    // "Default wall", which is the shared household row — a thing with no
+    // screen, no size and nothing drawing it, offered a page of arrangements.
+    const screen = activeScreens().find((s) => s.id === owner);
     const panel = isEpaperOwner(owner) ? screen : undefined;
-    const ownerName = owner === null
-      ? 'Default wall'
-      : screen?.name ?? 'this wall';
-    const ownerParam = owner === null ? 'default' : encodeURIComponent(owner);
+    const ownerName = screen?.name ?? 'this wall';
+    const ownerParam = encodeURIComponent(owner);
     const catalogue = panel === undefined ? TEMPLATES : PANEL_TEMPLATES;
     // Relative, like every link here, so the single <base> carries it through
     // ingress; kind-aware for the reason `layoutUrl` is, one screen along.
@@ -4688,12 +4884,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * putting it on one bit is what `follow` is for, where the two stay in step
      * instead of forking on the first edit.
      */
-    const others = [
-      ...(owner === null || panel !== undefined ? [] : [{ id: null as string | null, name: 'Default wall' }]),
-      ...activeScreens()
-        .filter((s) => s.id !== owner && (panel === undefined || s.kind === 'epaper'))
-        .map((s) => ({ id: s.id as string | null, name: s.name })),
-    ];
+    /*
+     * Other real displays, and nothing else. The Default wall used to lead this
+     * list — a canvas with no screen behind it, offered as something to copy —
+     * and it is retired.
+     */
+    const others = activeScreens()
+      .filter((s) => s.id !== owner && (panel === undefined || s.kind === 'epaper'))
+      .map((s) => ({ id: s.id, name: s.name }));
     const copyFrom = others.length === 0
       ? ''
       : `<div class="tpl-copy"><div class="tpl-cat">Or copy another ${panel === undefined ? 'wall' : 'panel'}'s layout</div>` +
@@ -4705,7 +4903,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           optionsHtml: others
             .map(
               (o) =>
-                `<option value="${o.id === null ? 'default' : escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`,
+                `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`,
             )
             .join(''),
         }) +
@@ -4765,161 +4963,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         copyFrom +
         `<script type="module" src="assets/template-gallery.js"></script>`,
     });
-  }
-
-  /**
-   * The household's default appearance — theme, daylight schedule and density —
-   * shown as the Default wall's Wall settings. Every wall inherits these
-   * until it overrides them on its own page. Same categories as a wall's own
-   * settings, so the two read as one page with one of them missing its
-   * hardware. Weather lives on the Weather page now, not here.
-   */
-  function defaultsForm(): string {
-    const household = readHousehold(deps.db);
-    const custom = readThemes(deps.db);
-    const scheduled = household.daytimeTheme !== null && household.daytimeTheme !== '';
-
-    const themeOptions = (selected: string, includeNone: boolean): string =>
-      (includeNone
-        ? `<option value="none"${selected === '' ? ' selected' : ''}>The same theme all day</option>`
-        : '') +
-      THEMES.map(
-        (theme) =>
-          `<option value="${escapeHtml(theme.key)}"${theme.key === selected ? ' selected' : ''}>` +
-          `${escapeHtml(theme.label)}</option>`,
-      ).join('') +
-      custom
-        .map(
-          (theme) =>
-            `<option value="custom:${escapeHtml(theme.id)}"${`custom:${theme.id}` === selected ? ' selected' : ''}>` +
-            `${escapeHtml(theme.name)}</option>`,
-        )
-        .join('');
-
-    const number = (name: string, label: string, value: number, low: number, high: number, hint: string): string =>
-      textField({
-        label,
-        name,
-        type: 'number',
-        required: true,
-        value: String(value),
-        hint,
-        attrs: `inputmode="numeric" min="${low}" max="${high}"`,
-      });
-
-    // --- Appearance ------------------------------------------------------
-    const appearance =
-      wsetGroup(
-        'Theme',
-        `<p class="hint-1">How the layout looks — its colours and type. Panels separates ` +
-          `the shift colours best from across a room. Build your own on the ` +
-          `<a class="link" href="admin/themes">Themes</a> page.</p>` +
-          themeCards(displayThemeRef(household.theme), custom),
-      ) +
-      wsetGroup(
-        'Daylight',
-        `<div class="rows">` +
-          selectRow({
-            label: 'Daytime theme',
-            name: 'daytime_theme',
-            wide: true,
-            hint: 'A lighter theme during the hours below.',
-            optionsHtml: themeOptions(scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '', true),
-          }) +
-          // The window is ignored outright with no daytime theme set, so it is
-          // not drawn until there is one.
-          `<div class="rowsub" data-reveal-if="daytime_theme" data-reveal-empty="none"` +
-          `${scheduled ? '' : ' hidden'}>` +
-          `<div class="two-up"><div>` +
-          textField({
-            label: 'From',
-            name: 'daytime_starts_at',
-            type: 'time',
-            value: household.daytimeStartsAt ?? '07:00',
-          }) +
-          `</div><div>` +
-          textField({
-            label: 'Until',
-            name: 'daytime_ends_at',
-            type: 'time',
-            value: household.daytimeEndsAt ?? '21:00',
-          }) +
-          `</div></div></div>` +
-          `</div>` +
-          `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at ` +
-          `2am is a lamp.</p>`,
-      );
-
-    // --- Content defaults -------------------------------------------------
-    const content =
-      number('today_events', 'Events listed for today', household.displayTodayEvents, 1, 20,
-        'Anything past this is counted rather than listed.') +
-      number('next_days', 'Days an agenda looks ahead', household.displayNextDays, 0, 14,
-        'How many upcoming days a Calendar agenda can list.') +
-      number('horizon_weeks', 'Weeks in the month grid', household.displayHorizonWeeks, 1, 8,
-        'How many weeks a month Calendar draws. Five covers a month at a glance.') +
-      `<div class="rows">` +
-      selectRow({
-        label: 'Week starts on',
-        name: 'week_start',
-        hint: 'The left-hand column of the month grid, on every wall.',
-        optionsHtml:
-          `<option value="sunday"${household.weekStart !== 'monday' ? ' selected' : ''}>Sunday</option>` +
-          `<option value="monday"${household.weekStart === 'monday' ? ' selected' : ''}>Monday</option>`,
-      }) +
-      `</div>`;
-
-    // --- Device and time --------------------------------------------------
-    const device =
-      `<div class="rows">` +
-      switchRow({
-        label: '24-hour clock',
-        name: 'clock_24',
-        checked: household.clock24 !== 0,
-        hint:
-          'Off shows a 12-hour clock (9:30 pm) on the wall; on shows 24-hour (21:30). ' +
-          'Every wall inherits this until it sets its own.',
-      }) +
-      `</div>` +
-      `<p class="hint-1">The Default wall is not a paired device, so it has no name, ` +
-      `mounting or timezone of its own.</p>`;
-
-    return (
-      `<div class="wset" data-wset-root>` +
-      `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Default wall settings">` +
-      wsetRow('appearance', 'Appearance', 'Theme and daylight schedule', true) +
-      wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
-      wsetRow('device', 'Device and time', 'The household clock', false) +
-      wsetRow('advanced', 'Advanced', 'Templates and reset', false) +
-      `</nav>` +
-      `<div class="wset-panels">` +
-      `<form method="post" action="admin/display" data-settings>` +
-      wsetPanel('appearance', 'Appearance', 'The look every wall starts from. A wall can override any of it on its own page.', appearance, true) +
-      wsetPanel('content', 'Content defaults', 'How much the calendars show, on every wall that has not said otherwise.', content, false) +
-      wsetPanel('device', 'Device and time', 'The clock every wall inherits. The household timezone is on the System page.', device, false) +
-      `</form>` +
-      wsetPanel(
-        'advanced',
-        'Advanced',
-        'These act at once — they are not part of Save wall.',
-        `<div class="rows">` +
-          `<a class="arow" href="admin/displays/default/gallery"><span class="arow-text">Start from a template` +
-          `<small>Replace the default layout with one we ship, or copy a wall's.</small></span>` +
-          `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
-          `<a class="arow" href="admin/system"><span class="arow-text">Household timezone` +
-          `<small>${escapeHtml(household.timezone)} — set on the System page.</small></span>` +
-          `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
-          `<form method="post" action="admin/displays/default/reset-layout" ` +
-          `data-confirm="Reset both the portrait and landscape layouts of the Default wall ` +
-          `to the Classic layout? ` +
-          `Everything arranged here is replaced.">` +
-          `<button class="arow is-danger" type="submit"><span class="arow-text">Reset layout` +
-          `<small>Both orientations, back to the Classic layout.</small></span></button></form>` +
-          `</div>`,
-        false,
-      ) +
-      `</div></div>`
-    );
   }
 
   function sourceRow(

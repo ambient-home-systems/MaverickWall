@@ -190,18 +190,28 @@ describe('choosing what a panel draws', () => {
     expect(await etagOf(h, p.url)).not.toBe(followed);
   });
 
-  it('draws the Default display’s canvas when told to follow it', async () => {
+  it('refuses to follow the retired Default display, and changes nothing', async () => {
+    /*
+     * This asserted the opposite — that `follow:default` pointed a panel at the
+     * shared Default wall's canvas — and the reversal is the change. That row is
+     * retired: `layout_follows = NULL` with mode `follow` resolves to nothing at
+     * all now, so honouring the value would be a panel drawing its built-in view
+     * under a setting claiming otherwise, which is the "option that does
+     * nothing" fault this repository keeps paying for. Refused rather than
+     * quietly mapped to `builtin`, because a stale page asking for a wall that
+     * is gone should be told.
+     */
     const h = await harness();
-    await saveCanvas(h, null, [clock('d1', 0.05)]);
     const p = await panel(h, 'Landing');
     const builtIn = await etagOf(h, p.url);
-    await h.post(`${B}/admin/epaper/${p.id}/source`, { source: 'follow:default' });
-    expect(await etagOf(h, p.url)).not.toBe(builtIn);
+    const refused = await h.post(`${B}/admin/epaper/${p.id}/source`, { source: 'follow:default' });
+    expect(refused.status).toBe(400);
+    expect(await etagOf(h, p.url)).toBe(builtIn);
 
     const row = h.db
       .prepare(`SELECT layout_mode AS mode, layout_follows AS follows FROM screens WHERE id = ?`)
       .get(p.id) as { mode: string | null; follows: string | null };
-    expect(row).toEqual({ mode: 'follow', follows: null });
+    expect(row).toEqual({ mode: null, follows: null });
   });
 
   it('refuses to follow a display that is not there, and changes nothing', async () => {
@@ -360,10 +370,17 @@ describe('the panel’s design page while it follows', () => {
   it('offers the choice with the current one selected', async () => {
     const h = await harness();
     const p = await panel(h, 'Porch');
+    // A real wall to follow. The picker used to always carry the Default wall,
+    // so it had a follow option on a household with no walls at all.
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    const wallId = (
+      h.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string }
+    ).id;
     const html = await (await h.call(`${B}/admin/epaper/${p.id}/design`)).text();
     expect(html).toContain('What this panel draws');
     expect(html).toContain('value="builtin" selected');
-    expect(html).toContain('value="follow:default"');
+    expect(html).toContain(`value="follow:${wallId}"`);
+    expect(html, 'the retired Default wall is still offered').not.toContain('value="follow:default"');
   });
 });
 
@@ -390,14 +407,11 @@ describe('the ink lane in a wall’s editor', () => {
     expect(withPanel).toContain('Drop shadow');
 
     // And it is on the canvas the panel actually follows, not on every wall.
-    expect(await (await h.call(`${B}/admin/walls/default`)).text()).not.toContain('&quot;ink&quot;');
-  });
-
-  it('follows the Default display’s editor when that is what is followed', async () => {
-    const h = await harness();
-    const p = await panel(h, 'Porch');
-    await h.post(`${B}/admin/epaper/${p.id}/source`, { source: 'follow:default' });
-    expect(await (await h.call(`${B}/admin/walls/default`)).text()).toContain('&quot;ink&quot;');
+    await h.post(`${B}/admin/screens`, { name: 'Hallway' });
+    const other = (
+      h.db.prepare(`SELECT id FROM screens WHERE name = 'Hallway'`).get() as { id: string }
+    ).id;
+    expect(await (await h.call(`${B}/admin/walls/${other}`)).text()).not.toContain('&quot;ink&quot;');
   });
 });
 

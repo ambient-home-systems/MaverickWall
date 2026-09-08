@@ -10,7 +10,7 @@ import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
-import { backfillClassic, reseedClassicForSetUp } from './api/templates.js';
+import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
 import { householdSetUp } from './modules/index.js';
 import { createApp, MODULES } from './http/app.js';
 import { defaultDisplayDir } from './http/static.js';
@@ -246,6 +246,15 @@ async function main(): Promise<void> {
    * seeds. A wall somebody arranged matches nothing and is never written to.
    */
   reseedClassicForSetUp(db, setUp);
+  /*
+   * And retire the shared "Default wall" as something a household designs.
+   *
+   * After `backfillClassic` and the re-seed, so a wall that was about to be
+   * given Classic has it before this asks whether it has a canvas — otherwise
+   * this would copy the household's onto a wall the line above was going to
+   * seed properly a moment later. Guarded by its own column and runs once.
+   */
+  retireDefaultWall(db, setUp);
 
   const fetcher = createFetcher();
   const household = readHousehold(db);

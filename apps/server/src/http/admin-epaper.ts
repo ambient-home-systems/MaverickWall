@@ -93,7 +93,7 @@ const EPAPER_PRESETS: Record<string, { label: string; width: number; height: num
  *
  * One field rather than two, because the three answers are one decision and a
  * `<select>` is how a household makes it. `follow:` carries the wall it follows
- * — `default` for the Default display, otherwise a screen id, checked against
+ * — a screen id, checked against
  * the screens that actually exist before anything is written (the regex only
  * says it is *shaped* like an id, which is not the same as it being one).
  */
@@ -837,9 +837,19 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     // screen that never existed would draw the built-in layout with no
     // explanation anywhere.
     const target = choice.slice('follow:'.length);
+    /*
+     * `follow:default` used to point a panel at the shared Default wall, whose
+     * canvas is retired: `layout_follows = NULL` with mode `follow` now
+     * resolves to nothing at all, which would be a panel drawing its built-in
+     * view over a setting that claims otherwise — an option that does nothing.
+     * Refused rather than silently mapped to `builtin`, because a household
+     * (or a stale page) asking for a wall that is gone should be told.
+     */
     if (target === 'default') {
-      setPanelSource(deps.db, id, 'follow', null);
-      return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
+      return c.html(
+        epaperDesignPage(c, id, screen, 'The Default wall is gone — follow one of your own walls instead.'),
+        400,
+      );
     }
     /*
      * A panel pointed at itself is its own refusal, not a missing wall.
@@ -925,9 +935,18 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
    * about whose boxes they are — which is the failure this project keeps
    * finding whenever two places answer one question.
    */
-  const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] => {
+  /**
+   * This panel's authored canvas, or `undefined` when it has none.
+   *
+   * `undefined` rather than `[]`, because those are two different frames now:
+   * no canvas is the built-in view and an empty canvas is the Blank card. This
+   * returned `[]` for both while `renderScreenFrame` could not tell them apart
+   * either, which is exactly how one of them would have gone on drawing the
+   * other.
+   */
+  const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] | undefined => {
     const owner = panelCanvasOwner({ ...screen, id });
-    return owner === undefined ? [] : readLayoutWidgets(deps.db, owner, epaperOrientation(screen));
+    return owner === undefined ? undefined : readLayoutWidgets(deps.db, owner, epaperOrientation(screen));
   };
 
   /**
@@ -950,18 +969,27 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const screen = findEpaper(id);
     if (screen === undefined || deps.previewManifest === undefined) return c.body(null, 404);
     try {
-      const widgets = keepWidgetsWithSomethingToSay(
-        epaperWidgetsFor(id, screen),
-        householdSetUp(deps.db),
-      ).map((row) => ({
-        type: row.type,
-        x: row.x,
-        y: row.y,
-        w: row.w,
-        h: row.h,
-        z: row.z,
-        config: row.config !== null && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : {},
-      }));
+      /*
+       * "Exactly as the panel will" now includes which canvas state this panel
+       * is in, so this reads it the way the device endpoint does: `undefined`
+       * for no canvas, `[]` for one authored empty.
+       */
+      const authored = epaperWidgetsFor(id, screen);
+      const widgets =
+        authored === undefined
+          ? undefined
+          : keepWidgetsWithSomethingToSay(authored, householdSetUp(deps.db)).map((row) => ({
+              type: row.type,
+              x: row.x,
+              y: row.y,
+              w: row.w,
+              h: row.h,
+              z: row.z,
+              config:
+                row.config !== null && typeof row.config === 'object'
+                  ? (row.config as Record<string, unknown>)
+                  : {},
+            }));
       const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
       c.header('cache-control', 'no-store');
       return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
@@ -997,8 +1025,10 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
    * that never moves while you drag, which is the very fault this endpoint
    * exists to fix. That used to need an explicit `layoutMode: 'freeform'` on
    * the way in; `renderScreenFrame` now takes the widgets as the answer, so
-   * there is nothing to override. Posting an empty canvas still falls back to
-   * the built-in layout exactly as a saved empty one does.
+   * there is nothing to override. Posting an empty canvas draws the empty
+   * frame, exactly as a saved empty one does — a household who has deleted
+   * every box should see what that leaves rather than a view they cannot get
+   * back to by adding one.
    */
   app.post('/admin/epaper/:id/preview.png', async (c: Context) => {
     const id = c.req.param('id') ?? '';
@@ -1106,14 +1136,23 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const walls = readAdminScreens(deps.db).filter(
       (candidate) => candidate.id !== id && candidate.revokedAt === null && candidate.kind !== 'epaper',
     );
+    /*
+     * `null` used to mean the Default wall here. That canvas is retired, so a
+     * row still carrying it is following nothing — which reads as "a wall that
+     * is no longer there", because that is exactly what it is.
+     */
     const followedName =
-      followed === undefined
-        ? ''
-        : followed === null
-          ? 'the Default wall'
-          : (walls.find((w) => w.id === followed)?.name ?? 'a wall that is no longer there');
+      followed === undefined || followed === null
+        ? followed === undefined
+          ? ''
+          : 'a wall that is no longer there'
+        : (walls.find((w) => w.id === followed)?.name ?? 'a wall that is no longer there');
     const currentSource =
-      screen.layoutMode === 'freeform' ? 'own' : followed === undefined ? 'builtin' : `follow:${followed ?? 'default'}`;
+      screen.layoutMode === 'freeform'
+        ? 'own'
+        : followed === undefined || followed === null
+          ? 'builtin'
+          : `follow:${followed}`;
     const sourceOption = (value: string, label: string): string =>
       `<option value="${escapeHtml(value)}"${value === currentSource ? ' selected' : ''}>${escapeHtml(label)}</option>`;
     // No section-level help text: the one thing worth explaining is a
@@ -1130,7 +1169,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
           optionsHtml:
             sourceOption('builtin', 'Its built-in layout') +
             sourceOption('own', 'Its own layout') +
-            sourceOption('follow:default', "The Default wall's layout") +
             walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s layout`)).join(''),
           hint:
             // Escaped by `fieldWrap`, so the ampersand is written plainly here:
@@ -1169,9 +1207,11 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
             `<p class="hint">This panel follows <b>${escapeHtml(followedName)}</b>. Arrange it there — ` +
               `and use the <b>On ink</b> lane beside a widget to say less on this panel without changing ` +
               `that wall.</p>` +
-              `<p><a class="btn" href="admin/walls/${
-                followed === null ? 'default' : encodeURIComponent(followed)
-              }#layout">Open ${escapeHtml(followedName)}</a></p>`,
+              (followed === null
+                ? `<p><a class="btn" href="admin/walls">Pick a wall to follow</a></p>`
+                : `<p><a class="btn" href="admin/walls/${encodeURIComponent(followed)}#layout">Open ${escapeHtml(
+                    followedName,
+                  )}</a></p>`),
           );
 
     /*

@@ -90,11 +90,24 @@ async function harness() {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(fields).toString(),
     });
+  /*
+   * Every save names a wall now.
+   *
+   * These posted no `screen` and wrote the shared Default wall — the one place
+   * that fallback could *write*, and it is retired: a canvas belongs to a wall.
+   * The harness supplies `s1`, the same wall `manifestLayout` reads back
+   * through, so each test below is about a real display rather than a row no
+   * household has. A payload naming its own screen still names its own.
+   */
   const saveLayout = (payload: unknown) =>
     call('/admin/layout', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(
+        typeof payload === 'object' && payload !== null && !('screen' in payload)
+          ? { ...(payload as Record<string, unknown>), screen: 's1' }
+          : payload,
+      ),
     });
 
   await call(`/setup?token=${setupToken.current().token}`);
@@ -103,6 +116,15 @@ async function harness() {
     password: 'correct-horse-battery', confirm: 'correct-horse-battery',
   });
   await postForm('/setup/household', { timezone: 'Europe/London' });
+
+  // The wall every save below writes to and every manifest below reads back.
+  {
+    const at = Date.now();
+    db.prepare(
+      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+       VALUES ('s1','Wall','seed',?,?,?)`,
+    ).run(at, at, at);
+  }
 
   // The editor saves the portrait canvas (Phase 0), so that is where round-tripped
   // widgets land; the manifest carries both canvases.
@@ -181,7 +203,7 @@ describe('saving a layout', () => {
     expect(res.status).toBe(200);
 
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
     const byType = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.type, w.config]));
     expect(byType['calendar']).toEqual({
@@ -203,7 +225,7 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { id: string; config?: unknown }[] } } };
     const byId = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.id, w.config]));
     expect(byId['wk']).toEqual({ mode: 'week', calendars: ['fam'] });
@@ -232,7 +254,7 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
     const byType = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.type, w.config]));
     expect(byType['notes']).toEqual({ text: 'Grandma\nSunday' });
@@ -248,7 +270,7 @@ describe('saving a layout', () => {
     });
     expect(ok.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { background?: unknown } } };
     expect(layout.layout.portrait.background).toEqual({
       type: 'gradient', from: '#0B0E11', to: '#242D38', angle: 90,
@@ -283,7 +305,7 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { background?: unknown; widgets: { type: string; config?: unknown }[] } } };
     expect(layout.layout.portrait.background).toEqual({ type: 'image', image: name });
     expect(layout.layout.portrait.widgets[0]).toMatchObject({ type: 'image', config: { image: name } });
@@ -323,7 +345,7 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
     expect(layout.layout.portrait.widgets[0]?.config).toEqual({ target: '2026-12-25', title: 'Christmas' });
   });
@@ -337,7 +359,7 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { type: string; config?: unknown }[] } } };
     expect(layout.layout.portrait.widgets[0]).toMatchObject({ type: 'external', config: { module: 'abc123' } });
   });
@@ -363,7 +385,7 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { id: string; config?: unknown }[] } } };
     expect(layout.layout.portrait.widgets[0]?.config).toEqual({
       people: ['amy', 'ben'],
@@ -398,7 +420,7 @@ describe('saving a layout', () => {
     });
     expect(res.status).toBe(200);
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { id: string; config?: unknown }[] } } };
     const byId = Object.fromEntries(layout.layout.portrait.widgets.map((w) => [w.id, w.config]));
     expect(byId['ck']).toEqual({ clockFormat: '12', showDate: false });
@@ -444,7 +466,7 @@ describe('saving each orientation on its own (RFC 005)', () => {
     });
 
     const layout = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as {
       layout: {
         portrait: { aspect: number; widgets: { type: string }[] };
@@ -462,7 +484,7 @@ describe('saving each orientation on its own (RFC 005)', () => {
       widgets: [{ id: 'p2', type: 'weather', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
     });
     const after = (await (
-      await h.call('/admin/layout/preview.json')
+      await h.call('/admin/layout/preview.json?screen=s1')
     ).json()) as { layout: { portrait: { widgets: { type: string }[] }; landscape: { widgets: { type: string }[] } } };
     expect(after.layout.portrait.widgets.map((w) => w.type)).toEqual(['weather']);
     expect(after.layout.landscape.widgets.map((w) => w.type)).toEqual(['calendar']);
@@ -483,7 +505,7 @@ describe('the editor preview manifest', () => {
     const h = await harness();
     await h.saveLayout(validLayout);
 
-    const res = await h.call('/admin/layout/preview.json');
+    const res = await h.call('/admin/layout/preview.json?screen=s1');
     expect(res.status).toBe(200);
     const manifest = (await res.json()) as {
       layout: { mode: string; portrait: { widgets: { type: string }[] } };
@@ -497,7 +519,7 @@ describe('the editor preview manifest', () => {
 
   it('is not served without a session', async () => {
     const h = await harness();
-    const res = await h.getBare('/admin/layout/preview.json');
+    const res = await h.getBare('/admin/layout/preview.json?screen=s1');
     expect([302, 401]).toContain(res.status);
   });
 });
@@ -545,7 +567,7 @@ describe('what the boundary refuses', () => {
 });
 
 describe('a per-wall layout', () => {
-  it('is drawn by that wall, while another inherits the default', async () => {
+  it('is drawn by that wall, and saving it leaves another wall alone', async () => {
     const h = await harness();
     const at = Date.now();
     const tokens: Record<string, string> = {};
@@ -560,9 +582,14 @@ describe('a per-wall layout', () => {
         .run(id, name, issued.tokenHash, at, at, at);
     }
 
-    // Default: a clock. wA (Kitchen): its own calendar. wB (Hall): left alone.
+    /*
+     * Two walls, each with a canvas of its own. There is no shared default to
+     * inherit any more — that row was retired, and every wall is seeded when it
+     * is paired — so what this proves is the half that still matters: a save
+     * addressed at one wall reaches that wall and no other.
+     */
     await h.saveLayout({
-      screen: null, mode: 'freeform', aspect: 0.5625,
+      screen: 'wB', mode: 'freeform', aspect: 0.5625,
       widgets: [{ id: 'd', type: 'clock', x: 0.05, y: 0.05, w: 0.4, h: 0.15, z: 0 }],
     });
     await h.saveLayout({
@@ -578,7 +605,7 @@ describe('a per-wall layout', () => {
     const kitchen = await manifestFor(tokens['wA']!);
     const hall = await manifestFor(tokens['wB']!);
 
-    // The Kitchen draws its own calendar; the Hall, untouched, draws the default.
+    // Each draws its own, and neither save reached the other.
     expect(kitchen.layout.portrait.widgets.map((w) => w.type)).toEqual(['calendar']);
     expect(hall.layout.portrait.widgets.map((w) => w.type)).toEqual(['clock']);
   });

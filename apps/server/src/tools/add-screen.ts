@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { openAndMigrate } from '../db/bootstrap.js';
 import { formatShortCode, hashShortCode, issueDisplayToken, PAIRING_CODE_TTL_MS } from '../auth/tokens.js';
 import { createScreen } from '../api/queries.js';
+import { applyTemplate, classicSeed } from '../api/templates.js';
+import { householdSetUp } from '../modules/index.js';
 
 /**
  * Pair a screen from the command line.
@@ -85,6 +87,18 @@ createScreen(db, id, name, {
   pairingCodeHash: hashShortCode(issued.shortCode),
   pairingCodeExpiresAt: Date.now() + PAIRING_CODE_TTL_MS,
 });
+/*
+ * And seed it, exactly as the admin's own doors do.
+ *
+ * This tool created a screen with no canvas and left it drawing the shared
+ * Default wall's — which is why the omission was invisible for as long as that
+ * row existed. It is retired now, so a wall with no canvas of its own draws
+ * "Nothing on this wall yet." and stays that way: `backfillClassic` runs once
+ * per database and has long since run on any install where somebody reaches
+ * for a shell. Classic rather than a choice, because a CLI pairing is a shell
+ * and the wall's own page is where a household picks something else.
+ */
+applyTemplate(db, id, classicSeed(db, id, householdSetUp(db)));
 
 const port = process.env['PORT'] ?? '8080';
 

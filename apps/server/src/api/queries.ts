@@ -331,6 +331,14 @@ export function panelCanvasOwner(screen: {
  * Theme is deliberately not here: it is already resolved per screen further
  * along, in the manifest's `screen` block, and doing it twice would only
  * confuse which layer owns it.
+ *
+ * **`layoutOwner: null` is a belt now, not a mechanism.** It used to be the
+ * common case — a wall with no canvas drew the shared Default wall's — and that
+ * canvas is retired: `retireDefaultWall` copied it onto every screen that was
+ * inheriting it, and every path that creates a screen seeds one. So a screen
+ * reaching this branch is a row nothing in this codebase writes. The household's
+ * own widgets are left in place rather than deleted precisely so that row still
+ * draws something if one ever appears, which is rule nine and costs nothing.
  */
 export function effectiveDisplay(
   household: HouseholdRow,

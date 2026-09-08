@@ -37,8 +37,23 @@ after pairing; they are on the add page too, which is where you are likely to
 know them. Say a wall is a 32" television and it is laid out for a 32"
 television straight away, with no border down the sides.
 
-Nothing you already have changes: an existing wall or panel keeps its layout,
-its size and the way it is hung.
+**You can start from a blank layout.** Every layout on offer used to be
+somebody else's arrangement, so building your own meant picking the nearest one
+and deleting its boxes. "Blank" is the first choice now, on both browser walls
+and e-paper panels — an empty wall to put your own widgets on. It leaves your
+theme alone.
+
+**The "Default wall" is gone.** It was two things wearing one name: the settings
+every wall starts from, and a layout a wall showed until it had one of its own.
+It sat in your list of walls as though it were a screen, and it never was —
+nothing pairs to it and nothing displays it. The settings moved to **System**,
+under Wall appearance, Wall content and Wall clock, and every wall now simply
+has its own layout, chosen when you pair it.
+
+Nothing you already have changes. An existing wall or panel keeps its layout,
+its size and the way it is hung — including a wall that was showing the Default
+wall's layout, which now has that layout as its own and can be rearranged
+without affecting anything else.
 
 ## 0.60.0
 

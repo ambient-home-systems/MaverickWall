@@ -94,7 +94,20 @@ async function harness() {
   });
   await form('/setup/household', { timezone: 'Europe/London' });
 
-  return { db, call, form, keyring };
+  /**
+   * A real paired wall, for the pages that need one.
+   *
+   * These used to reach for `/admin/walls/default` — the shared Default wall,
+   * the one wall that existed without pairing anything. It is retired, so a
+   * test about a wall's page has to have a wall.
+   */
+  const pairedWallId = async (name = 'Kitchen'): Promise<string> => {
+    const made = await form('/admin/screens', { name });
+    const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1];
+    if (id === undefined) throw new Error('pairing did not redirect to a wall');
+    return decodeURIComponent(id);
+  };
+  return { db, call, form, keyring, pairedWallId };
 }
 
 /** The strip's markup, if the page carries one. */
@@ -478,7 +491,7 @@ describe('the confirmation strip', () => {
      * fetch and run the module on the two heaviest pages in the admin for
      * nothing.
      */
-    const editor = await (await h.call('/admin/walls/default')).text();
+    const editor = await (await h.call(`/admin/walls/${await h.pairedWallId()}`)).text();
     expect(editor).toContain('data-dirty-flag');
     expect(editor, 'nothing here for it to wire').not.toContain('assets/settings-form.js');
     // A page with neither, for the other direction.

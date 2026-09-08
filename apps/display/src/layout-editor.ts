@@ -523,13 +523,25 @@ function boot(): void {
 
   const hint = document.createElement('p');
   hint.className = 'hint';
-  // What an empty canvas actually means, which differs by screen kind — and on
-  // neither kind is it "blank". The old wording promised the stacked layout,
-  // which was retired with the auto mode in 0.27.0.
+  /*
+   * What an empty canvas actually means, and it is now the same on both kinds.
+   *
+   * It has been wrong twice, in opposite directions. The first wording promised
+   * the stacked layout, retired with the auto mode in 0.27.0. The second
+   * promised a panel would draw its built-in view — true then, and false since
+   * an authored-empty canvas became its own frame: `renderScreenFrame` tells
+   * `undefined` (no canvas) from `[]` (an empty one), which is what lets a
+   * Blank card differ from the Built-in above it. A panel with nothing placed
+   * now says the same short note a wall does, so this says so once.
+   *
+   * Getting back to the built-in view is Reset, not deletion — it clears the
+   * canvas rather than emptying it — and the sentence names it, because that
+   * is the question somebody looking at an empty editor is about to ask.
+   */
   hint.textContent = epaperHost
-    ? 'Nothing is placed yet — this panel draws its built-in layout, which is ' +
-      'what you see here. Add a widget to start from an empty canvas, or pick ' +
-      'Built-in under Templates to start from this arrangement.'
+    ? 'Nothing is placed yet — add a widget above. Until you do, this panel ' +
+      'shows a short note in place of a layout. To go back to the view it drew ' +
+      'out of the box, use Reset layout.'
     : 'Nothing is placed yet — add a widget above. Until you do, the wall ' +
       'shows a short note in place of a layout rather than going blank.';
 

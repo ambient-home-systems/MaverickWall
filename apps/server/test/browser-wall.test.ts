@@ -912,9 +912,13 @@ describe('4 · the editor, driven', () => {
      * describes it: **a household who put a Weather box on a wall with no
      * location**, which is what applying Classic here is.
      */
-    applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
+    // A real paired wall, since the shared Default one is retired — and it is
+    // the object this test is about anyway: a household who put a Weather box
+    // on a wall with no location.
+    const id = await wall.pairWall('Editor wall');
+    applyTemplate(wall.db, id, CLASSIC_TEMPLATE);
     await wall.signIn(page);
-    await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+    await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(id)}`, { waitUntil: 'load' });
     await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
   }
 

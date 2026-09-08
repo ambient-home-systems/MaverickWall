@@ -678,19 +678,22 @@ describe('the ink lane', () => {
        * see it: that file checks the tables against the renderer, never the
        * editor against the tables.
        *
-       * The wall here is the household default, because that is what a panel
-       * can be told to follow.
+       * The wall here is a real paired one. It used to be the household
+       * default, on the argument that "that is what a panel can be told to
+       * follow" — which stopped being true when that row was retired: a panel
+       * follows a wall the household actually has.
        */
+      const wallId = await wall.pairWall('Kitchen');
       await wall.post('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
       const panel = wall.db
         .prepare("select id from screens where kind = 'epaper' limit 1")
         .get() as { id: string } | undefined;
       expect(panel?.id, 'no e-paper panel was created, so the lane cannot be tested').toBeTruthy();
-      await wall.post(`/admin/epaper/${panel?.id ?? ''}/source`, { source: 'follow:default' });
+      await wall.post(`/admin/epaper/${panel?.id ?? ''}/source`, { source: `follow:${wallId}` });
 
-      // A compact month on the *default* wall's landscape canvas — the one the
-      // panel above draws, since the lane picks its panel by orientation.
-      replaceLayout(wall.db, null, 'landscape', {
+      // A compact month on that wall's landscape canvas — the one the panel
+      // above draws, since the lane picks its panel by orientation.
+      replaceLayout(wall.db, wallId, 'landscape', {
         mode: 'freeform',
         aspect: 1.7778,
         widgets: [
@@ -712,7 +715,7 @@ describe('the ink lane', () => {
       try {
         const editor = await context.newPage();
         await wall.signIn(editor);
-        await editor.goto(`${wall.base}/admin/walls/default`, { waitUntil: 'load' });
+        await editor.goto(`${wall.base}/admin/walls/${encodeURIComponent(wallId)}`, { waitUntil: 'load' });
         await editor.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
         await editor.click('.le-orient-btn:has-text("Landscape")');
         await editor.waitForTimeout(250);
