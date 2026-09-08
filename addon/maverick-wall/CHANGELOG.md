@@ -16,6 +16,30 @@
 
 ## Unreleased
 
+**Adding a wall and adding an e-paper panel now work the same way.** They did
+not: a browser wall was a name box on the Walls page and then straight to a QR
+code, while a panel had a page of its own asking what size it is and which way
+up. Both are pages now, and both ask the same four things in the same order —
+what to call it, what the hardware is, which layout to start from, and then the
+pairing step. "Pair a new wall" and "Add an e-paper wall" sit next to each other
+on the Walls page.
+
+**You can pick the layout before you pair it.** Every starting layout is on the
+add page now, so a new wall or panel opens on the one you chose rather than on
+the one it was given. A panel's list begins with **Built-in** — the view it
+draws out of the box, which fits itself to the panel — and "Built-in, as boxes"
+below it is that same view as widgets you can move. You can still preview all of
+them, and change your mind, from Templates afterwards.
+
+**And a wall can be told how big it is while you are standing in front of it.**
+The wall size and reading distance used to be on a settings page you reached
+after pairing; they are on the add page too, which is where you are likely to
+know them. Say a wall is a 32" television and it is laid out for a 32"
+television straight away, with no border down the sides.
+
+Nothing you already have changes: an existing wall or panel keeps its layout,
+its size and the way it is hung.
+
 ## 0.60.0
 
 **E-paper panels have their own layouts to start from.** Pressing Templates on

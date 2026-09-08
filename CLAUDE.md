@@ -423,8 +423,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2904 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 484 · server 1953. CI runs the whole suite and then the README's
+**2925 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 484 · server 1974. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -753,6 +753,74 @@ exempts the Chores card, because this fixture defines no chores and
 `keepWidgetsWithSomethingToSay` correctly drops an empty board; its *calendar*
 still has to draw, since an exemption covering the whole card would excuse a
 broken one.
+
+**Adding a wall and adding a panel were two journeys for one act, and they are
+one shape now.** A browser wall was a single name field in a section of the
+Walls list, straight to a QR; an e-paper panel was a page of its own asking for
+a panel size and a rotation. So the *commoner* journey asked for the least, at
+the one moment a household is standing in front of the hardware with its size in
+their hand — and neither asked the thing the whole layout system is about, which
+is where the arrangement starts from. Both are pages now and both ask **name →
+what the hardware is → where the layout starts → pair**: `/admin/walls/new`
+beside `/admin/epaper`, with the Walls list carrying two links rather than one
+form and one link. The form moved rather than growing in place because
+`epaperPage`'s own docstring is the argument for it — the e-paper form was kept
+off the Walls list since "the size presets and rotation picker ... would
+otherwise crowd the pairing form every household sees", and that did not stop
+being true when the pairing form grew the same controls.
+
+**Every new field is optional and every absence is exactly the answer the
+one-field form gave**, which is what makes this a widening rather than a change:
+no size is three nulls and a wall that draws as it always has, no rotation is
+`0`, and no template is Classic — what seeding already gave every new wall. A
+body carrying nothing but a name creates the wall it created before, which half
+the suite depends on because half the suite posts it.
+
+**The panel's default writes nothing, and that is the point rather than a
+shortcut.** "Built-in" is deliberately not `panel-built-in`: a panel with no
+canvas draws `renderEpaper`, whose every measurement is arithmetic on the panel
+(`epaper/metrics.ts`), where the card is stored fractions approximating it and
+says so at the top of its own file. Writing nothing is also the state **Reset**
+returns a panel to, so "leave it as it is" at creation and "put it back" later
+are one state rather than two that look alike. The card is still in the list
+under it, renamed **"Built-in, as boxes"** — two options both reading "Built-in"
+is a choice nobody can make.
+
+**The write order is the whole reason the wall's page can ask for a size at
+all.** `seedAspects` — `ownerPanelAspects`, exported, because seeding is not
+only Classic's any more — reads the millimetre columns off the row it is
+seeding, so the hardware facts are written *before* the canvas: a wall told it
+is a 13.3" panel is seeded at its own aspect with no letterbox. The other way
+round it reads three nulls, seeds the card's nominal 9:16, and the size the
+household just gave starts mattering only after a Reset they have no reason to
+press. `panelPixelAspects` came out of `admin.ts` as its e-paper twin — two
+functions rather than one, because a wall's shape is an optional physical
+measurement and a panel's is its resolution, which is not optional and not a
+claim — so the gallery and the add form cannot put one card's boxes in two
+places.
+
+**Two catalogues, two lookups, one step earlier.** A hand-posted
+`panel-built-in` at `/admin/screens` is a 400 and a hand-posted `sky-week` at
+`/admin/epaper` is a 400, for the reason `apply-template` already gives: the
+form is a convenience and the POST is the boundary.
+
+**Three faults came out of it and all three were found by a test rather than by
+reading.** `admin-vocabulary` caught the new copy twice in one run — "showing
+Maverick Wall full screen" reintroduces a retired noun, and "arrangements you
+can move" is a second word for a layout, both written by somebody who had read
+the rules and was describing a thing rather than naming it. And the wall's
+echo-on-400 assertion **was reached by only one of the two branches it claimed**:
+`panel_width_mm: 'three hundred'` is thirteen characters against an
+`optionalText(6)`, so it was refused by the *schema* and never touched
+`resolveWallSize` at all — dropping the echo from the size branch left the file
+green. A width of `'abc'` fits the shape and fails the meaning, which is the
+only way into the second branch, and both are cases now. Twelve mutations were
+checked against `add-display-parity.test.ts` and all twelve are red.
+
+**Still unproven where it counts:** nobody has added a wall or a panel through
+either page on a real phone or in a real supervisor's sidebar, which by this
+project's history is where the next fault in a form actually surfaces. The
+measurements are the real app with a real session and a real database.
 
 **The widget inspector had two faults, and the first was a fix causing the thing
 it prevented.** `admin-seg-labels.test.ts` records a segmented control that drew

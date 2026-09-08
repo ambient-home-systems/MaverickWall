@@ -993,6 +993,51 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
   );
 }
 
+/**
+ * The facts about the hardware a screen is, written on their own.
+ *
+ * The add pages collect the mounting and the physical size *before* a screen
+ * has a name to change, a theme to inherit or a density to override, so they
+ * need a writer that touches those four columns and nothing else.
+ * `writeScreenSettings` is the settings form's, and it writes the whole row —
+ * calling it here would mean inventing values for a dozen fields the household
+ * has not been asked about yet, and every one of those inventions would be a
+ * default this code, rather than the settings page, had chosen.
+ *
+ * Null is a real answer on the three millimetre columns and means "not
+ * measured", exactly as it does everywhere else: a wall with no size draws as
+ * it always has (`physicalWall` refuses two of three), so an add form somebody
+ * skipped writes three nulls rather than a guess.
+ */
+export function writeScreenHardware(
+  db: SqliteDatabase,
+  id: string,
+  hardware: {
+    readonly rotation: number;
+    readonly panelWidthMm: number | null;
+    readonly panelHeightMm: number | null;
+    readonly readDistanceMm: number | null;
+  },
+): boolean {
+  return (
+    db
+      .prepare(
+        `UPDATE screens
+            SET rotation = ?, panel_width_mm = ?, panel_height_mm = ?,
+                read_distance_mm = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(
+        hardware.rotation,
+        hardware.panelWidthMm,
+        hardware.panelHeightMm,
+        hardware.readDistanceMm,
+        Date.now(),
+        id,
+      ).changes > 0
+  );
+}
+
 /** A new token for an existing screen. The old one stops working at once. */
 /**
  * Create a screen, unpaired but for its freshly issued token.

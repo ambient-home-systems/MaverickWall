@@ -33,6 +33,7 @@ import {
   writeDisplaySettings,
   rotateScreenToken,
   writeScreenSettings,
+  writeScreenHardware,
   type AdminScreenRow,
   type AdminSourceRow,
   type PairingSecret,
@@ -83,8 +84,9 @@ import {
   classicSeed,
   copyLayout,
   findTemplate,
+  panelPixelAspects,
+  seedAspects,
   type DisplayTemplate,
-  type TemplateAspects,
 } from '../api/templates.js';
 import { TEMPLATES, PANEL_TEMPLATES, findPanelTemplate } from '../templates/index.js';
 import {
@@ -111,7 +113,7 @@ import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, ic
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
 import { readSaved, savedRedirect } from './saved.js';
-import { bounded, checkbox, colour, oneOf, optionalText, parse, text, z } from '../validation.js';
+import { bounded, checkbox, colour, oneOf, optionalText, parse, quarterTurn, text, z } from '../validation.js';
 
 /**
  * One schema per form, stated where the constants they lean on are.
@@ -214,12 +216,11 @@ const personBody = z.object({
 const screenBody = z.object({
   name: text('A name for the wall', 80),
   orientation: oneOf('an orientation', ['auto', 'portrait', 'landscape']),
-  rotation: z
-    .unknown()
-    .refine((value) => ['0', '90', '180', '270'].includes(String(value)), {
-      error: () => 'Rotation has to be a quarter turn.',
-    })
-    .transform((value) => Number(value)),
+  // Required here, unlike the add pages': this form always renders the control,
+  // so a body that has lost it is a broken client rather than a household
+  // asking for the default, and taking it as `0` would silently stand a wall
+  // that is hung sideways back up.
+  rotation: quarterTurn(),
   // A built-in key or a `custom:<id>`; blank follows the household. Wide enough
   // for `custom:` + a 16-char id. Existence is checked in the handler.
   theme: optionalText(64),
@@ -251,8 +252,37 @@ const screenBody = z.object({
   read_distance_mm: optionalText(6),
 });
 
-/** Creating a screen asks for one thing; everything else follows the household. */
-const newScreenBody = z.object({ name: text('A name for the wall', 80) });
+/**
+ * Creating a wall: its name, the two facts about the hardware, and where its
+ * layout starts from.
+ *
+ * It used to ask for the name alone, and everything a household could say
+ * about a wall lived on a settings page they reached *after* pairing it — so
+ * adding a browser wall and adding an e-paper panel were two different
+ * journeys for one act, and the browser one asked for less than it needed at
+ * the moment the household was standing in front of the thing with its size in
+ * their hand.
+ *
+ * **Every new field is optional and absence is exactly today's answer**, which
+ * is what keeps this a widening rather than a change: no size (three nulls,
+ * and the wall draws as it always has), no rotation (`0`), no template
+ * (Classic, which is what seeding already gave it). A body carrying only a
+ * name still creates the wall it created before, byte for byte.
+ *
+ * The four size fields keep the settings form's own names, because
+ * `resolveWallSize` is the one place they become one answer and a second set
+ * of names would be a second reading of them.
+ */
+const newScreenBody = z.object({
+  name: text('A name for the wall', 80),
+  rotation: quarterTurn(0),
+  panel_size: optionalText(20),
+  panel_width_mm: optionalText(6),
+  panel_height_mm: optionalText(6),
+  read_distance_mm: optionalText(6),
+  /** A template id; blank is Classic. Membership is checked in the handler. */
+  template: optionalText(64),
+});
 
 
 /**
@@ -1939,6 +1969,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // `/admin/walls` is the one list and the one canonical route now (RFC 009
   // Phase 4) — its status, pairing, settings and layout.
   app.get('/admin/walls', (c: Context) => c.html(displaysPage(c)));
+  /*
+   * Declared ahead of `/admin/walls/:id`, for the reason the approve route
+   * states one screen along: a static segment must come before the param that
+   * would otherwise swallow it. Here the swallow is silent rather than loud —
+   * `:id` redirects an id it does not recognise to the Walls list, so "new"
+   * would bounce off the list instead of 404ing.
+   */
+  app.get('/admin/walls/new', (c: Context) => c.html(newWallPage(c)));
   app.get('/admin/walls/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
     if (id === 'default') return c.html(displayDetailPage(null, undefined, c));
@@ -2188,21 +2226,79 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * account exists, but it is no longer the only door.
    */
   app.post('/admin/screens', async (c: Context) => {
-    const shaped = parse(newScreenBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(displaysPage(c, shaped.message), 400);
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(newScreenBody, body);
+    // Back to the add page carrying what was typed, never to the Walls list:
+    // a refusal that renders a different page has thrown the answer away along
+    // with the question.
+    if (!shaped.ok) return c.html(newWallPage(c, shaped.message, body), 400);
+
+    /*
+     * Three fields, one answer, and the rotation is an input to it — a preset's
+     * numbers are the panel's own way up and the columns hold the wall's. The
+     * same pure function the settings form calls, so a size entered here and a
+     * size entered there cannot resolve differently.
+     */
+    const size = resolveWallSize(
+      {
+        size: shaped.value.panel_size,
+        widthMm: shaped.value.panel_width_mm,
+        heightMm: shaped.value.panel_height_mm,
+        distanceMm: shaped.value.read_distance_mm,
+      },
+      shaped.value.rotation,
+    );
+    if (!size.ok) return c.html(newWallPage(c, size.message, body), 400);
+
+    /*
+     * A wall may start from any wall template, and from no other list — the
+     * gallery's own rule (`apply-template`), which exists because one lookup
+     * shared with the panels would let a hand-posted `panel-built-in` put a
+     * 1-bit arrangement on a colour wall. Blank is Classic, which is what
+     * seeding gave every new wall before this form offered a choice.
+     */
+    const wanted = shaped.value.template ?? 'classic';
+    const template = findTemplate(wanted);
+    if (template === undefined) {
+      return c.html(newWallPage(c, 'That starting layout is not one we ship.', body), 400);
+    }
 
     const issued = issueDisplayToken();
     const id = randomBytes(6).toString('hex');
     createScreen(deps.db, id, shaped.value.name, pairingSecret(issued));
-    // Seed the new screen with Classic, so it opens on the standard kitchen
-    // calendar the household can rearrange — never a blank editor.
-    //
-    // `classicSeed`, not the fully-equipped Classic: a canvas is absolutely
-    // positioned, so a box for something the household has not set up is not a
-    // placeholder, it is a hole the manifest leaves behind when it drops it.
-    // Seeding is the one moment adapting to that — and to the screen's own panel
-    // aspect — is safe, so it happens here.
-    applyTemplate(deps.db, id, classicSeed(deps.db, id, householdSetUp(deps.db)));
+    /*
+     * The hardware facts first, then the canvas — and that order is the whole
+     * reason this page can ask for a size at all.
+     *
+     * `seedAspects` reads the millimetre columns off the row it is seeding, so
+     * a wall told it is a 32" television gets a canvas at *its* aspect and no
+     * letterbox; written the other way round it would read three nulls and seed
+     * the card's nominal 9:16, and the size would only start mattering after a
+     * Reset somebody has no reason to press.
+     */
+    writeScreenHardware(deps.db, id, {
+      rotation: shaped.value.rotation,
+      panelWidthMm: size.widthMm,
+      panelHeightMm: size.heightMm,
+      readDistanceMm: size.distanceMm,
+    });
+    /*
+     * Seed the new screen, so it opens on a real arrangement the household can
+     * rearrange — never a blank editor.
+     *
+     * Classic resolves through `classicSeed`, not the fully-equipped Classic: a
+     * canvas is absolutely positioned, so a box for something the household has
+     * not set up is not a placeholder, it is a hole the manifest leaves behind
+     * when it drops it. Every other card is seeded as authored, at this
+     * screen's own aspect — the gallery hands walls `undefined` there because a
+     * card applied later is not a seed, and this is.
+     */
+    applyTemplate(
+      deps.db,
+      id,
+      template.id === 'classic' ? classicSeed(deps.db, id, householdSetUp(deps.db)) : template,
+      seedAspects(deps.db, id),
+    );
     // Shown on the page the redirect lands on, not here: a POST's own answer
     // is a page a reload resubmits (a second wall) and Back cannot return to.
     reveals.put(id, issued, now());
@@ -2406,13 +2502,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * back on the first save. Orientation-independent, because a quarter turn
    * cannot change long/short.
    */
-  const panelAspects = (screen: AdminScreenRow): TemplateAspects => {
-    const w = screen.panelWidth ?? 800;
-    const h = screen.panelHeight ?? 480;
-    const long = Math.max(w, h);
-    const short = Math.min(w, h);
-    return { portrait: short / long, landscape: long / short };
-  };
 
   /** The layout view of a wall's page, where apply/copy/reset return to.
    *  Kind-aware: an e-paper panel goes back to its design page — sending it to
@@ -2474,7 +2563,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       template.id === 'classic' ? classicSeed(deps.db, owner, householdSetUp(deps.db)) : template,
       // A panel's canvas is written at the panel's own shape, never the card's
       // nominal one — `TemplateAspects` carries why.
-      panel === undefined ? undefined : panelAspects(panel),
+      panel === undefined ? undefined : panelPixelAspects(panel),
     );
     return savedRedirect(c, layoutUrl(owner), 'layout-template-applied');
   });
@@ -3978,6 +4067,160 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * The add-a-wall page: name it, say what it is, and say where its layout
+   * starts — then pair it.
+   *
+   * It used to be a name field in a section on the Walls list, and adding an
+   * e-paper panel was a page of its own asking for a size, a rotation and
+   * (since the panel gallery) a starting view. Two doors of very different
+   * shapes onto one act, and the browser one asked for the least at the one
+   * moment the household is standing in front of the hardware. The two are one
+   * shape now: **name, what it is, where its layout starts, then the pairing
+   * step** — this page and `epaperPage` in `admin-epaper.ts` are deliberate
+   * mirrors, and `test/add-display-parity.test.ts` reads both and holds them to
+   * it.
+   *
+   * Moved off the Walls list rather than grown in place, and the reason is
+   * written down one file along: `epaperPage`'s own docstring says the e-paper
+   * form was kept on its own route because "the size presets and rotation
+   * picker ... would otherwise crowd the pairing form every household sees".
+   * That argument did not stop being true when the pairing form grew the same
+   * controls.
+   *
+   * **Everything but the name is optional and every absence is the answer the
+   * old one-field form gave**, which is what makes this safe for a household
+   * who just wants a wall: no size is no size, no rotation is none, and no
+   * template is Classic — the arrangement seeding already gave every new wall.
+   *
+   * `echo` is the submitted body, handed back on a 400. A form re-rendered
+   * from nothing is the Weather screen's fault (a typed measurement thrown away
+   * by the error message about it), and it costs more here than it did there
+   * because there are five fields to lose rather than one.
+   */
+  function newWallPage(c: Context, error?: string, echo?: Record<string, unknown>): string {
+    const said = (key: string): string => {
+      const value = echo?.[key];
+      return typeof value === 'string' ? value : '';
+    };
+    const option = (value: string, label: string, selected: boolean): string =>
+      `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    // Blank is "Not set" and is the default: a wall nobody has measured draws
+    // exactly as this product has always drawn it.
+    const size = said('panel_size');
+    const rotation = said('rotation') === '' ? '0' : said('rotation');
+    // Classic when nothing was said, which is what seeding gives anyway.
+    const template = said('template') === '' ? 'classic' : said('template');
+    const sizeChosen = [...WALL_SIZE_PRESETS.map((one) => one.key), WALL_SIZE_CUSTOM].join(' ');
+
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Pair a new wall — Maverick Wall',
+      nav: 'walls',
+      heading: 'Pair a new wall',
+      saved: readSaved(c),
+      intro:
+        'A browser wall: a tablet, a monitor or a television with Maverick Wall open ' +
+        'in a browser. Name it and say what it is, and the next page has the QR and ' +
+        'the short code to open on the wall itself.',
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        `<p><a class="link" href="admin/walls">← Back to walls</a></p>` +
+        `<form method="post" action="admin/screens" id="add">` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          value: said('name'),
+          placeholder: 'Kitchen',
+          hint: 'This is how the wall shows up on the Walls page.',
+          attrs: 'maxlength="80"',
+        }) +
+        /*
+         * The same two facts the wall's own settings page asks for, in the same
+         * words and from the same lists — `WALL_SIZE_PRESETS` and the four
+         * millimetre bounds are read here and there, so the two forms cannot
+         * come to offer different sizes. Script-free the way that page is: no
+         * group is hidden server-side and nothing is `required`, because a
+         * required control a script has hidden is a form a browser refuses and
+         * cannot explain.
+         */
+        selectField({
+          label: 'Wall size',
+          name: 'panel_size',
+          attrs: 'data-cond',
+          hint: 'Pick the nearest, or leave it unset and set it later.',
+          optionsHtml:
+            option('', 'Not set', size === '') +
+            WALL_SIZE_PRESETS.map((preset) => option(preset.key, preset.label, size === preset.key)).join('') +
+            option(WALL_SIZE_CUSTOM, 'Enter my own', size === WALL_SIZE_CUSTOM),
+        }) +
+        `<div class="grid g2" data-cond-show="${WALL_SIZE_CUSTOM}">` +
+        `<div>` +
+        textField({
+          label: 'Width (mm)',
+          name: 'panel_width_mm',
+          value: said('panel_width_mm'),
+          placeholder: '708',
+          hint: 'Across the wall — the picture, not the case.',
+          attrs: `inputmode="numeric" min="${PANEL_MM_MIN}" max="${PANEL_MM_MAX}"`,
+        }) +
+        `</div><div>` +
+        textField({
+          label: 'Height (mm)',
+          name: 'panel_height_mm',
+          value: said('panel_height_mm'),
+          placeholder: '398',
+          hint: 'Down the wall.',
+          attrs: `inputmode="numeric" min="${PANEL_MM_MIN}" max="${PANEL_MM_MAX}"`,
+        }) +
+        `</div></div>` +
+        `<div data-cond-show="${sizeChosen}">` +
+        textField({
+          label: 'Read from (mm)',
+          name: 'read_distance_mm',
+          value: said('read_distance_mm'),
+          placeholder: '1200',
+          hint:
+            'How far away somebody stands to read a name off this wall — not where ' +
+            'they glance at it from the doorway. Left blank, a size from the list ' +
+            'brings its own.',
+          attrs: `inputmode="numeric" min="${READ_DISTANCE_MM_MIN}" max="${READ_DISTANCE_MM_MAX}"`,
+        }) +
+        `</div>` +
+        selectField({
+          label: 'Rotation',
+          name: 'rotation',
+          hint: 'For a wall hung on its side.',
+          optionsHtml:
+            option('0', 'No rotation', rotation === '0') +
+            option('90', '90° clockwise', rotation === '90') +
+            option('180', 'Upside down', rotation === '180') +
+            option('270', '270° clockwise', rotation === '270'),
+        }) +
+        /*
+         * A plain select rather than the gallery's cards, and that is a limit
+         * rather than a preference: a card previews by rendering the canvas a
+         * screen owns, and this screen does not exist yet. Cards here would be
+         * names in boxes shaped like previews, or a second way to draw one —
+         * which is the fault the e-paper design page already had to fix once.
+         * The gallery is one link away and every card there is a real render.
+         */
+        selectField({
+          label: 'Starting layout',
+          name: 'template',
+          hint:
+            'Classic is today, the week ahead and the month — the standard kitchen ' +
+            'calendar. You can preview all of them, and switch, from this wall’s ' +
+            'Templates gallery afterwards.',
+          optionsHtml: TEMPLATES.map((one) => option(one.id, one.name, template === one.id)).join(''),
+        }) +
+        `<button type="submit">Add wall</button>` +
+        `</form>`,
+    });
+  }
+
+  /**
    * The Walls list: the shared Default plus every paired wall, browser and
    * e-paper alike — one list, one nav item, one card shape, with a kind chip
    * on each row rather than two nav entries for one kind of object (RFC 009
@@ -4033,31 +4276,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? ''
           : `<p class="hint">${revoked} unpaired wall${revoked === 1 ? '' : 's'} kept ` +
             `for the record. Their tokens no longer work.</p>`) +
+        /*
+         * Two doors, one shape. The browser form used to be right here — a
+         * single name field — while e-paper had a page of its own asking for a
+         * size and a rotation, so the two ways of adding a wall looked nothing
+         * alike and the commoner one asked for the least. Both are pages now,
+         * both ask name → hardware → starting layout → pair, and this list
+         * carries the two links side by side rather than one form and one link.
+         */
         section(
-          'Pair a new wall',
+          'Add a wall',
           undefined,
-          `<form method="post" action="admin/screens">` +
-            textField({
-              label: 'Name',
-              name: 'name',
-              required: true,
-              placeholder: 'Kitchen',
-              hint:
-                'You get a QR code and a short code to enter on the wall itself. ' +
-                'Open its page afterwards to arrange its layout and settings.',
-              attrs: 'maxlength="80"',
-            }) +
-            `<button type="submit">Add wall</button></form>`,
+          `<p class="hint">A tablet, monitor or television with Maverick Wall open in ` +
+            `a browser. You name it and say what it is, then get a QR code and a ` +
+            `short code to enter on the wall itself. ` +
+            `<a class="link" href="admin/walls/new">Pair a new wall →</a></p>` +
+            `<p class="hint">Low-power e-paper panels are added the same way, with ` +
+            `their own panel sizes and starting views. ` +
+            `<a class="link" href="admin/epaper#add">Add an e-paper wall →</a></p>`,
           'add',
         ) +
-        approveForm +
-        section(
-          'Add an e-paper wall',
-          undefined,
-          `<p class="hint">Low-power e-paper panels are added on their own page, with ` +
-            `a panel size and rotation to choose. ` +
-            `<a class="link" href="admin/epaper#add">Add an e-paper wall →</a></p>`,
-        ),
+        approveForm,
     });
   }
 

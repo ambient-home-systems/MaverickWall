@@ -165,15 +165,57 @@ export function panelCanvasAspects(
   return { portrait: clamp(short / long), landscape: clamp(long / short) };
 }
 
-/** A screen's own panel aspects, or `undefined` (the household, or no facts). */
-function ownerPanelAspects(
+/**
+ * A screen's own panel aspects, or `undefined` (the household, or no facts).
+ *
+ * Exported because seeding is not only Classic's any more: a household who
+ * gives a wall its size on the add page picks a starting template on the same
+ * form, and a canvas seeded at the card's nominal 9:16 for a panel that is not
+ * 9:16 is the letterbox `classicSeed` exists to avoid — for whichever template
+ * they picked, not only for the one they did not.
+ *
+ * Still only ever called at *seed* time (a new screen, Reset, the boot
+ * backfill, the boot re-seed, a card from the gallery), which is the rule that
+ * keeps it safe: it decides what a fresh canvas is and never rewrites an
+ * arrangement somebody dragged.
+ */
+export function seedAspects(
   db: SqliteDatabase,
   owner: string | null,
-): { readonly portrait: number; readonly landscape: number } | undefined {
+): TemplateAspects | undefined {
   if (owner === null) return undefined;
   const screen = readScreens(db).find((candidate) => candidate.id === owner);
   if (screen === undefined) return undefined;
   return panelCanvasAspects(screen.panelWidthMm, screen.panelHeightMm);
+}
+
+/**
+ * The aspect a *panel's* fresh canvas takes: its own pixel geometry.
+ *
+ * The e-paper twin of `seedAspects`, and two functions rather than one because
+ * the two kinds answer "how is this screen shaped?" from different columns. A
+ * browser wall's shape is the viewport it reports and its physical size is a
+ * separate, optional fact the household types in millimetres; a panel's shape
+ * is its resolution, which is not optional and not a claim — it is what the
+ * device is. A panel with no stored geometry falls back to 800x480, the
+ * commonest panel and the size every card is authored at.
+ *
+ * Exported, and both the gallery's apply route and the add form call it, so a
+ * card applied at creation and the same card applied a week later put the boxes
+ * in the same place. It lives here beside `seedAspects` rather than as a
+ * closure in `admin.ts`, where it was, because `admin-epaper.ts` needs it too
+ * and a second copy of an aspect rule is how two surfaces come to disagree
+ * about one canvas.
+ */
+export function panelPixelAspects(screen: {
+  readonly panelWidth?: number | null;
+  readonly panelHeight?: number | null;
+}): TemplateAspects {
+  const w = screen.panelWidth ?? 800;
+  const h = screen.panelHeight ?? 480;
+  const long = Math.max(w, h);
+  const short = Math.min(w, h);
+  return { portrait: short / long, landscape: long / short };
 }
 
 /**
@@ -193,7 +235,7 @@ function ownerPanelAspects(
  */
 export function classicSeed(db: SqliteDatabase, owner: string | null, setUp: HouseholdSetUp): DisplayTemplate {
   const base = classicFor(setUp);
-  const aspects = ownerPanelAspects(db, owner);
+  const aspects = seedAspects(db, owner);
   if (aspects === undefined) return base;
   return {
     ...base,
@@ -392,7 +434,7 @@ const SEEDED_PRINTS: readonly string[] = CLASSIC_VARIANTS.map(templatePrint);
  * to move it, which is the same "when in doubt, do nothing" this whole gate is.
  */
 function seededPrintsForOwner(db: SqliteDatabase, owner: string | null): readonly string[] {
-  const aspects = ownerPanelAspects(db, owner);
+  const aspects = seedAspects(db, owner);
   if (aspects === undefined) return SEEDED_PRINTS;
   const paneled = CLASSIC_VARIANTS.map((variant) =>
     templatePrint({
