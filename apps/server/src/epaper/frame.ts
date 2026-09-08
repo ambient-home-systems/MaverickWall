@@ -187,26 +187,43 @@ export function epaperOrientation(screen: FrameScreen): 'portrait' | 'landscape'
  * used to AND with `screen.layoutMode === 'freeform'` as well, which read as a
  * second opinion and was one — a following panel has no `freeform` of its own,
  * and the admin preview already had to lie about the column to draw a canvas at
- * all. An empty list is still the built-in layout, which is what a reset panel
- * and a saved-but-empty canvas both rely on (rule nine).
+ * all.
+ *
+ * **`undefined` is no canvas and `[]` is an empty one, and they are two
+ * different frames.** This used to be `widgets.length > 0`, so the two were one
+ * — which was harmless while nothing could author an empty canvas and became a
+ * fault the moment the gallery grew a Blank card: pressing it would have drawn
+ * the built-in view, making Blank and Built-in the same frame and the choice
+ * between them a control that does nothing. Reset is untouched by the
+ * distinction and is why it can be drawn at all: it clears `layout_mode`, so a
+ * reset panel has no canvas rather than an empty one.
+ *
+ * **There is no third case, and a helper written for one had to be deleted to
+ * find that out.** "A canvas whose widgets the omission dropped" cannot happen:
+ * `keepWidgetsWithSomethingToSay` returns its input unchanged rather than an
+ * empty list, precisely so a canvas holding only an unconfigured Weather box
+ * still draws something (rule nine, stated at that function). So the only way a
+ * caller ever held `[]` was an authored-empty canvas — which is to say the old
+ * `widgets.length > 0` was never protecting the case its comment named, and the
+ * behaviour it did protect is the one being changed here deliberately.
  */
 export function renderScreenFrame(
   manifest: Manifest,
   screen: FrameScreen,
-  widgets: readonly PlacedEpaperWidget[] = [],
+  widgets?: readonly PlacedEpaperWidget[],
 ): ScreenFrame {
   const panelWidth = screen.panelWidth ?? DEFAULT_PANEL_WIDTH;
   const panelHeight = screen.panelHeight ?? DEFAULT_PANEL_HEIGHT;
   const rotation = screen.rotation ?? 0;
   const swap = rotation === 90 || rotation === 270;
   const visual = { width: swap ? panelHeight : panelWidth, height: swap ? panelWidth : panelHeight };
-  const freeform = widgets.length > 0;
+  const freeform = widgets !== undefined;
 
   // Draw in the orientation a viewer sees; the panel's native buffer is
   // whatever `panelWidth × panelHeight` says, reached by turning the raster.
   const model = buildEpaperModel(manifest);
   const drawn = freeform
-    ? renderFreeformEpaper(model, manifest, widgets, visual)
+    ? renderFreeformEpaper(model, manifest, widgets ?? [], visual)
     : renderEpaper(model, visual);
   const fb = rotation === 0 ? drawn : rotate(drawn, rotation);
 
@@ -220,7 +237,7 @@ export function renderScreenFrame(
     screen.panelColour ?? 'bw',
     rotation,
     model.today,
-    freeform ? JSON.stringify(widgets) : 'auto',
+    freeform ? JSON.stringify(widgets ?? []) : 'auto',
   ].join('|');
   const etag = `"${createHash('sha256').update(preimage, 'utf8').digest('hex').slice(0, 32)}"`;
 

@@ -1,4 +1,5 @@
 import type { DisplayTemplate } from '../../api/templates.js';
+import { template as blank } from './blank.js';
 import { template as builtIn } from './built-in.js';
 import { template as month } from './month.js';
 import { template as agenda } from './agenda.js';
@@ -36,10 +37,19 @@ import { template as chores } from './chores.js';
  * set no option the editor cannot — the whole safety story is unchanged. The
  * narrowings above are asserted in `test/panel-templates.test.ts`.
  *
- * Order is gallery order, and Built-in leads because it is the arrangement the
- * household has already seen.
+ * Order is gallery order. **Blank leads and Built-in follows it**, which is a
+ * deliberate change from the release that added this list: Built-in led then,
+ * because the gap being closed was that the view a household had actually seen
+ * was the one arrangement they could not start from. That is fixed by the card
+ * existing rather than by its position, and starting from nothing was the other
+ * thing the gallery could not do — every card was somebody else's arrangement,
+ * so building your own meant picking the nearest and deleting its boxes.
+ *
+ * On a panel's *add* page the default is neither of them: it is `builtin`, the
+ * real fixed renderer, which is not a template at all. See
+ * `EPAPER_LAYOUT_BUILTIN`.
  */
-export const PANEL_TEMPLATES: readonly DisplayTemplate[] = [builtIn, month, agenda, week, chores];
+export const PANEL_TEMPLATES: readonly DisplayTemplate[] = [blank, builtIn, month, agenda, week, chores];
 
 /** A panel template by id, or undefined. The apply route validates ids this way. */
 export function findPanelTemplate(id: string): DisplayTemplate | undefined {

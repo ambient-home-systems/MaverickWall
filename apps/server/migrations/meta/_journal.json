@@ -281,6 +281,13 @@
       "when": 1788778669622,
       "tag": "0039_overconfident_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1788864223274,
+      "tag": "0040_warm_spencer_smythe",
+      "breakpoints": true
     }
   ]
 }

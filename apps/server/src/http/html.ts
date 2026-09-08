@@ -1122,8 +1122,8 @@ a.card:active{background:var(--mw-surface-3)}
 .card-foot{margin-top:auto;padding-top:var(--mw-s-4)}
 
 /* ---- Walls list: one card, whatever the wall is -------------------------
- * Every wall on the list — the Default wall, a browser wall, an e-paper panel
- * — is the same whole-card link to its own page: a name with a kind tag, one
+ * Every wall on the list — a browser wall, an e-paper panel — is the same
+ * whole-card link to its own page: a name with a kind tag, one
  * status line, "Open". The e-paper card used to be a static card carrying a ⋮
  * and an "Arrange layout" button, because a panel had no page to open and the
  * card had to be it; it opens its layout page now, which is where those went,
@@ -1133,7 +1133,8 @@ a.card:active{background:var(--mw-surface-3)}
 .wall-head{display:flex;align-items:center;gap:var(--mw-s-3)}
 .wall-head-main{flex:1 1 auto;min-width:0}
 /* The status dot rides the status line rather than the head, so a card with
- * no dot (the Default wall) keeps its name on the same edge as its neighbours'. */
+ * no dot (a wall that has never connected) keeps its name on the same edge as
+ * its neighbours'. */
 .wall-head .sub .dot{vertical-align:middle;margin-right:var(--mw-s-1)}
 /* The name reads at the card-title size the rest of the admin uses (a calendar
  * card's own heading is this role), from the role rather than a one-off px. The

@@ -123,6 +123,16 @@ function wrap(text: string, maxWidth: number, rung: TypeRung): string[] {
  * contract in `render.ts` says so: the built-in layout takes every rung from
  * its tier, and a household's own canvas does not yet.
  */
+/**
+ * What a panel with an authored-but-empty canvas says.
+ *
+ * Word for word the wall's `canvas-empty` note, so a household looking at a
+ * panel and the wall it follows is told one thing about one state rather than
+ * two sentences they have to reconcile. "Wall" is the product's word for both
+ * kinds — the Walls list holds panels too — so it needs no second wording here.
+ */
+const EMPTY_CANVAS = 'Nothing on this wall yet.';
+
 function rungToFit(text: string, width: number, max: TypeRung): TypeRung {
   let rung = max;
   while (rung.index > 0 && measureText(text, { rung }) > width) rung = rungStep(rung, -1);
@@ -1216,6 +1226,27 @@ export function renderFreeformEpaper(
   // small on a 13.3" panel gets fewer rows of the same readable type rather
   // than the same rows shrunk to nothing.
   const m = panelMetrics(geometry);
+  /*
+   * A canvas authored with nothing on it says so, rather than being a white
+   * sheet nobody can explain from the kitchen — the panel's twin of the wall's
+   * own `canvas-empty` note, in the same words, because a household following a
+   * wall from a panel should not be told two different things about one state.
+   *
+   * The rung is stepped against a *constant* sentence, which is what keeps this
+   * inside the refresh contract: every drawn region has to be a function of
+   * (panel size, tier) alone, and a note whose text never varies is exactly the
+   * character budget `noteRung` and `HEADER_MAX_CHARS` already work to.
+   */
+  if (widgets.length === 0) {
+    const box: Box = {
+      x: m.margin,
+      y: m.margin,
+      w: Math.max(0, geometry.width - m.margin * 2),
+      h: Math.max(0, geometry.height - m.margin * 2),
+    };
+    drawLines(fb, m, [EMPTY_CANVAS], box, rungToFit(EMPTY_CANVAS, box.w, m.body), 'left');
+    return fb;
+  }
   const ordered = [...widgets].sort((a, b) => a.z - b.z);
   for (const widget of ordered) {
     const box: Box = {

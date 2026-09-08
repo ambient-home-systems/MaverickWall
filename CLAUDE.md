@@ -423,8 +423,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2904 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 484 · server 1953. CI runs the whole suite and then the README's
+**2937 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 484 · server 1986. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -753,6 +753,162 @@ exempts the Chores card, because this fixture defines no chores and
 `keepWidgetsWithSomethingToSay` correctly drops an empty board; its *calendar*
 still has to draw, since an exemption covering the whole card would excuse a
 broken one.
+
+**Adding a wall and adding a panel were two journeys for one act, and they are
+one shape now.** A browser wall was a single name field in a section of the
+Walls list, straight to a QR; an e-paper panel was a page of its own asking for
+a panel size and a rotation. So the *commoner* journey asked for the least, at
+the one moment a household is standing in front of the hardware with its size in
+their hand — and neither asked the thing the whole layout system is about, which
+is where the arrangement starts from. Both are pages now and both ask **name →
+what the hardware is → where the layout starts → pair**: `/admin/walls/new`
+beside `/admin/epaper`, with the Walls list carrying two links rather than one
+form and one link. The form moved rather than growing in place because
+`epaperPage`'s own docstring is the argument for it — the e-paper form was kept
+off the Walls list since "the size presets and rotation picker ... would
+otherwise crowd the pairing form every household sees", and that did not stop
+being true when the pairing form grew the same controls.
+
+**Every new field is optional and every absence is exactly the answer the
+one-field form gave**, which is what makes this a widening rather than a change:
+no size is three nulls and a wall that draws as it always has, no rotation is
+`0`, and no template is Classic — what seeding already gave every new wall. A
+body carrying nothing but a name creates the wall it created before, which half
+the suite depends on because half the suite posts it.
+
+**The panel's default writes nothing, and that is the point rather than a
+shortcut.** "Built-in" is deliberately not `panel-built-in`: a panel with no
+canvas draws `renderEpaper`, whose every measurement is arithmetic on the panel
+(`epaper/metrics.ts`), where the card is stored fractions approximating it and
+says so at the top of its own file. Writing nothing is also the state **Reset**
+returns a panel to, so "leave it as it is" at creation and "put it back" later
+are one state rather than two that look alike. The card is still in the list
+under it, renamed **"Built-in, as boxes"** — two options both reading "Built-in"
+is a choice nobody can make.
+
+**The write order is the whole reason the wall's page can ask for a size at
+all.** `seedAspects` — `ownerPanelAspects`, exported, because seeding is not
+only Classic's any more — reads the millimetre columns off the row it is
+seeding, so the hardware facts are written *before* the canvas: a wall told it
+is a 13.3" panel is seeded at its own aspect with no letterbox. The other way
+round it reads three nulls, seeds the card's nominal 9:16, and the size the
+household just gave starts mattering only after a Reset they have no reason to
+press. `panelPixelAspects` came out of `admin.ts` as its e-paper twin — two
+functions rather than one, because a wall's shape is an optional physical
+measurement and a panel's is its resolution, which is not optional and not a
+claim — so the gallery and the add form cannot put one card's boxes in two
+places.
+
+**Two catalogues, two lookups, one step earlier.** A hand-posted
+`panel-built-in` at `/admin/screens` is a 400 and a hand-posted `sky-week` at
+`/admin/epaper` is a 400, for the reason `apply-template` already gives: the
+form is a convenience and the POST is the boundary.
+
+**Three faults came out of it and all three were found by a test rather than by
+reading.** `admin-vocabulary` caught the new copy twice in one run — "showing
+Maverick Wall full screen" reintroduces a retired noun, and "arrangements you
+can move" is a second word for a layout, both written by somebody who had read
+the rules and was describing a thing rather than naming it. And the wall's
+echo-on-400 assertion **was reached by only one of the two branches it claimed**:
+`panel_width_mm: 'three hundred'` is thirteen characters against an
+`optionalText(6)`, so it was refused by the *schema* and never touched
+`resolveWallSize` at all — dropping the echo from the size branch left the file
+green. A width of `'abc'` fits the shape and fails the meaning, which is the
+only way into the second branch, and both are cases now. Twelve mutations were
+checked against `add-display-parity.test.ts` and all twelve are red.
+
+**Still unproven where it counts:** nobody has added a wall or a panel through
+either page on a real phone or in a real supervisor's sidebar, which by this
+project's history is where the next fault in a form actually surfaces. The
+measurements are the real app with a real session and a real database.
+
+**The shared "Default wall" is retired, and it was two jobs in one row.** One
+was the settings every wall inherits — theme, daylight schedule, how much to
+show, the clock. The other was a *canvas* a wall drew until it had one of its
+own. Only the first was ever a setting; the second made the household row look
+like a display, with a card on the Walls list, a page, a template gallery and a
+Reset, for a thing nothing is paired to and nothing draws. A household counting
+their walls counted one that does not exist. The settings are three sections on
+**System** now, and the canvas is gone as something anybody designs:
+`/admin/walls/default` redirects to System, no layout route will take `default`
+as an owner, and `follow:default` is refused on a panel.
+
+**Not reading the row is not the same as retiring it.** A wall that never
+arranged a canvas is *drawing* the household's, so dropping the fallback takes a
+working kitchen calendar off the wall on the next restart — rule nine, in the
+shape that shows up in a kitchen rather than in a log. Migration `0040` adds
+`default_wall_retired` and `retireDefaultWall` copies what each such wall was
+already drawing onto it, once, at boot after `backfillClassic`. An e-paper panel
+is skipped deliberately: a panel with no canvas draws its built-in view, which is
+a fact about the renderer rather than a fallback to this row, so copying a colour
+wall's arrangement there would *change* what it draws rather than preserve it.
+The household's own widgets are left in place, and `effectiveDisplay` still falls
+back to them, as a belt rather than a mechanism.
+
+**Two doors that create a wall never seeded one, and the shared canvas is what
+hid it for as long as it existed.** The device-flow approve
+(`POST /admin/screens/approve`) and the `add-screen` CLI both created a screen
+and stopped; the wall then drew the household's canvas, which looked identical
+and was somebody else's row. With that retired the same omission is a wall that
+draws "Nothing on this wall yet." **for ever**, because `backfillClassic` runs
+once per database and has long since run anywhere either of those is reached.
+Both seed Classic now, and `default-wall-retired.test.ts` walks every door.
+
+**`resolveOwner` answering `null` for anything it did not recognise was a
+write-fallback, and only removing the Default wall made that visible.** An
+absent `?screen=`, a blank one, a stranger's id, a wall unpaired in another
+window — all resolved to the shared canvas, and `POST /admin/layout` is where
+that could *write*: a stale editor tab would have saved its arrangement onto the
+row every other wall inherited. It answers `undefined` now and every caller
+answers that rather than acting on a wall nobody named.
+
+**A "Blank" card leads both galleries, and on a panel it needed the renderer
+rather than a card.** Every card was somebody else's arrangement, so building
+your own meant picking the nearest and deleting its boxes — starting from
+nothing was the one thing a gallery of starting points could not do. On a wall
+that is a template with no widgets and no display change at all: `renderFreeform`
+has always drawn "Nothing on this wall yet." for an empty canvas. On a panel
+`renderScreenFrame` decided what to draw with `widgets.length > 0`, so an empty
+canvas drew the *built-in* view — which would have made Blank and Built-in the
+same frame and the choice between them a control that does nothing.
+**`undefined` is no canvas and `[]` is an empty one** now, and they are two
+frames; Reset is untouched, because it clears `layout_mode` rather than emptying
+the canvas, which is exactly what makes the distinction drawable. No
+`EPAPER_RENDERER_VERSION` bump: no existing panel's pixels move, because the two
+states a panel could already be in still draw what they drew.
+
+**Blank sets no theme and no background, which is the difference between blank
+and reset.** `applyTemplate` writes `template.theme` when a card names one, so a
+Blank that named one would take the household's chosen theme off the wall — a
+card called "Blank" repainting a kitchen is the last thing somebody pressing it
+expects. Classic is the same exception for the same reason, and the guard is
+written as one rule with two members rather than a list to grow.
+
+**A helper was written for a case that cannot happen, and running it is what
+said so.** `drawableCanvas` existed to send "a canvas whose widgets the omission
+dropped" back to the built-in view — until the test for it failed and
+`keepWidgetsWithSomethingToSay` turned out to return its *input* rather than an
+empty list, precisely so a canvas holding only an unconfigured Weather box still
+draws something. So the only way a caller ever held `[]` was an authored-empty
+canvas, which means the old `widgets.length > 0` was never protecting the case
+its own comment named. The helper is deleted: a line nothing can contradict is
+not a fix.
+
+**Sixty-six tests went red, and most of them were measuring the editor against a
+wall no household has.** `/admin/walls/default` was the one wall that existed
+without pairing one, so `browser-editor`, `browser-inspector`, `browser-wall`
+and `browser-calendar-density` all drove it — the whole editor suite, the
+inspector's segmented-control measurements and the ink lane, taken on a page
+nobody opens. `browser-harness` gained `pairWall`, and they drive a real wall
+now. Three findings came out of the migration rather than out of the change:
+the editor's phone canvas is **444px** where it was 455, because a real wall's
+page carries a pairing status line above the canvas and the old number was a
+property of the page that did not; a dirty-guard assertion read
+`after[0]`/`after[1]` — document order — so it quietly became a test about a
+different pair of forms the moment System grew one above the timezone, and it
+reads through the edited field's own `form` now; and `admin-vocabulary`'s rule
+that the admin must *name* "Default wall" wherever it names it is inverted, so
+it now fails if the name comes back.
 
 **The widget inspector had two faults, and the first was a fix causing the thing
 it prevented.** `admin-seg-labels.test.ts` records a segmented control that drew

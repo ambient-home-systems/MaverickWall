@@ -1327,9 +1327,16 @@ export function createApp(deps: AppDeps): Hono {
      * deliberately keeps every box: that page is where the household arranges
      * them, and a widget that vanished as it was dropped would be unusable.
      */
+    /*
+     * `undefined` is no canvas and `[]` is an empty one — two different frames
+     * since the gallery grew a Blank card. The omission cannot turn one into the
+     * other: `keepWidgetsWithSomethingToSay` hands back its input rather than an
+     * empty list, so a canvas that had widgets still has them here.
+     */
     const widgets =
-      canvasOwner !== undefined
-        ? keepWidgetsWithSomethingToSay(
+      canvasOwner === undefined
+        ? undefined
+        : keepWidgetsWithSomethingToSay(
             readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)),
             householdSetUp(deps.db),
           ).map((row) => ({
@@ -1339,9 +1346,11 @@ export function createApp(deps: AppDeps): Hono {
             w: row.w,
             h: row.h,
             z: row.z,
-            config: row.config !== null && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : {},
-          }))
-        : [];
+            config:
+              row.config !== null && typeof row.config === 'object'
+                ? (row.config as Record<string, unknown>)
+                : {},
+          }));
 
     let frame: ReturnType<typeof renderScreenFrame>;
     try {

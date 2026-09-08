@@ -153,9 +153,10 @@ describe('a panel’s template gallery', () => {
     // The exact sentence the wall gallery draws from a card's `theme`.
     expect(html).not.toContain('Looks best in');
 
-    // And the wall's gallery still draws it — otherwise this passes by having
-    // removed the line everywhere, which is a different change.
-    expect(await gallery(h, 'default')).toContain('Looks best in');
+    // And a *wall's* gallery still draws it — otherwise this passes by having
+    // removed the line everywhere, which is a different change. A real wall,
+    // since the shared Default one is retired.
+    expect(await gallery(h, await addWall(h, 'Living room wall'))).toContain('Looks best in');
   });
 
   it('goes back to the panel’s design page, not to a wall page', async () => {
@@ -221,7 +222,12 @@ describe('applying a template', () => {
     const widgets = h.db
       .prepare(`SELECT COUNT(*) AS n FROM layout_widgets WHERE screen_id = ? AND orientation = 'landscape'`)
       .get(panel) as { n: number };
-    expect(widgets.n).toBe(PANEL_TEMPLATES[0]!.landscape.widgets.length);
+    // By id rather than by position: this applied `panel-built-in`, and reading
+    // the count off whatever happens to lead the list made it a test about
+    // gallery order. It broke the day Blank took the front of it.
+    const builtIn = PANEL_TEMPLATES.find((one) => one.id === 'panel-built-in');
+    expect(builtIn).toBeDefined();
+    expect(widgets.n).toBe(builtIn!.landscape.widgets.length);
   });
 
   it('takes the aspect from a panel whose shape is not the card’s', async () => {
@@ -254,7 +260,10 @@ describe('applying a template', () => {
       h.db.prepare(`SELECT COUNT(*) AS n FROM layout_widgets WHERE screen_id = ?`).get(panel),
     ).toEqual({ n: 0 });
 
-    const panelOnWall = await h.post(`${B}/admin/displays/default/apply-template`, {
+    // At a real wall: `default` is no longer an owner at all, so posting there
+    // would be refused for the wrong reason and prove nothing about the split.
+    const wall = await addWall(h, 'Living room wall');
+    const panelOnWall = await h.post(`${B}/admin/displays/${wall}/apply-template`, {
       templateId: 'panel-built-in',
     });
     expect(panelOnWall.status).toBe(400);
@@ -262,7 +271,7 @@ describe('applying a template', () => {
     // And each still applies where it belongs, or the refusals above are being
     // produced by something other than the catalogue split.
     expect((await h.post(`${B}/admin/displays/${panel}/apply-template`, { templateId: 'panel-month' })).status).toBe(302);
-    expect((await h.post(`${B}/admin/displays/default/apply-template`, { templateId: 'sky-week' })).status).toBe(302);
+    expect((await h.post(`${B}/admin/displays/${wall}/apply-template`, { templateId: 'sky-week' })).status).toBe(302);
   });
 });
 
@@ -276,7 +285,7 @@ describe('copying another display’s layout', () => {
     const html = await gallery(h, kitchen);
     expect(html).toContain(`value="${hall}"`);
     expect(html, 'a wall is offered as a copy source for a panel').not.toContain(`value="${wall}"`);
-    expect(html, 'the default wall is offered as a copy source for a panel').not.toContain('value="default"');
+    expect(html, 'the retired default wall is offered as a copy source').not.toContain('value="default"');
     // The heading says which, so the list is not silently shorter than it reads.
     expect(html).toContain("Or copy another panel's layout");
   });
@@ -304,11 +313,16 @@ describe('copying another display’s layout', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('still offers a wall every other display', async () => {
+  it('still offers a wall every other wall', async () => {
     const h = await harness();
     const other = await addWall(h, 'Living room wall');
+    const another = await addWall(h, 'Kitchen wall');
     const html = await gallery(h, other);
-    expect(html).toContain('value="default"');
+    // Real walls only. This used to assert `value="default"` — the shared
+    // Default wall, which led the list as something to copy from and is now
+    // retired.
+    expect(html).toContain(`value="${another}"`);
+    expect(html, 'the retired default wall is still a copy source').not.toContain('value="default"');
     expect(html).toContain("Or copy another wall's layout");
   });
 });

@@ -107,24 +107,33 @@ describe('the panel template catalogue', () => {
     expect(new Set(PANEL_TEMPLATES.map((t) => t.id)).size).toBe(PANEL_TEMPLATES.length);
   });
 
-  it('leads with the panel’s own built-in view', () => {
+  it('leads with Blank, then the panel’s own built-in view', () => {
     /*
-     * The card that closes the gap this list exists for. A household who liked
-     * what their panel drew and wanted the month a little larger had to rebuild
-     * it from nothing: the first widget dropped on an empty canvas replaced the
-     * built-in layout wholesale, and there was no card resembling it.
+     * Two cards, two gaps, and the order between them moved once.
      *
-     * Pinned as *first*, because gallery order is list order and the card
-     * somebody has already seen is the one that should not need scrolling to.
+     * Built-in closes the gap this list was created for: a household who liked
+     * what their panel drew and wanted the month a little larger had to rebuild
+     * it from nothing, because the first widget dropped on an empty canvas
+     * replaced the built-in layout wholesale and no card resembled it. It led
+     * the list on the argument that the card somebody has already seen should
+     * not need scrolling to.
+     *
+     * Blank leads now, and closes the other one: every card was somebody else's
+     * arrangement, so building your own meant picking the nearest and deleting
+     * its boxes. Built-in's gap is closed by the card *existing* rather than by
+     * its position, and on a panel's add page neither is the default anyway —
+     * that is `builtin`, the real fixed renderer, which is not a template.
      */
-    expect(PANEL_TEMPLATES[0]?.id).toBe('panel-built-in');
+    expect(PANEL_TEMPLATES[0]?.id).toBe('panel-blank');
+    expect(PANEL_TEMPLATES[1]?.id).toBe('panel-built-in');
     expect(findPanelTemplate('panel-built-in')).toBeDefined();
+    expect(findPanelTemplate('panel-blank')).toBeDefined();
 
     // And it is the built-in layout's own shape rather than a fresh guess: the
     // agenda takes the larger share of a landscape panel, which is
     // `epaperBlocks`' 0.54 split and the reason for it (titles need width more
     // than a grid does).
-    const land = PANEL_TEMPLATES[0]!.landscape.widgets;
+    const land = PANEL_TEMPLATES[1]!.landscape.widgets;
     const agenda = land.find((w) => (w.config as { mode?: string } | undefined)?.mode === 'list');
     const month = land.find((w) => (w.config as { mode?: string } | undefined)?.mode === 'month');
     expect(agenda?.w).toBeCloseTo(0.54, 2);
@@ -171,8 +180,19 @@ describe('the panel template catalogue', () => {
 
   it('authors both orientations, so a panel turned sideways is never letterboxed', () => {
     for (const template of PANEL_TEMPLATES) {
-      expect(template.portrait.widgets.length, `${template.id} portrait`).toBeGreaterThan(0);
-      expect(template.landscape.widgets.length, `${template.id} landscape`).toBeGreaterThan(0);
+      /*
+       * The wall catalogue's rule, in the same words: the fault this guards
+       * against is a card that places boxes in one orientation and not the
+       * other, so it asks the two canvases to *agree* rather than asking each
+       * to be non-empty. Blank is empty in both, deliberately, and naming it as
+       * an exception would have made this the weaker test.
+       */
+      expect(
+        template.portrait.widgets.length > 0,
+        `${template.id}: one orientation is empty and the other is not`,
+      ).toBe(template.landscape.widgets.length > 0);
+      expect(template.portrait.aspect, `${template.id} portrait aspect`).toBeGreaterThan(0);
+      expect(template.landscape.aspect, `${template.id} landscape aspect`).toBeGreaterThan(0);
     }
   });
 

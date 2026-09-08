@@ -165,7 +165,7 @@ async function chrome(page: Page): Promise<{
 }
 
 /**
- * Open the default wall's editor with its month grid selected.
+ * Open a paired wall's editor with its month grid selected.
  *
  * The month grid because it carries the four-up "Events in a day" control,
  * which is the widest segmented control the inspector draws and the one the
@@ -173,7 +173,10 @@ async function chrome(page: Page): Promise<{
  * have gone on passing.
  */
 async function openWithCalendar(app: Installation, page: Page): Promise<void> {
-  await page.goto(`${app.base}/admin/displays/default`, { waitUntil: 'load' });
+  // A real wall: the shared Default one is retired, and the inspector is a
+  // thing a household opens on a wall they own.
+  const id = await app.pairWall('Inspector wall');
+  await page.goto(`${app.base}/admin/walls/${encodeURIComponent(id)}`, { waitUntil: 'load' });
   await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
   // Every measurement here is a text width, so a paint that beat the admin's
   // self-hosted face would be measuring a different alphabet. The wall's own

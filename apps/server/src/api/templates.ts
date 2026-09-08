@@ -165,15 +165,57 @@ export function panelCanvasAspects(
   return { portrait: clamp(short / long), landscape: clamp(long / short) };
 }
 
-/** A screen's own panel aspects, or `undefined` (the household, or no facts). */
-function ownerPanelAspects(
+/**
+ * A screen's own panel aspects, or `undefined` (the household, or no facts).
+ *
+ * Exported because seeding is not only Classic's any more: a household who
+ * gives a wall its size on the add page picks a starting template on the same
+ * form, and a canvas seeded at the card's nominal 9:16 for a panel that is not
+ * 9:16 is the letterbox `classicSeed` exists to avoid — for whichever template
+ * they picked, not only for the one they did not.
+ *
+ * Still only ever called at *seed* time (a new screen, Reset, the boot
+ * backfill, the boot re-seed, a card from the gallery), which is the rule that
+ * keeps it safe: it decides what a fresh canvas is and never rewrites an
+ * arrangement somebody dragged.
+ */
+export function seedAspects(
   db: SqliteDatabase,
   owner: string | null,
-): { readonly portrait: number; readonly landscape: number } | undefined {
+): TemplateAspects | undefined {
   if (owner === null) return undefined;
   const screen = readScreens(db).find((candidate) => candidate.id === owner);
   if (screen === undefined) return undefined;
   return panelCanvasAspects(screen.panelWidthMm, screen.panelHeightMm);
+}
+
+/**
+ * The aspect a *panel's* fresh canvas takes: its own pixel geometry.
+ *
+ * The e-paper twin of `seedAspects`, and two functions rather than one because
+ * the two kinds answer "how is this screen shaped?" from different columns. A
+ * browser wall's shape is the viewport it reports and its physical size is a
+ * separate, optional fact the household types in millimetres; a panel's shape
+ * is its resolution, which is not optional and not a claim — it is what the
+ * device is. A panel with no stored geometry falls back to 800x480, the
+ * commonest panel and the size every card is authored at.
+ *
+ * Exported, and both the gallery's apply route and the add form call it, so a
+ * card applied at creation and the same card applied a week later put the boxes
+ * in the same place. It lives here beside `seedAspects` rather than as a
+ * closure in `admin.ts`, where it was, because `admin-epaper.ts` needs it too
+ * and a second copy of an aspect rule is how two surfaces come to disagree
+ * about one canvas.
+ */
+export function panelPixelAspects(screen: {
+  readonly panelWidth?: number | null;
+  readonly panelHeight?: number | null;
+}): TemplateAspects {
+  const w = screen.panelWidth ?? 800;
+  const h = screen.panelHeight ?? 480;
+  const long = Math.max(w, h);
+  const short = Math.min(w, h);
+  return { portrait: short / long, landscape: long / short };
 }
 
 /**
@@ -193,7 +235,7 @@ function ownerPanelAspects(
  */
 export function classicSeed(db: SqliteDatabase, owner: string | null, setUp: HouseholdSetUp): DisplayTemplate {
   const base = classicFor(setUp);
-  const aspects = ownerPanelAspects(db, owner);
+  const aspects = seedAspects(db, owner);
   if (aspects === undefined) return base;
   return {
     ...base,
@@ -247,6 +289,69 @@ export function backfillClassic(db: SqliteDatabase, setUp: HouseholdSetUp): void
   db.prepare(`UPDATE household_settings SET layout_backfilled = 1, updated_at = ? WHERE id = 'singleton'`).run(
     Date.now(),
   );
+}
+
+/**
+ * Retire the shared "Default wall" as a thing a household designs, once.
+ *
+ * That canvas was two jobs in one row: the layout a wall drew until it had one
+ * of its own, and a display on the Walls list with its own page, gallery and
+ * Reset. The second is gone — a wall picks its starting layout on the page that
+ * pairs it, and every path that creates a screen now seeds one — so the admin
+ * offers no way to arrange it and `resolveOwner` will not name it.
+ *
+ * **Not reading the row is not the same as retiring it.** A wall that never
+ * arranged a canvas is drawing the household's, so simply dropping the fallback
+ * would take a working kitchen calendar off the wall the next time the container
+ * restarted — rule nine, in the one shape that shows up on somebody's wall
+ * rather than in a log. So every screen with no canvas of its own gets a *copy*
+ * of what it was already drawing: `copyLayout` from the household where there is
+ * something to copy, and `classicSeed` where there is not (an install whose
+ * household row was never seeded either). After this, no wall depends on the
+ * shared canvas and no screen's pixels changed.
+ *
+ * The household's own widgets are deliberately **left in place**. Deleting them
+ * is a rewrite of stored state to no end, and `effectiveDisplay` still falls
+ * back to them for a screen with no canvas — which, after this and after the
+ * seeding on every creating path, is a row nothing in this codebase writes. It
+ * is the belt, not the mechanism.
+ *
+ * Runs at boot after `backfillClassic`, inside the same file lock, and is
+ * guarded by its own column so a household who later empties a wall is not
+ * re-seeded from a canvas they can no longer see.
+ */
+export function retireDefaultWall(db: SqliteDatabase, setUp: HouseholdSetUp): void {
+  const row = db
+    .prepare(`SELECT default_wall_retired AS done FROM household_settings WHERE id = 'singleton'`)
+    .get() as { done: number } | undefined;
+  // No settings row yet (setup has not run) or already retired: nothing to do.
+  if (row === undefined || row.done === 1) return;
+
+  const householdHasCanvas =
+    readLayoutWidgets(db, null, 'portrait').length > 0 ||
+    readLayoutWidgets(db, null, 'landscape').length > 0;
+
+  for (const screen of readScreens(db)) {
+    if (screen.revokedAt !== null) continue;
+    const hasOwn =
+      readLayoutWidgets(db, screen.id, 'portrait').length > 0 ||
+      readLayoutWidgets(db, screen.id, 'landscape').length > 0;
+    if (hasOwn) continue;
+    /*
+     * An e-paper panel with no canvas is not inheriting anything — it draws its
+     * built-in view, which is a fact about the renderer rather than a fallback
+     * to this row — so copying a colour wall's arrangement onto one bit would
+     * *change* what it draws rather than preserve it. `panelCanvasOwner` says
+     * the same thing from the other side and is why this asks the kind.
+     */
+    if (screen.kind === 'epaper') continue;
+    if (householdHasCanvas) copyLayout(db, null, screen.id);
+    else applyTemplate(db, screen.id, classicSeed(db, screen.id, setUp));
+  }
+
+  db.prepare(
+    `UPDATE household_settings SET default_wall_retired = 1, updated_at = ? WHERE id = 'singleton'`,
+  ).run(Date.now());
 }
 
 /**
@@ -392,7 +497,7 @@ const SEEDED_PRINTS: readonly string[] = CLASSIC_VARIANTS.map(templatePrint);
  * to move it, which is the same "when in doubt, do nothing" this whole gate is.
  */
 function seededPrintsForOwner(db: SqliteDatabase, owner: string | null): readonly string[] {
-  const aspects = ownerPanelAspects(db, owner);
+  const aspects = seedAspects(db, owner);
   if (aspects === undefined) return SEEDED_PRINTS;
   const paneled = CLASSIC_VARIANTS.map((variant) =>
     templatePrint({

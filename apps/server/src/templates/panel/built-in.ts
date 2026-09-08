@@ -51,7 +51,10 @@ const MONTH = { mode: 'month' } as const;
 
 export const template: DisplayTemplate = {
   id: 'panel-built-in',
-  name: 'Built-in',
+  // Named for the difference rather than for the likeness: the add page's
+  // "Starting layout" lists this card directly under the real built-in view,
+  // and two options both reading "Built-in" is a choice nobody can make.
+  name: 'Built-in, as boxes',
   category: 'home',
   blurb: 'What this panel draws out of the box — the date, what is on today, and the month — as boxes you can move.',
   portrait: {

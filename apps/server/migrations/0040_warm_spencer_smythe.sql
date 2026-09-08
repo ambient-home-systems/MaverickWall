@@ -1,0 +1,1 @@
+ALTER TABLE `household_settings` ADD `default_wall_retired` integer DEFAULT 0 NOT NULL;

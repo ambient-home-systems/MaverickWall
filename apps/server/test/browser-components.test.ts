@@ -401,21 +401,39 @@ describe.each(WIDTHS)('the converted screens on %s', (_label, viewport, mobile) 
           saveDisabled: (document.querySelector('[data-dirty-save]') as HTMLButtonElement).disabled,
         };
       });
-      expect(before.dirtyForms, 'the timezone and update-check forms').toBe(2);
+      // Three: the wall defaults, the timezone and the update check. The wall
+      // defaults arrived with the Default wall's retirement — they were that
+      // page's settings sheet, and they are settings, so they are here.
+      expect(before.dirtyForms, 'the wall-defaults, timezone and update-check forms').toBe(3);
       expect(before.downloads, 'database, key and diagnostics').toBe(3);
       expect(before.script, 'the dirty-state script was not shipped').toBe(true);
       expect(before.saveDisabled, 'Save is live on an untouched form').toBe(true);
 
-      // One real edit, and the form it belongs to wakes up.
+      /*
+       * One real edit, and the form it belongs to wakes up.
+       *
+       * Read through the edited *field's own form* rather than by index. These
+       * were `after[0]` and `after[1]` — document order — which quietly became
+       * a different pair of forms the day the wall defaults joined this page
+       * above the timezone. An index into a page's forms is a test about
+       * layout wearing the clothes of a test about behaviour.
+       */
       await page.selectOption('select[name="timezone"]', { index: 1 });
       const after = await page.evaluate(() => {
-        const saves = [...document.querySelectorAll('[data-dirty-save]')] as HTMLButtonElement[];
-        return saves.map((s) => s.disabled);
+        const edited = (document.querySelector('select[name="timezone"]') as HTMLSelectElement).form;
+        const save = (form: HTMLFormElement | null): boolean | undefined =>
+          (form?.querySelector('[data-dirty-save]') as HTMLButtonElement | null)?.disabled;
+        const others = [...document.querySelectorAll('form[data-dirty]')].filter((f) => f !== edited);
+        return {
+          edited: save(edited),
+          others: others.map((f) => save(f as HTMLFormElement)),
+        };
       });
-      expect(after[0], 'the edited form still has Save disabled').toBe(false);
-      // And the *other* settings form on the page is untouched — the guard
+      expect(after.edited, 'the edited form still has Save disabled').toBe(false);
+      // And every *other* settings form on the page is untouched — the guard
       // tracks work, not the page.
-      expect(after[1], 'an unedited form woke up too').toBe(true);
+      expect(after.others.length, 'no other settings form to compare against').toBeGreaterThan(0);
+      expect(after.others, 'an unedited form woke up too').toEqual(after.others.map(() => true));
       await page.context().close();
     },
     SLOW,
