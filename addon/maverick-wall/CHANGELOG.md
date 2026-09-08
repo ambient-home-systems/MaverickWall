@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.61.0
+
 **Adding a wall and adding an e-paper panel now work the same way.** They did
 not: a browser wall was a name box on the Walls page and then straight to a QR
 code, while a panel had a page of its own asking what size it is and which way
