@@ -388,10 +388,20 @@ do not invent a ninth component without raising it first.
 > about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
-**0.58.0 is the current release.** `main`, the tag and the published image
+**0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
 signed, pulled anonymously and verified.
+
+**This line read `0.58.0` while 0.61.0 was live, and it is worth one sentence
+because of where it sits.** It is four paragraphs under a header warning that
+the counts here rot, in the one paragraph whose whole subject is that `main`,
+the tag and the image agree — so the sentence asserting that three things agree
+was itself the thing that had drifted from all three. Nothing reads it, which
+is exactly why nobody noticed: it is a claim a person checks, and `advertise`
+writes `config.yaml` and the package version rather than this file. Read it
+against `addon/maverick-wall/config.yaml`, which is what the supervisor
+watches.
 
 ```bash
 docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
@@ -502,7 +512,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (27 tables, 38 migrations) · migrations behind a
+secrets at rest · the schema (27 tables, 41 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
