@@ -382,6 +382,31 @@ describe('the panel’s design page while it follows', () => {
     expect(html).toContain(`value="follow:${wallId}"`);
     expect(html, 'the retired Default wall is still offered').not.toContain('value="follow:default"');
   });
+
+  /*
+   * The submit is under the field, not beside it.
+   *
+   * `.row` is a wrapping flex line, so on a wide window "Use this" was thrown
+   * to the far right of the section, level with the field's hint rather than
+   * with the field it acts on — where every other settings form on this page
+   * (the LAN switch below it, the add form) puts its Save underneath.
+   * Asserted on the markup rather than on a rendered position because the
+   * class *is* the bug: `.row` was applied and the button was in the wrong
+   * place because of it, so "does this form still carry .row" is exactly the
+   * question.
+   */
+  it('puts the Layout submit on its own line, not on a flex row beside the field', async () => {
+    const h = await harness();
+    const p = await panel(h, 'Porch');
+    const html = await (await h.call(`${B}/admin/epaper/${p.id}/design`)).text();
+    const form = html.slice(
+      html.indexOf(`action="admin/epaper/${p.id}/source"`),
+      html.indexOf('Use this</button>'),
+    );
+    expect(form).not.toContain('class="row"');
+    // And the field it belongs to is in the slice, so the slice is the form.
+    expect(form).toContain('name="source"');
+  });
 });
 
 describe('the ink lane in a wall’s editor', () => {

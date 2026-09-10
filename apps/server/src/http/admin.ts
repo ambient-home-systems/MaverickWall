@@ -618,6 +618,68 @@ function themeCards(selected: string, custom: readonly ThemeRow[] = []): string 
   return `<div class="themegrid">${builtins}${customCards}</div>`;
 }
 
+/**
+ * What `template-gallery.js` needs to draw a wall template's preview.
+ *
+ * One builder for the gallery page and the add-a-wall form, because they draw
+ * the same picture and two shapes of this JSON is how one of them quietly stops
+ * previewing. The *portrait* canvas, which is the shape a wall card has always
+ * been, plus the template's own theme and background so the card shows the look
+ * applying it gives rather than the household's current one (RFC 005 3c).
+ */
+function wallTemplatePreviews(
+  catalogue: readonly DisplayTemplate[],
+): readonly Record<string, unknown>[] {
+  return catalogue.map((t) => ({
+    id: t.id,
+    aspect: t.portrait.aspect,
+    widgets: t.portrait.widgets,
+    ...(t.theme !== undefined ? { theme: t.theme } : {}),
+    ...(t.portrait.background !== undefined ? { background: t.portrait.background } : {}),
+  }));
+}
+
+/**
+ * Pick a starting layout, with a picture of each one.
+ *
+ * The `themecard` idiom — a radio inside a label, the checked one ringed — so
+ * the field's name and values are exactly the select's were and the handler
+ * cannot tell the difference. The thumb is the gallery's own
+ * `.tpl-thumb[data-tpl]`, which is the whole reason there is no new script
+ * here: `template-gallery.js` finds every one of them on the page and draws it.
+ *
+ * With no script each card is its name and its blurb, which is more than the
+ * select it replaces ever showed.
+ */
+function templateCards(selected: string): string {
+  const cards = TEMPLATES.map(
+    (t) =>
+      `<label class="tplpick">` +
+      `<input type="radio" name="template" value="${escapeHtml(t.id)}"` +
+      `${t.id === selected ? ' checked' : ''}>` +
+      `<div class="tpl-thumb" data-tpl="${escapeHtml(t.id)}">` +
+      `<div class="tpl-fallback">${escapeHtml(t.name)}</div></div>` +
+      `<div class="tplpick-cap"><b>${escapeHtml(t.name)}</b>` +
+      `<small>${escapeHtml(t.blurb)}</small></div>` +
+      `</label>`,
+  ).join('');
+  /*
+   * A `<fieldset>` with a `<legend>`, which is what a group of radios is —
+   * rather than a div carrying `role="radiogroup"` and an `aria-labelledby`
+   * pointing at another div. The browser associates the two on its own and
+   * there is no id to keep in step.
+   */
+  return (
+    `<fieldset class="tplpick-field">` +
+    `<legend class="field-label">Starting layout</legend>` +
+    `<div class="tplpick-grid">${cards}</div>` +
+    `</fieldset>` +
+    `<p class="field-hint">Classic is today, the week ahead and the month — the standard ` +
+    `kitchen calendar. You can switch to any of these afterwards, from this wall’s ` +
+    `Templates gallery.</p>`
+  );
+}
+
 /** A six-digit hex colour, which is what `<input type="color">` submits. */
 
 function formatBytes(bytes: number): string {
@@ -2481,9 +2543,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.get('/admin/layout/preview.json', (c: Context) => {
     if (deps.previewManifest === undefined) return c.json({ error: 'unavailable' }, 404);
-    const owner = resolveOwner(c.req.query('screen'));
-    // A preview of no wall is not the household's any more; there is nothing to
-    // render, and saying so beats rendering somebody else's document.
+    const named = c.req.query('screen');
+    /*
+     * No `screen` at all is the household's own document, and that is a
+     * different question from a `screen` naming a wall that is gone.
+     *
+     * The distinction is the whole of this branch. A named wall that has been
+     * unpaired must still 404 — rendering somebody else's document under a
+     * dead id is what the note here has always said. But the add-a-wall form
+     * previews templates *before* a wall exists, and on a household with no
+     * walls at all there is no id to name; `previewManifest(null)` is already
+     * the shared-settings document two other callers in this file use for
+     * exactly that, so the answer exists and only the route refused to give it.
+     */
+    if (named === undefined || named === '') return c.json(deps.previewManifest(null));
+    const owner = resolveOwner(named);
     if (owner === undefined) return c.json({ error: 'unknown wall' }, 404);
     return c.json(deps.previewManifest(owner));
   });
@@ -3874,7 +3948,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const sizeChosen = [...WALL_SIZE_PRESETS.map((one) => one.key), WALL_SIZE_CUSTOM].join(' ');
 
     // --- Appearance ------------------------------------------------------
+    //
+    // The template gallery leads this panel rather than sitting under Advanced.
+    // Picking a starting layout is the first thing done to a new wall and the
+    // commonest thing done to an old one; Advanced is for the infrequent and
+    // the destructive, and burying it there put the one control that changes
+    // what the wall *shows* two taps behind a category named for pairing and
+    // unpairing.
+    //
+    // It is a link rather than a form, which is why it can live inside the
+    // settings form this panel sits in — the reason Reset and Unpair beside it
+    // in Advanced cannot move with it.
     const appearance =
+      wsetGroup(
+        'Layout',
+        `<div class="rows">` +
+          `<a class="arow" href="admin/displays/${encodeURIComponent(screen.id)}/gallery">` +
+          `<span class="arow-text">Start from a template` +
+          `<small>Replace this wall's layout with one we ship, or copy another wall's.</small></span>` +
+          `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
+          `</div>`,
+      ) +
       wsetGroup(
         'Theme',
         `<div class="rows">` +
@@ -4141,9 +4235,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<small>Shows a fresh link and code. The current one stops working` +
       `${screen.lastSeenAt === null ? '' : ', and this wall drops off until the new one is opened on it'}.</small></span>` +
       `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button></form>` +
-      `<a class="arow" href="admin/displays/${id}/gallery"><span class="arow-text">Start from a template` +
-      `<small>Replace this wall's layout with one we ship, or copy another wall's.</small></span>` +
-      `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
+      // "Start from a template" used to sit here and now leads Appearance: it is
+      // neither infrequent nor destructive, which is what this category is for.
       `<form method="post" action="admin/displays/${id}/reset-layout" ` +
       `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(screen.name)} ` +
       `to the Classic layout? Everything arranged here is replaced.">` +
@@ -4159,7 +4252,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<div class="wset" data-wset-root>` +
       `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Wall settings">` +
-      wsetRow('appearance', 'Appearance', 'Theme and daylight schedule', true) +
+      wsetRow('appearance', 'Appearance', 'Template, theme and daylight', true) +
       wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
       wsetRow('device', 'Device and time', 'Name, mounting, size, timezone', false) +
       // Names both switches: the section holds one about alerts and one about
@@ -4170,7 +4263,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('appearance', 'Appearance', 'How this wall looks. Anything left on the household default follows the wall defaults on System.', appearance, true) +
+      wsetPanel('appearance', 'Appearance', 'The layout this wall starts from and how it looks. Anything left on the household default follows the wall defaults on System.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
       // Both switches, not just the alert one — this panel is now where every
@@ -4387,24 +4480,34 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             option('270', '270° clockwise', rotation === '270'),
         }) +
         /*
-         * A plain select rather than the gallery's cards, and that is a limit
-         * rather than a preference: a card previews by rendering the canvas a
-         * screen owns, and this screen does not exist yet. Cards here would be
-         * names in boxes shaped like previews, or a second way to draw one —
-         * which is the fault the e-paper design page already had to fix once.
-         * The gallery is one link away and every card there is a real render.
+         * Cards with a real preview each, not a list of names.
+         *
+         * This was a plain `<select>`, on the argument — written here — that a
+         * card previews by rendering the canvas a screen owns and this screen
+         * does not exist yet. That was wrong about the mechanism: a *wall's*
+         * gallery card is drawn in the browser from the **template's** own
+         * canvas through `renderFreeform`, and the screen supplies nothing but
+         * the manifest to draw with. So the same script draws the same cards
+         * here against the household's own document, which is what
+         * `previewManifest(null)` has always answered. No second renderer,
+         * which is the thing that argument was actually protecting.
+         *
+         * It reported itself: "it's impossible to know what Classic is, or
+         * Meeting Room, from just text" — of a control offering fourteen names
+         * on the one screen where a household has never seen any of them.
+         *
+         * Radios in labels, the `themecard` idiom this admin already picks a
+         * theme with, so the name and value the handler reads are unchanged and
+         * a browser with no script gets fourteen labelled cards with blurbs —
+         * strictly more than the select said.
          */
-        selectField({
-          label: 'Starting layout',
-          name: 'template',
-          hint:
-            'Classic is today, the week ahead and the month — the standard kitchen ' +
-            'calendar. You can preview all of them, and switch, from this wall’s ' +
-            'Templates gallery afterwards.',
-          optionsHtml: TEMPLATES.map((one) => option(one.id, one.name, template === one.id)).join(''),
-        }) +
+        templateCards(template) +
         `<button type="submit">Add wall</button>` +
-        `</form>`,
+        `</form>` +
+        `<div id="template-gallery" data-json="${escapeHtml(
+          JSON.stringify({ owner: null, templates: wallTemplatePreviews(TEMPLATES) }),
+        )}"></div>` +
+        `<script type="module" src="assets/template-gallery.js"></script>`,
     });
   }
 
@@ -4924,21 +5027,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ...(panel === undefined
         ? {}
         : { panelPreview: `admin/epaper/${ownerParam}/preview.png` }),
-      templates: catalogue.map((t) => {
-        const canvas = panel === undefined ? t.portrait : t[epaperOrientation(panel)];
-        return {
-          id: t.id,
-          aspect: canvas.aspect,
-          widgets: canvas.widgets,
-          // The template's own theme and background, so the card previews the
-          // look applying it produces, not the household's current one (RFC 005
-          // 3c). Neither reaches a panel — it has no theme and one ground.
-          ...(t.theme !== undefined && panel === undefined ? { theme: t.theme } : {}),
-          ...(canvas.background !== undefined && panel === undefined
-            ? { background: canvas.background }
-            : {}),
-        };
-      }),
+      // The wall case is `wallTemplatePreviews`, shared with the add-a-wall
+      // form so the two pages cannot come to send different shapes of this.
+      // A panel's is this page's alone: it needs the orientation the panel
+      // actually draws, and neither theme nor background reaches it — it has
+      // no theme and one ground.
+      templates:
+        panel === undefined
+          ? wallTemplatePreviews(catalogue)
+          : catalogue.map((t) => {
+              const canvas = t[epaperOrientation(panel)];
+              return { id: t.id, aspect: canvas.aspect, widgets: canvas.widgets };
+            }),
     });
 
     return page({

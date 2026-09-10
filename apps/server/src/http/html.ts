@@ -1913,6 +1913,34 @@ pre.code{background:var(--mw-surface-2);
 .tpl-card .btn-sm{align-self:flex-start;margin-top:var(--mw-s-1)}
 .tpl-copy{margin-top:calc(var(--mw-s-6) + var(--mw-s-1));padding-top:var(--mw-s-5);border-top:1px solid var(--rule)}
 .tpl-copy .row{display:flex;gap:var(--mw-s-3);align-items:flex-end;flex-wrap:wrap}
+/* ---- Starting-layout picker (add a wall / add a panel) -------------------
+ * The gallery's thumb inside the theme picker's card: a radio in a label, the
+ * chosen one ringed with a shadow so nothing shifts. Narrower cards than the
+ * gallery's 280px, because this is one field on a form rather than the page. */
+.tplpick-field{border:0;padding:0;margin:var(--mw-s-4) 0 0;min-width:0}
+.tplpick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:var(--mw-s-4);margin:var(--mw-s-2) 0 var(--mw-s-3)}
+.tplpick{position:relative;display:block;background:var(--mw-surface-3);
+  border-radius:var(--mw-r-3);overflow:hidden;cursor:pointer}
+.tplpick input{position:absolute;opacity:0;pointer-events:none}
+/* A wall card at the shape of the thing it is a picture of.
+ *
+ * The gallery's 3/4 thumb letterboxes a 9:16 canvas: at the gallery's 280px
+ * that is a bar down each side, and in this narrower grid it is a 134px canvas
+ * inside a 179px box whose height still sets the wall's rem basis — so the
+ * month grid is drawn for a frame wider than the one it lands in. At the
+ * canvas's own aspect the box, the wall and the canvas are one rectangle and
+ * the card is the gallery's picture, smaller. The :not() is because a panel
+ * card's shape is the panel's own, which it carries itself. */
+.tplpick .tpl-thumb:not(.is-ink){aspect-ratio:9/16}
+.tplpick-cap{padding:var(--mw-s-3)}
+.tplpick-cap b{font:var(--mw-t-h4);letter-spacing:var(--mw-t-h4-tracking);
+  display:block;color:var(--mw-ink)}
+.tplpick-cap small{display:block;color:var(--mw-ink-2);
+  font-size:var(--mw-t-label-xs-size);line-height:1.4}
+.tplpick:hover .tplpick-cap{background:color-mix(in srgb,
+  var(--mw-ink) var(--mw-wash-hover),transparent)}
+.tplpick:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
 
 /* ---- Wall editor: local header, two modes, canvas + inspector -----------
  * The editor used to be one continuous page: status and pairing, the canvas,
@@ -2408,7 +2436,8 @@ ${COMPONENT_STYLE}
  * hide their real radio, so the ring goes on the card via :has(). */
 :is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
-.themecard:has(input:focus-visible){outline:3px solid var(--mw-accent);
+.themecard:has(input:focus-visible),
+.tplpick:has(input:focus-visible){outline:3px solid var(--mw-accent);
   outline-offset:2px}
 
 /* ---- Motion, gated on the reader's preference ----------------------------

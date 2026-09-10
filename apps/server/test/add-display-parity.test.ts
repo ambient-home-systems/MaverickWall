@@ -145,6 +145,24 @@ function optionsOf(html: string, name: string): string[] {
   return [...html.slice(start, end).matchAll(/<option value="([^"]*)"/g)].map((match) => match[1] ?? '');
 }
 
+/**
+ * The `value="…"` of every radio by that name, in document order.
+ *
+ * The starting-layout pickers are card grids rather than selects — a list of
+ * names is not a picture of a layout — so what they offer is read off the
+ * radios. Deliberately its own reader rather than a looser regex over both:
+ * the questions this file asks about a select are still asked of the selects.
+ */
+function radiosOf(html: string, name: string): string[] {
+  return [...html.matchAll(new RegExp(`name="${name}" value="([^"]*)"`, 'g'))].map(
+    (match) => match[1] ?? '',
+  );
+}
+
+/** Whether that radio is the one marked checked. */
+const radioChecked = (html: string, name: string, value: string): boolean =>
+  new RegExp(`name="${name}" value="${value}" checked`).test(html);
+
 /** Whether a form control by that name is on the page at all. */
 const asks = (html: string, name: string): boolean => html.includes(`name="${name}"`);
 
@@ -220,7 +238,7 @@ describe('adding a wall and adding a panel are one shape', () => {
 
   it('offers every template it ships, from the right catalogue, on each page', async () => {
     const h = await harness();
-    expect(optionsOf(await h.html('/admin/walls/new'), 'template')).toEqual(
+    expect(radiosOf(await h.html('/admin/walls/new'), 'template')).toEqual(
       TEMPLATES.map((one) => one.id),
     );
     /*
@@ -229,7 +247,7 @@ describe('adding a wall and adding a panel are one shape', () => {
      * panel, where `panel-built-in` is stored fractions approximating it. The
      * default has to be the real one.
      */
-    expect(optionsOf(await h.html('/admin/epaper'), 'layout')).toEqual([
+    expect(radiosOf(await h.html('/admin/epaper'), 'layout')).toEqual([
       'builtin',
       ...PANEL_TEMPLATES.map((one) => one.id),
     ]);
@@ -410,7 +428,9 @@ describe('adding a browser wall', () => {
     expect(body, 'the size choice was thrown away').toMatch(
       new RegExp(`<option value="${WALL_SIZE_CUSTOM}" selected`),
     );
-    expect(body, 'the template choice was thrown away').toMatch(/<option value="sky-week" selected/);
+    expect(radioChecked(body, 'template', 'sky-week'), 'the template choice was thrown away').toBe(
+      true,
+    );
   });
 });
 
@@ -529,6 +549,8 @@ describe('adding an e-paper panel', () => {
     expect(body, 'the height was thrown away').toContain('value="480"');
     expect(body, 'the panel choice was thrown away').toMatch(/<option value="custom" selected/);
     expect(body, 'the rotation was thrown away').toMatch(/<option value="180" selected/);
-    expect(body, 'the layout choice was thrown away').toMatch(/<option value="panel-week" selected/);
+    expect(radioChecked(body, 'layout', 'panel-week'), 'the layout choice was thrown away').toBe(
+      true,
+    );
   });
 });
