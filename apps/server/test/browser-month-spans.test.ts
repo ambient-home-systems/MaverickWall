@@ -28,7 +28,7 @@ import {
   browser,
   install,
   measureMonthGrid,
-  settleWall,
+  loadWallSettled,
   shutDownBrowser,
   type Installation,
   fixtureDate,
@@ -175,30 +175,25 @@ async function drawAt(
   patch?: (body: Record<string, unknown>) => void,
 ): Promise<MonthGrid> {
   canvasOf(cellEvents, extra, box);
-  const context = await (await browser()).newContext({ viewport: size });
-  const page: Page = await context.newPage();
+  /*
+   * `loadWallSettled`, for the reason `browser-month-grid`'s own `drawAt` gives
+   * at length: a wall measured before its first manifest has answered still
+   * carries the offline banner, a banner is canvas height, and canvas height is
+   * which density rung a cell resolves to — which is exactly what this file
+   * measures.
+   *
+   * The manifest rewrite goes *through* the helper rather than being registered
+   * beside it. Playwright matches route handlers most-recent-first, so a second
+   * route on the same manifest glob here would win, and the helper's hold would
+   * simply stop happening — the flake back, with the fix apparently applied.
+   */
+  const { page, close } = await loadWallSettled(link, size, {
+    ...(patch !== undefined ? { patchManifest: patch } : {}),
+  });
   try {
-    if (patch !== undefined) {
-      await page.route('**/d/manifest*', async (route) => {
-        const response = await route.fetch();
-        const body = (await response.json()) as Record<string, unknown>;
-        patch(body);
-        /*
-         * Answered without the ETag it came with, so the wall never gets a 304
-         * carrying the *unpatched* body back on the next poll.
-         */
-        await route.fulfill({
-          status: 200,
-          headers: { 'content-type': 'application/json', 'x-server-time': String(Date.now()) },
-          body: JSON.stringify(body),
-        });
-      });
-    }
-    await page.goto(link, { waitUntil: 'load' });
-    await settleWall(page);
     return await measureMonthGrid(page);
   } finally {
-    await context.close();
+    await close();
   }
 }
 
