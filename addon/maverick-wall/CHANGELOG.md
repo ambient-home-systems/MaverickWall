@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**You can see what a starting layout looks like before you pick it.** Both add
+pages listed them by name — "Classic", "Meeting Room" — which tells you nothing
+if you have never seen one. Each is a card with a picture of it now: a wall's is
+drawn the way the wall draws it, and a panel's is the real black-and-white frame
+that panel would show, redrawn if you pick a different panel or turn it on its
+side.
+
+**"Start from a template" moved out of Advanced.** It is the first thing in a
+wall's Appearance settings, next to the theme, where the rest of how the wall
+looks lives. Advanced keeps the pairing link, reset and unpair.
+
+**The layout editor no longer opens tiny.** If you last left a wall's page on
+Wall settings, the canvas came back a third of its size and only resizing the
+window put it right.
+
+**Small:** on an e-paper panel's page, the button under "Layout" sits under the
+field it belongs to instead of on the far right of the section.
+
 ## 0.61.0
 
 **Adding a wall and adding an e-paper panel now work the same way.** They did

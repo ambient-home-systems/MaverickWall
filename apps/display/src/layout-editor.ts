@@ -1570,6 +1570,54 @@ function boot(): void {
   }
 
   /*
+   * Re-size when the stage's own width changes, not only at boot and on a
+   * window resize.
+   *
+   * `sizeCanvas()` reads `stage.clientWidth`, and a `display:none` stage reports
+   * 0 — so the `|| 360` fallback runs and the canvas is laid out for a stage a
+   * third of the real one. The wall page hides the Layout pane whenever this
+   * browser last left off on Wall settings (`display-editor.ts` restores that
+   * from `localStorage`, and it runs *before* this module), so for every
+   * household who has ever opened Wall settings the editor boots against a
+   * stage of zero width: measured on a 1440px window, a 992px stage drew a
+   * 328x583 canvas where it should draw 477x848. Switching back to Layout
+   * un-hid the stage and nothing recomputed, so the canvas stayed a third of
+   * its size until the window happened to be resized — which is exactly how it
+   * was reported.
+   *
+   * An observer rather than a `sizeCanvas()` beside every place that shows the
+   * pane, for the reason the preview's own observer below gives: the fit is a
+   * fact about the geometry, not a step in a routine somebody has to remember,
+   * and the pane is shown from a different module that knows nothing about this
+   * canvas. It also picks up what a `resize` listener cannot see at all — a
+   * scrollbar appearing, the inspector column arriving, a font landing.
+   *
+   * No feedback loop: the stage's width comes from the pane above it and never
+   * from the canvas inside it (`.le-stage` is a flex row and `.le-canvas` a flex
+   * item that shrinks), so sizing the canvas cannot change the width being
+   * observed. The width guard makes that belt-and-braces — the stage's *height*
+   * does follow the canvas, and reacting to that would be a loop.
+   */
+  if (typeof ResizeObserver !== 'undefined') {
+    let sizedFor = -1;
+    new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? stage.clientWidth;
+      if (width === sizedFor) return;
+      sizedFor = width;
+      // Nothing to size against yet: leave the canvas as it is rather than
+      // laying it out for a stage that is not on screen.
+      if (width <= 0) return;
+      /*
+       * The size and nothing else. The overlay is positioned in percentages so
+       * it follows the box for free, and the preview has its own observer on
+       * the canvas below — which is also why this must not be a `draw()`: on a
+       * panel that would `renderPreview()`, and a panel's preview is a POST.
+       */
+      sizeCanvas();
+    }).observe(stage);
+  }
+
+  /*
    * What the wall will actually draw of this canvas, and why a box is left out.
    *
    * Both are `omission.ts`, which is also where the three sentences a household

@@ -50,6 +50,14 @@ interface TemplatePreview {
   readonly id: string;
   readonly aspect: number;
   readonly widgets: readonly TemplateWidget[];
+  /**
+   * Draw the panel's *built-in* view rather than these boxes.
+   *
+   * A panel with no canvas draws the renderer's own layout, which no list of
+   * widgets can ask for: an empty list is a canvas somebody emptied. Panel
+   * cards only.
+   */
+  readonly builtin?: boolean;
   /** The template's designed theme and background, previewed on the card. */
   readonly theme?: string;
   readonly background?: CanvasBackground;
@@ -69,6 +77,18 @@ interface GalleryData {
    * which is the frame the device would draw.
    */
   readonly panelPreview?: string;
+  /**
+   * Form controls whose values ride along with every panel preview request,
+   * as `name → the value that control holds` — present only on the
+   * add-a-panel form, where the panel has no row to read a shape from.
+   *
+   * Named rather than serialised here because the endpoint's body is a schema
+   * and this is a list of the fields that belong in it: the geometry, and
+   * nothing else on a form that also carries a name and a starting layout.
+   * Changing one of them redraws every card, because the shape of the frame is
+   * exactly what they decide.
+   */
+  readonly panelFields?: readonly string[];
 }
 
 function boot(): void {
@@ -90,6 +110,7 @@ function boot(): void {
       owner: typeof parsed.owner === 'string' ? parsed.owner : null,
       templates: Array.isArray(parsed.templates) ? parsed.templates : [],
       ...(typeof parsed.panelPreview === 'string' ? { panelPreview: parsed.panelPreview } : {}),
+      ...(Array.isArray(parsed.panelFields) ? { panelFields: parsed.panelFields } : {}),
     };
   } catch {
     return; // The server-rendered cards and fallbacks stand on their own.
@@ -109,6 +130,22 @@ function boot(): void {
    */
   const panelPreview = data.panelPreview;
   if (panelPreview !== undefined) {
+    /*
+     * The shape the frame is drawn at, read off the form each time rather than
+     * captured once: on the add-a-panel form the household picks the panel and
+     * its rotation *while* looking at these cards, and a card still showing the
+     * previous shape is the thing a preview exists to stop.
+     */
+    const shape = (): Record<string, unknown> => {
+      const out: Record<string, unknown> = {};
+      for (const name of data.panelFields ?? []) {
+        const control = document.querySelector<HTMLInputElement | HTMLSelectElement>(
+          `[name="${name}"]`,
+        );
+        if (control !== null) out[name] = control.value;
+      }
+      return out;
+    };
     const drawInk = async (thumb: HTMLElement): Promise<void> => {
       const template = byId.get(thumb.dataset['tpl'] ?? '');
       if (template === undefined) return;
@@ -116,13 +153,24 @@ function boot(): void {
         const response = await fetch(panelPreview, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ widgets: placed(template.widgets) }),
+          body: JSON.stringify(
+            template.builtin === true
+              ? { ...shape(), builtin: true, widgets: [] }
+              : { ...shape(), widgets: placed(template.widgets) },
+          ),
         });
         if (!response.ok) return;
         const image = document.createElement('img');
         image.className = 'tpl-ink';
         image.alt = '';
         image.src = URL.createObjectURL(await response.blob());
+        // The previous frame, when this is a redraw after the shape changed.
+        // Revoked as it goes: a household flipping through the panel list would
+        // otherwise leave one decoded PNG per card per change in memory.
+        for (const stale of Array.from(thumb.querySelectorAll('img.tpl-ink'))) {
+          URL.revokeObjectURL((stale as HTMLImageElement).src);
+          stale.remove();
+        }
         thumb.appendChild(image);
         const fallback = thumb.querySelector('.tpl-fallback');
         if (fallback instanceof HTMLElement) fallback.style.display = 'none';
@@ -143,10 +191,25 @@ function boot(): void {
       running = false;
     };
     const want = (thumb: HTMLElement): void => {
-      queue.push(thumb);
+      // Once: two changes in a row while the queue is draining would otherwise
+      // render the same card twice and throw the first frame away.
+      if (!queue.includes(thumb)) queue.push(thumb);
       void pump();
     };
     const inkThumbs = Array.from(document.querySelectorAll<HTMLElement>('.tpl-thumb[data-tpl]'));
+    /*
+     * A shape change redraws every card that has one, in the same one-at-a-time
+     * queue — cards that have not been drawn yet are simply drawn at the new
+     * shape when they scroll into view, so nothing has to be un-queued.
+     */
+    for (const name of data.panelFields ?? []) {
+      const control = document.querySelector(`[name="${name}"]`);
+      control?.addEventListener('change', () => {
+        for (const thumb of inkThumbs) {
+          if (thumb.querySelector('.tpl-ink') !== null) want(thumb);
+        }
+      });
+    }
     if (typeof IntersectionObserver === 'function') {
       const observer = new IntersectionObserver(
         (entries) => {

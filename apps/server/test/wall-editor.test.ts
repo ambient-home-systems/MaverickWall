@@ -279,7 +279,31 @@ describe('wall settings are categories, and every field kept its name', () => {
     const advanced = html.slice(html.indexOf('data-wset-panel="advanced"'));
     expect(advanced).toContain('admin/screens/s6/revoke');
     expect(advanced).toContain('reset-layout');
-    expect(advanced).toContain('admin/displays/s6/gallery');
+  });
+
+  /*
+   * The template gallery is a link, so — unlike Reset and Unpair beside it —
+   * it can live inside the settings form, and it does: picking a starting
+   * layout is the first thing done to a new wall and the commonest thing done
+   * to an old one, where Advanced is for the infrequent and the destructive.
+   *
+   * Asserted in both directions. "It is in Appearance" alone stays green if a
+   * second copy is left behind in Advanced, which is the shape a move gets
+   * wrong; the page's own overflow menu keeps its "Start from a template…"
+   * item and always has, so the thing that must be gone is named by panel.
+   */
+  it('offers the template gallery in Appearance rather than under Advanced', async () => {
+    const h = await ready();
+    h.pairScreen('s6b', 'Kitchen');
+    const html = await (await h.call('/admin/walls/s6b')).text();
+    const appearance = html.slice(
+      html.indexOf('data-wset-panel="appearance"'),
+      html.indexOf('data-wset-panel="content"'),
+    );
+    const advanced = html.slice(html.indexOf('data-wset-panel="advanced"'));
+    expect(appearance).toContain('admin/displays/s6b/gallery');
+    expect(appearance).toContain('Start from a template');
+    expect(advanced).not.toContain('gallery');
   });
 
   it('names the source and the effective value wherever something is inherited', async () => {
