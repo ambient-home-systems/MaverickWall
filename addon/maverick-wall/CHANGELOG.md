@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.62.0
+
 **You can see what a starting layout looks like before you pick it.** Both add
 pages listed them by name — "Classic", "Meeting Room" — which tells you nothing
 if you have never seen one. Each is a card with a picture of it now: a wall's is
