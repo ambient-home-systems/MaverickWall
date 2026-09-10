@@ -24,7 +24,7 @@
     "@material/material-color-utilities": "^0.3.0",
     "@maverick-wall/calendar": "workspace:*",
     "@maverick-wall/core": "workspace:*",
-    "better-auth": "~1.6.25",
+    "better-auth": "~1.7.4",
     "better-sqlite3": "^11.3.0",
     "bonjour-service": "^1.4.4",
     "drizzle-orm": "^0.45.2",

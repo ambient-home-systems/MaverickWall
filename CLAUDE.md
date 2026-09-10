@@ -189,6 +189,7 @@ useful thing in this document:
 | The two HIGHs that *were* in the image, three hops under the names | The same listing — no name anybody would write down reached them |
 | **Sixteen browser files gave teardown no budget at all** | One suite failing in three runs with every test in it passing |
 | better-auth 1.7 wants a column the schema has not got | A vitest bump that could not move without re-resolving better-auth |
+| A dependency blocked for months over a fault fixed two patches later | Bumping it and running the suite, which is the whole check |
 | **Two wall tests that failed for one hour every night** | Running them at 23:32, then remembering they had passed at 22:36 |
 | **A rota chip under the type floor for as long as an event was running** | Widening a fixture event until it was live, then reverting four candidate fixes in turn |
 | A bootstrap code stamped by one clock and read by another | Moving the harness's pinned hour six hours forward, to prove the pinning worked |
@@ -5630,14 +5631,35 @@ rather than an oversight.
   `pnpm audit --prod` reports nothing. It was not a peer-resolution change in
   the end — it was a reachability sweep over the deployed tree, which is the
   paragraph above.
-- **better-auth is pinned to `~1.6.25`, and 1.7 needs a migration.** 1.7.2
-  fails every auth test with `The field "issuer" does not exist in the
-  "account" Drizzle schema` — it wants a column this schema has not got, so
-  moving to it means a shipped migration, a `migration-upgrade.test.ts` run
-  against a database with data already in it, and rule seven's whole
-  apparatus. The pin takes 1.6 patches and stops at that minor. This is the
-  next dependency decision, and it is deliberately not folded into anything
-  else.
+- ~~better-auth is pinned to `~1.6.25`, and 1.7 needs a migration~~ **is
+  closed, and the migration was never needed.** The entry said 1.7.2 fails
+  every auth test with `The field "issuer" does not exist in the "account"
+  Drizzle schema`, so moving would mean a shipped migration and rule seven's
+  whole apparatus. That was true of **1.7.2** and is not true of 1.7.4: every
+  `issuer` in the package is inside the `jwt` and `device-authorization`
+  plugins, neither of which this application loads, and the schema is
+  untouched. The pin is `~1.7.4`.
+
+  Worth keeping, because the shape recurs: **a blocker recorded against one
+  patch version is a fact about that version**, and this one had been the
+  named next decision for long enough that nobody re-ran it. The check is
+  cheap — bump it and run the suite.
+
+  What 1.7 *does* bring is a new optional peer, `better-sqlite3@^12`, against
+  the 11 this project runs. It is declared `optional` in
+  `peerDependenciesMeta` and it is for better-auth's **own** SQLite adapter;
+  this application passes it a `drizzleAdapter`, so that code path is never
+  reached. `peerDependencyRules.allowedVersions` says so rather than bumping a
+  native module — better-sqlite3 is the one dependency whose version is a
+  multi-arch build risk, and it must not move as a side effect of an auth bump.
+
+  Proven the way this file counts, against the artifact rather than the
+  lockfile: the image builds, the pruned tree boots and answers `/healthz`
+  (which is the reachability sweep surviving a changed closure), and a real
+  sign-up, session cookie, `/admin` at 200, sign-out and a refused cookie were
+  driven through the running container. `/healthz` alone would not have shown
+  it — auth is the largest closure in the tree and the one a swept dependency
+  would break.
 
 ---
 
