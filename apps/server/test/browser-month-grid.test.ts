@@ -38,7 +38,7 @@ import {
   browser,
   install,
   measureMonthGrid,
-  settleWall,
+  loadWallSettled,
   shutDownBrowser,
   type CellText,
   type Installation,
@@ -237,14 +237,37 @@ async function drawAt(
   cellEvents?: string,
 ): Promise<MonthGrid> {
   canvasOf(cellEvents);
-  const context = await (await browser()).newContext({ viewport: size });
-  const page: Page = await context.newPage();
+  /*
+   * `loadWallSettled`, not a context of our own plus `settleWall`.
+   *
+   * The two are not the same wall. `settleWall` waits for the canvas element,
+   * the fonts and a quarter of a second — none of which says the *first
+   * manifest* has answered, and the wall draws its IndexedDB copy before it
+   * has, with the offline banner on it. A banner is canvas height, canvas
+   * height is the calendar's box, and the box is which density rung a cell
+   * resolves to — so this file, which measures what a cell names and whether
+   * it fits, was measuring an unsettled wall some of the time.
+   *
+   * Measured before this change, on one machine at one commit: five runs of
+   * this file and `browser-month-spans` failed 3, 2, 3, 2 and 4 assertions and
+   * never the same ones twice. Two browsers on that machine failed *different*
+   * tests and CI passed, which reads as "the browser decides" and is not — two
+   * runs of one command in one browser also disagree. Five runs after it, on
+   * both browsers, are clean.
+   *
+   * **No single line of the helper is the cure**, and that was checked rather
+   * than assumed: it holds every manifest for 750ms so the first draw has the
+   * fonts in hand, waits for the manifest before settling, and reloads so the
+   * second draw takes its fonts from cache — and neutering any *one* of the
+   * three leaves this file green, because the other two still land a settled
+   * draw. The old path had none of them. So do not read one of those lines as
+   * load-bearing and drop the others.
+   */
+  const { page, close } = await loadWallSettled(link, size);
   try {
-    await page.goto(link, { waitUntil: 'load' });
-    await settleWall(page);
     return await measureMonthGrid(page);
   } finally {
-    await context.close();
+    await close();
   }
 }
 

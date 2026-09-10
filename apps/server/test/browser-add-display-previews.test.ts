@@ -58,6 +58,32 @@ const drawn = (page: Page): Promise<{ total: number; wall: number; ink: number }
     };
   });
 
+/**
+ * Bring every card into view, so every one of them is asked to draw.
+ *
+ * The gallery renders lazily on `IntersectionObserver` — deliberately, so a
+ * dozen live walls do not all render at once — and an observer reports the
+ * state it samples, not the ground a jump scrolled over. Going straight to the
+ * foot of the page therefore covers the first row (visible at load) and the
+ * last, and whether anything between them is ever observed is a fact about how
+ * many columns this viewport happens to give the grid. It held at 1280px with
+ * three rows and would not at a narrower one.
+ *
+ * Stepping a viewport at a time also spreads the work, which is the other half:
+ * the first version asked for fourteen shadow-root wall renders at once and
+ * failed about one full-suite run in three on a loaded machine.
+ */
+async function revealEveryCard(page: Page): Promise<void> {
+  const step = await page.evaluate(() => window.innerHeight);
+  const height = await page.evaluate(() => document.body.scrollHeight);
+  for (let y = 0; y <= height; y += step) {
+    await page.evaluate((to) => window.scrollTo(0, to), y);
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+  }
+}
+
 describe('adding a browser wall', () => {
   it(
     'draws every template rather than naming it',
@@ -71,9 +97,7 @@ describe('adding a browser wall', () => {
         await wall.signIn(page);
         await page.goto(`${wall.base}/admin/walls/new`, { waitUntil: 'load' });
         await page.waitForSelector('.tpl-thumb[data-tpl]');
-        // Everything, not only what happens to be in view: the cards draw
-        // lazily, so scroll the page before asking.
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await revealEveryCard(page);
         await page.waitForFunction(
           () =>
             Array.from(document.querySelectorAll('.tpl-thumb[data-tpl]')).every(
@@ -121,7 +145,7 @@ describe('adding an e-paper panel', () => {
         await wall.signIn(page);
         await page.goto(`${wall.base}/admin/epaper`, { waitUntil: 'load' });
         await page.waitForSelector('.tpl-thumb[data-tpl]');
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await revealEveryCard(page);
         const allInk = (): Promise<void> =>
           page
             .waitForFunction(
