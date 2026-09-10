@@ -703,7 +703,10 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
         `between them later from this panel’s Templates.</p>` +
         `<p class="hint">Colour panels are coming; today every e-paper wall is rendered ` +
         `black &amp; white.</p>` +
-        `<button class="btn" type="submit">Create</button>` +
+        // Sticky at the foot while the form is on screen, for the reason the
+        // wall's add page gives at length: the layout picker is pictures now,
+        // and the one required field is the name at the top.
+        `<div class="addbar"><button class="btn" type="submit">Create</button></div>` +
         `</form>` +
         `<div id="template-gallery" data-json="${escapeHtml(
           JSON.stringify({
