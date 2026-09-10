@@ -155,13 +155,23 @@ describe('the changelog a household is shown', () => {
       .find((run) => run.includes('## Unreleased'));
     expect(script, 'no step in `advertise` touches `## Unreleased`').toBeDefined();
 
+    /*
+     * The command that rewrites the changelog, whatever it is written with.
+     *
+     * This used to select on `line.startsWith('sed -i')`, which is a fact about
+     * the tool rather than about the job — and it was load-bearing in the wrong
+     * direction: when the step stopped using `sed -i` (a GNU-only spelling that
+     * cannot run on a Mac at all), the filter matched nothing and the whole
+     * case would have gone vacuous rather than red. It selects on the *effect*
+     * now: the line that names the changelog and the heading it renames.
+     */
     const rename = (script ?? '')
       .split('\n')
       .map((line) => line.trim())
-      .filter((line) => line.startsWith('sed -i') && line.includes(CHANGELOG));
+      .filter((line) => line.includes(CHANGELOG) && line.includes('## Unreleased'));
     // Non-vacuity: two would mean this exercised one and left the other, and
     // zero would mean the command moved and nothing below ran on anything.
-    expect(rename, 'expected exactly one sed over the changelog in `advertise`').toHaveLength(1);
+    expect(rename, 'expected exactly one command over the changelog in `advertise`').toHaveLength(1);
 
     const root = mkdtempSync(join(tmpdir(), 'mw-advertise-'));
     try {

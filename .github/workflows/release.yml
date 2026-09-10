@@ -88,7 +88,7 @@ jobs:
           # `## Unreleased` scaffold sits in the changelog between releases by
           # design, and checking only for the heading would let it be renamed
           # and shipped as a release note that says nothing at all.
-          newest=$(grep -oP '^##\s+\K[0-9]+\.[0-9]+\.[0-9]+' addon/maverick-wall/CHANGELOG.md | head -1 || true)
+          newest=$(sed -n 's/^##[[:space:]]\{1,\}\([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\).*/\1/p' addon/maverick-wall/CHANGELOG.md | head -1 || true)
           notes=$(awk '
             /^## Unreleased[[:space:]]*$/ { inside = 1; next }
             /^## / { inside = 0 }
@@ -440,6 +440,21 @@ jobs:
           # Kept, so the push below can use them.
           persist-credentials: true
 
+      # POSIX tools only, and that is not fussiness.
+      #
+      # This step used to reach for `grep -oP` and `sed -i` with no backup
+      # suffix, plus `0,/re/` and a `\n` in a replacement — four GNU
+      # extensions, none of which exists in the BSD sed and grep a macOS
+      # machine ships. `changelog-shape.test.ts` runs the rename *out of this
+      # file*, which is the right design, so the whole suite was red on a Mac
+      # and had been for as long as anybody had one: 1,992 of 1,993 passing,
+      # with the odd one out being the release path. A test nobody can run is a
+      # test, and a suite that is red for an environmental reason teaches
+      # people to read red as noise.
+      #
+      # `python3` for the changelog rather than awk, because the line below it
+      # already edits `package.json` that way and two idioms for one job is how
+      # one of them drifts.
       - name: Raise the version and date the changelog
         run: |
           set -euo pipefail
@@ -447,14 +462,15 @@ jobs:
 
           # Idempotent: re-running a release must not fail, and must not make
           # an empty commit that looks like a second release.
-          current=$(grep -oP '^version:\s*"\K[^"]+' addon/maverick-wall/config.yaml)
+          current=$(sed -n 's/^version:[[:space:]]*"\([^"]*\)".*/\1/p' addon/maverick-wall/config.yaml | head -1)
           server=$(python3 -c 'import json;print(json.load(open("apps/server/package.json"))["version"])')
           if [ "$current" = "$VERSION" ] && [ "$server" = "$VERSION" ]; then
             echo "config.yaml already advertises ${VERSION}; nothing to do."
             exit 0
           fi
 
-          sed -i -E "s/^version: \".*\"$/version: \"${VERSION}\"/" addon/maverick-wall/config.yaml
+          sed -E "s/^version: \".*\"$/version: \"${VERSION}\"/" addon/maverick-wall/config.yaml > addon/maverick-wall/config.yaml.tmp \
+            && mv addon/maverick-wall/config.yaml.tmp addon/maverick-wall/config.yaml
           # The server package's own version, which is what a build with no
           # `MW_VERSION` reports (a checkout, and any image built without the
           # build arg). Kept level with the advertisement here rather than by
@@ -475,11 +491,11 @@ jobs:
           # Deliberately bare. Any words here are words `prepare` would accept
           # as notes, which would defeat the gate that stops a release shipping
           # a heading that says nothing.
-          sed -i "0,/^## Unreleased[[:space:]]*$/s//## Unreleased\n\n## ${VERSION}/" addon/maverick-wall/CHANGELOG.md
+          python3 -c 'import re, sys; p = "addon/maverick-wall/CHANGELOG.md"; raw = open(p).read(); out, n = re.subn(r"(?m)^## Unreleased[ \t]*$", "## Unreleased\n\n## " + sys.argv[1], raw, count=1); assert n == 1, "no `## Unreleased` heading to rename"; open(p, "w").write(out)' "$VERSION"
 
           # The same rule the test enforces, checked here so a bad advertisement
           # is never pushed: the newest numbered heading is the shipped version.
-          newest=$(grep -oP '^##\s+\K\d+\.\d+\.\d+' addon/maverick-wall/CHANGELOG.md | head -1)
+          newest=$(sed -n 's/^##[[:space:]]\{1,\}\([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\).*/\1/p' addon/maverick-wall/CHANGELOG.md | head -1)
           if [ "$newest" != "$VERSION" ]; then
             echo "::error::CHANGELOG.md's newest entry is ${newest:-none}, not ${VERSION}. Add the notes under '## Unreleased' before tagging — the supervisor shows this text beside the update button."
             exit 1
