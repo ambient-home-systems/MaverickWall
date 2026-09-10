@@ -31,6 +31,12 @@ looks lives. Advanced keeps the pairing link, reset and unpair.
 Wall settings, the canvas came back a third of its size and only resizing the
 window put it right.
 
+**Adding a wall or a panel works on a phone.** Those layout pictures made the
+page four and a half screens long, with the button to finish at the very bottom
+— so naming a wall and taking the layout it already offers meant scrolling past
+everything you had decided not to change. The button stays at the bottom of the
+screen while you fill the form in.
+
 **Small:** on an e-paper panel's page, the button under "Layout" sits under the
 field it belongs to instead of on the far right of the section.
 
