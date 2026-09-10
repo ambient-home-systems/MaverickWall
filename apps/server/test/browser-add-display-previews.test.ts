@@ -263,3 +263,119 @@ describe('adding an e-paper panel', () => {
     SLOW,
   );
 });
+
+describe('the submit on a phone', () => {
+  /**
+   * Reachable at any depth, and nothing painting over it.
+   *
+   * Measured at 390x844: giving every starting layout a picture made the
+   * add-a-wall page **3,804px** — four and a half screens — and left "Add wall"
+   * at the bottom of it. The only field a household must fill in is the name at
+   * the top and the picker already arrives on Classic, so the shortest real
+   * journey is "type Kitchen, press Add wall" and it ended in a scroll past
+   * fourteen previews of decisions already taken.
+   *
+   * The desktop half is asserted too, and it is what makes this a breakpoint
+   * rather than a habit: above 900px the button is an ordinary submit at the
+   * end of an ordinary form, so on a document taller than the viewport it is
+   * *below the fold* at the top of the page. A sticky bar leaking to the
+   * desktop turns that green→red.
+   */
+  it(
+    'rides the foot of a phone at every scroll depth, and does not on a desktop',
+    async () => {
+      const wall = await fresh();
+      for (const [width, height, sticky] of [
+        [390, 844, true],
+        [1280, 900, false],
+      ] as const) {
+        const context = await (await browser()).newContext({
+          viewport: { width, height },
+          ...(sticky ? { isMobile: true, hasTouch: true } : {}),
+        });
+        try {
+          const page = await context.newPage();
+          await wall.signIn(page);
+          for (const path of ['/admin/walls/new', '/admin/epaper']) {
+            await page.goto(`${wall.base}${path}`, { waitUntil: 'load' });
+            await page.waitForSelector('.addbar button');
+            const doc = await page.evaluate(() => document.body.scrollHeight);
+            expect(
+              doc,
+              `${path} at ${width}px is shorter than the viewport, so nothing here is being tested`,
+            ).toBeGreaterThan(height);
+
+            const at = async (
+              y: number,
+            ): Promise<{ inView: boolean; h: number; onTop: boolean; covered: string[] }> => {
+              await page.evaluate((to) => window.scrollTo(0, to), y);
+              await page.evaluate(
+                () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+              );
+              return page.evaluate(() => {
+                const button = document.querySelector('.addbar button') as HTMLElement;
+                const r = button.getBoundingClientRect();
+                /*
+                 * What is actually painted along the button, not what the
+                 * stylesheet says about stacking, and not one point of it.
+                 *
+                 * At z-index 2 a card's thumb drew over this bar and every
+                 * rectangle here still measured correct — the words on the
+                 * glass were a card's. The first version of this probed the
+                 * button's *centre*, which the card did not reach, so the
+                 * assertion was green against the exact bug a screenshot had
+                 * already shown. It walks the width now.
+                 */
+                const y = Math.round(r.top + r.height / 2);
+                const xs = [0.08, 0.25, 0.5, 0.75, 0.92].map((f) =>
+                  Math.round(r.left + r.width * f),
+                );
+                const covered = xs
+                  .map((x) => {
+                    const top = document.elementFromPoint(x, y);
+                    if (top === null || top === button || button.contains(top)) return '';
+                    return `${x}px: ${top.tagName.toLowerCase()}.${top.className || '(none)'}`;
+                  })
+                  .filter((one) => one !== '');
+                return {
+                  inView: r.top < window.innerHeight && r.bottom > 0,
+                  h: Math.round(r.height),
+                  onTop: covered.length === 0,
+                  covered,
+                };
+              });
+            };
+
+            if (sticky) {
+              for (const fraction of [0, 0.3, 0.6, 1]) {
+                const seen = await at(Math.round(doc * fraction));
+                expect(
+                  seen.inView,
+                  `${path}: the submit is off screen ${Math.round(fraction * 100)}% down a ${doc}px page`,
+                ).toBe(true);
+                expect(
+                  seen.covered,
+                  `${path}: something is painted over the submit ${Math.round(fraction * 100)}% down`,
+                ).toEqual([]);
+                // A finger, not a pointer: the admin's own token for it is 44px.
+                expect(seen.h, `${path}: the submit is ${seen.h}px tall on a phone`).toBeGreaterThanOrEqual(44);
+              }
+            } else {
+              expect(
+                (await at(0)).inView,
+                `${path}: the submit is pinned to the viewport on a desktop, where the page is two screens`,
+              ).toBe(false);
+              expect(
+                (await at(doc)).inView,
+                `${path}: the submit cannot be reached at the foot of the page`,
+              ).toBe(true);
+            }
+          }
+        } finally {
+          await context.close();
+        }
+      }
+    },
+    SLOW,
+  );
+});

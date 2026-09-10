@@ -4502,7 +4502,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * strictly more than the select said.
          */
         templateCards(template) +
-        `<button type="submit">Add wall</button>` +
+        /*
+         * The submit rides the foot of the viewport while the form is on
+         * screen, rather than sitting 3,700px down behind fourteen previews.
+         *
+         * Measured on a 390x844 phone: this page is 3,775px — four and a half
+         * screens — because every starting layout is now a picture, which is
+         * the point of them. But the only field a household must fill in is
+         * the name at the top, and the picker already arrives on Classic, so
+         * the shortest real journey is "type Kitchen, press Add wall" and it
+         * ended with a scroll past everything they had already decided not to
+         * change. `position: sticky` keeps the button one tap away at any
+         * depth and still lands in its own place at the end of the form.
+         */
+        `<div class="addbar"><button type="submit">Add wall</button></div>` +
         `</form>` +
         `<div id="template-gallery" data-json="${escapeHtml(
           JSON.stringify({ owner: null, templates: wallTemplatePreviews(TEMPLATES) }),

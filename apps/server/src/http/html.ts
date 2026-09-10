@@ -1920,7 +1920,12 @@ pre.code{background:var(--mw-surface-2);
 .tplpick-field{border:0;padding:0;margin:var(--mw-s-4) 0 0;min-width:0}
 .tplpick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
   gap:var(--mw-s-4);margin:var(--mw-s-2) 0 var(--mw-s-3)}
-.tplpick{position:relative;display:block;background:var(--mw-surface-3);
+/* z-index 0 rather than auto: it pins each card to the page's base layer, so
+ * the sticky submit below is above every one of them at any scroll position.
+ * Measured, not assumed -- with the cards left at auto a thumb painted over
+ * the button's right-hand end at the top of the page, and the bar's own
+ * z-index did not settle it. */
+.tplpick{position:relative;z-index:0;display:block;background:var(--mw-surface-3);
   border-radius:var(--mw-r-3);overflow:hidden;cursor:pointer}
 .tplpick input{position:absolute;opacity:0;pointer-events:none}
 /* A wall card at the shape of the thing it is a picture of.
@@ -1941,6 +1946,41 @@ pre.code{background:var(--mw-surface-2);
 .tplpick:hover .tplpick-cap{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .tplpick:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
+/* The add forms' submit, riding the foot of the viewport while the form is on
+ * screen. Sticky rather than fixed, so it lands in its own place at the end of
+ * the form instead of hovering over whatever follows it; the ground and the
+ * hairline are what stop the cards showing through it.
+ *
+ * One layer above the cards, which are pinned to z-index 0 for the purpose --
+ * see .tplpick. Raising *this* number was tried first and is the wrong lever:
+ * a card's thumb still painted over the button's right-hand end at 2, and at 3
+ * it stopped, which is a number that works rather than a rule. Pinning the
+ * cards makes it a rule, and then 1 is enough -- both halves measured, and
+ * unpinning the cards turns the browser test red at either number.
+ *
+ * It stays well under the app bar (5), the drawer and its scrim (40/41) and
+ * the skip link (60), which must all still cover it. */
+.addbar{position:sticky;bottom:0;z-index:1;
+  margin:var(--mw-s-5) calc(-1 * var(--mw-s-4)) 0;
+  padding:var(--mw-s-3) var(--mw-s-4);
+  background:var(--mw-surface);border-top:1px solid var(--mw-line)}
+.addbar button{margin:0;width:100%;min-height:var(--mw-touch)}
+/* Above the compact breakpoint it is an ordinary submit at the end of an
+ * ordinary form: not sticky, no ground, no rule. A sticky bar that has given
+ * up its background would float over the card grid, which is the thing the
+ * ground exists to stop one line up — and these pages are two screens on a
+ * desktop rather than four and a half on a phone.
+ *
+ * The min-height on the button is the touch minimum, which the compact block
+ * below already gives a field input and a small button and does not give a
+ * full-size one -- 40px. That is worth knowing and is not swept here: it is
+ * every primary button in the admin, and moving them all is a change of its
+ * own. This one is the primary action of a form somebody fills in with a
+ * thumb. */
+@media(min-width:900px){
+  .addbar{position:static;margin-inline:0;padding-inline:0;background:none;border-top:0}
+  .addbar button{width:auto;min-height:0}
+}
 
 /* ---- Wall editor: local header, two modes, canvas + inspector -----------
  * The editor used to be one continuous page: status and pairing, the canvas,
