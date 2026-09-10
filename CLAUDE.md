@@ -190,6 +190,7 @@ useful thing in this document:
 | **Sixteen browser files gave teardown no budget at all** | One suite failing in three runs with every test in it passing |
 | better-auth 1.7 wants a column the schema has not got | A vitest bump that could not move without re-resolving better-auth |
 | A dependency blocked for months over a fault fixed two patches later | Bumping it and running the suite, which is the whole check |
+| Three advisories in the shipped tree, under a document saying there were none | Running `pnpm audit --prod` while measuring something else |
 | **Two wall tests that failed for one hour every night** | Running them at 23:32, then remembering they had passed at 22:36 |
 | **A rota chip under the type floor for as long as an event was running** | Widening a fixture event until it was live, then reverting four candidate fixes in turn |
 | A bootstrap code stamped by one clock and read by another | Moving the harness's pinned hour six hours forward, to prove the pinning worked |
@@ -1440,8 +1441,22 @@ HEALTHCHECK failed for ever while the application served every request
 correctly. `docker ps` said unhealthy and `curl` said 200. It probes with
 `node` now — already present, nothing to install and nothing to keep patched.
 
-**The image is 435MB and `pnpm audit --prod` is clean**, and the way that was
-reached is worth more than either number. It used to be ~482MB with about 50MB
+**The image is 437MB and `pnpm audit --prod` is clean**, and the way that was
+reached is worth more than either number.
+
+> **That second clause stopped being true and nobody noticed**, which is the
+> half of this paragraph with a lesson still in it. Three moderate advisories
+> against `hono` — an unbounded dot-notation nesting in `parseBody()`, a query
+> parser that reads past the URL, and a `toSSG()` fix — sat in the production
+> tree until somebody ran the audit while measuring something else entirely.
+> Two of the three are reachable here: this application has **58** `parseBody()`
+> call sites and **12** `req.query()` ones; `toSSG` has none. A clean audit is
+> a reading taken on a day, not a property the repository holds, and this
+> document asserting one is exactly how a reading becomes a belief. Re-run it.
+> (Measured while fixing that: 437MB by `docker images`, which is the number
+> above — `docker image inspect .Size` answers 87MB for the same image and is
+> a different question, so do not "correct" one with the other. 76 packages in
+> `.pnpm`, where the entry below says 86.) It used to be ~482MB with about 50MB
 of `esbuild` and `vitest` in the *production* tree, because `better-auth`
 declares `drizzle-kit` and `vitest` as peer dependencies and pnpm resolves
 peers into a `deploy --prod` tree. `peerDependencyRules.ignoreMissing` does not

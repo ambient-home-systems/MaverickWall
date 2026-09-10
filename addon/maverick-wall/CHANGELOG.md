@@ -37,6 +37,12 @@ page four and a half screens long, with the button to finish at the very bottom
 everything you had decided not to change. The button stays at the bottom of the
 screen while you fill the form in.
 
+**A security update.** Maverick Wall's web framework had three published
+advisories against the version it shipped, two of which this app can actually
+reach — a form body could be crafted to nest without limit, and the query
+parser read past the end of a URL. Both are fixed. Nothing you do changes; this
+matters most if your wall is reachable from outside your home.
+
 **Small:** on an e-paper panel's page, the button under "Layout" sits under the
 field it belongs to instead of on the far right of the section.
 
