@@ -50,7 +50,9 @@ Amends hard rule 12 · Constrains RFC 007
 > 6. **`TODO_TIERS` is unchanged, measured rather than assumed**: the row a
 >    list draws is the same `.td-row` the typed list draws, so the `ch` and
 >    `em` thresholds are against the same markup. The tick box §6.3 worried
->    about is phase 2's problem, and it will be this widget's row widening.
+>    about is phase 2's problem — and phase 2 did not widen the row either: the
+>    44px target is grown out of flow behind the same 1.7rem box, so the table is
+>    unchanged again.
 >
 > Unproven where it counts: nobody has looked at a real wall or a real panel
 > drawing a real list. The measurements are a real browser on a paired wall
@@ -555,15 +557,28 @@ the same one the calendar widget shipped: **an absent key is a value**, and
 
 `PANEL_HONOURS.todo` gains `list` and `showDone`; `INK_LANE.todo` stays empty,
 because `list` is the widget's identity and the lane offers density and shape,
-never a different list on the panel from the one on the wall. `showTick` (§7)
-will go in `PANEL_IGNORES` with its reason, because a battery panel cannot
-offer a tick at all. `EPAPER_RENDERER_VERSION` is **9**: only a panel with a
-list-backed widget on it moves, and the absent-key frames are pinned identical
-to 8.
+never a different list on the panel from the one on the wall.
+`EPAPER_RENDERER_VERSION` is **9**: only a panel with a list-backed widget on it
+moves, and the absent-key frames are pinned identical to 8.
+
+**This section predicted a `showTick` key and phase 2 built none**, which is the
+same correction §11 records and is worth making where the prediction sits. There
+is no widget-level `showTick` anywhere: §7 never specified one, and whether a
+wall may tick is `screens.allow_todo` — a fact about the *screen*. So it goes in
+neither honours table rather than into `PANEL_IGNORES`, because both are keyed on
+a widget's config and closed against `widgetConfigBody`; the reason is written at
+the `PANEL_IGNORES` declaration instead.
 
 `TODO_TIERS` was looked at and is unchanged: a list draws the same `.td-row`
-the typed list draws, so the thresholds are against the same row. The tick box
-is phase 2's, and that is when the row widens.
+the typed list draws, so the thresholds are against the same row.
+
+**And the row did not widen after all**, which this section predicted it would
+once the tick box arrived. The control is the read-only box — the same 1.7rem
+square, now a `<button>` — and the 44px a fingertip needs is grown behind it by
+an absolutely positioned pseudo-element, which is the chore tick's own idiom and
+changes no layout at all. So `TODO_TIERS` is still unchanged in phase 2, the `ch`
+and `em` thresholds are still measured against the same markup, and a wall that
+allows ticking draws its rows at exactly the pitch a wall that does not.
 
 ## 7. The write path
 
