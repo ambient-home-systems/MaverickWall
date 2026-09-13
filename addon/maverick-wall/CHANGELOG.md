@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**The picture on each starting-layout card is now the wall.** The cards added
+last release drew their text several times too large for the card — so the
+month grid ran off the edge, the words overlapped each other, and every layout
+looked much the same. Each card is a true miniature of the wall it will give
+you, in that layout's own typeface and at its own proportions. The live preview
+in the wall editor was drawn the same way and is corrected with it.
+
 ## 0.62.0
 
 **You can see what a starting layout looks like before you pick it.** Both add
