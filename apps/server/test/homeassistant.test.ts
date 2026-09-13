@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -19,6 +19,13 @@ import { buildDiagnostics } from '../src/api/diagnostics.js';
 import { seedDefaultRules } from '../src/api/rules.js';
 import type { SqliteDatabase } from '../src/db/open.js';
 import type { JobRecord } from '@maverick-wall/core';
+import {
+  closeFakeHomeAssistants,
+  fakeHomeAssistant,
+  inDays,
+  TOKEN,
+  type FakeHa,
+} from './fake-home-assistant.js';
 
 /**
  * Home Assistant, driven against a real HTTP server.
@@ -32,167 +39,12 @@ import type { JobRecord } from '@maverick-wall/core';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
-const servers: Server[] = [];
 let nextAddress = 0;
 
 afterAll(async () => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
-  await Promise.all(
-    servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
-  );
+  await closeFakeHomeAssistants();
 });
-
-/** The token a household would paste in. Asserted absent from several places. */
-const TOKEN = 'eyJhbGciOiJIUzI1NiJ9.a-long-lived-access-token-that-controls-the-house.sig';
-
-/**
- * Dated relative to now.
- *
- * A fixture pinned to a date stops being inside the sync window the moment
- * that date passes, and the test would then assert against an empty calendar
- * and quietly prove nothing.
- */
-function inDays(offset: number): string {
-  return new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
-}
-
-/**
- * The states document, in Home Assistant's own shape.
- *
- * Includes one entity from an unsupported domain, because filtering it is a
- * behaviour rather than an accident, and one with no device class.
- */
-function statesBody(kitchen = '19.4', freezerChangedAt = new Date(Date.now() - 9 * 60_000)): string {
-  return JSON.stringify([
-    {
-      entity_id: 'sensor.kitchen_temperature',
-      state: kitchen,
-      attributes: {
-        unit_of_measurement: '°C',
-        device_class: 'temperature',
-        friendly_name: 'Kitchen temperature',
-      },
-      last_changed: new Date(Date.now() - 120_000).toISOString(),
-      last_updated: new Date(Date.now() - 120_000).toISOString(),
-      context: { id: '01H', parent_id: null, user_id: null },
-    },
-    {
-      entity_id: 'binary_sensor.freezer_door',
-      state: 'on',
-      attributes: { device_class: 'door', friendly_name: 'Freezer door' },
-      last_changed: freezerChangedAt.toISOString(),
-      last_updated: freezerChangedAt.toISOString(),
-      context: { id: '01J', parent_id: null, user_id: null },
-    },
-    {
-      entity_id: 'binary_sensor.under_sink',
-      state: 'off',
-      attributes: { device_class: 'moisture', friendly_name: 'Under the sink' },
-      last_changed: new Date(Date.now() - 86_400_000).toISOString(),
-      last_updated: new Date(Date.now() - 86_400_000).toISOString(),
-      context: { id: '01K', parent_id: null, user_id: null },
-    },
-    {
-      // Not a reading. Must never reach the picker or the wall.
-      entity_id: 'automation.morning_routine',
-      state: 'on',
-      attributes: { friendly_name: 'Morning routine' },
-      last_changed: new Date().toISOString(),
-      last_updated: new Date().toISOString(),
-      context: { id: '01L', parent_id: null, user_id: null },
-    },
-  ]);
-}
-
-interface FakeHa {
-  base: string;
-  /** Every Authorization header seen, so the token can be proven to arrive. */
-  readonly seen: string[];
-  /** Every path requested, in order. */
-  readonly paths: string[];
-  down: boolean;
-  kitchen: string;
-}
-
-/**
- * A Home Assistant that is real enough to be wrong in the same ways.
- *
- * Refuses without a bearer token, exactly as Core does, because "did we
- * actually attach the credential" is the single most likely thing to be
- * silently broken and a permissive fake would never catch it.
- */
-async function fakeHomeAssistant(): Promise<FakeHa> {
-  const state: FakeHa = { base: '', seen: [], paths: [], down: false, kitchen: '19.4' };
-
-  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    const url = request.url ?? '';
-    state.paths.push(url);
-    state.seen.push(request.headers.authorization ?? '');
-
-    if (state.down) {
-      response.writeHead(502, { 'content-type': 'application/json' });
-      response.end('{"message":"bad gateway"}');
-      return;
-    }
-    if (request.headers.authorization !== `Bearer ${TOKEN}`) {
-      response.writeHead(401, { 'content-type': 'application/json' });
-      response.end('{"message":"Unauthorized"}');
-      return;
-    }
-
-    const json = (body: string): void => {
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(body);
-    };
-
-    if (url === '/api/') return json('{"message":"API running."}');
-    if (url === '/api/states/zone.home') {
-      return json(
-        JSON.stringify({
-          entity_id: 'zone.home',
-          state: 'zoning',
-          attributes: { latitude: 38.8894, longitude: -77.0352, friendly_name: 'Home' },
-        }),
-      );
-    }
-    if (url === '/api/states') return json(statesBody(state.kitchen));
-    if (url === '/api/calendars') {
-      return json(JSON.stringify([{ entity_id: 'calendar.family', name: 'Family' }]));
-    }
-    if (url.startsWith('/api/calendars/calendar.family')) {
-      return json(
-        JSON.stringify([
-          {
-            // An all-day event. `end` is the day *after* the last day it
-            // occupies — the same promise ICS makes, and the same trap.
-            summary: 'Bin day',
-            start: { date: inDays(3) },
-            end: { date: inDays(4) },
-            description: '',
-            location: '',
-            uid: 'bin-1',
-          },
-          {
-            summary: 'Swimming',
-            start: { dateTime: `${inDays(2)}T17:30:00+00:00` },
-            end: { dateTime: `${inDays(2)}T18:30:00+00:00` },
-            uid: 'swim-1',
-          },
-        ]),
-      );
-    }
-
-    response.writeHead(404, { 'content-type': 'application/json' });
-    response.end('{"message":"Not found"}');
-  });
-
-  servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  const port = typeof address === 'object' && address !== null ? address.port : 0;
-  state.base = `http://127.0.0.1:${port}`;
-  return state;
-}
 
 interface Harness {
   readonly db: SqliteDatabase;
@@ -448,8 +300,19 @@ describe('connecting, through the form', () => {
 
     const html = await (await h.call('/admin/home-assistant')).text();
     expect(html).not.toContain(TOKEN);
-    // The boundary is stated where somebody deciding to paste one can read it.
-    expect(html).toContain('It cannot control anything');
+    /*
+     * The boundary is stated where somebody deciding to paste one can read it.
+     *
+     * This used to assert "It cannot control anything", which was true while
+     * the permitted set was empty and became the most prominent stale claim in
+     * the product the moment rule 12 was amended. It names the one permitted
+     * write now — `ha-claims.test.ts` is what holds the other nine places, and
+     * this one stays here because it is the assertion that would have gone red
+     * if the card had been left alone.
+     */
+    expect(html).toContain('can tick one kind of box');
+    expect(html).toContain('todo.update_item');
+    expect(html).not.toContain('It cannot control anything');
   });
 
   it('fills the picker from the live house, and leaves the rest of it out', async () => {
@@ -695,7 +558,7 @@ describe('readings on the wall', () => {
     await h.pollHa();
 
     // Not "down" — gone. A 502 comes from a server; this is no server at all.
-    await new Promise<void>((resolve) => servers[servers.length - 1]?.close(() => resolve()));
+    await ha.close();
     await h.pollHa();
 
     const document = JSON.stringify(await h.manifest());

@@ -159,9 +159,11 @@ const ruleBody = z.object({
  * with four hundred entities gets type-ahead from the browser, and the page
  * still works on whatever is bolted to their wall.
  *
- * The read-only boundary is stated on the page in as many words. It is a
- * feature and it is the reason the token is safe to store at all, so it is
- * written where somebody deciding whether to paste one can read it.
+ * What this can and cannot do to a house is stated on the page in as many
+ * words, and the *can* is named rather than implied. It is the reason the token
+ * is safe to store at all, so it is written where somebody deciding whether to
+ * paste one can read it — and it is exact, because a promise that overstates
+ * itself is one a household finds out about by being surprised.
  */
 
 const ACTIONS: readonly { key: InterruptAction; label: string }[] = [
@@ -703,18 +705,31 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The read-only boundary, stated first.
+   * The boundary, stated first and stated exactly.
    *
    * Before the form, not after it, because it is the thing that decides
    * whether pasting a token here is a reasonable thing to do — and it is the
    * only claim on this page that somebody has to take on trust.
+   *
+   * It used to read "Maverick Wall reads. It cannot control anything", which
+   * was true when the answer was none. Rule 12 permits exactly one write now,
+   * so the heading names it. A boundary that rounds "one thing" down to
+   * "nothing" is not reassurance, it is the claim a household would discover
+   * was wrong — and `ha-claims.test.ts` fails on the old wording rather than
+   * trusting anybody to remember this paragraph.
    */
   function boundary(): string {
     return card(
-      `<h2>Maverick Wall reads. It cannot control anything.</h2>` +
+      `<h2>Maverick Wall reads, and can tick one kind of box.</h2>` +
       `<ul class="plain">` +
-      `<li>No switches, no scenes, no service calls. There is no code in this ` +
-      `application that writes to Home Assistant.</li>` +
+      `<li>The one thing it will ever change in Home Assistant is ticking an item ` +
+      `off a to-do list you have chosen to show on a wall — ` +
+      `<code>todo.update_item</code>, and that is the whole list. Nothing in this ` +
+      `version does it yet: the limit is written down first so it cannot grow ` +
+      `quietly later.</li>` +
+      `<li>No switches, no scenes, no lights, no locks, no covers, no cameras. ` +
+      `Not off by default — there is no code in this application that can do ` +
+      `any of them.</li>` +
       `<li>The wall receives <strong>resolved values</strong> — “19.4 °C”, “Closed”. ` +
       `It never receives your token, an entity name, or any way to ask Home ` +
       `Assistant a question of its own.</li>` +
@@ -723,8 +738,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `</ul>` +
       `<p class="hint">A Home Assistant long-lived access token has full control of ` +
       `your home and cannot be limited to reading. That is why the limit is on this ` +
-      `side: if a wall in your hallway were ever compromised, the worst it could ` +
-      `give away is your indoor temperature.</p>`,
+      `side: if a wall in your hallway were ever compromised, the worst it could do ` +
+      `is give away your indoor temperature and tick something off your shopping ` +
+      `list.</p>`,
     );
   }
 

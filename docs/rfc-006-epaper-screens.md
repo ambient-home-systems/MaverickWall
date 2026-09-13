@@ -306,8 +306,12 @@ recipe URL from it.
 
 - **Rule 8 (one container).** No BLE, no adapter, no native BLE lib. The tag's
   BLE lives entirely in the household's Home Assistant.
-- **Rule 12 (HA read-only).** Maverick never calls an HA service. HA initiates
-  every push; Maverick only ever answers a `GET` with an image.
+- **Rule 12 (HA writes are confined to list data the household authored).**
+  Nothing on this path calls an HA service at all. HA initiates every push;
+  Maverick only ever answers a `GET` with an image. *(Written when rule 12 read
+  "no service calls, no control"; RFC 012 narrowed it to one permitted write,
+  `todo.update_item`. The conclusion is untouched — this path is still not on
+  that allowlist, and a frame is a `GET`.)*
 - **Rule 9 (never brick / degrade).** A frame that fails to render answers a
   `503`, not a broken image; the device keeps its last frame. And see the
   alerts note below — this is the honest limit.

@@ -1351,7 +1351,9 @@ export const externalModules = sqliteTable('external_modules', {
 // when the store became a single in-repo catalogue. Migration 0020 drops it.
 
 // ---------------------------------------------------------------------------
-// Home Assistant. Read-only, always.
+// Home Assistant. Read-only apart from one write: rule 12 permits
+// `todo.update_item` and nothing else, through the allowlist in
+// `modules/homeassistant/client.ts`. Nothing in these tables is a write path.
 // ---------------------------------------------------------------------------
 
 export const haSettings = sqliteTable('ha_settings', {

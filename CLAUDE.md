@@ -43,7 +43,19 @@ Violating any of these is a failed task.
     default credentials, in-app rate limiting.
 11. Assume you can never reach the user's machine. Backups trivial, errors
     self-diagnosable.
-12. Home Assistant integration is READ-ONLY. No service calls, no control.
+12. **Home Assistant writes are confined to list data the household
+    authored.** The one permitted *write* is `todo.update_item`, and its whole
+    effect is to set an item's status on a to-do list the household explicitly
+    added. The only other service call permitted at all is the read it needs,
+    `todo.get_items`. Nothing else — no `light`, `switch`, `cover`, `lock`,
+    `alarm_control_panel`, `climate`, `scene`, `script`, `automation` or
+    `camera`, and no `todo.add_item`, `todo.remove_item` or
+    `todo.remove_completed_items` until one of them is argued for on its own
+    merits (RFC 012). The allowlist is a frozen constant of exactly those two
+    and a test asserts no outbound request to Home Assistant leaves it. The
+    display still receives resolved values and handles this server minted,
+    never an entity id and never the token — so a compromised wall tablet can
+    tick an item off a shopping list and cannot unlock a door.
 
 ---
 
@@ -2835,13 +2847,51 @@ a *directory of source* rather than a fetched document on purpose: it bakes into
 the image and works on a wall with no internet. Only the RFC's optional
 glyph-only screenshots remain unbuilt.
 
-**Home Assistant is read-only, and that is a security property.** A long-lived
-access token has full control of a house and cannot be scoped, so the limit is
-on this side: nothing in the repository issues a POST to Home Assistant, and the
-display receives resolved *values* — "19.4 °C", "Open" — never an entity id,
-never a proxy endpoint, never the token. A test asserts the manifest contains no
-entity id and no base URL. If a wall tablet in a hallway is ever compromised,
-the blast radius has to be "somebody saw my indoor temperature".
+**Home Assistant writes go through one door two services wide, and that is a
+security property.** A long-lived access token has full control of a house and
+cannot be scoped, so the limit is on this side. It used to be "nothing in the
+repository issues a POST to Home Assistant", which was free and answerable by
+`grep`; it is now "nothing issues one outside `HA_SERVICES`", which is a frozen
+constant of `todo/get_items` and `todo/update_item` and costs a test to keep
+true. The display still receives resolved *values* — "19.4 °C", "Open" — never
+an entity id, never a proxy endpoint, never the token, and the test asserting
+the manifest holds none of those needed no change, which is the point of having
+had it. The blast radius of a compromised wall tablet is now "somebody saw my
+indoor temperature and ticked something off my shopping list", and it is not,
+and must never become, "somebody opened my garage".
+
+**Rule 12 changed, and the interesting part is how many places said otherwise
+(RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
+permits one *write*, `todo.update_item`, and the read it needs. Nothing writes
+yet — this phase is the boundary alone, deliberately, so the security change is
+reviewed while the feature it enables is still read-only rather than in the same
+commit as the first write. `Fetcher` grew `postJson` (fixed verb, fixed content
+type, a body the adapter serialises, **no redirect ever followed**), `fetch`
+stays GET-only so "no arbitrary method and no household-authored body reaches
+the network" stays true, and `HA_SERVICES` in `modules/homeassistant/client.ts`
+is the frozen two-member allowlist with `callService` as its only caller.
+
+What `grep` used to answer, `apps/server/test/ha-write-boundary.test.ts` answers
+now, and it checks two different things because they fail differently: the
+constant holds exactly two members with exactly one named as the write, **and**
+`postJson(` appears in exactly one file and one function in the whole server. A
+constant cannot see a second door that does not read it, so a test for the
+allowlist alone is a test for the wrong half.
+
+**The RFC's own list of claims this falsifies said four and the true number was
+ten**, which is this document's header warning arriving on schedule. The four it
+named are the four somebody building this feature would open anyway; the six it
+missed are a README heading, two paragraphs the supervisor renders on the add-on
+page, a doc-comment above an unrelated network helper, a section divider in
+`db/schema.ts`, and a bullet in the camera RFC — none of which anybody working
+on a to-do list has a reason to open. All ten are rewritten, and
+`ha-claims.test.ts` is what stops the next one: it renders the Home Assistant
+admin page through the real app and reads `README.md` and the add-on's `DOCS.md`
+as text, failing on the *retired* sentences ("cannot control anything", "no
+service calls", "never writes", "read-only, permanently", "no code in this
+application that writes") rather than looking for the new ones. A claim deleted
+and not replaced is a screen that has stopped saying what pasting a token costs,
+so the page is also held to naming the permitted write.
 
 **Two credential paths, one client.** `SUPERVISOR_TOKEN` in the environment
 means the add-on, and `http://supervisor/core/api` — plain http to a bare
