@@ -123,6 +123,12 @@ Then: two fields on the add/edit form, two on `TestFeedRequest`, an
 `authorization: Basic …` header on the fetch in `ics-sync.ts` and in
 `test-feed.ts`, and `--user` on the `add-source` CLI tool.
 
+**These columns live on `calendar_sources` deliberately, and stay there.** A
+Basic-auth ICS feed genuinely is one URL, one credential, one calendar — flat
+is the true shape, and routing it through the accounts table §6.2 introduces
+would turn this phase from two columns into a table and a join for the common
+case. §6.2 is the exception, not the correction.
+
 The header path needs nothing new: `FetchRequest.headers` already exists, the
 HA client already uses it for a bearer token, and `SENSITIVE_HEADERS`
 (`fetcher.ts:57`) already drops `authorization` on a cross-origin redirect —
@@ -236,11 +242,98 @@ stored. Sync is then one `REPORT` per source. That turns the four-request chain
 into a setup cost rather than a per-poll cost, and it is the difference between
 CalDAV being viable here and not.
 
-Storage: `kind` gains `'caldav'`; the collection URL goes in `urlEncrypted` (it
-carries an account id, and the existing column is already the right shape);
-credentials go in Phase A's two columns. **Phase C should not ship before Phase
-A**, and this is the reason — it needs Phase A's columns and would otherwise
-invent a second way to store the same secret.
+### 6.2.1 One credential, several calendars — and the schema has no word for it
+
+Decided, and worth the space, because it is the one place CalDAV does not fit
+the existing shape.
+
+An ICS feed is one URL to one calendar, and `calendar_sources` is exactly that.
+A CalDAV account is **one credential to many calendars**: a household types an
+Apple ID and one app-specific password, and what comes back is Home, Work,
+Kids' school and Birthdays. Three of those go on the wall, in different
+colours, with Work off the month grid.
+
+Asking of each existing column whether it is a fact about the account or about
+the calendar splits them cleanly, and the answer is that almost everything is
+already in the right place:
+
+| Column | Belongs to | Why |
+|---|---|---|
+| `name`, `color`, `personId` | calendar | Work is a different colour from Kids, and is one person's where Kids is the household's |
+| `visible`, `showInGrid` | calendar | `show_in_grid` exists precisely to keep a work feed off the month squares; per-account it would be useless |
+| `etag`, `lastSyncAt`, `lastError`, `consecutiveFailures`, `eventCount` | calendar | the CTag is per collection, and one calendar failing must not blank the others |
+| `urlEncrypted` | calendar | the collection href |
+| username and password | **account** | one credential for all four |
+| `allowHttp`, `allowPrivateNetwork`, `allowLoopback` | **account** | it is one server |
+| discovered principal and home-set URLs | **account** | discovered once, per account |
+
+Only the three bold rows have nowhere correct to live. So: a
+**`caldav_accounts`** table holding them, and `calendar_sources` gains a
+nullable `caldav_account_id`. `kind` gains `'caldav'`.
+
+**What decides it is password rotation.** Apple app-specific passwords get
+regenerated, and under a flat scheme — each row carrying its own copy of the
+same envelope — a household then has to edit four rows with the same new
+password. Miss one and a single calendar silently stops syncing, which presents
+as "one of my calendars stopped updating": about the hardest fault for a
+household to describe and for `diagnose-source` to be pointed at.
+
+The second argument is the add flow §6.7 already needs. "Here is your account,
+here are its calendars, tick the ones you want" has nowhere to come back from
+if the account is not a row: a household who adds three calendars in March and
+wants a fourth in June would have to retype the password, because there is
+nothing to reopen.
+
+Rejected outright: **one `calendar_sources` row per account**, drawing all its
+calendars. It gives a whole account one colour, one person and one
+`show_in_grid`, which breaks the column that exists to fix the standup fault.
+
+**The assumption this rests on, stated rather than buried:** that households end
+up with more than one calendar per CalDAV account. If they reliably add exactly
+one, the parent table is a table, a join, an admin concept and a cascade rule
+bought for nothing. It looks safe for iCloud, which creates Home and Work by
+default and where families acquire a shared one — but it is an assumption, and
+§11 puts it in front of a real account before Phase C's schema is written.
+
+Two consequences settled in the same commit rather than discovered:
+
+- **Removing an account's last calendar removes the account and its
+  credential.** An orphaned credential is a stored secret nothing uses, which
+  is the spirit of rule 6. A household wanting a calendar back temporarily has
+  `enabled` and `visible`; removal is removal.
+- **Each calendar syncs on its own job**, `caldav-sync:<sourceId>`, matching
+  `ics-sync:<id>` — because the CTag is per collection and one failing calendar
+  must not take three working ones down. Only *discovery* is per account, and
+  it is cached on the account row.
+
+The migration is additive: one `CREATE TABLE` and one nullable
+`ALTER TABLE ADD COLUMN`. No table recreate, so rule 7's `0009` hazard — the
+generated `INSERT … SELECT` that silently writes column *names* as string
+literals — does not apply here. That is worth checking rather than assuming,
+because it is the one migration fault in this repository that reported success.
+
+### 6.2.2 Two storage locations, one resolver
+
+Phase A's credential is on `calendar_sources` and Phase C's is on
+`caldav_accounts`, which is normally the exact shape of bug this project keeps
+finding: one meaning, two places, two readers that drift.
+
+The cure is already in the repository. `resolveConnection`
+(`modules/homeassistant/client.ts`) handles two credential paths — the
+supervisor's injected token and a pasted long-lived one — by resolving them in
+**one function**, and everything downstream is the same code. Its own docstring
+is the heading: *two credential paths, one client.*
+
+So `credentialFor(source)` answers "the `authorization` header for this source",
+reading the account through the FK first and the row's own columns second. The
+sync jobs, `testFeed` and the CLI all call it and none of them knows there are
+two shapes — which means there is one thing to test rather than three call
+sites to keep in step.
+
+**Phase C should not ship before Phase A**, and this is the reason: the resolver
+needs both shapes to exist before it is worth anything, and building C first
+would invent a second way to store a feed password with nothing to reconcile it
+against.
 
 ### 6.3 The Fetcher, again — and it is the same change RFC 012 needs
 
@@ -433,8 +526,9 @@ in `docs/`. Hours. Gets Google and iCloud for households who have Home
 Assistant, which is a large fraction of this product's audience.
 
 **C — CalDAV.** The method allowlist on the Fetcher, the discovery chain, the
-`REPORT`, a minimal XML reader, the CTag, the fourth `testFeed` stage and the
-calendar picker. Weeks, and the only part of this RFC that is a project. Gets
+`caldav_accounts` table and `credentialFor` (§6.2.1, §6.2.2), the `REPORT`, a
+minimal XML reader, the CTag, the fourth `testFeed` stage and the calendar
+picker. Weeks, and the only part of this RFC that is a project. Gets
 iCloud directly.
 
 **D — M365 device flow.** Only on demand. Shares C's Fetcher work.
@@ -470,6 +564,24 @@ byte, the way `packages/calendar/test/fixtures/real/` already does.
 one event. That is the first row of the bug table and it should be a test, with
 a deliberately broken resource in the middle of a good response.
 
+**The rotation case, which is what the schema decision was taken for.** A
+CalDAV account with three calendars; change the password once; all three sync.
+That assertion is the entire argument of §6.2.1, and under a flat scheme it
+fails on two of the three — so it is the test that would have to be deleted
+rather than adjusted if somebody later flattened the schema, which is the kind
+of test worth having.
+
+**`credentialFor` against both shapes**, as a unit, because it is one function
+standing in for two storage locations and §6.2.2's whole claim is that no
+caller knows the difference. A Phase A row, a Phase C row, a row with both (a
+mistake, and it should prefer the account and say so), and a row with neither.
+
+**The assumption in front of a real account, before the schema is written.**
+§6.2.1 rests on households having more than one calendar per CalDAV account.
+Open a real iCloud account and count. If it is reliably one, the parent table is
+bought for nothing and this decision should be reopened — which is cheap to do
+before Phase C and expensive afterwards.
+
 **Recurrence parity across kinds.** The same weekly event, with a DST crossing
 in the window, through ICS and through CalDAV, asserted to produce identical
 rows. That is what §6.4's refusal of server expansion is for, and it is the
@@ -478,14 +590,12 @@ optimisation.
 
 ## 12. Open decisions
 
-- **Whether a CalDAV source is one row or several.** An account has several
-  calendars. One row per calendar keeps colour, person and `show_in_grid`
-  per-calendar, which is right — and means the credential is stored N times or
-  shared by a parent row that does not exist. The Home Assistant model (one
-  connection, N sources) is the precedent and is probably the answer, which
-  means a `caldav_accounts` table and `calendar_sources` referencing it. That
-  is a bigger schema change than §6.2 implies and should be settled before any
-  code.
+- **Whether two CalDAV accounts can share a server row.** §6.2.1 settles the
+  account/calendar split and does not settle this: two adults' separate iCloud
+  accounts are two credentials against one hostname, and two partition hosts.
+  Two account rows is almost certainly right and costs nothing; it is listed so
+  that nobody deduplicates by hostname later and merges two people's
+  calendars.
 - **CTag or `sync-collection` first.** §6.6. Measure against both providers.
 - **How often.** ICS syncs on a schedule tuned for a cacheable document. A
   CalDAV CTag check is much cheaper than a full ICS fetch, so a CalDAV source
