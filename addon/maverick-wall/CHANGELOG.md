@@ -16,6 +16,38 @@
 
 ## Unreleased
 
+**Tick things off your Home Assistant list, from the wall.** Put a To-do widget
+on a wall, point it at one of your Home Assistant lists, and each item gets a
+box you can press. Press it and the item is done — on the wall, on your phone,
+and anywhere else that list appears, because it is the same list. The row then
+leaves the wall, since a list of things already done is not what a wall is for;
+turn on "Show ticked items" in the widget's options if you would rather see them
+struck through.
+
+**It is off until you turn it on, for each wall separately.** Open the wall's
+own page and switch on "Allow ticking to-do items off". Nothing else changes and
+no other wall changes. It has its own switch, beside the ones for clearing
+alerts and ticking chores, because it is not the same kind of thing: clearing an
+alert says you have read something, ticking a chore is a note kept here, and
+this one edits a list your whole household's phones are looking at. Leave it off
+for a wall behind glass, or one a passing sleeve could press. An eInk panel
+shows the list and never offers a box at all — a battery panel is asleep between
+pictures and could not answer a tap.
+
+**And what a wall can and cannot do to your home is unchanged in every other
+respect.** This is the only thing Maverick Wall will ever change in your house.
+No lights, switches, locks, covers, scenes, scripts or cameras — not "switched
+off by default" but absent from the code, and held that way by a test. Even the
+list is only ever *ticked*: nothing here adds an item, deletes one, or clears
+the ones already done. Your phone still owns the list. If a tablet in your
+hallway were ever compromised, the worst it could do is read your indoor
+temperature and cross the milk off your shopping.
+
+**If a tick does not go through, the wall says so.** Home Assistant restarting,
+a token that has expired, an item somebody deleted a moment ago — the wall shows
+the reason in the widget for a few seconds instead of leaving a box that quietly
+never fills, and tidies it away once it is back in touch.
+
 **Your Home Assistant shopping list, on the wall.** On the Home Assistant page
 there is a new section, To-do lists: pick one of your Home Assistant to-do
 lists — the shopping list, the jobs list, up to eight of them — give it a name
@@ -23,16 +55,15 @@ if you like, and it is read every minute. Then put a To-do widget on any wall
 or panel and choose that list in its options, instead of typing the items in.
 The wall draws what is still to do, in the list's own order; there is a switch
 to show the ticked items too, struck through. Add milk on your phone and it is
-on the wall within a minute. Read-only for now: the wall shows the list and
-cannot tick anything off it yet — that is the next release, and it will be a
-switch you turn on per wall. A To-do widget you already had, with items typed
-into it, draws exactly as it did.
+on the wall within a minute. A To-do widget you already had, with items typed
+into it, draws exactly as it did — and stays a plain checklist, since there is
+no Home Assistant list behind those lines to tick anything off.
 
 **The promise on the Home Assistant page is exact now.** It used to say
 Maverick Wall could not control anything in Home Assistant. That was true, and
-it is about to stop being true in a small and specific way: a coming release
-will let you put a Home Assistant to-do list on a wall and tick things off it.
-So the page says what it means — Maverick Wall can tick an item off a to-do
+it stops being true in a small and specific way in this same release: you can
+put a Home Assistant to-do list on a wall and tick things off it. So the page
+says what it means — Maverick Wall can tick an item off a to-do
 list you choose, and it can do nothing else to your home. No lights, switches,
 locks, covers, scenes or cameras, and not "switched off by default" either:
 there is no code in it that can do any of them, and a test refuses to let one

@@ -2,7 +2,8 @@
 
 A family calendar for a wall display. It reads your Home Assistant calendars
 and a few sensors. The only thing it will ever write back is ticking an item off
-a to-do list you chose to show — see **What it will not do**, below.
+a to-do list you chose to show, and only from a wall you have turned that on for
+— see **What it will not do**, below.
 
 ## Installing
 
@@ -77,6 +78,13 @@ It can change exactly one thing in your house: ticking an item off a to-do list
 you chose to show on a wall. No switches, no scenes, no lights, no locks, no
 covers, no cameras — not switched off by default, but absent from the code
 entirely, and held that way by a test.
+
+Even the tick is off until you ask for it, wall by wall. Adding a list shows it
+everywhere you have put a To-do widget; turning on **Allow ticking to-do items
+off** on a particular wall's page is what puts a box beside each item there. It
+is its own switch rather than a share of the chore one, because this is the only
+control on a wall that changes something outside this application — your phones
+see it. An eInk panel shows the list and never offers a box at all.
 
 The wall itself receives resolved values — "19.4 °C", "Open" — never an entity
 id and never a way to ask Home Assistant a question of its own. If a tablet in

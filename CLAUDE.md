@@ -114,7 +114,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and thirty-three real bugs**, and the pattern in how is the most
+This project has found **one hundred and thirty-eight real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -275,6 +275,11 @@ useful thing in this document:
 | **Every template card drawing its type 5.02x too large, on the one screen a household meets a layout** | A household looking at the gallery and saying the samples were not accurate representations |
 | Fifty `:root` and `body` rules dead in both admin previews, the editor's included | Asking what `--t-micro` computed to inside the shadow root, and reading back the empty string |
 | A preview measured against itself, so no assertion could see it drift from the wall | Pairing the wall and comparing the two, rather than recording what the card drew |
+| **A ring assertion that neither of its own fixes could turn red** | Measuring `:focus-visible` under three modalities, and finding only a press *on the box* separates them |
+| A "the poll clears it" assertion that a 20-second timer was clearing instead | Waiting 25 seconds for a thing with a 20-second expiry, then waiting eight |
+| One of two clear branches deleted, with every poll in the test a 304 | Nudging the cache so the next poll carried a body, which is the other branch |
+| A frame called blank because it weighed 359 bytes | Decoding it: 1,800 inked pixels, and a sparse 1-bit PNG compresses to almost nothing |
+| A fake that refused a summary where Home Assistant ticks the wrong item | Copying `_find_by_uid_or_summary`, so the fixture could show the bug it was built for |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -450,8 +455,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3035 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 495 · server 2073. CI runs the whole suite and then the README's
+**3064 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 495 · server 2102. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -506,8 +511,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**222 of the server's tests fail without a real Chromium and say so**, across
-34 files, which is worth knowing before reading a red suite as a regression. A
+**226 of the server's tests fail without a real Chromium and say so**, across
+35 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -520,7 +525,11 @@ all — measured in passing, while running the suite for something else. **And
 it read 220 over 33 while the truth was 222 over 34**, re-measured for the
 to-do list's two browser tests the same way — the server suite run with
 `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing, every failure checked to be the
-browser's own sentence — rather than incremented by the files added. That is
+browser's own sentence — rather than incremented by the files added. It is 226
+over 35 now, measured the same way and for the same reason — and this time the
+measurement happens to agree with the arithmetic the tick's own four tests
+predict, which is a coincidence worth nothing: the only thing that makes the
+number true is that the run was made. That is
 the right failure — these measure layout, and a browser test that silently skips
 is this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
@@ -2975,6 +2984,78 @@ itself existed, because the editor re-derives from the facts and the browser
 tests read the derived answer. **Still unproven where it counts:** nobody has
 looked at a real wall or a real panel drawing a real list, and no real Home
 Assistant has been asked.
+
+**And the wall ticks things off that list now, which is the only write this
+application makes to anybody's house (RFC 012 phase 2).** `POST /d/todo/tick`
+is `/d/chores/tick` one widget along and most of it is the same file for the
+same reason — the display token is on the wall, so the server decides all three
+of whether this wall may ask, which item it is, and whether the list can be
+updated. What is not the same is the half worth reading: **the truth is not
+ours**. A chore's completion is a row in this database and the unique index
+makes the press idempotent with no client queue; an item's status belongs to
+Home Assistant and we hold a cache, so this endpoint is a proxy for the one
+write rule 12 permits. Three things follow that have no counterpart next door.
+The item is named by its **uid** and never its summary, because
+`_find_by_uid_or_summary` returns the first hit and a household with "Milk" on
+the list twice would tick whichever one their integration happened to return —
+a bug nobody can reproduce on their own list; the fixture has "Milk" twice, and
+the fake now matches uid-or-summary the way core does, because a fake that
+matched the uid alone refused the mutation and so read as a caught bug rather
+than the wrong Milk moving. The cache row is written **after** the upstream 200
+and not before, so the box fills within the poll rather than within the minute
+and a refusal leaves the row exactly as it was. And a failure comes back as a
+**sentence**: Home Assistant is rebooting, a token was revoked on an upgrade,
+somebody deleted the item on their phone thirty seconds ago, and none of that is
+guessable from a row that did not change.
+
+**Where that sentence lives is the one genuinely new mechanism, and the RFC
+could not have specified it because it is a fact about how this wall draws.**
+`draw()` rebuilds the whole document every fifteen seconds, so a handler writing
+into the DOM has its sentence wiped a moment after it appears — which is exactly
+why `tickChore` fails silently and can afford to. It is model state: a
+per-widget map in `main.ts`, keyed by the box the press landed in, with a short
+expiry, cleared by the next successful poll, and drawn by `renderTodoWidget`
+from the model like everything else. **Both branches of that clear are
+load-bearing and only one of them was tested at first**: a poll after a tick
+against an unreachable Home Assistant changes nothing on the list, so it is a
+**304**, and deleting the clear from the `fresh` branch alone left the file
+green. The 20-second expiry hid it a second time — the first draft waited 25
+seconds for the sentence to go, which is longer than the expiry, so the timer
+cleared it and the test could not say which of the two had. The window is eight
+seconds now and the test takes a poll of each kind.
+
+**The switch is `screens.allow_todo`, off by default, and its own rather than a
+share of `allow_chores`.** Clearing a warning says the household has read
+something; ticking a chore records a claim in this database; ticking a to-do
+item changes a list their phones are synced to, where nobody standing at the
+wall can undo it. The column shipped with phase 1 and was read by nothing, so
+this phase is mostly the six places it had to be *named* — and the two
+`SELECT`s are the ones that fail quietly, which is `readScreens`' own fault from
+RFC 006: a column the types swear is there and the query never asks for is
+`undefined` at runtime, and `undefined !== 1` reads exactly like a household who
+left the switch off. Dropping it from `readScreens` turns twelve assertions red.
+
+**A panel draws the list and offers no box, and that is checked by pinning
+rather than by asserting it.** `EPAPER_RENDERER_VERSION` is unmoved at 9 and
+every frame is byte-identical to hashes rendered in a clean worktree of the
+commit before this phase — measured, not claimed from this tree against itself.
+`allow_todo` is in **neither** honours table, and the reason is written at the
+`PANEL_IGNORES` declaration rather than as an entry: both tables are keyed on a
+*widget's config* and closed against `widgetConfigBody`, and this is a fact
+about the screen, so an entry would be a key no schema has on a table whose
+worth is that `epaper-ink.test.ts` derives it by rendering. One thing came out
+of measuring that and is worth knowing before reading it as a regression: a
+panel's *own* `allow_todo` does move its frame ETag, because `manifestEtag`
+hashes the whole document bar `generatedAt` and the `screen` block carries all
+three flags — `allow_chores` has behaved that way since it shipped, it is
+asserted against it so the two cannot drift, and it cannot fire in practice
+because no e-paper settings page offers any of the three.
+
+**Still unproven where it counts, and it is the whole feature.** Nobody has
+ticked an item on a real tablet and watched it leave their phone. Everything
+here is a real browser on a paired wall, a decoded 1-bit frame and a fake Home
+Assistant over a socket, which is the right way to check all three and is not
+the same thing.
 
 **Two credential paths, one client.** `SUPERVISOR_TOKEN` in the environment
 means the add-on, and `http://supervisor/core/api` — plain http to a bare
