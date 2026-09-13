@@ -49,6 +49,11 @@ function stamp(daysFromNow: number): string {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
 }
 
+/**
+ * `postJson` throws on purpose: an ICS feed is a read and nothing here posts.
+ * Answering with a rejection instead would let a stray write pass as a handled
+ * failure, which is the shape of bug a stub exists to make loud.
+ */
 function stubFetcher(outcomes: FetchOutcome[]): Fetcher & { seen: FetchRequest[] } {
   const seen: FetchRequest[] = [];
   return {
@@ -56,6 +61,9 @@ function stubFetcher(outcomes: FetchOutcome[]): Fetcher & { seen: FetchRequest[]
     async fetch(request: FetchRequest): Promise<FetchOutcome> {
       seen.push(request);
       return outcomes[Math.min(seen.length - 1, outcomes.length - 1)]!;
+    },
+    async postJson(): Promise<never> {
+      throw new Error('calendar sync is a read; nothing here posts');
     },
   };
 }

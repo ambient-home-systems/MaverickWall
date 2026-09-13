@@ -404,6 +404,13 @@ describe('the polling job, against a real server', () => {
             url: request.url.replace('https://api.weather.gov', nws.base),
             policy: { allowHttp: true, allowPrivateNetwork: true, allowLoopback: true },
           }),
+        // The weather service is read-only and always will be: there is no NWS
+        // endpoint this product could write to. Throwing rather than rewriting
+        // the origin means a POST that ever appeared on this path fails here,
+        // naming itself, instead of quietly reaching the fake.
+        postJson: () => {
+          throw new Error('the alerts job reads; nothing here posts');
+        },
       },
     });
 

@@ -33,11 +33,32 @@ interface Reply {
 }
 interface Ask {
   headers: Record<string, string | string[] | undefined>;
+  /** Present on every real request. The GET routes never look. */
+  method?: string;
+  url?: string;
+  on(event: 'data' | 'end', listener: (chunk: Buffer) => void): void;
 }
 const routes: Record<string, (req: Ask, res: Reply) => void> = {};
 
+/**
+ * Every request this server was actually asked for.
+ *
+ * The refusals below are claims about packets that were *not* sent — a
+ * redirect that was not followed, an address that was refused before the
+ * socket — and an outcome alone cannot tell "refused" from "the server
+ * answered that way". This is the other half of each of those assertions.
+ */
+const asked: { method: string; path: string }[] = [];
+
+function readBody(req: Ask, done: (body: string) => void): void {
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk) => chunks.push(chunk));
+  req.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
+}
+
 beforeAll(async () => {
   server = createServer((req, res) => {
+    asked.push({ method: req.method ?? '', path: (req.url ?? '').split('?')[0] ?? '' });
     const handler = routes[(req.url ?? '').split('?')[0] ?? ''];
     if (!handler) {
       res.writeHead(404);
@@ -168,6 +189,47 @@ routes['/bomb'] = (_req, res) => {
 routes['/echo'] = (req, res) => {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify(req.headers));
+};
+
+/** Hands back what it was sent, so the request can be asserted from outside. */
+routes['/post-echo'] = (req, res) => {
+  readBody(req, (body) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        method: req.method,
+        contentType: req.headers['content-type'],
+        accept: req.headers['accept'],
+        contentLength: req.headers['content-length'],
+        authorization: req.headers['authorization'],
+        body,
+      }),
+    );
+  });
+};
+
+routes['/post-redirect'] = (_req, res) => {
+  res.writeHead(302, { location: '/post-landing' });
+  res.end();
+};
+
+/** Must never be reached. `asked` is what proves it. */
+routes['/post-landing'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end('{"reached":true}');
+};
+
+/** Home Assistant's own shape for a service call it will not make. */
+routes['/post-refused'] = (_req, res) => {
+  res.writeHead(400, { 'content-type': 'application/json' });
+  res.end(
+    '{"message":"Service call requires responses but caller did not ask for responses"}',
+  );
+};
+
+routes['/post-huge'] = (_req, res) => {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(`{"pad":"${'A'.repeat(200_000)}"}`);
 };
 
 describe('the policy model', () => {
@@ -401,5 +463,164 @@ describe('content encoding', () => {
   it('reports a server that lies about its encoding', async () => {
     const result = await get('/lying-encoding');
     expect(result.status).toBe('failed');
+  });
+});
+
+/**
+ * `postJson`, the second entry point, against the same real server.
+ *
+ * This is the boundary RFC 012 opens, and the only genuinely security-relevant
+ * engineering in it: a POST carries a body and a bearer token where a GET
+ * carries neither. Everything here is a property of how the socket behaves
+ * rather than of the code's shape, which is why it is driven against a listener
+ * and not a stub — the two refusals in particular are claims about packets that
+ * were never sent, and only a server that can say what it was asked for can
+ * settle those.
+ */
+describe('postJson', () => {
+  function post(path: string, body: unknown, extra: Record<string, unknown> = {}) {
+    return fetcher.postJson({
+      url: `${base}${path}`,
+      policy: LOOPBACK,
+      maxBytes: 1024 * 1024,
+      timeoutMs: 2000,
+      body,
+      ...extra,
+    });
+  }
+
+  it('sends the body as JSON, with the content type and length to match', async () => {
+    const result = await post('/post-echo', { entity_id: 'todo.shopping', status: 'completed' });
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+
+    const seen = JSON.parse(result.body) as Record<string, string>;
+    expect(seen['method']).toBe('POST');
+    expect(seen['contentType']).toBe('application/json');
+    // Asked for JSON back, too. `postJson` has no `acceptContentTypes`: this is
+    // fixed, so a call site cannot quietly ask for something else.
+    expect(seen['accept']).toBe('application/json');
+    // The adapter serialises. A caller never hands over text, so the header and
+    // the bytes cannot disagree.
+    expect(JSON.parse(seen['body'] ?? '')).toEqual({
+      entity_id: 'todo.shopping',
+      status: 'completed',
+    });
+    expect(seen['contentLength']).toBe(String(Buffer.byteLength(seen['body'] ?? '', 'utf8')));
+  });
+
+  it('carries the caller’s headers, which is how the token gets there', async () => {
+    const result = await post('/post-echo', {}, { headers: { authorization: 'Bearer abc' } });
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    expect((JSON.parse(result.body) as Record<string, string>)['authorization']).toBe('Bearer abc');
+  });
+
+  it('will not let a caller talk it out of JSON', async () => {
+    /*
+     * The fixed pair is fixed, and this is the assertion that says so.
+     *
+     * `headers` is spread *before* `accept` and `content-type`, which reads as
+     * an ordering detail and is the whole of the property: the adapter
+     * serialises the body as JSON whatever a caller would rather the header
+     * said, so a caller that could move that header could make the bytes and
+     * the declaration disagree. Reordering the two spreads passes every other
+     * test in this file — measured — so without this one "fixed" is a comment.
+     */
+    const result = await post(
+      '/post-echo',
+      { entity_id: 'todo.shopping' },
+      { headers: { 'content-type': 'text/plain', accept: 'text/html' } },
+    );
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+
+    const seen = JSON.parse(result.body) as Record<string, string>;
+    expect(seen['contentType']).toBe('application/json');
+    expect(seen['accept']).toBe('application/json');
+  });
+
+  it('refuses a redirect outright, and never asks the second address', async () => {
+    const before = asked.length;
+    const result = await post('/post-redirect', { tick: true });
+
+    expect(result.status).toBe('rejected');
+    expect(result.status === 'rejected' && result.code).toBe('redirect-rejected');
+
+    /*
+     * The half that matters. `fetch` would have followed this to
+     * `/post-landing` and answered `ok`, so "it did not come back with the
+     * landing page" proves nothing on its own — an outcome cannot tell a
+     * refusal from a server that answered differently. What settles it is that
+     * the second address was never requested at all: one hop, and the body and
+     * the bearer token went nowhere but the address the guard approved.
+     */
+    const during = asked.slice(before);
+    expect(during.map((a) => a.path)).toEqual(['/post-redirect']);
+    expect(during.some((a) => a.path === '/post-landing')).toBe(false);
+  });
+
+  it('refuses a private-range destination before a packet is sent', async () => {
+    // A literal the URL guard can see, so nothing is resolved and nothing is
+    // dialled. `10.0.0.1` is a real routable-looking address on somebody's LAN.
+    const result = await fetcher.postJson({
+      url: 'http://10.0.0.1:8123/api/services/todo/update_item',
+      policy: { allowHttp: true },
+      maxBytes: 1024,
+      timeoutMs: 2000,
+      body: { entity_id: 'todo.shopping' },
+    });
+    expect(result.status).toBe('rejected');
+    expect(result.status === 'rejected' && result.code).toBe('url-rejected');
+  });
+
+  it('refuses loopback under a policy that does not permit it, without connecting', async () => {
+    // The stronger version of the case above: a server that really is listening
+    // and really would answer, refused by policy. `asked` is the proof that the
+    // refusal happened on this side rather than on the wire.
+    const before = asked.length;
+    const result = await post('/post-echo', { tick: true }, { policy: { allowHttp: true } });
+
+    expect(result.status).toBe('rejected');
+    expect(asked.length).toBe(before);
+  });
+
+  it('brings back the upstream’s own sentence on a 400', async () => {
+    const result = await post('/post-refused', { entity_id: 'todo.shopping' });
+
+    expect(result.status).toBe('failed');
+    if (result.status !== 'failed') return;
+    expect(result.code).toBe('http-error');
+    expect(result.httpStatus).toBe(400);
+
+    /*
+     * The whole reason `PostJsonOutcome` differs from `FetchOutcome` here. A
+     * bare 400 is not a diagnosis; `{"message": "..."}` is, and this exact
+     * sentence is the one that means our request was malformed rather than
+     * their server being unwell. `fetch` throws a non-2xx body away by design.
+     */
+    expect(result.responseBody).toBeDefined();
+    expect(JSON.parse(result.responseBody ?? '')).toEqual({
+      message: 'Service call requires responses but caller did not ask for responses',
+    });
+  });
+
+  it('still enforces the byte ceiling', async () => {
+    const result = await post('/post-huge', {}, { maxBytes: 4096 });
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' && result.code).toBe('too-large');
+  });
+
+  it('reports a refused connection as a failure, not a throw', async () => {
+    // The contract is that this never throws, the same as `fetch`.
+    const result = await fetcher.postJson({
+      url: 'http://127.0.0.1:1/api/services/todo/update_item',
+      policy: LOOPBACK,
+      maxBytes: 1024,
+      timeoutMs: 2000,
+      body: {},
+    });
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' && result.code).toBe('network-error');
   });
 });

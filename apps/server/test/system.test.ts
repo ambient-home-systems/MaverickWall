@@ -21,9 +21,24 @@ import { checkForUpdate, isNewer } from '../src/api/update-check.js';
 import { readUpdateState, recordUpdateCheck, setUpdateCheckEnabled } from '../src/api/queries.js';
 import type { FetchOutcome, Fetcher, JobRecord } from '@maverick-wall/core';
 
-/** A fetcher that answers once with whatever the test wants, and never leaves. */
+/**
+ * A fetcher that answers once with whatever the test wants, and never leaves.
+ *
+ * `postJson` throws rather than answering, and that is the honest stub. Nothing
+ * on this path — the update check, the ICS sync, the diagnostics export — has
+ * any business POSTing anywhere, so a call that arrives here is a fault, and a
+ * stub that answered it with a plausible rejection would hide the fault behind
+ * a green run. The port's own contract is that it never throws; a stub
+ * deliberately breaking it is what turns "this should never happen" into a test
+ * failure naming the file it happened in.
+ */
 function stubFetcher(outcome: FetchOutcome): Fetcher {
-  return { fetch: async () => outcome };
+  return {
+    fetch: async () => outcome,
+    postJson: async () => {
+      throw new Error('nothing on this path posts; see the note above stubFetcher');
+    },
+  };
 }
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
