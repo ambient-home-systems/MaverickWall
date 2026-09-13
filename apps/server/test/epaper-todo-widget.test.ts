@@ -67,6 +67,30 @@ function frame(config: Record<string, unknown>, size: readonly [number, number],
   return bits;
 }
 
+/** The same render, from a manifest the caller built — for the `canTick` pair. */
+function frameFrom(
+  m: Manifest,
+  config: Record<string, unknown>,
+  size: readonly [number, number],
+): string {
+  const widget: PlacedEpaperWidget = { type: 'todo', ...BOX, z: 0, config };
+  const fb: Framebuffer = renderFreeformEpaper(buildEpaperModel(m), m, [widget], {
+    width: size[0],
+    height: size[1],
+  });
+  let bits = '';
+  for (let y = 0; y < size[1]; y++) for (let x = 0; x < size[0]; x++) bits += fb.get(x, y) ? '1' : '0';
+  return bits;
+}
+
+/** The fixture with the list's own affordance flipped, and nothing else moved. */
+function withCanTick(canTick: boolean): Manifest {
+  const m = manifest();
+  const lists = (m.panels as { todo: { lists: { canTick: boolean }[] } }).todo.lists;
+  if (lists[0] !== undefined) lists[0].canTick = canTick;
+  return m;
+}
+
 const sha = (bits: string): string => createHash('sha256').update(bits).digest('hex');
 
 /**
@@ -163,5 +187,73 @@ describe('a widget naming a list draws that list', () => {
 describe('the renderer version', () => {
   it('was bumped for the pixel change, so a panel with a list on it re-downloads', () => {
     expect(EPAPER_RENDERER_VERSION).toBeGreaterThanOrEqual(9);
+  });
+
+  it('was not bumped again for the tick, because no panel pixel moved', () => {
+    /*
+     * RFC 012 phase 2 puts a real control on a *browser* wall and nothing at
+     * all on a panel, so every paired panel must go on serving the frame it
+     * already has. A version bump costs every battery panel in the world a full
+     * re-download, and one made for a change that moved nothing is that cost
+     * paid for nothing.
+     */
+    expect(EPAPER_RENDERER_VERSION).toBe(9);
+  });
+});
+
+/**
+ * The panel draws the list and cannot tick it, and the box is **absent** rather
+ * than inert (RFC 012 §11).
+ *
+ * A sleeping ESP32 cannot honour a tap, so a box it drew would be a control
+ * that does nothing — the `options.json` fault, on hardware that cannot even
+ * report it. What makes that structural rather than an omission somebody has to
+ * remember is that the panel's row has no control in it to begin with: the
+ * read-only row phase 1 shipped is the whole of what a panel draws, and
+ * `canTick` is a key it has never read.
+ *
+ * Pinned two ways, because they fail differently. **Against `main`** — hashes
+ * rendered through the renderer as it stood the commit before this phase, in a
+ * clean worktree, so "byte-identical to before this PR" is a measurement rather
+ * than a claim. And **across `canTick` itself**, which is what would go red if
+ * a later phase taught the panel to draw a box: a hash can only say the frame
+ * moved, and this says *which input* it may not move for.
+ */
+describe('a panel draws no tick, whatever the list says', () => {
+  const BEFORE_THE_TICK: readonly {
+    readonly size: readonly [number, number];
+    readonly config: Record<string, unknown>;
+    readonly hash: string;
+  }[] = [
+    { size: [800, 480], config: { list: 'todo.shopping' }, hash: '3b5a20177f65f417e9cd35046a4dee5c565a0cfc90170b2e1c6c2140e615f16b' },
+    { size: [800, 480], config: { list: 'todo.shopping', showDone: true }, hash: '420d2feeb9d35d731d693cc167a2a01e3c96404d020b2c0801154d5e6697fb36' },
+    { size: [1872, 1404], config: { list: 'todo.shopping' }, hash: 'd147eb6aaef134c845e4cbd2a9f057cebdc7b02f3181569a0a8d8b5a18b7b7cd' },
+    { size: [1872, 1404], config: { list: 'todo.shopping', showDone: true }, hash: '2324a29ab3fadc8bc2837de10b6632d37c1c91f9813e4e1a9ac9761928d1aa8c' },
+    { size: [400, 300], config: { list: 'todo.shopping' }, hash: '003e92b160f034ccd342f6ece23157fea7e76a4a95ec706b202b959e000a7fdd' },
+    { size: [400, 300], config: { list: 'todo.shopping', showDone: true }, hash: '2f635c61e115d24bd1d4c8cdc2546e93cd1f0e68b90c32e665c05a6f944b686f' },
+  ];
+
+  for (const { size, config, hash } of BEFORE_THE_TICK) {
+    it(`${size[0]}x${size[1]} ${JSON.stringify(config)} is the frame main drew`, () => {
+      expect(sha(frame(config, size))).toBe(hash);
+    });
+  }
+
+  it('draws one frame for a list that can be ticked and one that cannot', () => {
+    /*
+     * The fixture above says `canTick: true`. This renders the same list with
+     * it clear, which on a *wall* is the difference between a button and a
+     * marker — and on a panel must be no difference at all.
+     */
+    const at = [800, 480] as const;
+    const cannot = manifest();
+    const lists = (cannot.panels as { todo: { lists: { canTick: boolean }[] } }).todo.lists;
+    expect(lists[0]?.canTick).toBe(true);
+    expect(frameFrom(cannot, { list: 'todo.shopping' }, at)).toBe(
+      frameFrom(withCanTick(false), { list: 'todo.shopping' }, at),
+    );
+    expect(frameFrom(cannot, { list: 'todo.shopping', showDone: true }, at)).toBe(
+      frameFrom(withCanTick(false), { list: 'todo.shopping', showDone: true }, at),
+    );
   });
 });
