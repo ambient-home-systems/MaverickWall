@@ -23,6 +23,18 @@ looked much the same. Each card is a true miniature of the wall it will give
 you, in that layout's own typeface and at its own proportions. The live preview
 in the wall editor was drawn the same way and is corrected with it.
 
+**"Restrict this URL to your home network" explains itself properly now.** The
+note under that setting read as though anyone who reaches Home Assistant from
+outside — over Nabu Casa, a VPN, or a cloud-hosted instance — had to leave it
+switched off. That is not what the setting checks. It looks at where the
+*picture* is fetched from, and Home Assistant fetching it on your panel's
+behalf never leaves your network, however you happen to be looking at Home
+Assistant at the time. So if the panel and Maverick Wall are both on your home
+network, you can switch this on and keep it on. The wording now says that, and
+still warns about the case it is genuinely for: a panel whose picture is
+fetched across a relay, which means a cloud-hosted Home Assistant, or a frame
+URL that leaves your network and comes back through a tunnel.
+
 ## 0.62.0
 
 **You can see what a starting layout looks like before you pick it.** Both add

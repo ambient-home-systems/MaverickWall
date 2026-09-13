@@ -333,16 +333,6 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     `<pre class="code">${escapeHtml(code)}</pre>`;
 
   /**
-   * Option C's toggle, shared by the config and view pages.
-   *
-   * Off by default and stated in terms of what a *leaked* URL is worth,
-   * because that is the actual trade a household is making — the token
-   * itself is no easier to guess either way. Warns about a relayed panel
-   * (a cloud-hosted Home Assistant, a VPN, Nabu Casa) rather than staying
-   * silent about it, since that is exactly the household this would
-   * otherwise go dark for with no visible cause.
-   */
-  /**
    * What this restriction can currently see, said out loud.
    *
    * A household reads this page from a browser; the restriction is judged on
@@ -392,6 +382,24 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     return '';
   };
 
+  /**
+   * Option C's toggle, shared by the config and view pages.
+   *
+   * Off by default and stated in terms of what a *leaked* URL is worth,
+   * because that is the actual trade a household is making — the token
+   * itself is no easier to guess either way.
+   *
+   * The hint names the address that is actually judged, because the obvious
+   * reading of this switch is the wrong one and the wording used to invite
+   * it. What is checked is where the *frame request* comes from — the panel,
+   * or Home Assistant fetching the picture on its behalf — and a household
+   * reaching Home Assistant's own UI from outside over Nabu Casa or a VPN
+   * never touches that path. Told they must leave this off, that household
+   * declines a protection they could have had. The case the warning is
+   * genuinely for is narrower and is named as such: the *picture* fetched
+   * across a relay, which is a cloud-hosted Home Assistant or a frame URL
+   * that leaves the network and comes back through a tunnel.
+   */
   const lanOnlyForm = (
     id: string,
     lanOnly: boolean,
@@ -409,9 +417,13 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
           checked: lanOnly,
           hint:
             'A correct URL is refused from outside your network — useful if it ever ends up ' +
-            'somewhere it should not have. Leave off if Home Assistant reaches this panel ' +
-            'through a relay (Nabu Casa, a VPN, a cloud-hosted instance), or this panel will ' +
-            'go dark with no clear reason why.',
+            'somewhere it should not have. This is checked against the address the panel ' +
+            'fetches its picture from, not how you reach Home Assistant: reaching Home ' +
+            'Assistant remotely over Nabu Casa or a VPN changes nothing, so long as the ' +
+            'panel and this server are on the same network. Leave it off only if the picture ' +
+            'itself is fetched from outside — a cloud-hosted Home Assistant, or a URL that ' +
+            'leaves your network and comes back through a tunnel — or this panel will go ' +
+            'dark with no clear reason why.',
         }) +
         `<button class="secondary" type="submit">Save</button></form>`,
     );
