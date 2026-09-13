@@ -506,8 +506,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**220 of the server's tests fail without a real Chromium and say so**, across
-33 files, which is worth knowing before reading a red suite as a regression. A
+**222 of the server's tests fail without a real Chromium and say so**, across
+34 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -516,7 +516,11 @@ right: it read 148 over 20 files while the truth was 140 over 21, and the
 increment that produced 148 is how a stale number survives being edited. **It
 then read 198 over 27 while the truth was 220 over 33**, which is the same
 failure a third time and was found by a change that added no browser test at
-all — measured in passing, while running the suite for something else. That is
+all — measured in passing, while running the suite for something else. **And
+it read 220 over 33 while the truth was 222 over 34**, re-measured for the
+to-do list's two browser tests the same way — the server suite run with
+`PLAYWRIGHT_BROWSERS_PATH` pointed at nothing, every failure checked to be the
+browser's own sentence — rather than incremented by the files added. That is
 the right failure — these measure layout, and a browser test that silently skips
 is this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
