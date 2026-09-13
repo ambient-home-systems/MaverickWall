@@ -6,6 +6,7 @@ import type {
   HorizonCell,
   InterruptModel,
   TodayShiftModel,
+  TodoItemModel,
 } from './viewmodel.js';
 import { DISPLAY_LOCALE, localDate, localTime } from './viewmodel.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
@@ -1200,6 +1201,13 @@ export function renderWidget(
   model: DisplayModel,
   config?: unknown,
   mediaBase: string = MEDIA_BASE,
+  /**
+   * Which box this is, for the one widget whose body depends on something that
+   * is not in the manifest: a to-do tick that failed is a fact about this
+   * browser, held per widget in `main.ts` and looked up here. Defaulted, so
+   * every other arm and every caller that has no box to name is unchanged.
+   */
+  widgetId = '',
 ): HTMLElement | undefined {
   switch (type) {
     case 'clock':
@@ -1219,7 +1227,7 @@ export function renderWidget(
     case 'notes':
       return renderNotesWidget(config);
     case 'todo':
-      return renderTodoWidget(model, config);
+      return renderTodoWidget(model, config, widgetId);
     case 'chores':
       return renderChoresWidget(model, config);
     case 'image':
@@ -1277,6 +1285,55 @@ function renderNotesWidget(config: unknown): HTMLElement {
  * carry no markup.
  */
 /**
+ * One to-do row: its box and its words.
+ *
+ * `choreRow`'s shape one widget along, and deliberately so — the box is a
+ * `<span>` on a wall that may not tick and a real `<button>` on one that may
+ * (RFC 012 phase 2). A real button rather than a tappable div because a wall is
+ * reached by a fingertip, a keyboard and a television remote, and only one of
+ * those three is served by a click handler on a box.
+ *
+ * Three things have to hold at once for a control to be drawn, and each is a
+ * different question:
+ *
+ *  - **the household allowed this wall to** (`model.allowTodo`), which is a
+ *    fact about the hardware and off by default;
+ *  - **the list itself can be updated** (`canTick`, bit 4 resolved to a boolean
+ *    by the server), because core refuses `todo.update_item` on a list without
+ *    it and a box that cannot work must not be drawn;
+ *  - **the row has a handle to post**, which is the same read-only fallback a
+ *    chore row takes: a degraded row, never a missing one.
+ *
+ * A *completed* item keeps the read-only box even on a wall allowed to tick.
+ * The endpoint honours `done=0` and always will — idempotence and the
+ * correction both need it — but the wall offers no control for it here: a
+ * ticked item is only on screen at all when the household asked to see what has
+ * been done, which is a record rather than a place to undo one, and the phone
+ * that owns the list is where a mistake is put right.
+ *
+ * `data-todo` is what `main.ts` listens for. The row is marked rather than the
+ * page wired per node, so a redraw between polls re-attaches nothing.
+ */
+function todoRow(item: TodoItemModel, tickable: boolean): HTMLElement {
+  const canTick = tickable && !item.done && item.id !== undefined;
+  const row = el('div', `td-row${item.done ? ' is-done' : ''}`);
+  const box = canTick
+    ? el('button', `td-box td-tick${item.done ? ' td-box-on' : ''}`)
+    : el('span', `td-box${item.done ? ' td-box-on' : ''}`);
+  if (canTick) {
+    (box as HTMLButtonElement).type = 'button';
+    box.setAttribute('data-todo', item.id as string);
+    box.setAttribute('aria-pressed', item.done ? 'true' : 'false');
+    // Named, because "button" is what a screen reader would otherwise say for
+    // every row on a shopping list.
+    box.setAttribute('aria-label', `${item.done ? 'Undo' : 'Done'}: ${item.summary}`);
+  }
+  row.appendChild(box);
+  row.appendChild(el('span', 'td-text', item.summary));
+  return row;
+}
+
+/**
  * The To-do widget: the lines the household typed, or a Home Assistant list.
  *
  * One widget, two sources, one reading of the key that decides between them
@@ -1288,12 +1345,25 @@ function renderNotesWidget(config: unknown): HTMLElement {
  *
  * Both sources draw the same `.td` rows, so the tier table and the geometric
  * belt that cut a typed list between rows cut a Home Assistant one the same
- * way. Completed items are hidden unless `showDone`; nothing here ticks, and
- * the box is a marker rather than a control until phase 2 makes it one.
+ * way. Completed items are hidden unless `showDone`.
+ *
+ * **A typed list never ticks**, whatever the wall is allowed to do. There is
+ * nothing behind those lines to write to — they are text in this widget's own
+ * config, edited in the admin — so a box there would be a control with no
+ * upstream, which is the `options.json` fault in its purest form.
  */
-function renderTodoWidget(model: DisplayModel, config: unknown): HTMLElement {
+function renderTodoWidget(model: DisplayModel, config: unknown, widgetId = ''): HTMLElement {
   const c = widgetConfig(config);
   const key = typeof c['list'] === 'string' && c['list'] !== '' ? (c['list'] as string) : undefined;
+  /*
+   * A tick that did not happen, said where the household pressed (§7.4).
+   *
+   * Read from the model rather than written into the DOM by the handler,
+   * because a draw rebuilds this whole document every fifteen seconds and would
+   * wipe a sentence a second after it appeared. `main.ts` owns the map and its
+   * expiry; this only draws what is in it.
+   */
+  const notice = model.todoNotices[widgetId];
 
   if (key === undefined) {
     const items = configStrings(c['items']).filter((item) => item.trim() !== '');
@@ -1320,18 +1390,39 @@ function renderTodoWidget(model: DisplayModel, config: unknown): HTMLElement {
   const showDone = c['showDone'] === true;
   const rows = found.items.filter((item) => showDone || !item.done);
   if (rows.length === 0) {
-    return el('div', 'cd-empty', found.open === 0 && found.items.length === 0
+    const empty = el('div', 'cd-empty', found.open === 0 && found.items.length === 0
       ? 'Nothing on the list.'
       : 'Nothing left to do.');
+    if (notice === undefined) return empty;
+    // A list emptied by the very tick that then failed still has to carry the
+    // sentence, or the one case where the household most needs it is the one
+    // case it is dropped.
+    const wrap = el('div', 'td');
+    wrap.appendChild(todoNoticeNode(notice));
+    wrap.appendChild(empty);
+    return wrap;
   }
   const list = el('div', 'td');
-  for (const item of rows) {
-    const row = el('div', `td-row${item.done ? ' is-done' : ''}`);
-    row.appendChild(el('span', `td-box${item.done ? ' td-box-on' : ''}`));
-    row.appendChild(el('span', 'td-text', item.summary));
-    list.appendChild(row);
-  }
+  /*
+   * Above the rows, so it is the first thing read and so the belt spends the
+   * room it costs on the rows below it rather than clipping the sentence
+   * itself. It is deliberately **not** a `.td-row`: `listGroups` counts those
+   * to decide how many items a box affords, and a notice counted as an item
+   * would take a row off the list for as long as it showed.
+   */
+  if (notice !== undefined) list.appendChild(todoNoticeNode(notice));
+  const tickable = model.allowTodo && found.canTick;
+  for (const item of rows) list.appendChild(todoRow(item, tickable));
   return list;
+}
+
+/** The sentence itself. `textContent`, like everything a stranger's server wrote. */
+function todoNoticeNode(message: string): HTMLElement {
+  const node = el('div', 'td-note', message);
+  // Assertive rather than polite: it is the answer to something the household
+  // just pressed, and a wall has no other way to say a press did nothing.
+  node.setAttribute('role', 'alert');
+  return node;
 }
 
 /**
@@ -2780,7 +2871,7 @@ export function renderFreeform(
     // alignment. Applied whatever the widget draws inside.
     applyWidgetFormat(box, widget.config);
 
-    const body = renderWidget(widget.type, model, widget.config, mediaBase);
+    const body = renderWidget(widget.type, model, widget.config, mediaBase, widget.id);
     if (body === undefined) {
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.

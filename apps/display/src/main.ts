@@ -123,6 +123,39 @@ function start(): void {
   let lastDrawAt = startedAt;
   let lastContactAt = startedAt;
 
+  /*
+   * Sentences about ticks that did not happen, by widget id (RFC 012 §7.4).
+   *
+   * **Model state rather than a node**, and that is the whole mechanism. A
+   * draw rebuilds this document every fifteen seconds, so a handler that wrote
+   * the sentence into the DOM would watch it vanish a moment later — which is
+   * why `tickChore` fails silently and can afford to: a chore that would not
+   * tick is a chore that is not due, and the row is still honest. This one can
+   * fail because Home Assistant is rebooting, because a token was revoked on an
+   * upgrade, or because somebody deleted the item on their phone thirty seconds
+   * ago, and none of those is guessable from the row. The tick failing is fine;
+   * the tick failing silently is not.
+   *
+   * Two things clear it, whichever comes first. **A successful poll**, because
+   * the list on the glass is current again and a sentence about the last one
+   * may be about an item that has gone. And **a short expiry**, because a wall
+   * has no pointer and nobody will dismiss it — long enough to survive at least
+   * one fifteen-second redraw and be read across a kitchen, short enough that
+   * it is not still there when somebody next walks past.
+   */
+  const TODO_NOTICE_MS = 20_000;
+  const todoNotices = new Map<string, { readonly text: string; readonly until: number }>();
+  /** The ones still worth drawing, as the model wants them. */
+  const liveTodoNotices = (): Record<string, string> => {
+    const at = Date.now();
+    const live: Record<string, string> = {};
+    for (const [id, notice] of todoNotices) {
+      if (notice.until > at) live[id] = notice.text;
+      else todoNotices.delete(id);
+    }
+    return live;
+  };
+
   renderMessage(root, 'Maverick Wall', 'Waiting for the first update…');
 
   /**
@@ -211,7 +244,13 @@ function start(): void {
     const now = clock.now();
     const geo = geometry();
     applyGeometry(geo);
-    const model = buildModel({ manifest, now, lastConfirmedAt, offline });
+    const model = buildModel({
+      manifest,
+      now,
+      lastConfirmedAt,
+      offline,
+      todoNotices: liveTodoNotices(),
+    });
 
     // Which blocks are on screen, for the few layout rules that need to know
     // one is absent. A space-separated attribute so `~=` can test it, which
@@ -293,6 +332,9 @@ function start(): void {
         lastConfirmedAt = clock.now();
         lastContactAt = Date.now();
         offline = false;
+        // The list on the glass is current again, so a sentence about a tick
+        // against the last one has nothing left to be about.
+        todoNotices.clear();
         /*
          * Kept for the next reload — unless it is the server's stand-in.
          *
@@ -313,6 +355,9 @@ function start(): void {
         lastConfirmedAt = clock.now();
         lastContactAt = Date.now();
         offline = false;
+        // A 304 is the server confirming this document, which is as much a
+        // successful poll as a body is.
+        todoNotices.clear();
         break;
       case 'unpaired':
         manifest = undefined;
@@ -538,17 +583,22 @@ function start(): void {
   document.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key !== 'Enter') return;
     /*
-     * Not when a chore's tick box has focus.
+     * Not when a tick box has focus — a chore's or a to-do item's.
      *
      * The OK key acknowledges whatever is showing rather than whatever has
      * focus, which is right for a remote pointed at a wall — but a native
      * `<button>` also fires its own click on Enter, so with a *banner* up (which
-     * does not cover the wall) one press would tick the chore and clear the
+     * does not cover the wall) one press would tick the row and clear the
      * banner at the same time. Two actions from one key, and only one of them
      * asked for.
+     *
+     * Both selectors, in one `closest`, because the exemption is about the
+     * *shape* rather than about chores: any row control that fires its own
+     * click on Enter is one the OK key must leave alone, and a second handler
+     * with its own copy of this rule is how the two would come to disagree.
      */
-    if (document.activeElement?.closest?.('[data-chore]') !== null &&
-        document.activeElement?.closest?.('[data-chore]') !== undefined) {
+    if (document.activeElement?.closest?.('[data-chore], [data-todo]') !== null &&
+        document.activeElement?.closest?.('[data-chore], [data-todo]') !== undefined) {
       return;
     }
     const key = dismissTarget();
@@ -594,6 +644,79 @@ function start(): void {
     await poll();
   };
 
+  /** The wall's own wording, for every case the server's cannot be read. */
+  const TICK_FAILED = 'That did not go through. Try again in a moment.';
+
+  /**
+   * What the server said, made safe to draw — or the wall's own line.
+   *
+   * Every fallback the manifest's `serverSaid` already takes, one endpoint
+   * along: not JSON, no `message`, not a string, empty after stripping — all of
+   * them land on `TICK_FAILED` rather than on the glass. Capped and stripped
+   * for the same reason that one is: a wall with one line to say something
+   * cannot afford it to be unreadable, and this body carries a sentence written
+   * by a household's own Home Assistant, which is to say by whatever
+   * integration owns their list.
+   */
+  const tickMessage = async (response: Response): Promise<string> => {
+    try {
+      const body: unknown = await response.json();
+      const said =
+        typeof body === 'object' && body !== null
+          ? (body as Record<string, unknown>)['message']
+          : undefined;
+      if (typeof said !== 'string') return TICK_FAILED;
+      const cleaned = said.replace(/\s+/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+      return cleaned === '' ? TICK_FAILED : cleaned.slice(0, 160);
+    } catch {
+      return TICK_FAILED;
+    }
+  };
+
+  /**
+   * Ticking a Home Assistant to-do item off (RFC 012 phase 2).
+   *
+   * `tickChore`'s shape, including the two things it deliberately does not do:
+   * **no optimistic paint** and **no client queue**. The server has Home
+   * Assistant's own 200 before it writes anything and the wall re-polls the
+   * instant this returns, so the box fills from a document rather than from a
+   * hope — and offline it simply stays empty, which is the honest answer.
+   *
+   * What it does that `tickChore` does not is *say so when it fails*, because
+   * the reasons are outside this house's own database: a Home Assistant
+   * rebooting, a token revoked on an upgrade, an item somebody deleted on their
+   * phone. The sentence goes into the notice map keyed by the box it was
+   * pressed in, and the next draw is what puts it on the glass. Nothing here
+   * touches the DOM.
+   *
+   * What it does not send is which entity, which uid, or whether this wall is
+   * allowed to: the handle resolves to all three on the server, exactly as the
+   * day is resolved there for a chore.
+   */
+  const tickTodo = async (widgetId: string, item: string, done: boolean): Promise<void> => {
+    let failure: string | undefined;
+    try {
+      const response = await fetch('/d/todo/tick', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        // The display token is an HttpOnly cookie set at pairing.
+        credentials: 'same-origin',
+        body: new URLSearchParams({ item, done: done ? '1' : '0' }).toString(),
+      });
+      if (!response.ok) failure = await tickMessage(response);
+    } catch {
+      // No answer at all — the server is unreachable, which the banner will say
+      // for itself soon enough; this is about the press.
+      failure = TICK_FAILED;
+    }
+    if (failure !== undefined) {
+      todoNotices.set(widgetId, { text: failure, until: Date.now() + TODO_NOTICE_MS });
+      draw();
+      return;
+    }
+    await poll();
+  };
+
   root.addEventListener('click', (event: Event) => {
     const target = event.target as Element | null;
 
@@ -604,6 +727,18 @@ function start(): void {
       // opposite — one attribute, read by the handler and by a screen reader,
       // rather than a second source of truth that can disagree with the paint.
       if (id !== '') void tickChore(id, chore.getAttribute('aria-pressed') !== 'true');
+      return;
+    }
+
+    const todo = target?.closest?.('[data-todo]');
+    if (todo !== null && todo !== undefined) {
+      const item = todo.getAttribute('data-todo') ?? '';
+      // Which box this was pressed in, so a sentence about a failure lands
+      // where the finger did rather than on every list on the wall.
+      const widgetId = (todo.closest('.fw') as HTMLElement | null)?.dataset['widgetId'] ?? '';
+      // `aria-pressed` is the row's current state, so the press asks for its
+      // opposite — one attribute, read by the handler and by a screen reader.
+      if (item !== '') void tickTodo(widgetId, item, todo.getAttribute('aria-pressed') !== 'true');
       return;
     }
 

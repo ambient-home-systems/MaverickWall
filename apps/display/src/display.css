@@ -2657,7 +2657,10 @@ body {
 .nt-gap { height: var(--s3); }
 
 /* To-do: a checklist the household typed, or a Home Assistant list (RFC 012).
-   Read-only either way in this phase — the box is a marker, not a control. */
+   The box is a marker on a wall the household has not allowed to tick, and on
+   a typed list always — those lines have nothing behind them to write to. On a
+   Home Assistant list, on a wall allowed to, and on a list core will accept an
+   update for, it is a real control: `.td-tick` below. */
 .td { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
 .td-row { display: flex; align-items: flex-start; gap: var(--s3); }
 .td-box {
@@ -2670,6 +2673,47 @@ body {
    way. The row keeps its height, which is what the belt measures. */
 .td-box-on { background: var(--muted); }
 .td-row.is-done .td-text { text-decoration: line-through; color: var(--muted); }
+
+/* The tick, on a wall allowed to (RFC 012 phase 2).
+   The chore board's rules one widget along, and deliberately the same ones
+   rather than a second opinion about the same control — the faults they encode
+   were paid for once already. A real <button> stripped back to the box the
+   read-only view draws, so the two are visually identical and what tells a
+   household this one writes is that it answers. */
+.td-tick { position: relative; padding: 0; background: none; cursor: pointer;
+  -webkit-appearance: none; appearance: none; font: inherit; color: inherit; }
+/* A control that clears its background must put back what it just wiped.
+   `.ch-tick` shipped without this and drew a ticked chore as an empty outline,
+   with the class applied the whole time — so assert on the computed
+   background, never on the class. Kept here even though the wall draws no
+   tickable done row today: the endpoint honours `done=0` and a later phase
+   that offers the undo must not rediscover this. */
+.td-tick.td-box-on { background: var(--muted); }
+/* 44px of target behind a 1.7rem box, grown with a pseudo-element rather than
+   by making the box bigger: a to-do row is 2.1rem of text and a 44px box beside
+   it would be the loudest thing on the wall. */
+.td-tick::after { content: ""; position: absolute; left: 50%; top: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%); }
+/* A wall sets `cursor: none`, so the focus ring is the only thing that says
+   where the OK key will land. Both `:focus` and `:focus-visible`: with only the
+   second the outline computed to 0px after a tap or a scripted focus, because
+   that heuristic is written for a page with a pointer. */
+.td-tick:focus,
+.td-tick:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.25rem; }
+/* Held down: the box fills faintly, so a fingertip gets an answer before the
+   round trip does. Not a "sending" state — the server is the authority and the
+   row only changes when the next document says so. */
+.td-tick:active { background: var(--muted); opacity: 0.45; }
+
+/* A tick that did not go through, said in the widget it was pressed in
+   (RFC 012 §7.4). Above the rows, so it is read first and so the belt spends
+   the room it costs on the rows below rather than clipping the sentence. In
+   `--accent` because it is the answer to something somebody just pressed, and
+   at the label role because it is not what the widget is for. */
+.td-note {
+  font-size: var(--t-wall-label, 1.5rem); line-height: 1.25;
+  color: var(--accent); padding-bottom: var(--s2);
+}
 
 /* Chores (RFC 008 phase 2): a read-only board. The box is a marker, not a
    control — nothing here is tickable, and phase 3 is what makes it one. */
