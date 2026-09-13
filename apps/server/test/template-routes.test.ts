@@ -88,6 +88,15 @@ async function ready() {
   });
   await postForm('/setup/household', { timezone: 'Europe/London' });
 
+  /*
+   * Every route here acts on a wall, not on `default`.
+   *
+   * They used to address the shared Default wall — the one owner that existed
+   * without pairing anything — and it is retired: `resolveOwner` will not name
+   * it, so a template applied there now lands nowhere. `s1` is the wall this
+   * file arranges and reads back through.
+   */
+  const WALL = 's1';
   const manifestLayout = async () => {
     const issued = issueDisplayToken();
     const at = Date.now();
@@ -112,13 +121,20 @@ async function ready() {
       }),
     );
 
-  return { db, call, postForm, manifestLayout, applyBare };
+  {
+    const at = Date.now();
+    db.prepare(
+      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+       VALUES ('s1','Wall','seed',?,?,?) ON CONFLICT(id) DO NOTHING`,
+    ).run(at, at, at);
+  }
+  return { db, call, postForm, manifestLayout, applyBare, WALL };
 }
 
 describe('the template gallery routes', () => {
   it('shows the gallery, behind the session, listing the shipped templates', async () => {
     const h = await ready();
-    const res = await h.call('/admin/displays/default/gallery');
+    const res = await h.call('/admin/displays/s1/gallery');
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('Sky Calendar');
@@ -128,7 +144,7 @@ describe('the template gallery routes', () => {
 
   it('applies a template and lands its canvas in the manifest a screen polls', async () => {
     const h = await ready();
-    const res = await h.postForm('/admin/displays/default/apply-template', { templateId: 'sky-calendar' });
+    const res = await h.postForm('/admin/displays/s1/apply-template', { templateId: 'sky-calendar' });
     expect(res.status).toBe(302);
 
     const layout = await h.manifestLayout();
@@ -141,7 +157,7 @@ describe('the template gallery routes', () => {
 
   it('refuses an unknown template with a 400 and writes nothing', async () => {
     const h = await ready();
-    const res = await h.postForm('/admin/displays/default/apply-template', { templateId: 'nope' });
+    const res = await h.postForm('/admin/displays/s1/apply-template', { templateId: 'nope' });
     expect(res.status).toBe(400);
     expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBe(0);
   });
@@ -155,8 +171,8 @@ describe('the template gallery routes', () => {
          VALUES ('wallK','Kitchen','h',?,?,?)`,
       )
       .run(at, at, at);
-    await h.postForm('/admin/displays/default/apply-template', { templateId: 'family-hub' });
-    const res = await h.postForm('/admin/displays/wallK/copy-from', { sourceOwner: 'default' });
+    await h.postForm('/admin/displays/s1/apply-template', { templateId: 'family-hub' });
+    const res = await h.postForm('/admin/displays/wallK/copy-from', { sourceOwner: 's1' });
     expect(res.status).toBe(302);
 
     const kitchen = h.db
@@ -169,13 +185,13 @@ describe('the template gallery routes', () => {
 
   it('resets a display to the Classic layout (auto was retired)', async () => {
     const h = await ready();
-    await h.postForm('/admin/displays/default/apply-template', { templateId: 'sky-week' });
+    await h.postForm('/admin/displays/s1/apply-template', { templateId: 'sky-week' });
     const before = h.db
       .prepare(`SELECT count(*) c FROM layout_widgets WHERE orientation = 'portrait'`)
       .get() as { c: number };
     expect(before.c).toBeGreaterThan(0);
 
-    const res = await h.postForm('/admin/displays/default/reset-layout', {});
+    const res = await h.postForm('/admin/displays/s1/reset-layout', {});
     expect(res.status).toBe(302);
     // Reset re-applies Classic, so both canvases carry its widgets — there is no
     // empty "auto" state to fall back to any more.
@@ -184,13 +200,15 @@ describe('the template gallery routes', () => {
       .all() as { type: string }[];
     expect(types.map((t) => t.type)).toContain('calendar');
     expect(types.length).toBeGreaterThan(0);
-    const mode = (h.db.prepare(`SELECT layout_mode AS m FROM household_settings`).get() as { m: string }).m;
+    const mode = (
+      h.db.prepare(`SELECT layout_mode AS m FROM screens WHERE id = 's1'`).get() as { m: string }
+    ).m;
     expect(mode).toBe('freeform');
   });
 
   it('is behind the session gate — an unauthenticated apply writes nothing', async () => {
     const h = await ready();
-    const res = await h.applyBare('/admin/displays/default/apply-template', { templateId: 'sky-calendar' });
+    const res = await h.applyBare('/admin/displays/s1/apply-template', { templateId: 'sky-calendar' });
     expect([302, 401]).toContain(res.status);
     expect((h.db.prepare('SELECT count(*) c FROM layout_widgets').get() as { c: number }).c).toBe(0);
   });

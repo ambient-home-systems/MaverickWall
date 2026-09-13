@@ -259,7 +259,7 @@ describe('the admin, read out loud', () => {
       for (const required of [
         '/admin',
         '/admin/walls',
-        '/admin/walls/default',
+        '/admin/walls/new',
         '/admin/calendars',
         '/admin/epaper',
         '/admin/screens/approve',
@@ -416,14 +416,19 @@ describe('the admin, read out loud', () => {
   // -------------------------------------------------------------------------
 
   it(
-    'names the shared default “Default wall” wherever it names it',
+    'does not name a shared default, because there is not one any more',
     async () => {
       /*
-       * This is the half of reading (b) that the Walls list got wrong: the card
-       * said "Default" and the page it opened was headed "Default wall", so the
-       * one object a household meets before they own any hardware had two
-       * names. Capital D only — "Household default" and "Shared default" are
-       * adjectives about inheritance, not names.
+       * This used to pin the *name*: the Walls list said "Default" on a card
+       * whose page was headed "Default wall", so the one object a household met
+       * before they owned any hardware had two names. The object is retired —
+       * it was never a display, and a card for it counted a wall no household
+       * has — so the rule inverts: "Default" may still appear as an adjective
+       * about inheritance ("Household default"), and must not appear as the
+       * name of a wall.
+       *
+       * Capital D standing alone is still what the sweep looks for, and the
+       * allow-list is what says which adjectives are legitimate.
        */
       const ALLOWED: readonly string[] = [
         // The theme editor's two font pickers open on "Default", meaning the
@@ -441,10 +446,13 @@ describe('the admin, read out loud', () => {
         [],
       );
 
-      // And the name is actually used, rather than the rule passing over a
-      // Walls list that has stopped mentioning the shared default at all.
+      // And the retired object is genuinely gone from the one page that used to
+      // lead with it, rather than merely renamed somewhere.
       const list = (await pages()).find((p) => p.path === '/admin/walls');
-      expect(list?.text, 'the Walls list must name the Default wall').toContain('Default wall');
+      expect(list?.text, 'the Walls list still names a Default wall').not.toContain('Default wall');
+      expect(list?.text, 'the Walls list still links the retired default').not.toContain(
+        'admin/walls/default',
+      );
     },
     SLOW,
   );
@@ -475,7 +483,7 @@ describe('the admin, read out loud', () => {
       expect(paired, 'no paired wall page was crawled').toBeDefined();
       expect(design, 'no panel design page was crawled').toBeDefined();
 
-      for (const path of ['/admin/walls/default', paired as string]) {
+      for (const path of [paired as string]) {
         expect(of(path).text, `${path} saves the wall`).toContain('Save wall');
         expect(of(path).text, `${path} does not save a layout alone`).not.toContain('Save layout');
       }

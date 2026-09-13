@@ -142,9 +142,27 @@ export async function browser(): Promise<Browser> {
     // both.
     : ['--no-sandbox', '--disable-dev-shm-usage'];
 
+  /*
+   * Say which browser this run drove, once.
+   *
+   * These files measure text: how wide a title is, how many lines it takes,
+   * which density rung that resolves to. The browser is therefore an input to
+   * every number in them — and it is undeclared on both sides, because CI takes
+   * whatever Chrome its runner image ships and a laptop takes whatever channel
+   * resolves first. Establishing which one answered cost a session's afternoon
+   * once (two builds on one machine failed *different* assertions, which read
+   * as "the browser decides" and was really a cold-context font race); a red
+   * run should name its subject rather than leave that to be re-derived.
+   */
+  const announce = async (launched: Browser, how: string): Promise<Browser> => {
+    // eslint-disable-next-line no-console
+    console.log(`[browser] ${how} · Chromium ${launched.version()}`);
+    return launched;
+  };
+
   const explicit = process.env['MW_BROWSER_EXECUTABLE'];
   if (explicit !== undefined && explicit !== '') {
-    shared = await chromium.launch({ executablePath: explicit, args });
+    shared = await announce(await chromium.launch({ executablePath: explicit, args }), explicit);
     return shared;
   }
 
@@ -153,7 +171,7 @@ export async function browser(): Promise<Browser> {
     process.env['PLAYWRIGHT_BROWSERS_PATH'] = provisioned;
     const bundled = await chromium.launch({ args }).catch(() => undefined);
     if (bundled !== undefined) {
-      shared = bundled;
+      shared = await announce(bundled, `provisioned at ${provisioned}`);
       return shared;
     }
   }
@@ -161,7 +179,7 @@ export async function browser(): Promise<Browser> {
   for (const channel of ['chromium', 'chrome'] as const) {
     const found = await chromium.launch({ channel, args }).catch(() => undefined);
     if (found !== undefined) {
-      shared = found;
+      shared = await announce(found, `channel ${channel}`);
       return shared;
     }
   }
@@ -317,6 +335,16 @@ export interface Installation {
   post(path: string, fields: Record<string, string>): Promise<Response>;
   /** A new screen and the pairing link the admin prints for it. */
   pairLink(name?: string): Promise<string>;
+  /**
+   * A new wall, and its id — the thing most of these tests actually want.
+   *
+   * They used to reach for `/admin/walls/default`, the shared Default wall,
+   * because it was the one wall that existed without pairing anything. It is
+   * retired: it was never a display (nothing is paired to it and nothing draws
+   * it), and a suite that measures the editor, the settings sheet and the ink
+   * lane against it was measuring them against a row no household has.
+   */
+  pairWall(name?: string): Promise<string>;
   /**
    * The loopback ICS feed's address — **only with `feed: true`**.
    *
@@ -521,6 +549,14 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
         page.waitForURL((url) => !url.pathname.endsWith('/sign-in'), { timeout: 20_000 }),
         page.click('button[type="submit"]'),
       ]);
+    },
+    async pairWall(name = 'Kitchen'): Promise<string> {
+      const made = await post('/admin/screens', { name });
+      if (made.status !== 303) throw new Error(`pairing answered ${made.status}, not a redirect`);
+      // `/admin/walls/<id>/pair` — the id is what a test needs to open its page.
+      const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1];
+      if (id === undefined) throw new Error('pairing did not redirect to a wall');
+      return decodeURIComponent(id);
     },
     async pairLink(name = 'Kitchen'): Promise<string> {
       // The POST redirects to the page that shows the link once; `call` does
@@ -1097,7 +1133,19 @@ export async function loadWallSettled(
    * language difference — 53 runs "differing" on CI, which was one weekday
    * head cut to a single letter and every later run shifted by it.
    */
-  options: { readonly locale?: string } = {},
+  options: {
+    readonly locale?: string;
+    /**
+     * Rewrite the manifest the wall receives, in the *same* handler as the hold.
+     *
+     * Not a route the caller registers afterwards: Playwright matches handlers
+     * most-recent-first, so a second route on the same manifest glob silently wins and
+     * the 750ms hold below stops happening — which takes this helper's whole
+     * promise with it and leaves the caller with the cold-context flake it came
+     * here to avoid. One handler, so the two cannot come apart.
+     */
+    readonly patchManifest?: (body: Record<string, unknown>) => void;
+  } = {},
 ): Promise<{ readonly page: Page; readonly context: BrowserContext; readonly close: () => Promise<void> }> {
   const context = await (await browser()).newContext({
     viewport: size,
@@ -1125,9 +1173,25 @@ export async function loadWallSettled(
    * rather than two, because a second constant here is a second thing to be
    * wrong.
    */
+  const patchManifest = options.patchManifest;
   await page.route('**/d/manifest*', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 750));
-    await route.continue();
+    if (patchManifest === undefined) {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    patchManifest(body);
+    /*
+     * Answered without the ETag it came with, so the wall never gets a 304
+     * carrying the *unpatched* body back on the next poll.
+     */
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'application/json', 'x-server-time': String(Date.now()) },
+      body: JSON.stringify(body),
+    });
   });
   /*
    * Wait for the *manifest* on each navigation, not only for the canvas.

@@ -102,7 +102,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and twenty-five real bugs**, and the pattern in how is the most
+This project has found **one hundred and thirty-three real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -189,6 +189,8 @@ useful thing in this document:
 | The two HIGHs that *were* in the image, three hops under the names | The same listing — no name anybody would write down reached them |
 | **Sixteen browser files gave teardown no budget at all** | One suite failing in three runs with every test in it passing |
 | better-auth 1.7 wants a column the schema has not got | A vitest bump that could not move without re-resolving better-auth |
+| A dependency blocked for months over a fault fixed two patches later | Bumping it and running the suite, which is the whole check |
+| Three advisories in the shipped tree, under a document saying there were none | Running `pnpm audit --prod` while measuring something else |
 | **Two wall tests that failed for one hour every night** | Running them at 23:32, then remembering they had passed at 22:36 |
 | **A rota chip under the type floor for as long as an event was running** | Widening a fixture event until it was live, then reverting four candidate fixes in turn |
 | A bootstrap code stamped by one clock and read by another | Moving the harness's pinned hour six hours forward, to prove the pinning worked |
@@ -253,6 +255,14 @@ useful thing in this document:
 | **A panel drawing four specks and a temperature** | Rendering a frame with the glyph at parity with its type, and looking at it |
 | Every nav icon reported as sitting inside a paragraph | `<p` being a prefix of `<path` |
 | The offline shell missing the one module the wall had just started importing | The shell test, which walks the compiled import graph rather than a list |
+| **An e-paper panel offered thirteen colour wall templates, and not its own** | Pressing Templates on a panel, which is the only route to the gallery there |
+| **A fix for a clipped label that broke every long label mid-word instead** | A household's screenshot of "Lab/elle/d pills", then reading which characters landed on which line |
+| A settings sheet lying over a navigation column the save bar under it cleared | Measuring the two at 1024px and reading x=0 against x=264 |
+| A switch 943px from the label it belongs to | Measuring the widest label-to-control gap in a sheet that had no measure |
+| An assertion for content-proportional segments that its own fix could not redden | Reverting the fix and watching the file stay green, then counting starved labels instead |
+| **Every template card drawing its type 5.02x too large, on the one screen a household meets a layout** | A household looking at the gallery and saying the samples were not accurate representations |
+| Fifty `:root` and `body` rules dead in both admin previews, the editor's included | Asking what `--t-micro` computed to inside the shadow root, and reading back the empty string |
+| A preview measured against itself, so no assertion could see it drift from the wall | Pairing the wall and comparing the two, rather than recording what the card drew |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -383,10 +393,20 @@ do not invent a ninth component without raising it first.
 > about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
-**0.58.0 is the current release.** `main`, the tag and the published image
+**0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
 signed, pulled anonymously and verified.
+
+**This line read `0.58.0` while 0.61.0 was live, and it is worth one sentence
+because of where it sits.** It is four paragraphs under a header warning that
+the counts here rot, in the one paragraph whose whole subject is that `main`,
+the tag and the image agree — so the sentence asserting that three things agree
+was itself the thing that had drifted from all three. Nothing reads it, which
+is exactly why nobody noticed: it is a claim a person checks, and `advertise`
+writes `config.yaml` and the package version rather than this file. Read it
+against `addon/maverick-wall/config.yaml`, which is what the supervisor
+watches.
 
 ```bash
 docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
@@ -418,8 +438,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2843 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 484 · server 1892. CI runs the whole suite and then the README's
+**2937 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 484 · server 1986. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -497,7 +517,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (27 tables, 38 migrations) · migrations behind a
+secrets at rest · the schema (27 tables, 41 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
@@ -696,6 +716,258 @@ to write, since it passes just as happily if every widget draws in the corner.
 The test decodes the PNG and holds the ink to the posted box — verify by
 decoding, the QR rule again. Live: the Arrange backdrop and the saved preview
 come back byte-identical.
+
+**A panel has its own template gallery now, and the gap it closed was the
+panel's own default view.** Reported by a household as two things and it is one:
+"there is no way to design or see the default view for an eInk display", and
+"eInk displays don't have templates — when you click templates it shows the
+browser wall templates instead". Both were true. `Templates` is the *only* route
+to the gallery from a panel's toolbar (a panel's page has no overflow menu, so
+the wall's duplicate entries were removed there and this one kept), and what it
+opened was thirteen colour arrangements previewed on a portrait 9:16 canvas for
+an 800x480 black-and-white device, every card but Classic captioned "Looks best
+in <a theme> — change it after" on a screen that has no theme, over an offer to
+copy a wall's layout onto one bit. The one arrangement its household had
+actually *seen* — the built-in agenda-and-month view the panel draws out of the
+box — was not among them, so the layout somebody wanted to start from was the
+only one they could not: the first widget dropped on the empty canvas replaced it
+wholesale, and rebuilding it meant guessing its proportions.
+
+`src/templates/panel/` is the panel's own list and `panel-built-in` leads it —
+the built-in layout as movable widgets, an **approximation** in the same way and
+for the same reasons `classic.ts` is of the retired stacked renderer, with the
+two honest differences written down at the top of the file (a Clock stands in for
+the inverted header band, which has no widget; the boxes tile the canvas rather
+than carrying the renderer's margin as well as the frame's). Its proportions are
+`epaperBlocks`' own, read off every supported panel size rather than picked —
+0.54 to the agenda in landscape, which is that function's constant and the reason
+for it. Four more sit behind it: Month, What is on, Week ahead, and Chores & what
+is on.
+
+Four things about the split are load-bearing and each is a property a test pins
+rather than a convention. **The two catalogues are two lookups, not one list
+filtered** — the page is a convenience and the POST is the boundary, so a
+hand-posted `sky-week` at a panel is a 400 rather than a colour wall arrangement
+on one bit, and a `panel-built-in` at a wall is refused the same way.
+**A panel card previews as a real 1-bit frame**, from the *same*
+`POST /admin/epaper/:id/preview.png` the designer's Arrange backdrop uses — the
+fault that endpoint was built to fix was two renderers disagreeing about one
+canvas, and a card is that fault on a smaller picture. **The applied canvas is
+written at the panel's own aspect**, never the card's nominal 800x480, which is
+`epaperDesignPage`'s rule one screen along ("a panel's resolution is a fact about
+the hardware"). And **copy-from offers a panel only other panels**: a panel that
+wants what a wall shows has `follow`, which keeps the two in step where a copy
+forks them on the first edit and does it in colour.
+
+Two of the tests written for it could not fail as first drafted, which is the
+part worth keeping. The 800x480 aspect assertion agrees with the card's nominal
+value to five decimal places, so removing the override left it green — a 4.2"
+panel at 400x300 is the case that reddens, and the file says so where the weaker
+pair sits rather than quietly relying on the stronger one. And the ink assertion
+exempts the Chores card, because this fixture defines no chores and
+`keepWidgetsWithSomethingToSay` correctly drops an empty board; its *calendar*
+still has to draw, since an exemption covering the whole card would excuse a
+broken one.
+
+**Adding a wall and adding a panel were two journeys for one act, and they are
+one shape now.** A browser wall was a single name field in a section of the
+Walls list, straight to a QR; an e-paper panel was a page of its own asking for
+a panel size and a rotation. So the *commoner* journey asked for the least, at
+the one moment a household is standing in front of the hardware with its size in
+their hand — and neither asked the thing the whole layout system is about, which
+is where the arrangement starts from. Both are pages now and both ask **name →
+what the hardware is → where the layout starts → pair**: `/admin/walls/new`
+beside `/admin/epaper`, with the Walls list carrying two links rather than one
+form and one link. The form moved rather than growing in place because
+`epaperPage`'s own docstring is the argument for it — the e-paper form was kept
+off the Walls list since "the size presets and rotation picker ... would
+otherwise crowd the pairing form every household sees", and that did not stop
+being true when the pairing form grew the same controls.
+
+**Every new field is optional and every absence is exactly the answer the
+one-field form gave**, which is what makes this a widening rather than a change:
+no size is three nulls and a wall that draws as it always has, no rotation is
+`0`, and no template is Classic — what seeding already gave every new wall. A
+body carrying nothing but a name creates the wall it created before, which half
+the suite depends on because half the suite posts it.
+
+**The panel's default writes nothing, and that is the point rather than a
+shortcut.** "Built-in" is deliberately not `panel-built-in`: a panel with no
+canvas draws `renderEpaper`, whose every measurement is arithmetic on the panel
+(`epaper/metrics.ts`), where the card is stored fractions approximating it and
+says so at the top of its own file. Writing nothing is also the state **Reset**
+returns a panel to, so "leave it as it is" at creation and "put it back" later
+are one state rather than two that look alike. The card is still in the list
+under it, renamed **"Built-in, as boxes"** — two options both reading "Built-in"
+is a choice nobody can make.
+
+**The write order is the whole reason the wall's page can ask for a size at
+all.** `seedAspects` — `ownerPanelAspects`, exported, because seeding is not
+only Classic's any more — reads the millimetre columns off the row it is
+seeding, so the hardware facts are written *before* the canvas: a wall told it
+is a 13.3" panel is seeded at its own aspect with no letterbox. The other way
+round it reads three nulls, seeds the card's nominal 9:16, and the size the
+household just gave starts mattering only after a Reset they have no reason to
+press. `panelPixelAspects` came out of `admin.ts` as its e-paper twin — two
+functions rather than one, because a wall's shape is an optional physical
+measurement and a panel's is its resolution, which is not optional and not a
+claim — so the gallery and the add form cannot put one card's boxes in two
+places.
+
+**Two catalogues, two lookups, one step earlier.** A hand-posted
+`panel-built-in` at `/admin/screens` is a 400 and a hand-posted `sky-week` at
+`/admin/epaper` is a 400, for the reason `apply-template` already gives: the
+form is a convenience and the POST is the boundary.
+
+**Three faults came out of it and all three were found by a test rather than by
+reading.** `admin-vocabulary` caught the new copy twice in one run — "showing
+Maverick Wall full screen" reintroduces a retired noun, and "arrangements you
+can move" is a second word for a layout, both written by somebody who had read
+the rules and was describing a thing rather than naming it. And the wall's
+echo-on-400 assertion **was reached by only one of the two branches it claimed**:
+`panel_width_mm: 'three hundred'` is thirteen characters against an
+`optionalText(6)`, so it was refused by the *schema* and never touched
+`resolveWallSize` at all — dropping the echo from the size branch left the file
+green. A width of `'abc'` fits the shape and fails the meaning, which is the
+only way into the second branch, and both are cases now. Twelve mutations were
+checked against `add-display-parity.test.ts` and all twelve are red.
+
+**Still unproven where it counts:** nobody has added a wall or a panel through
+either page on a real phone or in a real supervisor's sidebar, which by this
+project's history is where the next fault in a form actually surfaces. The
+measurements are the real app with a real session and a real database.
+
+**The shared "Default wall" is retired, and it was two jobs in one row.** One
+was the settings every wall inherits — theme, daylight schedule, how much to
+show, the clock. The other was a *canvas* a wall drew until it had one of its
+own. Only the first was ever a setting; the second made the household row look
+like a display, with a card on the Walls list, a page, a template gallery and a
+Reset, for a thing nothing is paired to and nothing draws. A household counting
+their walls counted one that does not exist. The settings are three sections on
+**System** now, and the canvas is gone as something anybody designs:
+`/admin/walls/default` redirects to System, no layout route will take `default`
+as an owner, and `follow:default` is refused on a panel.
+
+**Not reading the row is not the same as retiring it.** A wall that never
+arranged a canvas is *drawing* the household's, so dropping the fallback takes a
+working kitchen calendar off the wall on the next restart — rule nine, in the
+shape that shows up in a kitchen rather than in a log. Migration `0040` adds
+`default_wall_retired` and `retireDefaultWall` copies what each such wall was
+already drawing onto it, once, at boot after `backfillClassic`. An e-paper panel
+is skipped deliberately: a panel with no canvas draws its built-in view, which is
+a fact about the renderer rather than a fallback to this row, so copying a colour
+wall's arrangement there would *change* what it draws rather than preserve it.
+The household's own widgets are left in place, and `effectiveDisplay` still falls
+back to them, as a belt rather than a mechanism.
+
+**Two doors that create a wall never seeded one, and the shared canvas is what
+hid it for as long as it existed.** The device-flow approve
+(`POST /admin/screens/approve`) and the `add-screen` CLI both created a screen
+and stopped; the wall then drew the household's canvas, which looked identical
+and was somebody else's row. With that retired the same omission is a wall that
+draws "Nothing on this wall yet." **for ever**, because `backfillClassic` runs
+once per database and has long since run anywhere either of those is reached.
+Both seed Classic now, and `default-wall-retired.test.ts` walks every door.
+
+**`resolveOwner` answering `null` for anything it did not recognise was a
+write-fallback, and only removing the Default wall made that visible.** An
+absent `?screen=`, a blank one, a stranger's id, a wall unpaired in another
+window — all resolved to the shared canvas, and `POST /admin/layout` is where
+that could *write*: a stale editor tab would have saved its arrangement onto the
+row every other wall inherited. It answers `undefined` now and every caller
+answers that rather than acting on a wall nobody named.
+
+**A "Blank" card leads both galleries, and on a panel it needed the renderer
+rather than a card.** Every card was somebody else's arrangement, so building
+your own meant picking the nearest and deleting its boxes — starting from
+nothing was the one thing a gallery of starting points could not do. On a wall
+that is a template with no widgets and no display change at all: `renderFreeform`
+has always drawn "Nothing on this wall yet." for an empty canvas. On a panel
+`renderScreenFrame` decided what to draw with `widgets.length > 0`, so an empty
+canvas drew the *built-in* view — which would have made Blank and Built-in the
+same frame and the choice between them a control that does nothing.
+**`undefined` is no canvas and `[]` is an empty one** now, and they are two
+frames; Reset is untouched, because it clears `layout_mode` rather than emptying
+the canvas, which is exactly what makes the distinction drawable. No
+`EPAPER_RENDERER_VERSION` bump: no existing panel's pixels move, because the two
+states a panel could already be in still draw what they drew.
+
+**Blank sets no theme and no background, which is the difference between blank
+and reset.** `applyTemplate` writes `template.theme` when a card names one, so a
+Blank that named one would take the household's chosen theme off the wall — a
+card called "Blank" repainting a kitchen is the last thing somebody pressing it
+expects. Classic is the same exception for the same reason, and the guard is
+written as one rule with two members rather than a list to grow.
+
+**A helper was written for a case that cannot happen, and running it is what
+said so.** `drawableCanvas` existed to send "a canvas whose widgets the omission
+dropped" back to the built-in view — until the test for it failed and
+`keepWidgetsWithSomethingToSay` turned out to return its *input* rather than an
+empty list, precisely so a canvas holding only an unconfigured Weather box still
+draws something. So the only way a caller ever held `[]` was an authored-empty
+canvas, which means the old `widgets.length > 0` was never protecting the case
+its own comment named. The helper is deleted: a line nothing can contradict is
+not a fix.
+
+**Sixty-six tests went red, and most of them were measuring the editor against a
+wall no household has.** `/admin/walls/default` was the one wall that existed
+without pairing one, so `browser-editor`, `browser-inspector`, `browser-wall`
+and `browser-calendar-density` all drove it — the whole editor suite, the
+inspector's segmented-control measurements and the ink lane, taken on a page
+nobody opens. `browser-harness` gained `pairWall`, and they drive a real wall
+now. Three findings came out of the migration rather than out of the change:
+the editor's phone canvas is **444px** where it was 455, because a real wall's
+page carries a pairing status line above the canvas and the old number was a
+property of the page that did not; a dirty-guard assertion read
+`after[0]`/`after[1]` — document order — so it quietly became a test about a
+different pair of forms the moment System grew one above the timezone, and it
+reads through the edited field's own `form` now; and `admin-vocabulary`'s rule
+that the admin must *name* "Default wall" wherever it names it is inverted, so
+it now fails if the name comes back.
+
+**The widget inspector had two faults, and the first was a fix causing the thing
+it prevented.** `admin-seg-labels.test.ts` records a segmented control that drew
+"ollow the househ" — clipped at both ends because `text-overflow` does nothing on
+a flex container — and the cure was to let labels wrap. It wrapped them with
+`overflow-wrap:anywhere`, which does two things rather than one: it lets a break
+fall between *any* two characters, and it drops a flex item's min-content
+contribution to a single glyph, so nothing resists the global `flex:1` squeezing
+every segment to an equal quarter. Reported with a screenshot: the Calendar
+widget's four-up "Events in a day" drawing "Na/mes", "Dots", "Labelle/d pills",
+"Swiss/rows" — the *shortest* label broken mid-word, in a control with 60px of
+slack across it, because the space went to "Dots" rather than to the label that
+needed it.
+
+`break-word` fixes the breaking. What fixes the *starving* is measured rather
+than argued: swept across every segmented control the inspector draws, at nine
+widths, counting the times a label wrapped while a single-line sibling had more
+room than it did — `flex:1` gives **17**, `flex:1 1 auto` with the default
+`min-width:auto` gives **4**, and `flex:1 1 auto` with `min-width:0` gives
+**0**. So both are kept, each with a number behind it, and the second's cost is
+stated: three labels drawn 2-5px wider than their content box, absorbed by the
+8px padding either side, which is the second reason that rule avoids
+`overflow:hidden`.
+
+**The second fault is the sheet, and the save bar directly under it was already
+right.** Below 1200px the inspector becomes a bottom sheet, and it was
+`left:0` across that whole range — but the navigation drawer is a real in-flow
+264px column down to 900px, so between 901 and 1199 the sheet lay over navigation
+that was still on screen while `.savebar` beneath it started at 264. Measured at
+1024px: x=0 against x=264, disagreeing by exactly the drawer. The two are written
+the same way now — `left:264px`, reset to 0 in the same `max-width:900px` block
+where the drawer goes off-canvas. And the sheet had no *measure*: its rows ran the
+width of the viewport, so a switch sat **943px from its own label** at 1199px and
+the four-up control was 1,159px of segmented button. It is capped at 720px and
+centred, which is `.wset-panels`' own number — this editor's answer to the same
+question one pane along, reused rather than re-picked.
+
+**An assertion written for the first of those passed with its own fix removed**,
+and finding that out is why the numbers above exist. "Did a label break inside a
+word" discriminates `anywhere` from `break-word` and nothing else: reverting
+`flex:1 1 auto` leaves it green, because the default `min-width:auto` already
+stops a segment going below its longest word. The starvation count is what can
+see it. Six mutations were checked against `browser-inspector.test.ts` and all
+six are red.
 
 **Every Calendar option on a panel was inert, and the default was the worst of
 them.** The editor stores the default mode by *leaving the key out* — `month`
@@ -1172,8 +1444,22 @@ HEALTHCHECK failed for ever while the application served every request
 correctly. `docker ps` said unhealthy and `curl` said 200. It probes with
 `node` now — already present, nothing to install and nothing to keep patched.
 
-**The image is 435MB and `pnpm audit --prod` is clean**, and the way that was
-reached is worth more than either number. It used to be ~482MB with about 50MB
+**The image is 437MB and `pnpm audit --prod` is clean**, and the way that was
+reached is worth more than either number.
+
+> **That second clause stopped being true and nobody noticed**, which is the
+> half of this paragraph with a lesson still in it. Three moderate advisories
+> against `hono` — an unbounded dot-notation nesting in `parseBody()`, a query
+> parser that reads past the URL, and a `toSSG()` fix — sat in the production
+> tree until somebody ran the audit while measuring something else entirely.
+> Two of the three are reachable here: this application has **58** `parseBody()`
+> call sites and **12** `req.query()` ones; `toSSG` has none. A clean audit is
+> a reading taken on a day, not a property the repository holds, and this
+> document asserting one is exactly how a reading becomes a belief. Re-run it.
+> (Measured while fixing that: 437MB by `docker images`, which is the number
+> above — `docker image inspect .Size` answers 87MB for the same image and is
+> a different question, so do not "correct" one with the other. 76 packages in
+> `.pnpm`, where the entry below says 86.) It used to be ~482MB with about 50MB
 of `esbuild` and `vitest` in the *production* tree, because `better-auth`
 declares `drizzle-kit` and `vitest` as peer dependencies and pnpm resolves
 peers into a `deploy --prod` tree. `peerDependencyRules.ignoreMissing` does not
@@ -5363,14 +5649,35 @@ rather than an oversight.
   `pnpm audit --prod` reports nothing. It was not a peer-resolution change in
   the end — it was a reachability sweep over the deployed tree, which is the
   paragraph above.
-- **better-auth is pinned to `~1.6.25`, and 1.7 needs a migration.** 1.7.2
-  fails every auth test with `The field "issuer" does not exist in the
-  "account" Drizzle schema` — it wants a column this schema has not got, so
-  moving to it means a shipped migration, a `migration-upgrade.test.ts` run
-  against a database with data already in it, and rule seven's whole
-  apparatus. The pin takes 1.6 patches and stops at that minor. This is the
-  next dependency decision, and it is deliberately not folded into anything
-  else.
+- ~~better-auth is pinned to `~1.6.25`, and 1.7 needs a migration~~ **is
+  closed, and the migration was never needed.** The entry said 1.7.2 fails
+  every auth test with `The field "issuer" does not exist in the "account"
+  Drizzle schema`, so moving would mean a shipped migration and rule seven's
+  whole apparatus. That was true of **1.7.2** and is not true of 1.7.4: every
+  `issuer` in the package is inside the `jwt` and `device-authorization`
+  plugins, neither of which this application loads, and the schema is
+  untouched. The pin is `~1.7.4`.
+
+  Worth keeping, because the shape recurs: **a blocker recorded against one
+  patch version is a fact about that version**, and this one had been the
+  named next decision for long enough that nobody re-ran it. The check is
+  cheap — bump it and run the suite.
+
+  What 1.7 *does* bring is a new optional peer, `better-sqlite3@^12`, against
+  the 11 this project runs. It is declared `optional` in
+  `peerDependenciesMeta` and it is for better-auth's **own** SQLite adapter;
+  this application passes it a `drizzleAdapter`, so that code path is never
+  reached. `peerDependencyRules.allowedVersions` says so rather than bumping a
+  native module — better-sqlite3 is the one dependency whose version is a
+  multi-arch build risk, and it must not move as a side effect of an auth bump.
+
+  Proven the way this file counts, against the artifact rather than the
+  lockfile: the image builds, the pruned tree boots and answers `/healthz`
+  (which is the reachability sweep surviving a changed closure), and a real
+  sign-up, session cookie, `/admin` at 200, sign-out and a refused cookie were
+  driven through the running container. `/healthz` alone would not have shown
+  it — auth is the largest closure in the tree and the one a swept dependency
+  would break.
 
 ---
 

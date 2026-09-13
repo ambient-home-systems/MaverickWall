@@ -114,12 +114,13 @@ describe('the theme builder', () => {
     expect(readThemes(h.db)).toHaveLength(0);
   });
 
-  it('offers the theme on the Default appearance and accepts it as the default', async () => {
+  it('offers the theme in the wall defaults and accepts it as the default', async () => {
     const h = await harness();
     await h.form('/admin/themes', themeFields('Sunset'));
     const id = readThemes(h.db)[0]?.id ?? '';
 
-    const appearance = await (await h.call('/admin/walls/default')).text();
+    // On System: the wall defaults moved there with the Default wall's retirement.
+    const appearance = await (await h.call('/admin/system')).text();
     expect(appearance).toContain(`custom:${id}`);
     expect(appearance).toContain('Sunset');
 

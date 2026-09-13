@@ -1,6 +1,6 @@
 {
   "name": "@maverick-wall/server",
-  "version": "0.59.1",
+  "version": "0.62.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -24,11 +24,11 @@
     "@material/material-color-utilities": "^0.3.0",
     "@maverick-wall/calendar": "workspace:*",
     "@maverick-wall/core": "workspace:*",
-    "better-auth": "~1.6.25",
+    "better-auth": "~1.7.4",
     "better-sqlite3": "^11.3.0",
     "bonjour-service": "^1.4.4",
     "drizzle-orm": "^0.45.2",
-    "hono": "~4.12.34",
+    "hono": "~4.13.7",
     "ws": "^8.18.0",
     "zod": "^4.4.3"
   },

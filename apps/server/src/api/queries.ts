@@ -331,6 +331,14 @@ export function panelCanvasOwner(screen: {
  * Theme is deliberately not here: it is already resolved per screen further
  * along, in the manifest's `screen` block, and doing it twice would only
  * confuse which layer owns it.
+ *
+ * **`layoutOwner: null` is a belt now, not a mechanism.** It used to be the
+ * common case — a wall with no canvas drew the shared Default wall's — and that
+ * canvas is retired: `retireDefaultWall` copied it onto every screen that was
+ * inheriting it, and every path that creates a screen seeds one. So a screen
+ * reaching this branch is a row nothing in this codebase writes. The household's
+ * own widgets are left in place rather than deleted precisely so that row still
+ * draws something if one ever appears, which is rule nine and costs nothing.
  */
 export function effectiveDisplay(
   household: HouseholdRow,
@@ -989,6 +997,51 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
         Date.now(), id,
+      ).changes > 0
+  );
+}
+
+/**
+ * The facts about the hardware a screen is, written on their own.
+ *
+ * The add pages collect the mounting and the physical size *before* a screen
+ * has a name to change, a theme to inherit or a density to override, so they
+ * need a writer that touches those four columns and nothing else.
+ * `writeScreenSettings` is the settings form's, and it writes the whole row —
+ * calling it here would mean inventing values for a dozen fields the household
+ * has not been asked about yet, and every one of those inventions would be a
+ * default this code, rather than the settings page, had chosen.
+ *
+ * Null is a real answer on the three millimetre columns and means "not
+ * measured", exactly as it does everywhere else: a wall with no size draws as
+ * it always has (`physicalWall` refuses two of three), so an add form somebody
+ * skipped writes three nulls rather than a guess.
+ */
+export function writeScreenHardware(
+  db: SqliteDatabase,
+  id: string,
+  hardware: {
+    readonly rotation: number;
+    readonly panelWidthMm: number | null;
+    readonly panelHeightMm: number | null;
+    readonly readDistanceMm: number | null;
+  },
+): boolean {
+  return (
+    db
+      .prepare(
+        `UPDATE screens
+            SET rotation = ?, panel_width_mm = ?, panel_height_mm = ?,
+                read_distance_mm = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(
+        hardware.rotation,
+        hardware.panelWidthMm,
+        hardware.panelHeightMm,
+        hardware.readDistanceMm,
+        Date.now(),
+        id,
       ).changes > 0
   );
 }

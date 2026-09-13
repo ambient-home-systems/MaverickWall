@@ -21,6 +21,11 @@
   "pnpm": {
     "overrides": {
       "esbuild": "^0.25.0"
+    },
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "better-auth>better-sqlite3": "11"
+      }
     }
   }
 }

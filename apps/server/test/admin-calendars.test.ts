@@ -492,9 +492,9 @@ describe('display settings', () => {
     // A theme in the dropdown that the wall then falls back on would be a
     // puzzle nobody could solve from the kitchen.
     const h = await harness();
-    // The default appearance form lives on the Default display now, not the
-    // retired global Display page.
-    const body = await (await h.call('/admin/walls/default')).text();
+    // The wall defaults live on System now. They were the Default wall's
+    // settings sheet, which presented the shared household row as a display.
+    const body = await (await h.call('/admin/system')).text();
     for (const theme of ['household', 'blueprint', 'panels', 'almanac']) {
       expect(body).toContain(`value="${theme}"`);
     }

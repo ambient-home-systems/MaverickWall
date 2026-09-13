@@ -127,9 +127,7 @@ const PAGES = [
   '/admin/modules/advanced',
   '/admin/modules/recipe',
   '/admin/walls',
-  // The editor page (where /admin/display redirects): its display-editor.js
-  // module script is a fetchable first-party asset this test must see answer.
-  '/admin/walls/default',
+  '/admin/walls/new',
   '/admin/epaper',
   '/admin/themes',
   '/admin/themes/new',

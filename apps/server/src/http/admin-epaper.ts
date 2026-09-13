@@ -16,11 +16,13 @@ import {
 import { readEnabledExternalModules } from '../api/external-modules.js';
 import { keepWidgetsWithSomethingToSay, type Manifest, type PlacedWidgetRow } from '../api/manifest.js';
 import { layoutWidgetBody } from '../api/widget-schema.js';
+import { applyTemplate, panelPixelAspects } from '../api/templates.js';
+import { PANEL_TEMPLATES, findPanelTemplate } from '../templates/index.js';
 import { issueDisplayToken, type IssuedToken } from '../auth/tokens.js';
 import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { householdSetUp } from '../modules/index.js';
-import { checkbox, optionalText, parse, text, z } from '../validation.js';
+import { checkbox, optionalText, parse, quarterTurn, text, z } from '../validation.js';
 import {
   ago,
   EPAPER_SEEN_WINDOW_MS,
@@ -87,11 +89,37 @@ const EPAPER_PRESETS: Record<string, { label: string; width: number; height: num
 };
 
 /**
+ * The pixel size the add form's `preset` (plus a custom width and height) names,
+ * or the sentence to show a household when it names nothing.
+ *
+ * One resolver rather than one per caller: the create route writes these
+ * numbers into the row and the add form's preview cards render at them, and a
+ * card drawn at a different shape from the panel it is about is a preview that
+ * lies about the one thing it exists to show.
+ */
+function panelPixels(
+  preset: string,
+  width: string | undefined,
+  height: string | undefined,
+): { width: number; height: number } | string {
+  if (preset !== 'custom') {
+    const known = EPAPER_PRESETS[preset];
+    return known === undefined ? 'Choose a panel.' : { width: known.width, height: known.height };
+  }
+  const w = Number(width);
+  const h = Number(height);
+  const sane = (n: number): boolean => Number.isInteger(n) && n >= 64 && n <= 2000;
+  return sane(w) && sane(h)
+    ? { width: w, height: h }
+    : 'Give the panel a width and height in pixels, each between 64 and 2000.';
+}
+
+/**
  * What a panel draws: its built-in layout, its own canvas, or a wall's.
  *
  * One field rather than two, because the three answers are one decision and a
  * `<select>` is how a household makes it. `follow:` carries the wall it follows
- * — `default` for the Default display, otherwise a screen id, checked against
+ * — a screen id, checked against
  * the screens that actually exist before anything is written (the regex only
  * says it is *shaped* like an id, which is not the same as it being one).
  */
@@ -117,8 +145,52 @@ const epaperSourceBody = z.object({
  */
 const lanOnlyBody = z.object({ lan_only: checkbox() });
 
+/**
+ * The value the add form's "Starting layout" carries for "leave it as it is".
+ *
+ * Not a template id, because the built-in view is not a template: it is
+ * `renderEpaper`, whose every measurement is arithmetic on the panel
+ * (`epaper/metrics.ts`), so it draws right on a 2.9" tag and on a 13.3" sheet
+ * and follows every `EPAPER_RENDERER_VERSION` after this one. `panel-built-in`
+ * is an *approximation* of it in stored fractions and says so at the top of its
+ * own file. Choosing it here writes nothing at all, which is what keeps the
+ * default the real thing and keeps Reset — which clears the canvas — the exact
+ * inverse of it.
+ */
+const EPAPER_LAYOUT_BUILTIN = 'builtin';
+
 const newEpaperBody = z.object({
   name: text('A name for the wall', 80),
+  preset: text('A panel', 40),
+  width: optionalText(6),
+  height: optionalText(6),
+  rotation: quarterTurn(0),
+  /**
+   * `builtin`, or a panel template id. Blank is `builtin`, so a body from
+   * before this field existed creates the panel it created before.
+   */
+  layout: optionalText(64),
+});
+
+/**
+ * The canvas the e-paper designer wants previewed — the boxes it has on screen
+ * right now, which may not be saved yet. Same widget schema the save path
+ * validates, so a preview can express nothing a save could not.
+ */
+const epaperPreviewBody = z.object({
+  widgets: z.array(layoutWidgetBody).max(50),
+});
+
+/**
+ * The same, for a panel that does not exist yet — the add form's layout cards.
+ *
+ * It carries its own geometry because there is no row to read one from, and it
+ * is the *same* geometry vocabulary the add form posts (`preset`, plus width
+ * and height when that is `custom`), resolved by the same `panelPixels` the
+ * create route uses. Two ways of saying what shape a panel is would be two
+ * chances for the card and the panel it becomes to disagree.
+ */
+const epaperNewPreviewBody = z.object({
   preset: text('A panel', 40),
   width: optionalText(6),
   height: optionalText(6),
@@ -128,14 +200,24 @@ const newEpaperBody = z.object({
       error: () => 'Rotation has to be a quarter turn.',
     })
     .transform((value) => Number(value)),
-});
-
-/**
- * The canvas the e-paper designer wants previewed — the boxes it has on screen
- * right now, which may not be saved yet. Same widget schema the save path
- * validates, so a preview can express nothing a save could not.
- */
-const epaperPreviewBody = z.object({
+  /*
+   * A canvas of boxes, or the built-in view — which is not a canvas at all.
+   *
+   * A panel with no widgets draws `renderEpaper`, whose measurements are
+   * arithmetic on the panel; `panel-built-in` is stored fractions
+   * approximating it. So the built-in card cannot be drawn by handing over an
+   * empty list (that is Blank, an authored empty canvas), and it must not be
+   * drawn from the approximation either — the one card whose whole claim is
+   * "this is what the panel draws out of the box" would be the only one that
+   * lies.
+   *
+   * `preprocess`, not `z.unknown().transform(...)`: the latter makes the key
+   * *required* in Zod 4, and every card that is not the built-in one sends no
+   * `builtin` at all — so the six real templates were refused with a 400 and
+   * the only card that drew was the one under test. `checkbox()` carries the
+   * same note for the same reason.
+   */
+  builtin: z.preprocess((value) => value === true, z.boolean()),
   widgets: z.array(layoutWidgetBody).max(50),
 });
 
@@ -504,9 +586,28 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
    * are e-paper-specific and would otherwise crowd the pairing form every
    * household sees.
    */
-  const epaperPage = (c: Context, error?: string): string => {
+  const epaperPage = (c: Context, error?: string, echo?: Record<string, unknown>): string => {
+    const said = (key: string): string => {
+      const value = echo?.[key];
+      return typeof value === 'string' ? value : '';
+    };
+    const selected = (value: string, want: string): string => (value === want ? ' selected' : '');
+    /*
+     * The radio's word for the same thing. Its own helper rather than a reuse
+     * of `selected` above, because `selected` on an `<input type="radio">` is
+     * a no-op the browser ignores in silence: the echo would come back with
+     * nothing checked and the household's choice would be quietly lost — which
+     * is what `add-display-parity`'s "hands the typed body back" caught here.
+     */
+    const checked = (value: string, want: string): string => (value === want ? ' checked' : '');
+    const preset = said('preset');
+    const rotation = said('rotation') === '' ? '0' : said('rotation');
+    const layout = said('layout') === '' ? EPAPER_LAYOUT_BUILTIN : said('layout');
     const options = Object.entries(EPAPER_PRESETS)
-      .map(([key, p]) => `<option value="${key}">${escapeHtml(p.label)}</option>`)
+      .map(
+        ([key, p]) =>
+          `<option value="${key}"${selected(preset, key)}>${escapeHtml(p.label)}</option>`,
+      )
       .join('');
 
     return page({
@@ -527,34 +628,119 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
           label: 'Name',
           name: 'name',
           required: true,
+          value: said('name'),
           placeholder: 'Hallway tag',
+          hint: 'This is how the panel shows up on the Walls page.',
           attrs: 'maxlength="80"',
         }) +
         selectField({
           label: 'Panel',
           name: 'preset',
-          optionsHtml: `${options}<option value="custom">Custom size…</option>`,
+          optionsHtml:
+            `${options}<option value="custom"${selected(preset, 'custom')}>Custom size…</option>`,
           attrs: 'data-cond',
         }) +
         `<div class="grid g2" data-cond-show="custom">` +
         `<div>` +
-        textField({ label: 'Width (px)', name: 'width', placeholder: '800', attrs: 'inputmode="numeric"' }) +
+        textField({
+          label: 'Width (px)',
+          name: 'width',
+          value: said('width'),
+          placeholder: '800',
+          attrs: 'inputmode="numeric"',
+        }) +
         `</div><div>` +
-        textField({ label: 'Height (px)', name: 'height', placeholder: '480', attrs: 'inputmode="numeric"' }) +
+        textField({
+          label: 'Height (px)',
+          name: 'height',
+          value: said('height'),
+          placeholder: '480',
+          attrs: 'inputmode="numeric"',
+        }) +
         `</div></div>` +
         `<p class="hint">Width and height are only used for a Custom panel, in its ` +
         `native (landscape) resolution — rotation is separate.</p>` +
         selectField({
           label: 'Rotation',
           name: 'rotation',
+          hint: 'For a panel mounted on its side.',
           optionsHtml:
-            `<option value="0">None</option><option value="90">90°</option>` +
-            `<option value="180">180°</option><option value="270">270°</option>`,
+            `<option value="0"${selected(rotation, '0')}>None</option>` +
+            `<option value="90"${selected(rotation, '90')}>90°</option>` +
+            `<option value="180"${selected(rotation, '180')}>180°</option>` +
+            `<option value="270"${selected(rotation, '270')}>270°</option>`,
         }) +
+        /*
+         * The same question the browser wall's add page asks, from this
+         * medium's own list — the split the gallery already makes, one step
+         * earlier — and now in the same cards, for the same reason: a list of
+         * names is not a picture of a layout.
+         *
+         * These cards are real frames rather than a browser's impression of
+         * one. The note that used to sit here said a panel card cannot be
+         * previewed because it posts to `…/:id/preview.png` and there is no
+         * `:id` yet; that was true of the route and not of the renderer, so
+         * there is now a screen-less one that takes the shape from this very
+         * form — see `POST /admin/epaper/preview.png`. Pick a different panel
+         * or turn it on its side and every card is redrawn at that shape.
+         *
+         * Built-in leads and is the default, and it is deliberately not the
+         * `panel-built-in` card sitting under it — see `EPAPER_LAYOUT_BUILTIN`.
+         * It draws no preview card of its own for exactly that reason: the two
+         * are not the same frame, and a picture claiming otherwise would be
+         * worse than the name alone.
+         */
+        `<fieldset class="tplpick-field">` +
+        `<legend class="field-label">Starting layout</legend>` +
+        `<div class="tplpick-grid">` +
+        `<label class="tplpick"><input type="radio" name="layout" ` +
+        `value="${EPAPER_LAYOUT_BUILTIN}"${checked(layout, EPAPER_LAYOUT_BUILTIN)}>` +
+        `<div class="tpl-thumb is-ink" data-tpl="${EPAPER_LAYOUT_BUILTIN}">` +
+        `<div class="tpl-fallback">Built-in view</div></div>` +
+        `<div class="tplpick-cap"><b>Built-in view</b>` +
+        `<small>The fixed view a panel draws out of the box. It adapts itself to the ` +
+        `panel and cannot be rearranged.</small></div></label>` +
+        PANEL_TEMPLATES.map(
+          (one) =>
+            `<label class="tplpick">` +
+            `<input type="radio" name="layout" value="${escapeHtml(one.id)}"` +
+            `${checked(layout, one.id)}>` +
+            `<div class="tpl-thumb is-ink" data-tpl="${escapeHtml(one.id)}">` +
+            `<div class="tpl-fallback">${escapeHtml(one.name)}</div></div>` +
+            `<div class="tplpick-cap"><b>${escapeHtml(one.name)}</b>` +
+            `<small>${escapeHtml(one.blurb)}</small></div></label>`,
+        ).join('') +
+        `</div></fieldset>` +
+        `<p class="field-hint">Every one of these can be moved, and you can switch ` +
+        `between them later from this panel’s Templates.</p>` +
         `<p class="hint">Colour panels are coming; today every e-paper wall is rendered ` +
         `black &amp; white.</p>` +
-        `<button class="btn" type="submit">Create</button>` +
-        `</form>`,
+        // Sticky at the foot while the form is on screen, for the reason the
+        // wall's add page gives at length: the layout picker is pictures now,
+        // and the one required field is the name at the top.
+        `<div class="addbar"><button class="btn" type="submit">Create</button></div>` +
+        `</form>` +
+        `<div id="template-gallery" data-json="${escapeHtml(
+          JSON.stringify({
+            owner: null,
+            panelPreview: 'admin/epaper/preview.png',
+            // The three controls above that decide the shape of a frame, and
+            // nothing else on this form.
+            panelFields: ['preset', 'width', 'height', 'rotation'],
+            templates: [
+              // The built-in view carries no boxes: it is the renderer's own
+              // layout, and the flag is how the card asks for that rather than
+              // for an empty canvas.
+              { id: EPAPER_LAYOUT_BUILTIN, builtin: true, aspect: 5 / 3, widgets: [] },
+              ...PANEL_TEMPLATES.map((one) => ({
+                id: one.id,
+                aspect: one.landscape.aspect,
+                widgets: one.landscape.widgets,
+              })),
+            ],
+          }),
+        )}"></div>` +
+        `<script type="module" src="assets/template-gallery.js"></script>`,
     });
   };
 
@@ -585,26 +771,32 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
   });
 
   app.post('/admin/epaper', async (c: Context) => {
-    const shaped = parse(newEpaperBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(epaperPage(c, shaped.message), 400);
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(newEpaperBody, body);
+    // Every refusal below hands the body back, so a name and a size survive the
+    // sentence about the one field that was wrong.
+    if (!shaped.ok) return c.html(epaperPage(c, shaped.message, body), 400);
 
-    let width: number;
-    let height: number;
-    if (shaped.value.preset === 'custom') {
-      width = Number(shaped.value.width);
-      height = Number(shaped.value.height);
-      const sane = (n: number): boolean => Number.isInteger(n) && n >= 64 && n <= 2000;
-      if (!sane(width) || !sane(height)) {
-        return c.html(
-          epaperPage(c, 'Give the panel a width and height in pixels, each between 64 and 2000.'),
-          400,
-        );
-      }
-    } else {
-      const preset = EPAPER_PRESETS[shaped.value.preset];
-      if (preset === undefined) return c.html(epaperPage(c, 'Choose a panel.'), 400);
-      width = preset.width;
-      height = preset.height;
+    const pixels = panelPixels(shaped.value.preset, shaped.value.width, shaped.value.height);
+    if (typeof pixels === 'string') return c.html(epaperPage(c, pixels, body), 400);
+    const { width, height } = pixels;
+
+    /*
+     * A panel may start from a *panel* template and from no other list — the
+     * gallery's own rule, one step earlier, and it is the boundary rather than
+     * a convenience: sharing one lookup with the walls would let a hand-posted
+     * `sky-week` put a thirteen-colour arrangement on one bit.
+     *
+     * Built-in is the default and writes nothing. That is not a shortcut: a
+     * panel with no canvas draws `renderEpaper`, which is the real view rather
+     * than the `panel-built-in` card's approximation of it, and it is what
+     * Reset returns a panel to — so "leave it as it is" at creation and "put it
+     * back" later are the same state rather than two that look alike.
+     */
+    const wanted = shaped.value.layout ?? EPAPER_LAYOUT_BUILTIN;
+    const template = wanted === EPAPER_LAYOUT_BUILTIN ? undefined : findPanelTemplate(wanted);
+    if (wanted !== EPAPER_LAYOUT_BUILTIN && template === undefined) {
+      return c.html(epaperPage(c, 'That starting layout is not one we ship.', body), 400);
     }
 
     const issued = issueDisplayToken();
@@ -615,6 +807,17 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       colour: 'bw',
       rotation: shaped.value.rotation,
     });
+    /*
+     * At the panel's own shape, never the card's nominal 800x480 — a panel's
+     * resolution is a fact about the hardware, and honouring a stored aspect
+     * instead is what once drew boxes on a canvas the device cannot show.
+     * The geometry comes from the two locals rather than from a re-read of the
+     * row, because they are the same numbers `createEpaperScreen` was just
+     * handed and a re-read would only be a second chance to disagree.
+     */
+    if (template !== undefined) {
+      applyTemplate(deps.db, id, template, panelPixelAspects({ panelWidth: width, panelHeight: height }));
+    }
     // Shown on the page the redirect lands on, not here: a POST's own answer
     // is a page a reload resubmits (a second panel) and Back cannot return to.
     reveals.put(id, issued, now());
@@ -745,9 +948,19 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     // screen that never existed would draw the built-in layout with no
     // explanation anywhere.
     const target = choice.slice('follow:'.length);
+    /*
+     * `follow:default` used to point a panel at the shared Default wall, whose
+     * canvas is retired: `layout_follows = NULL` with mode `follow` now
+     * resolves to nothing at all, which would be a panel drawing its built-in
+     * view over a setting that claims otherwise — an option that does nothing.
+     * Refused rather than silently mapped to `builtin`, because a household
+     * (or a stale page) asking for a wall that is gone should be told.
+     */
     if (target === 'default') {
-      setPanelSource(deps.db, id, 'follow', null);
-      return savedRedirect(c, `/admin/epaper/${encodeURIComponent(id)}/design`, 'epaper-source-saved');
+      return c.html(
+        epaperDesignPage(c, id, screen, 'The Default wall is gone — follow one of your own walls instead.'),
+        400,
+      );
     }
     /*
      * A panel pointed at itself is its own refusal, not a missing wall.
@@ -833,9 +1046,18 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
    * about whose boxes they are — which is the failure this project keeps
    * finding whenever two places answer one question.
    */
-  const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] => {
+  /**
+   * This panel's authored canvas, or `undefined` when it has none.
+   *
+   * `undefined` rather than `[]`, because those are two different frames now:
+   * no canvas is the built-in view and an empty canvas is the Blank card. This
+   * returned `[]` for both while `renderScreenFrame` could not tell them apart
+   * either, which is exactly how one of them would have gone on drawing the
+   * other.
+   */
+  const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] | undefined => {
     const owner = panelCanvasOwner({ ...screen, id });
-    return owner === undefined ? [] : readLayoutWidgets(deps.db, owner, epaperOrientation(screen));
+    return owner === undefined ? undefined : readLayoutWidgets(deps.db, owner, epaperOrientation(screen));
   };
 
   /**
@@ -858,18 +1080,27 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const screen = findEpaper(id);
     if (screen === undefined || deps.previewManifest === undefined) return c.body(null, 404);
     try {
-      const widgets = keepWidgetsWithSomethingToSay(
-        epaperWidgetsFor(id, screen),
-        householdSetUp(deps.db),
-      ).map((row) => ({
-        type: row.type,
-        x: row.x,
-        y: row.y,
-        w: row.w,
-        h: row.h,
-        z: row.z,
-        config: row.config !== null && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : {},
-      }));
+      /*
+       * "Exactly as the panel will" now includes which canvas state this panel
+       * is in, so this reads it the way the device endpoint does: `undefined`
+       * for no canvas, `[]` for one authored empty.
+       */
+      const authored = epaperWidgetsFor(id, screen);
+      const widgets =
+        authored === undefined
+          ? undefined
+          : keepWidgetsWithSomethingToSay(authored, householdSetUp(deps.db)).map((row) => ({
+              type: row.type,
+              x: row.x,
+              y: row.y,
+              w: row.w,
+              h: row.h,
+              z: row.z,
+              config:
+                row.config !== null && typeof row.config === 'object'
+                  ? (row.config as Record<string, unknown>)
+                  : {},
+            }));
       const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
       c.header('cache-control', 'no-store');
       return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
@@ -905,8 +1136,10 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
    * that never moves while you drag, which is the very fault this endpoint
    * exists to fix. That used to need an explicit `layoutMode: 'freeform'` on
    * the way in; `renderScreenFrame` now takes the widgets as the answer, so
-   * there is nothing to override. Posting an empty canvas still falls back to
-   * the built-in layout exactly as a saved empty one does.
+   * there is nothing to override. Posting an empty canvas draws the empty
+   * frame, exactly as a saved empty one does — a household who has deleted
+   * every box should see what that leaves rather than a view they cannot get
+   * back to by adding one.
    */
   app.post('/admin/epaper/:id/preview.png', async (c: Context) => {
     const id = c.req.param('id') ?? '';
@@ -931,6 +1164,63 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
         config: widget.config !== undefined ? (widget.config as Record<string, unknown>) : {},
       }));
       const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
+      c.header('cache-control', 'no-store');
+      return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
+    } catch {
+      return c.body(null, 503);
+    }
+  });
+
+  /**
+   * The same 1-bit frame, for a panel that does not exist yet.
+   *
+   * The add form's "Starting layout" was fourteen — here six — names in a
+   * `<select>`, on the argument written at that field that a panel card
+   * previews by posting to `…/:id/preview.png` and there is no `:id` until the
+   * form has been submitted. True of that route and not of the renderer: a
+   * frame needs a manifest and a *shape*, and the form holds the shape. So this
+   * takes the geometry in the body — through the same `panelPixels` the create
+   * route resolves it with, so a card cannot be drawn at a size the panel will
+   * not be — and the household's own document, which `previewManifest(null)`
+   * has always answered.
+   *
+   * Still the one renderer: this is `renderScreenFrame`, exactly as the two
+   * routes above it are. Nothing here draws a second opinion of a frame.
+   */
+  app.post('/admin/epaper/preview.png', async (c: Context) => {
+    if (deps.previewManifest === undefined) return c.body(null, 404);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ ok: false, message: 'That was not readable as JSON.' }, 400);
+    }
+    const shaped = parse(epaperNewPreviewBody, raw);
+    if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
+    const pixels = panelPixels(shaped.value.preset, shaped.value.width, shaped.value.height);
+    if (typeof pixels === 'string') return c.json({ ok: false, message: pixels }, 400);
+    try {
+      const widgets = shaped.value.widgets.map((widget) => ({
+        type: widget.type,
+        x: widget.x,
+        y: widget.y,
+        w: widget.w,
+        h: widget.h,
+        z: widget.z,
+        config: widget.config !== undefined ? (widget.config as Record<string, unknown>) : {},
+      }));
+      const frame = renderScreenFrame(
+        deps.previewManifest(null) as Manifest,
+        {
+          panelWidth: pixels.width,
+          panelHeight: pixels.height,
+          panelColour: 'bw',
+          rotation: shaped.value.rotation,
+        },
+        // Undefined, not an empty list: that is what makes it the built-in view
+        // rather than a canvas somebody emptied.
+        shaped.value.builtin ? undefined : widgets,
+      );
       c.header('cache-control', 'no-store');
       return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
     } catch {
@@ -1014,14 +1304,23 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const walls = readAdminScreens(deps.db).filter(
       (candidate) => candidate.id !== id && candidate.revokedAt === null && candidate.kind !== 'epaper',
     );
+    /*
+     * `null` used to mean the Default wall here. That canvas is retired, so a
+     * row still carrying it is following nothing — which reads as "a wall that
+     * is no longer there", because that is exactly what it is.
+     */
     const followedName =
-      followed === undefined
-        ? ''
-        : followed === null
-          ? 'the Default wall'
-          : (walls.find((w) => w.id === followed)?.name ?? 'a wall that is no longer there');
+      followed === undefined || followed === null
+        ? followed === undefined
+          ? ''
+          : 'a wall that is no longer there'
+        : (walls.find((w) => w.id === followed)?.name ?? 'a wall that is no longer there');
     const currentSource =
-      screen.layoutMode === 'freeform' ? 'own' : followed === undefined ? 'builtin' : `follow:${followed ?? 'default'}`;
+      screen.layoutMode === 'freeform'
+        ? 'own'
+        : followed === undefined || followed === null
+          ? 'builtin'
+          : `follow:${followed}`;
     const sourceOption = (value: string, label: string): string =>
       `<option value="${escapeHtml(value)}"${value === currentSource ? ' selected' : ''}>${escapeHtml(label)}</option>`;
     // No section-level help text: the one thing worth explaining is a
@@ -1031,14 +1330,25 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const sourceForm = section(
       'What this panel draws',
       undefined,
-      `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/source"><div class="row">` +
+      /*
+       * The submit sits on its own line under the field, not beside it in a
+       * `.row`.
+       *
+       * `.row` is a wrapping flex line, so on a wide window the button was
+       * flung to the far right of the section — level with the field's *hint*
+       * rather than with the field it acts on, and reading as an action on the
+       * sentence beside it. Every other settings form here (`lanOnlyForm` next
+       * door, the add form above) puts its Save under what it saves; this one
+       * was the odd one out, and only above about 1500px, which is why it
+       * looked right on the window it was written in.
+       */
+      `<form method="post" action="admin/epaper/${encodeURIComponent(id)}/source">` +
         selectField({
           label: 'Layout',
           name: 'source',
           optionsHtml:
             sourceOption('builtin', 'Its built-in layout') +
             sourceOption('own', 'Its own layout') +
-            sourceOption('follow:default', "The Default wall's layout") +
             walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s layout`)).join(''),
           hint:
             // Escaped by `fieldWrap`, so the ampersand is written plainly here:
@@ -1046,7 +1356,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
             'Following a wall draws that layout in black & white — move a box there ' +
             'and this panel moves with it. Each widget can say less on ink without changing the wall.',
         }) +
-        `<button class="secondary" type="submit">Use this</button></div></form>`,
+        `<button class="secondary" type="submit">Use this</button></form>`,
     );
 
     /*
@@ -1077,9 +1387,11 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
             `<p class="hint">This panel follows <b>${escapeHtml(followedName)}</b>. Arrange it there — ` +
               `and use the <b>On ink</b> lane beside a widget to say less on this panel without changing ` +
               `that wall.</p>` +
-              `<p><a class="btn" href="admin/walls/${
-                followed === null ? 'default' : encodeURIComponent(followed)
-              }#layout">Open ${escapeHtml(followedName)}</a></p>`,
+              (followed === null
+                ? `<p><a class="btn" href="admin/walls">Pick a wall to follow</a></p>`
+                : `<p><a class="btn" href="admin/walls/${encodeURIComponent(followed)}#layout">Open ${escapeHtml(
+                    followedName,
+                  )}</a></p>`),
           );
 
     /*

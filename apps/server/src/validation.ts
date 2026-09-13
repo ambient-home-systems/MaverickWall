@@ -146,6 +146,35 @@ export const bounded = (label: string, low: number, high: number): z.ZodType<num
       error: () => `${label} has to be between ${low} and ${high}.`,
     });
 
+/**
+ * A quarter turn, as the four values every rotation control in this admin
+ * offers.
+ *
+ * `fallback` is what an absent or blank field means. Omitted, the field is
+ * required — which is what a settings form wants, because a body that has lost
+ * its rotation must not silently stand a wall back up. Given, an absent field
+ * takes that value, which is what an *add* form wants: the two add pages carry
+ * the control with `0` preselected, and a caller that omits it is asking for
+ * the default rather than making a mistake worth a sentence.
+ *
+ * One helper rather than the third hand-written copy of the same four-value
+ * refine: two of them had already been written out, character for character,
+ * in `screenBody` and `newEpaperBody`.
+ */
+export const quarterTurn = (fallback?: number): z.ZodType<number> =>
+  z.preprocess(
+    (value) =>
+      fallback !== undefined && (value === undefined || value === '')
+        ? String(fallback)
+        : value,
+    z
+      .unknown()
+      .refine((value) => ['0', '90', '180', '270'].includes(String(value)), {
+        error: () => 'Rotation has to be a quarter turn.',
+      })
+      .transform((value) => Number(value)),
+  ) as z.ZodType<number>;
+
 /** `HH:MM`, 24 hour. */
 export const hhmm = (label: string): z.ZodType<string> =>
   z

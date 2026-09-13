@@ -1122,8 +1122,8 @@ a.card:active{background:var(--mw-surface-3)}
 .card-foot{margin-top:auto;padding-top:var(--mw-s-4)}
 
 /* ---- Walls list: one card, whatever the wall is -------------------------
- * Every wall on the list — the Default wall, a browser wall, an e-paper panel
- * — is the same whole-card link to its own page: a name with a kind tag, one
+ * Every wall on the list — a browser wall, an e-paper panel — is the same
+ * whole-card link to its own page: a name with a kind tag, one
  * status line, "Open". The e-paper card used to be a static card carrying a ⋮
  * and an "Arrange layout" button, because a panel had no page to open and the
  * card had to be it; it opens its layout page now, which is where those went,
@@ -1133,7 +1133,8 @@ a.card:active{background:var(--mw-surface-3)}
 .wall-head{display:flex;align-items:center;gap:var(--mw-s-3)}
 .wall-head-main{flex:1 1 auto;min-width:0}
 /* The status dot rides the status line rather than the head, so a card with
- * no dot (the Default wall) keeps its name on the same edge as its neighbours'. */
+ * no dot (a wall that has never connected) keeps its name on the same edge as
+ * its neighbours'. */
 .wall-head .sub .dot{vertical-align:middle;margin-right:var(--mw-s-1)}
 /* The name reads at the card-title size the rest of the admin uses (a calendar
  * card's own heading is this role), from the role rather than a one-off px. The
@@ -1734,12 +1735,44 @@ pre.code{background:var(--mw-surface-2);
  * themselves, and a choice you cannot read is a choice you cannot make.
  *
  * So: two lines when it needs them, every segment growing together because the
- * row stretches, and overflow-wrap for a single long word that cannot break at
- * a space. overflow:hidden is gone with it — the global rule above avoids it
- * deliberately so a focus ring is not clipped, and this scope had quietly put
- * it back. */
+ * row stretches. overflow:hidden is gone with it — the global rule above avoids
+ * it deliberately so a focus ring is not clipped, and this scope had quietly
+ * put it back.
+ *
+ * **The wrap has to break at a space before it breaks a word, and the first fix
+ * for the clipping got that exactly backwards.** It paired the global
+ * flex:1 — which is flex:1 1 0%, so every segment takes the same share
+ * whatever is written on it — with overflow-wrap:anywhere, which lets a break
+ * fall between any two characters *and* drops the item's min-content
+ * contribution to one glyph, so nothing in the row resists the squeeze. Both
+ * halves are needed to see it, and together they are what a household reported:
+ * measured on the Calendar widget's four-up "Events in a day" at a 258px
+ * inspector, every segment was 64px and the row read "Na/mes", "Dots",
+ * "Labelle/d pills", "Swiss/rows" — the *shortest* label broken mid-word while
+ * the control had 60px of slack across it, because the space went to "Dots"
+ * rather than to the label that needed it.
+ *
+ * break-word is what makes a broken word the last resort rather than the first
+ * choice. One is still reachable — a word wider than its own segment has
+ * nowhere else to go — it is simply no longer what happens while there is a
+ * space to break at.
+ *
+ * The other two decide where the row's space goes, and each is kept because a
+ * number says what it buys. Swept over every segmented control the inspector
+ * draws, at nine widths, counting the times a label wrapped while a
+ * single-line sibling had more room than it did: flex:1 gives 17,
+ * flex:1 1 auto with the default min-width:auto gives 4, and
+ * flex:1 1 auto with min-width:0 gives 0. The first shares the *free* space
+ * rather than the whole width, so a segment starts from what is written on it;
+ * the second then lets the row shrink past its own words, which is what closes
+ * the last four — without it a segment cannot go below its longest word, so the
+ * room a wrapped neighbour needs is held by a sibling that does not need it.
+ * Its cost is three labels drawn 2-5px wider than their content box, absorbed
+ * by the 8px padding either side, which is the second reason this rule avoids
+ * overflow:hidden. Measured in browser-inspector.test.ts. */
 .le-cfg-field .seg{display:flex;width:100%;max-width:100%}
-.le-cfg-field .seg button{padding:0 var(--mw-s-2);white-space:normal;overflow-wrap:anywhere;
+.le-cfg-field .seg button{flex:1 1 auto;min-width:0;padding:0 var(--mw-s-2);
+  white-space:normal;overflow-wrap:break-word;
   height:auto;min-height:38px;line-height:1.15;text-align:center;overflow:visible}
 .le-config .switch{margin:var(--mw-s-2) 0}
 .le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
@@ -1856,6 +1889,22 @@ pre.code{background:var(--mw-surface-2);
   display:flex;align-items:center;justify-content:center}
 .tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   padding:var(--mw-s-3);text-align:center;font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}
+/* An e-paper panel's card is a real 1-bit frame rather than a live wall, so it
+ * is shaped and grounded like the panel and not like a phone: the panel's own
+ * ratio (the card carries it, because the panel's shape is a fact about the
+ * hardware and not the browser's to guess), a white plate because the medium is
+ * physically white in both schemes — the same exception .le-epaper-preview
+ * takes — and pixelated rendering, because a 1-bit frame smoothed is a grey one.
+ *
+ * The ratio is *declared here* and overridden by the card's own inline value,
+ * rather than left to a var() fallback. Same pixels, and it keeps the rule
+ * self-contained: a property this sheet reads and never declares is the exact
+ * dangling-var() shape admin-design-system.test.ts exists to catch, and it
+ * caught this one. 5/3 rather than the portrait 3/4 above, because a panel with
+ * no geometry recorded is 800x480. */
+.tpl-thumb.is-ink{--tpl-ar:5/3;aspect-ratio:var(--tpl-ar);background:#fff}
+.tpl-ink{position:relative;z-index:1;width:100%;height:100%;
+  object-fit:contain;image-rendering:pixelated}
 .tpl-body{padding:0;display:flex;flex-direction:column;gap:var(--mw-s-2);flex:1}
 .tpl-name{font:var(--mw-t-h2);
   letter-spacing:var(--mw-t-h2-tracking)}
@@ -1864,6 +1913,74 @@ pre.code{background:var(--mw-surface-2);
 .tpl-card .btn-sm{align-self:flex-start;margin-top:var(--mw-s-1)}
 .tpl-copy{margin-top:calc(var(--mw-s-6) + var(--mw-s-1));padding-top:var(--mw-s-5);border-top:1px solid var(--rule)}
 .tpl-copy .row{display:flex;gap:var(--mw-s-3);align-items:flex-end;flex-wrap:wrap}
+/* ---- Starting-layout picker (add a wall / add a panel) -------------------
+ * The gallery's thumb inside the theme picker's card: a radio in a label, the
+ * chosen one ringed with a shadow so nothing shifts. Narrower cards than the
+ * gallery's 280px, because this is one field on a form rather than the page. */
+.tplpick-field{border:0;padding:0;margin:var(--mw-s-4) 0 0;min-width:0}
+.tplpick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:var(--mw-s-4);margin:var(--mw-s-2) 0 var(--mw-s-3)}
+/* z-index 0 rather than auto: it pins each card to the page's base layer, so
+ * the sticky submit below is above every one of them at any scroll position.
+ * Measured, not assumed -- with the cards left at auto a thumb painted over
+ * the button's right-hand end at the top of the page, and the bar's own
+ * z-index did not settle it. */
+.tplpick{position:relative;z-index:0;display:block;background:var(--mw-surface-3);
+  border-radius:var(--mw-r-3);overflow:hidden;cursor:pointer}
+.tplpick input{position:absolute;opacity:0;pointer-events:none}
+/* A wall card at the shape of the thing it is a picture of.
+ *
+ * The gallery's 3/4 thumb letterboxes a 9:16 canvas: at the gallery's 280px
+ * that is a bar down each side, and in this narrower grid it is a 134px canvas
+ * inside a 179px box whose height still sets the wall's rem basis — so the
+ * month grid is drawn for a frame wider than the one it lands in. At the
+ * canvas's own aspect the box, the wall and the canvas are one rectangle and
+ * the card is the gallery's picture, smaller. The :not() is because a panel
+ * card's shape is the panel's own, which it carries itself. */
+.tplpick .tpl-thumb:not(.is-ink){aspect-ratio:9/16}
+.tplpick-cap{padding:var(--mw-s-3)}
+.tplpick-cap b{font:var(--mw-t-h4);letter-spacing:var(--mw-t-h4-tracking);
+  display:block;color:var(--mw-ink)}
+.tplpick-cap small{display:block;color:var(--mw-ink-2);
+  font-size:var(--mw-t-label-xs-size);line-height:1.4}
+.tplpick:hover .tplpick-cap{background:color-mix(in srgb,
+  var(--mw-ink) var(--mw-wash-hover),transparent)}
+.tplpick:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
+/* The add forms' submit, riding the foot of the viewport while the form is on
+ * screen. Sticky rather than fixed, so it lands in its own place at the end of
+ * the form instead of hovering over whatever follows it; the ground and the
+ * hairline are what stop the cards showing through it.
+ *
+ * One layer above the cards, which are pinned to z-index 0 for the purpose --
+ * see .tplpick. Raising *this* number was tried first and is the wrong lever:
+ * a card's thumb still painted over the button's right-hand end at 2, and at 3
+ * it stopped, which is a number that works rather than a rule. Pinning the
+ * cards makes it a rule, and then 1 is enough -- both halves measured, and
+ * unpinning the cards turns the browser test red at either number.
+ *
+ * It stays well under the app bar (5), the drawer and its scrim (40/41) and
+ * the skip link (60), which must all still cover it. */
+.addbar{position:sticky;bottom:0;z-index:1;
+  margin:var(--mw-s-5) calc(-1 * var(--mw-s-4)) 0;
+  padding:var(--mw-s-3) var(--mw-s-4);
+  background:var(--mw-surface);border-top:1px solid var(--mw-line)}
+.addbar button{margin:0;width:100%;min-height:var(--mw-touch)}
+/* Above the compact breakpoint it is an ordinary submit at the end of an
+ * ordinary form: not sticky, no ground, no rule. A sticky bar that has given
+ * up its background would float over the card grid, which is the thing the
+ * ground exists to stop one line up — and these pages are two screens on a
+ * desktop rather than four and a half on a phone.
+ *
+ * The min-height on the button is the touch minimum, which the compact block
+ * below already gives a field input and a small button and does not give a
+ * full-size one -- 40px. That is worth knowing and is not swept here: it is
+ * every primary button in the admin, and moving them all is a change of its
+ * own. This one is the primary action of a form somebody fills in with a
+ * thumb. */
+@media(min-width:900px){
+  .addbar{position:static;margin-inline:0;padding-inline:0;background:none;border-top:0}
+  .addbar button{width:auto;min-height:0}
+}
 
 /* ---- Wall editor: local header, two modes, canvas + inspector -----------
  * The editor used to be one continuous page: status and pairing, the canvas,
@@ -2250,8 +2367,27 @@ pre.code{background:var(--mw-surface-2);
   .mw-insp-open .disp-editor{padding-bottom:calc(70vh + env(safe-area-inset-bottom))}
   /* The widget inspector, as a sheet that sits on the save bar rather than
    * over it — Save stays reachable while a widget is open, and the canvas
-   * above stays visible, which is the point of editing it here at all. */
-  .lay-inspector{position:fixed;left:0;right:0;top:auto;
+   * above stays visible, which is the point of editing it here at all.
+   *
+   * It takes the save bar's own column, not the viewport's, and the two are
+   * written the same way for the same reason: the drawer is a real in-flow
+   * 264px column down to 900px, and only below that does it go off-canvas.
+   * The sheet used to be left:0 across its whole 901-1199px range, so between
+   * those two widths it lay over a navigation that was still on screen while
+   * the save bar directly beneath it started at 264 — measured at 1024px, a
+   * sheet at x=0 on a save bar at x=264, disagreeing by exactly the drawer.
+   *
+   * And it keeps a settings row's measure rather than the width it is given.
+   * A sheet is only wide because the viewport is; the rows inside it are the
+   * same per-widget settings the 379px column draws, and stretched across a
+   * tablet they stop being rows — measured at 1199px, a switch sat 943px from
+   * the label it belongs to and the four-up "Events in a day" control was
+   * 1,159px of segmented button. 720px is .wset-panels' cap, which is this
+   * editor's own answer to the same question one pane along, so it is reused
+   * rather than re-picked; centred, because the canvas above it is. A phone is
+   * narrower than the cap and is untouched. */
+  .lay-inspector{position:fixed;left:264px;right:0;top:auto;
+    max-width:720px;margin-left:auto;margin-right:auto;
     bottom:calc(var(--savebar-h) + env(safe-area-inset-bottom));z-index:45;
     max-height:min(58vh,520px);border:0;
     border-radius:var(--mw-r-4) var(--mw-r-4) 0 0;
@@ -2266,6 +2402,9 @@ pre.code{background:var(--mw-surface-2);
 }
 @media(max-width:900px){
   .savebar{left:0;padding:var(--mw-s-3) calc(var(--mw-s-4) + var(--mw-s-1));padding-bottom:calc(var(--mw-s-3) + env(safe-area-inset-bottom))}
+  /* The drawer is off-canvas here, so the column the sheet sits in is the
+     whole viewport — the same move, at the same width, as the line above. */
+  .lay-inspector{left:0}
 }
 
 /* ---- Touch targets below 900px (RFC 009 Phase 7) --------------------------
@@ -2337,7 +2476,8 @@ ${COMPONENT_STYLE}
  * hide their real radio, so the ring goes on the card via :has(). */
 :is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
-.themecard:has(input:focus-visible){outline:3px solid var(--mw-accent);
+.themecard:has(input:focus-visible),
+.tplpick:has(input:focus-visible){outline:3px solid var(--mw-accent);
   outline-offset:2px}
 
 /* ---- Motion, gated on the reader's preference ----------------------------

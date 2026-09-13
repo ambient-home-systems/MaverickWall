@@ -59,6 +59,24 @@ interface EditorBox {
   readonly z: number;
 }
 
+/**
+ * The wall each Installation edits, paired once and remembered.
+ *
+ * These tests used to open `/admin/displays/default` — the shared Default wall,
+ * which was the only wall that existed without pairing one. It is retired, and
+ * a suite about the editor should have been driving a real paired wall anyway:
+ * that is the object a household opens, and it is the one whose canvas the
+ * editor writes.
+ */
+const editorWalls = new WeakMap<Installation, string>();
+async function editorWall(wall: Installation): Promise<string> {
+  const known = editorWalls.get(wall);
+  if (known !== undefined) return known;
+  const id = await wall.pairWall('Editor wall');
+  editorWalls.set(wall, id);
+  return id;
+}
+
 /** Sign in the way a household does, then open a wall's editor. */
 async function openEditor(wall: Installation, page: Page): Promise<void> {
   /*
@@ -73,9 +91,10 @@ async function openEditor(wall: Installation, page: Page): Promise<void> {
    * can take. Stating the canvas is also what stops a future change to the
    * seed silently re-answering an editor question.
    */
-  applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
+  const id = await editorWall(wall);
+  applyTemplate(wall.db, id, CLASSIC_TEMPLATE);
   await wall.signIn(page);
-  await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+  await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(id)}`, { waitUntil: 'load' });
   await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
 }
 
@@ -483,7 +502,14 @@ describe('2 · the keyboard', () => {
         .prepare("select id from screens where kind = 'epaper' limit 1")
         .get() as { id: string } | undefined;
       expect(panel?.id, 'no e-paper panel was created, so the lane cannot be tested').toBeTruthy();
-      await wall.post(`/admin/epaper/${panel?.id ?? ''}/source`, { source: 'follow:default' });
+      /*
+       * Following *this* wall, not the shared default — `follow:default` is
+       * refused now that the Default wall is retired, and the lane only appears
+       * on a wall some panel actually follows.
+       */
+      await wall.post(`/admin/epaper/${panel?.id ?? ''}/source`, {
+        source: `follow:${await editorWall(wall)}`,
+      });
 
       const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
       try {
@@ -959,7 +985,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
       try {
         const page = await context.newPage();
         await wall.signIn(page);
-        applyTemplate(wall.db, null, CLASSIC_TEMPLATE);
+        applyTemplate(wall.db, await editorWall(wall), CLASSIC_TEMPLATE);
 
         /** The canvas as drawn now, and the room the viewport can show it in. */
         const read = async () =>
@@ -993,7 +1019,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
           [1920, 1080],
         ] as const) {
           await page.setViewportSize({ width, height });
-          await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+          await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(await editorWall(wall))}`, { waitUntil: 'load' });
           await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
 
           /*
@@ -1052,11 +1078,25 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
           }
         }
 
+        /*
+         * The phone floor, re-measured on a real paired wall.
+         *
+         * It was 455, taken on `/admin/walls/default` — the shared Default
+         * wall, which no household edits and which had no pairing status above
+         * its canvas. A real wall's page carries that status line, so the same
+         * viewport gives the stage 444px. The number moved because the *subject*
+         * moved, from a page nobody opens to the one they do, and recording it
+         * without saying so is how a baseline stops meaning anything.
+         *
+         * The ratio assertion above is the one that actually guards this — the
+         * canvas takes more than 85% of the room the viewport can show at once,
+         * at every width — and it held throughout.
+         */
         const phone = portrait.get(390)!;
         expect(
           phone.height,
-          `the phone canvas is ${phone.height}px, below the 455px the compact branch was tuned to`,
-        ).toBeGreaterThanOrEqual(455);
+          `the phone canvas is ${phone.height}px, below the 440px a real wall's page affords`,
+        ).toBeGreaterThanOrEqual(440);
 
         const small = portrait.get(1280)!;
         const large = portrait.get(1920)!;
@@ -1098,7 +1138,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
          * page must not become wider rows of settings to read, which is the one
          * thing the 1180px column was protecting.
          */
-        await page.goto(`${wall.base}/admin/displays/default`, { waitUntil: 'load' });
+        await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(await editorWall(wall))}`, { waitUntil: 'load' });
         await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
         const settings = await page.evaluate(async () => {
           (document.querySelector('#mode-tab-settings') as HTMLElement | null)?.click();

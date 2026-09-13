@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**The picture on each starting-layout card is now the wall.** The cards added
+last release drew their text several times too large for the card — so the
+month grid ran off the edge, the words overlapped each other, and every layout
+looked much the same. Each card is a true miniature of the wall it will give
+you, in that layout's own typeface and at its own proportions. The live preview
+in the wall editor was drawn the same way and is corrected with it.
+
 **"Restrict this URL to your home network" explains itself properly now.** The
 note under that setting read as though anyone who reaches Home Assistant from
 outside — over Nabu Casa, a VPN, or a cloud-hosted instance — had to leave it
@@ -27,6 +34,105 @@ network, you can switch this on and keep it on. The wording now says that, and
 still warns about the case it is genuinely for: a panel whose picture is
 fetched across a relay, which means a cloud-hosted Home Assistant, or a frame
 URL that leaves your network and comes back through a tunnel.
+
+## 0.62.0
+
+**You can see what a starting layout looks like before you pick it.** Both add
+pages listed them by name — "Classic", "Meeting Room" — which tells you nothing
+if you have never seen one. Each is a card with a picture of it now: a wall's is
+drawn the way the wall draws it, and a panel's is the real black-and-white frame
+that panel would show, redrawn if you pick a different panel or turn it on its
+side.
+
+**"Start from a template" moved out of Advanced.** It is the first thing in a
+wall's Appearance settings, next to the theme, where the rest of how the wall
+looks lives. Advanced keeps the pairing link, reset and unpair.
+
+**The layout editor no longer opens tiny.** If you last left a wall's page on
+Wall settings, the canvas came back a third of its size and only resizing the
+window put it right.
+
+**Adding a wall or a panel works on a phone.** Those layout pictures made the
+page four and a half screens long, with the button to finish at the very bottom
+— so naming a wall and taking the layout it already offers meant scrolling past
+everything you had decided not to change. The button stays at the bottom of the
+screen while you fill the form in.
+
+**A security update.** Maverick Wall's web framework had three published
+advisories against the version it shipped, two of which this app can actually
+reach — a form body could be crafted to nest without limit, and the query
+parser read past the end of a URL. Both are fixed. Nothing you do changes; this
+matters most if your wall is reachable from outside your home.
+
+**Small:** on an e-paper panel's page, the button under "Layout" sits under the
+field it belongs to instead of on the far right of the section.
+
+## 0.61.0
+
+**Adding a wall and adding an e-paper panel now work the same way.** They did
+not: a browser wall was a name box on the Walls page and then straight to a QR
+code, while a panel had a page of its own asking what size it is and which way
+up. Both are pages now, and both ask the same four things in the same order —
+what to call it, what the hardware is, which layout to start from, and then the
+pairing step. "Pair a new wall" and "Add an e-paper wall" sit next to each other
+on the Walls page.
+
+**You can pick the layout before you pair it.** Every starting layout is on the
+add page now, so a new wall or panel opens on the one you chose rather than on
+the one it was given. A panel's list begins with **Built-in** — the view it
+draws out of the box, which fits itself to the panel — and "Built-in, as boxes"
+below it is that same view as widgets you can move. You can still preview all of
+them, and change your mind, from Templates afterwards.
+
+**And a wall can be told how big it is while you are standing in front of it.**
+The wall size and reading distance used to be on a settings page you reached
+after pairing; they are on the add page too, which is where you are likely to
+know them. Say a wall is a 32" television and it is laid out for a 32"
+television straight away, with no border down the sides.
+
+**You can start from a blank layout.** Every layout on offer used to be
+somebody else's arrangement, so building your own meant picking the nearest one
+and deleting its boxes. "Blank" is the first choice now, on both browser walls
+and e-paper panels — an empty wall to put your own widgets on. It leaves your
+theme alone.
+
+**The "Default wall" is gone.** It was two things wearing one name: the settings
+every wall starts from, and a layout a wall showed until it had one of its own.
+It sat in your list of walls as though it were a screen, and it never was —
+nothing pairs to it and nothing displays it. The settings moved to **System**,
+under Wall appearance, Wall content and Wall clock, and every wall now simply
+has its own layout, chosen when you pair it.
+
+Nothing you already have changes. An existing wall or panel keeps its layout,
+its size and the way it is hung — including a wall that was showing the Default
+wall's layout, which now has that layout as its own and can be rearranged
+without affecting anything else.
+
+## 0.60.0
+
+**E-paper panels have their own layouts to start from.** Pressing Templates on
+a panel used to open the browser wall's gallery — thirteen colour arrangements
+drawn on a tall phone-shaped canvas, each suggesting a theme a black-and-white
+panel does not have. There is a panel gallery now, and every card is a picture
+of the real frame *your* panel would draw, at your panel's own size.
+
+**Including the one your panel already shows.** A new panel draws a built-in
+view — the date across the top, what is on today, and the month — and until now
+that was all or nothing: the moment you added a widget it was gone, and there
+was no way to nudge it. "Built-in" is the first card in the gallery, so you can
+start from the layout you have been looking at and move it around. Reset layout
+still puts the real built-in view back.
+
+**The widget options panel reads properly again.** Long choices were being
+chopped in the middle of a word — "Labelled pills" came out as "Labelle / d
+pills" — while the button next to it sat on empty space. Choices now break
+between words, and each one takes the room its own label needs.
+
+**And that panel behaves itself on a tablet or a small laptop.** Between about
+900 and 1200 pixels wide it used to slide out over the menu down the left-hand
+side, and its settings stretched right across the screen, so a switch could end
+up most of a screen away from the label it belongs to. It now sits in the same
+column as the Save bar underneath it, at a width you can read across.
 
 ## 0.59.1
 

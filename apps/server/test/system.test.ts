@@ -145,6 +145,25 @@ async function signedIn(h: ReturnType<typeof harness>) {
   return h;
 }
 
+/**
+ * The selected options of one named `<select>` on a page.
+ *
+ * Scoped to the control, not to the document: these assertions used to scan
+ * every `<option ... selected>` on `/admin/system`, which was exactly one
+ * select's worth until the wall defaults moved onto that page with a daytime
+ * theme and a week start of their own. "Exactly one option is selected" is a
+ * claim about the timezone picker, and it has to be asked of the picker.
+ */
+function selectedIn(html: string, name: string): string[] {
+  const open = html.indexOf(`name="${name}"`);
+  if (open === -1) return [];
+  const end = html.indexOf('</select>', open);
+  if (end === -1) return [];
+  return [...html.slice(open, end).matchAll(/<option value="([^"]+)" selected>/g)].map(
+    (m) => m[1] as string,
+  );
+}
+
 describe('diagnostics', () => {
   it('carries nothing that belongs to the household', async () => {
     // The whole value of this file is that it can be handed over without
@@ -580,8 +599,7 @@ describe('the update check setting', () => {
       .run();
     const html = await (await h.call('/admin/system')).text();
 
-    const selected = [...html.matchAll(/<option value="([^"]+)" selected>/g)].map((m) => m[1]);
-    expect(selected, 'exactly one, and it is the household’s own zone').toEqual([
+    expect(selectedIn(html, 'timezone'), 'exactly one, and it is the household’s own zone').toEqual([
       'Mars/Olympus_Mons',
     ]);
 
@@ -639,8 +657,7 @@ describe('the update check setting', () => {
     const html = await refused.text();
     expect(html).toContain('Choose a timezone from the list');
 
-    const selected = [...html.matchAll(/<option value="([^"]+)" selected>/g)].map((m) => m[1]);
-    expect(selected, 'exactly one zone selected, and it is the stored one').toEqual([
+    expect(selectedIn(html, 'timezone'), 'exactly one zone selected, and it is the stored one').toEqual([
       'Europe/London',
     ]);
     // And the form is honestly clean: the select shows what is stored, so there

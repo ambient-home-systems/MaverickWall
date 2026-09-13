@@ -464,7 +464,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       'Forecast',
       undefined,
       `<p class="hint">A five-day forecast strip. It is a widget like any other — ` +
-        `choose where it sits on the <a class="link" href="admin/walls/default">Default wall</a>.</p>` +
+        `choose where it sits on <a class="link" href="admin/walls">any wall</a>.</p>` +
         forecastBlock +
         (weather.enabled && located && forecastBlock === ''
           ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`

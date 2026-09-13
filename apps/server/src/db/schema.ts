@@ -145,6 +145,26 @@ export const householdSettings = sqliteTable('household_settings', {
    */
   layoutBackfilled: integer('layout_backfilled').notNull().default(0),
   /**
+   * One-shot marker: has the shared "Default wall" been retired?
+   *
+   * That canvas was two things at once — the layout a wall drew until it had
+   * one of its own, and a display the household could design. The second is
+   * gone: a wall picks its own starting layout when it is paired, and every
+   * screen-creating path seeds one, so nothing needs a shared canvas to fall
+   * back to and nothing in the admin offers one to arrange.
+   *
+   * Retiring it cannot just stop reading the row, because a wall that was
+   * *inheriting* it would go blank (rule nine). `retireDefaultWall` copies it
+   * onto every screen that had no canvas of its own, once, and sets this. The
+   * household's own widgets are left where they are rather than deleted:
+   * `effectiveDisplay` still falls back to them for a screen that somehow has
+   * none, which after this can only be a row nothing in this codebase writes.
+   *
+   * Additive, defaults to 0 so an upgrading database is retired exactly once on
+   * its next boot.
+   */
+  defaultWallRetired: integer('default_wall_retired').notNull().default(0),
+  /**
    * The aspect ratio (width ÷ height) the free-form canvas was authored at.
    *
    * The wall scales that canvas to fit and letterboxes a screen of a different

@@ -177,15 +177,41 @@ describe('the e-paper frame', () => {
     h.db.prepare(`UPDATE screens SET layout_mode = NULL WHERE id = ?`).run(h.screenId);
     const auto = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
 
-    // The state Reset leaves a panel in, and what saving an empty canvas writes:
-    // the mode says free-form while nothing is placed. The panel must still draw
-    // the *built-in* layout — identical to the frame above — because a panel
-    // that went blank here would break rule nine on somebody's wall, and the
-    // editor's empty-canvas note promises exactly this ("this panel draws its
-    // built-in layout"). Drop `widgets.length > 0` from frame.ts and this fails.
+    /*
+     * A canvas authored with nothing on it, which is what the Blank card
+     * writes: the mode says free-form while nothing is placed.
+     *
+     * **This used to assert the opposite and the reversal is deliberate.** The
+     * old contract was `widgets.length > 0`, so an empty canvas drew the
+     * built-in layout — which was harmless while nothing could author one, and
+     * became a control that lies the moment the gallery grew a Blank card:
+     * Blank and Built-in would have been the same frame. `undefined` is no
+     * canvas and `[]` is an empty one now, and they are two frames.
+     *
+     * Rule nine is unmoved and is asserted twice over. Reset is the state above
+     * — it clears `layout_mode`, so a reset panel has *no* canvas and still
+     * draws the built-in view — and a canvas emptied by the omission rather
+     * than by the household is the case below.
+     */
     h.db.prepare(`UPDATE screens SET layout_mode = 'freeform' WHERE id = ?`).run(h.screenId);
     const emptyCanvas = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
-    expect(emptyCanvas).toBe(auto);
+    expect(emptyCanvas).not.toBe(auto);
+
+    /*
+     * The empty that rule nine actually protects, and it never reaches this
+     * renderer: a canvas holding only a widget the household has nothing set up
+     * behind. `keepWidgetsWithSomethingToSay` hands its input back rather than
+     * an empty list, so this panel draws the Weather box saying "No weather
+     * yet" — a frame of its own, and not the built-in view.
+     *
+     * Worth asserting here because a helper was written for the case this rules
+     * out, and only running it showed the case cannot happen.
+     */
+    addWidget('w0', 'weather', 0.05, null);
+    const onlyUnconfigured = (await h.call(`http://localhost:8080/d/epaper/${h.token}.png`)).headers.get('etag');
+    expect(onlyUnconfigured).not.toBe(auto);
+    expect(onlyUnconfigured).not.toBe(emptyCanvas);
+    h.db.prepare(`DELETE FROM layout_widgets WHERE id = 'w0'`).run();
 
     // Now place one: the canvas replaces the fixed layout (default geometry is
     // 800×480, so the panel shows the landscape canvas).

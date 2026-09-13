@@ -4,11 +4,13 @@ import {
   TEARDOWN,
   browser,
   equipHousehold,
+  fixtureDate,
   HOUSEHOLD_CALENDARS,
   install,
   settleWall,
   shutDownBrowser,
   type Installation,
+  type NamedFeed,
 } from './browser-harness.js';
 
 /**
@@ -25,6 +27,53 @@ import {
  */
 
 process.env['TZ'] = 'UTC';
+
+/**
+ * One event that has already happened, declared rather than written inline.
+ *
+ * `HOUSEHOLD_CALENDARS` starts at `day: 0` and the manifest window opens at
+ * `today - 1`, so on that fixture alone every past cell in the grid is *empty*
+ * — the first draft of the second test below failed on its own premise, having
+ * measured nothing at all. A past day with nothing on it cannot show whether a
+ * past day's words are readable.
+ *
+ * A `const` at the top of the file rather than a literal inside the `install`
+ * call, and that is the fix for a hole rather than a tidy-up:
+ * `fixture-weekday.test.ts` scans for `const NAME: readonly NamedFeed[]`
+ * declarations, so a fixture assembled at the call site is invisible to it and
+ * answers no question about the weekday. This one was, and it is why the
+ * breakage below reached `main`.
+ */
+const YESTERDAY: readonly NamedFeed[] = [
+  { name: 'Yesterday', events: [{ title: 'Recycling collected', day: -1 }] },
+];
+
+/**
+ * Put the household's today in the middle of its week, whatever day it is here.
+ *
+ * The grid draws whole weeks from the household's week start, which defaults to
+ * **Sunday**, and the manifest window reaches back exactly one day. So when
+ * today *is* the week start, the only past day carrying anything — yesterday —
+ * sits in the row above the one the grid begins at, and there is no past cell
+ * with an event anywhere on the wall. Measured: this file passed for two days
+ * and went red on `main` on Sunday 6 September, with both non-vacuity guards
+ * firing exactly as they should.
+ *
+ * Nothing about what is under test depends on the weekday — a past day is
+ * demoted in tokens rather than faded on every one of them — so the honest fix
+ * is to stop the fixture asking the question. Wednesday puts `day: -1` three
+ * cells into the same row on any week start this product offers, and the shift
+ * is *computed* from today rather than fixed, which is `browser-month-spans`'
+ * `WEEK_START_OFFSET` idiom one file along.
+ */
+const MIDWEEK_SHIFT = ((): number => {
+  const today = fixtureDate('Europe/London', 0);
+  const at = new Date(
+    Date.UTC(Number(today.slice(0, 4)), Number(today.slice(4, 6)) - 1, Number(today.slice(6, 8))),
+  );
+  // `getUTCDay()` is 0 for Sunday; 3 is Wednesday.
+  return (3 - at.getUTCDay() + 7) % 7;
+})();
 const SLOW = 240_000;
 
 let wall: Installation;
@@ -32,21 +81,7 @@ let link: string;
 let screenId: string;
 
 beforeAll(async () => {
-  /*
-   * The household's own calendars, plus one event that has already happened.
-   *
-   * `HOUSEHOLD_CALENDARS` starts at `day: 0` and the manifest window opens at
-   * `today - 1`, so on that fixture alone every past cell in the grid is
-   * *empty* — the first draft of the second test below failed on its own
-   * premise, having measured nothing at all. A past day with nothing on it
-   * cannot show whether a past day's words are readable.
-   */
-  wall = await install({
-    calendars: [
-      ...HOUSEHOLD_CALENDARS,
-      { name: 'Yesterday', events: [{ title: 'Recycling collected', day: -1 }] },
-    ],
-  });
+  wall = await install({ dayShift: MIDWEEK_SHIFT, calendars: [...HOUSEHOLD_CALENDARS, ...YESTERDAY] });
   equipHousehold(wall.db, wall.now());
   link = await wall.pairLink('Kitchen');
   screenId = (

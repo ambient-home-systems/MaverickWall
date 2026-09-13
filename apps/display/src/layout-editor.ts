@@ -19,6 +19,7 @@
 import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
+import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
 import type { Manifest } from './manifest.js';
 import {
   CALENDAR_DENSITIES,
@@ -523,12 +524,25 @@ function boot(): void {
 
   const hint = document.createElement('p');
   hint.className = 'hint';
-  // What an empty canvas actually means, which differs by screen kind — and on
-  // neither kind is it "blank". The old wording promised the stacked layout,
-  // which was retired with the auto mode in 0.27.0.
+  /*
+   * What an empty canvas actually means, and it is now the same on both kinds.
+   *
+   * It has been wrong twice, in opposite directions. The first wording promised
+   * the stacked layout, retired with the auto mode in 0.27.0. The second
+   * promised a panel would draw its built-in view — true then, and false since
+   * an authored-empty canvas became its own frame: `renderScreenFrame` tells
+   * `undefined` (no canvas) from `[]` (an empty one), which is what lets a
+   * Blank card differ from the Built-in above it. A panel with nothing placed
+   * now says the same short note a wall does, so this says so once.
+   *
+   * Getting back to the built-in view is Reset, not deletion — it clears the
+   * canvas rather than emptying it — and the sentence names it, because that
+   * is the question somebody looking at an empty editor is about to ask.
+   */
   hint.textContent = epaperHost
     ? 'Nothing is placed yet — add a widget above. Until you do, this panel ' +
-      'draws its built-in layout, which is what you see here.'
+      'shows a short note in place of a layout. To go back to the view it drew ' +
+      'out of the box, use Reset layout.'
     : 'Nothing is placed yet — add a widget above. Until you do, the wall ' +
       'shows a short note in place of a layout rather than going blank.';
 
@@ -1220,9 +1234,9 @@ function boot(): void {
 
       const shadow = preview.attachShadow({ mode: 'open' });
       const styleEl = document.createElement('style');
-      styleEl.textContent = css;
+      styleEl.textContent = previewStylesheet(css);
       const wall = document.createElement('div');
-      wall.className = 'preview-wall';
+      wall.className = PREVIEW_ROOT_CLASS;
       shadow.append(styleEl, wall);
       previewShadow = shadow;
       previewWall = wall;
@@ -1249,40 +1263,21 @@ function boot(): void {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    // Render at a reference resolution, then scale the whole wall down to this
-    // box with a transform — rather than rendering it at the box's own small
-    // pixel size.
-    //
-    // Why: the reused sections (weather, the agenda, the shift badge…) size
-    // their type in `rem`. On a real wall `orientation.ts` sets the document
-    // root's font-size to --root-size (one percent of the canvas height), so a
-    // rem tracks the canvas and `fitToBox` grows or shrinks each section to fill
-    // its box in proportion. Inside this preview the wall lives in a shadow root,
-    // and `rem` always resolves against the *document* root — the admin page's
-    // 16px — which the display's own `html { font-size: … }` rule cannot touch
-    // (a shadow root has no <html>). Rendered at the box's small pixel size, then,
-    // every rem-based section came out huge next to its box, so fit-to-fill hit
-    // its readable floor and clipped: the preview disagreed with the wall it is
-    // meant to mirror. Rendering at the resolution where the document's own rem
-    // *is* one percent of the canvas height (height = rem × 100) restores the
-    // wall's proportion, and the transform is visual only — `fitToBox` measures
-    // untransformed layout sizes, so the fit is computed exactly as on a wall.
-    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const refH = rootPx * 100;
-    const refW = refH * state.aspect;
-    previewWall.style.width = `${refW}px`;
-    previewWall.style.height = `${refH}px`;
-    previewWall.style.setProperty('--frame-w', `${refW}px`);
-    previewWall.style.setProperty('--frame-h', `${refH}px`);
-    previewWall.style.setProperty('--root-size', `${rootPx}px`);
-    // Taken out of flow so its full-resolution layout box cannot push the shadow
-    // host around; the transform then fits it exactly to this box (both share the
-    // canvas aspect, so width and height scale by the same factor).
-    previewWall.style.position = 'absolute';
-    previewWall.style.top = '0';
-    previewWall.style.left = '0';
-    previewWall.style.transformOrigin = 'top left';
-    previewWall.style.transform = `scale(${rect.height / refH})`;
+    /*
+     * Render at a reference resolution, then scale the whole wall down to this
+     * box — rather than rendering it at the box's own small pixel size. The
+     * arithmetic and the argument are in `preview-css.ts`, shared with the
+     * template gallery's cards so the editor and a card cannot come to draw one
+     * canvas two ways.
+     *
+     * The comment that stood here had the mechanism right and was incomplete in
+     * a way that mattered: it named the rem, and not the `:root` block the rem
+     * sizes are declared in, which a shadow root also cannot see — so the wall
+     * this preview drew was correctly proportioned and missing its type scale,
+     * its spacing scale and its theme's display face. `previewStylesheet` is the
+     * other half, and it is why this is now two calls rather than fifteen lines.
+     */
+    layoutPreviewRoot(previewWall, { width: rect.width, height: rect.height }, state.aspect);
     applyTheme(previewWall, manifest.theme.active);
 
     // The wall as it will actually draw — always free-form now. It draws straight
@@ -1554,6 +1549,54 @@ function boot(): void {
     }
     canvas.style.width = `${Math.round(w)}px`;
     canvas.style.height = `${Math.round(h)}px`;
+  }
+
+  /*
+   * Re-size when the stage's own width changes, not only at boot and on a
+   * window resize.
+   *
+   * `sizeCanvas()` reads `stage.clientWidth`, and a `display:none` stage reports
+   * 0 — so the `|| 360` fallback runs and the canvas is laid out for a stage a
+   * third of the real one. The wall page hides the Layout pane whenever this
+   * browser last left off on Wall settings (`display-editor.ts` restores that
+   * from `localStorage`, and it runs *before* this module), so for every
+   * household who has ever opened Wall settings the editor boots against a
+   * stage of zero width: measured on a 1440px window, a 992px stage drew a
+   * 328x583 canvas where it should draw 477x848. Switching back to Layout
+   * un-hid the stage and nothing recomputed, so the canvas stayed a third of
+   * its size until the window happened to be resized — which is exactly how it
+   * was reported.
+   *
+   * An observer rather than a `sizeCanvas()` beside every place that shows the
+   * pane, for the reason the preview's own observer below gives: the fit is a
+   * fact about the geometry, not a step in a routine somebody has to remember,
+   * and the pane is shown from a different module that knows nothing about this
+   * canvas. It also picks up what a `resize` listener cannot see at all — a
+   * scrollbar appearing, the inspector column arriving, a font landing.
+   *
+   * No feedback loop: the stage's width comes from the pane above it and never
+   * from the canvas inside it (`.le-stage` is a flex row and `.le-canvas` a flex
+   * item that shrinks), so sizing the canvas cannot change the width being
+   * observed. The width guard makes that belt-and-braces — the stage's *height*
+   * does follow the canvas, and reacting to that would be a loop.
+   */
+  if (typeof ResizeObserver !== 'undefined') {
+    let sizedFor = -1;
+    new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? stage.clientWidth;
+      if (width === sizedFor) return;
+      sizedFor = width;
+      // Nothing to size against yet: leave the canvas as it is rather than
+      // laying it out for a stage that is not on screen.
+      if (width <= 0) return;
+      /*
+       * The size and nothing else. The overlay is positioned in percentages so
+       * it follows the box for free, and the preview has its own observer on
+       * the canvas below — which is also why this must not be a `draw()`: on a
+       * panel that would `renderPreview()`, and a panel's preview is a POST.
+       */
+      sizeCanvas();
+    }).observe(stage);
   }
 
   /*

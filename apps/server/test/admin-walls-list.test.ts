@@ -119,21 +119,29 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     const start = html.indexOf('<div class="grid g2">');
     const grid = html.slice(start, html.indexOf('<section class="mw-sect"', start));
 
-    // Three walls, three link cards, and nothing else in the grid: no static
-    // <article>, no ⋮ menu, no button — the panel's actions live on its page.
-    expect(grid.match(/<a class="card wall-card"/g)?.length).toBe(3);
+    /*
+     * Two walls, two link cards, and nothing else in the grid: no static
+     * <article>, no ⋮ menu, no button — the panel's actions live on its page.
+     *
+     * It was three, and the third was the Default wall — a card for the shared
+     * household row, which is not a device: nothing is paired to it and nothing
+     * draws it, so a household counting their walls counted one that does not
+     * exist. It is retired; what it held is on System (the settings every wall
+     * inherits) and on the walls themselves (the canvas they fell back to).
+     */
+    expect(grid.match(/<a class="card wall-card"/g)?.length).toBe(2);
     expect(grid).not.toContain('<article');
     expect(grid).not.toContain('class="ovf');
     expect(grid).not.toContain('<button');
     expect(grid).not.toContain('Arrange layout');
     // Every card opens its wall's own page — a panel's is its layout page.
-    expect(grid).toContain(`href="admin/walls/default"`);
+    expect(grid, 'the Default wall is back on the list').not.toContain(`href="admin/walls/default"`);
     expect(grid).toContain(`href="admin/walls/${h.screenId('browser')}"`);
     expect(grid).toContain(`href="admin/epaper/${h.screenId('epaper')}/design"`);
     // And every card says "Open" the same way.
-    expect(grid.match(/class="card-go">Open/g)?.length).toBe(3);
-    // Both paired kinds carry a kind tag and a "Last seen" line; the Default
-    // wall, which is not a device, carries neither.
+    expect(grid.match(/class="card-go">Open/g)?.length).toBe(2);
+    // Both kinds carry a kind tag and a "Last seen" line, and every card on the
+    // list is now a real device that can have one.
     expect(grid).toContain('<span class="tag">Browser</span>');
     expect(grid).toContain('<span class="tag">E-paper</span>');
     expect(grid.match(/Last seen never/g)?.length).toBe(2);
@@ -192,9 +200,13 @@ describe('the Walls list is one card shape for every kind of wall', () => {
 
   it('gives a following panel the preview and the settings, and no editor to fork the wall with', async () => {
     const h = await harness();
+    // A real wall to follow: `follow:default` pointed at the shared Default
+    // wall, which is retired — a panel follows a wall a household actually has.
+    await h.form('/admin/screens', { name: 'Kitchen' });
+    const wall = h.screenId('browser');
     await h.form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
     const id = h.screenId('epaper');
-    await h.form(`/admin/epaper/${id}/source`, { source: 'follow:default' });
+    await h.form(`/admin/epaper/${id}/source`, { source: `follow:${wall}` });
     const page = await h.text(`/admin/epaper/${id}/design`);
     expect(page).toContain('id="ep-preview"');
     expect(page).not.toContain('id="layout-editor"');

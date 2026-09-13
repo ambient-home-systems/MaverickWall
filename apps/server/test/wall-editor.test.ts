@@ -279,7 +279,31 @@ describe('wall settings are categories, and every field kept its name', () => {
     const advanced = html.slice(html.indexOf('data-wset-panel="advanced"'));
     expect(advanced).toContain('admin/screens/s6/revoke');
     expect(advanced).toContain('reset-layout');
-    expect(advanced).toContain('admin/displays/s6/gallery');
+  });
+
+  /*
+   * The template gallery is a link, so — unlike Reset and Unpair beside it —
+   * it can live inside the settings form, and it does: picking a starting
+   * layout is the first thing done to a new wall and the commonest thing done
+   * to an old one, where Advanced is for the infrequent and the destructive.
+   *
+   * Asserted in both directions. "It is in Appearance" alone stays green if a
+   * second copy is left behind in Advanced, which is the shape a move gets
+   * wrong; the page's own overflow menu keeps its "Start from a template…"
+   * item and always has, so the thing that must be gone is named by panel.
+   */
+  it('offers the template gallery in Appearance rather than under Advanced', async () => {
+    const h = await ready();
+    h.pairScreen('s6b', 'Kitchen');
+    const html = await (await h.call('/admin/walls/s6b')).text();
+    const appearance = html.slice(
+      html.indexOf('data-wset-panel="appearance"'),
+      html.indexOf('data-wset-panel="content"'),
+    );
+    const advanced = html.slice(html.indexOf('data-wset-panel="advanced"'));
+    expect(appearance).toContain('admin/displays/s6b/gallery');
+    expect(appearance).toContain('Start from a template');
+    expect(advanced).not.toContain('gallery');
   });
 
   it('names the source and the effective value wherever something is inherited', async () => {
@@ -447,19 +471,52 @@ describe('saving a wall', () => {
   });
 });
 
-describe('the Default display is the same editor without the hardware', () => {
-  it('renders both modes and the categories that apply to it', async () => {
+describe('the Default display is retired', () => {
+  /*
+   * This describe used to assert the opposite — that `/admin/walls/default`
+   * rendered the same editor, the same settings sheet and an Advanced pane —
+   * and the reversal is the change rather than a casualty of it. That row is
+   * not a display: nothing is paired to it, nothing draws it, and offering it a
+   * canvas made "the layout every wall falls back to" and "a wall you can
+   * design" one object. Its settings are on System and its canvas was copied
+   * onto the walls that were using it.
+   */
+  it('sends its old address to System rather than rendering an editor', async () => {
     const h = await ready();
-    const html = await (await h.call('/admin/walls/default')).text();
-    expect(html).toContain('id="layout-editor"');
-    expect(html).toContain('data-mode-panel="settings" hidden');
-    expect(html).toContain('data-wset="appearance"');
-    expect(html).toContain('data-wset="content"');
-    expect(html).toContain('data-wset="advanced"');
-    // No screen, so nothing to pair, unpair or hang.
-    expect(html).not.toContain('/revoke');
-    expect(html).not.toContain('name="rotation"');
-    expect(html).toContain('Shared default');
+    const res = await h.call('/admin/walls/default');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/admin/system');
+  });
+
+  it('is not a wall on the list, and not an owner a layout route will take', async () => {
+    const h = await ready();
+    const list = await (await h.call('/admin/walls')).text();
+    expect(list).not.toContain('admin/walls/default');
+    expect(list).not.toContain('Default wall');
+
+    // Every layout route answers it the way it answers a stranger's id: there
+    // is no wall by that name, so there is nothing to arrange.
+    expect((await h.call('/admin/displays/default/gallery')).headers.get('location')).toBe('/admin/walls');
+    const applied = await h.postForm('/admin/displays/default/apply-template', { templateId: 'classic' });
+    expect(applied.headers.get('location')).toBe('/admin/walls');
+    const reset = await h.postForm('/admin/displays/default/reset-layout', {});
+    expect(reset.headers.get('location')).toBe('/admin/walls');
+  });
+
+  it('refuses a canvas posted at no wall rather than writing the shared row', async () => {
+    const h = await ready();
+    /*
+     * The one place the old fallback could *write*. A stale editor tab, or a
+     * wall unpaired in another window, posted onto the row every other wall
+     * inherited — which is a canvas nobody could see changing every wall in the
+     * house.
+     */
+    const res = await h.call('/admin/layout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ screen: 'not-a-wall', mode: 'freeform', aspect: 0.5625, widgets: [] }),
+    });
+    expect(res.status).toBe(404);
   });
 });
 
@@ -468,7 +525,8 @@ describe('the stylesheet the editor is drawn with', () => {
     const h = await ready();
     // The authenticated shell links its stylesheet rather than inlining it
     // (RFC 009 Phase 6) — fetch it through the same session.
-    const html = await (await h.call('/admin/walls/default')).text();
+    h.pairScreen('style-wall', 'Kitchen');
+    const html = await (await h.call('/admin/walls/style-wall')).text();
     const link = /<link rel="stylesheet" href="([^"]+)">/.exec(html);
     expect(link, 'the page must link the admin stylesheet').not.toBeNull();
     const href = (link as RegExpExecArray)[1] as string;

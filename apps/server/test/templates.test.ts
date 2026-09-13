@@ -38,8 +38,11 @@ function db() {
 }
 
 describe('the shipped templates', () => {
-  it('all thirteen validate against the same schema a hand-built canvas does', () => {
-    expect(TEMPLATES).toHaveLength(13);
+  it('all of them validate against the same schema a hand-built canvas does', () => {
+    // Counted off the list rather than pinned to a literal: the number was 13
+    // and is 14 with Blank, and a hardcoded count only ever fails the commit
+    // that adds a card, which is the one commit that already knows.
+    expect(TEMPLATES.length).toBeGreaterThan(0);
     for (const template of TEMPLATES) {
       const parsed = templateSchema.safeParse(template);
       expect(parsed.success, `${template.id}: ${parsed.error?.message ?? ''}`).toBe(true);
@@ -51,21 +54,38 @@ describe('the shipped templates', () => {
     expect(new Set(ids).size).toBe(ids.length);
     for (const t of TEMPLATES) {
       expect(t.id, t.id).toMatch(/^[a-z0-9-]+$/);
-      // "Require both" (RFC 005): a template-started display is never one-sided.
-      expect(t.portrait.widgets.length, `${t.id} portrait`).toBeGreaterThan(0);
-      expect(t.landscape.widgets.length, `${t.id} landscape`).toBeGreaterThan(0);
+      /*
+       * "Require both" (RFC 005): a template-started display is never one-sided.
+       *
+       * Stated as *agreement between the two canvases* rather than as "each has
+       * widgets", which is what it used to say. Blank has none in either, on
+       * purpose, and an exception naming it would have been the weaker test —
+       * the letterbox fault this guards against is a card that places boxes in
+       * one orientation and not the other, and that is now what it asks. Both
+       * canvases are still authored: each carries an aspect the schema bounds.
+       */
+      expect(t.portrait.widgets.length > 0, `${t.id}: one orientation is empty and the other is not`).toBe(
+        t.landscape.widgets.length > 0,
+      );
+      expect(t.portrait.aspect, `${t.id} portrait aspect`).toBeGreaterThan(0);
+      expect(t.landscape.aspect, `${t.id} landscape aspect`).toBeGreaterThan(0);
     }
   });
 
   it('every template names a built-in theme and gives both canvases a background (Phase 3c)', () => {
     for (const t of TEMPLATES) {
-      // Classic is the exception, deliberately: it is the universal default every
-      // wall is migrated onto, so it sets no theme and no background and keeps
-      // whatever the wall already has (see templates/classic.ts).
-      if (t.id === 'classic') {
-        expect(t.theme, 'classic theme').toBeUndefined();
-        expect(t.portrait.background, 'classic portrait bg').toBeUndefined();
-        expect(t.landscape.background, 'classic landscape bg').toBeUndefined();
+      /*
+       * Two exceptions, and they are one reason twice: a card that must not
+       * repaint the wall it is applied to. Classic is the universal default
+       * every wall is migrated onto, and Blank is an empty canvas — a household
+       * pressing either is asking about *arrangement*, and taking their chosen
+       * theme off the wall is not something either word promises. Both set no
+       * theme and no background and keep whatever the wall already has.
+       */
+      if (t.id === 'classic' || t.id === 'blank') {
+        expect(t.theme, `${t.id} theme`).toBeUndefined();
+        expect(t.portrait.background, `${t.id} portrait bg`).toBeUndefined();
+        expect(t.landscape.background, `${t.id} landscape bg`).toBeUndefined();
         continue;
       }
       expect(['household', 'blueprint', 'panels', 'almanac'], t.id).toContain(t.theme);
@@ -74,14 +94,24 @@ describe('the shipped templates', () => {
     }
   });
 
-  it('leads the gallery with Classic, then the two Skylight-style clones', () => {
-    expect(TEMPLATES[0]?.id).toBe('classic');
-    expect(TEMPLATES[1]?.id).toBe('sky-calendar');
-    expect(TEMPLATES[2]?.id).toBe('sky-week');
+  it('leads the gallery with Blank and Classic, then the two Skylight-style clones', () => {
+    /*
+     * Blank leads. Every card in this gallery was somebody else's arrangement,
+     * so a household who wanted to build their own had to pick the nearest and
+     * delete its boxes — starting from nothing was the one thing a gallery of
+     * starting points could not do. Classic still follows it, and is still what
+     * a new wall is *selected* on: first in the list and preselected are two
+     * different jobs, and defaulting a new wall to Blank would hand somebody a
+     * blank kitchen calendar.
+     */
+    expect(TEMPLATES[0]?.id).toBe('blank');
+    expect(TEMPLATES[1]?.id).toBe('classic');
+    expect(TEMPLATES[2]?.id).toBe('sky-calendar');
+    expect(TEMPLATES[3]?.id).toBe('sky-week');
     // The whole reason 1a existed: Sky Calendar draws month pills, Sky Week draws columns.
-    const skyCalendarCal = TEMPLATES[1]?.portrait.widgets.find((w) => w.type === 'calendar');
+    const skyCalendarCal = TEMPLATES[2]?.portrait.widgets.find((w) => w.type === 'calendar');
     expect(skyCalendarCal?.config).toMatchObject({ cellEvents: 'pills' });
-    const skyWeekCols = TEMPLATES[2]?.portrait.widgets.find(
+    const skyWeekCols = TEMPLATES[3]?.portrait.widgets.find(
       (w) => w.type === 'calendar' && (w.config as { mode?: string })?.mode === 'week',
     );
     expect(skyWeekCols).toBeDefined();
