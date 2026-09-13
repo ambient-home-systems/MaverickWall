@@ -532,7 +532,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (27 tables, 41 migrations) · migrations behind a
+secrets at rest · the schema (29 tables, 42 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
@@ -2895,6 +2895,82 @@ service calls", "never writes", "read-only, permanently", "no code in this
 application that writes") rather than looking for the new ones. A claim deleted
 and not replaced is a screen that has stopped saying what pasting a token costs,
 so the page is also held to naming the permitted write.
+
+**A household's Home Assistant to-do list is on the wall and on a panel,
+read-only, and the omission it needed is the first that depends on a widget's
+own settings (RFC 012 phase 1).** `modules/todo/` is the module: `ready` on a
+watched list, a sixty-second job that reads `supported_features` off
+`GET /api/states/<entity>` (because `get_items` does not return it) and the
+items through `callService` naming **both** statuses — the filter is this
+code's decision, not Home Assistant's default of `needs_action` alone — a
+strict parser that rejects a wrong type rather than coercing it and refuses a
+list past 500 items whole, and keep-last-good on a failed poll with the
+client's own sentence as `last_error`. Migration `0041` is two additive tables
+and one additive column, generated and then read: `ha_todo_lists` keyed by
+entity id in clear (a name, not a credential), `ha_todo_items` keyed by a
+synthetic id with a **unique index on `(entity_id, uid)`** the job upserts on,
+so an item keeps its handle across a poll and the second "Milk" is told from
+the first by uid and never by summary; and `screens.allow_todo`, read by
+nothing until the tick lands. At most eight lists, and the admin refuses a
+ninth with a sentence. The Home Assistant screen has a To-do lists section
+built from `section`, `listRow`, `tag`, `emptyState` and `destructive`, whose
+add form runs the list's first read inline so "List added" is only ever said
+of a list that has read; it states plainly that the wall shows the list and
+cannot tick it yet.
+
+**The manifest carries handles and words and nothing else, and getting there
+found a hole in the RFC.** The panel's lists carry each item's synthetic id,
+its summary, `done`, and the list's `canTick` as a resolved boolean — never an
+entity id, a uid, the bitmask, or a timestamp: `lastFetchedAt` moves every
+minute, and had it travelled the manifest ETag and the e-paper frame ETag would
+have moved with it, and a battery panel would have re-downloaded a full frame
+on every poll. Pinned: two manifests from identical rows at two clocks have one
+ETag, and one built after a status change has another. The hole was the
+widget: it stores `list: 'todo.shopping'` and the manifest carries every
+widget's config untouched — so the entity id would have travelled in the
+*layout* while being kept out of the panel. `displayConfig` rewrites a to-do
+widget's `list` to `todoListHandle(entityId)` on the way out, the panel keys its
+lists by the same handle, the e-paper renderer resolves the stored id itself,
+and the editor's preview substitutes the handle the server hands its picker.
+The test asserting the manifest holds no entity id now runs with a watched
+list in the database, and with a list-backed widget placed.
+
+**`widgetIsSetUp` takes the widget, and the RFC undercounted what else did.**
+A `todo` widget with no `list` is typed text and always has something to say;
+one naming a list is omitted when that list is no longer watched. The test the
+RFC asked for was written first and watched go red against a bare
+`todo: 'todo'` in `WIDGET_MODULE` — `expected ['clock'] to deeply equal
+['clock', 'todo']`, every typed checklist on every wall gone at one image pull
+— before the function changed. Omission was keyed by type in four more places:
+`widgetsNotDrawn` (per widget id now, the sentence table still per type), the
+editor's parse of it, the panel design page, and `omission.ts` with the
+inspector. Because the flag is computed at page load and a household picking a
+list in the inspector must see it change, `omission.ts` has a pure predicate
+over the widget, the watched list ids and the module-ready facts, re-derived on
+every read; the server's answer seeds it. **A fifth place was only ever going
+to be found by measuring**: the editor wrote a box's flag where the box is
+*built* and `refreshLabels` re-read the name but not the flag, so a box whose
+list had been un-watched stayed marked "Not on the wall" after the household
+chose the typed items, over a preview that had already started drawing it — a
+class that was stale over pixels that were not. Both renderers read `list` one
+way — absent, or empty, means the typed items — and the panel's absent-key
+frames are pinned byte-identical to hashes taken from the renderer before the
+key existed, at three sizes and three configs. `EPAPER_RENDERER_VERSION` is 9.
+
+Held by `todo-lists.test.ts` (the module against the fake house, which now
+serves `/api/states/todo.*` with `supported_features`, refuses `get_items`
+without `?return_response`, honours the real default status filter, and has a
+read-only list beside a tickable one), `epaper-todo-widget.test.ts`,
+`browser-todo-list.test.ts` (a real paired wall with the household's calendars
+beside a list-backed box, a `showDone` box and a typed one; then Home
+Assistant disconnected, the typed box still drawn, the list boxes left out and
+the editor flagging them per box) and `browser-editor.test.ts` §9. Sixteen
+mutations were checked and all sixteen are red; one of them — keying
+`widgetsNotDrawn` by type again — passed everything until a test for the seed
+itself existed, because the editor re-derives from the facts and the browser
+tests read the derived answer. **Still unproven where it counts:** nobody has
+looked at a real wall or a real panel drawing a real list, and no real Home
+Assistant has been asked.
 
 **Two credential paths, one client.** `SUPERVISOR_TOKEN` in the environment
 means the add-on, and `http://supervisor/core/api` — plain http to a bare

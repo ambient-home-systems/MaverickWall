@@ -55,7 +55,7 @@ describe('the Classic variants', () => {
        */
       for (const widget of widgets) {
         expect(
-          widgetIsSetUp(widget.type, setUp),
+          widgetIsSetUp(widget, setUp),
           `${orientation}: a ${widget.type} box would be dropped from the manifest`,
         ).toBe(true);
       }

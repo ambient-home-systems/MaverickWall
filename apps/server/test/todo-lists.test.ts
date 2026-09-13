@@ -15,6 +15,8 @@ import { issueDisplayToken } from '../src/auth/tokens.js';
 import { buildDiagnostics } from '../src/api/diagnostics.js';
 import { displayConfig, manifestEtag, todoListHandle, type Manifest } from '../src/api/manifest.js';
 import { widgetConfigBody } from '../src/api/widget-schema.js';
+import { omissionFacts, todoListChoices, widgetsNotDrawn } from '../src/http/admin.js';
+import type { PlacedWidgetRow } from '../src/api/manifest.js';
 import { MODULES } from '../src/modules/index.js';
 import {
   MAX_WATCHED_LISTS,
@@ -659,6 +661,65 @@ describe('the Home Assistant page', () => {
     const h = await harness();
     const html = await (await h.call('/admin/home-assistant')).text();
     expect(html).not.toContain('To-do lists');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The editor's flags
+// ---------------------------------------------------------------------------
+
+describe('what the editor is told about a box (RFC 012 §6.2)', () => {
+  /*
+   * The seed and the facts, from the server. The editor re-derives the flags
+   * from the facts on every change, which is why a seed keyed by type again
+   * turned nothing red until this test existed: the browser tests read the
+   * derived answer and never the seed. Both are asserted here, on the rows
+   * the page hands over, because an older bundle reads only the seed.
+   */
+  const widget = (id: string, type: string, config: unknown): PlacedWidgetRow => ({
+    id, type, x: 0, y: 0, w: 0.5, h: 0.5, z: 0, config,
+  });
+
+  it('flags a to-do box by its own list, per box, and a weather box by its type', async () => {
+    const h = await harness();
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO ha_todo_lists (entity_id, name, label, supports_update, sort_order, created_at, updated_at)
+         VALUES ('todo.shopping', 'Shopping', NULL, 1, 0, ?, ?)`,
+      )
+      .run(at, at);
+    const flagged = widgetsNotDrawn(h.db, [
+      widget('typed', 'todo', { items: ['Milk'] }),
+      widget('shown', 'todo', { list: 'todo.shopping' }),
+      widget('gone', 'todo', { list: 'todo.read_only' }),
+      widget('forecast', 'weather', undefined),
+      widget('time', 'clock', undefined),
+    ]);
+    expect(flagged.map((row) => row.id)).toEqual(['gone', 'forecast']);
+    expect(flagged.find((row) => row.id === 'gone')?.why).toContain('Home Assistant');
+  });
+
+  it('hands over the facts the flags were decided from, and the lists for the picker', async () => {
+    const h = await harness();
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO ha_todo_lists (entity_id, name, label, supports_update, sort_order, created_at, updated_at)
+         VALUES ('todo.shopping', 'Shopping', 'Groceries', 1, 0, ?, ?)`,
+      )
+      .run(at, at);
+    const facts = omissionFacts(h.db);
+    expect(facts.todoLists).toEqual(['todo.shopping']);
+    // Per type with no config: a to-do box is drawable in the abstract, a
+    // weather box on this household is not, and the sentence table is per type.
+    expect(facts.drawn['todo']).toBe(true);
+    expect(facts.drawn['weather']).toBe(false);
+    expect(facts.drawn['clock']).toBe(true);
+    expect(facts.why['todo']).toContain('Home Assistant');
+    expect(todoListChoices(h.db)).toEqual([
+      { id: 'todo.shopping', name: 'Groceries', key: todoListHandle('todo.shopping') },
+    ]);
   });
 });
 
