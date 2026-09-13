@@ -1132,10 +1132,13 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * field helpers. The picker is the same `/api/states` datalist the readings
    * form uses, read for `todo.*` alone.
    *
-   * The section says plainly what this phase is: a wall *shows* the list and
-   * cannot tick anything off it yet. A checklist that cannot be checked reads
-   * as a bug rather than a policy unless somebody is told, and this is where
-   * they are.
+   * The section says plainly where the tick lives, which is **not here**
+   * (RFC 012 phase 2). Showing a list and letting a wall write to it are two
+   * decisions with two different risks, so they are set in two places: the list
+   * is chosen here, once, for the household; whether a given wall may tick
+   * anything off it is a fact about that hardware and is on that wall's own
+   * page. A household who turns a list on and finds no boxes has not hit a bug,
+   * and this is where they are told which switch they are looking for.
    */
   function todoLists(live: LiveState): string {
     const watched = readTodoLists(deps.db);
@@ -1150,7 +1153,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       .map(
         (entity) =>
           `<option value="${escapeHtml(entity.entityId)}">` +
-          `${escapeHtml(entity.name)}${entity.supportsUpdate ? '' : ' — read-only in Home Assistant'}</option>`,
+          `${escapeHtml(entity.name)}${entity.supportsUpdate ? '' : ' — cannot be ticked, in Home Assistant itself'}</option>`,
       )
       .join('');
 
@@ -1183,8 +1186,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return section(
       'To-do lists',
       'A Home Assistant to-do list, read every minute, drawn by the To-do widget on ' +
-        'any wall or panel you put one on. The wall shows the list and cannot tick ' +
-        'anything off it yet — that is the next release, and it will be a switch per wall.',
+        'any wall or panel you put one on. To tick items off from a wall, turn on ' +
+        '“Allow ticking to-do items off” on that wall’s own page — it is off ' +
+        'everywhere until you do, and an eInk panel cannot offer it at all.',
       (rows === '' ? emptyState('No to-do lists are shown yet.') : rows) + addForm,
     );
   }

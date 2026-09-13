@@ -237,6 +237,7 @@ const screenBody = z.object({
   timezone: optionalText(64),
   allow_dismiss: checkbox(),
   allow_chores: checkbox(),
+  allow_todo: checkbox(),
   // '' follows the household, '1' forces 24-hour, '0' forces 12-hour (RFC 005).
   clock_24: optionalText(1),
   // How much this wall shows. Empty follows the household default; a number is
@@ -2257,6 +2258,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       name, orientation, rotation,
       allow_dismiss: allowDismiss,
       allow_chores: allowChores,
+      allow_todo: allowTodo,
     } = shaped.value;
     // '' follows the household, '1' forces 24-hour, '0' forces 12-hour.
     const clockRaw = shaped.value.clock_24 ?? '';
@@ -2353,6 +2355,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         daytimeEndsAt: scheduled ? endsAt : null,
         allowDismiss,
         allowChores,
+        allowTodo,
         displayTodayEvents: today.value,
         displayNextDays: nextDays.value,
         displayHorizonWeeks: weeks.value,
@@ -4285,6 +4288,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'Puts a tick box beside each chore on this wall. Best on a tablet ' +
           'somebody can reach; leave it off for a wall behind glass, or one a ' +
           'passing sleeve could press.',
+      }) +
+      /*
+       * And a third, because ticking a shopping list is a third risk rather
+       * than more of the second. Clearing a warning says the household has read
+       * something; ticking a chore records a claim in this database; ticking a
+       * to-do item changes a list the household's phones are synced to, outside
+       * this application, where nobody standing at the wall can undo it. The
+       * hint says exactly that rather than "allows input", because a household
+       * deciding about a tablet in a hallway is deciding about their shopping
+       * list and should be told so in the sentence they are reading.
+       */
+      switchRow({
+        label: 'Allow ticking to-do items off',
+        name: 'allow_todo',
+        checked: screen.allowTodo === 1,
+        hint:
+          'Puts a tick box beside each item on a Home Assistant to-do list ' +
+          'this wall shows. It changes the real list, so it changes what ' +
+          'everyone’s phone sees. Off unless you mean it.',
       }) +
       `</div>`;
 

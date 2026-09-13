@@ -197,8 +197,10 @@ const widgetConfigFields = z
     text: z.string().max(2000).optional(),
     // To-do — a static checklist. Each item is a line the household typed, and
     // it is edited in the admin: these lines are not a Home Assistant list, so
-    // there is nothing on the wall a tick could write back to. RFC 012 adds a
-    // `list` key for that, and the two cases are deliberately one widget.
+    // there is nothing a tick could write back to and the box stays a marker
+    // whatever the wall is allowed to do. The `list` key below is the other
+    // case, and it *does* tick (RFC 012 phase 2) — the two are deliberately one
+    // widget, and which source a box draws is the one thing that decides it.
     items: z.array(z.string().max(200)).max(40).optional(),
     /*
      * To-do, from Home Assistant (RFC 012 phase 1) — which watched list the
@@ -213,6 +215,13 @@ const widgetConfigFields = z
      * because a shopping list ticked on a phone and never cleared grows for
      * ever, and the wall is a place to read the list rather than the place it
      * is administered (RFC 012 §7.5).
+     *
+     * Whether a box on that list can be *ticked* is not here and never will be:
+     * it is `screens.allow_todo`, a fact about the hardware a wall is rather
+     * than about the widget, set on the wall's own settings page beside alert
+     * dismissal and the chore tick. One widget on two walls is a control on one
+     * of them and a marker on the other, which is exactly the distinction a
+     * per-widget key could not express.
      */
     list: z
       .string()

@@ -549,7 +549,7 @@ describe('the manifest', () => {
 // ---------------------------------------------------------------------------
 
 describe('the Home Assistant page', () => {
-  it('offers the to-do lists from the live house, and says the wall cannot tick yet', async () => {
+  it('offers the to-do lists from the live house, and says where the tick is turned on', async () => {
     const h = await harness();
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
@@ -557,8 +557,15 @@ describe('the Home Assistant page', () => {
     expect(html).toContain('<datalist id="ha-todo-lists">');
     expect(html).toContain('value="todo.shopping"');
     expect(html).toContain('value="todo.read_only"');
-    expect(html).toContain('read-only in Home Assistant');
-    expect(html).toContain('cannot tick anything off it yet');
+    expect(html).toContain('cannot be ticked, in Home Assistant itself');
+    /*
+     * Where the tick is turned on, said here (RFC 012 phase 2). Showing a list
+     * and letting a wall write to it are two decisions in two places, and a
+     * household who turns a list on and finds no boxes has not hit a bug — this
+     * is the sentence that tells them which switch they are looking for.
+     */
+    expect(html).toContain('Allow ticking to-do items off');
+    expect(html).toContain('eInk panel cannot offer it at all');
     expect(html).toContain('No to-do lists are shown yet.');
     // A list is not a reading: the readings datalist does not offer it.
     const readings = /<datalist id="ha-entities">([\s\S]*?)<\/datalist>/.exec(html)?.[1] ?? '';

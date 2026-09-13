@@ -918,6 +918,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
               orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores,
+              allow_todo AS allowTodo,
               lan_only AS lanOnly, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
@@ -957,6 +958,13 @@ export interface ScreenSettings {
   readonly allowDismiss: boolean;
   /** Whether this screen offers a way to tick a chore off (RFC 008 phase 3). */
   readonly allowChores: boolean;
+  /**
+   * Whether this screen offers a way to tick a Home Assistant to-do item off
+   * (RFC 012 phase 2). Its own switch, because it is its own risk: a chore is
+   * a claim recorded in this database and a to-do item is data on a list the
+   * household's phones are synced to.
+   */
+  readonly allowTodo: boolean;
   /** How much this wall shows; null on any follows the household default. */
   readonly displayTodayEvents: number | null;
   readonly displayNextDays: number | null;
@@ -983,7 +991,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         `UPDATE screens
             SET name = ?, orientation = ?, rotation = ?, theme = ?, timezone = ?,
                 daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
-                allow_dismiss = ?, allow_chores = ?,
+                allow_dismiss = ?, allow_chores = ?, allow_todo = ?,
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
                 clock_24 = ?,
                 panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?,
@@ -993,7 +1001,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
       .run(
         s.name, s.orientation, s.rotation, s.theme, s.timezone,
         s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt,
-        s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0,
+        s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0, s.allowTodo ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
         Date.now(), id,
@@ -1632,6 +1640,18 @@ export interface ScreenRow {
   readonly daytimeEndsAt: string | null;
   readonly allowDismiss: number;
   readonly allowChores: number;
+  /**
+   * Whether this screen may tick an item off a Home Assistant to-do list
+   * (RFC 012 phase 2).
+   *
+   * Selected here rather than left to the schema alone, which is the fault
+   * `readScreens` already shipped once: the new e-paper columns were declared,
+   * typed and never named in this query, so `panelWidth` was `undefined` at
+   * runtime while the types swore otherwise. A missing column in a `SELECT` is
+   * a silent `undefined`, and `undefined !== 1` reads exactly like a household
+   * who left the switch off.
+   */
+  readonly allowTodo: number;
   /** Whether `/d/epaper/:file` refuses a connection from off the LAN (Option C). */
   readonly lanOnly: number;
   /** Per-screen display overrides; null follows the household. */
@@ -1654,6 +1674,7 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
               orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores,
+              allow_todo AS allowTodo,
               lan_only AS lanOnly, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,

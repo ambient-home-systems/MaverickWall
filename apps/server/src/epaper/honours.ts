@@ -160,6 +160,36 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
   },
 ];
 
+/*
+ * **Where the to-do tick is, and why it is in neither table** (RFC 012 §11).
+ *
+ * A panel draws a to-do list and cannot tick it. That is right — a sleeping
+ * ESP32 has nothing to press and nothing to press it with, and the box has to
+ * be *absent* rather than inert, which is what `drawTodo`'s read-only row
+ * already draws. The obvious bookkeeping is therefore a `PANEL_IGNORES` entry
+ * saying so on the wall's own settings, beside "Run position" and "Shift
+ * colours".
+ *
+ * It does not belong there, and the reason is the shape of these tables rather
+ * than a judgement about the tick. Both of them are keyed on **a widget's
+ * config** — `widgetConfigBody`'s own keys, which the set is closed against, so
+ * a key in neither fails rather than falling quietly between them. Whether a
+ * wall may tick is not one: it is `screens.allow_todo`, a fact about the
+ * *screen*, set on the wall's settings page beside alert dismissal and the
+ * chore tick, and it is not in a widget's config at all. Putting it here would
+ * mean inventing a key no schema has, on a table whose whole worth is that it
+ * is derived from the renderer by rendering — and `epaper-ink.test.ts` proves
+ * `PANEL_IGNORES` by setting each key and watching no ink move, which it could
+ * not do for a key that cannot be set.
+ *
+ * What answers the household's question instead is the switch's own page: an
+ * e-paper panel's settings have never offered alert dismissal or the chore tick
+ * either, for the identical reason, and a panel that followed a wall's canvas
+ * has never inherited that wall's permission — `allow_todo` is read off the
+ * screen the request arrived on, and a panel's request reaches no tick
+ * endpoint at all.
+ */
+
 /**
  * The widget's options as the panel reads them: the wall's, with the ink lane
  * laid over the top.

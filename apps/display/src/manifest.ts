@@ -183,6 +183,12 @@ export interface Manifest {
     readonly allowDismiss?: boolean;
     readonly allowChores?: boolean;
     /**
+     * Whether this screen may tick a Home Assistant to-do item off (RFC 012
+     * phase 2). Absent on a server older than the tick, which reads as false —
+     * the read-only wall that server was drawing.
+     */
+    readonly allowTodo?: boolean;
+    /**
      * How large this screen is and how far away it is read from, in
      * millimetres — facts, never a size the server derived. All three or none
      * of them, and absent on a wall nobody has measured, which is most of them.

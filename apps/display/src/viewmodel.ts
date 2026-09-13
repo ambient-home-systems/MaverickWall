@@ -392,6 +392,24 @@ export interface DisplayModel {
   readonly allowDismiss: boolean;
   /** Whether this screen may tick a chore off (RFC 008 phase 3). */
   readonly allowChores: boolean;
+  /**
+   * Whether this screen may tick a Home Assistant to-do item off (RFC 012
+   * phase 2). Separate from `allowChores` all the way down, because the two
+   * switches are separate in the household's own settings and a renderer that
+   * conflated them would put a control on a wall nobody allowed it on.
+   */
+  readonly allowTodo: boolean;
+  /**
+   * A sentence about a tick that did not happen, by widget id (RFC 012 §7.4).
+   *
+   * The one piece of this model that is not the manifest. A draw rebuilds the
+   * whole document every fifteen seconds, so a handler that wrote the sentence
+   * into the DOM would have it wiped before anybody read it — and "the tick
+   * failing is fine, the tick failing silently is not" is the rule the whole
+   * write path is held to. `main.ts` owns the map and its expiry; this is how
+   * it reaches the renderer, which is the one place that draws anything.
+   */
+  readonly todoNotices: Readonly<Record<string, string>>;
 }
 
 /**
@@ -1220,6 +1238,16 @@ export interface BuildOptions {
   /** When the manifest on screen was last confirmed by the server. */
   readonly lastConfirmedAt: number;
   readonly offline: boolean;
+  /**
+   * Sentences about ticks that did not happen, by widget id (RFC 012 §7.4).
+   *
+   * Optional and defaulted to none, so every existing caller — and every test
+   * that builds a model from a manifest alone — is unchanged. It is an input
+   * rather than something derived here because it is not in the manifest at
+   * all: it is what this browser tried to do a moment ago, which no server can
+   * tell it.
+   */
+  readonly todoNotices?: Readonly<Record<string, string>>;
 }
 
 export function buildModel(options: BuildOptions): DisplayModel {
@@ -1400,6 +1428,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
     interrupts: interruptsFrom(manifest.interrupts),
     allowDismiss: manifest.screen?.allowDismiss === true,
     allowChores: manifest.screen?.allowChores === true,
+    allowTodo: manifest.screen?.allowTodo === true,
+    todoNotices: options.todoNotices ?? {},
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,

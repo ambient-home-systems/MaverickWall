@@ -1,6 +1,6 @@
 # RFC 012 — Home Assistant to-do lists, and the end of rule 12 as written
 
-Status: **phase 1 built; unproven on real hardware** · Owner: — · First drafted 2026-09-13 ·
+Status: **phases 1 and 2 shipped; phase 3 open** · Owner: — · First drafted 2026-09-13 ·
 Relates to `apps/server/src/modules/homeassistant/`,
 `packages/core/src/ports/fetcher.ts`, `apps/server/src/net/fetcher.ts`,
 `apps/server/src/api/widget-schema.ts`, `apps/server/src/api/manifest.ts`,
@@ -50,11 +50,62 @@ Amends hard rule 12 · Constrains RFC 007
 > 6. **`TODO_TIERS` is unchanged, measured rather than assumed**: the row a
 >    list draws is the same `.td-row` the typed list draws, so the `ch` and
 >    `em` thresholds are against the same markup. The tick box §6.3 worried
->    about is phase 2's problem, and it will be this widget's row widening.
+>    about is phase 2's problem — and phase 2 did not widen the row either: the
+>    44px target is grown out of flow behind the same 1.7rem box, so the table is
+>    unchanged again.
 >
 > Unproven where it counts: nobody has looked at a real wall or a real panel
 > drawing a real list. The measurements are a real browser on a paired wall
 > against a fake Home Assistant, and a decoded 1-bit frame.
+
+> **Update — phase 2 is implemented**, and §7 is revised where building it
+> differed from the specification. What shipped: `screens.allow_todo` read and
+> written everywhere the column exists (the two `SELECT`s, the `UPDATE`, the
+> wall's settings form, the manifest, and the display's own model);
+> `POST /d/todo/tick` behind `requireScreen`; the write-through on a 200 and
+> the upstream's own sentence on a failure; the tick box on the wall with its
+> 44px target, its focus ring and its place in the `Enter` exemption; and a
+> per-widget notice drawn from the model. Nothing on a panel changed and
+> `EPAPER_RENDERER_VERSION` is still 9. Five things the body had wrong or had
+> not seen:
+>
+> 1. **§7.1's body key is `item`, not `id`.** A cosmetic difference from
+>    `/d/chores/tick` and deliberate: a chore posts the chore's own id and this
+>    posts a *handle for one item on one list*, which is a different kind of
+>    thing, and one endpoint's habits are not the other's contract.
+> 2. **§7.4's sentence had nowhere to live.** The RFC says "the widget draws
+>    it" and stops there, which is not buildable as written: `draw()` rebuilds
+>    the whole document every fifteen seconds, so a handler writing into the
+>    DOM has its sentence wiped before anybody reads it. It is **model state** —
+>    a per-widget map in `main.ts` with a short expiry, cleared by the next
+>    successful poll, and drawn by `renderTodoWidget` from the model like
+>    everything else. That is the same seam `widget-options.ts` and `ink.ts`
+>    exist at, for the same reason.
+> 3. **The wall offers the tick on open items only.** The endpoint honours
+>    `done=0` — idempotence and the correction both need it, and a branch
+>    nothing exercises is a branch nobody can trust — but a completed item is on
+>    screen at all only when the household asked to see what has been done,
+>    which is a record rather than a place to undo one. §7.5's own argument,
+>    one control along.
+> 4. **§11's "`PANEL_IGNORES` entry with a sentence" is wrong about where it
+>    goes.** Both honours tables are keyed on a *widget's config* and the set is
+>    closed against `widgetConfigBody`; whether a wall may tick is
+>    `screens.allow_todo`, which is not a widget key at all and cannot be set on
+>    one. An entry there would be a key no schema has, on a table whose worth is
+>    that `epaper-ink.test.ts` derives it by rendering. The reason is written at
+>    the declaration instead, and the panel's frames are pinned byte-identical
+>    to a clean worktree of the commit before this phase.
+> 5. **A panel's own `allow_todo` moves its frame ETag**, and that is the
+>    manifest's shape rather than this phase's doing: `manifestEtag` hashes the
+>    whole document bar `generatedAt` and the `screen` block carries all three
+>    flags, so `allow_chores` has behaved this way since it shipped. It cannot
+>    fire in practice — no e-paper settings page offers any of the three — and
+>    the *wall* a panel follows flipping its own switch moves nothing. Measured
+>    against `allow_chores` rather than asserted, so the two cannot drift.
+>
+> Unproven where it counts, and it is the same sentence as phase 1's with more
+> riding on it: **nobody has ticked an item on a real tablet and watched it
+> leave their phone.** §10 says that is the entire feature.
 
 ## 1. Summary
 
@@ -506,15 +557,28 @@ the same one the calendar widget shipped: **an absent key is a value**, and
 
 `PANEL_HONOURS.todo` gains `list` and `showDone`; `INK_LANE.todo` stays empty,
 because `list` is the widget's identity and the lane offers density and shape,
-never a different list on the panel from the one on the wall. `showTick` (§7)
-will go in `PANEL_IGNORES` with its reason, because a battery panel cannot
-offer a tick at all. `EPAPER_RENDERER_VERSION` is **9**: only a panel with a
-list-backed widget on it moves, and the absent-key frames are pinned identical
-to 8.
+never a different list on the panel from the one on the wall.
+`EPAPER_RENDERER_VERSION` is **9**: only a panel with a list-backed widget on it
+moves, and the absent-key frames are pinned identical to 8.
+
+**This section predicted a `showTick` key and phase 2 built none**, which is the
+same correction §11 records and is worth making where the prediction sits. There
+is no widget-level `showTick` anywhere: §7 never specified one, and whether a
+wall may tick is `screens.allow_todo` — a fact about the *screen*. So it goes in
+neither honours table rather than into `PANEL_IGNORES`, because both are keyed on
+a widget's config and closed against `widgetConfigBody`; the reason is written at
+the `PANEL_IGNORES` declaration instead.
 
 `TODO_TIERS` was looked at and is unchanged: a list draws the same `.td-row`
-the typed list draws, so the thresholds are against the same row. The tick box
-is phase 2's, and that is when the row widens.
+the typed list draws, so the thresholds are against the same row.
+
+**And the row did not widen after all**, which this section predicted it would
+once the tick box arrived. The control is the read-only box — the same 1.7rem
+square, now a `<button>` — and the 44px a fingertip needs is grown behind it by
+an absolutely positioned pseudo-element, which is the chore tick's own idiom and
+changes no layout at all. So `TODO_TIERS` is still unchanged in phase 2, the `ch`
+and `em` thresholds are still measured against the same markup, and a wall that
+allows ticking draws its rows at exactly the pitch a wall that does not.
 
 ## 7. The write path
 
@@ -525,16 +589,28 @@ that was built from `/d/interrupts/dismiss`. Same gate (`requireScreen`), same
 household-wide effect, same "the server is the authority, not the button".
 
 Body: `{ item: <handle>, done?: '0' }`. Absent `done` means done, which is the
-overwhelmingly common press — chores' own rule.
+overwhelmingly common press — chores' own rule. The key is `item` rather than
+chores' `id`, deliberately: a chore posts the chore's own id and this posts a
+handle for *one item on one list*, which is a different kind of thing.
 
-What it refuses from the caller:
+What it refuses from the caller, **in this order**, because each check is
+cheaper than the one after it and because the order decides which sentence a
+household reads:
 
+- **Whether this wall may ask.** `screens.allow_todo`, off by default — see
+  §7.6. A 403, "This wall cannot tick things off."
 - **Which entity and which item.** It takes a handle and resolves it against
-  `ha_todo_items`. An unknown handle is a 404.
-- **Whether this screen may ask.** A new per-screen switch, off by default —
-  see §7.6.
+  `ha_todo_items`. An unknown handle, and one whose item has left the list
+  since, are the same 404 and the same sentence: "That is not on the list any
+  more." True either way, and self-correcting on the next poll.
 - **Whether the list can be ticked.** `supportsUpdate` off is a 409 with a
-  sentence, not a silent no-op.
+  sentence, not a silent no-op — and **no POST is made to find out**, though
+  Home Assistant would happily answer one: the answer is already in the cache,
+  and a household reading core's wording for a refusal this server could have
+  explained is a worse sentence than the one we can write.
+- **What to call the item.** Always the `uid` from the cache row, never the
+  summary — §3.4, and the one thing in this whole phase that cannot be
+  discovered by a household with a well-behaved list.
 
 ### 7.2 The authority inverts, and that is the genuinely new problem
 
@@ -557,10 +633,21 @@ to Home Assistant and returns `{ok:true}` would leave the box empty for up to a
 minute — which is "pressing OK on a wall and watching nothing happen", a fault
 this project has shipped and written up twice.
 
-The endpoint should write the cached row itself on a successful call and return
-the new item state, so the next manifest is already right and the widget can
-fill the box on the response. That is not an optimistic tick: the server has
-Home Assistant's 200 before it writes anything.
+The endpoint writes the cached row itself on a successful call and answers
+`{ ok: true, done }`, so the next manifest is already right. That is not an
+optimistic tick: the server has Home Assistant's 200 before it writes anything,
+and on a failure it touches nothing at all.
+
+**What the wall does with that answer is nothing**, which is the half the RFC
+did not say. It does not fill the box from the response — it re-polls, and the
+box fills from a document. One authority, drawn once; a renderer that painted
+from a response and then from a manifest would be two, and this project's whole
+list of repeated bugs is two readers of one value.
+
+`ha_todo_items.fetched_at` is deliberately **not** moved by that write. The
+poll's sweep deletes every row it did not touch by its own stamp, so advancing
+it here would make an item ticked between two polls survive a poll that no
+longer lists it.
 
 Worth naming explicitly: chores rejected an optimistic tick because "an
 optimistic tick reads better on one screen and buys a distributed-state problem
@@ -582,6 +669,22 @@ the rule `testFeed` already sets — and the widget draws it rather than leaving
 box that does not fill. Rule nine in the smallest place it has ever applied: the
 tick failing is fine, the tick failing silently is not.
 
+**Where that sentence lives is the part this section did not specify, and it is
+the only genuinely new mechanism in phase 2.** "The widget draws it" is not
+buildable as a handler writing into the DOM: `draw()` rebuilds the whole
+document every fifteen seconds, so the sentence would be wiped a moment after it
+appeared — which is exactly why `tickChore` fails silently and can afford to. It
+is **model state**: a per-widget map in `main.ts`, keyed by the box the press
+landed in, with a short expiry and cleared by the next successful poll (both
+branches of it — a 200 and a 304 are equally the server confirming the list).
+`renderTodoWidget` reads it off the model like everything else it draws, so the
+sentence survives a redraw by construction rather than by luck.
+
+The body is read defensively on the way in — not JSON, no `message`, not a
+string, empty after stripping all fall back to the wall's own wording, capped
+and stripped — which is what `serverSaid` already does for the manifest's own
+failures, one endpoint along.
+
 The 404-on-stale-handle case deserves its own sentence, because it is the common
 one: "That is not on the list any more." is true, useful, and self-correcting on
 the next poll.
@@ -593,7 +696,12 @@ A shopping list ticked on the wall and never cleared grows for ever. Clearing is
 
 The answer is that the phone app that owns the list does the clearing, and the
 widget **hides completed items by default** rather than drawing a growing
-graveyard. That is a display decision with no write in it, and it is the honest
+graveyard. The same argument decides where the tick box goes: the wall offers
+one on an **open** item and never on a completed one. The endpoint honours
+`done=0` and always will — idempotence and the correction both need it, and a
+branch nothing exercises is a branch nobody can trust — but a ticked item is on
+screen at all only when the household asked to see what has been done, which is
+a record rather than a place to undo one. That is a display decision with no write in it, and it is the honest
 one: the wall is a place to read the list and cross things off, not the place
 the list is administered. A `showDone` switch is available if somebody wants the
 satisfaction of the strikethrough.
@@ -608,6 +716,16 @@ items long" is the bug report.
 Ticking something off a household's real, shared, phone-synced shopping list is
 a third one — it changes data outside this application, which neither of the
 others does. `screens.allow_todo`, off by default, in the same migration.
+
+Shipped as specified, and the one thing worth recording is where the column had
+to be *named*: the two `SELECT`s in `api/queries.ts`, the `UPDATE` beside them,
+the wall's settings form, `buildDisplayManifest`'s screen-like type and
+`ManifestScreen`, and the display's own `manifest.ts` and `viewmodel.ts`. The
+`SELECT`s are the ones that fail quietly — `readScreens` shipped exactly this
+fault once for the e-paper columns, where the types swore a column was there and
+it was `undefined` at runtime, and `undefined !== 1` reads precisely like a
+household who left the switch off. Dropping `allow_todo` from that one query
+turns twelve assertions red.
 
 ## 8. What a leaked display token is worth now
 
@@ -642,12 +760,15 @@ the test are what make the POST safe and they should exist before anything
 writes. Ships something useful on its own: a household's shopping list, on the
 wall, correct.
 
-**Phase 2 — the tick.** `POST /d/todo/tick` behind `screens.allow_todo` (the
-column already exists), the write-through, the failure sentence, the
-`supportsUpdate` gate on both sides, and the control on the wall's page.
+**Phase 2 — the tick. Built.** `POST /d/todo/tick` behind `screens.allow_todo`
+(the column already existed), the write-through, the failure sentence, the
+`supportsUpdate` gate on both sides, and the control on the wall's page. Nothing
+on a panel moved and `EPAPER_RENDERER_VERSION` is unchanged.
 
-**Phase 3 — polish, if wanted.** `todo/item/subscribe` for latency; a due date
-on the row, which the panel already carries.
+**Phase 3 — polish, if wanted. Open.** `todo/item/subscribe` for latency; a due
+date on the row, which the panel already carries; and, if anybody wants it, the
+undo on a completed row — the endpoint takes it today and only the wall declines
+to offer it.
 
 Phase 1 is a real deliverable and phase 2 is small once it exists. That ordering
 is deliberate: it puts the security change under review while the feature it
@@ -738,11 +859,19 @@ second is the entire feature.
   every read, because the filter is this code's decision and not Home
   Assistant's default — and the fake honouring that default is what caught a
   test asking without one.
-- **The e-paper story.** A panel draws the list and cannot tick it, which is
-  right and is the documented glance class — but a panel that draws a tick box
-  it cannot honour would be a control that does nothing, so the box must be
-  absent rather than inert, and that is a `PANEL_IGNORES` entry with a sentence
-  in the editor rather than a silent difference. Phase 2's.
+- ~~**The e-paper story.**~~ **Closed, and the conclusion held while the
+  mechanism did not.** A panel draws the list and cannot tick it, the box is
+  absent rather than inert, and that is right — but it is **not** a
+  `PANEL_IGNORES` entry. Both honours tables are keyed on a *widget's config*
+  and the set is closed against `widgetConfigBody`; whether a wall may tick is
+  `screens.allow_todo`, a fact about the screen, which is not a widget key and
+  cannot be set on one. An entry there would be a key no schema has, on a table
+  whose whole worth is that `epaper-ink.test.ts` derives it by rendering — it
+  proves `PANEL_IGNORES` by setting each key and watching no ink move, which it
+  cannot do for a key that cannot be set. The reason is written at the
+  declaration instead, and what holds the claim is a measurement: the panel's
+  frames pinned byte-identical to a clean worktree of the commit before this
+  phase, plus an assertion that a list's `canTick` moves no pixel either way.
 
 ## 12. Non-goals
 

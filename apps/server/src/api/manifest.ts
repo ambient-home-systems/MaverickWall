@@ -651,6 +651,28 @@ export interface Manifest {
     /** Whether this screen may tick a chore off (RFC 008 phase 3). */
     readonly allowChores: boolean;
     /**
+     * Whether this screen may tick an item off a Home Assistant to-do list
+     * (RFC 012 phase 2).
+     *
+     * A property of the hardware like the two above it, and a *separate* one:
+     * a household can want a kitchen tablet to cross the shopping off and want
+     * the hall television to do neither. The wall hides the control when this
+     * is false; the endpoint checks it again, because the display token is on
+     * the wall.
+     *
+     * **Optional, and absent when it is off** — unlike its two neighbours,
+     * which are always emitted. That is the `panelWidthMm` argument rather than
+     * an inconsistency: this flag is false on every wall in the world until a
+     * household opens a setting, and `manifestEtag` hashes the serialisation,
+     * so emitting `"allowTodo": false` everywhere would churn every stored ETag
+     * at one image pull — and every e-paper frame with them, which is a full
+     * re-download on a battery panel for a control it cannot offer. Absent and
+     * false are one state and the display reads them as one (`=== true`), so
+     * there is nothing here to get wrong. `allowDismiss` and `allowChores`
+     * shipped before that lesson was written down; this one has it.
+     */
+    readonly allowTodo?: boolean;
+    /**
      * How large this screen is, and how far away it is read from.
      *
      * Millimetres — **facts, never a derived size in pixels**. The server does
@@ -847,6 +869,7 @@ export interface BuildManifestInput {
     readonly rotation: number;
     readonly allowDismiss?: boolean;
     readonly allowChores?: boolean;
+    readonly allowTodo?: boolean;
     readonly theme?: string | null;
     readonly timezone?: string | null;
     readonly daytimeTheme?: string | null;
@@ -1294,6 +1317,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       rotation: ((Math.round((input.screen?.rotation ?? 0) / 90) % 4) + 4) % 4 * 90,
       allowDismiss: input.screen?.allowDismiss === true,
       allowChores: input.screen?.allowChores === true,
+      // Spread, never emitted as `false` — see the field's own note.
+      ...(input.screen?.allowTodo === true ? { allowTodo: true } : {}),
       /*
        * Spread rather than emitted as nulls, and refused rather than clamped.
        *
