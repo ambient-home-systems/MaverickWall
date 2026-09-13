@@ -566,19 +566,25 @@ export const screens = sqliteTable(
      * still infeasible either way — it bounds what a *leaked* one is worth:
      * off the household's network, a correct token still gets refused.
      *
-     * Off by default (rule nine: a household with a panel reached through a
-     * relay — a cloud-hosted Home Assistant, a VPN, Nabu Casa — must not have
-     * it go dark because a setting they never opened assumed their network
-     * shape). Per screen, like `rotation` and `allow_dismiss` above: a fact
-     * about how *that* panel is reached, not a household-wide policy.
+     * Off by default (rule nine: a household whose panel fetches its picture
+     * across a relay — a cloud-hosted Home Assistant, or a frame URL that
+     * leaves the network and comes back through a tunnel — must not have it go
+     * dark because a setting they never opened assumed their network shape).
+     * That is narrower than it reads, and the admin copy says so: what is
+     * judged is the *frame request*, so reaching Home Assistant's own UI from
+     * outside over Nabu Casa or a VPN does not bear on it at all. Per screen,
+     * like `rotation` and `allow_dismiss` above: a fact about how *that* panel
+     * is reached, not a household-wide policy.
      *
-     * Enforced against the same address `isTrustedIngress` already reads
-     * (`clientAddress`, never a header — a reverse-proxied household is a
-     * known limitation, not a bypass, since a forwarded header is exactly what
-     * this must not trust), classified with the SSRF guard's own address
-     * classifier. Deliberately not applied to the browser wall's `/d/manifest`
-     * — its cookie cannot leave a browser the way an eInk URL leaves a device,
-     * so extending this there is a separate decision.
+     * Enforced against the visitor resolved by `resolveFrameSource` — the
+     * socket, or the first `X-Forwarded-For` entry when and only when the
+     * socket is a household-configured `TRUSTED_PROXY_SOURCE`, since a
+     * forwarded header from anywhere else is exactly what this must not trust
+     * — classified with the SSRF guard's own address classifier. An address
+     * that cannot be determined fails closed. Deliberately not applied to the
+     * browser wall's `/d/manifest` — its cookie cannot leave a browser the way
+     * an eInk URL leaves a device, so extending this there is a separate
+     * decision.
      */
     lanOnly: integer('lan_only', { mode: 'boolean' }).notNull().default(false),
 
