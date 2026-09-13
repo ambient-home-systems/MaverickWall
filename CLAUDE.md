@@ -450,8 +450,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2974 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 484 · server 2023. CI runs the whole suite and then the README's
+**3035 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 495 · server 2073. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
