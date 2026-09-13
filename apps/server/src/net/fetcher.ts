@@ -16,6 +16,8 @@ import {
   type FetchRequest,
   type Fetcher,
   type NetworkOption,
+  type PostJsonOutcome,
+  type PostJsonRequest,
   type UrlPolicy,
   type ValidatedUrl,
 } from '@maverick-wall/core';
@@ -61,11 +63,47 @@ interface ResolvedAddress {
   readonly family: 4 | 6;
 }
 
+/**
+ * Everything one hop can produce, before either entry point narrows it.
+ *
+ * `fetch` and `postJson` answer with different unions — there is no
+ * `not-modified` for a POST, and only a POST keeps a non-2xx body — but one
+ * function owns the socket, so one type has to cover both. It is assignable to
+ * `FetchOutcome` (the extra `responseBody` is optional and `fetch` never asks
+ * for it) and narrows to `PostJsonOutcome` by dropping the one case a POST
+ * cannot reach.
+ */
+type WireOutcome =
+  | {
+      readonly status: 'ok';
+      readonly body: string;
+      readonly contentType: string;
+      readonly finalUrl: string;
+      readonly byteSize: number;
+      readonly etag?: string;
+      readonly lastModified?: string;
+    }
+  | { readonly status: 'not-modified'; readonly etag?: string; readonly lastModified?: string }
+  | {
+      readonly status: 'rejected';
+      readonly code: FetchRejectionCode;
+      readonly message: string;
+      readonly networkOptions?: readonly NetworkOption[];
+    }
+  | {
+      readonly status: 'failed';
+      readonly code: FetchFailureCode;
+      readonly message: string;
+      readonly httpStatus?: number;
+      readonly retryAfterSeconds?: number;
+      readonly responseBody?: string;
+    };
+
 function rejected(
   code: FetchRejectionCode,
   message: string,
   networkOptions: readonly NetworkOption[] = [],
-): FetchOutcome {
+): WireOutcome {
   return {
     status: 'rejected',
     code,
@@ -77,6 +115,8 @@ function rejected(
 interface FailureExtras {
   readonly httpStatus?: number;
   readonly retryAfterSeconds?: number;
+  /** The upstream's own words. Only ever set for a POST — see `keepErrorBody`. */
+  readonly responseBody?: string;
 }
 
 /**
@@ -105,7 +145,7 @@ function networkErrorMessage(error: Error): string {
   }
 }
 
-function failed(code: FetchFailureCode, message: string, extras: FailureExtras = {}): FetchOutcome {
+function failed(code: FetchFailureCode, message: string, extras: FailureExtras = {}): WireOutcome {
   return {
     status: 'failed',
     code,
@@ -114,6 +154,7 @@ function failed(code: FetchFailureCode, message: string, extras: FailureExtras =
     ...(extras.retryAfterSeconds !== undefined
       ? { retryAfterSeconds: extras.retryAfterSeconds }
       : {}),
+    ...(extras.responseBody !== undefined ? { responseBody: extras.responseBody } : {}),
   };
 }
 
@@ -132,7 +173,7 @@ function headerValue(value: string | string[] | undefined): string | undefined {
 async function resolveAndCheck(
   hostname: string,
   policy: UrlPolicy,
-): Promise<{ ok: true; addresses: ResolvedAddress[] } | { ok: false; outcome: FetchOutcome }> {
+): Promise<{ ok: true; addresses: ResolvedAddress[] } | { ok: false; outcome: WireOutcome }> {
   const literal = parseIp(hostname);
   if (literal) {
     // Already an address; the URL guard has decided whether it is allowed.
@@ -303,7 +344,7 @@ function parseRetryAfter(value: string | undefined): number | undefined {
 
 interface SingleRequestResult {
   readonly kind: 'done';
-  readonly outcome: FetchOutcome;
+  readonly outcome: WireOutcome;
 }
 
 interface RedirectResult {
@@ -311,10 +352,93 @@ interface RedirectResult {
   readonly location: string;
 }
 
+/**
+ * One request's shape, normalised, so one function owns the socket.
+ *
+ * `fetch` and `postJson` differ in five things and share everything else — the
+ * URL guard, the resolve-and-check, the pin, the timeout, the streamed byte
+ * ceiling and the decompression. Forking `performRequest` into a second copy
+ * would put all six of those in two places, and the SSRF guard being forgotten
+ * in one of two places is the whole reason there is one adapter at all.
+ */
+interface WireRequest {
+  readonly method: 'GET' | 'POST';
+  readonly maxBytes: number;
+  readonly timeoutMs?: number;
+  readonly acceptContentTypes?: readonly string[];
+  /**
+   * Whether this request carried `if-none-match`/`if-modified-since`.
+   *
+   * A 304 is only an answer to a question that was asked. Unprompted it is a
+   * broken server, and reading it as "nothing changed" would hand a caller a
+   * `not-modified` for a request that could not produce one.
+   */
+  readonly conditional: boolean;
+  /** Follow a 3xx, revalidating each hop, or refuse it outright. */
+  readonly followRedirects: boolean;
+  /** Serialised body. Absent for a GET, and a GET is the only thing without one. */
+  readonly body?: Buffer;
+  /** Keep a non-2xx body as the upstream's own diagnosis. See `readErrorBody`. */
+  readonly keepErrorBody: boolean;
+}
+
+/**
+ * Read a non-2xx body, truncating rather than refusing.
+ *
+ * The success path treats an oversized body as `too-large`, which is right
+ * there: a caller asked for that document and half of it is worse than none.
+ * Here the document *is* the diagnosis — `{"message": "..."}` from Home
+ * Assistant — and a truncated sentence still diagnoses, so the cap clips
+ * instead of failing the call that already failed. It is still a cap: an error
+ * body is a stranger's bytes like any other.
+ *
+ * A body we cannot decompress yields nothing rather than mojibake, for the same
+ * reason `decodeBody` refuses an encoding it does not know: handing back bytes
+ * a caller will misread as text is worse than handing back silence.
+ */
+function readErrorBody(
+  response: NodeJS.ReadableStream & { destroy(): void; headers: Record<string, string | string[] | undefined> },
+  maxBytes: number,
+  done: (text: string | undefined) => void,
+): void {
+  const chunks: Buffer[] = [];
+  let received = 0;
+  let stopped = false;
+
+  const finishRead = (): void => {
+    if (stopped) return;
+    stopped = true;
+    const decoded = decodeBody(
+      Buffer.concat(chunks),
+      headerValue(response.headers['content-encoding']),
+      maxBytes,
+    );
+    done(decoded.ok ? decoded.body.toString('utf8') : undefined);
+  };
+
+  response.on('data', (chunk: Buffer) => {
+    if (stopped) return;
+    if (received + chunk.length >= maxBytes) {
+      chunks.push(chunk.subarray(0, Math.max(0, maxBytes - received)));
+      response.destroy();
+      finishRead();
+      return;
+    }
+    received += chunk.length;
+    chunks.push(chunk);
+  });
+  response.on('end', finishRead);
+  response.on('error', () => {
+    if (stopped) return;
+    stopped = true;
+    done(undefined);
+  });
+}
+
 async function performRequest(
   target: ValidatedUrl,
   addresses: readonly ResolvedAddress[],
-  request: FetchRequest,
+  request: WireRequest,
   headers: Record<string, string>,
 ): Promise<SingleRequestResult | RedirectResult> {
   const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -335,7 +459,7 @@ async function performRequest(
         hostname: target.hostname,
         port: target.port === '' ? undefined : Number(target.port),
         path: `${url.pathname}${url.search}`,
-        method: 'GET',
+        method: request.method,
         headers,
         // The pin.
         lookup: pinnedLookup(addresses) as never,
@@ -345,7 +469,7 @@ async function performRequest(
       (response) => {
         const status = response.statusCode ?? 0;
 
-        if (status === 304) {
+        if (status === 304 && request.conditional) {
           response.resume();
           const etag = headerValue(response.headers.etag);
           const lastModified = headerValue(response.headers['last-modified']);
@@ -360,8 +484,35 @@ async function performRequest(
           return;
         }
 
-        if (status >= 300 && status < 400) {
+        // 304 is excluded: it is not a redirect, and unprompted it falls
+        // through to the generic non-2xx below rather than being reported as
+        // one somebody could follow.
+        if (status >= 300 && status < 400 && status !== 304) {
           const location = headerValue(response.headers.location);
+          if (!request.followRedirects) {
+            /*
+             * Refused here rather than one hop later, and refused before the
+             * body is read.
+             *
+             * A redirect is a request replayed at another address, and this
+             * one carries a body and a bearer token. The only host a POST from
+             * this application ever speaks to is the household's own Home
+             * Assistant, so a 3xx off it is a misconfiguration or an attack and
+             * there is no third reading worth preserving. `rejected` rather
+             * than `failed` because it is not retryable and names a bad
+             * address rather than a broken network.
+             */
+            response.resume();
+            finish({
+              kind: 'done',
+              outcome: rejected(
+                'redirect-rejected',
+                `The server answered ${status} with a redirect. A POST is never replayed at ` +
+                  `another address.`,
+              ),
+            });
+            return;
+          }
           response.resume();
           if (typeof location !== 'string' || location === '') {
             finish({
@@ -375,14 +526,27 @@ async function performRequest(
         }
 
         if (status < 200 || status >= 300) {
-          response.resume();
           const retryAfter = parseRetryAfter(headerValue(response.headers['retry-after']));
-          finish({
-            kind: 'done',
-            outcome: failed('http-error', `The server answered ${status}.`, {
-              httpStatus: status,
-              ...(retryAfter !== undefined ? { retryAfterSeconds: retryAfter } : {}),
-            }),
+          const extras = {
+            httpStatus: status,
+            ...(retryAfter !== undefined ? { retryAfterSeconds: retryAfter } : {}),
+          };
+          if (!request.keepErrorBody) {
+            response.resume();
+            finish({
+              kind: 'done',
+              outcome: failed('http-error', `The server answered ${status}.`, extras),
+            });
+            return;
+          }
+          readErrorBody(response as never, request.maxBytes, (text) => {
+            finish({
+              kind: 'done',
+              outcome: failed('http-error', `The server answered ${status}.`, {
+                ...extras,
+                ...(text !== undefined && text !== '' ? { responseBody: text } : {}),
+              }),
+            });
           });
           return;
         }
@@ -484,12 +648,30 @@ async function performRequest(
       finish({ kind: 'done', outcome: failed('network-error', networkErrorMessage(error)) });
     });
 
-    clientRequest.end();
+    // `end(body)` rather than a write-then-end: the body is one already-encoded
+    // buffer whose length the headers have already stated, so there is nothing
+    // to stream and nothing that can disagree with `content-length`.
+    if (request.body !== undefined) clientRequest.end(request.body);
+    else clientRequest.end();
   });
 }
 
 export function createFetcher(): Fetcher {
   return {
+    /**
+     * GET, and **only** GET.
+     *
+     * There is deliberately no `method` and no `body` on `FetchRequest`, so the
+     * sentence this boundary is worth keeping stays true: **no arbitrary method
+     * and no household-authored body reaches the network.** Every user-supplied
+     * URL in this product — calendar feeds, remote images, recipe modules,
+     * catalogue sources — arrives here, and every one of them is a read.
+     *
+     * `postJson` below is the one exception and it is not a general one: fixed
+     * verb, fixed content type, a body the adapter serialises, and no redirect
+     * followed. Its only caller is the Home Assistant client's `callService`,
+     * which is held to a two-member allowlist by `ha-write-boundary.test.ts`.
+     */
     async fetch(request: FetchRequest): Promise<FetchOutcome> {
       try {
         const validated = validateOutboundUrl(request.url, request.policy);
@@ -523,7 +705,24 @@ export function createFetcher(): Fetcher {
           const resolution = await resolveAndCheck(target.hostname, request.policy);
           if (!resolution.ok) return resolution.outcome;
 
-          const result = await performRequest(target, resolution.addresses, request, headers);
+          const result = await performRequest(
+            target,
+            resolution.addresses,
+            {
+              method: 'GET',
+              maxBytes: request.maxBytes,
+              ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+              ...(request.acceptContentTypes !== undefined
+                ? { acceptContentTypes: request.acceptContentTypes }
+                : {}),
+              conditional:
+                request.conditional?.etag !== undefined ||
+                request.conditional?.lastModified !== undefined,
+              followRedirects: true,
+              keepErrorBody: false,
+            },
+            headers,
+          );
           if (result.kind === 'done') {
             return result.outcome.status === 'ok'
               ? { ...result.outcome, finalUrl: target.href }
@@ -564,6 +763,104 @@ export function createFetcher(): Fetcher {
           'network-error',
           error instanceof Error ? networkErrorMessage(error) : 'unknown error',
         );
+      }
+    },
+
+    /**
+     * One POST of a JSON document, at one address, with no second hop.
+     *
+     * Every guard `fetch` runs, runs here: the URL is validated against the
+     * same `UrlPolicy`, the name is resolved and every address it answers with
+     * is checked, the socket connects to the address that was checked rather
+     * than to the hostname, the timeout is the same, and the byte ceiling is
+     * enforced while streaming. What is *removed* is the loop — there is no
+     * redirect to revalidate, because there is no redirect.
+     *
+     * `SENSITIVE_HEADERS` has nothing to do here for the same reason. It exists
+     * so a bearer token does not survive a hop to another origin; with no hop,
+     * the token cannot reach anywhere but the address the guard approved. That
+     * is a stronger property than stripping, not a weaker one, and it is why
+     * refusing a redirect is the security decision rather than an ergonomic
+     * one.
+     */
+    async postJson(request: PostJsonRequest): Promise<PostJsonOutcome> {
+      try {
+        const validated = validateOutboundUrl(request.url, request.policy);
+        if (!validated.ok) {
+          return rejected('url-rejected', validated.error.message) as PostJsonOutcome;
+        }
+        const target = validated.value;
+
+        let body: Buffer;
+        try {
+          // Serialised here, never by a caller. A caller that handed over text
+          // could hand over something that is not JSON while the header says
+          // it is — and a cycle in an object is a throw, which this contract
+          // does not permit to escape.
+          body = Buffer.from(JSON.stringify(request.body ?? null), 'utf8');
+        } catch {
+          return failed('network-error', 'That request body could not be written as JSON.') as PostJsonOutcome;
+        }
+
+        const headers: Record<string, string> = {
+          'user-agent': request.userAgent ?? DEFAULT_USER_AGENT,
+          'accept-encoding': 'gzip, deflate',
+          ...Object.fromEntries(
+            Object.entries(request.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
+          ),
+          // Last, and deliberately not overridable by `request.headers`: the
+          // body is JSON whatever a caller would rather say about it, and the
+          // one thing this method asks for is JSON back.
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'content-length': String(body.byteLength),
+        };
+
+        const resolution = await resolveAndCheck(target.hostname, request.policy);
+        if (!resolution.ok) return resolution.outcome as PostJsonOutcome;
+
+        const result = await performRequest(
+          target,
+          resolution.addresses,
+          {
+            method: 'POST',
+            maxBytes: request.maxBytes,
+            ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+            // Not `acceptContentTypes`: the `accept` header above says what we
+            // asked for, and refusing the *answer* on its content type would
+            // throw away the `{"message": "..."}` that is the whole reason a
+            // non-2xx body is kept at all.
+            conditional: false,
+            followRedirects: false,
+            body,
+            keepErrorBody: true,
+          },
+          headers,
+        );
+
+        if (result.kind === 'redirect') {
+          // Unreachable: `followRedirects: false` turns a 3xx into a rejection
+          // inside `performRequest`. Stated as a value rather than left to fall
+          // through, because a contract that never throws cannot rely on a
+          // branch being impossible.
+          return rejected(
+            'redirect-rejected',
+            'The server answered with a redirect. A POST is never replayed at another address.',
+          ) as PostJsonOutcome;
+        }
+        if (result.outcome.status === 'not-modified') {
+          // Also unreachable: nothing here sends a conditional request, so
+          // `performRequest` cannot produce one.
+          return failed('http-error', 'The server answered 304 to a request that asked nothing.', {
+            httpStatus: 304,
+          }) as PostJsonOutcome;
+        }
+        return result.outcome;
+      } catch (error) {
+        return failed(
+          'network-error',
+          error instanceof Error ? networkErrorMessage(error) : 'unknown error',
+        ) as PostJsonOutcome;
       }
     },
   };

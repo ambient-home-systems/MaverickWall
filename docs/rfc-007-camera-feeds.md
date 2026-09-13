@@ -97,11 +97,15 @@ not move for cameras.
 Five rules from `CLAUDE.md` set the whole design, and every tier is judged
 against them:
 
-- **Rule 12 — Home Assistant is read-only, and that is a security property.**
-  `client.ts` states flatly that nothing here issues a `POST`. Snapshot and
-  MJPEG are `GET`s and stay inside this. WebRTC signaling is inherently a
-  `POST`/socket exchange (an SDP offer has to be sent *up*), so Tier C crosses
-  this line and must do so *loudly*.
+- **Rule 12 — Home Assistant writes are confined to list data the household
+  authored, and that is a security property.** Snapshot and MJPEG are `GET`s
+  and stay inside this. WebRTC signaling is inherently a `POST`/socket exchange
+  (an SDP offer has to be sent *up*), so Tier C crosses this line and must do so
+  *loudly*. *(This bullet read "`client.ts` states flatly that nothing here
+  issues a `POST`" until RFC 012, which made exactly one — `todo.update_item`,
+  through a frozen two-member allowlist. The premise moves and the conclusion
+  does not: an SDP offer is not list data a household authored, so the shape
+  refuses it without anybody having to re-derive this.)*
 - **The blast-radius model** (§2). The wall must not learn Home Assistant's
   address. This is what makes Tier C's "media goes direct" shape unacceptable
   and Tiers A and B trivially fine.
@@ -740,7 +744,11 @@ catch the failures this design invites, each with the failure it exists for:
 
 - **Recording, history, or a last-known frame on disk.** The wall shows now.
 - **Two-way audio, pan/tilt, or any control.** Every one of those is a write
-  to Home Assistant, and rule 12 is not a setting.
+  to Home Assistant, and rule 12 is not a setting. *(RFC 012 amended rule 12 to
+  permit one write, so the citation moves to the shape clause rather than to the
+  absolute: a pan/tilt call is not "list data the household authored", and the
+  enumeration in RFC 012 §2.2 names `camera` outright so nobody has to argue it
+  from first principles twice.)*
 - **Cameras that are not in Home Assistant.** A plain MJPEG or RTSP address
   would be a user-supplied URL through the SSRF guard, like a calendar feed,
   and could sit behind the same hub — but it is a second source with its own

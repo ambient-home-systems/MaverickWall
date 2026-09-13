@@ -1,7 +1,8 @@
 # Maverick Wall
 
 A family calendar for a wall display. It reads your Home Assistant calendars
-and a few sensors, and it never writes anything back.
+and a few sensors. The only thing it will ever write back is ticking an item off
+a to-do list you chose to show — see **What it will not do**, below.
 
 ## Installing
 
@@ -72,8 +73,12 @@ alone restores everything except your calendar addresses — those are encrypted
 
 ## What it will not do
 
-It cannot control anything in Home Assistant. There are no service calls, no
-switches and no scenes, and the wall receives resolved values — "19.4 °C",
-"Open" — never an entity id and never a way to ask Home Assistant a question of
-its own. If a tablet in your hallway is ever compromised, the worst it can give
-away is your indoor temperature.
+It can change exactly one thing in your house: ticking an item off a to-do list
+you chose to show on a wall. No switches, no scenes, no lights, no locks, no
+covers, no cameras — not switched off by default, but absent from the code
+entirely, and held that way by a test.
+
+The wall itself receives resolved values — "19.4 °C", "Open" — never an entity
+id and never a way to ask Home Assistant a question of its own. If a tablet in
+your hallway is ever compromised, the worst it can do is give away your indoor
+temperature and tick something off your shopping list.

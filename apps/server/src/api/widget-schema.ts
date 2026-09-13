@@ -195,8 +195,10 @@ const widgetConfigFields = z
     image: storedImageName.optional(),
     // Notes — free text the household typed, drawn as written (line breaks kept).
     text: z.string().max(2000).optional(),
-    // To-do — a static checklist. Each item is a line the household typed; the
-    // wall is read-only, so items are shown, not ticked (edited in the admin).
+    // To-do — a static checklist. Each item is a line the household typed, and
+    // it is edited in the admin: these lines are not a Home Assistant list, so
+    // there is nothing on the wall a tick could write back to. RFC 012 adds a
+    // `list` key for that, and the two cases are deliberately one widget.
     items: z.array(z.string().max(200)).max(40).optional(),
     // Format (every widget) — box-level, so it applies whatever the type draws.
     title: z.string().max(60).optional(),

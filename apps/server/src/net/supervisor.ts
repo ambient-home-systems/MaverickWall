@@ -10,10 +10,13 @@ import { FETCH_LIMITS, type Fetcher, type UrlPolicy } from '@maverick-wall/core'
  * when it was. But the supervisor already knows both: it did the port mapping,
  * and it can name the host. This asks.
  *
- * Read-only, like everything that touches Home Assistant here — these are GETs
- * of the add-on's own configuration and the host's network, never a write. It
- * runs once at boot, which is the right granularity: changing a port mapping in
- * Home Assistant restarts the add-on, so a fresh boot re-detects.
+ * Read-only, and here that is the whole of it rather than a house style: these
+ * are GETs of the add-on's own configuration and the host's network, never a
+ * write. Rule 12 permits exactly one write and it is `todo.update_item` through
+ * `modules/homeassistant/client.ts`; nothing in this file is on that path or
+ * ever should be. It runs once at boot, which is the right granularity:
+ * changing a port mapping in Home Assistant restarts the add-on, so a fresh
+ * boot re-detects.
  *
  * Everything degrades to "unknown": a plain `docker run` has no supervisor at
  * all, and a supervisor that is slow or refuses simply leaves the household on

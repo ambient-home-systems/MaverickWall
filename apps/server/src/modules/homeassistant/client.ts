@@ -5,10 +5,11 @@ import type { Keyring } from '../../secrets/keyring.js';
 /**
  * The Home Assistant connection: two credential paths, one client.
  *
- * **Read-only, permanently.** Nothing in this file or anything that calls it
- * issues a POST to Home Assistant. There are no service calls, no toggles and
- * no switches, and that is a security property rather than a missing feature —
- * see the note on the token below.
+ * **Two service calls, one of them a write, and that is the whole of it.**
+ * `HA_SERVICES` below is the allowlist and `callService` is the only thing in
+ * this repository that reaches `Fetcher.postJson` — see rule 12 and RFC 012.
+ * This is a security property rather than a missing feature; the note on the
+ * token below is why it has to be one.
  *
  * Path A is the add-on: the supervisor injects `SUPERVISOR_TOKEN` and proxies
  * Core at a fixed address, so a household who installed the add-on has already
@@ -27,9 +28,21 @@ import type { Keyring } from '../../secrets/keyring.js';
  *     manifest. The display receives resolved *values* — "19.4 °C" — and never
  *     an entity handle, never a proxy endpoint it could query with, and never
  *     the token itself.
- *   - Nothing writes. If a wall tablet in a hallway is compromised, the blast
- *     radius has to be "somebody saw my indoor temperature", not "somebody
- *     opened my garage".
+ *   - Nothing here writes, with one exception in the whole application:
+ *     `todo.update_item`, against a to-do list the household explicitly added
+ *     on the Home Assistant screen, on a screen they explicitly allowed. The
+ *     display still receives resolved values and handles this server minted,
+ *     never an entity id, never a proxy endpoint, and never the token. So the
+ *     blast radius of a compromised wall tablet is "somebody saw my indoor
+ *     temperature and ticked something off my shopping list", and it is not,
+ *     and must never become, "somebody opened my garage".
+ *
+ * Two things follow from the handle that are not obvious. A compromised wall
+ * can tick **only items it has been shown** — it cannot enumerate lists, cannot
+ * reach a list the household did not add, and cannot construct a handle for
+ * one. And the existing test asserting the manifest contains no entity id and
+ * no base URL now covers a write path as well as a read one, which needs no
+ * change to that test and is the point of having had it.
  *
  * Everything returns a value. A Home Assistant that is down is a stale reading
  * and a note, never an exception into manifest assembly.
@@ -234,12 +247,132 @@ export async function call(
 }
 
 /**
+ * Every service call this application may make. There are two.
+ *
+ * This is the mechanism rule 12 is enforced through (RFC 012 §2.2). The rule
+ * permits exactly one **write**, `todo.update_item`, whose whole effect is to
+ * set an item's status on a to-do list the household explicitly added; and the
+ * read it needs to know what those items are. Nothing else — no `light`,
+ * `switch`, `cover`, `lock`, `alarm_control_panel`, `climate`, `scene`,
+ * `script`, `automation` or `camera`, and no `todo.add_item`,
+ * `todo.remove_item` or `todo.remove_completed_items` until one of them is
+ * argued for on its own merits.
+ *
+ * **Frozen, and the freeze is not decoration.** What rule 12 used to buy was
+ * that `grep` answered it: there was no POST to Home Assistant anywhere in this
+ * repository and a person could confirm that in one command. That property is
+ * gone and this constant is what replaces it, so it has to be a thing a test
+ * can read rather than a convention — `ha-write-boundary.test.ts` asserts both
+ * halves, that this holds exactly these two members and that `callService`
+ * below is the only caller of `postJson` in the whole server. A constant cannot
+ * see a second door that does not read it, which is why the test checks for the
+ * door as well as for the list.
+ *
+ * The read carries `?return_response`, which Home Assistant requires for a
+ * service call that answers with anything — appended at the call site rather
+ * than written into the value here, because the value is a *service* and the
+ * query string is how one of them is invoked.
+ */
+export const HA_SERVICES = Object.freeze({
+  read: 'todo/get_items',
+  write: 'todo/update_item',
+} as const);
+
+export type HaService = (typeof HA_SERVICES)[keyof typeof HA_SERVICES];
+
+/**
+ * One POST against Home Assistant, and the only one there is.
+ *
+ * The single caller of `Fetcher.postJson` in this repository. Everything about
+ * the credential is `call`'s: the same bearer header, attached in one place, and
+ * the same `describe` afterwards so a household reads the sentences already
+ * written for a kitchen rather than a second set that drifted from them.
+ *
+ * The service is typed to `HaService`, so a path outside the allowlist is a
+ * compile error rather than a review question — but that is the cheap half. The
+ * expensive half is that this is the only door, and only a test can say so.
+ *
+ * `postJson` refuses a redirect outright, so the token and the body reach the
+ * address the guard approved or they reach nowhere.
+ */
+export async function callService(
+  fetcher: Fetcher,
+  connection: Connection,
+  service: HaService,
+  body: unknown,
+  options: { readonly returnResponse?: boolean; readonly timeoutMs?: number } = {},
+): Promise<CallResult> {
+  const query = options.returnResponse === true ? '?return_response' : '';
+  const response = await fetcher.postJson({
+    url: `${connection.baseUrl}/services/${service}${query}`,
+    policy: connection.policy,
+    maxBytes: FETCH_LIMITS.json,
+    timeoutMs: options.timeoutMs ?? 10_000,
+    headers: { authorization: `Bearer ${connection.token}` },
+    body,
+  });
+
+  if (response.status === 'ok') return { ok: true, body: response.body };
+  return { ok: false, ...describe(response, connection) };
+}
+
+/**
  * A failure, said to somebody standing in a kitchen.
  *
  * A 401 is the one worth spelling out: it is the commonest thing that goes
  * wrong here, it never fixes itself, and "unauthorised" does not tell anybody
  * that their token was revoked when they last reinstalled Home Assistant.
  */
+/**
+ * The one shape of 400 that means we asked wrongly.
+ *
+ * Home Assistant refuses a service call that answers with data unless the
+ * caller said `?return_response`, and it says so in those words. That is the
+ * only failure on this path that is *ours* rather than theirs, so it earns a
+ * sentence of its own: everything else a 400 could be is a fact about their
+ * server or their list, and telling a household to check their token over a
+ * missing query parameter would send them somewhere with nothing wrong with it.
+ *
+ * Matched on the wording, which this file otherwise refuses to do — the gzip
+ * branch in the fetcher and `networkErrorMessage` both key on codes for exactly
+ * that reason. There is no code here to key on: Home Assistant answers a bare
+ * 400 and puts the whole diagnosis in the prose. So the match is deliberately
+ * narrow and failing it costs nothing, because the generic branch below already
+ * carries the upstream's own sentence.
+ */
+function isMissingReturnResponse(body: string | undefined): boolean {
+  if (body === undefined) return false;
+  return /requires responses but caller did not ask for responses/i.test(body);
+}
+
+/**
+ * A stranger's sentence, made safe to draw.
+ *
+ * Home Assistant's `{"message": "..."}` is written by Home Assistant, but the
+ * *contents* can carry a household's own entity names and whatever an
+ * integration put there — and this string is stored on `ha_settings.last_error`,
+ * which the panel carries to the wall as a note. So it is capped and stripped
+ * of control characters the way every other stranger's text on this wall is.
+ */
+function upstreamMessage(body: string | undefined): string | undefined {
+  if (body === undefined || body === '') return undefined;
+  let text: string;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const message =
+      typeof parsed === 'object' && parsed !== null
+        ? (parsed as Record<string, unknown>)['message']
+        : undefined;
+    if (typeof message !== 'string' || message === '') return undefined;
+    text = message;
+  } catch {
+    // Not our shape. A stray HTML error page is not a diagnosis worth drawing.
+    return undefined;
+  }
+  const cleaned = text.replace(/\s+/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return cleaned === '' ? undefined : cleaned.slice(0, 200);
+}
+
 function describe(
   response:
     | {
@@ -248,10 +381,24 @@ function describe(
         message: string;
         networkOptions?: readonly NetworkOption[];
       }
-    | { status: 'failed'; code: string; message: string; httpStatus?: number },
+    | {
+        status: 'failed';
+        code: string;
+        message: string;
+        httpStatus?: number;
+        responseBody?: string;
+      },
   connection: Connection,
 ): { message: string; suggestion?: string; networkOptions?: readonly NetworkOption[] } {
   if (response.status === 'failed' && response.code === 'http-error') {
+    if (response.httpStatus === 400 && isMissingReturnResponse(response.responseBody)) {
+      return {
+        message: 'Home Assistant refused that request because it was not asked correctly.',
+        suggestion:
+          'This one is a fault in Maverick Wall rather than in your Home Assistant — ' +
+          'nothing on your side needs changing. Please report it.',
+      };
+    }
     if (response.httpStatus === 401 || response.httpStatus === 403) {
       return {
         message: 'Home Assistant refused the token.',
@@ -271,6 +418,21 @@ function describe(
           'Give the address of Home Assistant itself, without /api on the end — ' +
           'for example http://192.168.1.10:8123',
       };
+    }
+    /*
+     * Anything else it refused, in its own words.
+     *
+     * Only Home Assistant knows why a particular list or item was refused —
+     * an integration that is reloading, a list that was deleted on somebody's
+     * phone — and "the server answered 400" tells a household nothing they can
+     * act on. This is the reason `postJson` keeps a non-2xx body at all, and it
+     * is the only place a sentence from upstream is drawn rather than replaced.
+     * Only ever reached for a POST: `fetch` carries no `responseBody`, so a GET
+     * falls straight through to the generic line below exactly as before.
+     */
+    const upstream = upstreamMessage(response.responseBody);
+    if (upstream !== undefined) {
+      return { message: `Home Assistant refused that request: ${upstream}` };
     }
   }
 

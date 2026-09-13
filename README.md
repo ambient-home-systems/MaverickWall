@@ -62,8 +62,9 @@ configure first, no account to create anywhere else, no key to paste.
 - **Shift rotation.** Per person, from a repeating pattern or derived from a
   work calendar, with colours that separate at ten feet. A rest day is drawn as
   a rest day, not as a blank.
-- **Home Assistant, read-only.** A few readings beside the calendar. It cannot
-  control anything, and that is deliberate — see below.
+- **Home Assistant, all but read-only.** A few readings beside the calendar.
+  The one thing it will ever change in your house is ticking an item off a
+  to-do list you chose to show, and that is deliberate — see below.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
@@ -140,23 +141,26 @@ Assistant does the authentication), and **the port is for the wall displays** (a
 screen screwed to a wall has no Home Assistant session and connects directly).
 Full detail in [the add-on docs](addon/maverick-wall/DOCS.md).
 
-## Home Assistant: read-only, permanently
-
-It reads. It cannot control anything.
+## Home Assistant: it reads, and can tick one kind of box
 
 A Home Assistant long-lived access token has full control of a home and cannot
 be limited to reading, so the limit lives on this side instead:
 
-- Nothing in this repository sends a write of any kind to Home Assistant. No
-  service calls, no scenes, no switches.
+- The **one** thing this application will ever change in your house is ticking
+  an item off a to-do list you chose to show on a wall. That is
+  `todo.update_item`, and it is the whole list.
+- No lights, switches, covers, locks, alarms, scenes, scripts, automations or
+  cameras. Not switched off by default — there is no code here that can do any
+  of them. The permitted set is a frozen constant with a test asserting nothing
+  leaves it.
 - Your wall receives **resolved values** — "19.4 °C", "Open". Never the token,
   never an entity name, and never an endpoint it could ask its own questions
   through. There is a test asserting exactly that.
 - The token is stored encrypted and never appears in a log, an error message,
   or the diagnostics export.
 
-If a tablet in your hallway is ever compromised, the worst it can give away is
-your indoor temperature.
+If a tablet in your hallway is ever compromised, the worst it can do is give
+away your indoor temperature and tick something off your shopping list.
 
 ## Weather alerts
 
