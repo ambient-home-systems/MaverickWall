@@ -25,6 +25,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
+import { closeFakeHomeAssistants, fakeHomeAssistant, TOKEN } from './fake-home-assistant.js';
 import { applyTemplate } from '../src/api/templates.js';
 import { CLASSIC_TEMPLATE } from '../src/templates/index.js';
 
@@ -42,6 +43,7 @@ async function fresh(options?: Parameters<typeof install>[0]): Promise<Installat
 
 afterAll(async () => {
   for (const one of installations) await one.dispose();
+  await closeFakeHomeAssistants();
   await shutDownBrowser();
 }, TEARDOWN);
 
@@ -1838,6 +1840,112 @@ describe('8 · a box the wall leaves out', () => {
         ).toBe(`Chores — By person widget — not on the wall. ${(after.note ?? '').replace('Not on the wall yet. ', '')}`);
         expect(after.aria).toContain('By person');
         expect(after.aria).not.toContain('Today');
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});
+
+// ===========================================================================
+// 9 · A box whose omission is a fact about its own settings (RFC 012 §6.2)
+// ===========================================================================
+
+describe('9 · a to-do box that names a list', () => {
+  /**
+   * The flag has to follow the household's own edit, without a reload.
+   *
+   * Every other flaggable widget is flagged by its *type* — a Weather box on a
+   * household with no location — and nothing the inspector offers can change
+   * that. A to-do box is flagged by the *list* it names, and the list is picked
+   * in the inspector, so the flag is computed at page load and then has to be
+   * re-derived on every config change or it lies for the rest of the session.
+   * Driven three ways: pick a list (never flagged, the list is watched); un-watch
+   * it in another tab and reload (flagged, with the reason naming Home
+   * Assistant); pick the typed items instead (the flag clears live, no reload).
+   * The accessible name is read off the attribute each time, because a chip
+   * that updates and a name that does not is the fault §8 above recorded.
+   */
+  it(
+    'is flagged only while the list it names is not one the household watches',
+    async () => {
+      const wall = await fresh();
+      const ha = await fakeHomeAssistant();
+      // Through the real forms: the connection, and the list with its first read.
+      const connected = await wall.post('/admin/home-assistant/connect', {
+        base_url: ha.base, token: TOKEN, allow_lan: '1', accept_http: '1',
+      });
+      expect(connected.status).toBe(302);
+      const listed = await wall.post('/admin/home-assistant/lists', { entity_id: 'todo.shopping', label: 'Shopping' });
+      expect(listed.headers.get('location')).toBe('/admin/home-assistant?saved=todo-list-added');
+
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        await addWidget(page, 'To-do');
+        await page.waitForTimeout(400);
+
+        // Typed items: never flagged, whatever the household has set up.
+        const typed = await saysAbout(page, 'To-do');
+        expect(typed.flagged, 'a typed checklist is flagged').toBe(false);
+        expect(typed.aria).toBe(`${typed.label} widget`);
+
+        // Pick the watched list. Still on the wall, and the preview draws it.
+        const picker = page.locator('.le-cfg-field[data-cfg-key="list"] select');
+        await picker.selectOption('todo.shopping');
+        await page.waitForTimeout(600);
+        const picked = await saysAbout(page, 'To-do');
+        expect(picked.flagged, 'a box naming a watched list is flagged').toBe(false);
+        expect(picked.inPreview, 'the preview did not draw the list-backed box').toBe(true);
+        const previewRows = await page.evaluate((id) => {
+          const shadow = document.querySelector<HTMLElement>('.le-preview')?.shadowRoot;
+          return [...(shadow?.querySelectorAll(`[data-widget-id="${id}"] .td-text`) ?? [])].map(
+            (el) => (el.textContent ?? '').trim(),
+          );
+        }, picked.id);
+        // The list's open items, from the household's real manifest, not the
+        // typed lines — through the handle the server hands the picker.
+        expect(previewRows).toEqual(['Milk', 'Milk']);
+
+        // Save, so the box survives a reload.
+        const saved = await page.evaluate(() =>
+          (window as unknown as { mwEditor: { saveCurrent(): Promise<{ ok: boolean }> } }).mwEditor.saveCurrent(),
+        );
+        expect(saved.ok).toBe(true);
+
+        // Another tab stops showing the list; this page reloads.
+        const removed = await wall.post(`/admin/home-assistant/lists/${encodeURIComponent('todo.shopping')}/remove`, {});
+        expect(removed.headers.get('location')).toBe('/admin/home-assistant?saved=todo-list-removed');
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        await page.waitForTimeout(400);
+
+        const flagged = await saysAbout(page, 'To-do');
+        expect(flagged.id, 'the box did not survive the save').toBe(picked.id);
+        expect(flagged.flagged, 'a box naming an un-watched list is not flagged').toBe(true);
+        expect(flagged.flag).toBe('Not on the wall');
+        // The reason names where the list is chosen, and the way out.
+        await page.locator(`.le-overlay .le-widget[data-id="${flagged.id}"]`).click();
+        await page.waitForTimeout(300);
+        const opened = await saysAbout(page, 'To-do');
+        expect(opened.note ?? '').toMatch(/^Not on the wall yet\. .*Home Assistant/);
+        // The accessible name agrees with the chip, read off the attribute.
+        expect(opened.aria).toBe(
+          `${opened.label} widget — not on the wall. ${(opened.note ?? '').replace('Not on the wall yet. ', '')}`,
+        );
+        expect(opened.inPreview, 'the preview drew a box the wall leaves out').toBe(false);
+
+        // Going back to the typed items clears the flag live: the predicate
+        // runs on the config change, and no reload is involved.
+        await page.locator('.le-cfg-field[data-cfg-key="list"] select').selectOption('');
+        await page.waitForTimeout(400);
+        const back = await saysAbout(page, 'To-do');
+        expect(back.id).toBe(picked.id);
+        expect(back.flagged, 'the flag stayed after the list was cleared').toBe(false);
+        expect(back.aria).toBe(`${back.label} widget`);
+        expect(back.inPreview).toBe(true);
       } finally {
         await context.close();
       }

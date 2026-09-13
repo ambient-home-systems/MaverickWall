@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Manifest, ManifestDay } from '../src/api/manifest.js';
+import { todoListHandle, type Manifest, type ManifestDay } from '../src/api/manifest.js';
 import { inkOverrideBody, widgetConfigBody } from '../src/api/widget-schema.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { INK_KEYS, INK_LANE, PANEL_HONOURS, PANEL_IGNORES, withInk } from '../src/epaper/honours.js';
@@ -96,6 +96,27 @@ function manifest(): Manifest {
         fetchedAt: 1,
       },
       mymod: { items: [{ label: 'Bins', value: 'Tuesday' }, { label: 'Tide', value: 'High' }] },
+      /*
+       * A watched to-do list (RFC 012), keyed the way the module keys it — by
+       * the handle the manifest mints from the entity id — with one completed
+       * item, so `showDone` has something to bring back. Without this fixture
+       * the two new `todo` keys could not be proved to move ink at all.
+       */
+      todo: {
+        lists: [
+          {
+            key: todoListHandle('todo.shopping'),
+            name: 'Shopping',
+            canTick: true,
+            open: 2,
+            items: [
+              { id: 'h1', summary: 'Milk', done: false, due: null, position: 0 },
+              { id: 'h2', summary: 'Eggs', done: false, due: null, position: 1 },
+              { id: 'h3', summary: 'Bread', done: true, due: null, position: 2 },
+            ],
+          },
+        ],
+      },
     },
   } as unknown as Manifest;
 }
@@ -129,7 +150,9 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   shift: [{}],
   countdown: [{ target: '2026-12-25' }],
   notes: [{ text: 'Hello there wall' }],
-  todo: [{ items: ['Milk', 'Bread'] }],
+  // Both sources: `showDone` can only move ink on a list-backed widget, and
+  // `list` is proved from the typed base by switching it to the list.
+  todo: [{ items: ['Milk', 'Bread'] }, { list: 'todo.shopping' }],
   weather: [{}],
   homeassistant: [{}],
   external: [{ module: 'mymod' }],
@@ -182,6 +205,8 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   image: [`${'b'.repeat(64)}.png`],
   text: ['Different words entirely'],
   items: [['Cheese']],
+  list: ['todo.shopping'],
+  showDone: [true],
   background: ['#ff0000'],
   opacity: [40],
   corners: ['rounded'],
@@ -296,7 +321,7 @@ describe('the lane the editor offers', () => {
      * words, a picture, a module or a countdown's date, all of which a panel
      * does otherwise honour.
      */
-    for (const key of ['title', 'showTitle', 'text', 'items', 'image', 'module', 'target']) {
+    for (const key of ['title', 'showTitle', 'text', 'items', 'image', 'module', 'target', 'list']) {
       expect(INK_KEYS, key).not.toContain(key);
     }
   });

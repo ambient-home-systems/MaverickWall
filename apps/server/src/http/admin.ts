@@ -76,7 +76,14 @@ import {
   WALL_SIZE_PRESETS,
 } from '../wall-sizes.js';
 import type { LogBuffer } from '../logbuffer.js';
-import { parseBackground, widgetIsSetUp, WIDGET_TYPES } from '../api/manifest.js';
+import {
+  parseBackground,
+  todoListHandle,
+  widgetIsSetUp,
+  WIDGET_TYPES,
+  type PlacedWidgetRow,
+} from '../api/manifest.js';
+import { readTodoLists } from '../modules/todo/index.js';
 import { householdSetUp } from '../modules/index.js';
 import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
 import {
@@ -910,16 +917,78 @@ function whyNotDrawn(db: SqliteDatabase, type: string): string {
       // on Shifts and by nothing else, so naming People here would send
       // somebody to a screen that cannot fix it.
       return 'Set up a rotation on Shifts and this appears.';
+    case 'todo':
+      // Only ever said of a widget that *names* a list — a typed checklist is
+      // never left out — so the sentence is about that list, and it names the
+      // page the list is chosen on and the other way out.
+      return 'Pick a to-do list that is still on Home Assistant, or clear it to type the items here.';
     default:
       return 'Nothing is set up for this yet, so it is left out.';
   }
 }
 
-export function widgetsNotDrawn(db: SqliteDatabase): { type: string; why: string }[] {
+/**
+ * Which of *these* widgets the wall will not draw, and why — keyed by widget id.
+ *
+ * Per widget rather than per type since RFC 012 §6.2: a `todo` widget is left
+ * out or kept by its own `list`, so two boxes of one type can get two answers.
+ * The sentence table above stays keyed by type — the reason is the type's —
+ * and only the result is keyed by the box. The editor is handed both canvases'
+ * rows, because ids are unique across them and a flag has to follow a box
+ * through the orientation toggle.
+ */
+export function widgetsNotDrawn(
+  db: SqliteDatabase,
+  widgets: readonly PlacedWidgetRow[],
+): { id: string; why: string }[] {
   const setUp = householdSetUp(db);
-  return (WIDGET_TYPES as readonly string[])
-    .filter((type) => !widgetIsSetUp(type, setUp))
-    .map((type) => ({ type, why: whyNotDrawn(db, type) }));
+  return widgets
+    .filter((widget) => !widgetIsSetUp(widget, setUp))
+    .map((widget) => ({ id: widget.id, why: whyNotDrawn(db, widget.type) }));
+}
+
+/**
+ * What the editor needs to keep those flags current on its own.
+ *
+ * The flags are computed at page load, and a household picking a list in the
+ * inspector must see the flag clear without a reload — so the editor carries
+ * the facts the server decided from, and `omission.ts` re-derives the same
+ * answer from them on every change. `drawn` is `widgetIsSetUp` asked once per
+ * type with no config, which is the whole answer for every type but `todo`;
+ * `todoLists` is the config-dependent half; `why` is the sentence per type.
+ * All three come from one `householdSetUp`, so a box the server flagged and a
+ * box the editor flags are read from the same instant.
+ */
+export function omissionFacts(db: SqliteDatabase): {
+  drawn: Record<string, boolean>;
+  todoLists: string[];
+  why: Record<string, string>;
+} {
+  const setUp = householdSetUp(db);
+  const drawn: Record<string, boolean> = {};
+  const why: Record<string, string> = {};
+  for (const type of WIDGET_TYPES as readonly string[]) {
+    drawn[type] = widgetIsSetUp({ type }, setUp);
+    why[type] = whyNotDrawn(db, type);
+  }
+  return { drawn, todoLists: [...setUp.todoLists], why };
+}
+
+/**
+ * The watched to-do lists, for the To-do widget's picker.
+ *
+ * Handed to the editor in its bootstrap JSON rather than fetched: the page
+ * already carries every other picker's choices the same way. `id` is what the
+ * widget stores; `key` is what the manifest turns it into, so the editor's
+ * live preview — which renders the household's real manifest — can find the
+ * list the box names without a second opinion about how the handle is made.
+ */
+export function todoListChoices(db: SqliteDatabase): { id: string; name: string; key: string }[] {
+  return readTodoLists(db).map((list) => ({
+    id: list.entityId,
+    name: list.label ?? list.name,
+    key: todoListHandle(list.entityId),
+  }));
 }
 
 /**
@@ -4769,9 +4838,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ...(inkPanels.length === 0
         ? {}
         : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES } }),
+      // The watched Home Assistant to-do lists, for the To-do widget's picker
+      // (RFC 012). Empty when there are none, and the picker says so.
+      todoLists: todoListChoices(deps.db),
       // Which widgets the wall will leave out, and what to do about it. The
-      // editor keeps the box — it has to be grabbable — and flags it.
-      notDrawn: widgetsNotDrawn(deps.db),
+      // editor keeps the box — it has to be grabbable — and flags it. Keyed by
+      // box, over both canvases, and beside it the facts to keep the flags
+      // current as the household edits.
+      notDrawn: widgetsNotDrawn(deps.db, [
+        ...readLayoutWidgets(deps.db, ownerKey, 'portrait'),
+        ...readLayoutWidgets(deps.db, ownerKey, 'landscape'),
+      ]),
+      omission: omissionFacts(deps.db),
     };
 
     // ---- the wall's own header ------------------------------------------

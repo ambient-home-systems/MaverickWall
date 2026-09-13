@@ -51,9 +51,13 @@ import {
 import {
   boxAriaLabel,
   drawnWidgets as drawnOf,
+  notDrawnFor,
+  todoListOf,
   omissionFlag,
   omittedReason as omittedReasonOf,
   type Surface,
+  type NotDrawn,
+  type OmissionFacts,
 } from './omission.js';
 import { inspectorView } from './inspector.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
@@ -104,6 +108,12 @@ interface LayoutState {
   modules: readonly { readonly id: string; readonly name: string }[];
   /** The household, for the Shift and Chores widgets' "whose" pickers. */
   people: readonly { readonly id: string; readonly name: string }[];
+  /**
+   * The watched Home Assistant to-do lists, for the To-do widget's picker
+   * (RFC 012). `id` is what the widget stores; `key` is what the manifest turns
+   * it into, so the preview can find the list the box names.
+   */
+  todoLists: readonly { readonly id: string; readonly name: string; readonly key: string }[];
 }
 
 /** The editor is on the admin page, so its preview reads media behind the session. */
@@ -225,8 +235,16 @@ function boot(): void {
   }
   let ink: InkTables | undefined;
   let lane: 'wall' | 'ink' = 'wall';
-  /** Widget type → why the wall leaves it out. Empty when everything is set up. */
-  const notDrawn = new Map<string, string>();
+  /**
+   * Widget id → why the wall leaves it out. Empty when everything is set up.
+   *
+   * The server's answer at page load. Once `omission` facts arrive beside it
+   * the map is re-derived from them on every read (`notDrawn()` below), so a
+   * household picking a list in the inspector sees the flag change without a
+   * reload; this seed is what an older server's page falls back to.
+   */
+  const notDrawnSeed = new Map<string, string>();
+  let omissionFacts: OmissionFacts | undefined;
 
   let state: LayoutState;
   try {
@@ -245,6 +263,8 @@ function boot(): void {
       readonly panel?: { readonly width?: unknown; readonly height?: unknown };
       readonly ink?: unknown;
       readonly notDrawn?: unknown;
+      readonly omission?: unknown;
+      readonly todoLists?: unknown;
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
@@ -273,11 +293,33 @@ function boot(): void {
     const rawNotDrawn = parsed.notDrawn;
     if (Array.isArray(rawNotDrawn)) {
       for (const entry of rawNotDrawn) {
-        const row = entry as { type?: unknown; why?: unknown };
-        if (typeof row.type === 'string' && typeof row.why === 'string') {
-          notDrawn.set(row.type, row.why);
+        const row = entry as { id?: unknown; why?: unknown };
+        if (typeof row.id === 'string' && typeof row.why === 'string') {
+          notDrawnSeed.set(row.id, row.why);
         }
       }
+    }
+    /*
+     * And the facts the server decided from (RFC 012 §6.2), so the editor can
+     * decide the same way as the household edits: a to-do box's flag follows
+     * the list it names. Read defensively and dropped whole on anything
+     * unexpected — a predicate fed half a table would flag the wrong boxes,
+     * which is worse than the seed alone.
+     */
+    const rawFacts = parsed.omission as
+      | { drawn?: unknown; todoLists?: unknown; why?: unknown }
+      | undefined;
+    if (
+      rawFacts !== undefined &&
+      typeof rawFacts.drawn === 'object' && rawFacts.drawn !== null &&
+      Array.isArray(rawFacts.todoLists) &&
+      typeof rawFacts.why === 'object' && rawFacts.why !== null
+    ) {
+      omissionFacts = {
+        drawn: rawFacts.drawn as Record<string, boolean>,
+        todoLists: rawFacts.todoLists.filter((one): one is string => typeof one === 'string'),
+        why: rawFacts.why as Record<string, string>,
+      };
     }
     // Read defensively and drop the whole block on anything unexpected: a lane
     // built from half a table would offer controls with no meaning, which is
@@ -309,12 +351,21 @@ function boot(): void {
       readings: Array.isArray(parsed.readings) ? (parsed.readings as string[]) : [],
       modules: Array.isArray(parsed.modules) ? (parsed.modules as LayoutState['modules']) : [],
       people: Array.isArray(parsed.people) ? (parsed.people as LayoutState['people']) : [],
+      todoLists: Array.isArray(parsed.todoLists)
+        ? (parsed.todoLists as unknown[]).filter(
+            (one): one is LayoutState['todoLists'][number] =>
+              typeof one === 'object' && one !== null &&
+              typeof (one as { id?: unknown }).id === 'string' &&
+              typeof (one as { name?: unknown }).name === 'string' &&
+              typeof (one as { key?: unknown }).key === 'string',
+          )
+        : [],
     };
   } catch {
     state = {
       screen: null, mode: 'auto', orientation: 'portrait', aspect: 0.5625, widgets: [],
       stash: { aspect: 1.7778, widgets: [] },
-      calendars: [], readings: [], modules: [], people: [],
+      calendars: [], readings: [], modules: [], people: [], todoLists: [],
     };
   }
 
@@ -1286,7 +1337,7 @@ function boot(): void {
     // font-size of its own.
     renderFreeform(previewWall, model, {
       aspect: state.aspect,
-      widgets: drawnWidgets().map((w) => ({ ...w })),
+      widgets: previewWidgets(),
       ...(state.background !== undefined ? { background: state.background } : {}),
     }, EDITOR_MEDIA_BASE);
 
@@ -1610,9 +1661,39 @@ function boot(): void {
    * flagged "Not on the wall" is two sentences on one screen contradicting each
    * other.
    */
-  const drawnWidgets = (): readonly Widget[] => drawnOf(state.widgets, notDrawn);
+  /**
+   * The flags, as of now.
+   *
+   * Re-derived from the server's facts on every read rather than kept, so a box
+   * added a moment ago, a list picked in the inspector, or an undo that put a
+   * list back all get the answer the wall would give — with no hook anybody
+   * has to remember to call after a mutation. Both canvases are asked, since a
+   * flag has to follow a box through the orientation toggle.
+   */
+  const notDrawn = (): NotDrawn =>
+    omissionFacts === undefined
+      ? notDrawnSeed
+      : notDrawnFor([...state.widgets, ...state.stash.widgets], omissionFacts);
+  const drawnWidgets = (): readonly Widget[] => drawnOf(state.widgets, notDrawn());
   const omittedReason = (widget: Widget): string | undefined =>
-    omittedReasonOf(widget, state.widgets, notDrawn);
+    omittedReasonOf(widget, state.widgets, notDrawn());
+
+  /**
+   * The widgets as the wall's own renderer needs them for the preview.
+   *
+   * A to-do box stores the list's entity id and the manifest hands the wall a
+   * handle in its place (`displayConfig`, server side), keying the to-do panel
+   * the same way. The preview renders the real manifest through the wall's own
+   * `renderFreeform`, so the box has to say the handle here too — substituted
+   * from what the server handed the picker, never derived: the editor has no
+   * opinion about how a handle is made, it only repeats one it was given.
+   */
+  const previewWidgets = (): Widget[] =>
+    drawnWidgets().map((w) => {
+      const list = w.type === 'todo' ? todoListOf(w.config) : undefined;
+      const known = list === undefined ? undefined : state.todoLists.find((one) => one.id === list);
+      return known === undefined ? { ...w } : { ...w, config: { ...w.config, list: known.key } };
+    });
 
   /**
    * What this editor is arranging, in the household's word for it.
@@ -2080,6 +2161,31 @@ function boot(): void {
       const name = describeWidget(widget);
       const label = box.querySelector('.le-widget-label');
       if (label !== null) label.textContent = name;
+      const why = omittedReason(widget);
+      /*
+       * The flag too, in place (RFC 012 §6.2). A to-do box is flagged by the
+       * list its own settings name, and the list is picked in the inspector —
+       * so the flag can change on a config write, and until this it was only
+       * ever written where the box is *built*. Measured: a box whose list was
+       * un-watched stayed marked "Not on the wall" after the household chose
+       * the typed items instead, while the preview beneath it had already
+       * started drawing the box. The class was stale and the pixels were not,
+       * which is the shape of every fault this project records by measuring.
+       */
+      box.classList.toggle('is-not-drawn', why !== undefined);
+      const flag = box.querySelector<HTMLElement>('.le-widget-flag');
+      if (why === undefined) {
+        flag?.remove();
+      } else if (flag === null) {
+        const made = document.createElement('span');
+        made.className = 'le-widget-flag';
+        made.textContent = omissionFlag(surfaceWord());
+        // Before the handle, where `buildBox` puts it, so the box's children
+        // keep one order however the flag arrived.
+        const handle = box.querySelector('.le-handle');
+        if (handle !== null) box.insertBefore(made, handle);
+        else box.appendChild(made);
+      }
       /*
        * The accessible name too, through the same `boxAriaLabel` the box was
        * built with. It used to be skipped on a flagged box, because the longer
@@ -2088,7 +2194,7 @@ function boot(): void {
        * showed the new name on its chip and went on announcing the old one.
        * The visible half updating is exactly what hid it.
        */
-      box.setAttribute('aria-label', boxAriaLabel(name, omittedReason(widget), surfaceWord()));
+      box.setAttribute('aria-label', boxAriaLabel(name, why, surfaceWord()));
     }
     for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
       const widget = state.widgets.find((one) => one.id === row.dataset['id']);
@@ -2415,7 +2521,7 @@ function boot(): void {
       lane,
       inkAvailable: ink !== undefined,
       tab: inspectorTab,
-      notDrawn,
+      notDrawn: notDrawn(),
       surface: surfaceWord(),
       ...(selected === undefined ? {} : { drawnTier: drawnTierOf(selected) }),
     });
@@ -2874,8 +2980,52 @@ function boot(): void {
     configPanel.appendChild(note);
   }
 
+  /**
+   * The To-do widget: the lines the household types, or a Home Assistant list
+   * (RFC 012 phase 1).
+   *
+   * One picker decides which. Choosing a list hides the textarea and choosing
+   * "The items typed below" hides the list's switch — but a stored `items`
+   * array is **left untouched** either way, so a household who tries a list
+   * and comes back finds their lines where they left them. The wall reads
+   * `list` absent as the typed items, so clearing the picker is the whole of
+   * going back.
+   */
   function buildTodoConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const field = cfgField('Items (one per line)');
+    const chosen = todoListOf(cfg);
+    const picker = cfgField('Show', 'list');
+    const select = document.createElement('select');
+    const typed = document.createElement('option');
+    typed.value = '';
+    typed.textContent = 'The items typed below';
+    select.appendChild(typed);
+    for (const list of state.todoLists) {
+      const opt = document.createElement('option');
+      opt.value = list.id;
+      opt.textContent = `${list.name} — from Home Assistant`;
+      if (chosen === list.id) opt.selected = true;
+      select.appendChild(opt);
+    }
+    // A list this page was not told about — un-watched since the widget was
+    // saved — is still shown as chosen, so the picker says what is stored
+    // rather than quietly falling back to the first option.
+    if (chosen !== undefined && !state.todoLists.some((list) => list.id === chosen)) {
+      const gone = document.createElement('option');
+      gone.value = chosen;
+      gone.textContent = 'A list no longer on Home Assistant';
+      gone.selected = true;
+      select.appendChild(gone);
+    }
+    picker.appendChild(select);
+    configPanel.appendChild(picker);
+    if (state.todoLists.length === 0) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'To show a Home Assistant to-do list, add one on the Home Assistant page first.';
+      configPanel.appendChild(note);
+    }
+
+    const field = cfgField('Items (one per line)', 'items');
     const area = document.createElement('textarea');
     area.rows = 6;
     area.maxLength = 4000;
@@ -2890,6 +3040,28 @@ function boot(): void {
     });
     field.appendChild(area);
     configPanel.appendChild(field);
+
+    const done = switchRow(
+      'Show ticked items too',
+      'Struck through, under the ones still to do. Off, the list is only what is left.',
+      cfg['showDone'] === true,
+      (on) => setConfig(widget, 'showDone', on ? true : undefined),
+      'showDone',
+    );
+    configPanel.appendChild(done);
+
+    const showFor = (list: string | undefined): void => {
+      field.hidden = list !== undefined;
+      done.hidden = list === undefined;
+    };
+    showFor(chosen);
+    select.addEventListener('change', () => {
+      const list = select.value === '' ? undefined : select.value;
+      // The typed items stay in the config whatever is chosen: the key that
+      // decides which source draws is `list`, and only it is written here.
+      setConfig(widget, 'list', list);
+      showFor(list);
+    });
   }
 
   /**
@@ -3668,7 +3840,7 @@ function boot(): void {
       lane,
       inkAvailable: ink !== undefined,
       tab: inspectorTab,
-      notDrawn,
+      notDrawn: notDrawn(),
       surface: surfaceWord(),
       ...(drawnTierOf(selected) === undefined ? {} : { drawnTier: drawnTierOf(selected) }),
     });

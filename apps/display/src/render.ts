@@ -1219,7 +1219,7 @@ export function renderWidget(
     case 'notes':
       return renderNotesWidget(config);
     case 'todo':
-      return renderTodoWidget(config);
+      return renderTodoWidget(model, config);
     case 'chores':
       return renderChoresWidget(model, config);
     case 'image':
@@ -1276,16 +1276,59 @@ function renderNotesWidget(config: unknown): HTMLElement {
  * edited in the admin. Each line is drawn through `textContent`, so an item can
  * carry no markup.
  */
-function renderTodoWidget(config: unknown): HTMLElement {
-  const items = configStrings(widgetConfig(config)['items']).filter((item) => item.trim() !== '');
-  if (items.length === 0) {
-    return el('div', 'cd-empty', 'Add items in this widget’s options.');
+/**
+ * The To-do widget: the lines the household typed, or a Home Assistant list.
+ *
+ * One widget, two sources, one reading of the key that decides between them
+ * (RFC 012 §6.1): `list` absent — or empty — means the typed `items`, drawn
+ * exactly as they always were; present, it is the handle the manifest turned
+ * the household's entity id into, and the rows are that list's. The panel
+ * (`epaper/widgets.ts`) reads the same key the same way, which is the whole
+ * lesson of `shifts[0]`, `display_mode`, `cellEvents` and `mode`.
+ *
+ * Both sources draw the same `.td` rows, so the tier table and the geometric
+ * belt that cut a typed list between rows cut a Home Assistant one the same
+ * way. Completed items are hidden unless `showDone`; nothing here ticks, and
+ * the box is a marker rather than a control until phase 2 makes it one.
+ */
+function renderTodoWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const c = widgetConfig(config);
+  const key = typeof c['list'] === 'string' && c['list'] !== '' ? (c['list'] as string) : undefined;
+
+  if (key === undefined) {
+    const items = configStrings(c['items']).filter((item) => item.trim() !== '');
+    if (items.length === 0) {
+      return el('div', 'cd-empty', 'Add items in this widget’s options.');
+    }
+    const list = el('div', 'td');
+    for (const item of items) {
+      const row = el('div', 'td-row');
+      row.appendChild(el('span', 'td-box'));
+      row.appendChild(el('span', 'td-text', item));
+      list.appendChild(row);
+    }
+    return list;
+  }
+
+  const found = model.todo.find((list) => list.key === key);
+  if (found === undefined) {
+    // The manifest omits a widget whose list is no longer watched, so this is
+    // reached only in the minute between the two — say so rather than draw a
+    // typed list the household did not ask for.
+    return el('div', 'cd-empty', 'That list is not on Home Assistant any more.');
+  }
+  const showDone = c['showDone'] === true;
+  const rows = found.items.filter((item) => showDone || !item.done);
+  if (rows.length === 0) {
+    return el('div', 'cd-empty', found.open === 0 && found.items.length === 0
+      ? 'Nothing on the list.'
+      : 'Nothing left to do.');
   }
   const list = el('div', 'td');
-  for (const item of items) {
-    const row = el('div', 'td-row');
-    row.appendChild(el('span', 'td-box'));
-    row.appendChild(el('span', 'td-text', item));
+  for (const item of rows) {
+    const row = el('div', `td-row${item.done ? ' is-done' : ''}`);
+    row.appendChild(el('span', `td-box${item.done ? ' td-box-on' : ''}`));
+    row.appendChild(el('span', 'td-text', item.summary));
     list.appendChild(row);
   }
   return list;

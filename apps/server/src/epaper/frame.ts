@@ -134,8 +134,15 @@ import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
  * a span bar's label — is drawn one stroke heavier at the same advance, which
  * is the browser wall's `--f-grade` on a bitmap. No metric moves with it, by
  * construction, because a metric change is a reflow.
+ *
+ * 9: the To-do widget draws a Home Assistant list (RFC 012 phase 1). A widget
+ * whose `list` names a watched list draws that list's open items — and, with
+ * `showDone`, the completed ones as filled boxes — where before it drew the
+ * typed `items` whatever the config said. A widget with no `list` is
+ * byte-identical to 8, which `epaper-todo-widget.test.ts` pins; only a panel
+ * with a list-backed widget on it moves.
  */
-export const EPAPER_RENDERER_VERSION = 8;
+export const EPAPER_RENDERER_VERSION = 9;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

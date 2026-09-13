@@ -29,7 +29,9 @@ import {
   layoutEditorMount,
   navModules,
   pairingSecret,
+  omissionFacts,
   seenDot,
+  todoListChoices,
   widgetsNotDrawn,
   type AdminDeps,
 } from './admin.js';
@@ -1284,9 +1286,16 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       // The Shift widget's "whose rota" is real here: a panel filters by person
       // exactly as the wall does, and draws a line each when several are on.
       people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
+      // A panel draws a list the way a wall does (`drawTodo`), so the picker
+      // is real here too.
+      todoLists: todoListChoices(deps.db),
       // The panel omits the same widgets the wall does, so it says the same
-      // thing about them.
-      notDrawn: widgetsNotDrawn(deps.db),
+      // thing about them — per box, with the facts to keep it current.
+      notDrawn: widgetsNotDrawn(deps.db, [
+        ...readLayoutWidgets(deps.db, id, 'portrait'),
+        ...readLayoutWidgets(deps.db, id, 'landscape'),
+      ]),
+      omission: omissionFacts(deps.db),
     };
 
     /*

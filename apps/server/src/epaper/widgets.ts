@@ -17,7 +17,7 @@
  */
 import { daysBetween } from '@maverick-wall/core';
 
-import type { Manifest } from '../api/manifest.js';
+import { todoListHandle, todoListOf, type Manifest } from '../api/manifest.js';
 
 import { drawText, measureText, rungAtMost, rungStep, shorterRung, tallerRung, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
@@ -435,21 +435,102 @@ function compactLine(rows: readonly LadderRow<ShiftField>[]): string {
   return asciiTitle(parts.join('  '));
 }
 
-function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
-  const items = list(config, 'items').filter((x): x is string => typeof x === 'string');
-  if (items.length === 0) {
-    drawLines(fb, m, ['(nothing on the list)'], box, rungToFit('(nothing on the list)', box.w, m.body), 'left');
-    return;
+/** One row of a to-do list as this renderer draws it: words, and whether it is ticked. */
+interface TodoLine {
+  readonly summary: string;
+  readonly done: boolean;
+}
+
+/**
+ * The to-do panel's lists, read defensively — `readChorePanel`'s shape.
+ *
+ * Keyed by the handle the manifest minted (`todoListHandle`), never an entity
+ * id: the panel is the same slice a wall receives, and this renderer resolves
+ * the widget's stored entity id to that handle itself, because it draws from
+ * the household's rows rather than from the manifest's layout.
+ */
+function readTodoPanel(panel: unknown): Map<string, { open: number; items: TodoLine[] }> {
+  const lists = new Map<string, { open: number; items: TodoLine[] }>();
+  if (typeof panel !== 'object' || panel === null) return lists;
+  const raw = (panel as { lists?: unknown }).lists;
+  if (!Array.isArray(raw)) return lists;
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const list = entry as { key?: unknown; open?: unknown; items?: unknown };
+    if (typeof list.key !== 'string' || list.key === '') continue;
+    const items: TodoLine[] = [];
+    for (const candidate of Array.isArray(list.items) ? list.items : []) {
+      if (typeof candidate !== 'object' || candidate === null) continue;
+      const item = candidate as { summary?: unknown; done?: unknown };
+      if (typeof item.summary !== 'string' || item.summary === '') continue;
+      items.push({ summary: item.summary, done: item.done === true });
+    }
+    lists.set(list.key, {
+      open: typeof list.open === 'number' && Number.isFinite(list.open) ? list.open : items.length,
+      items,
+    });
   }
+  return lists;
+}
+
+/**
+ * The To-do widget: the lines the household typed, or a Home Assistant list.
+ *
+ * `list` is read exactly as `render.ts` reads it — absent, or empty, means the
+ * typed `items`, present means that list — through `todoListOf`, the same
+ * function the manifest's omission uses. A stored key is one value read one
+ * way, which is the bug this repository has shipped five times (`shifts[0]`,
+ * `display_mode`, `cellEvents`, `mode`, `pillMinCell`) and the reason the
+ * absent-key frame is pinned byte-identical to the frame before this existed.
+ *
+ * Both sources draw the same rows. A completed item, when `showDone` asks for
+ * it, is a filled box rather than a struck line: at one bit a strike through
+ * 8px type is a smudge, and solid against empty is the strongest contrast the
+ * medium has — the chore board's own reasoning. Summaries go through
+ * `asciiTitle` like every stranger's string here.
+ */
+function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
+  const note = (text: string): void => {
+    drawLines(fb, m, [text], box, rungToFit(text, box.w, m.body), 'left');
+  };
+  const entityId = todoListOf(config);
+
+  let rows: TodoLine[];
+  if (entityId === undefined) {
+    rows = list(config, 'items')
+      .filter((x): x is string => typeof x === 'string')
+      .map((summary) => ({ summary, done: false }));
+    if (rows.length === 0) {
+      note('(nothing on the list)');
+      return;
+    }
+  } else {
+    const found = readTodoPanel(panel).get(todoListHandle(entityId));
+    if (found === undefined) {
+      note('(list not on Home Assistant)');
+      return;
+    }
+    const showDone = config['showDone'] === true;
+    rows = found.items.filter((item) => showDone || !item.done);
+    if (rows.length === 0) {
+      note(found.open === 0 && found.items.length === 0 ? '(nothing on the list)' : '(nothing left to do)');
+      return;
+    }
+  }
+
   const rowH = m.widget.listRowH;
   const textX = m.bullet + m.bulletGap;
   let y = box.y;
-  for (const item of items) {
+  for (const item of rows) {
     // The row is drawn when its *box* fits, which is the bullet's own bottom —
     // the same guard the agenda uses, in the same terms.
     if (y + m.bulletDrop + m.bullet > box.y + box.h) break;
     fb.strokeRect(box.x, y + m.bulletDrop, m.bullet, m.bullet, true);
-    drawText(fb, box.x + textX, y, fit(asciiTitle(item), box.w - textX, { rung: m.body }), {
+    if (item.done) {
+      const inset = m.widget.tickInset;
+      fb.fillRect(box.x + inset, y + m.bulletDrop + inset, m.widget.tickDot, m.widget.tickDot, true);
+    }
+    drawText(fb, box.x + textX, y, fit(asciiTitle(item.summary), box.w - textX, { rung: m.body }), {
       rung: m.body,
     });
     y += rowH;
@@ -1181,7 +1262,7 @@ function drawWidget(
         alignOf(config),
       );
     case 'todo':
-      return drawTodo(fb, m, box, config);
+      return drawTodo(fb, m, box, manifest.panels['todo'], config);
     case 'chores':
       return drawChores(fb, m, box, manifest.panels['chores'], config);
     case 'weather':

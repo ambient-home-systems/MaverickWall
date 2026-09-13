@@ -306,6 +306,56 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('gives a screen and a calendar the to-do tables and switch, with nothing on either (0041)', () => {
+    /*
+     * RFC 012's one migration: two additive tables and one additive column,
+     * walked with a screen paired at 0000 and a Home Assistant calendar added
+     * once `kind` existed (0009) — the two rows a household running this
+     * feature actually has. What has to hold is that the screen's new switch
+     * reaches it as **false**, since `allow_todo` is read by nothing in phase 1
+     * and a default of true would arm every wall in the world for a write that
+     * arrives next release; that the calendar's `kind` is still what it was,
+     * because 0041 sits on the same table 0009 recreated; and that the tables
+     * exist, are empty, and carry the unique index the poll's upsert relies on.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    let addedCalendar = false;
+    for (const entry of entries) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0000')) {
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES ('scr-todo', 'Kitchen', 'hash-3', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+      }
+      if (entry.tag.startsWith('0009')) {
+        db.prepare(
+          `INSERT INTO calendar_sources (id, name, kind, ha_entity_id, color, created_at, updated_at)
+           VALUES ('src-ha', 'Bins', 'homeassistant', 'calendar.bins', '#AA3311', ?, ?)`,
+        ).run(stamp, stamp);
+        addedCalendar = true;
+      }
+    }
+    expect(addedCalendar).toBe(true);
+
+    expect(
+      db.prepare(`SELECT allow_todo AS allowTodo, allow_chores AS allowChores FROM screens WHERE id = 'scr-todo'`).get(),
+    ).toEqual({ allowTodo: 0, allowChores: 0 });
+    expect(
+      db.prepare(`SELECT kind, ha_entity_id AS entityId FROM calendar_sources WHERE id = 'src-ha'`).get(),
+    ).toEqual({ kind: 'homeassistant', entityId: 'calendar.bins' });
+
+    expect(db.prepare('SELECT count(*) AS n FROM ha_todo_lists').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM ha_todo_items').get()).toEqual({ n: 0 });
+    const indexes = db.pragma('index_list(ha_todo_items)') as { name: string; unique: number }[];
+    expect(indexes.find((index) => index.name === 'ha_todo_items_entity_uid_idx')?.unique).toBe(1);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    db.close();
+  });
+
   it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
     // A wall arranged before the two-canvas split has widgets with no
     // orientation column. The 0024 migration adds it with a `portrait` default,

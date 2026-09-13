@@ -2,6 +2,7 @@ import type { SqliteDatabase } from '../db/open.js';
 import type { HouseholdSetUp } from '../api/manifest.js';
 import { readyModuleKeys, type PanelModule } from './registry.js';
 import { choresModule } from './chores/index.js';
+import { todoModule, watchedTodoListIds } from './todo/index.js';
 import { weatherModule } from './weather/index.js';
 import { haModule } from './homeassistant/index.js';
 import { calendarModule } from './calendar/index.js';
@@ -19,6 +20,7 @@ export const MODULES: readonly PanelModule[] = [
   haModule,
   calendarModule,
   choresModule,
+  todoModule,
 ];
 
 /** First-party plus whatever the household has registered. */
@@ -45,5 +47,12 @@ export function householdSetUp(db: SqliteDatabase, modules = allModules(db)): Ho
   const row = db
     .prepare(`SELECT shift_enabled AS shiftEnabled FROM household_settings WHERE id = 'singleton'`)
     .get() as { shiftEnabled: number } | undefined;
-  return { modules: readyModuleKeys(modules, db), shift: row?.shiftEnabled === 1 };
+  return {
+    modules: readyModuleKeys(modules, db),
+    shift: row?.shiftEnabled === 1,
+    // The one prerequisite that lives on a widget's own config rather than on
+    // a type (RFC 012 §6.2), read here beside the others so every surface that
+    // asks "is this set up" gets the lists from the same instant.
+    todoLists: watchedTodoListIds(db),
+  };
 }

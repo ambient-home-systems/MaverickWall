@@ -22,6 +22,17 @@ import {
   writeHaSettings,
 } from '../modules/homeassistant/store.js';
 import { deleteRule, readMatch, readRuleRows, setRuleEnabled, writeRule } from '../api/rules.js';
+import {
+  MAX_WATCHED_LISTS,
+  moveTodoList,
+  parseTodoEntities,
+  pollTodoList,
+  readTodoLists,
+  unwatchTodoList,
+  watchTodoList,
+  type TodoEntity,
+  type TodoListRow,
+} from '../modules/todo/index.js';
 
 /** JSON that may not be JSON. A rule nobody can read is a rule nobody can delete. */
 function safeJson(value: string | null): unknown {
@@ -41,7 +52,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
-import { ago, navModules, type AdminDeps } from './admin.js';
+import { ago, navModules, reorderMenuItems, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
 import { requiredNetworkOptions, type NetworkOption } from '@maverick-wall/core';
 
@@ -98,6 +109,12 @@ const addManyBody = z.object({
 const calendarSourceBody = z.object({
   entity_id: text('A calendar', 255),
   name: optionalText(80),
+});
+
+/** A to-do list to watch: its entity id, and what the household calls it. */
+const todoListBody = z.object({
+  entity_id: text('A to-do list', 255),
+  label: optionalText(60),
 });
 
 const ruleBody = z.object({
@@ -210,6 +227,8 @@ interface LiveState {
   readonly host: string | null;
   readonly entities: readonly HaState[];
   readonly calendars: readonly { entityId: string; name: string }[];
+  /** The `todo.*` entities in the same `/api/states` the readings picker reads. */
+  readonly todo: readonly TodoEntity[];
   readonly problem: PageError | null;
 }
 
@@ -224,6 +243,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         host: null,
         entities: [],
         calendars: [],
+        todo: [],
         problem:
           resolved.code === 'not-configured'
             ? null
@@ -242,6 +262,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         host: connection.host,
         entities: [],
         calendars: [],
+        todo: [],
         problem: {
           message: states.message,
           ...(states.suggestion !== undefined ? { suggestion: states.suggestion } : {}),
@@ -261,6 +282,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       host: connection.host,
       entities,
       calendars: list.ok ? parseCalendarList(list.body) : [],
+      // The same document, read the other way: `parseStates` keeps the domains
+      // a reading can be and drops `todo`, and this keeps `todo` alone.
+      todo: parseTodoEntities(states.body),
       problem: null,
     };
   }
@@ -580,6 +604,111 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return savedRedirect(c, '/admin/calendars', 'ha-calendar-added');
   });
 
+  /**
+   * Watch a to-do list, and read it once before saying so (RFC 012).
+   *
+   * The first read runs inline rather than waiting for the job, so the token
+   * on the redirect is a claim about a branch that has already happened: a list
+   * whose first read fails is stored — its row shows the failure and the job
+   * keeps trying — and the page is rendered with that failure, never with
+   * "added" over a list nothing has read. The same shape as `connect`, which
+   * stores the address and then reports the token it could not prove.
+   */
+  app.post('/admin/home-assistant/lists', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const picked = parse(todoListBody, body);
+    if (!picked.ok) return render(c, { message: picked.message }, 400);
+    const entityId = picked.value.entity_id;
+    if (!/^todo\.[a-z0-9_]+$/.test(entityId)) {
+      return render(c, { message: 'Choose a to-do list from the list.' }, 400);
+    }
+
+    const live = await look();
+    // A house that cannot be reached is not a house with no lists in it.
+    if (live.problem !== null) return render(c, live.problem, 400);
+    const known = live.todo.find((entity) => entity.entityId === entityId);
+    if (known === undefined) {
+      return render(c,
+        {
+          message: 'Home Assistant has no to-do list by that name.',
+          suggestion: 'Pick one from the list below; they come from your Home Assistant as it is now.',
+        },
+        400,
+      );
+    }
+
+    const watched = watchTodoList(deps.db, {
+      entityId,
+      name: known.name,
+      label: picked.value.label ?? null,
+      supportsUpdate: known.supportsUpdate,
+    }, now());
+    if (!watched.ok) return render(c, { message: watched.message }, 400);
+
+    const read = await pollTodoList(
+      { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: now() },
+      entityId,
+    );
+    if (!read.ok) {
+      return render(c,
+        {
+          message: `Added, but the list could not be read: ${read.message}`,
+          suggestion: 'It stays on this page and is tried again every minute. Nothing shows on a wall until a read works.',
+        },
+        400,
+      );
+    }
+    return savedRedirect(c, '/admin/home-assistant', 'todo-list-added');
+  });
+
+  /**
+   * Removing a list asks first — the same GET-then-POST shape as every other
+   * destructive control here. The id rides in the path, which is what
+   * `destructive()` expects and the readings' query-parameter form cannot give
+   * it (see the note in `readings`).
+   */
+  app.get('/admin/home-assistant/lists/:entity/remove', (c: Context) => {
+    const entityId = decodeURIComponent(c.req.param('entity') ?? '');
+    const row = readTodoLists(deps.db).find((list) => list.entityId === entityId);
+    if (row === undefined) return c.redirect('/admin/home-assistant', 302);
+    return c.html(
+      confirmDestroyPage({
+        self: selfHref(c),
+        modules: navModules(deps.db),
+        title: 'Remove to-do list',
+        nav: 'homeassistant',
+        heading: `Stop showing “${row.label ?? row.name}”?`,
+        intro:
+          'It comes off every wall and panel that shows it, and any To-do widget set ' +
+          'to it is left out until you pick another list there. The list itself stays ' +
+          'in Home Assistant, untouched.',
+        destroyAction: `admin/home-assistant/lists/${encodeURIComponent(entityId)}/remove`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/home-assistant',
+        cancelLabel: 'Keep showing it',
+      }),
+    );
+  });
+
+  app.post('/admin/home-assistant/lists/:entity/remove', (c: Context) => {
+    const entityId = decodeURIComponent(c.req.param('entity') ?? '');
+    // Only a list that is watched can be removed, and the token says so: a
+    // POST for an unknown id lands back on the page with nothing announced.
+    const known = readTodoLists(deps.db).some((list) => list.entityId === entityId);
+    if (!known) return c.redirect('/admin/home-assistant', 302);
+    unwatchTodoList(deps.db, entityId);
+    return savedRedirect(c, '/admin/home-assistant', 'todo-list-removed');
+  });
+
+  app.post('/admin/home-assistant/lists/:entity/move', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const entityId = decodeURIComponent(c.req.param('entity') ?? '');
+    const dir = body['dir'];
+    if (dir !== 'up' && dir !== 'down') return c.redirect('/admin/home-assistant', 302);
+    moveTodoList(deps.db, entityId, dir, now());
+    return savedRedirect(c, '/admin/home-assistant', 'order-saved');
+  });
+
   app.post('/admin/home-assistant/rules', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
 
@@ -700,6 +829,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         boundary() +
         (connected ? readings(live) : '') +
         (connected ? calendars(live) : '') +
+        (connected ? todoLists(live) : '') +
         (connected ? rules(live, template) : ''),
     });
   }
@@ -990,6 +1120,102 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           }) +
           `<button type="submit">Add calendar</button></form>`,
     );
+  }
+
+  /**
+   * The to-do lists (RFC 012 phase 1): what is watched, and what could be.
+   *
+   * Built from the component layer and nothing else — a `section`, a `listRow`
+   * per list with its state as a `tag` and its actions in the ⋮ (reorder above
+   * the rule, `destructive()` below it, the one rule every ordered list here
+   * follows), an `emptyState` when there is none, and the add form from the
+   * field helpers. The picker is the same `/api/states` datalist the readings
+   * form uses, read for `todo.*` alone.
+   *
+   * The section says plainly what this phase is: a wall *shows* the list and
+   * cannot tick anything off it yet. A checklist that cannot be checked reads
+   * as a bug rather than a policy unless somebody is told, and this is where
+   * they are.
+   */
+  function todoLists(live: LiveState): string {
+    const watched = readTodoLists(deps.db);
+    const watchedIds = new Set(watched.map((list) => list.entityId));
+
+    const rows = watched
+      .map((list, index) => listRowFor(list, index === 0, index === watched.length - 1))
+      .join('');
+
+    const available = live.todo.filter((entity) => !watchedIds.has(entity.entityId));
+    const options = available
+      .map(
+        (entity) =>
+          `<option value="${escapeHtml(entity.entityId)}">` +
+          `${escapeHtml(entity.name)}${entity.supportsUpdate ? '' : ' — read-only in Home Assistant'}</option>`,
+      )
+      .join('');
+
+    const full = watched.length >= MAX_WATCHED_LISTS;
+    const addForm = full
+      ? `<p class="hint">A wall reads at most ${MAX_WATCHED_LISTS} lists. Remove one to add another.</p>`
+      : available.length === 0
+        ? emptyState(
+            live.todo.length === 0
+              ? 'Home Assistant has no to-do lists.'
+              : 'Every to-do list Home Assistant has is already shown.',
+          )
+        : `<form method="post" action="admin/home-assistant/lists">` +
+          textField({
+            label: 'To-do list',
+            name: 'entity_id',
+            required: true,
+            placeholder: 'Start typing a name',
+            attrs: 'list="ha-todo-lists" autocomplete="off"',
+          }) +
+          `<datalist id="ha-todo-lists">${options}</datalist>` +
+          textField({
+            label: 'Call it',
+            name: 'label',
+            placeholder: 'Leave empty to use its own name',
+            attrs: 'maxlength="60"',
+          }) +
+          `<button type="submit">Show this list</button></form>`;
+
+    return section(
+      'To-do lists',
+      'A Home Assistant to-do list, read every minute, drawn by the To-do widget on ' +
+        'any wall or panel you put one on. The wall shows the list and cannot tick ' +
+        'anything off it yet — that is the next release, and it will be a switch per wall.',
+      (rows === '' ? emptyState('No to-do lists are shown yet.') : rows) + addForm,
+    );
+  }
+
+  /** One watched list: its name, its state as a word, and its actions in the ⋮. */
+  function listRowFor(list: TodoListRow, first: boolean, last: boolean): string {
+    const name = list.label ?? list.name;
+    const enc = encodeURIComponent(list.entityId);
+    const state =
+      list.lastError !== null
+        ? tag('Not reading', 'danger')
+        : list.lastFetchedAt === null
+          ? tag('Not read yet')
+          : list.supportsUpdate
+            ? tag('Can be ticked', 'ok')
+            : tag('Read-only', 'warn');
+    const detail =
+      list.lastError !== null
+        ? list.lastError
+        : list.lastFetchedAt === null
+          ? 'Waiting for its first read.'
+          : `Read ${ago(list.lastFetchedAt, now())}.`;
+    const menu =
+      `<details class="ovf" data-overflow>` +
+      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+      `aria-label="More actions for ${escapeHtml(name)}" title="More">${icon('more')}</summary>` +
+      `<div class="ovf-menu" role="menu">` +
+      reorderMenuItems(`admin/home-assistant/lists/${enc}/move`, first, last) +
+      destructive('Remove', { thing: name, confirmAction: `admin/home-assistant/lists/${enc}/remove` }) +
+      `</div></details>`;
+    return listRow('', { title: name, detail }, state + menu);
   }
 
   function rules(live: LiveState, template?: RuleTemplate): string {

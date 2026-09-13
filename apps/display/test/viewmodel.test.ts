@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { todoFrom } from '../src/viewmodel.js';
 import {
   announcement,
   buildModel,
@@ -1044,5 +1045,61 @@ describe('the display locale', () => {
     expect(built.today.weekday).toBe('Wed');
     expect(built.today.month).toBe('Jul');
     expect(built.today.dayNumber).toBe('15');
+  });
+});
+
+describe('todoFrom — the to-do panel, read defensively (RFC 012)', () => {
+  const panel = {
+    lists: [
+      {
+        key: 'abc123',
+        name: 'Shopping',
+        canTick: true,
+        open: 2,
+        items: [
+          { id: 'h1', summary: 'Milk', done: false, due: null },
+          { id: 'h2', summary: ' Bread\u200B  and  butter ', done: true },
+        ],
+      },
+    ],
+  };
+
+  it('reads a list, its items, and its resolved affordance', () => {
+    const lists = todoFrom(panel);
+    expect(lists).toHaveLength(1);
+    expect(lists?.[0]).toMatchObject({ key: 'abc123', name: 'Shopping', canTick: true, open: 2 });
+    expect(lists?.[0]?.items.map((item) => item.done)).toEqual([false, true]);
+  });
+
+  it('cleans a summary the way every stranger-written string on the wall is cleaned', () => {
+    // A zero-width space out, whitespace collapsed, ends trimmed — the same
+    // `text` helper an event title goes through. An item is household content
+    // typed on somebody's phone, and it lands beside those titles.
+    expect(todoFrom(panel)?.[0]?.items[1]?.summary).toBe('Bread and butter');
+  });
+
+  it('never throws on a manifest from another version', () => {
+    expect(todoFrom(undefined)).toBeUndefined();
+    expect(todoFrom(null)).toBeUndefined();
+    expect(todoFrom('lists')).toBeUndefined();
+    expect(todoFrom({ lists: 'no' })).toBeUndefined();
+    expect(todoFrom({ lists: [] })).toEqual([]);
+    // A list with no key cannot be matched to a widget, so it is dropped; an
+    // item with no summary cannot be drawn, so it is dropped; nothing throws.
+    expect(
+      todoFrom({ lists: [{ name: 'x', items: [] }, { key: 'k', items: [{ done: true }, 7, null] }] }),
+    ).toEqual([{ key: 'k', name: '', canTick: false, open: 0, items: [] }]);
+  });
+
+  it('keeps the id it will post back byte for byte, and drops one it cannot send', () => {
+    const lists = todoFrom({
+      lists: [{ key: 'k', items: [{ id: 'exact-ID_9', summary: 'a' }, { id: 12, summary: 'b' }] }],
+    });
+    expect(lists?.[0]?.items.map((item) => item.id)).toEqual(['exact-ID_9', undefined]);
+  });
+
+  it('counts the open items itself when the server did not say', () => {
+    const lists = todoFrom({ lists: [{ key: 'k', items: [{ summary: 'a' }, { summary: 'b', done: true }] }] });
+    expect(lists?.[0]?.open).toBe(1);
   });
 });

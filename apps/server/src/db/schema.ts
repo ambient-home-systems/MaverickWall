@@ -573,6 +573,25 @@ export const screens = sqliteTable(
     allowChores: integer('allow_chores', { mode: 'boolean' }).notNull().default(false),
 
     /**
+     * Whether this screen may tick an item off a Home Assistant to-do list
+     * (RFC 012 phase 2).
+     *
+     * **Unread in phase 1.** Nothing selects it, nothing draws a control from it
+     * and no form sets it; it lands here so the feature costs one migration
+     * rather than two, and so the column a household's wall already carries is
+     * the one the write endpoint reads when it arrives. Off by default for the
+     * same reason as its two neighbours: it is a fact about the hardware.
+     *
+     * A third switch rather than a widening of `allow_chores`, because the three
+     * are not the same risk. Clearing a warning is a household saying it has
+     * read something; ticking a chore is a claim about the world recorded in
+     * this database; ticking a to-do item changes data *outside* this
+     * application, on a list the household's phones are synced to. A household
+     * can reasonably want any two of the three and not the third.
+     */
+    allowTodo: integer('allow_todo', { mode: 'boolean' }).notNull().default(false),
+
+    /**
      * Whether this screen's frame answers only a connection from the
      * household's own network.
      *
@@ -1416,6 +1435,80 @@ export const haEntityCache = sqliteTable(
   },
   (table) => ({
     byWatched: index('ha_entity_watched_idx').on(table.watched),
+  }),
+);
+
+/**
+ * The Home Assistant to-do lists a household has chosen to show (RFC 012).
+ *
+ * The entity id is the primary key and it is stored **in clear**, for the
+ * reason `calendar_sources.ha_entity_id` is: it is a name, not a credential. It
+ * is reached through the one connection on the Home Assistant screen, so a list
+ * has no address of its own — and it is the one column in this table that must
+ * never reach a wall. The manifest carries a handle minted from it
+ * (`todoListHandle` in `api/manifest.ts`) and the items' own synthetic ids,
+ * never this value, never a `uid`, never the `supported_features` bitmask.
+ *
+ * `supports_update` is bit 4 of `supported_features`, read from
+ * `GET /api/states/<entity>` on every poll because `todo.get_items` does not
+ * return it. It is what the widget's whole affordance will rest on in phase 2:
+ * a list that cannot be updated is still drawn, because it is a list, and it is
+ * drawn with no box to tick.
+ *
+ * `last_error` is the client's own sentence and nothing else — never a
+ * summary, never a response body — because it is shown on the Home Assistant
+ * screen and could otherwise carry an item somebody typed on their phone.
+ */
+export const haTodoLists = sqliteTable('ha_todo_lists', {
+  entityId: text('entity_id').primaryKey(),
+  /** Home Assistant's friendly name, refreshed on every poll. */
+  name: text('name').notNull(),
+  /** What the household calls it, when the entity's own name is wrong. Null means use `name`. */
+  label: text('label'),
+  supportsUpdate: integer('supports_update', { mode: 'boolean' }).notNull().default(false),
+  sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'number' }),
+  lastError: text('last_error'),
+  ...timestamps,
+});
+
+/**
+ * The cached items of every watched list, every status.
+ *
+ * **The synthetic `id` is the handle**, and it is why this is a table rather
+ * than a JSON column on the list. Rule 12's surviving clause says the display
+ * never receives an entity id, so the wall cannot post `{entity_id, uid}` when
+ * phase 2 lets it tick — it posts an opaque id this server minted, and the
+ * server resolves it. The unique index on `(entity_id, uid)` is what makes the
+ * handle *stable*: the job upserts on it and deletes what vanished, so an item
+ * keeps its id across polls with no crypto and no per-poll registry.
+ *
+ * `uid` and never the summary is the identity, because Home Assistant's own
+ * lookup matches `value in (item.uid, item.summary)` and returns the first hit
+ * — a household with "Milk" on the list twice would otherwise tick whichever
+ * one their integration happened to list first.
+ *
+ * Every status is cached and the renderer decides what to hide: filtering at
+ * the service would make "show the ticked ones too" impossible without a
+ * second call, and the cache is small — a shopping list, not a house.
+ */
+export const haTodoItems = sqliteTable(
+  'ha_todo_items',
+  {
+    id: text('id').primaryKey(),
+    entityId: text('entity_id').notNull(),
+    uid: text('uid').notNull(),
+    summary: text('summary').notNull(),
+    /** `needs_action` or `completed` — Home Assistant's own two words. */
+    status: text('status').notNull(),
+    /** A due date (`YYYY-MM-DD`) or date-time as Home Assistant sent it; null when it has none. */
+    due: text('due'),
+    /** The list's own order, which the wall keeps. */
+    position: integer('position', { mode: 'number' }).notNull().default(0),
+    fetchedAt: integer('fetched_at', { mode: 'number' }).notNull().$defaultFn(now),
+  },
+  (table) => ({
+    byEntityUid: uniqueIndex('ha_todo_items_entity_uid_idx').on(table.entityId, table.uid),
   }),
 );
 

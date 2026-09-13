@@ -125,7 +125,7 @@ beforeAll(async () => {
   equipHousehold(wall.db, wall.now());
   link = await wall.pairLink('Kitchen');
   const screen = (wall.db.prepare('SELECT id FROM screens LIMIT 1').get() as { id: string }).id;
-  applyTemplate(wall.db, screen, classicFor({ modules: ['weather'], shift: true }));
+  applyTemplate(wall.db, screen, classicFor({ modules: ['weather'], shift: true, todoLists: [] }));
 }, SLOW);
 
 afterAll(async () => {

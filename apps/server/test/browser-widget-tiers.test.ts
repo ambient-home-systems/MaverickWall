@@ -423,7 +423,7 @@ describe('the shipped wall on a 43 inch television', () => {
        * one test file rather than about the wall, and a measurement that cannot
        * tell the two apart is not a measurement.
        */
-      applyTemplate(wall.db, screenId, classicFor({ modules: ['weather'], shift: true }));
+      applyTemplate(wall.db, screenId, classicFor({ modules: ['weather'], shift: true, todoLists: [] }));
       measureScreen('tv-43');
       const { page, close } = await loadWallSettled(link, { width: 2560, height: 1440 });
       try {

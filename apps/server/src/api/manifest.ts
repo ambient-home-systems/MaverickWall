@@ -83,7 +83,50 @@ export const WIDGET_MODULE: Readonly<Record<string, string>> = {
   weather: 'weather',
   homeassistant: 'home',
   chores: 'chores',
+  /*
+   * Conditional on the widget's own config, and the one entry here that is.
+   *
+   * A `todo` widget with no `list` is typed text and always has something to
+   * say; one naming a Home Assistant list has a prerequisite on another screen
+   * exactly as Weather does. Keying it here alone would have omitted every
+   * typed checklist on every wall whose household has no list — at one image
+   * pull, silently — which is why `widgetIsSetUp` takes the widget rather than
+   * the type, and why `widget-omission.test.ts` was written red against a bare
+   * `todo: 'todo'` before it was made to pass (RFC 012 §6.2).
+   */
+  todo: 'todo',
 };
+
+/**
+ * What a widget's `list` becomes on the wall.
+ *
+ * A widget stores the Home Assistant entity id it draws (`widget-schema.ts`),
+ * and rule 12 says the display never receives one — so the manifest rewrites
+ * the key on the way out and the to-do panel keys its lists the same way. A
+ * short hash rather than a random token, because it has to be *stable* across
+ * polls with no registry: the same list resolves to the same key for ever, on
+ * every wall, and the wall still holds nothing it could ask Home Assistant a
+ * question with. Pure, and here rather than in the module, because both the
+ * assembly layer and the e-paper renderer need it and neither may import the
+ * module tree.
+ */
+export function todoListHandle(entityId: string): string {
+  return createHash('sha256').update(`todo-list|${entityId}`, 'utf8').digest('hex').slice(0, 16);
+}
+
+/**
+ * A widget's config as the wall receives it.
+ *
+ * Carried through untouched for every type but one: a `todo` widget's `list`
+ * is an entity id and leaves as its handle. Nothing else is rewritten, so a
+ * config saved before the key existed is byte-identical on the way out.
+ */
+export function displayConfig(type: string, config: unknown): unknown {
+  if (type !== 'todo' || typeof config !== 'object' || config === null) return config;
+  const list = (config as Record<string, unknown>)['list'];
+  if (typeof list !== 'string' || list === '') return config;
+  return { ...(config as Record<string, unknown>), list: todoListHandle(list) };
+}
 
 /**
  * What the household has actually set up (RFC 009 Phase 2).
@@ -104,6 +147,30 @@ export interface HouseholdSetUp {
   readonly modules: readonly string[];
   /** A shift rotation exists at all — `household_settings.shift_enabled`. */
   readonly shift: boolean;
+  /**
+   * The Home Assistant to-do lists the household watches, by entity id
+   * (RFC 012). Required rather than defaulted, for the reason `addCalendarSource`
+   * takes its clock: a caller that forgot it would silently omit every list
+   * widget on every wall, and a default is how that omission would come back.
+   */
+  readonly todoLists: readonly string[];
+}
+
+/** All `widgetIsSetUp` needs of a widget: its type, and its own settings. */
+export interface SetUpTarget {
+  readonly type: string;
+  readonly config?: unknown;
+}
+
+/**
+ * The Home Assistant list a `todo` widget names, or nothing for typed text.
+ * Read here and in the e-paper renderer and the wall the same way: absent, or
+ * empty, means the typed items — one stored value, one reading.
+ */
+export function todoListOf(config: unknown): string | undefined {
+  if (typeof config !== 'object' || config === null) return undefined;
+  const list = (config as Record<string, unknown>)['list'];
+  return typeof list === 'string' && list !== '' ? list : undefined;
 }
 
 /**
@@ -137,14 +204,28 @@ export interface HouseholdSetUp {
  * fetched yet, an entity whose reading is stale. Getting that backwards makes a
  * working wall look broken, which is a worse fault than the one this fixes.
  *
- * The widget's own config is deliberately not an input. "Configuration" here
- * means the household-level prerequisite, not the box's settings — a Weather
- * widget with five days and a reordered ladder chosen is still a Weather widget
- * with nowhere to be.
+ * The widget's own config is an input for exactly one type, and that is the
+ * change RFC 012 §6.2 asked for. "Configuration" here still means the
+ * household-level prerequisite, not the box's settings — a Weather widget with
+ * five days and a reordered ladder chosen is still a Weather widget with
+ * nowhere to be. But a `todo` widget's prerequisite *depends on its settings*:
+ * with no `list` it is typed text and always has something to say; naming a
+ * list, it needs that list to still be watched, which is a prerequisite on the
+ * Home Assistant screen exactly like a location is on Weather. The function
+ * takes the widget rather than the type because the type cannot answer that,
+ * and the alternative — a bare `todo: 'todo'` in the table above — omitted
+ * every typed checklist on every wall with no list behind it.
  */
-export function widgetIsSetUp(type: string, setUp: HouseholdSetUp): boolean {
-  if (type === 'shift') return setUp.shift;
-  const block = WIDGET_MODULE[type];
+export function widgetIsSetUp(widget: SetUpTarget, setUp: HouseholdSetUp): boolean {
+  if (widget.type === 'shift') return setUp.shift;
+  if (widget.type === 'todo') {
+    const list = todoListOf(widget.config);
+    if (list === undefined) return true;
+    // A list still watched implies the module is ready, since `ready` is
+    // "at least one watched list" — so one membership test answers both.
+    return setUp.todoLists.includes(list);
+  }
+  const block = WIDGET_MODULE[widget.type];
   return block === undefined || setUp.modules.includes(block);
 }
 
@@ -160,11 +241,11 @@ export function widgetIsSetUp(type: string, setUp: HouseholdSetUp): boolean {
  * wall cannot draw "No weather yet" where the wall draws nothing — one stored
  * value read two ways is the fault this repository keeps paying for.
  */
-export function keepWidgetsWithSomethingToSay<T extends { readonly type: string }>(
+export function keepWidgetsWithSomethingToSay<T extends SetUpTarget>(
   widgets: readonly T[],
   setUp: HouseholdSetUp,
 ): readonly T[] {
-  const kept = widgets.filter((widget) => widgetIsSetUp(widget.type, setUp));
+  const kept = widgets.filter((widget) => widgetIsSetUp(widget, setUp));
   return kept.length === 0 ? widgets : kept;
 }
 
@@ -219,7 +300,8 @@ function placeCanvas(
       w: unit(widget.w, 0.25) || 0.25,
       h: unit(widget.h, 0.15) || 0.15,
       z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
-      config: widget.config,
+      // Untouched, except that a to-do widget's entity id leaves as a handle.
+      config: displayConfig(widget.type, widget.config),
     }))
     .sort((a, b) => a.z - b.z);
 }
@@ -303,10 +385,12 @@ export function buildLayout(
   portraitWidgets: readonly PlacedWidgetRow[],
   landscapeWidgets: readonly PlacedWidgetRow[],
   readyModules: readonly string[] = [],
+  watchedTodoLists: readonly string[] = [],
 ): Manifest['layout'] {
   const setUp: HouseholdSetUp = {
     modules: readyModules,
     shift: household.shiftEnabled === 1,
+    todoLists: watchedTodoLists,
   };
   const portrait = placeCanvas(portraitWidgets, setUp);
   const landscape = placeCanvas(landscapeWidgets, setUp);
@@ -740,6 +824,13 @@ export interface BuildManifestInput {
    * showing its placeholder while "you never set this up" yields its space.
    */
   readonly readyModules?: readonly string[];
+  /**
+   * The Home Assistant to-do lists the household watches, by entity id, for
+   * the one widget whose omission depends on its own config (RFC 012 §6.2).
+   * Collected by the caller beside `readyModules`, from the same
+   * `householdSetUp`, so the two cannot disagree.
+   */
+  readonly watchedTodoLists?: readonly string[];
   /**
    * Interrupts already evaluated, for the same reason panels are already
    * collected: assembly is pure and reads no cache of its own.
@@ -1240,6 +1331,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       input.layoutWidgetsPortrait ?? [],
       input.layoutWidgetsLandscape ?? [],
       input.readyModules ?? [],
+      input.watchedTodoLists ?? [],
     ),
     days,
     people: people.map((person) => ({
