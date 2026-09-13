@@ -12,22 +12,82 @@
  * display's test suite — which has no DOM — could not reach either, and where
  * the sentences a household reads were composed at three separate call sites.
  *
- * `notDrawn` comes from the server, derived from the same `widgetIsSetUp` the
- * manifest uses, because a second opinion here is how the wall and the screen
- * that describes it come to disagree.
+ * **Keyed by box, not by type**, since RFC 012 §6.2. A to-do widget is left
+ * out or kept by the list its own settings name, so two boxes of one type can
+ * get two answers — and the flag has to follow a household picking a list in
+ * the inspector, without a reload. So the server's answer is a *seed*, and
+ * `notDrawnFor` re-derives the same answer from the facts the server decided
+ * from (`OmissionFacts`, the same `widgetIsSetUp` inputs) on every change. One
+ * rule, stated here once for the editor and in `api/manifest.ts` once for the
+ * wall; a second opinion here is how the wall and the page that describes it
+ * come to disagree.
  */
 
-/** All this module needs of a widget: which one it is, and what kind. */
+/** All this module needs of a widget: which one it is, what kind, its settings. */
 export interface OmissionTarget {
   readonly id: string;
   readonly type: string;
+  readonly config?: Record<string, unknown> | undefined;
 }
 
-/** Widget type → why the wall leaves it out. Empty when everything is set up. */
+/** Widget id → why the wall leaves it out. Empty when everything is set up. */
 export type NotDrawn = ReadonlyMap<string, string>;
 
 /**
- * What the *preview* draws — the whole canvas, less the flagged types.
+ * What the server decided from, so the editor can decide the same way.
+ *
+ * `drawn` is `widgetIsSetUp` asked once per type with no settings — the whole
+ * answer for every type but `todo`. `todoLists` is the config-dependent half:
+ * the Home Assistant lists the household watches, by the id a widget stores.
+ * `why` is the sentence per type, written on the server with the rest of the
+ * admin's copy; a type with no sentence gets the generic one below.
+ */
+export interface OmissionFacts {
+  readonly drawn: Readonly<Record<string, boolean>>;
+  readonly todoLists: readonly string[];
+  readonly why: Readonly<Record<string, string>>;
+}
+
+const GENERIC_WHY = 'Nothing is set up for this yet, so it is left out.';
+
+/**
+ * The list a to-do box names, or nothing for a typed checklist.
+ *
+ * Absent and empty are the same answer — the typed items — which is how the
+ * wall (`todoListOf` in the manifest) and the panel read the same key.
+ */
+export function todoListOf(config: Record<string, unknown> | undefined): string | undefined {
+  const list = config?.['list'];
+  return typeof list === 'string' && list !== '' ? list : undefined;
+}
+
+/**
+ * Would the wall leave this box out, given the facts?
+ *
+ * The one pure predicate, and the transcription of `widgetIsSetUp`: every type
+ * answers from `drawn`, except a to-do box, which is never left out while it
+ * draws typed items and is left out when the list it names is no longer one
+ * the household watches.
+ */
+export function widgetOmitted(widget: OmissionTarget, facts: OmissionFacts): boolean {
+  if (widget.type === 'todo') {
+    const list = todoListOf(widget.config);
+    return list !== undefined && !facts.todoLists.includes(list);
+  }
+  return facts.drawn[widget.type] === false;
+}
+
+/** Every box the wall would leave out, with its reason — the seed, re-derived. */
+export function notDrawnFor(widgets: readonly OmissionTarget[], facts: OmissionFacts): NotDrawn {
+  const flagged = new Map<string, string>();
+  for (const widget of widgets) {
+    if (widgetOmitted(widget, facts)) flagged.set(widget.id, facts.why[widget.type] ?? GENERIC_WHY);
+  }
+  return flagged;
+}
+
+/**
+ * What the *preview* draws — the whole canvas, less the flagged boxes.
  *
  * A canvas that filtered away to nothing keeps everything, which is rule nine:
  * a preview that emptied itself would draw "Nothing on this wall yet" — a lie
@@ -43,30 +103,30 @@ export function drawnWidgets<T extends OmissionTarget>(
   notDrawn: NotDrawn,
 ): readonly T[] {
   if (notDrawn.size === 0) return widgets;
-  const kept = widgets.filter((widget) => !notDrawn.has(widget.type));
+  const kept = widgets.filter((widget) => !notDrawn.has(widget.id));
   return kept.length === 0 ? widgets : kept;
 }
 
 /**
  * Why *this* box is not drawn, or nothing.
  *
- * The type is not enough. Omission is per canvas rather than per widget,
+ * The flag is not enough. Omission is per canvas rather than per widget,
  * because of the rule above: on a canvas of only unconfigured widgets every one
- * of them *is* drawn, and flagging by type alone would label a box "not on the
- * wall" while the wall and the preview beside it both drew it — the same
+ * of them *is* drawn, and flagging by the map alone would label a box "not on
+ * the wall" while the wall and the preview beside it both drew it — the same
  * contradiction the preview filter fixes in the other direction.
  *
  * The `has` test comes first because it short-circuits: the scan below only
- * runs for the handful of types that could be flagged at all.
+ * runs for the handful of boxes that could be flagged at all.
  */
 export function omittedReason<T extends OmissionTarget>(
   widget: T,
   widgets: readonly T[],
   notDrawn: NotDrawn,
 ): string | undefined {
-  if (!notDrawn.has(widget.type)) return undefined;
+  if (!notDrawn.has(widget.id)) return undefined;
   if (drawnWidgets(widgets, notDrawn).some((one) => one.id === widget.id)) return undefined;
-  return notDrawn.get(widget.type);
+  return notDrawn.get(widget.id);
 }
 
 /**

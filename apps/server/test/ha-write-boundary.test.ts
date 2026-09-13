@@ -224,10 +224,16 @@ describe('the runtime half: what was actually posted', () => {
     const answered = JSON.parse(result.body) as {
       service_response: Record<string, { items: { uid: string; summary: string }[] }>;
     };
+    /*
+     * Two of the three, not three: asked with no `status`, Home Assistant
+     * answers `needs_action` alone, and the fake honours that default. `i-3`
+     * is completed. It is why the module names both statuses on every read
+     * (`todo-lists.test.ts`) — a reader relying on the default could never draw
+     * a ticked item, and `showDone` would be a switch that does nothing.
+     */
     expect(answered.service_response['todo.shopping']?.items.map((i) => i.uid)).toEqual([
       'i-1',
       'i-2',
-      'i-3',
     ]);
 
     /*

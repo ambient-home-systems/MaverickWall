@@ -221,7 +221,7 @@ describe('reseedClassicForSetUp', () => {
     // Seeded by hand, with the marker still 0 — the state a database is in
     // between migrations and `backfillClassic`. Seeding is that function's job
     // and this one must not run ahead of it.
-    applyTemplate(db, null, classicFor({ modules: [], shift: false }));
+    applyTemplate(db, null, classicFor({ modules: [], shift: false, todoLists: [] }));
     const before = dump(db);
     addLocation(db);
     reseedClassicForSetUp(db, householdSetUp(db));

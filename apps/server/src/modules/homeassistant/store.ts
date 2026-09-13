@@ -106,6 +106,15 @@ export function disconnectHa(db: SqliteDatabase): void {
     ).run(at);
     db.prepare('DELETE FROM ha_entity_cache').run();
     /*
+     * The to-do lists and their items too (RFC 012). They belong to the
+     * `todo` module, and they go for the same reason the readings do — a cache
+     * of somebody's shopping is a record of their home — plus one of their
+     * own: `todoModule.ready` is "at least one watched list", so a row left
+     * behind would keep a widget drawing a list that never refreshes again.
+     */
+    db.prepare('DELETE FROM ha_todo_items').run();
+    db.prepare('DELETE FROM ha_todo_lists').run();
+    /*
      * Both spellings, and only this source's rules.
      *
      * The stored value moved from `ha_entity` to `homeassistant` when the model

@@ -54,7 +54,9 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   external: ['title', 'showTitle', 'count', 'module'],
   countdown: ['title', 'showTitle', 'target'],
   notes: ['title', 'showTitle', 'align', 'text'],
-  todo: ['title', 'showTitle', 'items'],
+  // `list` and `showDone` are read the way the wall reads them (RFC 012 §6.3):
+  // a list absent means the typed items, present means that list's rows.
+  todo: ['title', 'showTitle', 'items', 'list', 'showDone'],
   image: ['title', 'showTitle', 'image'],
 };
 
@@ -83,6 +85,10 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   external: ['count'],
   notes: ['align'],
   countdown: [],
+  // `list` is honoured and deliberately absent: it is the widget's identity,
+  // and the lane offers density and shape, never a different list on the
+  // panel from the one on the wall. `showDone` is a display decision the same
+  // way, and stays with the wall's own settings.
   todo: [],
   image: [],
 };

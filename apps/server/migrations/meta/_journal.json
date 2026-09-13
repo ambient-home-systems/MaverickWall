@@ -288,6 +288,13 @@
       "when": 1788864223274,
       "tag": "0040_warm_spencer_smythe",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1789309354316,
+      "tag": "0041_misty_spirit",
+      "breakpoints": true
     }
   ]
 }

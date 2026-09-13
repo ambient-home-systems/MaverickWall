@@ -200,6 +200,26 @@ const widgetConfigFields = z
     // there is nothing on the wall a tick could write back to. RFC 012 adds a
     // `list` key for that, and the two cases are deliberately one widget.
     items: z.array(z.string().max(200)).max(40).optional(),
+    /*
+     * To-do, from Home Assistant (RFC 012 phase 1) — which watched list the
+     * widget draws, by entity id. **Absent means the typed `items` above**,
+     * exactly as today, so a widget saved before this key existed sends a
+     * byte-identical config; present, the items are the list's and the typed
+     * ones are left where they are, untouched. The entity id is stored here
+     * and never reaches a wall: `displayConfig` in `manifest.ts` turns it into
+     * the handle the to-do panel keys its lists by.
+     *
+     * `showDone` draws the completed items too, struck through. Off by default
+     * because a shopping list ticked on a phone and never cleared grows for
+     * ever, and the wall is a place to read the list rather than the place it
+     * is administered (RFC 012 §7.5).
+     */
+    list: z
+      .string()
+      .regex(/^todo\.[a-z0-9_]+$/, 'That is not a Home Assistant to-do list.')
+      .max(255)
+      .optional(),
+    showDone: z.boolean().optional(),
     // Format (every widget) — box-level, so it applies whatever the type draws.
     title: z.string().max(60).optional(),
     showTitle: z.boolean().optional(),

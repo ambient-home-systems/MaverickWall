@@ -2656,7 +2656,8 @@ body {
 .nt-line { font-size: 2.1rem; line-height: 1.35; }
 .nt-gap { height: var(--s3); }
 
-/* To-do: a static checklist (the wall is read-only; edited in the admin). */
+/* To-do: a checklist the household typed, or a Home Assistant list (RFC 012).
+   Read-only either way in this phase — the box is a marker, not a control. */
 .td { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
 .td-row { display: flex; align-items: flex-start; gap: var(--s3); }
 .td-box {
@@ -2664,6 +2665,11 @@ body {
   border: 0.22rem solid var(--muted); border-radius: 0.3rem;
 }
 .td-text { font-size: 2.1rem; line-height: 1.3; }
+/* A ticked item, when the household asked to see them: the chore board's own
+   treatment — a filled box and a struck name — so one wall says "done" one
+   way. The row keeps its height, which is what the belt measures. */
+.td-box-on { background: var(--muted); }
+.td-row.is-done .td-text { text-decoration: line-through; color: var(--muted); }
 
 /* Chores (RFC 008 phase 2): a read-only board. The box is a marker, not a
    control — nothing here is tickable, and phase 3 is what makes it one. */

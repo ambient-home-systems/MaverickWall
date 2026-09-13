@@ -112,6 +112,11 @@ export const SAVED_MESSAGES = {
   'ha-rule-added': 'Rule added.',
   'ha-rule-removed': 'Rule removed.',
   'ha-rule-updated': 'Rule updated.',
+  // To-do lists (RFC 012). Only sent once the list's first read has succeeded,
+  // so "on the wall" is a claim about a branch that has already happened — a
+  // list whose first read failed is rendered with the failure instead.
+  'todo-list-added': 'List added — it is on the wall on its next refresh.',
+  'todo-list-removed': 'List removed.',
   // Store (modules)
   'module-added': 'Module added.',
   'module-removed': 'Module removed.',

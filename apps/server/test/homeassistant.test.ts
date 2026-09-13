@@ -13,6 +13,7 @@ import { createKeyring, type Keyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
 import { haModule } from '../src/modules/homeassistant/index.js';
+import { todoModule } from '../src/modules/todo/index.js';
 import { createHaCalendarSyncHandler } from '../src/jobs/ha-calendar-sync.js';
 import { resolveConnection, SUPERVISOR_BASE } from '../src/modules/homeassistant/client.js';
 import { buildDiagnostics } from '../src/api/diagnostics.js';
@@ -520,6 +521,11 @@ describe('readings on the wall', () => {
       display_mode: 'icon_state',
     });
     await h.pollHa();
+    // And a watched to-do list beside the reading (RFC 012), whose first read
+    // runs inline — so the panel below carries items when the document is
+    // checked, not an empty list that would prove nothing about them.
+    const listed = await h.form('/admin/home-assistant/lists', { entity_id: 'todo.shopping', label: '' });
+    expect(listed.status).toBe(302);
 
     const manifest = await h.manifest();
     const document = JSON.stringify(manifest);
@@ -529,6 +535,12 @@ describe('readings on the wall', () => {
     expect(document).not.toContain('binary_sensor.freezer_door');
     expect(document).not.toContain(TOKEN);
     expect(document).not.toContain(ha.base);
+    // Nor a list's entity id, an item's uid, or the feature bitmask — the
+    // panel carries handles this server minted and resolved values.
+    expect(document).not.toContain('todo.shopping');
+    expect(document).not.toContain('i-1');
+    expect(document).not.toContain('supported_features');
+    expect((manifest.panels['todo'] as { lists: unknown[] }).lists).toHaveLength(1);
 
     const panel = manifest.panels['home'] as { readings: { value: string; glyph: string }[] };
     // `on` means open, and only the device class knows that.
@@ -946,6 +958,9 @@ describe('disconnecting', () => {
       for_minutes: '5',
       action: 'banner',
     });
+    // And a to-do list with its cached items (RFC 012).
+    expect((await h.form('/admin/home-assistant/lists', { entity_id: 'todo.shopping', label: '' })).status).toBe(302);
+    expect(h.db.prepare('SELECT count(*) AS n FROM ha_todo_items').get()).toEqual({ n: 3 });
 
     const response = await h.call('/admin/home-assistant/disconnect', { method: 'POST' });
     expect(response.status).toBe(302);
@@ -968,6 +983,21 @@ describe('disconnecting', () => {
     // The shipped weather rules have nothing to do with Home Assistant and
     // must survive disconnecting it.
     expect(counts.weather).toBeGreaterThan(0);
+    /*
+     * The to-do tables go too, and the count is the point: `todoModule.ready`
+     * is "at least one watched list", so a row left behind would keep a To-do
+     * widget on the wall drawing a list that never refreshes again, over a
+     * connection that is gone.
+     */
+    expect(
+      h.db
+        .prepare(
+          `SELECT (SELECT count(*) FROM ha_todo_lists) AS lists,
+                  (SELECT count(*) FROM ha_todo_items) AS items`,
+        )
+        .get(),
+    ).toEqual({ lists: 0, items: 0 });
+    expect(todoModule.ready(h.db)).toBe(false);
   });
 });
 

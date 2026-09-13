@@ -293,8 +293,8 @@ export const CLASSIC_VARIANTS: readonly DisplayTemplate[] = [
  * value come to disagree, which is this repository's most repeated bug.
  */
 export function classicFor(setUp: HouseholdSetUp): DisplayTemplate {
-  const key = `${widgetIsSetUp('weather', setUp) ? 'w' : '-'}${
-    widgetIsSetUp('shift', setUp) ? 's' : '-'
+  const key = `${widgetIsSetUp({ type: 'weather' }, setUp) ? 'w' : '-'}${
+    widgetIsSetUp({ type: 'shift' }, setUp) ? 's' : '-'
   }` as ClassicKey;
   return variant(key);
 }

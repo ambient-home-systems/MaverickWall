@@ -84,7 +84,46 @@ export function statesBody(kitchen = '19.4', freezerChangedAt = new Date(Date.no
       last_updated: new Date().toISOString(),
       context: { id: '01L', parent_id: null, user_id: null },
     },
+    // The two to-do lists, as `/api/states` lists them (RFC 012). The state is
+    // the *count* of open items and the items are not in the attributes at all
+    // — which is the whole reason a list is not a reading. Not a reading
+    // either, so the readings picker must leave these out too.
+    ...Object.keys(TODO_LISTS).map((entityId) => todoStateBody(entityId)),
   ]);
+}
+
+/**
+ * The lists this house has, and what they can do.
+ *
+ * `supported_features` is the affordance: bit 4 is `UPDATE_TODO_ITEM`, and the
+ * read-only list has it **clear**. A fixture with only tickable lists cannot
+ * see a renderer that draws a box on a list core would refuse to update.
+ */
+const TODO_LISTS: Readonly<Record<string, { name: string; features: number }>> = {
+  // CREATE | DELETE | UPDATE | MOVE — a `local_todo` list.
+  'todo.shopping': { name: 'Shopping', features: 15 },
+  // CREATE only — a list an integration exposes but will not let anyone tick.
+  'todo.read_only': { name: 'Read only', features: 1 },
+};
+
+/** One list's state document, the shape `GET /api/states/<entity>` answers. */
+export function todoStateBody(entityId: string): {
+  entity_id: string;
+  state: string;
+  attributes: { friendly_name: string; supported_features: number; icon: string };
+  last_changed: string;
+  last_updated: string;
+  context: { id: string; parent_id: null; user_id: null };
+} {
+  const list = TODO_LISTS[entityId] ?? { name: entityId, features: 0 };
+  return {
+    entity_id: entityId,
+    state: '2',
+    attributes: { friendly_name: list.name, supported_features: list.features, icon: 'mdi:clipboard-list' },
+    last_changed: new Date(Date.now() - 300_000).toISOString(),
+    last_updated: new Date(Date.now() - 300_000).toISOString(),
+    context: { id: '01M', parent_id: null, user_id: null },
+  };
 }
 
 export interface FakeHa {
@@ -103,6 +142,13 @@ export interface FakeHa {
    */
   readonly posts: { path: string; query: string; body: string }[];
   down: boolean;
+  /**
+   * Refuse `todo.get_items` alone, with the 500 an integration that is
+   * reloading answers. Everything else keeps working, which is the case a
+   * list's *first* read failing on the admin page actually is: the house is
+   * up, the picker filled, and one list would not read.
+   */
+  refuseItems: boolean;
   kitchen: string;
   /**
    * The two lists this house has. One of them cannot be updated — bit 4 of
@@ -122,6 +168,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     paths: [],
     posts: [],
     down: false,
+    refuseItems: false,
     kitchen: '19.4',
     todo: {
       'todo.shopping': {
@@ -174,6 +221,19 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
       );
     }
     if (url === '/api/states') return json(statesBody(state.kitchen));
+    // One list's own state — `supported_features` lives here and nowhere else,
+    // since `get_items` does not return it. A list this house has not got is a
+    // 404 with Home Assistant's own sentence, which is what a list deleted on
+    // somebody's phone answers with.
+    if (url.startsWith('/api/states/todo.')) {
+      const entityId = decodeURIComponent(url.slice('/api/states/'.length));
+      if (state.todo[entityId] === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"message":"Entity not found."}');
+        return;
+      }
+      return json(JSON.stringify(todoStateBody(entityId)));
+    }
     if (url === '/api/calendars') {
       return json(JSON.stringify([{ entity_id: 'calendar.family', name: 'Family' }]));
     }
@@ -231,6 +291,11 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         const list = state.todo[entity];
 
         if (service === 'todo/get_items') {
+          if (state.refuseItems) {
+            response.writeHead(500, { 'content-type': 'application/json' });
+            response.end('{"message":"Unknown error"}');
+            return;
+          }
           if (query !== 'return_response') {
             response.writeHead(400, { 'content-type': 'application/json' });
             response.end(
@@ -243,7 +308,17 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
             response.end(`{"message":"Entity ${entity} does not exist"}`);
             return;
           }
-          json(JSON.stringify({ changed_states: [], service_response: { [entity]: { items: list.items } } }));
+          /*
+           * The status filter, honoured the way core honours it: absent means
+           * `needs_action` alone, which is exactly why the caller has to name
+           * both — a reader relying on the default would never see a completed
+           * item and `showDone` would be a switch that does nothing.
+           */
+          const wanted = Array.isArray(parsed['status'])
+            ? (parsed['status'] as unknown[]).filter((s): s is string => typeof s === 'string')
+            : ['needs_action'];
+          const items = list.items.filter((item) => wanted.includes(item.status));
+          json(JSON.stringify({ changed_states: [], service_response: { [entity]: { items } } }));
           return;
         }
 

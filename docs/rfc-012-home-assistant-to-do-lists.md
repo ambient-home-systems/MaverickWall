@@ -1,6 +1,6 @@
 # RFC 012 — Home Assistant to-do lists, and the end of rule 12 as written
 
-Status: **phase 1 in progress** · Owner: — · First drafted 2026-09-13 ·
+Status: **phase 1 built; unproven on real hardware** · Owner: — · First drafted 2026-09-13 ·
 Relates to `apps/server/src/modules/homeassistant/`,
 `packages/core/src/ports/fetcher.ts`, `apps/server/src/net/fetcher.ts`,
 `apps/server/src/api/widget-schema.ts`, `apps/server/src/api/manifest.ts`,
@@ -8,6 +8,53 @@ Relates to `apps/server/src/modules/homeassistant/`,
 `apps/display/src/render.ts` · Builds on the module registry (RFC 001), the
 free-form canvas (RFC 005) and the write path chores opened (RFC 008 phase 3) ·
 Amends hard rule 12 · Constrains RFC 007
+
+> **Update — phase 1 is implemented**, and the body below is revised where
+> building it contradicted it. What shipped: migration `0041` (`ha_todo_lists`,
+> `ha_todo_items` with the `(entity_id, uid)` unique index, and
+> `screens.allow_todo` — read by nothing yet, so the tick costs no second
+> migration); `modules/todo/` with a sixty-second job; the To-do lists section
+> on the Home Assistant screen; `list` and `showDone` on the widget; the wall,
+> the panel and the editor reading `list` one way; and `widgetIsSetUp` taking
+> the widget. The decisions §11 left open are closed and recorded there. Six
+> things the body had wrong or had not seen, each fixed in the text where it
+> sits and summarised here so a reader knows what to distrust:
+>
+> 1. **The list needed a key the wall could hold, and §5.3 and §6.1 together
+>    put an entity id in the manifest.** The widget stores `todo.shopping`
+>    (§6.1) and the manifest carries the layout's config untouched — so the
+>    entity id would have travelled in the layout while §5.3 kept it out of
+>    the panel. The manifest now rewrites a to-do widget's `list` to a handle
+>    on the way out (`displayConfig`, `todoListHandle`) and the panel keys its
+>    lists by the same handle; the panel renderer and the editor's preview
+>    resolve the stored id the same way. Clause (3) is literally true again.
+> 2. **§6.2 undercounted the places omission is keyed by type.** It named
+>    `widgetIsSetUp`; there were four more — `widgetsNotDrawn`/`whyNotDrawn`
+>    on the server, the editor's parse of that answer, the panel design page,
+>    and `omission.ts` with the inspector reading through it — and a fifth
+>    nobody could have read out of the source: the editor wrote a box's flag
+>    only where the box is *built*, so a flag that follows a config change
+>    needed `refreshLabels` to sync it. Found by the browser test, which read a
+>    class that was stale over a preview that was not.
+> 3. **`supported_features` is not in `get_items`**, so the job reads
+>    `GET /api/states/<entity>` first — and a 404 *there* is a deleted list,
+>    which the client's 404 sentence (written for the root: "not the Home
+>    Assistant API") mis-describes. `CallResult` carries `httpStatus` now so a
+>    caller can say so from the code rather than the wording.
+> 4. **The status filter is this code's decision, not Home Assistant's
+>    default.** Both statuses are named on every read. The fake honours the
+>    real default (`needs_action` alone), and that caught the previous PR's
+>    own boundary test asking with no status and expecting three items.
+> 5. **`showDone` is phase 1**, not phase 3. It is a display decision and
+>    costs nothing once every status is cached.
+> 6. **`TODO_TIERS` is unchanged, measured rather than assumed**: the row a
+>    list draws is the same `.td-row` the typed list draws, so the `ch` and
+>    `em` thresholds are against the same markup. The tick box §6.3 worried
+>    about is phase 2's problem, and it will be this widget's row widening.
+>
+> Unproven where it counts: nobody has looked at a real wall or a real panel
+> drawing a real list. The measurements are a real browser on a paired wall
+> against a fake Home Assistant, and a decoded 1-bit frame.
 
 ## 1. Summary
 
@@ -316,8 +363,9 @@ with no list watched never gets an empty block, the per-module `try/catch` in
 a place in the settings.
 
 **With a job**, unlike chores — a list changes when somebody adds milk on their
-phone, and nothing here can know that without asking. Interval is §11's to
-settle; 60s matches the manifest poll and is the obvious starting point.
+phone, and nothing here can know that without asking. Sixty seconds, matching
+the manifest poll (closed in §11), and at most eight lists, which is what keeps
+the arithmetic honest.
 
 **Without `signals()`.** A shopping list that raises an interrupt is a wall that
 nags, and the reasoning chores wrote down applies unchanged: easy to add later,
@@ -325,14 +373,24 @@ very hard to take back.
 
 ### 5.2 What is stored
 
-Migration **0041**, additive, two tables:
+Migration **0041**, additive, two tables and one column:
 
 - `ha_todo_lists` — the watched lists. `entityId` (primary key, in clear: a name
   rather than a credential, same reasoning as `calendar_sources.haEntityId`),
   `name`, `label`, `supportsUpdate`, `sortOrder`, `lastFetchedAt`, `lastError`.
 - `ha_todo_items` — the cached items. A synthetic `id` primary key, then
-  `entityId`, `uid`, `summary`, `status`, `due`, `position`, `fetchedAt`.
+  `entityId`, `uid`, `summary`, `status`, `due`, `position`, `fetchedAt`, with a
+  **unique index on `(entityId, uid)`** the job upserts on, so the id survives
+  a poll. A test asserts the same id before and after a poll whose payload is
+  unchanged.
+- `screens.allow_todo`, boolean, default false — **unread in phase 1** and
+  exposed by no control. It lands here so the feature costs one migration
+  rather than two.
 
+The cache carries **every status**; the manifest carries at most forty open
+items per list plus the list's total open count (the typed widget's own cap is
+forty), and the renderer's tier decides how many of those are drawn. A list
+past five hundred items is refused whole, on its last good rows.
 **The synthetic `id` is the handle**, and it is why there is a table rather than
 a JSON column. Rule 12's surviving clause (3) says the display never receives an
 entity id, so the wall cannot post `{entity_id, uid}` — it posts an opaque id
@@ -345,15 +403,30 @@ No new keyring purpose: the credential is the existing HA token.
 
 ### 5.3 The manifest slice
 
-Lists, each with its items: `id` (the handle), `summary`, `done`, and the list's
-own `canTick`. No `entity_id`, no `uid`, no `supported_features` bitmask — the
-manifest carries a resolved boolean, because a bitflag on the wall is an entity
-detail leaking through a different door.
+Lists, each keyed by a **handle** (`todoListHandle(entityId)`, a short stable
+hash this server mints) with its items: `id` (the item's handle), `summary`,
+`done`, `due`, `position`, and the list's own `canTick` and open count. No
+`entity_id`, no `uid`, no `supported_features` bitmask — the manifest carries
+a resolved boolean, because a bitflag on the wall is an entity detail leaking
+through a different door — and **no timestamp**: if `fetchedAt` travelled, the
+manifest ETag and the e-paper frame ETag would change every minute with
+nothing on the list changed, and a battery panel would re-download a full
+frame every poll. Pinned: two manifests built from identical cache rows at
+different `now` values have one ETag, and one built after an item's status
+changed has another.
+
+The list key is a handle rather than the entity id because of the widget: it
+stores the entity id (§6.1), and the manifest carries every widget's config
+untouched — so without the rewrite in `displayConfig` the entity id would have
+travelled in the *layout* while being kept out of the panel, which is clause
+(3) broken through a different door. The panel renderer resolves a stored id
+to the handle itself; the editor's preview substitutes the handle the server
+handed its picker.
 
 The ETag is free by the same accident chores relies on: the panel travels inside
 `panels`, which is in `manifestEtag`'s preimage, so a tick moves the ETag and a
 new item on somebody's phone moves it too. Free by accident is worth a test, and
-chores has one to copy.
+chores has one to copy — and now this has one too.
 
 ## 6. The widget
 
@@ -372,7 +445,11 @@ true:
 
 **Recommendation: widen the existing widget rather than add a second type.** One
 new config key, `list`, naming a watched entity; absent means the typed `items`,
-which is exactly today's behaviour. The alternative — a second `WIDGET_TYPES`
+which is exactly today's behaviour — pinned byte for byte on the panel against
+frames taken from the renderer before the key existed. A second key,
+`showDone`, draws the completed items too (§7.5). A stored `items` array is left
+untouched when a list is chosen, so a household who tries a list and comes back
+finds their lines where they left them. The alternative — a second `WIDGET_TYPES`
 entry — doubles the tier table, the panel draw, the honours entry, the ink lane
 and the palette, and puts "To-do" and "To-do (Home Assistant)" next to each
 other in a picker, which reads as two products.
@@ -400,6 +477,25 @@ something to say). `list` set and the module not ready, or that list no longer
 watched → omitted, and the editor flags it the way it already flags a Weather
 box with no location.
 
+**This section undercounted.** Omission was keyed by type in four more places
+than `widgetIsSetUp`: `widgetsNotDrawn`/`whyNotDrawn` on the server (now
+keyed by widget id, with the sentence table still keyed by type), the editor's
+parse of that answer, the panel design page, and `omission.ts` with the
+inspector reading through it. And because the flag is computed at page load
+and a household picking a list in the inspector must see it change,
+`omission.ts` gained a pure predicate over the widget, the watched list ids and
+the module-ready facts, evaluated on every config change; the server's answer
+seeds it and the predicate keeps it current. The fifth place no reading of the
+source could have found: the editor wrote the flag only where a box is
+*built*, so a box whose list had been un-watched stayed marked after the
+household chose the typed items instead — a stale class over a preview that
+had already moved. `refreshLabels` syncs the flag now, and the browser test
+that found it holds it.
+
+The test this section asked for was written first and watched go red against
+a bare `todo: 'todo'` — `expected ['clock'] to deeply equal ['clock', 'todo']`
+— before the function was changed.
+
 ### 6.3 Panel parity
 
 `epaper/widgets.ts`'s `drawTodo` must read `list` exactly as `render.ts` does,
@@ -408,13 +504,17 @@ time — two renderers, one stored value, two answers. The specific hazard here 
 the same one the calendar widget shipped: **an absent key is a value**, and
 `list` absent must mean typed items on both sides.
 
-`PANEL_HONOURS.todo` gains `list`; `showTick` (§7) goes in `PANEL_IGNORES` with
-its reason, because a battery panel cannot offer a tick at all. A pixel changes
-on every panel drawing a list, so `EPAPER_RENDERER_VERSION` bumps.
+`PANEL_HONOURS.todo` gains `list` and `showDone`; `INK_LANE.todo` stays empty,
+because `list` is the widget's identity and the lane offers density and shape,
+never a different list on the panel from the one on the wall. `showTick` (§7)
+will go in `PANEL_IGNORES` with its reason, because a battery panel cannot
+offer a tick at all. `EPAPER_RENDERER_VERSION` is **9**: only a panel with a
+list-backed widget on it moves, and the absent-key frames are pinned identical
+to 8.
 
-`TODO_TIERS` needs one look rather than a rewrite: an item with a tick box is
-wider than a line of text at the same type size, so the `ch` thresholds are
-measured against a different row. Measure it; do not assume it is free.
+`TODO_TIERS` was looked at and is unchanged: a list draws the same `.td-row`
+the typed list draws, so the thresholds are against the same row. The tick box
+is phase 2's, and that is when the row widens.
 
 ## 7. The write path
 
@@ -532,19 +632,22 @@ of having had it.
 
 ## 9. Phases
 
-**Phase 1 — read only, with the apparatus.** `postJson` on the port and the
-adapter; the `todo` module, its job, `ha_todo_lists`/`ha_todo_items`; the
-settings section on the Home Assistant screen; `list` on the widget and the
-`widgetIsSetUp` change; panel parity. **No tick box anywhere**, and the rule-12
-amendment lands here, because the allowlist, the constant and the test are what
-make the POST safe and they should exist before anything writes. Ships something
-useful on its own: a household's shopping list, on the wall, correct.
+**Phase 1 — read only, with the apparatus. Built.** `postJson` on the port and
+the adapter (the boundary PR); the `todo` module, its job,
+`ha_todo_lists`/`ha_todo_items` and `screens.allow_todo` in one migration; the
+settings section on the Home Assistant screen; `list` and `showDone` on the
+widget and the `widgetIsSetUp` change; panel parity. **No tick box anywhere**,
+and the rule-12 amendment landed first, because the allowlist, the constant and
+the test are what make the POST safe and they should exist before anything
+writes. Ships something useful on its own: a household's shopping list, on the
+wall, correct.
 
-**Phase 2 — the tick.** `screens.allow_todo`, `POST /d/todo/tick`, the
-write-through, the failure sentence, the `supportsUpdate` gate on both sides.
+**Phase 2 — the tick.** `POST /d/todo/tick` behind `screens.allow_todo` (the
+column already exists), the write-through, the failure sentence, the
+`supportsUpdate` gate on both sides, and the control on the wall's page.
 
-**Phase 3 — polish, if wanted.** `todo/item/subscribe` for latency;
-`showDone`; a per-list item cap.
+**Phase 3 — polish, if wanted.** `todo/item/subscribe` for latency; a due date
+on the row, which the panel already carries.
 
 Phase 1 is a real deliverable and phase 2 is small once it exists. That ordering
 is deliberate: it puts the security change under review while the feature it
@@ -618,27 +721,28 @@ second is the entire feature.
 
 ## 11. Open decisions
 
-- **Poll interval.** 60s matches the manifest and is the obvious default. A
-  shopping list is edited in bursts while somebody is standing in a shop, which
-  argues for faster; an ESP32 panel and a household with six lists argue for
-  slower. Measure before picking, and it may want to be per-list.
-- **How many lists.** A cap exists or it does not. Six lists at 60s is 8,640
-  requests a day against a Raspberry Pi, which is fine, and 40 is not.
-- **Item cap per list.** `get_items` returns the whole list, and a household's
-  "someday" list can be hundreds. The manifest should carry what a wall could
-  plausibly draw plus a count, the way the month grid's model stops at twelve —
-  but which number, and whether the renderer or the model cuts, is the tier
-  question one widget along and should be answered by the same method.
-- **Whether `status: needs_action` is the right filter on read.** Filtering at
-  the service means completed items never reach us and `showDone` becomes
-  impossible without a second call. Fetching everything means the cache carries
-  a list's whole history. Probably fetch everything and cut in the model, but it
-  interacts with the item cap.
+- ~~**Poll interval.**~~ **Closed: sixty seconds**, matching the manifest
+  poll, and not per-list. A poll that varies with a count is a setting nobody
+  can explain at a fridge.
+- ~~**How many lists.**~~ **Closed: at most eight.** Eight lists at sixty
+  seconds is 11,520 requests a day against a Raspberry Pi — two per poll per
+  list, the state and the items — and the admin refuses a ninth with a
+  sentence.
+- ~~**Item cap per list.**~~ **Closed: the manifest carries at most forty open
+  items per list plus the list's total open count** (the typed widget's own
+  cap), and up to forty completed ones beside them; the renderer's tier decides
+  how many are drawn. The cache refuses a list past five hundred items whole,
+  on its last good rows.
+- ~~**Whether `status: needs_action` is the right filter on read.**~~
+  **Closed: fetch everything and cut in the model.** Both statuses are named on
+  every read, because the filter is this code's decision and not Home
+  Assistant's default — and the fake honouring that default is what caught a
+  test asking without one.
 - **The e-paper story.** A panel draws the list and cannot tick it, which is
   right and is the documented glance class — but a panel that draws a tick box
   it cannot honour would be a control that does nothing, so the box must be
   absent rather than inert, and that is a `PANEL_IGNORES` entry with a sentence
-  in the editor rather than a silent difference.
+  in the editor rather than a silent difference. Phase 2's.
 
 ## 12. Non-goals
 

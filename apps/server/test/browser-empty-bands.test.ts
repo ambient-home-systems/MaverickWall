@@ -377,8 +377,8 @@ describe('the calendar-only wall, read from across a kitchen', () => {
         return smallest;
       };
 
-      const asClassic = await smallestByClass(classicFor({ modules: ['weather'], shift: true }));
-      const asSeeded = await smallestByClass(classicFor({ modules: [], shift: false }));
+      const asClassic = await smallestByClass(classicFor({ modules: ['weather'], shift: true, todoLists: [] }));
+      const asSeeded = await smallestByClass(classicFor({ modules: [], shift: false, todoLists: [] }));
 
       for (const [where, was] of asClassic) {
         const now = asSeeded.get(where);
@@ -408,10 +408,10 @@ describe('the calendar-only wall, read from across a kitchen', () => {
         applyTemplate(wall.db, screen, variant);
         return measureCellHeight({ width: 1080, height: 1920 });
       };
-      const nowCell = await cellHeight(classicFor({ modules: [], shift: false }));
-      const wasCell = await cellHeight(classicFor({ modules: ['weather'], shift: true }));
+      const nowCell = await cellHeight(classicFor({ modules: [], shift: false, todoLists: [] }));
+      const wasCell = await cellHeight(classicFor({ modules: ['weather'], shift: true, todoLists: [] }));
       // Restore the seed the rest of the file measures, so order cannot matter.
-      applyTemplate(wall.db, screen, classicFor({ modules: [], shift: false }));
+      applyTemplate(wall.db, screen, classicFor({ modules: [], shift: false, todoLists: [] }));
       expect(
         nowCell,
         `a month cell is ${nowCell.toFixed(0)}px on the calendar-only wall against ` +

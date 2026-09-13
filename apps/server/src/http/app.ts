@@ -787,6 +787,7 @@ export function createApp(deps: AppDeps): Hono {
     // widget with nothing behind it is drawn as a note or not drawn (RFC 009
     // Phase 2), and it has to be the same list or the two answers can disagree.
     const modules = allModules(deps.db);
+    const setUp = householdSetUp(deps.db, modules);
 
     return buildManifest({
       household: effective,
@@ -820,7 +821,10 @@ export function createApp(deps: AppDeps): Hono {
        * behind it yields its space instead of drawing a permanent note nobody
        * standing at the wall can act on (RFC 009 Phase 2).
        */
-      readyModules: householdSetUp(deps.db, modules).modules,
+      readyModules: setUp.modules,
+      // The to-do lists, for the one widget whose omission is a fact about
+      // its own config rather than its type (RFC 012 §6.2).
+      watchedTodoLists: setUp.todoLists,
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.

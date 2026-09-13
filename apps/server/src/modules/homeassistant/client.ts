@@ -199,6 +199,15 @@ export type CallResult =
       readonly message: string;
       readonly suggestion?: string;
       /**
+       * The upstream's status when there was one. `describe` writes the
+       * sentence for the common case of each code — a 404 is "that address is
+       * not the Home Assistant API", which is right for the root and wrong for
+       * `/states/<entity>`, where it means the entity is gone. A caller that
+       * asked about one thing can say so from the code without matching the
+       * sentence, which this file otherwise refuses to do.
+       */
+      readonly httpStatus?: number;
+      /**
        * The opt-ins that would open this address, in the flag names on
        * `UrlPolicy` — never in the words on the checkbox.
        *
@@ -243,7 +252,13 @@ export async function call(
     return { ok: false, message: 'Home Assistant answered with nothing.' };
   }
 
-  return { ok: false, ...describe(response, connection) };
+  return {
+    ok: false,
+    ...describe(response, connection),
+    ...(response.status === 'failed' && response.httpStatus !== undefined
+      ? { httpStatus: response.httpStatus }
+      : {}),
+  };
 }
 
 /**
@@ -313,7 +328,13 @@ export async function callService(
   });
 
   if (response.status === 'ok') return { ok: true, body: response.body };
-  return { ok: false, ...describe(response, connection) };
+  return {
+    ok: false,
+    ...describe(response, connection),
+    ...(response.status === 'failed' && response.httpStatus !== undefined
+      ? { httpStatus: response.httpStatus }
+      : {}),
+  };
 }
 
 /**

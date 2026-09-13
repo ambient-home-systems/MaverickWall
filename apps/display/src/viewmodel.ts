@@ -362,6 +362,8 @@ export interface DisplayModel {
   readonly externalPanels: Readonly<Record<string, PanelData>>;
   /** The chore board, when the household has any (RFC 008 phase 2). */
   readonly chores: ChoreBoardModel | undefined;
+  /** The Home Assistant to-do lists, when the module contributed any (RFC 012). */
+  readonly todo: readonly TodoListModel[];
   /** Readings from the house, when a module contributed any. */
   readonly house: readonly HouseReadingModel[];
   /** Something quiet to say about them, such as a connection that is failing. */
@@ -694,6 +696,32 @@ export interface ChoreDayModel {
   readonly items: readonly ChoreItemModel[];
 }
 
+/** One item on a Home Assistant to-do list (RFC 012). */
+export interface TodoItemModel {
+  /**
+   * What a tick will post back (RFC 012 phase 2). Opaque; never shown. Absent
+   * means the row is drawn and cannot be ticked, the same read-only fallback
+   * a chore row takes — losing the control costs nothing this phase draws.
+   */
+  readonly id: string | undefined;
+  readonly summary: string;
+  readonly done: boolean;
+  /** As the server sent it, unread by any renderer yet. */
+  readonly due: string | undefined;
+}
+
+/** One watched list, as the wall receives it: a key, a name, and its items. */
+export interface TodoListModel {
+  /** The handle a widget's `list` resolves to. Opaque; never an entity id. */
+  readonly key: string;
+  readonly name: string;
+  /** Whether a tick would be accepted — a resolved boolean, never a bitmask. */
+  readonly canTick: boolean;
+  /** How many need doing, however many of them travelled. */
+  readonly open: number;
+  readonly items: readonly TodoItemModel[];
+}
+
 export interface ChoreBoardModel {
   readonly today: CivilDate;
   readonly days: readonly ChoreDayModel[];
@@ -774,6 +802,59 @@ export function choresFrom(panel: unknown): ChoreBoardModel | undefined {
     days.push({ date: day.date, items });
   }
   return days.length === 0 ? undefined : { today: raw.today, days };
+}
+
+/**
+ * The to-do panel, read defensively — the shape of `choresFrom` (RFC 012).
+ *
+ * A manifest from an older server has no `todo` slice and one from a newer
+ * server may carry fields this bundle has not heard of; either way nothing may
+ * throw inside a draw, so every field is checked and a list this bundle cannot
+ * read is dropped rather than drawn wrong. Summaries go through the same
+ * sanitiser every stranger-written string on this wall does: an item is
+ * household content, typed on somebody's phone, and it lands on the glass beside
+ * event titles that already take the same cleaning.
+ */
+export function todoFrom(panel: unknown): readonly TodoListModel[] | undefined {
+  if (typeof panel !== 'object' || panel === null) return undefined;
+  const raw = (panel as { lists?: unknown }).lists;
+  if (!Array.isArray(raw)) return undefined;
+
+  const lists: TodoListModel[] = [];
+  for (const entry of raw.slice(0, 8)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const list = entry as { key?: unknown; name?: unknown; canTick?: unknown; open?: unknown; items?: unknown };
+    if (typeof list.key !== 'string' || list.key === '' || list.key.length > 64) continue;
+
+    const items: TodoItemModel[] = [];
+    if (Array.isArray(list.items)) {
+      // Twice the per-status cap: open items and completed ones travel together.
+      for (const candidate of list.items.slice(0, 80)) {
+        if (typeof candidate !== 'object' || candidate === null) continue;
+        const item = candidate as { id?: unknown; summary?: unknown; done?: unknown; due?: unknown };
+        const summary = text(item.summary, 200);
+        if (summary === undefined) continue;
+        items.push({
+          // Never sanitised: it is sent, not shown, and has to match byte for byte.
+          id: typeof item.id === 'string' && item.id !== '' && item.id.length <= 64 ? item.id : undefined,
+          summary,
+          done: item.done === true,
+          due: text(item.due, 64),
+        });
+      }
+    }
+    lists.push({
+      key: list.key,
+      name: text(list.name, 60) ?? '',
+      canTick: list.canTick === true,
+      open:
+        typeof list.open === 'number' && Number.isFinite(list.open) && list.open >= 0
+          ? Math.trunc(list.open)
+          : items.filter((item) => !item.done).length,
+      items,
+    });
+  }
+  return lists;
 }
 
 /**
@@ -1273,6 +1354,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
 
   const house = houseFrom(manifest.panels?.['home']);
   const chores = choresFrom(manifest.panels?.['chores']);
+  const todo = todoFrom(manifest.panels?.['todo']) ?? [];
 
   // Third-party module panels: every `ext:*` slice, read through the same
   // defensive parser (docs/rfc-001-module-framework.md). A slice that does not
@@ -1311,6 +1393,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     weatherNote: weather.note,
     externalPanels,
     chores,
+    todo,
     house: house.readings,
     houseNote: house.note,
     now,

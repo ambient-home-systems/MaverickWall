@@ -101,7 +101,8 @@ describe('the lane', () => {
 });
 
 describe('the note about a box the wall leaves out', () => {
-  const flagged = new Map([['weather', NO_LOCATION]]) as NotDrawn;
+  // Keyed by box since RFC 012 §6.2: the weather box's own id, not its type.
+  const flagged = new Map([[weather.id, NO_LOCATION]]) as NotDrawn;
 
   it('says nothing for a widget the wall draws', () => {
     const view = ask({ selected: clock.id, notDrawn: flagged });

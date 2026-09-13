@@ -53,6 +53,12 @@ const widget = (id: string, type: string): PlacedWidgetRow => ({
 });
 
 describe('the widget/module table', () => {
+  /*
+   * `todo` is in the table — the registry parity below needs it, since the
+   * `todo` module is real — and it is the one entry `widgetIsSetUp` reads
+   * conditionally: the table backs a to-do widget only when it names a list.
+   * The test above this file's canvas cases is what holds that reading.
+   */
   it('names only real module block keys', () => {
     const keys = MODULES.map((module) => module.key);
     const orphans = Object.entries(WIDGET_MODULE).filter(([, block]) => !keys.includes(block));
@@ -113,8 +119,8 @@ describe('every widget that can draw the note can be omitted', () => {
         `the "Nothing to show yet." note is drawn on exactly that answer.`,
     ).toBeGreaterThan(0);
 
-    const nothingSetUp = { modules: [], shift: false };
-    const stuck = withNote.filter((type) => widgetIsSetUp(type, nothingSetUp));
+    const nothingSetUp = { modules: [], shift: false, todoLists: [] };
+    const stuck = withNote.filter((type) => widgetIsSetUp({ type }, nothingSetUp));
     expect(
       stuck,
       'a widget can draw "Nothing to show yet." and the manifest will never omit ' +
@@ -127,24 +133,42 @@ describe('every widget that can draw the note can be omitted', () => {
 
 describe('widgetIsSetUp', () => {
   it('keeps what needs nothing and what the household types in itself', () => {
-    const nothing = { modules: [], shift: false };
+    const nothing = { modules: [], shift: false, todoLists: [] };
     for (const type of ['clock', 'calendar', 'notes', 'todo', 'image', 'countdown', 'external']) {
-      expect(widgetIsSetUp(type, nothing), `${type} was omitted`).toBe(true);
+      expect(widgetIsSetUp({ type }, nothing), `${type} was omitted`).toBe(true);
     }
   });
 
   it('drops the four whose prerequisite lives on another screen', () => {
-    const nothing = { modules: [], shift: false };
+    const nothing = { modules: [], shift: false, todoLists: [] };
     for (const type of ['weather', 'homeassistant', 'chores', 'shift']) {
-      expect(widgetIsSetUp(type, nothing), `${type} survived with nothing behind it`).toBe(false);
+      expect(widgetIsSetUp({ type }, nothing), `${type} survived with nothing behind it`).toBe(false);
     }
   });
 
   it('keeps a module-backed widget the moment its module is ready', () => {
-    expect(widgetIsSetUp('weather', { modules: ['weather'], shift: false })).toBe(true);
-    expect(widgetIsSetUp('homeassistant', { modules: ['home'], shift: false })).toBe(true);
-    expect(widgetIsSetUp('chores', { modules: ['chores'], shift: false })).toBe(true);
-    expect(widgetIsSetUp('shift', { modules: [], shift: true })).toBe(true);
+    expect(widgetIsSetUp({ type: 'weather' }, { modules: ['weather'], shift: false, todoLists: [] })).toBe(true);
+    expect(widgetIsSetUp({ type: 'homeassistant' }, { modules: ['home'], shift: false, todoLists: [] })).toBe(true);
+    expect(widgetIsSetUp({ type: 'chores' }, { modules: ['chores'], shift: false, todoLists: [] })).toBe(true);
+    expect(widgetIsSetUp({ type: 'shift' }, { modules: [], shift: true, todoLists: [] })).toBe(true);
+  });
+
+  it('asks a to-do widget which list it names, and answers from that (RFC 012 §6.2)', () => {
+    /*
+     * The one type whose answer is a fact about its own config. Typed items
+     * need nothing; a named list needs to still be watched — and "watched"
+     * implies the module is ready, since `ready` is "at least one watched
+     * list", so one membership test answers both halves.
+     */
+    const nothing = { modules: [], shift: false, todoLists: [] };
+    const shopping = { modules: ['todo'], shift: false, todoLists: ['todo.shopping'] };
+    expect(widgetIsSetUp({ type: 'todo', config: { items: ['Milk'] } }, nothing)).toBe(true);
+    expect(widgetIsSetUp({ type: 'todo', config: { list: 'todo.shopping' } }, nothing)).toBe(false);
+    expect(widgetIsSetUp({ type: 'todo', config: { list: 'todo.shopping' } }, shopping)).toBe(true);
+    // A list the household stopped watching, on a household that still watches another.
+    expect(widgetIsSetUp({ type: 'todo', config: { list: 'todo.read_only' } }, shopping)).toBe(false);
+    // An empty string is an absence, not a list called "".
+    expect(widgetIsSetUp({ type: 'todo', config: { list: '', items: ['Milk'] } }, nothing)).toBe(true);
   });
 
   it('is about the prerequisite, not the widget having data today', () => {
@@ -154,7 +178,7 @@ describe('widgetIsSetUp', () => {
      * "the feed is empty today" is information. Only `readyModules` decides
      * here, and it is fed by `ready`, never by `panels`.
      */
-    expect(widgetIsSetUp('weather', { modules: ['weather'], shift: false })).toBe(true);
+    expect(widgetIsSetUp({ type: 'weather' }, { modules: ['weather'], shift: false, todoLists: [] })).toBe(true);
   });
 });
 
@@ -189,6 +213,23 @@ describe('the canvas', () => {
     expect(layout.portrait.widgets.map((w) => w.type)).toEqual(['weather']);
   });
 
+  it('draws a typed-items to-do widget on a household with no Home Assistant at all (RFC 012 §6.2)', () => {
+    /*
+     * The omission trap, and the test the RFC asked for before the change.
+     *
+     * A `todo` widget's content is typed into the widget itself, so it always
+     * has something to say — unless it names a Home Assistant list, which is a
+     * prerequisite on another screen. The obvious way to back the list case is
+     * a `todo: 'todo'` entry in `WIDGET_MODULE`, and that entry omits **every
+     * existing typed checklist** on every wall whose household has no list, at
+     * one image pull. Written first, watched go red against exactly that entry,
+     * then made to pass by asking the widget rather than the type.
+     */
+    const typed = { ...widget('t', 'todo'), config: { items: ['Milk', 'Bread'] } };
+    const layout = buildLayout(HOUSEHOLD(), [widget('a', 'clock'), typed], [], []);
+    expect(layout.portrait.widgets.map((w) => w.type)).toEqual(['clock', 'todo']);
+  });
+
   it('drops an unknown type even when that leaves the canvas empty', () => {
     // The guard is about widgets the wall could draw. A type with no renderer
     // is not something to fall back to.
@@ -212,7 +253,7 @@ describe('the canvas', () => {
     // "No weather yet" where the wall draws nothing.
     const rows = [widget('a', 'clock'), widget('b', 'weather')];
     expect(
-      keepWidgetsWithSomethingToSay(rows, { modules: [], shift: false }).map((r) => r.type),
+      keepWidgetsWithSomethingToSay(rows, { modules: [], shift: false, todoLists: [] }).map((r) => r.type),
     ).toEqual(['clock']);
   });
 });

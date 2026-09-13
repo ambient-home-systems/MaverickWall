@@ -16,6 +16,18 @@
 
 ## Unreleased
 
+**Your Home Assistant shopping list, on the wall.** On the Home Assistant page
+there is a new section, To-do lists: pick one of your Home Assistant to-do
+lists — the shopping list, the jobs list, up to eight of them — give it a name
+if you like, and it is read every minute. Then put a To-do widget on any wall
+or panel and choose that list in its options, instead of typing the items in.
+The wall draws what is still to do, in the list's own order; there is a switch
+to show the ticked items too, struck through. Add milk on your phone and it is
+on the wall within a minute. Read-only for now: the wall shows the list and
+cannot tick anything off it yet — that is the next release, and it will be a
+switch you turn on per wall. A To-do widget you already had, with items typed
+into it, draws exactly as it did.
+
 **The promise on the Home Assistant page is exact now.** It used to say
 Maverick Wall could not control anything in Home Assistant. That was true, and
 it is about to stop being true in a small and specific way: a coming release

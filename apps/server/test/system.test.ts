@@ -113,6 +113,16 @@ function harness(appVersion = '9.9.9') {
   db.prepare(
     `INSERT INTO people (id, name, color, created_at, updated_at) VALUES ('p1', 'Ellie', '#fff', ?, ?)`,
   ).run(at, at);
+  // A to-do item is household content of the same class as the event title
+  // above (RFC 012): typed on somebody's phone, and never a diagnostic.
+  db.prepare(
+    `INSERT INTO ha_todo_lists (entity_id, name, label, supports_update, sort_order, created_at, updated_at)
+     VALUES ('todo.shopping', 'Shopping', 'Things to buy', 1, 0, ?, ?)`,
+  ).run(at, at);
+  db.prepare(
+    `INSERT INTO ha_todo_items (id, entity_id, uid, summary, status, due, position, fetched_at)
+     VALUES ('h1', 'todo.shopping', 'u1', 'Pregnancy test', 'needs_action', NULL, 0, ?)`,
+  ).run(at);
   db.prepare(
     `INSERT INTO user (id, name, email, email_verified, created_at, updated_at)
      VALUES ('u1', 'Household', 'private.person@example.com', 0, ?, ?)`,
@@ -199,6 +209,8 @@ describe('diagnostics', () => {
     expect(text).not.toContain('private.person@example.com');
     expect(text).not.toContain("Mum's work rota");
     expect(text).not.toContain('Ellie');
+    expect(text).not.toContain('Pregnancy test');
+    expect(text).not.toContain('Things to buy');
     // The host is the one thing kept, because a failing feed fails at a host.
     expect(text).toContain('calendar.google.com');
   });

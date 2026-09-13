@@ -20,10 +20,10 @@ import { keepWidgetsWithSomethingToSay, widgetIsSetUp, type HouseholdSetUp } fro
 
 /** The four set-up states a household can be in, as far as Classic can see. */
 const STATES: readonly { readonly label: string; readonly setUp: HouseholdSetUp }[] = [
-  { label: 'a location and a rota', setUp: { modules: ['weather'], shift: true } },
-  { label: 'a location, no rota', setUp: { modules: ['weather'], shift: false } },
-  { label: 'a rota, no location', setUp: { modules: [], shift: true } },
-  { label: 'neither — a fresh install', setUp: { modules: [], shift: false } },
+  { label: 'a location and a rota', setUp: { modules: ['weather'], shift: true, todoLists: [] } },
+  { label: 'a location, no rota', setUp: { modules: ['weather'], shift: false, todoLists: [] } },
+  { label: 'a rota, no location', setUp: { modules: [], shift: true, todoLists: [] } },
+  { label: 'neither — a fresh install', setUp: { modules: [], shift: false, todoLists: [] } },
 ];
 
 const ORIENTATIONS = ['portrait', 'landscape'] as const;
@@ -37,7 +37,7 @@ describe('the Classic variants', () => {
   });
 
   it('is the shipped Classic when the household has everything', () => {
-    const both = classicFor({ modules: ['weather', 'home', 'chores'], shift: true });
+    const both = classicFor({ modules: ['weather', 'home', 'chores'], shift: true, todoLists: [] });
     expect(both.portrait).toEqual(CLASSIC.portrait);
     expect(both.landscape).toEqual(CLASSIC.landscape);
   });
@@ -55,7 +55,7 @@ describe('the Classic variants', () => {
        */
       for (const widget of widgets) {
         expect(
-          widgetIsSetUp(widget.type, setUp),
+          widgetIsSetUp(widget, setUp),
           `${orientation}: a ${widget.type} box would be dropped from the manifest`,
         ).toBe(true);
       }
