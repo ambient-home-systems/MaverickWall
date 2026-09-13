@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.63.0
+
 **Tick things off your Home Assistant list, from the wall.** Put a To-do widget
 on a wall, point it at one of your Home Assistant lists, and each item gets a
 box you can press. Press it and the item is done — on the wall, on your phone,
