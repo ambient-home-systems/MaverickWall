@@ -102,7 +102,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and thirty real bugs**, and the pattern in how is the most
+This project has found **one hundred and thirty-three real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -260,6 +260,9 @@ useful thing in this document:
 | A settings sheet lying over a navigation column the save bar under it cleared | Measuring the two at 1024px and reading x=0 against x=264 |
 | A switch 943px from the label it belongs to | Measuring the widest label-to-control gap in a sheet that had no measure |
 | An assertion for content-proportional segments that its own fix could not redden | Reverting the fix and watching the file stay green, then counting starved labels instead |
+| **Every template card drawing its type 5.02x too large, on the one screen a household meets a layout** | A household looking at the gallery and saying the samples were not accurate representations |
+| Fifty `:root` and `body` rules dead in both admin previews, the editor's included | Asking what `--t-micro` computed to inside the shadow root, and reading back the empty string |
+| A preview measured against itself, so no assertion could see it drift from the wall | Pairing the wall and comparing the two, rather than recording what the card drew |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted

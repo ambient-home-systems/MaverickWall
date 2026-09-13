@@ -19,6 +19,7 @@
 import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
+import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
 import type { Manifest } from './manifest.js';
 import {
   CALENDAR_DENSITIES,
@@ -1233,9 +1234,9 @@ function boot(): void {
 
       const shadow = preview.attachShadow({ mode: 'open' });
       const styleEl = document.createElement('style');
-      styleEl.textContent = css;
+      styleEl.textContent = previewStylesheet(css);
       const wall = document.createElement('div');
-      wall.className = 'preview-wall';
+      wall.className = PREVIEW_ROOT_CLASS;
       shadow.append(styleEl, wall);
       previewShadow = shadow;
       previewWall = wall;
@@ -1262,40 +1263,21 @@ function boot(): void {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    // Render at a reference resolution, then scale the whole wall down to this
-    // box with a transform — rather than rendering it at the box's own small
-    // pixel size.
-    //
-    // Why: the reused sections (weather, the agenda, the shift badge…) size
-    // their type in `rem`. On a real wall `orientation.ts` sets the document
-    // root's font-size to --root-size (one percent of the canvas height), so a
-    // rem tracks the canvas and `fitToBox` grows or shrinks each section to fill
-    // its box in proportion. Inside this preview the wall lives in a shadow root,
-    // and `rem` always resolves against the *document* root — the admin page's
-    // 16px — which the display's own `html { font-size: … }` rule cannot touch
-    // (a shadow root has no <html>). Rendered at the box's small pixel size, then,
-    // every rem-based section came out huge next to its box, so fit-to-fill hit
-    // its readable floor and clipped: the preview disagreed with the wall it is
-    // meant to mirror. Rendering at the resolution where the document's own rem
-    // *is* one percent of the canvas height (height = rem × 100) restores the
-    // wall's proportion, and the transform is visual only — `fitToBox` measures
-    // untransformed layout sizes, so the fit is computed exactly as on a wall.
-    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const refH = rootPx * 100;
-    const refW = refH * state.aspect;
-    previewWall.style.width = `${refW}px`;
-    previewWall.style.height = `${refH}px`;
-    previewWall.style.setProperty('--frame-w', `${refW}px`);
-    previewWall.style.setProperty('--frame-h', `${refH}px`);
-    previewWall.style.setProperty('--root-size', `${rootPx}px`);
-    // Taken out of flow so its full-resolution layout box cannot push the shadow
-    // host around; the transform then fits it exactly to this box (both share the
-    // canvas aspect, so width and height scale by the same factor).
-    previewWall.style.position = 'absolute';
-    previewWall.style.top = '0';
-    previewWall.style.left = '0';
-    previewWall.style.transformOrigin = 'top left';
-    previewWall.style.transform = `scale(${rect.height / refH})`;
+    /*
+     * Render at a reference resolution, then scale the whole wall down to this
+     * box — rather than rendering it at the box's own small pixel size. The
+     * arithmetic and the argument are in `preview-css.ts`, shared with the
+     * template gallery's cards so the editor and a card cannot come to draw one
+     * canvas two ways.
+     *
+     * The comment that stood here had the mechanism right and was incomplete in
+     * a way that mattered: it named the rem, and not the `:root` block the rem
+     * sizes are declared in, which a shadow root also cannot see — so the wall
+     * this preview drew was correctly proportioned and missing its type scale,
+     * its spacing scale and its theme's display face. `previewStylesheet` is the
+     * other half, and it is why this is now two calls rather than fifteen lines.
+     */
+    layoutPreviewRoot(previewWall, { width: rect.width, height: rect.height }, state.aspect);
     applyTheme(previewWall, manifest.theme.active);
 
     // The wall as it will actually draw — always free-form now. It draws straight

@@ -15,6 +15,7 @@
 import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
+import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
 import type { Manifest, ManifestWidget, CanvasBackground } from './manifest.js';
 
 /**
@@ -255,18 +256,17 @@ function boot(): void {
 
       const shadow = thumb.attachShadow({ mode: 'open' });
       const style = document.createElement('style');
-      style.textContent = css;
+      style.textContent = previewStylesheet(css);
       const wall = document.createElement('div');
-      wall.className = 'preview-wall';
-      // The frame the wall's own layout expects: no rotation, this box exactly,
-      // and one rem worth one percent of its height — the relation orientation.ts
-      // sets on a real screen. Free-form sections measure and scale to their box,
-      // so they are indifferent to the shadow root having no root font-size.
-      wall.style.width = `${rect.width}px`;
-      wall.style.height = `${rect.height}px`;
-      wall.style.setProperty('--frame-w', `${rect.width}px`);
-      wall.style.setProperty('--frame-h', `${rect.height}px`);
-      wall.style.setProperty('--root-size', `${rect.height / 100}px`);
+      wall.className = PREVIEW_ROOT_CLASS;
+      /*
+       * Drawn at a reference resolution and scaled down to this box, rather
+       * than drawn at the box's own small pixel size. The arithmetic and the
+       * whole argument for it are in `preview-css.ts`, shared with the layout
+       * editor's live canvas — which had the identical fault, and which this
+       * page's cards must agree with in any case.
+       */
+      layoutPreviewRoot(wall, { width: rect.width, height: rect.height }, rect.width / rect.height);
       shadow.append(style, wall);
       // The template's own theme, so the card shows the look applying it gives —
       // not the household's current theme (RFC 005 3c).
