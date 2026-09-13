@@ -450,8 +450,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**2937 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 484 · server 1986. CI runs the whole suite and then the README's
+**2974 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 484 · server 2023. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
 has ever been wrong.
 
@@ -506,14 +506,17 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**198 of the server's tests fail without a real Chromium and say so**, across
-27 files, which is worth knowing before reading a red suite as a regression. A
+**220 of the server's tests fail without a real Chromium and say so**, across
+33 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
 carried forward and incremented, which is the only way this pair has ever been
 right: it read 148 over 20 files while the truth was 140 over 21, and the
-increment that produced 148 is how a stale number survives being edited. That is
+increment that produced 148 is how a stale number survives being edited. **It
+then read 198 over 27 while the truth was 220 over 33**, which is the same
+failure a third time and was found by a change that added no browser test at
+all — measured in passing, while running the suite for something else. That is
 the right failure — these measure layout, and a browser test that silently skips
 is this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.

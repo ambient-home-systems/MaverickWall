@@ -16,6 +16,21 @@
 
 ## Unreleased
 
+**The promise on the Home Assistant page is exact now.** It used to say
+Maverick Wall could not control anything in Home Assistant. That was true, and
+it is about to stop being true in a small and specific way: a coming release
+will let you put a Home Assistant to-do list on a wall and tick things off it.
+So the page says what it means — Maverick Wall can tick an item off a to-do
+list you choose, and it can do nothing else to your home. No lights, switches,
+locks, covers, scenes or cameras, and not "switched off by default" either:
+there is no code in it that can do any of them, and a test refuses to let one
+in. The README and this page's own documentation were saying the old thing too,
+and now say the new one.
+
+Nothing on any wall or panel changes in this release, and there is nothing new
+to set up. The limit is being written down first, on purpose, so that it is
+settled before the thing it allows is built.
+
 **The picture on each starting-layout card is now the wall.** The cards added
 last release drew their text several times too large for the card — so the
 month grid ran off the edge, the words overlapped each other, and every layout
