@@ -7,7 +7,9 @@ the wall settings Appearance pane), `apps/server/src/api/templates.ts`,
 `apps/server/src/api/queries.ts` (`createScreen`, `setOwnerTheme`),
 `apps/server/src/db/schema.ts` · Builds on the component layer (RFC 009 phases
 10A/10B), the add-a-wall page (RFC 009 phase 4) and `retireDefaultWall` ·
-Constrains nothing · Amends no hard rule
+Constrains nothing · Amends no hard rule ·
+**Rests on a premise recorded in §4: this product has no installation outside
+the author's own testing environment**
 
 > **Revised after review, and the revision is the document.** The first draft
 > proposed keeping a household default theme on System and turning Themes into
@@ -38,8 +40,8 @@ occurring in the controls rather than in the renderers.
 This RFC proposes:
 
 1. **The household default theme is retired.** `household_settings.theme` and
-   `daytime_theme` stop being read, the way `layout_mode` and `display_blocks`
-   already have.
+   `daytime_theme` are dropped, along with the column default of `board` — a
+   theme key that has not existed for releases (§2.8).
 2. **Every wall names its own theme, and cannot exist without one.**
    `/admin/walls/new` asks, with nothing preselected, and refuses to proceed
    until the household has chosen. Every other door that creates a wall answers
@@ -263,43 +265,91 @@ Not a docs page: this product has no published docs site, and that is now the
 only entry on CLAUDE.md's "not started" list. The four facts in §2.6 go **on the
 builder**, beside the controls they are about.
 
-## 4. Migration, and it is the risky part
+## 4. Migration
 
-Today `screens.theme` is nullable and null means *follow the household*. Every
-wall paired before this change is null. Dropping the household read without
-touching those rows takes a working kitchen calendar to `panels` on the next
-restart, on every wall that was following an Almanac household.
+**This section rests on a premise, and the premise is recorded here because the
+section is wrong without it: as of this writing the product has no installation
+anywhere outside the author's own testing environment.** Confirmed by the
+author. No household's wall changes colour because no household has one. If
+that stops being true before this ships — a tagged release anybody has pulled —
+§4 has to be rewritten, and the first draft's version of it (a boot-time
+`retireDefaultThemes` behind a `default_theme_retired` flag, in
+`retireDefaultWall`'s shape) is what it should be rewritten back into.
 
-`retireDefaultWall` is the precedent one column along, and the shape is the
-same: **copy what each wall was already drawing onto it, once, at boot.**
-`retireDefaultThemes` resolves every screen's effective theme and daylight
-schedule exactly as `manifest.ts` resolves it today, writes it to the row, and
-sets a `default_theme_retired` flag so it runs once per database.
+With no data to preserve, three things that were expensive become cheap, and
+the whole of the first draft's migration machinery is deleted rather than
+built.
 
-Three decisions inside that:
+**`screens.theme` becomes `NOT NULL` now, not later.** The first draft deferred
+it and §5 records why it no longer defers. With the constraint in the schema, a
+wall with no theme is not merely discouraged, it **cannot be inserted** — so
+every door in §4.1 is enforced by the database rather than by a reviewer, and a
+door somebody adds in five years fails loudly at the insert.
 
-**`household_settings.theme` and `daytime_theme` are kept and stop being read.**
-No migration rewrites them. This is `display_blocks`' own treatment and CLAUDE.md
-states the reason: the dead half is cheap, and *somebody will otherwise read the
-column and believe it*. A comment goes at the declaration saying so, and
-`schema.ts:63`'s `.default('board')` is left exactly where it is — correcting a
-default on a column nothing reads is a table recreate for no gain.
+**That makes the "broken until a theme is selected" state unnecessary**, which
+is worth stating because it is stronger than what was asked for. There is no
+need for a wall to render an apology while it waits to be themed, and no need
+for a renderer branch that draws one: an unthemed wall stops being a state the
+product has.
 
-**`screens.theme` is backfilled and stays nullable, for now.** `NOT NULL` is the
-end state and it is deliberately not this change. Adding it on SQLite is a table
-recreate, which is the single migration class that has already corrupted this
-repository once — `0009`, where drizzle-kit's `INSERT ... SELECT` named columns
-that did not exist and SQLite resolved them as string literals, and every
-household's calendars would have come out with `kind = 'kind'`. `screens` is the
-table holding every pairing token in the house. The invariant is held by the
-doors (§4.1) and by a test that walks them; the recreate buys unfalsifiability
-at a risk this project has already paid once, and it should be a separate
-migration after the doors are proven.
+**The backfill survives as one SQL expression, because it costs nothing.**
+Permission to break existing walls is permission not to *build machinery*, and
+the machinery is what was expensive — the boot function, the flag column, the
+once-per-database guard. Preserving what a test wall was already drawing is a
+`COALESCE` inside the migration's own copy step:
 
-**The backfill must resolve, never guess.** A wall with its own theme keeps it;
-a wall with null takes the household's *resolved* value, alias-folded through
-`displayThemeRef` — so a household still carrying `board` in the column since
-before the rename backfills onto `panels` and not onto a key nothing draws.
+```sql
+COALESCE(s.theme, (SELECT theme FROM household_settings WHERE id = 'singleton'), 'panels')
+```
+
+No boot code, no flag, no separate function. `retireDefaultWall` needed all of
+that because it was copying *canvases* — rows in `layout_widgets`; a theme is
+one scalar and fits in the migration that needs it.
+
+**The alternative is one line and may be the better one for a test
+environment:** `DELETE FROM screens`, and re-pair. It costs a few minutes and
+it exercises the new creation flow end to end, which is the thing this RFC is
+actually about and which a backfill lets you skip testing. Recommended if the
+test walls are cheap to re-pair; the `COALESCE` if they are not.
+
+**`household_settings.theme` and `daytime_theme` are dropped, not kept.** The
+first draft kept them unread, on CLAUDE.md's `display_blocks` reasoning —
+*somebody will otherwise read the column and believe it*. That argument is
+about not rewriting a shipped household's row. With no shipped households the
+cleaner thing is to remove them, so there is no dead column to misread at all.
+better-sqlite3 11.x bundles SQLite 3.45+ and `ALTER TABLE … DROP COLUMN` landed
+in 3.35, so this is a plain `ALTER` rather than a second table recreate —
+**verify that with a one-liner before relying on it**, since it was not checked
+empirically here (this session has no `node_modules` installed) and a
+drizzle-kit that decides to recreate instead puts `household_settings` through
+the hazard below for no reason.
+
+**`schema.ts:63`'s `.default('board')` goes with them**, which retires §2.8's
+fourth mechanism outright rather than leaving a retired key as the value every
+new database starts from.
+
+### 4.0 What the premise does not excuse
+
+The `0009` hazard is **not** removed by having no deployments, and this is the
+one place to be careful about what the permission bought.
+
+The hazard is that drizzle-kit generates an `INSERT … SELECT` naming columns
+the old table does not have, SQLite resolves a double-quoted unknown name as a
+**string literal** rather than erroring, and the migration reports success
+while writing the wrong value into every row. What changed is the *cost* of
+that happening — a testing database, recoverable by wiping it — not the
+*likelihood*, and not the fact that it would be silent.
+
+`screens` carries 92 columns including `token_hash`, the credential every
+paired wall and panel authenticates with. A bad copy there is every screen in
+the house dropping off at once, which reads as a pairing bug rather than as a
+migration bug and can burn an afternoon before anybody suspects the migration.
+
+So the review requirement is unchanged and is now cheap to meet: **generate the
+migration, then read the `INSERT … SELECT` column list against the old table's
+columns before running it**, exactly as `0009` was. `migration-upgrade.test.ts`
+already walks every migration in order against a database that has a calendar
+in it; it should gain a *screen* for this one, which it does not have today.
 
 ### 4.1 Every door, and this is where the last one hides
 
@@ -342,8 +392,12 @@ to this question and one row to hold them. A setting whose right value differs
 per wall is not a household default that walls may override; it is a per-wall
 setting with a misleading home.
 
-**Make the theme `NOT NULL` in the same migration.** Rejected for now, not for
-ever — §4, and the reason is `0009`.
+**Defer `NOT NULL` to a later migration.** This was the first draft's position
+and it is **withdrawn**. It was the right call while the risk was somebody
+else's kitchen calendar; with no installation outside the author's testing
+environment, the recreate costs a wipe and re-pair, and the constraint is what
+turns §4.1's rule from a convention the doors observe into one the database
+enforces. `0009`'s lesson survives as a review step (§4.0), not as a deferral.
 
 **Ask before a template repaints a wall, and carry the backgrounds across.**
 Rejected as out of scope and probably wrong: the template's backgrounds are
@@ -359,16 +413,19 @@ it is undone by §3 — and if only one thing ships from this document it should
 
 ## 6. Verification
 
-Nothing here moves a pixel on a wall by design, so that is the headline
-assertion rather than a footnote.
+§4's premise removes the assertion the first draft led with — "every existing
+wall draws exactly what it drew" — because there are no existing walls to hold
+it to. What replaces it is the constraint.
 
-- **Every existing wall draws exactly what it drew**, measured across a database
-  seeded with the four states that exist today: a wall with its own theme, a
-  wall following an Almanac household, a wall following a household still
-  carrying `board`, and a wall with a daylight schedule. The manifest's resolved
-  `theme` block must be byte-identical before and after `retireDefaultThemes`.
-  That is the rule-nine assertion and it should be written first and committed
-  red, the way `epaper-proportional`'s pinning test was.
+- **A wall with no theme cannot be inserted.** The `NOT NULL` is the assertion;
+  the test is that the insert throws, and it is worth writing precisely because
+  a schema constraint is the kind of thing a later migration quietly relaxes.
+- **The migration's copy step preserves the resolved theme**, if the `COALESCE`
+  form is taken — one case per state that exists today (own theme, following an
+  Almanac household, following a household still carrying `board`) against
+  `migration-upgrade.test.ts`, which must gain a **screen** for this: it walks
+  every migration against a database holding a calendar and holds no screen at
+  all, so nothing in the suite today would see a `screens` recreate go wrong.
 - **A wall cannot be created without a theme, through every door** — the §4.1
   table as a test that walks all three, in the shape `default-wall-retired.test.ts`
   already walks them. `createScreen` gaining a required parameter means the
