@@ -32,8 +32,10 @@ What we can do, in increasing order of cost:
 - **Say that the Home Assistant route exists** (§5). Google, iCloud, Microsoft
   365 and Nextcloud all reach the wall today through `kind = 'homeassistant'`,
   and nothing in the product says so. This is copy, not code.
-- **CalDAV** (§6), which is the only direct door to iCloud, and the only part
-  of this RFC that is a real project.
+- **CalDAV** (§6), which is the only direct door to iCloud, the only part of
+  this RFC that is a real project, and **committed** — because what an iCloud
+  household is told to do today is either "install Home Assistant" or "publish
+  your family calendar unauthenticated".
 - **Microsoft 365 by device code** (§8), which is the one OAuth that actually
   fits a kitchen appliance — noted, not proposed.
 
@@ -217,9 +219,27 @@ tokens. CalDAV against `https://caldav.icloud.com` with an Apple ID and an
 **app-specific password** is the entire surface, and it is what Home
 Assistant's own caldav integration does.
 
-So the honest framing of this phase: it exists for households who want their
-iCloud calendar and do not run Home Assistant. Everything else CalDAV would
-reach, Phase A reaches with a GET.
+Everything else CalDAV would reach, Phase A reaches with a GET. So this phase
+is for one provider, and an earlier draft framed it as being "for households
+who want their iCloud calendar and do not run Home Assistant" — which
+undersells it by describing the population rather than what that population is
+currently told to do.
+
+**What an iCloud household is told to do today is the argument.** Their two
+options are install Home Assistant, or use a public iCloud share link — and a
+public share link is **unauthenticated**: anyone holding the URL reads the
+family's calendar. That is the same bearer-URL risk class `calendar_sources`
+already names at `urlEncrypted`, where a feed address is described as "a
+password in a URL". Recommending it is this product advising a household to
+publish their children's school run to the internet, and it is the answer in
+the "works today" column of the matrix in Appendix A.
+
+So Phase C is **committed** rather than costed-and-deferred. It is weeks of
+work, a widened security boundary, a new parser and a new table, for one
+provider — and the alternative is a privacy answer this product should not be
+giving. What §11 still gates is the *schema*, not the phase: §6.2.1 rests on
+households having more than one calendar per account, and that is cheap to
+check before the table is written and expensive after.
 
 ### 6.2 The discovery chain, and what gets stored
 
@@ -349,12 +369,47 @@ byte ceiling, same `SENSITIVE_HEADERS` stripping.
 
 One difference from RFC 012: **CalDAV must follow redirects** (step 1 is
 specified as one) where `postJson` refuses them. So the allowlist carries a
-per-method redirect policy rather than one rule, and the `authorization` header
-must keep being dropped across origins — which on iCloud means the partition
-host needs the credential re-attached deliberately, because it is a different
-origin from the one the household typed. That is the sort of thing that works
-in testing against Nextcloud and fails against iCloud, so it is written down
-here.
+per-method redirect policy rather than one rule, and `SENSITIVE_HEADERS` keeps
+dropping `authorization` across an origin change. What re-attaches it, and on
+what authority, is §6.3.1 — and that is a security decision rather than a
+transport detail, which is why it has a section of its own rather than a clause
+in this one.
+
+### 6.3.1 What stops discovery walking off with the password
+
+The discovery chain is **server-directed twice**: the well-known redirect
+chooses the context path, and `calendar-home-set` chooses the host the
+calendars live on. We attach the household's app-specific password to every hop
+after the first. So "follow the discovery wherever it points and send the
+credential there" is a credential-disclosure primitive with the SSRF guard's
+own shape — and the guard does not cover it. The guard stops *internal*
+addresses and DNS rebinding; it has nothing to say about an Apple ID password
+being posted to a public host a compromised or hostile server nominated.
+
+It cannot simply be refused, because iCloud requires exactly that move:
+`caldav.icloud.com` is what the household types and `pNN-caldav.icloud.com` is
+where their calendars are.
+
+**Decided: same host is silent, a different host is confirmed once and
+stored.** Discovery that stays on the host the household typed — Nextcloud,
+Baïkal, Radicale, every self-hosted server — asks nothing and looks exactly
+like adding a feed. Discovery that moves stops the add flow, names the host it
+was sent to, and asks. The answer is stored on `caldav_accounts` beside the
+credential, so every later sync goes straight there and nothing re-asks. **The
+credential is not sent before that decision**, which is free: step 1 needs no
+authentication.
+
+That is the shape `allowHttp` and `allowPrivateNetwork` already have — a
+deliberate per-source decision, made once, on the screen where somebody is
+already paying attention — rather than a global rule nobody sees.
+
+**The tempting alternative is rejected and it is worth saying why**, because it
+is what a reviewer will propose. "Same registrable domain" would be silent for
+iCloud too, and it needs a real public-suffix list: a dependency plus a data
+file that goes stale. Approximating it as the last two labels is **wrong in the
+dangerous direction** — it judges `cal.someone.co.uk` and `evil.co.uk` to be
+the same site, and sends the password to the second. A rule that is silently
+wrong for one country's households is worse than a rule that asks one question.
 
 ### 6.4 Do not let the server expand
 
@@ -415,6 +470,45 @@ It also grows a step the ICS path does not have: **a CalDAV account has several
 calendars and the household has to choose.** That is a picker between test and
 save — closer to the Home Assistant calendar-entity flow than to pasting a URL,
 and it should reuse that screen's shape rather than inventing one.
+
+### 6.8 Reading the XML, and why it is hand-rolled
+
+`PROPFIND` and `REPORT` answer with WebDAV `multistatus` documents, and
+something has to read them. This project's own rule points both ways — "draw
+what nobody else supplies, and use somebody else's work for what is already
+solved" is the Oswald decision, and XML parsing is solved — so it is worth
+saying which side this lands on and why.
+
+**Decided: a strict, non-general reader in `apps/server`, hand-rolled.** Two
+arguments, and the second is the one that settles it.
+
+The narrow one: what is needed is not "parse XML", it is "read a handful of
+known element paths out of a multistatus response". That is the same gap
+`qr.ts`, `png.ts` and `font.ts` already sit in — a general library for a
+specific need — and this project has taken that side four times.
+
+The one that actually decides it: **XXE is the canonical WebDAV and SOAP
+vulnerability**, and a general parser has to be *configured* not to be
+vulnerable to it. A reader with no concept of entities and a flat refusal of
+`DOCTYPE` cannot have XXE at all. That inverts the usual instinct about
+hand-rolling a parser: here the narrow thing is the safer thing, because the
+dangerous feature is one it does not implement rather than one it disables.
+
+So: `DOCTYPE` refused outright, no entity expansion of any kind, prefix→URI
+namespace mapping read from the declarations rather than from assumed prefixes,
+a hard depth cap and the Fetcher's byte ceiling above it. Pure, no I/O, in
+`apps/server` — rule one keeps it out of the pure packages and there is nothing
+here `packages/calendar` wants.
+
+**The honest risk is correctness rather than security**, and §11 names it: a
+reader that handles one server's prefixes and not another's works against
+Nextcloud and fails against iCloud. `d:`, `D:` and the default-namespace form
+all occur in the wild. Real fixtures from both providers are the mitigation,
+and they are needed whichever way this went.
+
+A public-suffix list is a **non-goal** for the same family of reasons (§6.3.1),
+and both are listed in §13 so that "we could just add a small dependency"
+arrives as a reopening rather than as a convenience.
 
 ## 7. Google, refused
 
@@ -528,8 +622,11 @@ Assistant, which is a large fraction of this product's audience.
 **C — CalDAV.** The method allowlist on the Fetcher, the discovery chain, the
 `caldav_accounts` table and `credentialFor` (§6.2.1, §6.2.2), the `REPORT`, a
 minimal XML reader, the CTag, the fourth `testFeed` stage and the calendar
-picker. Weeks, and the only part of this RFC that is a project. Gets
-iCloud directly.
+picker. Weeks, and the only part of this RFC that is a project. Gets iCloud
+directly, and is **committed rather than costed** (§6.1) — the alternative for
+an iCloud household is an unauthenticated public share link, which is not an
+answer this product should be giving. What §11 gates is the schema and not the
+phase.
 
 **D — M365 device flow.** Only on demand. Shares C's Fetcher work.
 
@@ -554,6 +651,23 @@ re-attached across it, and whether Apple's `calendar-data` parses — HA carries
 an open issue about Apple serving iCal content strict parsers reject, so a
 hostile fixture copied from a real iCloud resource is the first thing to write,
 before any of the transport.
+
+**The host-confirmation policy, driven rather than reasoned about.** A
+discovery chain that stays on one host must ask nothing — assert the add flow
+completes with no extra step against a local server. A chain that moves must
+stop, and the credential must not have been sent before it did: the assertion
+is on what the *first* host received, which a test can only see by running a
+server that records its own request headers. Then the stored answer: a second
+sync goes straight to the confirmed host and asks nothing. Reverting the policy
+must redden the middle one, and a test that only covers the happy path covers
+the case that was never at risk.
+
+**XXE, explicitly.** A `multistatus` response carrying a `DOCTYPE` with an
+external entity, and a billion-laughs expansion. Both must be refused at the
+document rather than parsed and ignored — §6.8's whole claim is that the
+feature is absent, and a reader that tolerates `DOCTYPE` while declining to
+expand it has the feature and a mitigation, which is the thing that gets
+configured wrong later.
 
 **The XML reader against something ugly.** Namespace prefixes vary by server
 (`d:`/`D:`/`DAV:`), and a reader that works against Nextcloud's output and not
@@ -621,6 +735,14 @@ optimisation.
   thing and it is not this — RFC 012 covers to-do lists through Home Assistant,
   and a second to-do source would be a second credential and a second failure
   mode for the same widget.
+- **A public-suffix list.** §6.3.1 rejects "same registrable domain" as the
+  discovery policy, and the reason is the list rather than the idea: a real one
+  is a dependency plus a data file that rots, and the two-label approximation is
+  silently wrong for `.co.uk` households in the direction that leaks the
+  password.
+- **A general XML parser.** §6.8. Not a rule about dependencies — a rule about
+  this one, where the narrow reader is the safer artefact rather than merely
+  the smaller one.
 - **Auto-discovery by email address.** RFC 6764's SRV/TXT bootstrapping would
   let somebody type `me@fastmail.com` and find the server. It is genuinely nice
   and it needs DNS SRV lookups from inside the SSRF-guarded boundary, which is
@@ -631,7 +753,7 @@ optimisation.
 | Provider | Works today | Phase A | Phase C | Via Home Assistant |
 |---|---|---|---|---|
 | Google | secret ICS (stale) | — | — | ✓ (HA does OAuth) |
-| Apple iCloud | public share ICS (delayed) | — | ✓ CalDAV + app password | ✓ (HA caldav) |
+| Apple iCloud | public share ICS — **unauthenticated**, and delayed | — | ✓ CalDAV + app password | ✓ (HA caldav) |
 | Nextcloud | LAN opt-in, no auth | ✓ `?export` + app password | ✓ | ✓ |
 | Microsoft 365 | published ICS | ✓ | ✓ CalDAV | ✓ |
 | Fastmail | — | ✓ | ✓ | ✓ |
@@ -641,3 +763,8 @@ optimisation.
 
 The column that matters is the last one, and it is the one nothing in the
 product mentions. That is Phase B, and it is the cheapest row in this document.
+
+The column to read next is the first, and iCloud's entry is why Phase C is
+committed rather than costed: a public iCloud share link is readable by anybody
+holding the URL, so "works today" there means a household publishing their
+family's calendar to the internet.
