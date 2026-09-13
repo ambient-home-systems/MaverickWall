@@ -1,6 +1,6 @@
 # RFC 012 — Home Assistant to-do lists, and the end of rule 12 as written
 
-Status: **proposed; nothing built** · Owner: — · First drafted 2026-09-13 ·
+Status: **phase 1 in progress** · Owner: — · First drafted 2026-09-13 ·
 Relates to `apps/server/src/modules/homeassistant/`,
 `packages/core/src/ports/fetcher.ts`, `apps/server/src/net/fetcher.ts`,
 `apps/server/src/api/widget-schema.ts`, `apps/server/src/api/manifest.ts`,
@@ -21,9 +21,11 @@ than a policy.
 So this RFC does two things, and the first is the one that needs the argument:
 
 1. **It amends hard rule 12.** "Home Assistant integration is READ-ONLY. No
-   service calls, no control." becomes a rule that permits exactly one service
-   call, `todo.update_item`, and refuses everything else *by shape* rather than
-   by a list somebody has to remember to keep short.
+   service calls, no control." becomes a rule that permits exactly one *write*,
+   `todo.update_item`, and refuses everything else *by shape* rather than by a
+   list somebody has to remember to keep short. The allowlist it is enforced
+   through has **two** members, because `todo.get_items` is a service call as
+   well — see the correction under §2.2.
 2. **It specifies the feature** — a `todo` panel module, a widening of the
    existing `todo` widget, and one new write endpoint modelled on
    `POST /d/chores/tick`.
@@ -78,19 +80,32 @@ Proposed text for CLAUDE.md, replacing rule 12 entirely. The diff is in
 Appendix A.
 
 > **12. Home Assistant writes are confined to list data the household
-> authored.** The one permitted service call is `todo.update_item`, and its
-> whole effect is to set an item's status on a to-do list the household
-> explicitly added on the Home Assistant screen. Nothing else — no `light`,
+> authored.** The one permitted **write** is `todo.update_item`, and its whole
+> effect is to set an item's status on a to-do list the household explicitly
+> added on the Home Assistant screen. The only other service call permitted at
+> all is the read it needs, `todo.get_items`. Nothing else — no `light`,
 > `switch`, `cover`, `lock`, `alarm_control_panel`, `climate`, `scene`,
 > `script`, `automation` or `camera`, and no `todo.add_item`,
 > `todo.remove_item` or `todo.remove_completed_items` until one of them is
-> argued for on its own merits. The allowlist is a frozen constant and a test
-> asserts no outbound request to Home Assistant leaves it. The display still
-> receives resolved values and handles this server minted, never an entity id
-> and never the token — so a compromised wall tablet can tick an item off a
-> shopping list and cannot unlock a door.
+> argued for on its own merits. The allowlist is a frozen constant of exactly
+> those two and a test asserts no outbound request to Home Assistant leaves it.
+> The display still receives resolved values and handles this server minted,
+> never an entity id and never the token — so a compromised wall tablet can
+> tick an item off a shopping list and cannot unlock a door.
 
-Three properties of that wording are deliberate.
+**The first draft of that paragraph said "the one permitted service call", and
+it was false in this document's own body.** §3.2 settles the read as
+`POST /api/services/todo/get_items?return_response`, which is a service call by
+every definition that matters here — it is the same verb, the same path prefix
+and the same `postJson` on the port, so a rule phrased against *service calls*
+would have been broken by the first line of code written to obey it. The word
+that carries the security property is **write**: `get_items` cannot change
+anything in a house and `update_item` can, and a rule that cannot tell those
+apart is not describing the risk it exists to bound. So the allowlist has two
+members and exactly one of them is a write, which is a shape a test can assert
+and a reviewer can read in one line.
+
+Three further properties of that wording are deliberate.
 
 **It names the effect, not the endpoint.** "Sets an item's status on a list the
 household added" is a sentence somebody can check a proposed change against. "No
@@ -122,7 +137,10 @@ It does, and without naming cameras: a pan/tilt call is not "list data the
 household authored", so the shape refuses it. The enumeration in §2.2 is belt
 rather than mechanism, and it includes `camera` so nobody has to re-derive this.
 **RFC 007 §13's bullet should be annotated rather than left standing**, because
-its reasoning is right and its citation is about to be wrong.
+its reasoning is right and its citation is about to be wrong. So should §3's
+constraint bullet one section earlier, which is where §13's premise is actually
+stated — "`client.ts` states flatly that nothing here issues a `POST`" — and
+which the first pass over this document missed. Appendix A records both.
 
 The reason to define the permitted set by shape at all is that the moment one
 POST exists, "it is just one more service" is an argument available for ever,
@@ -231,6 +249,54 @@ redirect is a request replayed somewhere we did not intend; **`postJson` should
 refuse redirects outright** rather than follow them, because the only host it
 ever speaks to is the household's own Home Assistant and a redirect off it is
 either a misconfiguration or an attack.
+
+### 4.1 The outcome type, specified
+
+The first draft of this section left the outcome unstated, which is the half
+that decides whether §7.4's "failure has to be sayable" is buildable at all. It
+is `PostJsonOutcome`, and it is `FetchOutcome` with **two** differences.
+
+```ts
+export interface PostJsonRequest {
+  readonly url: string;
+  readonly policy: UrlPolicy;
+  readonly maxBytes: number;
+  readonly timeoutMs?: number;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly userAgent?: string;
+  /** JSON-serialisable. The adapter serialises it; no caller hands over text. */
+  readonly body: unknown;
+}
+
+export type PostJsonOutcome =
+  | { status: 'ok'; body: string; contentType: string; finalUrl: string; byteSize: number }
+  | { status: 'rejected'; code: FetchRejectionCode; message: string;
+      networkOptions?: readonly NetworkOption[] }
+  | { status: 'failed'; code: FetchFailureCode; message: string; httpStatus?: number;
+      retryAfterSeconds?: number;
+      /** Present for `http-error`, capped by `maxBytes`. */
+      responseBody?: string };
+```
+
+**There is no `not-modified` case**, because there is no conditional request to
+produce one. `postJson` carries no `conditional` and no `acceptContentTypes`:
+it always sends `accept: application/json` and `content-type: application/json`,
+which is the whole of what it is for, and a call site that could vary either is
+a call site that could send something else.
+
+**The `http-error` failure carries the response body as text.** Home Assistant
+answers a refused service call with `{"message": "..."}`, and that sentence is
+the difference between a message somebody standing in a kitchen can act on and a
+bare `400`. §7.4 is unbuildable without it — "the tick failing is fine, the tick
+failing silently is not" requires the upstream's own words to reach the wall,
+and `fetch` throws them away by design because a calendar feed's error page is
+noise. It is capped by the same `maxBytes` the success path is, for the same
+reason: an error body is a stranger's bytes.
+
+**Any 3xx is `rejected('redirect-rejected', …)` and never followed**, per the
+paragraph above. It is a *rejection* rather than a failure because it is not
+retryable and means a misconfigured address rather than a broken network, which
+is the distinction the port's own doc-comment already draws.
 
 ## 5. Shape: to-do is its own module
 
@@ -487,12 +553,38 @@ enables is still read-only, rather than in the same commit as the first write.
 ## 10. How this gets proven (verification is the job)
 
 **The rule needs a test, because `grep` no longer answers it.** A test that
-walks the compiled server for every call into `postJson` and asserts the URL
-path is `/api/services/todo/update_item` and nothing else. Checked the way this
-repository checks things: add a second permitted service to the constant and
-watch it go red, then add a call site that bypasses the constant and watch it go
-red for the other reason. A test that only covers the first is a test for the
-allowlist rather than for the rule.
+walks the server's source for every call into `postJson` and asserts there is
+exactly one, in `modules/homeassistant/client.ts` and in one function there;
+that `HA_SERVICES` has exactly the two members §2.2 names; and that exactly one
+of them is named as the write. Then the runtime half, against the fake: every
+POST path the fake sees is a member of the constant. Checked the way this
+repository checks things: add a **third** permitted service to the constant and
+watch it go red, then add a call site in another file and watch it go red for
+the other reason. A test that only does the first is a test for the allowlist
+rather than for the rule — the whole risk being bounded is a second door, and a
+constant cannot see one that does not read it.
+
+**The claims need a test too, and that is the half nobody would think to
+write.** Appendix A lists ten places this repository states a property the
+amendment falsifies, and nine of them are prose — a heading in the README, two
+paragraphs the supervisor renders out of `DOCS.md`, a card on the admin's own
+Home Assistant screen. Prose does not fail to compile. The one thing that makes
+a stale claim findable is that its wording is distinctive, so
+`ha-claims.test.ts` scans for the *retired sentences* rather than for the new
+ones: it renders the served Home Assistant page through the real app with a real
+session, reads `README.md` and `addon/maverick-wall/DOCS.md` as text, and fails
+on "cannot control anything", "no service calls", "never writes",
+"read-only, permanently" and "no code in this application that writes". Then, in
+the other direction and only on the page, it asserts the *replacement* sentence
+is present with the permitted write named — because a claim deleted and not
+replaced is a screen that has stopped explaining what pasting a token here
+costs, which is worse than one that explains it wrongly.
+
+It reads the page and the two documents rather than a list of files with the
+strings in them, which is the difference between this and a `grep` somebody runs
+once: `DOCS.md` is what a household sees in the supervisor, the admin card is
+what somebody deciding whether to paste a token reads, and both are only worth
+asserting in the form they are actually served in.
 
 **The read needs a fake that answers like the real thing.** The Home Assistant
 integration's own precedent is exact here: "a fake HA that answers 404 like the
@@ -575,34 +667,55 @@ Under **Hard rules**, replacing rule 12:
 ```diff
 -12. Home Assistant integration is READ-ONLY. No service calls, no control.
 +12. **Home Assistant writes are confined to list data the household
-+    authored.** The one permitted service call is `todo.update_item`, and its
-+    whole effect is to set an item's status on a to-do list the household
-+    explicitly added. Nothing else — no `light`, `switch`, `cover`, `lock`,
++    authored.** The one permitted *write* is `todo.update_item`, and its whole
++    effect is to set an item's status on a to-do list the household explicitly
++    added. The only other service call permitted at all is the read it needs,
++    `todo.get_items`. Nothing else — no `light`, `switch`, `cover`, `lock`,
 +    `alarm_control_panel`, `climate`, `scene`, `script`, `automation` or
 +    `camera`, and no `todo.add_item`, `todo.remove_item` or
 +    `todo.remove_completed_items` until one of them is argued for on its own
-+    merits (RFC 012). The allowlist is a frozen constant and a test asserts no
-+    outbound request to Home Assistant leaves it. The display still receives
-+    resolved values and handles this server minted, never an entity id and
-+    never the token — so a compromised wall tablet can tick an item off a
-+    shopping list and cannot unlock a door.
++    merits (RFC 012). The allowlist is a frozen constant of exactly those two
++    and a test asserts no outbound request to Home Assistant leaves it. The
++    display still receives resolved values and handles this server minted,
++    never an entity id and never the token — so a compromised wall tablet can
++    tick an item off a shopping list and cannot unlock a door.
 ```
 
-Also in the same commit, because each is a claim this change falsifies:
+### The claims this falsifies
 
-- **`modules/homeassistant/client.ts`**, the blast-radius paragraph — §8 has
-  the replacement text.
-- **The "Home Assistant is read-only, and that is a security property"
-  paragraph** in CLAUDE.md's Current state, which says "nothing in the
-  repository issues a POST to Home Assistant". One exception, named, with the
-  test that keeps it to one.
-- **`api/widget-schema.ts:199`**, the `items` comment — "the wall is read-only,
-  so items are shown, not ticked".
-- **RFC 007 §13**, whose camera bullet cites rule 12 as absolute. Annotated
-  rather than rewritten: the conclusion holds, the citation moves to the shape
-  clause.
+**This list had four entries and the true number is ten.** That is worth more
+than the correction, because the four it named were the four somebody working on
+*this feature* would open anyway — the client the write goes through, the rule
+in CLAUDE.md, the widget schema the key lands on, and the RFC that cites rule 12
+by number. The six it missed are the ones nobody working on a to-do list has any
+reason to open: a README heading, two paragraphs the supervisor renders on an
+add-on page, a doc-comment above an unrelated network helper, a section divider
+in the schema, and a bullet in an RFC about cameras. Those are exactly the
+claims this document's own header block warns about — the ones nobody re-reads —
+and a rule that changes in four files and stays the same in six others is worse
+than a rule that never changed. Found by searching for the *sentences* rather
+than for the feature, which is what `ha-claims.test.ts` (§10) now does on every
+run.
 
-Four places, and the reason to list them is the reason this document's own
-header block exists: the most detailed claims in this repository are the ones
-nobody re-reads, and a rule that changes in one file and stays the same in four
-others is worse than a rule that never changed.
+Each of these is a claim this change makes false. All ten are rewritten in the
+same commit as the rule.
+
+| # | Where | What it says today |
+|---|---|---|
+| 1 | `apps/server/src/modules/homeassistant/client.ts`, the file docblock | "**Read-only, permanently.** Nothing in this file or anything that calls it issues a POST" and "Nothing writes" in the blast-radius list. §8 has the replacement. |
+| 2 | `CLAUDE.md`, Current state — "Home Assistant is read-only, and that is a security property" | "nothing in the repository issues a POST to Home Assistant". One exception, named, with the test that keeps it to one. |
+| 3 | `apps/server/src/api/widget-schema.ts`, the `items` comment | "the wall is read-only, so items are shown, not ticked". |
+| 4 | `docs/rfc-007-camera-feeds.md`, **§3 and §13** | §3: "`client.ts` states flatly that nothing here issues a `POST`." §13: "Every one of those is a write to Home Assistant, and rule 12 is not a setting." Two sites, not one — §3 is where the premise is stated and §13 is where it is used. Annotated rather than rewritten: both conclusions hold, and the citation moves to the shape clause. |
+| 5 | `apps/server/src/http/admin-ha.ts`, `boundary()` | The card a household reads before pasting a token: "Maverick Wall reads. It cannot control anything." and "There is no code in this application that writes to Home Assistant." Asserted verbatim by `apps/server/test/homeassistant.test.ts`, which changes with it. |
+| 6 | `README.md`, **twice** | The feature bullet ("It cannot control anything") and the section heading "Home Assistant: read-only, permanently" with its body ("Nothing in this repository sends a write of any kind"). |
+| 7 | `addon/maverick-wall/DOCS.md`, **twice** | The opening line ("it never writes anything back") and "What it will not do" ("It cannot control anything in Home Assistant. There are no service calls"). **The supervisor renders this file**, so it is the claim most households actually read. |
+| 8 | `apps/server/src/net/supervisor.ts`, the file docblock | "Read-only, like everything that touches Home Assistant here". |
+| 9 | `apps/server/src/db/schema.ts`, the section divider above `ha_settings` | "Home Assistant. Read-only, always." |
+| 10 | `docs/rfc-006-epaper-screens.md`, "The rules this touches" | "**Rule 12 (HA read-only).** Maverick never calls an HA service." |
+
+Two of those are worth a sentence each. **(5) is asserted by a test**, so the
+claim and its guard move together or the suite goes red — which is the only one
+of the ten that could not have gone stale quietly, and is the argument for
+`ha-claims.test.ts` covering the other nine. And **(7) is the one a household
+sees**: the other nine are read by contributors, and this one is rendered on the
+add-on page beside the Install button.
