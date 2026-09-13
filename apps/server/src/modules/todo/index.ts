@@ -7,7 +7,7 @@ import { call, callService, HA_SERVICES, resolveConnection } from '../homeassist
 import type { ModuleContext, PanelModule } from '../registry.js';
 
 /**
- * Home Assistant to-do lists on the wall (RFC 012 phase 1).
+ * Home Assistant to-do lists on the wall (RFC 012 phases 1 and 2).
  *
  * A module rather than a widening of the readings cache, because a list is not
  * a reading. `ha_entity_cache` is a snapshot of scalar states with a display
@@ -30,11 +30,13 @@ import type { ModuleContext, PanelModule } from '../registry.js';
  * that nags, and the reasoning chores wrote down applies unchanged: easy to add
  * later, very hard to take back.
  *
- * **Read-only in this phase.** The panel says what is on each list and what is
- * ticked; nothing here writes. `screens.allow_todo` exists and is read by
- * nothing, so the write endpoint (phase 2) costs no second migration. The one
- * thing this phase settles about the write is that the identity of an item is
- * its `uid` and never its summary — see `ha_todo_items` in `db/schema.ts`.
+ * **And one write, which is the only one this application makes.**
+ * `tickTodoItem` sets an item's status through `callService`, and everything
+ * that keeps it narrow is somewhere else: the allowlist is a frozen constant in
+ * the Home Assistant client, the permission is `screens.allow_todo` on the wall
+ * that asked, and the item is named by the `uid` the cache holds and never by
+ * the summary a household typed. The endpoint is `POST /d/todo/tick`
+ * (RFC 012 §7); this file owns the database either side of it.
  */
 
 export const TODO_BLOCK = 'todo';
@@ -431,6 +433,115 @@ export function buildTodoPanel(db: SqliteDatabase): TodoPanel | null {
       };
     }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// The tick (RFC 012 phase 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * One cached item, resolved from the handle a wall posted.
+ *
+ * The entity id and the uid are in here and nowhere near a manifest: this is
+ * the resolution rule 12's surviving clause (3) is built on. The wall holds an
+ * opaque id this server minted and the server turns it back into the two facts
+ * Home Assistant needs, so a compromised wall tablet can tick **only items it
+ * has been shown** — it cannot enumerate lists, cannot reach a list the
+ * household did not add, and cannot construct a handle for one.
+ */
+export interface TodoItemHandle {
+  readonly id: string;
+  readonly entityId: string;
+  /** The identity Home Assistant matches on. Never the summary — see below. */
+  readonly uid: string;
+  readonly status: TodoStatus;
+  /** Whether `todo.update_item` would be accepted on this item's list. */
+  readonly canTick: boolean;
+}
+
+/**
+ * The item a handle names, or nothing.
+ *
+ * Joined to the list rather than read in two queries, because the answer the
+ * caller needs is one row: which item, and may it be ticked. A handle whose
+ * item has left the list is simply absent — the row is deleted by the poll that
+ * did not see it — and that is the 404 §7.4 calls the common case.
+ */
+export function readTodoItemHandle(db: SqliteDatabase, id: string): TodoItemHandle | undefined {
+  const row = db
+    .prepare(
+      `SELECT i.id AS id, i.entity_id AS entityId, i.uid AS uid, i.status AS status,
+              l.supports_update AS supportsUpdate
+         FROM ha_todo_items i
+         JOIN ha_todo_lists l ON l.entity_id = i.entity_id
+        WHERE i.id = ?`,
+    )
+    .get(id) as
+    | { id: string; entityId: string; uid: string; status: string; supportsUpdate: number }
+    | undefined;
+  if (row === undefined) return undefined;
+  return {
+    id: row.id,
+    entityId: row.entityId,
+    uid: row.uid,
+    status: row.status === 'completed' ? 'completed' : 'needs_action',
+    canTick: row.supportsUpdate === 1,
+  };
+}
+
+/**
+ * Write the status this server has just watched Home Assistant accept.
+ *
+ * **Not an optimistic tick.** The endpoint has the upstream 200 in its hand
+ * before this is called, so the cache is being brought level with a fact rather
+ * than being guessed ahead of one. What it buys is the minute between now and
+ * the next poll: without it a household presses a box and the wall carries on
+ * saying the milk is outstanding until the job next runs, which is "pressing OK
+ * on a wall and watching nothing happen" — a fault this project has shipped and
+ * written up twice.
+ *
+ * `fetched_at` is deliberately left where it was. The poll's delete sweeps
+ * every row it did not touch *by that stamp*, so moving it here would make an
+ * item ticked between two polls survive a poll that no longer lists it.
+ */
+export function setTodoItemStatus(
+  db: SqliteDatabase,
+  id: string,
+  status: TodoStatus,
+): void {
+  db.prepare('UPDATE ha_todo_items SET status = ? WHERE id = ?').run(status, id);
+}
+
+/**
+ * Set one item's status on one list, and the only write this application makes.
+ *
+ * `HA_SERVICES.write` is the whole of rule 12's permitted write and
+ * `callService` is the one door it goes through — nothing here reaches the
+ * network itself. What this function owns is the *body*, and one field of it is
+ * the reason this phase exists at all:
+ *
+ * **`item` is always the uid.** Home Assistant's `_find_by_uid_or_summary`
+ * matches `value in (item.uid, item.summary)` and returns the **first** hit, so
+ * a household with "Milk" on the list twice, ticked by name, ticks whichever
+ * one that integration happens to return first — a bug nobody can reproduce on
+ * their own list. The uid is carried from the cache row the handle resolved to,
+ * and the summary never leaves this server as an identity.
+ */
+export async function tickTodoItem(
+  context: Pick<ModuleContext, 'db' | 'fetcher' | 'keyring'>,
+  item: TodoItemHandle,
+  done: boolean,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }> {
+  const resolved = resolveConnection(context.db, context.keyring);
+  if (!resolved.ok) return { ok: false, message: resolved.message };
+
+  const answer = await callService(context.fetcher, resolved.connection, HA_SERVICES.write, {
+    entity_id: item.entityId,
+    item: item.uid,
+    status: done ? 'completed' : 'needs_action',
+  });
+  if (!answer.ok) return { ok: false, message: answer.message };
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

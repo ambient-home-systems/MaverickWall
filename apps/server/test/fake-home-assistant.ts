@@ -331,7 +331,20 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
             );
             return;
           }
-          const item = list?.items.find((candidate) => candidate.uid === parsed['item']);
+          /*
+           * `_find_by_uid_or_summary`, copied rather than narrowed.
+           *
+           * Core matches `value in (item.uid, item.summary)` and returns the
+           * **first** hit. A fake that matched the uid alone would refuse a
+           * caller that sent a summary, which reads as a caught bug and is not
+           * one: the real fault is that Home Assistant cheerfully ticks the
+           * *wrong* Milk. This fixture has "Milk" twice precisely so that
+           * difference is visible, and a fake that could not express it would
+           * make the fixture decorative.
+           */
+          const item = list?.items.find(
+            (candidate) => candidate.uid === parsed['item'] || candidate.summary === parsed['item'],
+          );
           if (item === undefined) {
             response.writeHead(400, { 'content-type': 'application/json' });
             response.end('{"message":"Unable to find to-do list item: unknown"}');

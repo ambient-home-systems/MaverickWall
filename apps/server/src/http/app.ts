@@ -36,6 +36,11 @@ import { FORWARDED_FOR_HEADER, isFromHomeNetwork, resolveFrameSource } from './l
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { allModules, householdSetUp, MODULES } from '../modules/index.js';
+import {
+  readTodoItemHandle,
+  setTodoItemStatus,
+  tickTodoItem,
+} from '../modules/todo/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
@@ -707,6 +712,109 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   /**
+   * Ticking an item off a Home Assistant to-do list, from the wall
+   * (RFC 012 phase 2).
+   *
+   * **The only write this application makes to anybody's house.** Everything
+   * about its shape is `/d/chores/tick`'s — same gate, same household-wide
+   * effect, same "the server is the authority, not the button" — and one thing
+   * about it is genuinely new: the truth is not ours. A chore's completion is a
+   * row in this database and the unique index makes it idempotent; a to-do
+   * item's status lives in Home Assistant, and this endpoint is a *proxy* for a
+   * call it has to be allowed to make.
+   *
+   * Four things it refuses to take from the caller, in this order, because each
+   * one is cheaper than the one after it and because the order is what decides
+   * which sentence a household reads:
+   *
+   * **Whether this wall may ask.** `allow_todo` is off by default and its own
+   * switch — a third risk rather than more of the chore one, because this
+   * changes a list the household's phones are synced to. The wall hides the
+   * control when it is off; the display token is on the wall, so the check is
+   * here and the hidden control is only a courtesy.
+   *
+   * **Which item.** A handle this server minted, resolved against
+   * `ha_todo_items`. Never an entity id and never a `uid`: rule 12's surviving
+   * clause (3) is that the display receives resolved values and handles, so a
+   * compromised wall tablet can tick only items it has been shown and cannot
+   * construct a handle for a list the household never added. A handle nobody
+   * minted, and one whose item has left the list since, are the same 404 and
+   * the same sentence — which is true either way and corrects itself on the
+   * next poll.
+   *
+   * **Whether the list can be updated at all.** `supports_update` (bit 4) is
+   * read from the list's own state every poll, and a list without it is a 409
+   * with a sentence rather than a POST Home Assistant would refuse. Two layers
+   * on purpose: the widget draws no box on such a list, and this asks again.
+   *
+   * **What to tell Home Assistant the item is.** The uid, from the cache row,
+   * always — `tickTodoItem` is where that is argued.
+   *
+   * On a 200 from Home Assistant the cached row is written here, so the next
+   * manifest is already right and the box fills within the poll rather than
+   * within the minute. That is not an optimistic tick: the upstream answer is
+   * in hand before anything is written. On a failure nothing is touched and the
+   * client's own kitchen sentence comes back with a 502, because the tick
+   * failing is fine and the tick failing silently is not (§7.4).
+   *
+   * Nothing is pushed to the socket hub afterwards, and that is not an
+   * omission: `/d/chores/tick` pushes nothing either. The hub derives its
+   * `MANIFEST_CHANGED` from the same builder `/d/manifest` uses and compares
+   * etags per connection, so a write that moves the manifest is picked up
+   * there; and the wall re-polls the instant its own tick returns, which is
+   * what makes the press feel like a button.
+   */
+  app.post('/d/todo/tick', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    if (screen.allowTodo !== 1) {
+      return c.json({ error: 'not-allowed', message: 'This wall cannot tick things off.' }, 403);
+    }
+
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const id = typeof body['item'] === 'string' ? body['item'].trim() : '';
+    if (id === '' || id.length > 64) return c.json({ error: 'bad-item' }, 400);
+    // Absent means done — chores' own rule, and for the same reason: a wall
+    // posting only a handle is saying "this is done", which is the
+    // overwhelmingly common press. `done=0` is the correction.
+    const done = body['done'] !== '0' && body['done'] !== 'false';
+
+    const item = readTodoItemHandle(deps.db, id);
+    if (item === undefined) {
+      return c.json(
+        { error: 'no-such-item', message: 'That is not on the list any more.' },
+        404,
+      );
+    }
+    if (!item.canTick) {
+      return c.json(
+        {
+          error: 'cannot-tick',
+          message: 'That list does not let anything be ticked off from here.',
+        },
+        409,
+      );
+    }
+
+    const status = done ? 'completed' : 'needs_action';
+    const wrote = await tickTodoItem(
+      { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring },
+      item,
+      done,
+    );
+    if (!wrote.ok) {
+      // Home Assistant's own diagnosis, already written for a kitchen by
+      // `describe` and already capped and stripped of control characters
+      // there — a rebooting integration, a token revoked on an upgrade. The
+      // cache is untouched: a wall must not show an item ticked that nothing
+      // ticked.
+      return c.json({ error: 'upstream', message: wrote.message }, 502);
+    }
+
+    setTodoItemStatus(deps.db, item.id, status);
+    return c.json({ ok: true, done });
+  });
+
+  /**
    * The manifest, built for a given screen.
    *
    * Shared by the wall (a paired screen) and the layout editor's preview (a
@@ -720,6 +828,7 @@ export function createApp(deps: AppDeps): Hono {
     readonly rotation: number;
     readonly allowDismiss: boolean;
     readonly allowChores: boolean;
+    readonly allowTodo: boolean;
     readonly theme: string | null;
     readonly daytimeTheme: string | null;
     readonly daytimeStartsAt: string | null;
@@ -845,6 +954,7 @@ export function createApp(deps: AppDeps): Hono {
         rotation: screenLike.rotation,
         allowDismiss: screenLike.allowDismiss,
         allowChores: screenLike.allowChores,
+        allowTodo: screenLike.allowTodo,
         // Handed over as they are stored; `buildManifest` is what decides
         // whether the three of them are an answer.
         panelWidthMm: screenLike.panelWidthMm ?? null,
@@ -876,6 +986,7 @@ export function createApp(deps: AppDeps): Hono {
       rotation: screen.rotation,
       allowDismiss: screen.allowDismiss === 1,
       allowChores: screen.allowChores === 1,
+      allowTodo: screen.allowTodo === 1,
       theme: screen.theme,
       daytimeTheme: screen.daytimeTheme,
       daytimeStartsAt: screen.daytimeStartsAt,
@@ -1505,6 +1616,7 @@ export function createApp(deps: AppDeps): Hono {
         rotation: 0,
         allowDismiss: false,
         allowChores: false,
+        allowTodo: false,
         theme: null,
         daytimeTheme: null,
         daytimeStartsAt: null,
