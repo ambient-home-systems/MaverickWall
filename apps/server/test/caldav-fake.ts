@@ -31,6 +31,11 @@ export interface Recorded {
 
 export interface CalDavFake {
   readonly base: string;
+  /**
+   * Change a collection's CTag, which is the only way to make the second poll
+   * of an unchanged calendar do any work (§6.6).
+   */
+  readonly setCtag: (path: string, ctag: string) => void;
   /** Every request this server saw, oldest first. */
   readonly seen: Recorded[];
   /** Requests that carried an `authorization` header. */
@@ -61,6 +66,15 @@ export interface FakeOptions {
   readonly emptyHomeSet?: boolean;
   /** Answer `/.well-known/caldav` with a redirect to this path. Default `/dav/`. */
   readonly wellKnownTarget?: string;
+  /**
+   * What each collection answers a `REPORT` with, keyed by its path.
+   *
+   * A whole `multistatus` string rather than a list of `VCALENDAR`s, because
+   * §6.5's isolation assertion needs a **deliberately broken resource between
+   * two good ones** and a fixture that could only be built from well-formed
+   * events could not express one.
+   */
+  readonly reports?: Readonly<Record<string, string>>;
 }
 
 const XML = { 'content-type': 'application/xml; charset=utf-8' } as const;
@@ -164,6 +178,22 @@ function emptyHomeSetDocument(prefix: string): string {
 export async function startCalDavFake(options: FakeOptions): Promise<CalDavFake> {
   const seen: Recorded[] = [];
   let base = '';
+  /*
+   * A CTag for every collection the listing advertises, plus one for anything
+   * `reports` names.
+   *
+   * The second half is what stops a fixture being quietly unreachable: a
+   * collection with a `REPORT` and no CTag answers the sync's first request
+   * with a 404, which reads as a broken calendar rather than as a fixture
+   * missing a line. Deriving them from the same map means adding a collection
+   * to a test cannot forget one.
+   */
+  const ctags: Record<string, string> = {
+    '/dav/calendars/REDACTED/personal/': 'ctag-home-1',
+    '/dav/calendars/REDACTED/school-run/': 'ctag-school-9',
+    '/dav/calendars/REDACTED/shopping/': 'ctag-shop-3',
+    ...Object.fromEntries(Object.keys(options.reports ?? {}).map((path) => [path, `ctag-${path}-1`])),
+  };
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = [];
@@ -203,6 +233,29 @@ export async function startCalDavFake(options: FakeOptions): Promise<CalDavFake>
         res.end(homeSetDocument(options.homeSetUrl ?? '/dav/calendars/REDACTED/'));
         return;
       }
+      /*
+       * A collection answers the CTag to a `PROPFIND` and the events to a
+       * `REPORT`, which is the two-request shape §6.6 turns into one on an
+       * unchanged calendar. The CTag is mutable so a test can change it and
+       * watch the second poll do the work the first one skipped.
+       */
+      if (ctags[path] !== undefined && req.method === 'PROPFIND') {
+        res.writeHead(207, XML);
+        res.end(
+          multistatus(
+            ` <d:response>\n  <d:href>${path}</d:href>\n  <d:propstat>\n` +
+              `   <d:prop><cs:getctag>${ctags[path]}</cs:getctag></d:prop>\n` +
+              `   <d:status>HTTP/1.1 200 OK</d:status>\n  </d:propstat>\n </d:response>\n`,
+          ),
+        );
+        return;
+      }
+      if (req.method === 'REPORT' && options.reports?.[path] !== undefined) {
+        res.writeHead(207, XML);
+        res.end(options.reports[path]);
+        return;
+      }
+
       if (path === '/dav/calendars/REDACTED/' && options.serveCollections !== false) {
         res.writeHead(207, XML);
         res.end(
@@ -225,6 +278,9 @@ export async function startCalDavFake(options: FakeOptions): Promise<CalDavFake>
   return {
     base,
     seen,
+    setCtag: (path, ctag) => {
+      ctags[path] = ctag;
+    },
     signedIn: () => seen.filter((record) => record.authorization !== undefined),
     reset: () => {
       seen.length = 0;

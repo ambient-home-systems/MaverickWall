@@ -126,6 +126,31 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     backoffInitialMs: 60_000,
     backoffMaxMs: 30 * 60_000,
   },
+  'caldav-sync': {
+    /*
+     * The same fifteen minutes as an ICS feed, deliberately, and RFC 013 §12
+     * leaves it open on purpose.
+     *
+     * A CTag check is far cheaper than an ICS fetch — one `PROPFIND` answering
+     * one property, against a feed that is a whole document every time — so
+     * this *could* poll much harder and answer §2's staleness complaint
+     * properly. What stops it being changed here is that nobody has measured
+     * either provider's tolerance, and the server on the other end is Apple's
+     * rather than the household's own machine: `ha-calendar-sync` gets five
+     * minutes precisely because politeness to a stranger is not its constraint,
+     * and that argument does not transfer. Inheriting the ICS interval is the
+     * conservative answer rather than the considered one, and it is written
+     * down as such.
+     *
+     * The backoff ceiling is the ICS one for the same reason it is there: an
+     * auth failure never reaches it at all, because §4.6's hold takes that
+     * branch instead.
+     */
+    intervalMs: 15 * 60_000,
+    jitterRatio: 0.15,
+    backoffInitialMs: 60_000,
+    backoffMaxMs: 60 * 60_000,
+  },
   'ha-sync': {
     /*
      * Thirty seconds, which the tick then bounds.
