@@ -292,6 +292,18 @@ const NAME_CHAR = /[-A-Za-z0-9._:]/;
  * Hand-written rather than a regular expression for one reason that is worth a
  * line: an attribute value may contain `>`, and every regex anybody writes for
  * a tag stops at the first one.
+ *
+ * **Names are ASCII**, which is narrower than XML allows and is stated rather
+ * than discovered. Every element and attribute name in DAV:, CalDAV and
+ * calendarserver.org is ASCII, and a server inventing a non-ASCII one gets a
+ * `malformed` rather than a silent misreading. That is the honest failure and
+ * it is the *correctness* risk §6.8 names — this reader is narrow, and where it
+ * is too narrow it should say so rather than guess. Widening it is a change to
+ * two character classes; nothing else here assumes ASCII.
+ *
+ * There is deliberately no cap on attributes per element: the byte ceiling
+ * above already bounds them, and a second limit is a second number to get
+ * wrong.
  */
 function readStartTag(xml: string, from: number): OpenTag | undefined {
   let index = from + 1;
