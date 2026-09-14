@@ -69,7 +69,7 @@ describe('a to-do list on a paired wall', () => {
       });
       expect(connected.status).toBe(302);
       const listed = await wall.post('/admin/home-assistant/lists', { entity_id: 'todo.shopping', label: 'Shopping' });
-      expect(listed.headers.get('location')).toBe('/admin/home-assistant?saved=todo-list-added');
+      expect(listed.headers.get('location')).toBe('/admin/home-assistant/lists?saved=todo-list-added');
 
       // A wall, and a canvas the way the editor's save writes one: a list-backed
       // box, one asking for the ticked items too, a typed checklist beside them,

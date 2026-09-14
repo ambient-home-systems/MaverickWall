@@ -1212,8 +1212,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (haSummary().includes('problem')) {
       attention.push({
         title: 'Home Assistant is connected, with a problem',
-        detail: 'The last read failed. The Home Assistant page says what came back.',
-        href: 'admin/home-assistant', tag: 'Problem', bad: true,
+        /*
+         * Connection rather than the hub, and the sentence moves with the href.
+         *
+         * A failed read is a connection fault, and after RFC 014 the hub is no
+         * longer the page that says what came back — Connection is, because it
+         * is the one that carries the address and the token somebody has to fix.
+         * This is the only cross-screen link in the admin that points at this
+         * family for its *content* rather than as a destination, which is
+         * exactly why it is the one that breaks.
+         */
+        detail: 'The last read failed. Connection and token says what came back.',
+        href: 'admin/home-assistant/connection', tag: 'Problem', bad: true,
       });
     }
     /*

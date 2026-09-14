@@ -268,7 +268,8 @@ describe('the module', () => {
 
     const added = await show(h, 'todo.shopping', 'Shopping');
     expect(added.status).toBe(302);
-    expect(added.headers.get('location')).toBe('/admin/home-assistant?saved=todo-list-added');
+    // The list's own screen, not the hub (RFC 014 §5.1).
+    expect(added.headers.get('location')).toBe('/admin/home-assistant/lists?saved=todo-list-added');
 
     // The read: the state for `supported_features`, then the items with the
     // status filter spelled out — Home Assistant's default is `needs_action`
@@ -548,12 +549,19 @@ describe('the manifest', () => {
 // The admin
 // ---------------------------------------------------------------------------
 
-describe('the Home Assistant page', () => {
+/*
+ * The to-do lists have a screen of their own now (RFC 014 §4.4). Everything
+ * this block reads moved there whole — `listRowFor`, the reorder items,
+ * `destructive()`, the add form, the `MAX_WATCHED_LISTS` refusal and the
+ * sentence about `allow_todo` living on the wall's own page — so the
+ * assertions are unchanged and only the page they are read off is.
+ */
+describe('the To-do lists screen', () => {
   it('offers the to-do lists from the live house, and says where the tick is turned on', async () => {
     const h = await harness();
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
-    const html = await (await h.call('/admin/home-assistant')).text();
+    const html = await (await h.call('/admin/home-assistant/lists')).text();
     expect(html).toContain('<datalist id="ha-todo-lists">');
     expect(html).toContain('value="todo.shopping"');
     expect(html).toContain('value="todo.read_only"');
@@ -578,7 +586,7 @@ describe('the Home Assistant page', () => {
     await connect(h, ha);
     await show(h, 'todo.shopping', 'Groceries');
     await show(h, 'todo.read_only');
-    const html = await (await h.call('/admin/home-assistant')).text();
+    const html = await (await h.call('/admin/home-assistant/lists')).text();
     expect(html).toContain('Groceries');
     expect(html).toContain('Can be ticked');
     expect(html).toContain('Read-only');
@@ -635,7 +643,7 @@ describe('the Home Assistant page', () => {
     // And the page says so rather than drawing a form that would be refused.
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
-    const html = await (await h.call('/admin/home-assistant')).text();
+    const html = await (await h.call('/admin/home-assistant/lists')).text();
     expect(html).toContain(`at most ${MAX_WATCHED_LISTS} lists`);
     expect(html).not.toContain('<datalist id="ha-todo-lists">');
   });
@@ -652,22 +660,36 @@ describe('the Home Assistant page', () => {
     expect(await confirm.text()).toContain('Stop showing');
 
     const moved = await h.form('/admin/home-assistant/lists/todo.read_only/move', { dir: 'up' });
-    expect(moved.headers.get('location')).toBe('/admin/home-assistant?saved=order-saved');
+    expect(moved.headers.get('location')).toBe('/admin/home-assistant/lists?saved=order-saved');
     expect(readTodoLists(h.db).map((list) => list.entityId)).toEqual(['todo.read_only', 'todo.shopping']);
 
     const removed = await h.call('/admin/home-assistant/lists/todo.shopping/remove', { method: 'POST' });
-    expect(removed.headers.get('location')).toBe('/admin/home-assistant?saved=todo-list-removed');
+    expect(removed.headers.get('location')).toBe('/admin/home-assistant/lists?saved=todo-list-removed');
     expect(readTodoLists(h.db).map((list) => list.entityId)).toEqual(['todo.read_only']);
     expect(rows(h.db, 'todo.shopping')).toEqual([]);
     // Gone is gone: a second POST announces nothing.
     const again = await h.call('/admin/home-assistant/lists/todo.shopping/remove', { method: 'POST' });
-    expect(again.headers.get('location')).toBe('/admin/home-assistant');
+    // Nothing happened, so nothing is announced — and it lands on the screen
+    // the button is on, because a bounce to the hub after pressing Remove twice
+    // reads as the button having thrown the household out of it.
+    expect(again.headers.get('location')).toBe('/admin/home-assistant/lists');
   });
 
-  it('draws nothing of it while Home Assistant is not connected', async () => {
+  it('says to connect first while Home Assistant is not connected', async () => {
+    /*
+     * This used to read "draws nothing of it", off the hub, and the claim moved
+     * with the screen (RFC 014 §3.3). The hub draws a To-do lists *row*
+     * whether or not a house is connected — a row that disappears reads as a
+     * broken link to a household who remembers it, and a row drawn
+     * conditionally is a route `admin-vocabulary.test.ts` sweeps conditionally
+     * — so the absence to assert is on the screen itself: no list, no picker,
+     * and a sentence naming what to do instead.
+     */
     const h = await harness();
-    const html = await (await h.call('/admin/home-assistant')).text();
-    expect(html).not.toContain('To-do lists');
+    const html = await (await h.call('/admin/home-assistant/lists')).text();
+    expect(html).not.toContain('<datalist id="ha-todo-lists">');
+    expect(html).toContain('Home Assistant is not connected yet.');
+    expect(html).toContain('href="admin/home-assistant/connection"');
   });
 });
 

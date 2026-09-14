@@ -1878,7 +1878,7 @@ describe('9 · a to-do box that names a list', () => {
       });
       expect(connected.status).toBe(302);
       const listed = await wall.post('/admin/home-assistant/lists', { entity_id: 'todo.shopping', label: 'Shopping' });
-      expect(listed.headers.get('location')).toBe('/admin/home-assistant?saved=todo-list-added');
+      expect(listed.headers.get('location')).toBe('/admin/home-assistant/lists?saved=todo-list-added');
 
       const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
       try {
@@ -1917,7 +1917,7 @@ describe('9 · a to-do box that names a list', () => {
 
         // Another tab stops showing the list; this page reloads.
         const removed = await wall.post(`/admin/home-assistant/lists/${encodeURIComponent('todo.shopping')}/remove`, {});
-        expect(removed.headers.get('location')).toBe('/admin/home-assistant?saved=todo-list-removed');
+        expect(removed.headers.get('location')).toBe('/admin/home-assistant/lists?saved=todo-list-removed');
         await page.reload({ waitUntil: 'load' });
         await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
         await page.waitForTimeout(400);

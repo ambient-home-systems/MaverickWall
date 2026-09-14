@@ -147,7 +147,21 @@ function compactShellBlock(css: string): string {
   throw new Error('unbalanced braces in the compact-width block');
 }
 
-const PAGES = ['/admin', '/admin/calendars', '/admin/walls', '/admin/system'];
+/*
+ * The last two are the Home Assistant hub and one of its children, which this
+ * list has never included — so the compact drawer's DOM order and off-canvas
+ * anatomy had never been checked on that family at all. One child rather than
+ * five: this file checks `page()`'s shell, and five children of one shell are
+ * the same assertion five times.
+ */
+const PAGES = [
+  '/admin',
+  '/admin/calendars',
+  '/admin/walls',
+  '/admin/system',
+  '/admin/home-assistant',
+  '/admin/home-assistant/readings',
+];
 
 describe('the admin navigation at compact width', () => {
   it('carries the drawer toggle, its scrim and the app bar button, in that order', async () => {

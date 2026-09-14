@@ -264,6 +264,22 @@ describe('the admin, read out loud', () => {
         '/admin/epaper',
         '/admin/screens/approve',
         '/admin/system',
+        /*
+         * The Home Assistant hub and all five of its children (RFC 014 §8).
+         *
+         * This is the crawler's own path list rather than a new sweep, and it
+         * is the assertion that the hub's five rows are drawn on a household
+         * that has never connected — this fixture never connects one, so a row
+         * gated on `connected` would leave all five routes with nothing
+         * linking to them and the sweep would quietly cover five fewer screens
+         * than it thinks it does. A test getting weaker with nothing failing.
+         */
+        '/admin/home-assistant',
+        '/admin/home-assistant/connection',
+        '/admin/home-assistant/readings',
+        '/admin/home-assistant/calendars',
+        '/admin/home-assistant/lists',
+        '/admin/home-assistant/alerts',
       ]) {
         expect(seen, `the crawl never reached ${required}`).toContain(required);
       }

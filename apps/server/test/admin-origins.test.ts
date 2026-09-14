@@ -123,6 +123,13 @@ const PAGES = [
   '/admin/chores',
   '/admin/alerts',
   '/admin/home-assistant',
+  // The five children RFC 014 split out. Rule three is a property of every
+  // served page, so a new route is a new page to sweep.
+  '/admin/home-assistant/connection',
+  '/admin/home-assistant/readings',
+  '/admin/home-assistant/calendars',
+  '/admin/home-assistant/lists',
+  '/admin/home-assistant/alerts',
   '/admin/modules',
   '/admin/modules/advanced',
   '/admin/modules/recipe',

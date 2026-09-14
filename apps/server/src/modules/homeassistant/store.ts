@@ -275,6 +275,40 @@ export function addHaCalendarSource(db: SqliteDatabase, input: AddHaCalendarInpu
   return id;
 }
 
+/**
+ * One Home Assistant calendar this household has added.
+ *
+ * Enough to *report* a calendar and deliberately not enough to configure one:
+ * every row on the Home Assistant screen links to `/admin/calendars`, where
+ * colour, ownership and visibility live. This screen adds and says how it is
+ * doing; it does not become a second place to edit one.
+ */
+export interface HaCalendarSource {
+  readonly id: string;
+  readonly name: string;
+  readonly entityId: string;
+  /** The sync's own sentence, or null. "Added" and "working" are two facts. */
+  readonly lastError: string | null;
+}
+
+/**
+ * The Home Assistant calendars, in the order they were added.
+ *
+ * `haCalendarEntityIds` reduces the same rows to a set so the add form can stop
+ * offering one twice; this is the same query kept whole, so the Calendars
+ * sub-screen adds a list to a screen rather than a query to the application.
+ */
+export function readHaCalendarSources(db: SqliteDatabase): HaCalendarSource[] {
+  return db
+    .prepare(
+      `SELECT id, name, ha_entity_id AS entityId, last_error AS lastError
+         FROM calendar_sources
+        WHERE kind = 'homeassistant' AND ha_entity_id IS NOT NULL
+        ORDER BY created_at`,
+    )
+    .all() as HaCalendarSource[];
+}
+
 /** Which calendar entities are already sources, so the picker can say so. */
 export function haCalendarEntityIds(db: SqliteDatabase): Set<string> {
   const rows = db
