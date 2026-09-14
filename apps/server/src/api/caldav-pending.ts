@@ -77,12 +77,23 @@ function sweep(now: number): void {
 
 /** Hold one, and answer the opaque id that names it. */
 export function holdPendingCaldav(account: PendingCaldavAccount, now: number): string {
-  sweep(now);
   // 32 bytes, like every other handle this product mints. It names a secret and
   // is not one, but it is still the only thing standing between two signed-in
   // sessions' pending accounts, so it is not a counter.
   const id = randomBytes(32).toString('hex');
   pending.set(id, { at: now, account });
+  /*
+   * After the insert rather than before it, so the map is never transiently
+   * over the bound.
+   *
+   * **Nothing can observe the difference**, and that is worth saying rather
+   * than implying otherwise: `readPendingCaldav` sweeps too, so a map left one
+   * over is trimmed before anybody can see it either way. This ordering is
+   * tighter and costs nothing; it is not a fix for a fault, and an earlier
+   * comment here claimed it was until the mutation that should have proved it
+   * turned nothing red.
+   */
+  sweep(now);
   return id;
 }
 

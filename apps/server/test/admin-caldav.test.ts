@@ -10,7 +10,11 @@ import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
-import { clearPendingCaldav } from '../src/api/caldav-pending.js';
+import {
+  clearPendingCaldav,
+  holdPendingCaldav,
+  readPendingCaldav,
+} from '../src/api/caldav-pending.js';
 import { createCaldavSyncHandler } from '../src/jobs/caldav-sync.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
 import { startCalDavFake, type CalDavFake } from './caldav-fake.js';
@@ -471,6 +475,37 @@ describe('adding a CalDAV account', () => {
     expect(manifest).not.toContain('/dav/calendars');
     expect(manifest).not.toContain(PASSWORD);
     expect(manifest).not.toContain(USERNAME);
+  });
+
+  it('holds at most its bound, and drops the oldest rather than the newest', () => {
+    /*
+     * Rule ten, in the small: the add route is behind the session gate, so this
+     * is not an unauthenticated write — but an unbounded map filled by a form
+     * is still a way to spend a household's memory, and a bound costs one line.
+     *
+     * What this can and cannot see is worth stating. It pins that the holder is
+     * **bounded** and that it evicts **oldest-first**, so the household
+     * standing at the form right now keeps theirs. It deliberately does *not*
+     * claim anything about where the sweep sits relative to the insert —
+     * `readPendingCaldav` sweeps as well, so both orderings answer the same
+     * thing and a test asserting one over the other would be a test nothing
+     * could turn red. That was checked by moving the sweep and watching this
+     * stay green.
+     */
+    clearPendingCaldav();
+    const held = {
+      serverUrl: 'https://caldav.example',
+      username: USERNAME,
+      password: PASSWORD,
+      allowPrivateNetwork: false,
+      allowLoopback: false,
+      allowHttp: false,
+    };
+    const ids = Array.from({ length: 40 }, () => holdPendingCaldav(held, 1_000));
+    expect(ids.filter((id) => readPendingCaldav(id, 1_000) !== undefined)).toHaveLength(16);
+    expect(readPendingCaldav(ids[39] as string, 1_000)).toBeDefined();
+    expect(readPendingCaldav(ids[0] as string, 1_000)).toBeUndefined();
+    clearPendingCaldav();
   });
 
   it('refuses a pending id that has expired rather than half-saving', async () => {
