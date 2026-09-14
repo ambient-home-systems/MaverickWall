@@ -96,7 +96,29 @@ export const SAVED_MESSAGES = {
   // Displays / walls
   'screen-settings': 'Wall settings saved.',
   'screen-removed': 'Wall removed.',
+  /*
+   * Applying a template repaints the wall, and this is where it stops being
+   * silent (RFC 015 §3.6).
+   *
+   * Twelve of the fourteen shipped wall templates name a theme, and until now
+   * the only thing that said so was a caption on the gallery card — so a
+   * household pressed Sky Week and their kitchen changed colour with the strip
+   * reading "Layout applied." and nothing else.
+   *
+   * **It is a key per theme, not a sentence with a name in it.** This file's
+   * first stated property is that the token is a key and never a message, so
+   * "say which theme" cannot be done by interpolating one: the names are
+   * written here as literals. That is affordable because the catalogue names
+   * exactly two themes between its fourteen cards, and
+   * `saved-template-theme.test.ts` is what keeps it affordable — it walks every
+   * template naming a theme and fails the build when one of them has no key,
+   * so a fifteenth card in a third theme is a hole somebody has to fill rather
+   * than a strip that quietly says the wrong colour. Classic and Blank name no
+   * theme and keep the generic sentence, as does every panel template.
+   */
   'layout-template-applied': 'Layout applied.',
+  'layout-template-applied-panels': 'Layout applied. This wall now wears Panels.',
+  'layout-template-applied-almanac': 'Layout applied. This wall now wears Paper Almanac.',
   'layout-copied': 'Layout copied.',
   'layout-reset': 'Layout reset.',
   // eInk (e-paper)
@@ -131,6 +153,29 @@ export const SAVED_MESSAGES = {
 
 /** Every token a redirect may carry. A typo here is a compile error. */
 export type SavedKey = keyof typeof SAVED_MESSAGES;
+
+/**
+ * Which sentence a freshly applied template gets: the one naming its theme, or
+ * the generic one.
+ *
+ * Here rather than in `admin.ts` because this is the file that owns the keys,
+ * and because the lookup has to be able to *miss*: `template.theme` is a
+ * string off the catalogue and nothing in the type system makes it one of the
+ * two names written above. A miss answers the generic sentence, which is rule
+ * nine's shape for a confirmation strip — a household who applied a template is
+ * told their layout changed even when this table has not caught up with a new
+ * card. What stops that being a quiet wrong answer is
+ * `saved-template-theme.test.ts`, which walks the catalogue and fails when a
+ * template names a theme with no key here.
+ *
+ * A panel template names no theme at all, and a panel has none to name, so
+ * every e-paper apply lands on the generic sentence by the same branch.
+ */
+export function templateAppliedKey(theme: string | undefined): SavedKey {
+  if (theme === undefined) return 'layout-template-applied';
+  const named = `layout-template-applied-${theme}`;
+  return isSavedKey(named) ? named : 'layout-template-applied';
+}
 
 /**
  * What `page()` needs to draw the strip: which sentence, and where "dismiss"

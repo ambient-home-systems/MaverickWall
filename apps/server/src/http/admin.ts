@@ -132,7 +132,7 @@ import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, fe
   networkAccessDisclosure, networkAccessSuggestion, page, saveRow,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
-import { readSaved, savedRedirect } from './saved.js';
+import { readSaved, savedRedirect, templateAppliedKey } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, quarterTurn, text, z } from '../validation.js';
 
 /**
@@ -3174,7 +3174,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // nominal one — `TemplateAspects` carries why.
       panel === undefined ? undefined : panelPixelAspects(panel),
     );
-    return savedRedirect(c, layoutUrl(owner), 'layout-template-applied');
+    /*
+     * And say which colour it just painted (RFC 015 §3.6).
+     *
+     * `applyTemplate` writes `template.theme` when the card names one — it has
+     * to, because a template's canvas backgrounds are authored for its theme —
+     * and that was silent until now. The token is a key per theme rather than a
+     * sentence with a name in it, because `saved.ts`'s first stated property is
+     * that nothing a caller passes is echoed; `templateAppliedKey` is where the
+     * two halves meet and where a template naming a third theme fails to
+     * compile.
+     */
+    return savedRedirect(c, layoutUrl(owner), templateAppliedKey(template.theme));
   });
 
   /**

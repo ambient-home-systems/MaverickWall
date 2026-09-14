@@ -155,6 +155,41 @@ describe('the template gallery routes', () => {
     expect(cal?.config).toEqual({ cellEvents: 'pills' });
   });
 
+  it('says which colour the template just painted, on the branch that painted one', async () => {
+    /*
+     * Applying a template writes its theme onto the wall, and until RFC 015
+     * §3.6 the strip said "Layout applied." either way — so the household
+     * pressed Sky Week, their kitchen changed colour, and nothing anywhere said
+     * so. Asserted at the redirect rather than at the table, because what a
+     * household reads is decided by which token this handler picks: the table
+     * can hold a perfect sentence for a branch nobody routes to.
+     *
+     * All three branches, because only the set of them says what the rule is —
+     * a themed card, a *differently* themed card, and a card that names none.
+     */
+    // The fragment is `layoutUrl`'s own and rides after the token, which is
+    // `savedRedirect`'s split-on-hash working: a token inside the anchor
+    // never reaches the server.
+    const at = (path: string, id: string) => `${path}?saved=${id}#layout`;
+    for (const [templateId, token] of [
+      ['sky-week', 'layout-template-applied-almanac'],
+      ['family-hub', 'layout-template-applied-panels'],
+      ['classic', 'layout-template-applied'],
+    ] as const) {
+      const h = await ready();
+      const res = await h.postForm('/admin/displays/s1/apply-template', { templateId });
+      expect(res.status, templateId).toBe(302);
+      const location = res.headers.get('location') ?? '';
+      expect(location, templateId).toBe(at('/admin/walls/s1', token));
+      // And the wall really is wearing what the strip claims, so the sentence
+      // is a report rather than a hopeful literal.
+      const worn = (
+        h.db.prepare(`SELECT theme AS t FROM screens WHERE id = 's1'`).get() as { t: string }
+      ).t;
+      expect(token.endsWith('almanac') ? 'almanac' : token.endsWith('panels') ? 'panels' : worn, templateId).toBe(worn);
+    }
+  });
+
   it('refuses an unknown template with a 400 and writes nothing', async () => {
     const h = await ready();
     const res = await h.postForm('/admin/displays/s1/apply-template', { templateId: 'nope' });
