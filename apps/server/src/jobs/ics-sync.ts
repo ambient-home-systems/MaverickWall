@@ -39,6 +39,31 @@ export const WINDOW_AFTER_DAYS = 90;
 
 const ICS_CONTENT_TYPES = ['text/calendar', 'application/octet-stream', 'text/plain'];
 
+/**
+ * How long a feed whose sign-in was refused waits before it tries again
+ * (RFC 013 §4.6).
+ *
+ * Not a backoff — a **hold**. The backoff ladder exists for an upstream that
+ * might be well in five minutes, and no amount of waiting turns a wrong
+ * password right. What the ordinary ladder would do here is worse than
+ * useless: Apple locks an Apple ID out of CalDAV after enough wrong
+ * app-specific-password attempts in a window, and Nextcloud's own brute-force
+ * protection does the same to an account after a run of failed Basic-auth
+ * requests from one address. A feed polled every fifteen minutes with a
+ * password that went stale on day one would still be knocking days later, on a
+ * fixed interval, and could lock the household out of their own server. A
+ * calendar that stops trying is a better neighbour to the account it is a
+ * guest of.
+ *
+ * A week rather than for ever, which is the one place this differs from "never
+ * retry": the credential might be fine and the server temporarily
+ * misconfigured, and a wall that never tries again would need a household to
+ * notice and press something. The path that actually recovers this is an edit
+ * — `updateSource` re-arms the job the moment a credential changes — so this
+ * number is only the floor under a household who never comes back.
+ */
+export const AUTH_FAILURE_HOLD_SECONDS = 7 * 24 * 60 * 60;
+
 export interface CalendarSourceRow {
   readonly id: string;
   readonly name: string;
@@ -189,6 +214,34 @@ export function createIcsSyncHandler(deps: IcsSyncDeps): JobHandler {
     }
 
     if (response.status === 'failed') {
+      /*
+       * A refused sign-in is not a flaky upstream, so it does not take the
+       * retry ladder (RFC 013 §4.6). The cached events stay, exactly as they do
+       * on every other failure path in this job — rule nine — and the message
+       * names the control that fixes it, because a household reading "401
+       * Unauthorized" has no next action and a household reading a sentence
+       * naming the Calendars page does.
+       *
+       * The sentence carries the username where there is one and never the
+       * password. The username is already on the settings row, so repeating it
+       * costs nothing and is often the whole diagnosis; the password crosses
+       * this codebase exactly as far as the keyring and the outbound header,
+       * and a diagnosis string is neither. That is not a carve-out for a new
+       * kind of message — it is CLAUDE.md's existing rule on warnings and logs
+       * applied to a failure kind Phase A introduces.
+       */
+      if (response.httpStatus === 401 || response.httpStatus === 403) {
+        const account =
+          source.authUsername === null || source.authUsername === ''
+            ? ''
+            : ` for ${source.authUsername}`;
+        return fail(
+          sourceId,
+          `Signing in to this calendar${account} was refused. The password for ` +
+            'this calendar was not accepted. Enter a new one on the Calendars page.',
+          AUTH_FAILURE_HOLD_SECONDS,
+        );
+      }
       return fail(sourceId, response.message, response.retryAfterSeconds);
     }
 

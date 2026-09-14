@@ -709,6 +709,16 @@ export function deletePerson(db: SqliteDatabase, id: string): boolean {
   return remove(id);
 }
 
+/**
+ * What a household may change about a stored feed, as opposed to where it
+ * points.
+ *
+ * Deliberately no `url`: a changed address is a different feed, and "remove it
+ * and add it again" is the right journey for that. A changed *credential* is
+ * the opposite — an app password expires, is revoked, is reissued termly by a
+ * school office — so it belongs here, and the two fields carrying it read the
+ * way `undefined` reads everywhere else in this codebase: nothing to say.
+ */
 export interface SourceSettings {
   readonly name: string;
   readonly color: string;
@@ -718,15 +728,46 @@ export interface SourceSettings {
   readonly allowPrivateNetwork: boolean;
   readonly allowLoopback: boolean;
   readonly allowHttp: boolean;
+  /** The account to sign in as. `undefined` leaves it alone; `null` clears it. */
+  readonly authUsername?: string | null;
+  /**
+   * A new password, already sealed. `undefined` **keeps what is stored** and
+   * `null` removes it.
+   *
+   * Those have to be two different values and neither can be the empty string,
+   * which is the whole shape of §4.5: the row holds an envelope rather than
+   * plaintext, so there is nothing to prefill an edit form with, and blank is
+   * the form's only honest reading of "I did not touch this field". Blank
+   * cannot *also* mean "delete it" — that is indistinguishable from having
+   * nothing to say — so removing a credential a feed no longer needs is its own
+   * control rather than an inferred one.
+   */
+  readonly authPasswordEncrypted?: string | null;
 }
 
 export function updateSource(db: SqliteDatabase, id: string, settings: SourceSettings): boolean {
-  return (
+  const before = db
+    .prepare(
+      `SELECT auth_username AS authUsername,
+              auth_password_encrypted AS authPasswordEncrypted
+         FROM calendar_sources WHERE id = ?`,
+    )
+    .get(id) as { authUsername: string | null; authPasswordEncrypted: string | null } | undefined;
+  if (before === undefined) return false;
+
+  const username = settings.authUsername === undefined ? before.authUsername : settings.authUsername;
+  const password =
+    settings.authPasswordEncrypted === undefined
+      ? before.authPasswordEncrypted
+      : settings.authPasswordEncrypted;
+
+  const changed =
     db
       .prepare(
         `UPDATE calendar_sources
             SET name = ?, color = ?, person_id = ?, enabled = ?, show_in_grid = ?,
-                allow_private_network = ?, allow_loopback = ?, allow_http = ?, updated_at = ?
+                allow_private_network = ?, allow_loopback = ?, allow_http = ?,
+                auth_username = ?, auth_password_encrypted = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -738,10 +779,36 @@ export function updateSource(db: SqliteDatabase, id: string, settings: SourceSet
         settings.allowPrivateNetwork ? 1 : 0,
         settings.allowLoopback ? 1 : 0,
         settings.allowHttp ? 1 : 0,
+        username,
+        password,
         Date.now(),
         id,
-      ).changes > 0
-  );
+      ).changes > 0;
+
+  /*
+   * A changed credential brings the next sync forward, and that is the *other*
+   * half of not retrying a refused sign-in (RFC 013 §4.6).
+   *
+   * `ics-sync` holds a feed whose password was refused for a week rather than
+   * hammering the household's own account with a wrong password on a
+   * fifteen-minute interval. What makes that a hold rather than a wall is this:
+   * entering a new password is the thing that actually recovers it, so it has
+   * to be the thing that re-arms the job. Without it, a household would fix
+   * their password and watch nothing happen for a week — the acknowledgement
+   * bug one screen along, where pressing OK cleared a rule and promoted the
+   * next one.
+   *
+   * Only on an actual change, so saving a colour does not drag every feed's
+   * sync forward.
+   */
+  if (
+    changed &&
+    (username !== before.authUsername || password !== before.authPasswordEncrypted)
+  ) {
+    requestSyncNow(db, id);
+  }
+
+  return changed;
 }
 
 export interface ShiftPlanRow {
