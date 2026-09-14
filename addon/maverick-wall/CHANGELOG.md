@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.64.0
+
 **A calendar can have a username and a password.** Nextcloud, Baïkal, Radicale,
 SOGo and Fastmail, plus any school or work feed behind a sign-in, can be added
 now. Open **Sign in to this calendar** under the address on **Calendars → Add**
