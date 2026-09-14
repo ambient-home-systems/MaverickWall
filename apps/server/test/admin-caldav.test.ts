@@ -477,6 +477,38 @@ describe('adding a CalDAV account', () => {
     expect(manifest).not.toContain(USERNAME);
   });
 
+  it('forgets a held password after its window, so it is not there at teatime', () => {
+    /*
+     * The TTL, which is the other half of "in memory and nowhere else".
+     *
+     * The holder exists so an Apple ID password survives two form submissions
+     * without being echoed — and a household who types it, reads the host
+     * question and then wanders off must not leave it sitting in this process
+     * for the rest of the day. Ten minutes is long enough to read a
+     * confirmation and tick four calendars.
+     *
+     * Asserted on both sides of the boundary, because a test that only checks
+     * it is gone later passes just as happily on a holder that forgets
+     * immediately — which would break the flow this whole mechanism is for.
+     */
+    clearPendingCaldav();
+    const id = holdPendingCaldav(
+      {
+        serverUrl: 'https://caldav.example',
+        username: USERNAME,
+        password: PASSWORD,
+        allowPrivateNetwork: false,
+        allowLoopback: false,
+        allowHttp: false,
+      },
+      1_000,
+    );
+    expect(readPendingCaldav(id, 1_000)).toBeDefined();
+    expect(readPendingCaldav(id, 1_000 + 9 * 60_000)).toBeDefined();
+    expect(readPendingCaldav(id, 1_000 + 11 * 60_000)).toBeUndefined();
+    clearPendingCaldav();
+  });
+
   it('holds at most its bound, and drops the oldest rather than the newest', () => {
     /*
      * Rule ten, in the small: the add route is behind the session gate, so this
