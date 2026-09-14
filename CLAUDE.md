@@ -2925,11 +2925,14 @@ synthetic id with a **unique index on `(entity_id, uid)`** the job upserts on,
 so an item keeps its handle across a poll and the second "Milk" is told from
 the first by uid and never by summary; and `screens.allow_todo`, read by
 nothing until the tick lands. At most eight lists, and the admin refuses a
-ninth with a sentence. The Home Assistant screen has a To-do lists section
-built from `section`, `listRow`, `tag`, `emptyState` and `destructive`, whose
-add form runs the list's first read inline so "List added" is only ever said
-of a list that has read; it states plainly that the wall shows the list and
-cannot tick it yet.
+ninth with a sentence. To-do lists have **a screen of their own**,
+`/admin/home-assistant/lists`, built from `section`, `listRow`, `tag`,
+`emptyState` and `destructive`, whose add form runs the list's first read
+inline so "List added" is only ever said of a list that has read; it states
+plainly which switch on a wall's own page lets that wall tick anything off.
+(It was the eighth block of one long Home Assistant page until RFC 014 split
+that page into a hub and five screens; nothing in the section itself changed
+when it moved.)
 
 **The manifest carries handles and words and nothing else, and getting there
 found a hole in the RFC.** The panel's lists carry each item's synthetic id,

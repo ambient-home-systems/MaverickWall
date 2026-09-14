@@ -299,6 +299,11 @@ describe('connecting, through the form', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
 
+    // The hub, deliberately: the boundary card stays there rather than
+    // following the token to Connection (RFC 014 §5.4). A household who has not
+    // connected yet lands on the hub, and putting the thing that decides
+    // whether pasting a token is reasonable one click further in means the
+    // first screen they see no longer says what it costs.
     const html = await (await h.call('/admin/home-assistant')).text();
     expect(html).not.toContain(TOKEN);
     /*
@@ -321,7 +326,9 @@ describe('connecting, through the form', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
 
-    const html = await (await h.call('/admin/home-assistant')).text();
+    // Readings: the two sections that were "On the wall" and "Add readings"
+    // are one screen now (RFC 014 §4.2), and the picker went with them.
+    const html = await (await h.call('/admin/home-assistant/readings')).text();
     // A datalist rather than a search box with a script behind it: the browser
     // does the type-ahead and the page adds nothing that can fail to load.
     expect(html).toContain('<datalist id="ha-entities">');
@@ -329,8 +336,10 @@ describe('connecting, through the form', () => {
     expect(html).toContain('Kitchen temperature');
     // Not a reading, so never offered.
     expect(html).not.toContain('automation.morning_routine');
-    // The calendar entity is offered as a source rather than as a reading.
-    expect(html).toContain('calendar.family');
+    // The calendar entity is offered as a source rather than as a reading, and
+    // that offer is a screen along now.
+    expect(html).not.toContain('calendar.family');
+    expect(await (await h.call('/admin/home-assistant/calendars')).text()).toContain('calendar.family');
   });
 
   it('still renders every stored setting when Home Assistant is unreachable', async () => {
@@ -339,7 +348,10 @@ describe('connecting, through the form', () => {
     await connect(h, ha);
 
     ha.down = true;
-    const response = await h.call('/admin/home-assistant');
+    // Connection carries the address and the token, so it is the screen this
+    // claim belongs to after the split (RFC 014 §4.1) — and it is where the
+    // dashboard's own "the last read failed" row now points.
+    const response = await h.call('/admin/home-assistant/connection');
     expect(response.status).toBe(200);
     const html = await response.text();
     // The address survives so somebody can fix a typo, and the page says what
@@ -779,13 +791,22 @@ describe('the shipped templates, through the form', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
 
-    // The list offers each one as a link; following it re-renders the form.
-    const listing = await (await h.call('/admin/home-assistant')).text();
+    /*
+     * Both halves move with the builder (RFC 014 §3.2). The rows link to the
+     * screen the form is on now, and the old hub address answers a 302 that
+     * carries the query through — a link already in the world is a contract,
+     * and this one is the entire interface the feature has.
+     */
+    const listing = await (await h.call('/admin/home-assistant/alerts')).text();
     // Relative, so the `<base>` decides where it points — which is what lets
     // the same markup work under a Home Assistant ingress prefix.
-    expect(listing).toContain('href="admin/home-assistant?template=garage"');
+    expect(listing).toContain('href="admin/home-assistant/alerts?template=garage"');
 
-    const html = await (await h.call('/admin/home-assistant?template=garage')).text();
+    const bookmarked = await h.call('/admin/home-assistant?template=garage');
+    expect(bookmarked.status).toBe(302);
+    expect(bookmarked.headers.get('location')).toBe('/admin/home-assistant/alerts?template=garage');
+
+    const html = await (await h.call('/admin/home-assistant/alerts?template=garage')).text();
     expect(html).toContain('value="Garage door open late"');
     // The window the brief names, prefilled rather than described.
     expect(html).toContain('type="time" name="from_time" value="23:00"');
@@ -1117,7 +1138,7 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
 
     // And the picker's own section says where calendars go, so their absence
     // reads as deliberate rather than as something missing.
-    const screen = await (await h.call('/admin/home-assistant')).text();
-    expect(screen).toContain('Calendar entities are not readings');
+    const readings = await (await h.call('/admin/home-assistant/readings')).text();
+    expect(readings).toContain('Calendar entities are not readings');
   });
 });

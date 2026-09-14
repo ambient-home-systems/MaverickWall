@@ -576,7 +576,11 @@ describe('destructive actions ask first', () => {
 
     const removed = await h.form('/admin/home-assistant/entities/remove', { entity_id: 'sensor.porch' });
     expect(removed.status).toBe(302);
-    expect(removed.headers.get('location')).toBe('/admin/home-assistant?saved=ha-entity-removed');
+    // Names a *more* specific destination than it did (RFC 014 §5.1): the strip
+    // still says "Reading removed." and now says it on the screen the reading
+    // was removed from, rather than at the top of a hub the household has to
+    // navigate back into to remove a second.
+    expect(removed.headers.get('location')).toBe('/admin/home-assistant/readings?saved=ha-entity-removed');
     // Nothing referenced it, so `unwatchEntity` drops the row outright rather
     // than leaving a disabled one behind.
     expect(
@@ -609,7 +613,8 @@ describe('destructive actions ask first', () => {
 
     const removed = await h.form('/admin/home-assistant/rules/rule1/delete', {});
     expect(removed.status).toBe(302);
-    expect(removed.headers.get('location')).toBe('/admin/home-assistant?saved=ha-rule-removed');
+    // As above: the rule's own screen, not the hub (RFC 014 §5.1).
+    expect(removed.headers.get('location')).toBe('/admin/home-assistant/alerts?saved=ha-rule-removed');
     expect(h.db.prepare(`SELECT COUNT(*) n FROM interrupt_rules WHERE id = 'rule1'`).get()).toEqual({ n: 0 });
   });
 
@@ -643,6 +648,13 @@ describe('destructive actions ask first', () => {
 
     const disconnected = await h.form('/admin/home-assistant/disconnect', {});
     expect(disconnected.status).toBe(302);
+    /*
+     * **Unchanged**, and it is the one of the three that proves the exception
+     * rather than following the change (RFC 014 §5.1). After disconnecting
+     * there is no connection, so Connection has nothing to show and the four
+     * content screens have nothing in them — the hub is the one page that is
+     * still true.
+     */
     expect(disconnected.headers.get('location')).toBe('/admin/home-assistant?saved=ha-disconnected');
     expect(
       h.db.prepare(`SELECT token_encrypted AS t FROM ha_settings WHERE id = 'singleton'`).get(),

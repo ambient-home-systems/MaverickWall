@@ -424,6 +424,12 @@ very hard to take back.
 
 ### 5.2 What is stored
 
+> **Annotated for RFC 014 (2026-09-14).** The conclusion here holds unchanged
+> and only the address does: a list is watched on
+> `/admin/home-assistant/lists`, which is a screen of its own rather than a
+> section of one long Home Assistant page. Nothing about the schema, the
+> handle, the cap or the cache moved with it.
+
 Migration **0041**, additive, two tables and one column:
 
 - `ha_todo_lists` — the watched lists. `entityId` (primary key, in clear: a name
@@ -841,6 +847,13 @@ it disappear from the phone. Neither of those is provable from a test, and the
 second is the entire feature.
 
 ## 11. Open decisions
+
+> **Annotated for RFC 014 (2026-09-14).** Two of the closed decisions below
+> name "the admin" refusing a ninth list and "the Home Assistant screen" as the
+> place a list is chosen. Both still hold and both now happen on
+> `/admin/home-assistant/lists`. The e-paper decision at the foot is untouched
+> in every respect: `screens.allow_todo` is still a fact about a screen rather
+> than a widget key, and the split added no honours entry anywhere.
 
 - ~~**Poll interval.**~~ **Closed: sixty seconds**, matching the manifest
   poll, and not per-list. A poll that varies with a count is a setting nobody

@@ -1,6 +1,7 @@
 # RFC 014 — Splitting the Home Assistant screen
 
-Status: **proposed** · Owner: — · First drafted 2026-09-13 · Revised 2026-09-13 ·
+Status: **implemented** (phases 1 and 2) · Owner: — · First drafted 2026-09-13 ·
+Revised 2026-09-13 · Implemented 2026-09-14 ·
 Relates to `apps/server/src/http/admin-ha.ts`,
 `apps/server/src/http/components.ts`, `apps/server/src/http/saved.ts`,
 `apps/server/src/http/html.ts` · Builds on the component layer and the
@@ -38,6 +39,36 @@ is judged too large. It is **not** a first phase of this one: §7 records why
 the plan that sequenced them that way was collapsed — the split removes the
 disclosures again, so shipping them first is work done twice and, on the
 sub-screens, a fold over the one form the page exists for.
+
+> **Implemented, and three things in this document were wrong in ways worth
+> keeping rather than editing away.**
+>
+> **The exit count is forty, not thirty-eight.** §5.7 says eighteen
+> `render(…, 400)` sites and the brief for the implementation said sixteen.
+> Counted from the file, it is eighteen: five on `…/connect`, two on
+> `…/entities`, three on `…/calendars`, six on `…/lists` and two on `…/rules`.
+> Sixteen is a defensible number for a reason the table did not have a column
+> for — two of the eighteen come back on a screen whose *form* is not drawn,
+> because in both the state that reaches the branch is the state that empties
+> it (the eight-list refusal, and a calendar already added). Those two assert
+> the screen's own identity instead, and say so at the row.
+>
+> **The hub was 77px *worse* than the page it replaced** on the measurement §8
+> asks for, until the reason turned up: `statusReadings` drew "Readable
+> entities" and "Calendars" in the status card while §5.3 had just put those
+> same two live numbers on the Readings and Calendars rows underneath. Two
+> readers of one fact, side by side on one page, and 165px of preamble above
+> the first row. The status card keeps Host and Last read — the two facts the
+> rows cannot carry — and the hub goes 432px → 340px against the old page's
+> 355px.
+>
+> **§4.3's Calendars list wanted one section, not two.** Drawn as the RFC
+> describes it — a list section above an add section — the add form landed
+> 454px down a screen whose whole content is that form. It is one `section`
+> holding the list and then the form, which is `todoLists`' own shape one
+> subject along; 240px. And with nothing added it draws no empty state at all,
+> because a box reading "none yet" directly above the form that adds one is the
+> shape `admin-saved.test.ts` already caught once on this family.
 
 The load-bearing finding is in §5.1, and it is the kind of thing that only
 turns up by reading the file rather than the screen: **every one of this
@@ -767,9 +798,41 @@ still the standing caveat on RFC 009 phase 10B. The number to record here is
 where the first actionable control sits on each of the six screens at 390px,
 against the current page's own figure.
 
+**Taken** (`browser-ha-phone.test.ts`), through the real app with a real
+session and a real fake house carrying a reading, a list and a rule. The before
+is a clean worktree of `main` at `e819cca`, same fixture, same viewport, same
+definition of actionable — the first element inside `main .content` with a box
+that a household can act on:
+
+| | first control | document |
+|---|---|---|
+| **before** `/admin/home-assistant` | **355px** | **5,314px** |
+| `…/home-assistant` (the hub) | 340px | 1,576px |
+| `…/connection` | 148px | 887px |
+| `…/readings` | 267px | 981px |
+| `…/calendars` | 240px | 844px |
+| `…/lists` | 320px | 844px |
+| `…/alerts` | 207px | 1,663px |
+
+Two of those numbers are the whole verification argument rather than a result.
+The hub read **432px** first — *worse* than the page it replaces — and
+`…/calendars` read **454px**, and both were real faults the assertion caught
+rather than numbers to explain; what fixed them is in the note at the head of
+this document. The measurement was worth taking precisely because it disagreed
+with Appendix B's reconstruction, which is the thing Appendix B says about
+itself.
+
+**Still unproven where it counts:** nobody has used any of the six on a real
+phone. These are Chromium at 390px, which is the right way to measure a layout
+and is not the same as a household holding one.
+
 ## 9. Open decisions
 
-- **Whether Calendars gains a list at all (§4.3).** It is the one net-new
+- ~~**Whether Calendars gains a list at all (§4.3).**~~ **Decided: yes, and it
+  shipped as phase 2 in the same series.** What follows is the shape it was
+  decided on, and it is accurate but for the sectioning — see the note at the
+  head of this document for why it is one `section` rather than two.
+  It is the one net-new
   behaviour in this RFC. Against: the brief for this work was to streamline
   without removing features, and adding one is scope. For: the section is the
   only one of the four with no list, which reads as an inconsistency rather

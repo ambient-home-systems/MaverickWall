@@ -154,6 +154,16 @@ const PAGES = [
   '/admin/alerts',
   '/admin/modules',
   '/admin/system',
+  /*
+   * The Home Assistant family, which this list has never included — so the icon
+   * rules (no `.ic` tile, no icon beside a heading, none inside a tinted
+   * rounded square) had never been checked on it, before RFC 014 or after.
+   * The hub and one child rather than all five: what this file checks is
+   * `page()`'s shell, and five children of one shell would be the same
+   * assertion five times.
+   */
+  '/admin/home-assistant',
+  '/admin/home-assistant/readings',
 ];
 
 describe('the admin icon set', () => {
