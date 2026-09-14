@@ -38,19 +38,62 @@ export type FeedPassword =
   /** In clear, from a form, for one request. Never written anywhere by this file. */
   | { readonly typed: string | null | undefined };
 
+/**
+ * A CalDAV account's own columns, when the source is reached through one
+ * (RFC 013 §6.2.1, §6.2.2).
+ *
+ * Everything here belongs to the **account** rather than to the calendar: one
+ * credential and one server, for however many collections the household ticked.
+ * The address is deliberately *not* here — a collection href is a fact about
+ * the calendar and stays on `calendar_sources.url_encrypted`, which is why
+ * `url` on the input below is still the only place an address comes from
+ * whatever the kind.
+ */
+export interface FeedCaldavAccount {
+  readonly id: string;
+  readonly username: string;
+  /** A keyring envelope, purpose `caldav-password`, exactly as the column holds it. */
+  readonly passwordEncrypted: string;
+  readonly allowPrivateNetwork: boolean;
+  readonly allowLoopback: boolean;
+  readonly allowHttp: boolean;
+  /** The host discovery moved to and the household accepted (§6.3.1). */
+  readonly confirmedHost?: string | null;
+}
+
 export interface FeedConnectionInput {
-  /** The address, already decrypted. */
+  /**
+   * The address, already decrypted.
+   *
+   * For an `ics` feed this is the feed URL; for a `caldav` source it is the
+   * collection href. One field either way, because which kind a row is has no
+   * bearing on *where the bytes come from* — only on what is sent with the
+   * request, which is what the rest of this file decides.
+   */
   readonly url: string;
   readonly allowPrivateNetwork: boolean;
   readonly allowLoopback: boolean;
   readonly allowHttp: boolean;
   readonly authUsername: string | null | undefined;
   readonly authPassword: FeedPassword;
+  /**
+   * The account this source is reached through, when it has one.
+   *
+   * **Read first, and the row's own columns second** — which is the whole of
+   * §6.2.2. Absent is a Phase A row and is the overwhelmingly common case.
+   */
+  readonly account?: FeedCaldavAccount | null;
 }
 
 export interface FeedConnection {
   readonly url: string;
   readonly policy: UrlPolicy;
+  /**
+   * The host the household confirmed for this account, passed through so the
+   * CalDAV sync can hand it to `decideHost` without a second read of a table
+   * this function has already read (§6.3.1). Undefined for every other kind.
+   */
+  readonly confirmedHost?: string | null;
   /** `authorization` when there is a credential, and an empty object when not. */
   readonly headers: Readonly<Record<string, string>>;
   /**
@@ -88,6 +131,7 @@ function basicAuthorization(username: string, password: string): string {
 function passwordFrom(
   password: FeedPassword,
   keyring: Keyring | undefined,
+  purpose: 'feed-password' | 'caldav-password' = 'feed-password',
 ): { readonly value: string | undefined; readonly unreadable: boolean } {
   if ('typed' in password) {
     const typed = password.typed;
@@ -96,8 +140,24 @@ function passwordFrom(
   const envelope = password.stored;
   if (envelope === null || envelope === '') return { value: undefined, unreadable: false };
   if (keyring === undefined) return { value: undefined, unreadable: true };
-  const opened = keyring.decrypt(envelope, 'feed-password');
+  const opened = keyring.decrypt(envelope, purpose);
   return opened.ok ? { value: opened.value, unreadable: false } : { value: undefined, unreadable: true };
+}
+
+/**
+ * Source ids already warned about carrying both shapes, so the line is said
+ * once rather than every fifteen minutes for ever.
+ *
+ * Module-global deliberately, and it is the same reasoning the auth rate-limit
+ * buckets are: this outlives any one resolver call and any one job run, which
+ * is exactly what "once" has to mean for a sync that repeats on a schedule. A
+ * restart says it again, which is right — a boot is when somebody is reading.
+ */
+const warnedAboutBothShapes = new Set<string>();
+
+/** Only for tests, which need each case to be the first time it is seen. */
+export function forgetBothShapeWarnings(): void {
+  warnedAboutBothShapes.clear();
 }
 
 /**
@@ -110,14 +170,64 @@ export function connectionFor(
   source: FeedConnectionInput,
   keyring?: Keyring,
 ): FeedConnection {
+  /*
+   * The three switches come from whichever row owns them, resolved here and
+   * not at the call site.
+   *
+   * This is the half §6.2.2 says a header-only resolver would have got wrong:
+   * for a CalDAV source the opt-ins are a fact about the *server*, so they sit
+   * on the account, and a caller that asked this function for a header while
+   * reading the switches itself would read them from the calendar row for
+   * Phase A and from the account for Phase C — two shapes, two readers, which
+   * is the drift the whole section exists to prevent.
+   */
+  const switches = source.account ?? source;
   const policy: UrlPolicy = {
-    ...(source.allowPrivateNetwork ? { allowPrivateNetwork: true } : {}),
-    ...(source.allowLoopback ? { allowLoopback: true } : {}),
-    ...(source.allowHttp ? { allowHttp: true } : {}),
+    ...(switches.allowPrivateNetwork ? { allowPrivateNetwork: true } : {}),
+    ...(switches.allowLoopback ? { allowLoopback: true } : {}),
+    ...(switches.allowHttp ? { allowHttp: true } : {}),
   };
 
-  const username = source.authUsername === null ? undefined : source.authUsername?.trim();
-  const password = passwordFrom(source.authPassword, keyring);
+  const account = source.account ?? undefined;
+
+  /*
+   * The account wins, and it says so once.
+   *
+   * A row carrying both a `caldav_account_id` and its own `auth_username` is a
+   * mistake rather than a configuration — nothing in the product writes one,
+   * and the two paths that could (a Phase A feed edited into a CalDAV source, a
+   * hand-edited database) both leave the *account* as the thing the household
+   * actually set up. So preferring it is the reading that matches what they
+   * did, and the alternative — refusing, or composing some merge of the two —
+   * would take a working calendar off a wall over a column nobody can see.
+   *
+   * It is a warning rather than silence because the row is genuinely wrong and
+   * the stale half will go on looking configured on the settings screen. The
+   * line names the **source id and nothing else**: the username is very often
+   * an email address, and rule six plus `api/diagnostics.ts`'s own promise put
+   * it out of a log line whatever the redactor would have made of it.
+   */
+  if (account !== undefined && source.authUsername !== null && source.authUsername !== undefined
+      && source.authUsername.trim() !== '') {
+    if (!warnedAboutBothShapes.has(account.id + ':' + source.url)) {
+      warnedAboutBothShapes.add(account.id + ':' + source.url);
+      console.warn(
+        '[caldav] a calendar carries both a CalDAV account and its own sign-in details; ' +
+          'using the account. The calendar\u2019s own username and password are ignored.',
+      );
+    }
+  }
+
+  const username =
+    account !== undefined
+      ? account.username.trim()
+      : source.authUsername === null
+        ? undefined
+        : source.authUsername?.trim();
+  const password =
+    account !== undefined
+      ? passwordFrom({ stored: account.passwordEncrypted }, keyring, 'caldav-password')
+      : passwordFrom(source.authPassword, keyring);
 
   /*
    * A username with no password sends **nothing**, and this is the one branch
@@ -139,5 +249,11 @@ export function connectionFor(
       ? {}
       : { authorization: basicAuthorization(username, password.value) };
 
-  return { url: source.url, policy, headers, passwordUnreadable: password.unreadable };
+  return {
+    url: source.url,
+    policy,
+    ...(account?.confirmedHost === undefined ? {} : { confirmedHost: account.confirmedHost }),
+    headers,
+    passwordUnreadable: password.unreadable,
+  };
 }

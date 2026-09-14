@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { connectionFor } from '../src/api/feed-credentials.js';
+import { connectionFor, forgetBothShapeWarnings } from '../src/api/feed-credentials.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 
 /**
@@ -155,6 +155,133 @@ describe('connectionFor', () => {
       allowPrivateNetwork: true,
       allowLoopback: true,
       allowHttp: true,
+    });
+  });
+
+  /*
+   * The four cases §11 names, against one function standing in for two storage
+   * locations.
+   *
+   * §6.2.2's whole claim is that no caller knows there are two shapes, so these
+   * are asserted on what comes *out* — the address, the policy and the header —
+   * rather than on which branch produced it. A test that checked the branch
+   * would pass just as happily on a resolver that answered the right header
+   * from the wrong switches, which is the exact failure the section predicts.
+   */
+  describe('the two storage locations (RFC 013 §6.2.2)', () => {
+    const account = {
+      id: 'acct-1',
+      username: 'jane@icloud.example',
+      passwordEncrypted: keyring.encrypt('apple-app-specific', 'caldav-password'),
+      allowPrivateNetwork: false,
+      allowLoopback: false,
+      allowHttp: false,
+    } as const;
+
+    it('a Phase A row signs in from its own columns', () => {
+      const connection = connectionFor(
+        {
+          ...base,
+          authUsername: 'jane',
+          authPassword: { stored: keyring.encrypt('app-pw-1', 'feed-password') },
+        },
+        keyring,
+      );
+      expect(decode(connection.headers['authorization'])).toBe('jane:app-pw-1');
+      expect(connection.confirmedHost).toBeUndefined();
+    });
+
+    it('a Phase C row signs in from the account, and takes its policy from it too', () => {
+      // The address still comes from the calendar row -- a collection href is a
+      // fact about the calendar -- while everything sent *with* the request
+      // comes from the account. Both halves are asserted, because a resolver
+      // that got the header right and the switches wrong is the failure mode.
+      const connection = connectionFor(
+        {
+          ...base,
+          url: 'https://p42-caldav.icloud.example/1234/calendars/home/',
+          authUsername: null,
+          authPassword: { stored: null },
+          account: {
+            ...account,
+            allowPrivateNetwork: true,
+            allowHttp: true,
+            confirmedHost: 'p42-caldav.icloud.example',
+          },
+        },
+        keyring,
+      );
+      expect(decode(connection.headers['authorization'])).toBe(
+        'jane@icloud.example:apple-app-specific',
+      );
+      expect(connection.url).toBe('https://p42-caldav.icloud.example/1234/calendars/home/');
+      // From the account, and emphatically not from the calendar row, whose own
+      // three switches are all false in `base`.
+      expect(connection.policy).toEqual({ allowPrivateNetwork: true, allowHttp: true });
+      expect(connection.confirmedHost).toBe('p42-caldav.icloud.example');
+    });
+
+    it('a row with both prefers the account, and says so once', () => {
+      forgetBothShapeWarnings();
+      const warnings: string[] = [];
+      const realWarn = console.warn;
+      console.warn = (...args: unknown[]): void => {
+        warnings.push(args.map(String).join(' '));
+      };
+      try {
+        const both = {
+          ...base,
+          authUsername: 'stale-from-phase-a',
+          authPassword: { stored: keyring.encrypt('stale-pw', 'feed-password') },
+          account,
+        };
+        const first = connectionFor(both, keyring);
+        const second = connectionFor(both, keyring);
+        expect(decode(first.headers['authorization'])).toBe(
+          'jane@icloud.example:apple-app-specific',
+        );
+        // The same answer twice, and the line said once: this runs on a
+        // schedule, so "once" has to survive the second sync or it is not once.
+        expect(second.headers).toEqual(first.headers);
+        expect(warnings).toHaveLength(1);
+        // Rule six, and `api/diagnostics.ts`'s own promise: a CalDAV username is
+        // very often an email address, so neither half of either credential may
+        // reach a log line.
+        expect(warnings[0]).not.toContain('jane@icloud.example');
+        expect(warnings[0]).not.toContain('stale-from-phase-a');
+        expect(warnings[0]).not.toContain('apple-app-specific');
+        expect(warnings[0]).not.toContain('stale-pw');
+      } finally {
+        console.warn = realWarn;
+      }
+    });
+
+    it('a row with neither signs in as nobody', () => {
+      const connection = connectionFor(
+        { ...base, authUsername: null, authPassword: { stored: null } },
+        keyring,
+      );
+      expect(connection.headers).toEqual({});
+      expect(connection.passwordUnreadable).toBe(false);
+    });
+
+    it("reports an account envelope that will not open, and still answers", () => {
+      // Rule nine at the resolver: a backup restored without /data/.secret must
+      // come back as a connection with no header rather than as a throw, so the
+      // sync can say so and keep yesterday's events.
+      const connection = connectionFor(
+        {
+          ...base,
+          authUsername: null,
+          authPassword: { stored: null },
+          // Sealed for the wrong purpose, which is precisely what the purpose
+          // split exists to refuse: a feed password must not open as a CalDAV one.
+          account: { ...account, passwordEncrypted: keyring.encrypt('x', 'feed-password') },
+        },
+        keyring,
+      );
+      expect(connection.passwordUnreadable).toBe(true);
+      expect(connection.headers).toEqual({});
     });
   });
 });
