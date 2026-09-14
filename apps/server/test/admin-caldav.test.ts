@@ -11,6 +11,8 @@ import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { clearPendingCaldav } from '../src/api/caldav-pending.js';
+import { createCaldavSyncHandler } from '../src/jobs/caldav-sync.js';
+import { issueDisplayToken } from '../src/auth/tokens.js';
 import { startCalDavFake, type CalDavFake } from './caldav-fake.js';
 
 /**
@@ -65,12 +67,19 @@ async function harness() {
   ).run(stamp, stamp);
 
   const setupToken = createSetupTokenHolder(() => {});
+  /*
+   * Held rather than inlined, because the CalDAV sync has to be run with the
+   * *same* keyring the screens sealed the rows with — a fresh one decrypts
+   * nothing, and the failure reads as a broken sync rather than as a test
+   * holding the wrong key.
+   */
+  const keyring = createKeyring(randomBytes(32));
   const app = createApp({
     db,
     appVersion: '0.1.0-test',
     bootNotices: [],
     auth: { secret: 'a'.repeat(32), baseUrl: 'http://localhost' },
-    keyring: createKeyring(randomBytes(32)),
+    keyring,
     fetcher: createFetcher(),
     clientAddress: () => address,
     setupToken,
@@ -106,7 +115,36 @@ async function harness() {
   });
   await form('/setup/household', { timezone: 'Europe/London' });
 
-  return { db, call, form };
+  return { db, call, form, keyring };
+}
+
+/** A REPORT answer holding one whole VCALENDAR, dated near today. */
+function multistatusWithEvent(): string {
+  const day = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10).replace(/-/g, '');
+  const next = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10).replace(/-/g, '');
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Test//EN',
+    'BEGIN:VEVENT',
+    'UID:live@test',
+    'SUMMARY:Quarterly review',
+    `DTSTART;VALUE=DATE:${day}`,
+    `DTEND;VALUE=DATE:${next}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+    '',
+  ].join('\r\n');
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>\n` +
+    `<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav" ` +
+    `xmlns:cs="http://calendarserver.org/ns/">\n` +
+    ` <d:response>\n  <d:href>/dav/calendars/REDACTED/personal/live.ics</d:href>\n` +
+    `  <d:propstat>\n   <d:prop><d:getetag>&quot;live-1&quot;</d:getetag>` +
+    `<cal:calendar-data>${ics}</cal:calendar-data></d:prop>\n` +
+    `   <d:status>HTTP/1.1 200 OK</d:status>\n  </d:propstat>\n </d:response>\n` +
+    `</d:multistatus>\n`
+  );
 }
 
 /** The value of a hidden input, read out of the markup the household received. */
@@ -342,6 +380,97 @@ describe('adding a CalDAV account', () => {
     expect(db.prepare(`SELECT count(*) AS n FROM job_state WHERE kind = 'caldav-sync'`).get()).toEqual({
       n: 0,
     });
+  });
+
+  it('puts the events on a wall, and no address or credential with them', async () => {
+    /*
+     * The end of the whole path, through the document a paired wall actually
+     * polls.
+     *
+     * Rule six one layer out from the row, and the same promise RFC 012 makes
+     * about Home Assistant: the wall receives **resolved values** and never the
+     * thing that fetched them. A collection href matters here for the reason
+     * `urlEncrypted`'s own comment gives — it is encrypted because it says
+     * where a household's family calendar lives — and a display token is on a
+     * tablet anybody in the house can pick up.
+     *
+     * Asserted by searching the serialisation rather than by listing the fields
+     * it ought to have: a field added later fails this, and an approved list
+     * would not.
+     *
+     * **What it can and cannot see, measured rather than assumed.** Leaking
+     * `url_encrypted` itself into the manifest does *not* redden this, and
+     * correctly so — that column is a sealed envelope, so the plaintext href
+     * never appears however carelessly it is copied. What does redden it is a
+     * **resolved** value passed through to a field the manifest reads, which is
+     * exactly the hole RFC 012 found one feature along: the to-do widget stored
+     * an entity id that travelled in the *layout* while being kept out of the
+     * panel. That is the vector this guards, and it was confirmed by writing
+     * the decrypted collection href into a source's name and watching this go
+     * red.
+     */
+    const server = await startCalDavFake({
+      credential: CREDENTIAL,
+      reports: {
+        '/dav/calendars/REDACTED/personal/': multistatusWithEvent(),
+      },
+    });
+    servers.push(server);
+    const { form, call, db, keyring } = await harness();
+
+    const pick = await (
+      await form('/admin/calendars/caldav', {
+        server_url: server.base,
+        caldav_username: USERNAME,
+        caldav_password: PASSWORD,
+        allow_loopback: '1',
+        allow_http: '1',
+      })
+    ).text();
+    const fields: Record<string, string> = { pending: hidden(pick, 'pending') as string };
+    for (const [name, value] of Object.entries(checkboxes(pick))) fields[name] = value;
+    for (const match of pick.matchAll(/name="(name_\d+)" value="([^"]*)"/g)) {
+      fields[match[1] as string] = match[2] as string;
+    }
+    await form('/admin/calendars/caldav/add', fields);
+
+    // Run the sync the scheduler would run, against the same real server.
+    const sources = db
+      .prepare(`SELECT id FROM calendar_sources WHERE kind = 'caldav'`)
+      .all() as { id: string }[];
+    const handler = createCaldavSyncHandler({
+      db,
+      fetcher: createFetcher(),
+      keyring,
+      timezone: () => 'Europe/London',
+    });
+    for (const source of sources) {
+      await handler({
+        key: `caldav-sync:${source.id}`,
+        kind: 'caldav-sync',
+        nextRunAt: 0,
+        consecutiveFailures: 0,
+      });
+    }
+
+    const issued = issueDisplayToken();
+    const stamp = Date.now();
+    db.prepare(
+      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+       VALUES ('scr-dav', 'Kitchen', ?, ?, ?, ?)`,
+    ).run(issued.tokenHash, stamp, stamp, stamp);
+
+    const manifest = await (
+      await call('/d/manifest', { headers: { authorization: `Bearer ${issued.token}` } })
+    ).text();
+
+    // What it carries.
+    expect(manifest).toContain('Quarterly review');
+    // And what it must not: the server, the collection path, and the credential.
+    expect(manifest).not.toContain(new URL(server.base).port);
+    expect(manifest).not.toContain('/dav/calendars');
+    expect(manifest).not.toContain(PASSWORD);
+    expect(manifest).not.toContain(USERNAME);
   });
 
   it('refuses a pending id that has expired rather than half-saving', async () => {
