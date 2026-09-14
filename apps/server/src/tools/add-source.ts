@@ -260,16 +260,39 @@ if (caldavMode) {
    */
   const chosen: { url: string; displayName: string; ctag?: string }[] = [];
   const missing: string[] = [];
+  const ambiguous: string[] = [];
   for (const wanted of wantedCalendars) {
-    const found = result.calendars.find(
+    const matches = result.calendars.filter(
       (calendar) => calendar.displayName.toLowerCase() === wanted.toLowerCase(),
     );
-    if (found === undefined) missing.push(wanted);
-    else chosen.push(found);
+    if (matches.length === 0) missing.push(wanted);
+    /*
+     * **Two calendars with one name is a refusal, not a guess.**
+     *
+     * Nothing stops a household calling two collections "Home", and `find`
+     * would silently take whichever the server happened to list first — which
+     * is `_find_by_uid_or_summary` one feature along, the fault RFC 012 §2
+     * fixed by keying a to-do item on its uid rather than its summary. There
+     * the cure was to name the thing by its handle; here the household is
+     * typing, so the honest answer is to say the name is not enough and point
+     * at the screen, which can offer both.
+     */
+    else if (matches.length > 1) ambiguous.push(wanted);
+    else chosen.push(matches[0] as (typeof result.calendars)[number]);
   }
-  if (missing.length > 0) {
+  if (missing.length > 0 || ambiguous.length > 0) {
     console.error('');
-    console.error(`No calendar on that account is called ${missing.map((m) => JSON.stringify(m)).join(', ')}.`);
+    if (missing.length > 0) {
+      console.error(
+        `No calendar on that account is called ${missing.map((m) => JSON.stringify(m)).join(', ')}.`,
+      );
+    }
+    for (const name of ambiguous) {
+      console.error(
+        `That account has more than one calendar called ${JSON.stringify(name)}, so naming it ` +
+          `here cannot say which. Add it from the Calendars page, which can offer both.`,
+      );
+    }
     console.error('Nothing was added. The names above are what it answers to.');
     process.exit(1);
   }
