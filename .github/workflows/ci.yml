@@ -73,7 +73,23 @@ jobs:
           java-version: 17
       # Accepts the SDK licences and puts the command-line tools on PATH; the
       # runner's preinstalled platform-34 and build-tools satisfy compileSdk 34.
+      #
+      # `packages` is set because its default is `tools platform-tools`, and
+      # Google has retired `tools` from the SDK repository: sdkmanager answers
+      # "Failed to find package 'tools'" and exits 1, which fails this job
+      # before a line of Kotlin is compiled. Nothing here needs it —
+      # `assembleDebug` compiles and dexes without ever talking to a device.
+      #
+      # Emptying the input entirely would work (the action splits on spaces and
+      # filters falsy entries, so an empty string installs nothing) and is not
+      # what this does: `platform-tools` is what the default asked for besides
+      # the dead package, so keeping it changes exactly one thing.
+      #
+      # Upgrading the action does not help — `main`'s own action.yml still
+      # carries the same default. Drop this input the day it stops doing so.
       - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
       # Caches ~/.gradle across runs, keyed on the wrapper and build files.
       - uses: gradle/actions/setup-gradle@v6
       # `--no-configuration-cache`: gradle.properties turns it on for local
