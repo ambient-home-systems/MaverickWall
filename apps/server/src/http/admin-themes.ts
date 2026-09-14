@@ -6,6 +6,7 @@ import {
   COLOUR_TOKENS,
   createTheme,
   deleteTheme,
+  FALLBACK_THEME,
   FONTS,
   FONT_TOKENS,
   readTheme,
@@ -20,18 +21,26 @@ import { colour, oneOf, parse, text } from '../validation.js';
 import { generateThemeTokens } from '../api/theme-generator.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
+import { themeName } from './theme-cards.js';
 
 /**
- * The custom-theme builder (system settings).
+ * Themes: the gallery, and the custom-theme builder.
  *
- * The four built-in directions live in the display bundle as code; this screen
- * is where a household builds its own. The form is server-rendered and saves
- * with a plain POST — it works with no scripting — and `assets/theme-editor.js`
- * enhances it with a live preview and contrast guidance. A custom theme is
- * selectable on the Walls page exactly like a built-in.
+ * The built-in token sets live in the display bundle as code; this screen is
+ * where every theme a wall can draw is seen, and where a household builds one
+ * of its own. The form is server-rendered and saves with a plain POST — it
+ * works with no scripting — and `assets/theme-editor.js` enhances it with a
+ * live preview and contrast guidance. A custom theme is selectable on a wall's
+ * own page exactly like a built-in.
  */
 
-/** A new theme starts from Board's palette — a known-legible dark default. */
+/**
+ * A new theme starts from a known-legible dark palette.
+ *
+ * Deliberately not described as any shipped theme's: it is close to none of
+ * the five, and naming it after one is how a screen comes to name a theme that
+ * no longer exists (RFC 015 §2.1).
+ */
 const DEFAULT_TOKENS: ThemeTokens = {
   '--bg': '#0B0E11',
   '--panel': '#151A21',
@@ -135,7 +144,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
    * Removing a theme asks first — the same GET-then-POST shape as every other
    * destructive control, in place of the one-click "Delete" the card used to
    * post directly. A theme in use never bricks a wall (`resolveTheme` falls
-   * back to Board), but naming which walls change is still the honest thing
+   * back to Panels), but naming which walls change is still the honest thing
    * to put in front of the button.
    */
   app.get('/admin/themes/:id/delete', (c: Context) => {
@@ -162,7 +171,11 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
               // default" or a screen's own name — and Intl.ListFormat supplies
               // the "and" a plain join() drops for two or more items.
               `In use by ${new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(affected)} ` +
-              `— ${affected.length === 1 ? 'it switches' : 'they switch'} to Board.`,
+              `— ${affected.length === 1 ? 'it switches' : 'they switch'} to ` +
+              // Through `themeName`, never a literal: this sentence said
+              // "Board" for releases after Board stopped existing, and a
+              // literal is the only way that can happen (RFC 015 §2.1).
+              `${themeName(FALLBACK_THEME)}.`,
         destroyAction: `admin/themes/${encodeURIComponent(id)}/delete`,
         destroyLabel: 'Remove it',
         cancelAction: 'admin/themes',

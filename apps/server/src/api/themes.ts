@@ -242,8 +242,15 @@ export interface ResolvedTheme {
    */
   readonly tokens?: Readonly<Record<string, string>>;
   /**
-   * The `data-theme` value the display should set — a built-in's key drives its
-   * shape CSS; a custom theme carries `board`, so it inherits the default shape.
+   * The `data-theme` value the display should set.
+   *
+   * A built-in's key drives its shape CSS. A custom theme carries `board`,
+   * which is **not** a theme name here but a neutral sentinel: `board` is the
+   * one value no `:root[data-theme="…"]` rule in `display.css` matches, so a
+   * custom theme inherits the default shape rather than Panels' cards or
+   * Almanac's ledger. Renaming it to a live key would repaint every custom
+   * theme (RFC 015 §2.1); giving it an honest name needs a `neutral` key in
+   * the display bundle, which is a display change and a later phase.
    */
   readonly shape: string;
 }
@@ -253,9 +260,32 @@ export interface ResolvedTheme {
  *
  * A built-in (`panels`, `household`, …) yields just its shape; the display bundle
  * fills in the tokens. A `custom:<id>` yields the resolved token set with tints.
- * A custom id that is missing or malformed falls back to Board rather than
- * blanking a wall (rule nine).
+ * A custom id that is missing or malformed falls back to **Panels** rather than
+ * blanking a wall (rule nine) — the same wall it drew before, since the display
+ * bundle's `LEGACY_ALIASES` has always resolved the `board` this used to answer
+ * onto `panels`; what changes is that the manifest stops carrying a key that
+ * has not named a theme for releases.
+ *
+ * The `shape: 'board'` on the line below the two fallbacks is a different
+ * thing wearing the same spelling — see `ResolvedTheme.shape`.
  */
+/**
+ * What a reference that resolves to nothing draws: a real, live theme key.
+ * Rule nine — a deleted theme degrades a wall, it never blanks one.
+ *
+ * Exported because the screen that deletes a theme has to *say* this, and a
+ * literal in that sentence is exactly how it came to say "Board" for releases
+ * after Board stopped existing (RFC 015 §2.1).
+ */
+export const FALLBACK_THEME = 'panels';
+
+/**
+ * The shape a *resolved* custom theme carries: no shape override at all. Named
+ * rather than spelled `'board'` at the return, because the two readings of that
+ * string are what made this look like one bug instead of a fix and a sentinel.
+ */
+const NEUTRAL_SHAPE = 'board';
+
 export function resolveTheme(db: SqliteDatabase, ref: string): ResolvedTheme {
   if (!ref.startsWith(CUSTOM_PREFIX)) return { shape: ref };
 
@@ -263,11 +293,11 @@ export function resolveTheme(db: SqliteDatabase, ref: string): ResolvedTheme {
   const row = db.prepare('SELECT tokens FROM themes WHERE id = ?').get(id) as
     | { tokens: string }
     | undefined;
-  if (row === undefined) return { shape: 'board' };
+  if (row === undefined) return { shape: FALLBACK_THEME };
 
   const parsed = themeTokensSchema.safeParse(safeJson(row.tokens));
-  if (!parsed.success) return { shape: 'board' };
-  return { tokens: withTints(parsed.data), shape: 'board' };
+  if (!parsed.success) return { shape: FALLBACK_THEME };
+  return { tokens: withTints(parsed.data), shape: NEUTRAL_SHAPE };
 }
 
 // --- Storage ------------------------------------------------------------------
@@ -330,7 +360,7 @@ export function deleteTheme(db: SqliteDatabase, id: string): void {
  * screen with its own override — so removing it can name what changes rather
  * than only that it will.
  *
- * `resolveTheme` already falls back to Board for a reference that no longer
+ * `resolveTheme` already falls back to Panels for a reference that no longer
  * resolves (rule nine: a deleted theme degrades a wall, it never bricks one),
  * so this is purely for the household's benefit at the moment of deleting —
  * nothing here is a precondition for the delete itself.
