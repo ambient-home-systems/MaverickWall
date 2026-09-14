@@ -5,6 +5,7 @@ import {
   CALDAV_NS,
   CALENDARSERVER_NS,
   DAV_NS,
+  hrefIn,
   MAX_DEPTH,
   MAX_DOCUMENT_BYTES,
   clark,
@@ -268,14 +269,43 @@ describe('what a home set actually reads as', () => {
     // a reader that only had the element names could not tell a VEVENT
     // calendar from a VTODO one, and §6.2 filters on exactly that.
     expect(components?.children).toEqual([
-      { namespace: CALDAV_NS, localName: 'comp', attributes: { name: 'VEVENT' } },
-      { namespace: CALDAV_NS, localName: 'comp', attributes: { name: 'VTODO' } },
+      { namespace: CALDAV_NS, localName: 'comp', text: '', attributes: { name: 'VEVENT' } },
+      { namespace: CALDAV_NS, localName: 'comp', text: '', attributes: { name: 'VTODO' } },
     ]);
     // And `raw` is absent on an element that has children, deliberately: inner
     // markup is written in whatever prefixes the server chose, so a caller
     // scraping it would work against `d:` and fail against `D:` — this reader's
     // own fault, one field along.
     expect(components?.raw).toBeUndefined();
+  });
+
+  it('reads a wrapped href off its child, not off the wrapper', () => {
+    /*
+     * `current-user-principal` and `calendar-home-set` are each one `D:href`
+     * inside a wrapper, and a prop carries its *own* character data rather than
+     * its descendants'. Reading the wrapper's text answers the whitespace
+     * between the two tags, which is an empty address rather than an error —
+     * so discovery would stop saying "that account has no calendar home" on a
+     * server that had just named one.
+     */
+    const responses = ok(
+      `<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">` +
+        `<d:response><d:href>/</d:href><d:propstat><d:prop>` +
+        `<d:current-user-principal>\n  <d:href>/dav/principals/REDACTED/</d:href>\n ` +
+        `</d:current-user-principal>` +
+        `<cal:calendar-home-set><d:href>/dav/calendars/REDACTED/</d:href></cal:calendar-home-set>` +
+        `</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`,
+    );
+
+    expect(hrefIn(responses[0]!, DAV_NS, 'current-user-principal')).toBe(
+      '/dav/principals/REDACTED/',
+    );
+    expect(hrefIn(responses[0]!, CALDAV_NS, 'calendar-home-set')).toBe('/dav/calendars/REDACTED/');
+    // The wrapper's own text is whitespace, which is the thing that must not be
+    // mistaken for the answer.
+    expect(prop(responses[0]!, DAV_NS, 'current-user-principal')?.text).toBe('');
+    // And a wrapper with no href inside says nothing rather than saying "".
+    expect(hrefIn(responses[0]!, DAV_NS, 'displayname')).toBeUndefined();
   });
 
   it('decodes an escaped displayname', () => {

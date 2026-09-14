@@ -56,10 +56,15 @@ export interface DavProp {
   readonly namespace: string;
   readonly localName: string;
   /**
-   * The element's text with descendant markup removed, trimmed.
+   * This element's **own** character data, trimmed — not its descendants'.
    *
-   * Empty for a structural property such as `resourcetype`, whose meaning is
-   * in its children rather than in its text — read those from `children`.
+   * Empty for a structural property such as `resourcetype` or
+   * `current-user-principal`, whose meaning is in a child. That is the honest
+   * reading rather than a convenience: `<current-user-principal><href>/p/</href>
+   * </current-user-principal>` has a text value of nothing and an href of
+   * `/p/`, and flattening the two would make a prop with two hrefs in it read
+   * as one string nobody can split again. Read a child's own text off
+   * `children`.
    */
   readonly text: string;
   /**
@@ -97,6 +102,13 @@ export interface QName {
 }
 
 export interface DavElement extends QName {
+  /**
+   * This child's own character data, trimmed.
+   *
+   * `current-user-principal` and `calendar-home-set` are why: each is one
+   * `D:href` inside a wrapper, and the href is the whole answer.
+   */
+  readonly text: string;
   /**
    * Attributes, by their literal name — `name`, not `{}name`.
    *
@@ -600,6 +612,7 @@ export function readMultistatus(xml: string): MultistatusResult {
             children: value.children.map((node) => ({
               namespace: node.qname.namespace,
               localName: node.qname.localName,
+              text: node.text.trim(),
               attributes: node.attributes,
             })),
             // Only a leaf. See the field: inner markup carries the server's own
@@ -629,6 +642,26 @@ export function prop(
   localName: string,
 ): DavProp | undefined {
   return response.props[clark(namespace, localName)];
+}
+
+/**
+ * The text of the first `DAV:href` inside a property.
+ *
+ * `current-user-principal` and `calendar-home-set` have exactly this shape, and
+ * it is here rather than in `discover.ts` so both read it one way. A property
+ * with no href inside answers `undefined`, which every caller treats as "that
+ * server did not tell us" rather than as an empty address.
+ */
+export function hrefIn(
+  response: DavResponse,
+  namespace: string,
+  localName: string,
+): string | undefined {
+  const value = prop(response, namespace, localName);
+  const href = value?.children.find(
+    (child) => child.namespace === DAV_NS && child.localName === 'href',
+  );
+  return href === undefined || href.text === '' ? undefined : href.text;
 }
 
 /** True when a `resourcetype` names `{urn:ietf:params:xml:ns:caldav}calendar`. */
