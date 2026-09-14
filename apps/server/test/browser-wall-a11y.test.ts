@@ -102,9 +102,10 @@ afterAll(async () => {
   await wall?.dispose();
 }, TEARDOWN);
 
+/** Dress every wall in the theme under test — the wall's own row, since there is no household theme (RFC 015 phase 2). */
 function setTheme(name: string): void {
   wall.db
-    .prepare(`UPDATE household_settings SET theme = ?, updated_at = ? WHERE id = 'singleton'`)
+    .prepare(`UPDATE screens SET theme = ?, updated_at = ? WHERE kind = 'browser'`)
     .run(name, wall.now());
 }
 

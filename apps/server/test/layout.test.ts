@@ -25,10 +25,6 @@ afterAll(() => {
 
 const HOUSEHOLD = (over: Partial<HouseholdRow> = {}): HouseholdRow => ({
   timezone: 'UTC',
-  theme: 'board',
-  daytimeTheme: null,
-  daytimeStartsAt: null,
-  daytimeEndsAt: null,
   shiftEnabled: 0,
   displayTodayEvents: 8,
   displayNextDays: 6,
@@ -232,8 +228,8 @@ describe('per-wall settings', () => {
     // Two paired screens to write layouts against.
     for (const id of ['wallA', 'wallB']) {
       db.prepare(
-        `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+         VALUES (?, ?, ?, 'panels', ?, ?, ?)`,
       ).run(id, id, `hash-${id}`, at, at, at);
     }
     return db;

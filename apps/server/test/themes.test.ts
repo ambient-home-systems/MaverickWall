@@ -275,20 +275,21 @@ describe('a custom theme reaches a paired wall via /d/manifest', () => {
       .prepare(`INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`)
       .run(at, at);
 
-    // A household that has finished setup and chosen a custom theme.
+    // A household that has finished setup, and a wall wearing a custom theme —
+    // the wall's own, since there is no household theme (RFC 015 phase 2).
     const theme = createTheme(database, { name: 'Sunset', tokens: DARK });
     database
-      .prepare(`UPDATE household_settings SET theme = ?, setup_completed_at = ? WHERE id = 'singleton'`)
-      .run(`custom:${theme.id}`, at);
+      .prepare(`UPDATE household_settings SET setup_completed_at = ? WHERE id = 'singleton'`)
+      .run(at);
 
     // A paired screen, so /d/manifest answers with a real token.
     const issued = issueDisplayToken();
     database
       .prepare(
-        `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-         VALUES ('scr1', 'Kitchen', ?, ?, ?, ?)`,
+        `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+         VALUES ('scr1', 'Kitchen', ?, ?, ?, ?, ?)`,
       )
-      .run(issued.tokenHash, at, at, at);
+      .run(issued.tokenHash, `custom:${theme.id}`, at, at, at);
 
     const app = createApp({
       db: database,

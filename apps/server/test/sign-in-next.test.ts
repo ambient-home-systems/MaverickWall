@@ -48,8 +48,8 @@ function harness() {
 
   const now = Date.now();
   db.prepare(
-    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
-     VALUES ('singleton', 'Europe/London', 'board', ?, ?, ?)`,
+    `INSERT INTO household_settings (id, timezone, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'Europe/London', ?, ?, ?)`,
   ).run(now, now, now);
 
   const app = createApp({

@@ -132,8 +132,8 @@ async function harness(): Promise<Harness> {
 
   const issued = issueDisplayToken();
   db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-     VALUES ('wall', 'Wall', ?, ?, ?, ?)`,
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('wall', 'Wall', ?, 'panels', ?, ?, ?)`,
   ).run(issued.tokenHash, stamp, stamp, stamp);
 
   return {

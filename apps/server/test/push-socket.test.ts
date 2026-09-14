@@ -98,8 +98,8 @@ async function harness() {
   // the socket presents — exactly what the wall uses to poll.
   const issued = issueDisplayToken();
   db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-     VALUES ('s1', 'Kitchen', ?, ?, ?, ?)`,
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('s1', 'Kitchen', ?, 'panels', ?, ?, ?)`,
   ).run(issued.tokenHash, stamp, stamp, stamp);
 
   let build: ((screen: ScreenRow) => Manifest) | undefined;

@@ -54,6 +54,7 @@ import {
   keepWidgetsWithSomethingToSay,
   manifestEtag,
   RUN_WINDOW_DAYS,
+  STAND_IN_THEME,
   type Manifest,
   type ManifestNotice,
 } from '../api/manifest.js';
@@ -829,7 +830,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly allowDismiss: boolean;
     readonly allowChores: boolean;
     readonly allowTodo: boolean;
-    readonly theme: string | null;
+    /** The wall's own theme; a document for no wall states `STAND_IN_THEME`. */
+    readonly theme: string;
     readonly daytimeTheme: string | null;
     readonly daytimeStartsAt: string | null;
     readonly daytimeEndsAt: string | null;
@@ -987,7 +989,11 @@ export function createApp(deps: AppDeps): Hono {
       allowDismiss: screen.allowDismiss === 1,
       allowChores: screen.allowChores === 1,
       allowTodo: screen.allowTodo === 1,
-      theme: screen.theme,
+      // A browser wall's row always carries one — the CHECK on `screens`
+      // refuses it otherwise. The only null here is an e-paper panel, which
+      // draws one bit and reads no theme; the stand-in keeps its document
+      // renderable without pretending a panel chose a colour.
+      theme: screen.theme ?? STAND_IN_THEME,
       daytimeTheme: screen.daytimeTheme,
       daytimeStartsAt: screen.daytimeStartsAt,
       daytimeEndsAt: screen.daytimeEndsAt,
@@ -1087,12 +1093,17 @@ export function createApp(deps: AppDeps): Hono {
   const degradedManifest = (extra: ManifestNotice): Manifest =>
     buildManifest({
       household: {
-        timezone: 'UTC', theme: 'board', daytimeTheme: null, daytimeStartsAt: null,
-        daytimeEndsAt: null, shiftEnabled: 0, displayTodayEvents: 8, displayNextDays: 6,
+        timezone: 'UTC', shiftEnabled: 0, displayTodayEvents: 8, displayNextDays: 6,
         displayHorizonWeeks: 5, displayBlocks: 'now,next,horizon', clock24: 1,
         weekStart: 'sunday', layoutMode: 'auto', layoutAspect: 0.5625,
         layoutLandscapeAspect: 1.7778, layoutBackground: null, layoutLandscapeBackground: null,
       },
+      // The stand-in's own value, not a default: there is no screen row to ask
+      // — that row is the thing that could not be read — and no household
+      // theme behind one any more (RFC 015 §3.2). Nobody inherits this; a real
+      // wall carries its theme in its row. The rest of this block is what an
+      // absent screen already resolved to, so nothing else in the document moves.
+      screen: { orientation: 'auto', rotation: 0, theme: 'panels' },
       events: [], sources: [], people: [], shiftTypes: [], shiftPlans: [], shiftOverrides: [],
       today: localDateOf(now(), 'UTC'),
       daysBefore: DEFAULT_DAYS_BEFORE,
@@ -1617,7 +1628,12 @@ export function createApp(deps: AppDeps): Hono {
         allowDismiss: false,
         allowChores: false,
         allowTodo: false,
-        theme: null,
+        // The stand-in's own value, not a default (RFC 015 §3.2): this document
+        // is built for no wall — the dashboard's today card, a preview with no
+        // screen named, the panel gallery — so there is no row to read a theme
+        // off and, with the household theme retired, nothing behind one. No
+        // wall inherits it.
+        theme: 'panels',
         daytimeTheme: null,
         daytimeStartsAt: null,
         daytimeEndsAt: null,

@@ -194,10 +194,6 @@ describe('a measurement the manifest will act on', () => {
 
 const HOUSEHOLD = {
   timezone: 'Europe/London',
-  theme: 'board',
-  daytimeTheme: null,
-  daytimeStartsAt: null,
-  daytimeEndsAt: null,
   shiftEnabled: 0,
   displayTodayEvents: 8,
   displayNextDays: 6,
@@ -246,6 +242,7 @@ const UNMEASURED = {
   rotation: 0,
   allowDismiss: false,
   allowChores: false,
+  theme: 'panels',
 } as const;
 
 const PANEL: FrameScreen = {

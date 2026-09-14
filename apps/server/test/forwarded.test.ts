@@ -40,14 +40,14 @@ function harness(opts: { clientAddr?: string; trustedProxySources?: readonly str
 
   const now = Date.now();
   db.prepare(
-    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
-     VALUES ('singleton', 'America/New_York', 'board', ?, ?, ?)`,
+    `INSERT INTO household_settings (id, timezone, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'America/New_York', ?, ?, ?)`,
   ).run(now, now, now);
 
   const issued = issueDisplayToken();
   db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-     VALUES ('screen1', 'Kitchen', ?, ?, ?, ?)`,
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('screen1', 'Kitchen', ?, 'panels', ?, ?, ?)`,
   ).run(issued.tokenHash, now, now, now);
 
   const app = createApp({

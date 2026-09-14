@@ -147,8 +147,8 @@ async function harness() {
     const stamp2 = Date.now();
     instance.db
       .prepare(
-        `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-         VALUES (?, 'Wall', ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+        `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+         VALUES (?, 'Wall', ?, 'panels', ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
       )
       .run(`screen-${stamp2}`, issued.tokenHash, stamp2, stamp2, stamp2);
     const response = await call('/d/manifest', {
@@ -481,92 +481,132 @@ describe('ago', () => {
  * that matter are the ones proving a value typed into a form actually reaches
  * the manifest a screen polls.
  */
+/** A wall row with its own theme, straight into the table, and the token to poll as it. */
+const pairWall = (db: ReturnType<typeof openDatabase>['db'], name: string) => {
+  const issued = issueDisplayToken();
+  const stamp = Date.now();
+  const id = `screen-${name}-${stamp}`;
+  db.prepare(
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES (?, ?, ?, 'panels', ?, ?, ?)`,
+  ).run(id, name, issued.tokenHash, stamp, stamp, stamp);
+  return { id, token: issued.token };
+};
+
+/** What that wall polls. */
+const manifestOf = async (
+  h: { call: (path: string, init?: RequestInit) => Promise<Response> },
+  token: string,
+): Promise<{ theme: { active: string; daytime?: string; daytimeStartsAt?: string } }> =>
+  (await (
+    await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
+  ).json()) as never;
+
 describe('display settings', () => {
+  const pair = pairWall;
   it('is behind the session gate', async () => {
     const h = await harness();
     h.jar.clear();
     expect((await h.call('/admin/display')).status).toBe(302);
   });
 
-  it('offers every theme this build can draw', async () => {
-    // A theme in the dropdown that the wall then falls back on would be a
-    // puzzle nobody could solve from the kitchen.
+  it('offers every theme this build can draw where a wall is made, and none on System', async () => {
+    /*
+     * A theme in the picker that the wall then falls back on would be a puzzle
+     * nobody could solve from the kitchen. The picker is on the add-a-wall page
+     * now, not System: the household theme is retired (RFC 015 phase 2), so
+     * System has no colour to offer and no `theme` control to offer it with.
+     */
     const h = await harness();
-    // The wall defaults live on System now. They were the Default wall's
-    // settings sheet, which presented the shared household row as a display.
-    const body = await (await h.call('/admin/system')).text();
-    for (const theme of ['household', 'blueprint', 'panels', 'almanac']) {
-      expect(body).toContain(`value="${theme}"`);
+    const add = await (await h.call('/admin/walls/new')).text();
+    for (const theme of ['household', 'blueprint', 'panels', 'almanac', 'swiss']) {
+      expect(add).toContain(`value="${theme}"`);
     }
+    const system = await (await h.call('/admin/system')).text();
+    expect(system).not.toContain('name="theme"');
+    expect(system).not.toContain('name="daytime_theme"');
+    expect(system).not.toContain('Wall appearance');
   });
 
-  it('saves a theme and a daylight schedule, and the manifest carries them', async () => {
+  it('saves a wall’s theme and daylight schedule, and its manifest carries them', async () => {
     const h = await harness();
-    const response = await h.form('/admin/display', {
+    const wall = pair(h.db, 'Kitchen');
+    const response = await h.form(`/admin/screens/${wall.id}`, {
+      name: 'Kitchen', orientation: 'auto', rotation: '0',
       theme: 'panels',
       daytime_theme: 'almanac',
       daytime_starts_at: '06:30',
       daytime_ends_at: '20:15',
-      today_events: '5',
-      next_days: '4',
-      horizon_weeks: '6', week_start: 'sunday',
-      clock_24: '1',
     });
     expect(response.status).toBe(302);
 
-    const manifest = await h.manifestFor(h);
+    const manifest = await manifestOf(h, wall.token);
     expect(manifest.theme.active).toBe('panels');
     expect(manifest.theme.daytime).toBe('almanac');
     expect(manifest.theme.daytimeStartsAt).toBe('06:30');
-    expect(manifest.display).toEqual({
-      todayEvents: 5, nextDays: 4, horizonWeeks: 6, blocks: ['now', 'next', 'horizon'],
-      clock24: true, weekStart: 'sunday',
-    });
   });
 
-  it('saves a Monday week start, and the manifest carries it', async () => {
+  it('saves the content defaults and a Monday week start, and the manifest carries them', async () => {
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
-      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'monday',
+      today_events: '5', next_days: '4', horizon_weeks: '6', week_start: 'monday', clock_24: '1',
     });
     expect(response.status).toBe(302);
-    expect((await h.manifestFor(h)).display?.weekStart).toBe('monday');
+    expect((await h.manifestFor(h)).display).toEqual({
+      todayEvents: 5, nextDays: 4, horizonWeeks: 6, blocks: ['now', 'next', 'horizon'],
+      clock24: true, weekStart: 'monday',
+    });
   });
 
-  it('stores "the same theme all day" as no schedule at all', async () => {
+  it('stores a wall’s "same theme all day" as no schedule at all', async () => {
     // A household with one theme should not have to reason about a time window
     // that does nothing.
     const h = await harness();
-    await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
+    const wall = pair(h.db, 'Kitchen');
+    await h.form(`/admin/screens/${wall.id}`, {
+      name: 'Kitchen', orientation: 'auto', rotation: '0',
+      theme: 'panels', daytime_theme: '',
       daytime_starts_at: '07:00', daytime_ends_at: '21:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
     });
 
-    const manifest = await h.manifestFor(h);
+    const manifest = await manifestOf(h, wall.token);
     expect(manifest.theme.active).toBe('panels');
     expect(manifest.theme.daytime).toBeUndefined();
   });
 
-  it('refuses a theme it cannot draw', async () => {
+  it('ignores a theme posted to System, because there is nowhere for it to go', async () => {
+    /*
+     * A page cached from before the household theme was retired still posts
+     * `theme`. It is neither refused nor written: the content it also carries
+     * saves, and the wall goes on wearing its own.
+     */
     const h = await harness();
+    const wall = pair(h.db, 'Kitchen');
     const response = await h.form('/admin/display', {
-      theme: 'kitchen-disco',
-      daytime_theme: 'none', daytime_starts_at: '07:00', daytime_ends_at: '21:00',
+      theme: 'almanac', daytime_theme: 'none',
       today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
     });
-    expect(response.status).toBe(400);
-    expect((await h.manifestFor(h)).theme.active).toBe('board');
+    expect(response.status).toBe(302);
+    expect((await manifestOf(h, wall.token)).theme.active).toBe('panels');
   });
 
-  it('refuses a daylight window of no length, and says why', async () => {
+  it('refuses a wall a theme it cannot draw', async () => {
     const h = await harness();
-    const response = await h.form('/admin/display', {
+    const wall = pair(h.db, 'Kitchen');
+    const response = await h.form(`/admin/screens/${wall.id}`, {
+      name: 'Kitchen', orientation: 'auto', rotation: '0', theme: 'kitchen-disco',
+    });
+    expect(response.status).toBe(400);
+    expect((await manifestOf(h, wall.token)).theme.active).toBe('panels');
+  });
+
+  it('refuses a wall a daylight window of no length, and says why', async () => {
+    const h = await harness();
+    const wall = pair(h.db, 'Kitchen');
+    const response = await h.form(`/admin/screens/${wall.id}`, {
+      name: 'Kitchen', orientation: 'auto', rotation: '0',
       theme: 'panels', daytime_theme: 'almanac',
       daytime_starts_at: '07:00', daytime_ends_at: '07:00',
-      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
     });
     expect(response.status).toBe(400);
     expect(await response.text()).toContain('never switch');
@@ -582,8 +622,6 @@ describe('display settings', () => {
       { next_days: 'lots' },
     ]) {
       const response = await h.form('/admin/display', {
-        theme: 'panels', daytime_theme: 'none',
-        daytime_starts_at: '07:00', daytime_ends_at: '21:00',
         today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
         ...bad,
       });
@@ -601,8 +639,6 @@ describe('display settings', () => {
     // ahead is making a choice, not a mistake.
     const h = await harness();
     const response = await h.form('/admin/display', {
-      theme: 'panels', daytime_theme: 'none',
-      daytime_starts_at: '07:00', daytime_ends_at: '21:00',
       today_events: '8', next_days: '0', horizon_weeks: '5', week_start: 'sunday',
     });
     expect(response.status).toBe(302);
@@ -618,16 +654,7 @@ describe('display settings', () => {
  * and one of them is probably on its side.
  */
 describe('screens', () => {
-  const pair = (db: ReturnType<typeof openDatabase>['db'], name: string) => {
-    const issued = issueDisplayToken();
-    const stamp = Date.now();
-    const id = `screen-${name}-${stamp}`;
-    db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, issued.tokenHash, stamp, stamp, stamp);
-    return { id, token: issued.token };
-  };
+  const pair = pairWall;
 
   it('lists paired screens behind the session gate', async () => {
     const h = await harness();
@@ -646,7 +673,7 @@ describe('screens', () => {
     const hall = pair(h.db, 'Hall');
 
     const saved = await h.form(`/admin/screens/${kitchen.id}`, {
-      name: 'Kitchen', orientation: 'portrait', rotation: '90',
+      name: 'Kitchen', orientation: 'portrait', rotation: '90', theme: 'panels',
     });
     expect(saved.status).toBe(302);
 
@@ -676,7 +703,7 @@ describe('screens', () => {
     const h = await harness();
     const screen = pair(h.db, 'Telly');
     await h.form(`/admin/screens/${screen.id}`, {
-      name: 'Living room', orientation: 'auto', rotation: '0',
+      name: 'Living room', orientation: 'auto', rotation: '0', theme: 'panels',
     });
     expect(await (await h.call('/admin/walls')).text()).toContain('Living room');
   });
@@ -685,7 +712,7 @@ describe('screens', () => {
     const h = await harness();
     const screen = pair(h.db, 'Kitchen');
     const response = await h.form(`/admin/screens/${screen.id}`, {
-      name: 'Kitchen', orientation: 'auto', rotation: '45',
+      name: 'Kitchen', orientation: 'auto', rotation: '45', theme: 'panels',
     });
     expect(response.status).toBe(400);
     expect(await response.text()).toContain('quarter turn');
@@ -695,7 +722,7 @@ describe('screens', () => {
     const h = await harness();
     const screen = pair(h.db, 'Kitchen');
     const response = await h.form(`/admin/screens/${screen.id}`, {
-      name: 'Kitchen', orientation: 'diagonal', rotation: '0',
+      name: 'Kitchen', orientation: 'diagonal', rotation: '0', theme: 'panels',
     });
     expect(response.status).toBe(400);
   });
@@ -1161,8 +1188,8 @@ describe('per-screen overrides', () => {
     const stamp = Date.now();
     const id = `scr-${name}-${stamp}`;
     db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'panels', ?, ?, ?)`,
     ).run(id, name, issued.tokenHash, stamp, stamp, stamp);
     return { id, token: issued.token };
   };
@@ -1177,18 +1204,27 @@ describe('per-screen overrides', () => {
 
   const settings = (over: Record<string, string> = {}) => ({
     name: 'Kitchen', orientation: 'auto', rotation: '0',
-    theme: '', daytime_theme: '', daytime_starts_at: '07:00', daytime_ends_at: '21:00',
+    theme: 'panels', daytime_theme: '', daytime_starts_at: '07:00', daytime_ends_at: '21:00',
     timezone: '', ...over,
   });
 
-  it('follows the household when nothing is overridden', async () => {
+  it('keeps the theme it was paired with and follows the household zone when nothing is overridden', async () => {
     const h = await harness();
     const screen = pairOne(h.db, 'Kitchen');
     await h.form(`/admin/screens/${screen.id}`, settings());
 
     const manifest = await manifestFor(h, screen.token);
-    expect(manifest.theme.active).toBe('board');
+    expect(manifest.theme.active).toBe('panels');
     expect(manifest.timezone).toBe('Europe/London');
+  });
+
+  it('refuses to save a wall with no theme at all', async () => {
+    // Blank used to mean "follow the household"; there is nothing to follow
+    // (RFC 015 phase 2), so a blank is a refusal and the wall keeps its own.
+    const h = await harness();
+    const screen = pairOne(h.db, 'Kitchen');
+    expect((await h.form(`/admin/screens/${screen.id}`, settings({ theme: '' }))).status).toBe(400);
+    expect((await manifestFor(h, screen.token)).theme.active).toBe('panels');
   });
 
   it('lets one screen take its own theme, night schedule and zone', async () => {
@@ -1211,7 +1247,7 @@ describe('per-screen overrides', () => {
 
     // The other screen is untouched, which is the point of it being per screen.
     const other = await manifestFor(h, kitchen.token);
-    expect(other.theme.active).toBe('board');
+    expect(other.theme.active).toBe('panels');
     expect(other.timezone).toBe('Europe/London');
   });
 

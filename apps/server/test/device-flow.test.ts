@@ -156,7 +156,7 @@ describe('device-authorization pairing, end to end', () => {
 
     // 4. They name it and approve.
     const approved = await h.post(`${PORT}/admin/screens/approve`, {
-      code: start.userCode, name: 'Living room TV', action: 'approve',
+      code: start.userCode, name: 'Living room TV', action: 'approve', theme: 'panels',
     });
     expect(approved.status).toBe(200);
     expect(await approved.text()).toContain('Living room TV is paired');
@@ -183,7 +183,7 @@ describe('device-authorization pairing, end to end', () => {
   it('delivers the token only once — a second poll is spent', async () => {
     const h = await harness();
     const start = await startFlow(h);
-    await h.post(`${PORT}/admin/screens/approve`, { code: start.userCode, name: 'TV', action: 'approve' });
+    await h.post(`${PORT}/admin/screens/approve`, { code: start.userCode, name: 'TV', action: 'approve', theme: 'panels' });
 
     expect((await poll(h, start.deviceCode)).status).toBe('approved');
     // Consumed. A replayed poll (a copied device code) reads as a dead flow.

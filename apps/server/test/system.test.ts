@@ -96,8 +96,14 @@ function harness(appVersion = '9.9.9') {
 
   const at = Date.now();
   db.prepare(
-    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
-     VALUES ('singleton', 'Europe/London', 'board', ?, ?, ?)`,
+    `INSERT INTO household_settings (id, timezone, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'Europe/London', ?, ?, ?)`,
+  ).run(at, at, at);
+  // A wall, so the export has one to name — its theme is what the export says
+  // about a wall now that there is no household theme (RFC 015 phase 2).
+  db.prepare(
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('scr-k', 'Kitchen', 'hash-k', 'panels', ?, ?, ?)`,
   ).run(at, at, at);
   /*
    * The username is shaped like an email address on purpose.
@@ -269,6 +275,10 @@ describe('diagnostics', () => {
 
     expect(report.appVersion).toBe('9.9.9-test');
     expect(report.uptimeSeconds).toBe(60);
+    // What each wall looks like, by name — the one place the export can still
+    // say so now that there is no household theme (RFC 015 phase 2). A key
+    // from a list of five, and a wall's name, are not household content.
+    expect(report.walls).toEqual([{ name: 'Kitchen', theme: 'panels' }]);
     expect(report.database.integrityOk).toBe(true);
     expect(report.counts).toMatchObject({ calendars: 1, events: 1, people: 1, users: 1 });
     expect(report.sources[0]).toMatchObject({ host: 'calendar.google.com', eventCount: 0 });

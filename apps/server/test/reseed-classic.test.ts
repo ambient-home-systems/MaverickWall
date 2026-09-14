@@ -44,8 +44,8 @@ function fresh(): SqliteDatabase {
     `INSERT INTO household_settings (id, created_at, updated_at) VALUES ('singleton', ?, ?)`,
   ).run(at, at);
   db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-     VALUES ('kitchen', 'Kitchen', 'hash-kitchen', ?, ?, ?)`,
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('kitchen', 'Kitchen', 'hash-kitchen', 'panels', ?, ?, ?)`,
   ).run(at, at, at);
   return db;
 }

@@ -478,6 +478,120 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('hands the household theme to every wall that was drawing it, then drops it (0044, 0045)', () => {
+    /*
+     * RFC 015 phase 2. Four screens the walk already carries never held a
+     * *theme state*; these three do, and each is a different one. A wall with
+     * its own theme keeps it. A wall following the household takes the
+     * household's value — `board`, on purpose: a live key such as `almanac`
+     * cannot tell a copy from a `COALESCE` that resolved through the display's
+     * alias table, and the migration must copy *raw*, because resolving a
+     * retired key is the reader's job. And an e-paper panel is left with
+     * nothing, which is not a hole: a panel draws one bit and has no theme to
+     * name, and the CHECK says so (`kind = 'epaper' OR theme IS NOT NULL`).
+     *
+     * `0045` is the `0009` shape — a recreate of the 46-column `screens`, which
+     * carries `token_hash`, the credential every paired wall authenticates
+     * with — so the walk asserts the token survives alongside the theme, and
+     * the four household columns go by `ALTER TABLE … DROP COLUMN` rather
+     * than a second recreate (SQLite 3.49.2, checked before this was written).
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    for (const entry of entries) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0000')) {
+        db.prepare(
+          `INSERT INTO household_settings
+             (id, timezone, theme, daytime_theme, daytime_starts_at, daytime_ends_at,
+              created_at, updated_at)
+           VALUES ('singleton', 'Europe/London', 'board', 'almanac', '06:30', '20:15', ?, ?)`,
+        ).run(stamp, stamp);
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+           VALUES ('scr-own', 'Bedroom', 'hash-own', 'almanac', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES ('scr-follow', 'Kitchen', 'hash-follow', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+      }
+      // `kind` arrives at 0029; the panel is turned into one the moment it can be.
+      if (entry.tag.startsWith('0029')) {
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, kind, panel_width, panel_height, panel_colour,
+                                token_issued_at, created_at, updated_at)
+           VALUES ('scr-panel', 'Hall tag', 'hash-panel', 'epaper', 800, 480, 'bw', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+      }
+    }
+
+    const walls = db
+      .prepare(
+        `SELECT id, kind, theme, token_hash AS tokenHash, daytime_theme AS daytimeTheme,
+                daytime_starts_at AS startsAt, daytime_ends_at AS endsAt
+           FROM screens ORDER BY id`,
+      )
+      .all();
+    expect(walls).toEqual([
+      // The raw copied value — not `panels`, which is what a resolver would say.
+      {
+        id: 'scr-follow', kind: 'browser', theme: 'board', tokenHash: 'hash-follow',
+        daytimeTheme: 'almanac', startsAt: '06:30', endsAt: '20:15',
+      },
+      // Its own theme, untouched; the schedule it never set is the household's.
+      {
+        id: 'scr-own', kind: 'browser', theme: 'almanac', tokenHash: 'hash-own',
+        daytimeTheme: 'almanac', startsAt: '06:30', endsAt: '20:15',
+      },
+      // A panel names nothing and is asked nothing.
+      {
+        id: 'scr-panel', kind: 'epaper', theme: null, tokenHash: 'hash-panel',
+        daytimeTheme: null, startsAt: null, endsAt: null,
+      },
+    ]);
+
+    // The four household columns are gone, and the rest of the row is not.
+    const columns = (db.pragma('table_info(household_settings)') as { name: string }[]).map((c) => c.name);
+    for (const gone of ['theme', 'daytime_theme', 'daytime_starts_at', 'daytime_ends_at']) {
+      expect(columns, `${gone} survived the drop`).not.toContain(gone);
+    }
+    expect(db.prepare(`SELECT timezone FROM household_settings WHERE id = 'singleton'`).get()).toEqual({
+      timezone: 'Europe/London',
+    });
+
+    /*
+     * The CHECK, as a pair: either half alone passes under a constraint that
+     * is simply absent, or under one tightened into refusing every panel.
+     */
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES ('scr-bare', 'Bare', 'hash-bare', ?, ?, ?)`,
+        )
+        .run(stamp, stamp, stamp),
+    ).toThrow(/CHECK constraint failed/);
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO screens (id, name, token_hash, kind, panel_width, panel_height, panel_colour,
+                                token_issued_at, created_at, updated_at)
+           VALUES ('scr-bare-panel', 'Bare tag', 'hash-bare-panel', 'epaper', 800, 480, 'bw', ?, ?, ?)`,
+        )
+        .run(stamp, stamp, stamp),
+    ).not.toThrow();
+    // And the unique index on the credential came back with the table.
+    expect(
+      (db.prepare(`PRAGMA index_list('screens')`).all() as { name: string; unique: number }[]).find(
+        (index) => index.name === 'screens_token_hash_idx',
+      )?.unique,
+    ).toBe(1);
+    db.close();
+  });
+
   it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
     // A wall arranged before the two-canvas split has widgets with no
     // orientation column. The 0024 migration adds it with a `portrait` default,

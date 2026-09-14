@@ -551,7 +551,11 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
       ]);
     },
     async pairWall(name = 'Kitchen'): Promise<string> {
-      const made = await post('/admin/screens', { name });
+      // A wall cannot be created without a theme (RFC 015 phase 2). Panels
+      // here is a *harness* default, defaulted the way the name is, so the
+      // suite is one edit rather than thirty-nine; the POST is still the
+      // boundary and still refuses a body with none, which its own test asserts.
+      const made = await post('/admin/screens', { name, theme: 'panels' });
       if (made.status !== 303) throw new Error(`pairing answered ${made.status}, not a redirect`);
       // `/admin/walls/<id>/pair` — the id is what a test needs to open its page.
       const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1];
@@ -561,7 +565,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     async pairLink(name = 'Kitchen'): Promise<string> {
       // The POST redirects to the page that shows the link once; `call` does
       // not follow redirects, so this takes the one hop itself.
-      const made = await post('/admin/screens', { name });
+      const made = await post('/admin/screens', { name, theme: 'panels' });
       if (made.status !== 303) throw new Error(`pairing answered ${made.status}, not a redirect to the link`);
       const html = await (await call(made.headers.get('location') ?? '')).text();
       const link = /(https?:\/\/[^<\s"]*\/pair\?token=[^<\s"]+)/.exec(html)?.[1];

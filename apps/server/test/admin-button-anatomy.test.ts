@@ -103,7 +103,7 @@ async function harness() {
 
   /** Draw real cards: walls, an installed module, and two people. */
   const seedCards = async () => {
-    await form('/admin/screens', { name: 'Kitchen' });
+    await form('/admin/screens', { name: 'Kitchen', theme: 'panels' });
     // The e-paper wall is added on its own page's form: a name, a panel preset
     // and a rotation (newEpaperBody).
     await form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });

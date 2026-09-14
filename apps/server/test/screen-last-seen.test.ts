@@ -108,7 +108,7 @@ function adminScreen(db: SqliteDatabase, id: string) {
 describe('screens.last_seen_ip', () => {
   it('is null until a screen has ever been seen', async () => {
     const h = await harness();
-    const made = await h.post(`${B}/admin/screens`, { name: 'Wall' });
+    const made = await h.post(`${B}/admin/screens`, { name: 'Wall', theme: 'panels' });
     const html = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     const token = /\/pair\?token=([^<\s"]+)/.exec(html)?.[1];
     if (token === undefined) throw new Error('no pairing token in the admin page');
@@ -119,7 +119,7 @@ describe('screens.last_seen_ip', () => {
 
   it("records the connecting address for a browser wall's manifest poll", async () => {
     const h = await harness();
-    const made = await h.post(`${B}/admin/screens`, { name: 'Wall' });
+    const made = await h.post(`${B}/admin/screens`, { name: 'Wall', theme: 'panels' });
     const html = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     const token = /\/pair\?token=([^<\s"]+)/.exec(html)?.[1];
     if (token === undefined) throw new Error('no pairing token in the admin page');

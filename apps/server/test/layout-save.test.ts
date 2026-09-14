@@ -121,8 +121,8 @@ async function harness() {
   {
     const at = Date.now();
     db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('s1','Wall','seed',?,?,?)`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('s1', 'Wall', 'seed', 'panels',?,?,?)`,
     ).run(at, at, at);
   }
 
@@ -132,8 +132,8 @@ async function harness() {
     const issued = issueDisplayToken();
     const at = Date.now();
     db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('s1','Wall',?,?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('s1', 'Wall', ?, 'panels',?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`,
     ).run(issued.tokenHash, at, at, at);
     const res = await call('/d/manifest', { headers: { authorization: `Bearer ${issued.token}` } });
     const m = (await res.json()) as {
@@ -576,8 +576,8 @@ describe('a per-wall layout', () => {
       tokens[id] = issued.token;
       h.db
         .prepare(
-          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+           VALUES (?, ?, ?, 'panels', ?, ?, ?)`,
         )
         .run(id, name, issued.tokenHash, at, at, at);
     }

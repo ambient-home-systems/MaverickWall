@@ -101,8 +101,8 @@ async function ready() {
     const issued = issueDisplayToken();
     const at = Date.now();
     db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('s1','Wall',?,?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('s1', 'Wall', ?, 'panels',?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`,
     ).run(issued.tokenHash, at, at, at);
     const res = await call('/d/manifest', { headers: { authorization: `Bearer ${issued.token}` } });
     const body = (await res.json()) as {
@@ -124,8 +124,8 @@ async function ready() {
   {
     const at = Date.now();
     db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('s1','Wall','seed',?,?,?) ON CONFLICT(id) DO NOTHING`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('s1', 'Wall', 'seed', 'panels',?,?,?) ON CONFLICT(id) DO NOTHING`,
     ).run(at, at, at);
   }
   return { db, call, postForm, manifestLayout, applyBare, WALL };
@@ -167,8 +167,8 @@ describe('the template gallery routes', () => {
     const at = Date.now();
     h.db
       .prepare(
-        `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-         VALUES ('wallK','Kitchen','h',?,?,?)`,
+        `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+         VALUES ('wallK', 'Kitchen', 'h', 'panels',?,?,?)`,
       )
       .run(at, at, at);
     await h.postForm('/admin/displays/s1/apply-template', { templateId: 'family-hub' });

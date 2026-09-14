@@ -117,7 +117,7 @@ async function addPanel(
 
 /** Add a browser wall, which is what `add-screen` and the Walls form both make. */
 async function addWall(h: Awaited<ReturnType<typeof harness>>, name: string): Promise<string> {
-  await h.post(`${B}/admin/screens`, { name });
+  await h.post(`${B}/admin/screens`, { name, theme: 'panels' });
   const rows = h.db
     .prepare(`SELECT id FROM screens WHERE kind = 'browser' AND name = ? LIMIT 1`)
     .all(name) as { id: string }[];

@@ -158,7 +158,7 @@ async function crawl(): Promise<readonly Rendered[]> {
   // is this file's own stated blind spot, a conditional section, and the
   // reason the retired-name assertions below would otherwise pass over the
   // very fault they were written for.
-  const madeWall = await home.post('/admin/screens', { name: 'Kitchen' });
+  const madeWall = await home.post('/admin/screens', { name: 'Kitchen', theme: 'panels' });
   expect(madeWall.status, 'the wall must be created for its pages to be crawled').toBe(303);
   const madePanel = await home.post('/admin/epaper', {
     name: 'Hallway tag',

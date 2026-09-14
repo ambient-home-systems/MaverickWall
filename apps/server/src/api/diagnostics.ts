@@ -35,10 +35,16 @@ export interface Diagnostics {
   };
   readonly household: {
     readonly timezone: string;
-    readonly theme: string;
     readonly setupComplete: boolean;
     readonly shiftEnabled: boolean;
   };
+  /**
+   * What each wall looks like, by name. A theme key is a name the household
+   * chose from a list of five, not content, and with no household theme any
+   * more (RFC 015 phase 2) this is the only place an export can still say what
+   * a wall is drawing. A panel's theme is null: it has none.
+   */
+  readonly walls: readonly { readonly name: string; readonly theme: string | null }[];
   readonly counts: Readonly<Record<string, number>>;
   /** Per source: how it is doing, named by host rather than by address. */
   readonly sources: readonly {
@@ -93,12 +99,12 @@ export function buildDiagnostics(input: DiagnosticsInput): Diagnostics {
 
   const household = db
     .prepare(
-      `SELECT timezone, theme, setup_completed_at AS setupCompletedAt,
+      `SELECT timezone, setup_completed_at AS setupCompletedAt,
               shift_enabled AS shiftEnabled
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as
-    | { timezone: string; theme: string; setupCompletedAt: number | null; shiftEnabled: number }
+    | { timezone: string; setupCompletedAt: number | null; shiftEnabled: number }
     | undefined;
 
   /*
@@ -136,11 +142,13 @@ export function buildDiagnostics(input: DiagnosticsInput): Diagnostics {
 
   const screens = db
     .prepare(
-      `SELECT orientation, rotation, last_seen_at AS lastSeenAt, app_version AS appVersion,
-              revoked_at AS revokedAt
+      `SELECT name, theme, orientation, rotation, last_seen_at AS lastSeenAt,
+              app_version AS appVersion, revoked_at AS revokedAt
          FROM screens`,
     )
     .all() as {
+    name: string;
+    theme: string | null;
     orientation: string;
     rotation: number;
     lastSeenAt: number | null;
@@ -183,10 +191,12 @@ export function buildDiagnostics(input: DiagnosticsInput): Diagnostics {
     },
     household: {
       timezone: household?.timezone ?? 'unknown',
-      theme: household?.theme ?? 'unknown',
       setupComplete: household?.setupCompletedAt != null,
       shiftEnabled: household?.shiftEnabled === 1,
     },
+    walls: screens
+      .filter((screen) => screen.revokedAt === null)
+      .map((screen) => ({ name: screen.name, theme: screen.theme })),
     counts: {
       calendars: sources.length,
       events: count(db, 'calendar_events_cache'),

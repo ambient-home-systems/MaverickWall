@@ -117,7 +117,7 @@ describe('retiring the shared Default wall', () => {
       tokenHash: 'h',
       pairingCodeHash: 'p',
       pairingCodeExpiresAt: Date.now() + 60_000,
-    });
+    }, 'panels');
     expect(readLayoutWidgets(db, 'inheriting', 'portrait')).toEqual([]);
 
     retireDefaultWall(db, householdSetUp(db));
@@ -139,7 +139,7 @@ describe('retiring the shared Default wall', () => {
       tokenHash: 'h',
       pairingCodeHash: 'p',
       pairingCodeExpiresAt: Date.now() + 60_000,
-    });
+    }, 'panels');
     const mine = TEMPLATES.find((one) => one.id === 'sky-week')!;
     applyTemplate(db, 'own', mine);
 
@@ -178,7 +178,7 @@ describe('retiring the shared Default wall', () => {
       tokenHash: 'h',
       pairingCodeHash: 'p',
       pairingCodeExpiresAt: Date.now() + 60_000,
-    });
+    }, 'panels');
     retireDefaultWall(db, householdSetUp(db));
     expect(readLayoutWidgets(db, 'w', 'portrait').length).toBeGreaterThan(0);
 
@@ -200,7 +200,7 @@ describe('retiring the shared Default wall', () => {
     const h = await harness();
 
     // The add page.
-    await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     // The device flow: a wall starts pairing and the household approves it.
     const started = await h.post(`${B}/d/pair/device-start`, {});
     expect(started.status).toBe(200);
@@ -209,6 +209,7 @@ describe('retiring the shared Default wall', () => {
       code: userCode,
       name: 'Hallway',
       action: 'approve',
+      theme: 'panels',
     });
     expect(approved.status).toBe(200);
 
@@ -225,6 +226,120 @@ describe('retiring the shared Default wall', () => {
   });
 });
 
+/** The document a named wall draws, read the way the editor's preview reads it. */
+async function manifestOf(
+  h: Awaited<ReturnType<typeof harness>>,
+  id: string,
+): Promise<{ theme: { active: string; activeShape: string; activeTokens?: unknown } }> {
+  const response = await h.call(`${B}/admin/layout/preview.json?screen=${encodeURIComponent(id)}`);
+  expect(response.status).toBe(200);
+  return (await response.json()) as never;
+}
+
+describe('a wall names its own theme on every door that makes one', () => {
+  /*
+   * RFC 015 phase 2, and the finding of the seeding test above repeating one
+   * column along: the device-flow approve and the CLI both created a wall and
+   * stopped, and the household default hid the omission for as long as it
+   * existed — a wall silently drawing Panels while the household had chosen
+   * Almanac everywhere else. There is no default now, so every door answers,
+   * `createScreen` takes the answer as a parameter it does not default, and
+   * this walks the two doors a request can reach. The third, `add-screen`, is
+   * walked by the compiler: it cannot call `createScreen` without one.
+   */
+  it('carries the chosen theme through the add page and the device flow into the manifest', async () => {
+    const h = await harness();
+
+    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'almanac' });
+    expect(made.status).toBe(303);
+
+    const started = await h.post(`${B}/d/pair/device-start`, {});
+    const { userCode } = (await started.json()) as { userCode: string };
+    const approved = await h.post(`${B}/admin/screens/approve`, {
+      code: userCode,
+      name: 'Hallway',
+      action: 'approve',
+      theme: 'blueprint',
+    });
+    expect(approved.status).toBe(200);
+
+    const walls = h.db
+      .prepare(`SELECT id, name, theme FROM screens ORDER BY name`)
+      .all() as { id: string; name: string; theme: string }[];
+    expect(walls.map((w) => [w.name, w.theme])).toEqual([
+      ['Hallway', 'blueprint'],
+      ['Kitchen', 'almanac'],
+    ]);
+    for (const wall of walls) {
+      expect((await manifestOf(h, wall.id)).theme.active, wall.name).toBe(wall.theme);
+    }
+  });
+
+  it('refuses the add page a wall with no theme, and writes no row', async () => {
+    // The form is a convenience and the POST is the boundary: a hand-posted
+    // body with no theme is a 400, not a wall wearing whatever a column defaults to.
+    const h = await harness();
+    const refused = await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    expect(refused.status).toBe(400);
+    // The refusal is the add page again, with what was typed still in it.
+    const page = await refused.text();
+    expect(page).toContain('value="Kitchen"');
+    expect(page).toContain('name="theme"');
+    expect(h.db.prepare('SELECT count(*) AS n FROM screens').get()).toEqual({ n: 0 });
+  });
+
+  it('refuses to approve a pairing with no theme, before the code is spent', async () => {
+    /*
+     * Refusing *after* the token was bound would leave the flow approved with
+     * no screen — the orphan the approve handler's ordering exists to prevent.
+     * So the code is still pending afterwards, and the same code goes through
+     * once a theme is chosen.
+     */
+    const h = await harness();
+    const started = await h.post(`${B}/d/pair/device-start`, {});
+    const { userCode } = (await started.json()) as { userCode: string };
+
+    const refused = await h.post(`${B}/admin/screens/approve`, {
+      code: userCode,
+      name: 'Hallway',
+      action: 'approve',
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain('Choose a theme for this wall.');
+    expect(h.db.prepare('SELECT count(*) AS n FROM screens').get()).toEqual({ n: 0 });
+
+    const approved = await h.post(`${B}/admin/screens/approve`, {
+      code: userCode,
+      name: 'Hallway',
+      action: 'approve',
+      theme: 'swiss',
+    });
+    expect(approved.status).toBe(200);
+    expect(h.db.prepare('SELECT name, theme FROM screens').all()).toEqual([
+      { name: 'Hallway', theme: 'swiss' },
+    ]);
+  });
+
+  it('still resolves a theme for a wall whose stored theme names nothing', async () => {
+    /*
+     * Rule nine, and the assertion RFC 015 §3.2 asks for: retiring the
+     * household default must not retire the fallback. A wall storing a
+     * `custom:` reference to a theme that is gone still gets a document with a
+     * real shape in it — `resolveTheme`'s own floor — rather than a manifest
+     * the display has to rescue, or nothing.
+     */
+    const h = await harness();
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
+    const { id } = h.db.prepare('SELECT id FROM screens').get() as { id: string };
+    h.db.prepare(`UPDATE screens SET theme = 'custom:missing' WHERE id = ?`).run(id);
+
+    const manifest = await manifestOf(h, id);
+    expect(manifest.theme.active).toBe('custom:missing');
+    expect(manifest.theme.activeShape).toBe('panels');
+    expect(manifest.theme.activeTokens).toBeUndefined();
+  });
+});
+
 describe('the Default wall is not a display any more', () => {
   it('sends its page to System and keeps it off the Walls list', async () => {
     const h = await harness();
@@ -237,14 +352,16 @@ describe('the Default wall is not a display any more', () => {
     expect(list).not.toContain('admin/walls/default');
   });
 
-  it('keeps every setting it held, on System, and saves them from there', async () => {
+  it('keeps the content and clock settings it held, on System, and saves them from there', async () => {
+    /*
+     * Everything the Default wall's settings sheet carried, less the theme and
+     * its daylight schedule: those were the household default every wall
+     * inherited, and they are retired with RFC 015 phase 2 — a wall names its
+     * own on its own page. What every wall still inherits is here.
+     */
     const h = await harness();
     const page = await (await h.call(`${B}/admin/system`)).text();
-    // Everything the Default wall's settings sheet carried.
     for (const field of [
-      'name="theme"',
-      'name="daytime_theme"',
-      'name="daytime_starts_at"',
       'name="today_events"',
       'name="next_days"',
       'name="horizon_weeks"',
@@ -253,10 +370,11 @@ describe('the Default wall is not a display any more', () => {
     ]) {
       expect(page, `System lost ${field}`).toContain(field);
     }
+    for (const gone of ['name="theme"', 'name="daytime_theme"', 'name="daytime_starts_at"', 'Wall appearance']) {
+      expect(page, `System still offers ${gone}`).not.toContain(gone);
+    }
 
     const saved = await h.post(`${B}/admin/display`, {
-      theme: 'almanac',
-      daytime_theme: 'none',
       today_events: '9',
       next_days: '4',
       horizon_weeks: '5',
@@ -267,42 +385,43 @@ describe('the Default wall is not a display any more', () => {
     expect(saved.headers.get('location')).toBe('/admin/system?saved=screen-settings');
     const row = h.db
       .prepare(
-        `SELECT theme, display_today_events AS today, week_start AS weekStart
+        `SELECT display_today_events AS today, week_start AS weekStart
            FROM household_settings WHERE id = 'singleton'`,
       )
-      .get() as { theme: string; today: number; weekStart: string };
-    expect(row).toEqual({ theme: 'almanac', today: 9, weekStart: 'monday' });
+      .get() as { today: number; weekStart: string };
+    expect(row).toEqual({ today: 9, weekStart: 'monday' });
   });
 
-  it('is one form, so saving the clock cannot clear the daylight schedule', async () => {
+  it('is one form, so saving the clock cannot clear the week start', async () => {
     /*
      * The unticked-checkbox rule, one page along. `POST /admin/display` writes
-     * every field it is given, so three sections posting separately would let a
-     * form carrying only the clock save a 12-hour clock *and* take the daylight
-     * theme off every wall. Sections are markup; the form spans them.
+     * every field it is given, so two sections posting separately would let a
+     * form carrying only the clock save a 12-hour clock *and* reset the
+     * content counts. Sections are markup; the form spans them.
      */
     const h = await harness();
     const page = await (await h.call(`${B}/admin/system`)).text();
     const start = page.indexOf('action="admin/display"');
     expect(start, 'no wall-defaults form on System').toBeGreaterThan(-1);
     const form = page.slice(start, page.indexOf('</form>', start));
-    for (const field of ['name="theme"', 'name="daytime_theme"', 'name="week_start"', 'name="clock_24"']) {
+    for (const field of ['name="today_events"', 'name="week_start"', 'name="clock_24"']) {
       expect(form, `${field} is outside the one form that writes it`).toContain(field);
     }
   });
 
-  it('shows every conditional field, because System ships no script to reveal them', async () => {
+  it('ships no field hidden, because System has no script to reveal one', async () => {
     /*
      * The wall's own settings sheet hides the daylight window until a daytime
      * theme is set, and `display-editor.js` reveals it. System does not load
      * that module, so a group rendered `hidden` here would be a control nobody
-     * could ever reach — the chores form's rule.
+     * could ever reach — the chores form's rule. There is no conditional field
+     * left on this form now that the daylight schedule is the wall's; the rule
+     * stays asserted so the next one arrives visible.
      */
     const h = await harness();
     const page = await (await h.call(`${B}/admin/system`)).text();
     const start = page.indexOf('action="admin/display"');
     const form = page.slice(start, page.indexOf('</form>', start));
-    expect(form).toContain('name="daytime_starts_at"');
     expect(form, 'a field ships hidden with nothing to reveal it').not.toMatch(/<div[^>]*\bhidden[^>]*>/);
   });
 });

@@ -464,8 +464,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3280 tests passing**, over 230 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 495 · server 2318 over 185 files. CI runs the whole suite
+**3292 tests passing**, over 230 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2330 over 185 files. CI runs the whole suite
 and then the README's one-liner against a clean volume on Linux, which is the
 only place the install has ever been wrong. Measured on a clean run rather than
 added to the previous figure, which is the discipline the paragraph below spells
@@ -570,7 +570,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (30 tables, 44 migrations) · migrations behind a
+secrets at rest · the schema (30 tables, 46 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
@@ -6059,12 +6059,74 @@ size and reading distance under Device and time, and the boxes are the layout
 editor's. `--radius` is the one non-colour control on the page and it actively
 encourages the belief that "the text is too small" is answerable here.
 
-**No schema, no migration, no manifest shape, and nothing in `apps/display`.**
-Retiring the household theme — four columns, two migrations, `createScreen`
-taking a theme it does not default, every door — is RFC 015 phase 2 and is not
-done; one control for the choice, wherever it is taken, is phase 3. **Still
-unproven where it counts:** nobody has looked at the gallery on a real phone or
-in a real supervisor's sidebar.
+**Phase 1 touched no schema, no migration and no manifest shape, and nothing
+in `apps/display`.** One control for the choice, wherever it is taken, is
+phase 3 and is not done. **Still unproven where it counts:** nobody has looked
+at the gallery on a real phone or in a real supervisor's sidebar.
+
+**The household theme is retired, and every wall names its own (RFC 015
+phase 2).** Counted from the source before this, a wall's theme was decided in
+**six** places and the household could see one: its own row, the household
+default behind it, twelve of fourteen templates writing one on apply, a column
+default of `board` — a key that had not named a theme for releases — and two
+server-side literals for documents built for no wall. The default was the
+mechanism that let the other five stay invisible, because every one of them
+was quietly overriding a value nobody chose. Four `household_settings` columns
+are gone — `theme`, `daytime_theme`, `daytime_starts_at`, `daytime_ends_at` —
+and `screens` carries `CHECK (kind = 'epaper' OR theme IS NOT NULL)`, which is
+§3.3 in the database: *every wall that draws colour names its own theme*, and a
+panel is asked nothing because it draws one bit. `createScreen` takes the theme
+as a fifth argument it **does not default** — `addCalendarSource`'s rule for
+its clock, verbatim, since a default is exactly how the fallback comes back —
+and the three doors answer: the add page and the device-flow approve carry the
+picker with nothing preselected and refuse without a choice (the approve
+*before* the token is bound, so the code stays pending and no orphan row is
+written), and `add-screen` takes `--theme` and prints the keys without it.
+`buildManifest` resolves the theme and the schedule from the screen and nothing
+behind it; `degradedManifest` and the no-screen preview state `panels` as the
+stand-in's own value, with a comment that nobody inherits it, which is §3.2's
+distinction written at the two sites that would otherwise reintroduce a
+default. Deleting a custom theme in use re-dresses its wearers in Panels in the
+same transaction, so no wall is left wearing a value nobody chose. System lost
+"Wall appearance"; the wall page's theme select lost "Household default" and
+its daylight select's blank reads "Same theme all day".
+
+**Two migrations, in an order the `0009` hazard decides.** `0044` is
+hand-written (`drizzle-kit generate --custom`) and copies what each browser wall
+was already drawing onto it — its own theme, else the household's, else
+`panels`, and the daylight schedule field by field, exactly as the manifest
+used to fall back — **raw**, so a household still on `board` hands `board` to
+its walls and the reader keeps resolving it. `0045` is generated and was read
+rather than trusted: the `screens` recreate is a 46-column `INSERT … SELECT`
+carrying `token_hash`, every name in it checked against the snapshot before it
+ran (46 of 46, same order, the unique index recreated), and the household half
+is four `ALTER TABLE … DROP COLUMN` and not a second recreate. RFC 015 §4 said
+it could not verify that last part; a one-liner against the bundled
+better-sqlite3 answered **SQLite 3.49.2** and a dropped column. The walk in
+`migration-upgrade.test.ts` carries three theme states through it — a wall
+with its own, a wall following a household on `board` (a live key cannot tell
+a copy from a resolved backfill), and a panel left null — and asserts the CHECK
+as a *pair*, because either half alone passes under a constraint that is
+absent, or under one tightened into refusing every panel.
+
+**Checked by reverting, each in turn, and all red:** no theme copy, a copy
+that skips the household, no CHECK and no daylight copy in the migrations; the
+add page's theme optional again and its validity check removed; the approve
+refusal removed, which lets the CHECK throw after the token is bound;
+`resolveTheme`'s fallback returning the dangling key, against a wall stored as
+`custom:missing` that still has to draw — on the glass, in a real browser,
+with widgets on its canvas; `deleteTheme` back to a bare `DELETE`; a
+"Household default" option put back on the wall page; and the daylight hours
+read off nothing. The tests that had to *change* were the larger half, as the
+RFC predicted: the harness's two pairing helpers post a theme (a harness
+default, defaulted the way the name is, while the POST still refuses a body
+with none), twenty-nine direct `INSERT`s into `screens` across the test tree
+name one because the CHECK refuses one that does not, and two assertions
+reading "Household default — Paper Almanac" and "the same theme all day" were
+rewritten to what the page says rather than deleted — an assertion that the
+old sentence is gone passes just as happily on a page offering no theme at all.
+**Still unproven where it counts:** nobody has paired a wall through either
+door on a real phone or in a real supervisor's sidebar and chosen a card there.
 
 ---
 
@@ -6189,10 +6251,8 @@ shape rather than Panels' cards. A neutral sentinel wearing a retired name.
 Renaming it needs a real `neutral` key in the display bundle.
 
 ~~Decided: **Board as default, Almanac scheduled for daylight hours.**~~
-**Superseded by RFC 015.** The reasoning is intact and is why Panels is the
-one recommended for a household with a rota — its shift hues separate best at
-ten feet, and Almanac at 2am is a lamp — but *Board* is Panels now, and the
-larger half is that **there should be no default theme at all**: a setting
-whose right value differs per wall is not a household default that walls may
-override, it is a per-wall setting with a misleading home. Retiring
-`household_settings.theme` is RFC 015 phase 2 and has not been done.
+**History: there is no default theme any more, and RFC 015 phase 2 is where
+the household's was retired** — every wall names its own, and the reasoning
+that survives (Panels for a household with a rota, because its shift hues
+separate best at ten feet; Almanac at 2am is a lamp) is a recommendation on
+the wall's own page rather than a row walls inherit.

@@ -520,8 +520,8 @@ describe('adding a CalDAV account', () => {
     const issued = issueDisplayToken();
     const stamp = Date.now();
     db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('scr-dav', 'Kitchen', ?, ?, ?, ?)`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('scr-dav', 'Kitchen', ?, 'panels', ?, ?, ?)`,
     ).run(issued.tokenHash, stamp, stamp, stamp);
 
     const manifest = await (

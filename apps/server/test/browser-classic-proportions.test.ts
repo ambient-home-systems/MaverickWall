@@ -409,8 +409,8 @@ describe('the Classic seed', () => {
     const at = Date.now();
     for (const id of [emptied, arranged]) {
       wall.db
-        .prepare(`INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?)`)
+        .prepare(`INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+                  VALUES (?, ?, ?, 'panels', ?, ?, ?)`)
         .run(id, id, `hash-${id}`, at, at, at);
     }
     // The arranged wall has panel facts *and* a canvas that is nobody's seed: one

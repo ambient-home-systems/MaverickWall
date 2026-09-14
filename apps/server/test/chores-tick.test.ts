@@ -93,7 +93,7 @@ async function harness() {
   await post('http://localhost/setup/household', { timezone: HOUSEHOLD_TZ });
 
   // The POST redirects to the page that shows the pairing link once.
-  const made = await post('http://localhost:8080/admin/screens', { name: 'Kitchen' });
+  const made = await post('http://localhost:8080/admin/screens', { name: 'Kitchen', theme: 'panels' });
   const html = await (await call(`http://localhost:8080${made.headers.get('location') ?? ''}`)).text();
   const token = /\/pair\?token=([^<\s"]+)/.exec(html)?.[1];
   if (token === undefined) throw new Error('no pairing token in the admin page');
@@ -278,7 +278,7 @@ describe('the tick itself', () => {
     const id = createChore(h.db, { ...daily, name: 'Bins' });
     h.allowTicking();
 
-    const madeSecond = await h.post('http://localhost:8080/admin/screens', { name: 'Hall' });
+    const madeSecond = await h.post('http://localhost:8080/admin/screens', { name: 'Hall', theme: 'panels' });
     const second = await (
       await h.call(`http://localhost:8080${madeSecond.headers.get('location') ?? ''}`)
     ).text();
