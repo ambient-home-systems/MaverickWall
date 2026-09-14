@@ -343,10 +343,28 @@ export function dataTable(
  * colour-blind reader and a monochrome screenshot both get right; a tick in
  * front of it adds nothing either of them can use.
  */
-export function tag(text: string, tone: Tone = "neutral"): string {
+export function tag(text: string, tone: Tone = "neutral", href?: string): string {
   const cls =
     tone === "neutral" ? "" : ` tag-${tone === "danger" ? "bad" : tone}`;
-  return `<span class="tag${cls}">${escapeHtml(text)}</span>`;
+  const label = escapeHtml(text);
+  /*
+   * A tag that names something a household can open is a link, and the same
+   * tag.
+   *
+   * Themes tags each theme with the walls wearing it, which is the one fact
+   * that turns an inventory into something navigable — and the wall's own page
+   * is where its theme is changed, so the tag is the route from "this is what
+   * Almanac looks like" to "change it". Making it an anchor rather than
+   * wrapping one round a span keeps the treatment exactly the tag's: a wrapper
+   * would bring the page's own link colour and underline inside the chip and
+   * the tone's ink would stop reaching the word.
+   *
+   * The text is unchanged, which is the point — a tag reads "Kitchen" whether
+   * or not it goes anywhere, so nothing about the word depends on this. Href is
+   * relative like everything else the admin emits, for the single `<base>`.
+   */
+  if (href === undefined) return `<span class="tag${cls}">${label}</span>`;
+  return `<a class="tag${cls}" href="${escapeHtml(href)}">${label}</a>`;
 }
 
 /* ---- 7. emptyState -------------------------------------------------------- */
@@ -596,6 +614,12 @@ export const COMPONENT_STYLE = `
   color:var(--mw-accent-soft-ink)}
 .tag-warn{background:var(--mw-warn-soft);
   color:var(--mw-warn)}
+/* A tag that opens something. At rest it is exactly the tag -- the tone's ink
+ * is the whole colour signal, and a permanent underline inside a chip this
+ * small reads as a rule struck through the word. The affordance is the hover
+ * underline, which costs no colour the palette does not have. */
+a.tag{text-decoration:none}
+a.tag:hover{text-decoration:underline}
 
 /* emptyState() — the thing that is missing, and the one action. No
  * illustration and no icon: a fresh install is the empty state on every

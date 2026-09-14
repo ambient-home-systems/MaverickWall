@@ -274,8 +274,17 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
        * Who is wearing it, as words: a tag per wall, by name. Every wall names
        * its own theme (RFC 015 phase 2), so the tags across the page add up to
        * every wall in the house with nothing left to a household row.
+       *
+       * **And each one opens that wall** (RFC 015 phase 3). This page shows and
+       * edits themes; *which* theme a wall wears is decided on the wall's own
+       * page, and a tag naming a wall on a page that cannot change what it
+       * wears is a dead end at exactly the moment somebody has decided. The
+       * word is unchanged — a tag reads "Kitchen" either way — so nothing about
+       * what this page says depends on the link.
        */
-      const tags = usage.screens.map((wall) => tag(wall.name)).join('');
+      const tags = usage.screens
+        .map((wall) => tag(wall.name, 'neutral', `admin/walls/${encodeURIComponent(wall.id)}`))
+        .join('');
       const id = choice.ref.startsWith('custom:') ? choice.ref.slice('custom:'.length) : '';
       const actions =
         id === ''
@@ -304,7 +313,8 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       action: { label: 'New theme', href: 'admin/themes/new' },
       intro:
         'Every colour scheme a wall can draw — the ones that ship, and the ones ' +
-        'you build. A wall picks its own on the wall’s own page.',
+        'you build. Each wall chooses a theme on the wall’s own page, and the ' +
+        'tags below open it.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
         section(

@@ -253,6 +253,22 @@ describe('the theme builder', () => {
     expect(cardNamed(html, 'Blueprint')).toContain('Kitchen');
     // And nowhere else: a tag on every card says nothing.
     expect(cardNamed(html, 'Swiss')).not.toContain('Kitchen');
+
+    /*
+     * And the tag opens that wall (RFC 015 phase 3). This page shows themes and
+     * the wall's own page is where one is chosen, so a tag naming a wall that
+     * goes nowhere is a dead end at the moment somebody has decided. Asserted
+     * on the *rendered anchor* rather than on a class, and by reading the word
+     * back out of it — the whole claim is that the text is unchanged and only
+     * the element differs.
+     */
+    const at = html.indexOf(`href="admin/walls/${id}"`);
+    expect(at, 'the usage tag does not open the wall it names').toBeGreaterThan(-1);
+    const anchor = html.slice(html.lastIndexOf('<a ', at), html.indexOf('</a>', at) + 4);
+    expect(anchor).toBe(`<a class="tag" href="admin/walls/${id}">Kitchen</a>`);
+    // Relative, for the single `<base>` that carries links through ingress: an
+    // absolute path lands a sidebar household in Home Assistant's own UI.
+    expect(anchor).not.toContain('href="/admin');
   });
 
   /*

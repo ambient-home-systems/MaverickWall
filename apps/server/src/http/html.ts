@@ -2493,7 +2493,7 @@ ${COMPONENT_STYLE}
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
+:is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,a.tag,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
 .themecard:has(input:focus-visible),
 .tplpick:has(input:focus-visible){outline:3px solid var(--mw-accent);
