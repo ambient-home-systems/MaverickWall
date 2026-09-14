@@ -1253,6 +1253,11 @@ label.themecard{cursor:pointer}
   letter-spacing:var(--mw-t-h4-tracking);display:block;
   color:var(--mw-ink)}
 .themecard .cap small{color:var(--mw-ink-2);font-size:var(--mw-t-label-xs-size)}
+/* The gallery card's trail, under the caption: who is wearing this theme, then
+ * what can be done to it. Only the gallery draws either — a control inside the
+ * picker's <label> is a control the label steals the click from. */
+.themecard .tm-use{display:flex;flex-wrap:wrap;gap:var(--mw-s-1);margin-top:var(--mw-s-2)}
+.themecard .tm-act{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin-top:var(--mw-s-3)}
 /* The Themes list row's swatch strip — a 66x34 three-colour preview as the
  * listRow lead. The dimensions are a fixed preview size (like .cpreview's
  * width), the corner is a token, and each bar carries only its colour, as a

@@ -1,6 +1,6 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, escapeHtml, errorBlock, icon, page, selectField, textField } from './html.js';
-import { destructive, emptyState, listRow, section } from './components.js';
+import { confirmDestroyPage, escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { destructive, section, tag } from './components.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
   COLOUR_TOKENS,
@@ -13,6 +13,7 @@ import {
   readThemes,
   themeTokensSchema,
   themeUsage,
+  themeUsageOf,
   updateTheme,
   type ThemeRow,
   type ThemeTokens,
@@ -21,7 +22,13 @@ import { colour, oneOf, parse, text } from '../validation.js';
 import { generateThemeTokens } from '../api/theme-generator.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
-import { themeName } from './theme-cards.js';
+import {
+  LEGACY_THEME_ALIASES,
+  themeChoices,
+  themeDisplayCard,
+  themeName,
+  type ThemeChoice,
+} from './theme-cards.js';
 
 /**
  * Themes: the gallery, and the custom-theme builder.
@@ -79,11 +86,6 @@ const RADII: readonly { readonly value: string; readonly label: string }[] = [
 ];
 
 const nameBody = text('A name for the theme', 60);
-
-/** Three representative colours for a swatch strip. */
-function swatch(tokens: Readonly<Record<string, string | undefined>>): readonly string[] {
-  return [tokens['--bg'] ?? '#0B0E11', tokens['--accent'] ?? '#E8A33D', tokens['--s-night'] ?? '#4C7FD1'];
-}
 
 export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
   // ---- routes --------------------------------------------------------------
@@ -154,7 +156,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const usage = themeUsage(deps.db, id);
     const affected = [
       ...(usage.household ? ['the household default'] : []),
-      ...usage.screens.map((name) => `“${name}”`),
+      ...usage.screens.map((wall) => `“${wall.name}”`),
     ];
     return c.html(
       confirmDestroyPage({
@@ -216,36 +218,70 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   // ---- pages ---------------------------------------------------------------
 
+  /**
+   * Every theme a wall can draw, in one grid.
+   *
+   * This screen is named after colour and, until now, was the one screen in
+   * the admin where colour could not be chosen and the built-ins were named
+   * nowhere — except inside an empty state that vanished the moment a
+   * household made a theme of their own (RFC 015 §2.1, §2.2). So the list is
+   * the five built-ins *and* whatever the household built, always, and each
+   * card says which walls are wearing it.
+   *
+   * There is no empty state any more, and its sentence is deleted rather than
+   * reworded: it named four built-in directions, three of which had not
+   * existed for releases, and with the five always listed there is nothing for
+   * an empty state to be about.
+   *
+   * A built-in card offers nothing yet. Duplicate is the obvious control and
+   * it would have to *write a token set* the server does not hold — the five
+   * palettes live in `apps/display/src/theme.ts` — so it waits on a
+   * parity-tested transcription rather than on a button (RFC 015 §3.4).
+   */
   function themesPage(c: Context, error?: string): string {
     const custom = readThemes(deps.db);
-    // A three-colour swatch strip identifying the theme, and the two actions
-    // that operate on it. Small enough that `listRow` — a lead, a title, a
-    // trail — fits exactly; there is no second line of detail to show, so
-    // `body.detail` is left unset.
-    const themeRow = (theme: ThemeRow): string => {
-      const id = encodeURIComponent(theme.id);
-      return listRow(
-        // The swatch strip: a tokenised class rather than an inline flex box, and
-        // each bar carries only its colour, as a custom property.
-        `<div class="theme-swatch">` +
-          swatch(theme.tokens).map((c) => `<i style="--swatch:${escapeHtml(c)}"></i>`).join('') +
-          `</div>`,
-        { title: theme.name },
-        // Edit stays the one visible control; the destructive Delete moves into
-        // the ⋮ the rest of the admin's lists use, so a click on Edit is never a
-        // neighbour of a delete. The GET it leads to names exactly which walls
-        // change (`destructive()`, its confirm page), which is what made this a
-        // two-step control at all.
-        `<a class="btn btn-ghost btn-sm" href="admin/themes/${id}">Edit</a>` +
-          `<details class="ovf" data-overflow>` +
-          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
-          `aria-label="More actions for ${escapeHtml(theme.name)}" title="More">${icon('more')}</summary>` +
-          `<div class="ovf-menu" role="menu">` +
-          destructive('Delete', {
-            thing: theme.name,
-            confirmAction: `admin/themes/${id}/delete`,
-          }) +
-          `</div></details>`,
+
+    /*
+     * Which stored references count as this card.
+     *
+     * A built-in is worn under its own key and under every retired key that
+     * folds onto it, because a household who never changed the setting still
+     * stores `board` — so Panels must claim those walls rather than leaving
+     * them attributed to a theme no card on this page represents.
+     */
+    const refsFor = (choice: ThemeChoice): readonly string[] => [
+      choice.ref,
+      ...Object.keys(LEGACY_THEME_ALIASES).filter(
+        (retired) => LEGACY_THEME_ALIASES[retired] === choice.ref,
+      ),
+    ];
+
+    const cardFor = (choice: ThemeChoice): string => {
+      const usage = themeUsageOf(deps.db, refsFor(choice));
+      /*
+       * Who is wearing it, as words. A tag per wall, by name, plus the
+       * household row while there still is one — a wall that has set no theme
+       * of its own is drawing that row, and saying so is the only way this
+       * page accounts for every wall in the house.
+       */
+      const tags =
+        (usage.household ? tag('Household default', 'accent') : '') +
+        usage.screens.map((wall) => tag(wall.name)).join('');
+      const id = choice.ref.startsWith('custom:') ? choice.ref.slice('custom:'.length) : '';
+      const actions =
+        id === ''
+          ? ''
+          : `<div class="tm-act">` +
+            `<a class="btn btn-ghost btn-sm" href="admin/themes/${encodeURIComponent(id)}">Edit</a>` +
+            destructive('Remove', {
+              thing: choice.name,
+              variant: 'button',
+              confirmAction: `admin/themes/${encodeURIComponent(id)}/delete`,
+            }) +
+            `</div>`;
+      return themeDisplayCard(
+        choice,
+        (tags === '' ? '' : `<div class="tm-use">${tags}</div>`) + actions,
       );
     };
 
@@ -258,20 +294,15 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       saved: readSaved(c),
       action: { label: 'New theme', href: 'admin/themes/new' },
       intro:
-        'Build your own colours for the wall. A theme you make here is selectable on ' +
-        'the Walls page, as the default or for one wall, beside the four built in.',
+        'Every colour scheme a wall can draw — the ones that ship, and the ones ' +
+        'you build. A wall picks its own on the wall’s own page.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        (custom.length === 0
-          ? // No action offered: "New theme" is already the page's one primary,
-            // in the app bar above. A second one here would only scroll to it.
-            emptyState(
-              'No custom themes yet. The four built-in directions (Board, Kitchen Slate, ' +
-                'Paper Almanac, Glance) can be chosen in each wall’s settings. Make your ' +
-                'own with “New theme”.',
-            )
-          : custom.map(themeRow).join('')) +
-
+        section(
+          'All themes',
+          'The tags say which walls are wearing each one.',
+          `<div class="themegrid">${themeChoices(custom).map(cardFor).join('')}</div>`,
+        ) +
         section(
           'Generate from a colour',
           'Pick one colour — the seed — and a whole matching theme is worked out from ' +

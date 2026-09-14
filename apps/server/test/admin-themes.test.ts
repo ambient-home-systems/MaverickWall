@@ -11,12 +11,34 @@ import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { readThemes } from '../src/api/themes.js';
+import { THEMES } from '../src/http/theme-cards.js';
 
 /**
- * The custom-theme builder, driven through the real admin routes: create, list,
- * edit, delete, and — the point of it — a custom theme chosen as the household
+ * Themes, driven through the real admin routes: the gallery, and the builder —
+ * create, list, edit, delete, and a custom theme chosen as the household
  * default and refused when it does not exist.
  */
+
+/** The text of one `.themecard`, tags and all, as a household reads it. */
+function themeCardTexts(html: string): readonly string[] {
+  return html
+    .split('<div class="themecard">')
+    .slice(1)
+    .map((chunk) =>
+      chunk
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&[a-z]+;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
+}
+
+/** The card whose name it is — matched on the rendered words, not a class. */
+function cardNamed(html: string, name: string): string {
+  const found = themeCardTexts(html).find((text) => text.startsWith(name));
+  if (found === undefined) throw new Error(`no theme card reads “${name}”`);
+  return found;
+}
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
@@ -160,6 +182,86 @@ describe('the theme builder', () => {
       block_3: 'horizon',
     });
     expect(res.status).toBe(400);
+  });
+
+  /*
+   * The names are read out of `THEMES` rather than typed here, which is the
+   * whole point of the assertion. A literal-string test would have gone green
+   * on the wrong four names for as long as nobody edited it, and that is
+   * exactly how "Board, Kitchen Slate, Paper Almanac, Glance" survived on this
+   * page for releases after three of the four stopped existing (RFC 015 §2.1).
+   */
+  it('lists every built-in theme the display ships, named from THEMES', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/themes')).text();
+    const cards = themeCardTexts(html);
+    for (const theme of THEMES) {
+      const name = theme.label.split(' — ')[0] ?? theme.key;
+      expect(
+        cards.some((text) => text.startsWith(name)),
+        `no card on /admin/themes reads “${name}”`,
+      ).toBe(true);
+    }
+  });
+
+  /*
+   * The built-ins used to be named only inside an empty state, so making one
+   * theme of your own removed the other five from the product entirely
+   * (RFC 015 §2.2). A gallery that lists them when there is nothing else to
+   * list proves nothing about that; a gallery with a custom theme on it does.
+   */
+  it('still lists all five built-ins once a household has a theme of its own', async () => {
+    const h = await harness();
+    await h.form('/admin/themes', themeFields('Sunset'));
+    const html = await (await h.call('/admin/themes')).text();
+    const cards = themeCardTexts(html);
+    expect(cards.some((text) => text.startsWith('Sunset'))).toBe(true);
+    for (const theme of THEMES) {
+      const name = theme.label.split(' — ')[0] ?? theme.key;
+      expect(cards.some((text) => text.startsWith(name)), name).toBe(true);
+    }
+  });
+
+  /*
+   * §2.3: `themeUsage` already answered the one question an inventory needs —
+   * *which wall is wearing this* — and the only caller was the delete
+   * confirmation. Here it is on the list.
+   *
+   * Read out of the card's own rendered words, never off a class. A class was
+   * right while the pixels were wrong twice in this codebase, and a tag is a
+   * word a household reads.
+   */
+  it('tags each theme with the walls wearing it, by name', async () => {
+    const h = await harness();
+    const made = await h.form('/admin/screens', { name: 'Kitchen' });
+    const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
+    expect(id, 'the wall must exist for its name to be a tag').not.toBe('');
+    const saved = await h.form(`/admin/screens/${id}`, {
+      name: 'Kitchen',
+      orientation: 'auto',
+      rotation: '0',
+      theme: 'blueprint',
+    });
+    expect(saved.status).toBe(302);
+
+    const html = await (await h.call('/admin/themes')).text();
+    expect(cardNamed(html, 'Blueprint')).toContain('Kitchen');
+    // And nowhere else: a tag on every card says nothing.
+    expect(cardNamed(html, 'Swiss')).not.toContain('Kitchen');
+  });
+
+  /*
+   * The household row still exists in this phase, and a wall that has set no
+   * theme of its own is drawing it — so the page has to account for it or the
+   * tags add up to fewer walls than the house has. It lands on **Panels**
+   * rather than nowhere, because the column's default is still the retired
+   * `board` and `LEGACY_THEME_ALIASES` folds it there.
+   */
+  it('shows the household row as a tag, folded onto the theme it resolves to', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/themes')).text();
+    expect(cardNamed(html, 'Panels')).toContain('Household default');
+    expect(cardNamed(html, 'Paper Almanac')).not.toContain('Household default');
   });
 
   it('edits and deletes a theme', async () => {

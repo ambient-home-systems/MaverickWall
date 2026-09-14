@@ -365,17 +365,52 @@ export function deleteTheme(db: SqliteDatabase, id: string): void {
  * so this is purely for the household's benefit at the moment of deleting —
  * nothing here is a precondition for the delete itself.
  */
-export function themeUsage(db: SqliteDatabase, id: string): { household: boolean; screens: string[] } {
-  const ref = `${CUSTOM_PREFIX}${id}`;
+export function themeUsage(db: SqliteDatabase, id: string): ThemeUsage {
+  return themeUsageOf(db, [`${CUSTOM_PREFIX}${id}`]);
+}
+
+/** A wall wearing a theme, as the two screens that say so both need it. */
+export interface ThemeWearer {
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface ThemeUsage {
+  /** Whether the household row names it — still a thing in RFC 015 phase 1. */
+  readonly household: boolean;
+  readonly screens: readonly ThemeWearer[];
+}
+
+/**
+ * The same question asked of any set of references at once.
+ *
+ * A *set*, because a built-in is worn under more than one name: a household who
+ * never changed the setting still stores `board`, and the picker folds that
+ * onto `panels` (`LEGACY_THEME_ALIASES`). Which retired keys survive onto which
+ * live one is the http layer's table rather than this one's — so the caller
+ * passes the whole equivalence class and nothing here has to know there is such
+ * a thing as a retired key.
+ *
+ * The id travels beside the name because a tag naming a wall is a tag somebody
+ * will eventually want to press.
+ */
+export function themeUsageOf(db: SqliteDatabase, refs: readonly string[]): ThemeUsage {
+  if (refs.length === 0) return { household: false, screens: [] };
+  const holes = refs.map(() => '?').join(',');
   const household =
     db
-      .prepare(`SELECT 1 FROM household_settings WHERE id = 'singleton' AND (theme = ? OR daytime_theme = ?)`)
-      .get(ref, ref) !== undefined;
-  const screens = (
-    db.prepare(`SELECT name FROM screens WHERE theme = ? OR daytime_theme = ?`).all(ref, ref) as {
-      name: string;
-    }[]
-  ).map((row) => row.name);
+      .prepare(
+        `SELECT 1 FROM household_settings WHERE id = 'singleton'
+           AND (theme IN (${holes}) OR daytime_theme IN (${holes}))`,
+      )
+      .get(...refs, ...refs) !== undefined;
+  const screens = db
+    .prepare(
+      `SELECT id, name FROM screens
+        WHERE theme IN (${holes}) OR daytime_theme IN (${holes})
+        ORDER BY name`,
+    )
+    .all(...refs, ...refs) as ThemeWearer[];
   return { household, screens };
 }
 
