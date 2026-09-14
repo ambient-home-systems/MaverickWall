@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * One household. One database. No tenancy.
@@ -59,12 +59,18 @@ export const householdSettings = sqliteTable('household_settings', {
   timezone: text('timezone').notNull().default('Etc/UTC'),
   locale: text('locale').notNull().default('en-US'),
 
-  /** Theme key from the display bundle. */
-  theme: text('theme').notNull().default('board'),
-  /** Optional daylight theme, and the local times to switch between them. */
-  daytimeTheme: text('daytime_theme'),
-  daytimeStartsAt: text('daytime_starts_at').default('07:00'),
-  daytimeEndsAt: text('daytime_ends_at').default('21:00'),
+  /*
+   * No theme, and no daylight theme or window, deliberately (RFC 015 phase 2).
+   *
+   * Four columns used to sit here — `theme` defaulting to `board`, a key that
+   * had not named a theme for releases, `daytime_theme`, `daytime_starts_at`
+   * and `daytime_ends_at`. They were the household *default* every wall
+   * inherited, and the default was the thing that let five other mechanisms
+   * decide a wall's colour without anybody seeing it (RFC 015 §2.8). A wall
+   * names its own theme now — `screens.theme`, enforced by the CHECK on that
+   * table — and there is nothing behind it to fall back to. Dropped by `0045`,
+   * which is four `ALTER TABLE … DROP COLUMN` rather than a recreate.
+   */
 
   /** Latitude and longitude for weather and alerts. Null until setup runs. */
   latitude: integer('latitude', { mode: 'number' }),
@@ -398,12 +404,19 @@ export const screens = sqliteTable(
     panelColour: text('panel_colour', { enum: ['bw', 'bwr', 'spectra6'] }),
 
     /**
-     * Per-screen overrides. Null means follow the household setting.
+     * The theme this wall draws (RFC 015 phase 2).
      *
-     * A household mostly wants one look everywhere, so null is the common case
-     * and has to stay the easy one. The exceptions are real though: a screen in
-     * a bedroom wants the dark theme long after the kitchen has gone light, and
-     * a holiday home on another clock wants its own zone.
+     * A browser wall names its own and cannot be inserted without one: the
+     * `CHECK` below (`kind = 'epaper' OR theme IS NOT NULL`) is the
+     * enforcement, so every door that creates a wall answers the question at
+     * the engine rather than at a reviewer. Nullable in *type* because an
+     * e-paper panel is a row in this same table and draws one bit — it has no
+     * theme to name, and a `NOT NULL` here would make it store a colour it
+     * cannot draw. There is no household theme behind this any more; a null
+     * on a browser wall is not "follow the household", it is refused.
+     *
+     * The daylight theme and its window below stay per-screen and nullable:
+     * null there is a real answer — the same theme all day — not a fallback.
      */
     theme: text('theme'),
     /**
@@ -682,6 +695,14 @@ export const screens = sqliteTable(
   },
   (table) => ({
     byToken: uniqueIndex('screens_token_hash_idx').on(table.tokenHash),
+    /*
+     * Every wall that draws colour names its own theme (RFC 015 §3.3). A
+     * `CHECK` rather than `NOT NULL` because a panel is a row here too and
+     * has none to name. SQLite cannot add a constraint by `ALTER`, so this
+     * cost a table recreate (`0045`) — the `0009` shape, whose `INSERT …
+     * SELECT` was read column by column against the snapshot before it ran.
+     */
+    wallNamesTheme: check('screens_wall_names_theme', sql`"kind" = 'epaper' OR "theme" IS NOT NULL`),
   }),
 );
 
