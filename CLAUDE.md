@@ -464,13 +464,13 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3304 tests passing**, over 232 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 495 · server 2342 over 187 files. CI runs the whole suite
+**3314 tests passing**, over 234 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2352 over 189 files. CI runs the whole suite
 and then the README's one-liner against a clean volume on Linux, which is the
 only place the install has ever been wrong. Measured on a clean run rather than
 added to the previous figure, which is the discipline the paragraph below spells
 out at length for the *other* count on this page and which applies to this one
-identically: RFC 015 phase 3's two new server suites are +12 between them, and an
+identically: RFC 016 phase 0's two new server suites are +10 between them, and an
 arithmetic that happened to agree would prove nothing, because the way these
 numbers have always gone wrong is somebody incrementing rather than running.
 
@@ -6237,6 +6237,41 @@ card on the creation form, a wall page picker checked on nothing, and each of th
 two rings. **Still unproven where it counts:** nobody has created a wall or
 changed a theme on a real phone or in a real supervisor's sidebar, which by this
 project's history is where a form fault surfaces.
+
+**Whether a wall is alive has one definition now, and it had four (RFC 016
+phase 0).** `http/presence.ts` is pure, reads a screen's kind, stamp, address
+and revocation against the caller's clock, and answers `unpaired`, `fresh`,
+`stale` or `revoked` with the words and the dot. Before it the Walls list's
+`seenDot` used the two seen-windows, the wall page used a literal `5 * 60_000`
+that nothing held to the constant it copied, the panel page used the hour, and
+the Overview used a day — three agreeing by accident and one asking a different
+question. All four ask `presence` for the state. The Overview keeps its day as
+`OVERVIEW_UNSEEN_MS`, applied **on top of** `stale` rather than instead of it,
+because "is it drawing" and "is it worth sending somebody to look at from the
+first page they open" are different questions; the wall and panel pages keep
+their own words ("Never connected", "Online") over the shared state. The Walls
+list takes the module's words, and they are per kind because the kinds are not
+in the same position: a browser wall is *Not paired yet* where "Last seen never"
+was one sentence for a link nobody opened and a wall that drew once and stopped,
+a panel is *Waiting for its device* because nothing pairs a panel, and a fresh
+panel reads *Checked in 12 minutes ago* rather than a browser wall's *Drawing
+now*, because a battery panel spends most of its hour asleep showing a frame it
+drew earlier. RFC 016's summary line is meant to be this function counted, which
+is why the function came first.
+
+**Two faults came with it and both are one word.** `readAdminScreens` sorted
+`ORDER BY name` in SQLite's `BINARY` collation, so "attic tablet" landed after
+"Kitchen"; it is `COLLATE NOCASE`. And `touchScreen` stamped `last_seen_at` from
+a bare `Date.now()` against pages reading the app's `now` — under
+`browser-harness`, whose `now` is pinned to `HARNESS_HOUR`, a wall polled a
+second ago read "last seen 10 hours ago". It takes the caller's clock as a fifth
+argument, **not defaulted**, the `addCalendarSource` rule; both `/d/` routes pass
+`(deps.now ?? Date.now)()`. `wall-seen-clock.test.ts` polls through the harness
+and asserts the page *and* the stored stamp, because the page alone is
+hour-dependent in one direction — a stamp later than the pinned hour is a
+negative age, which is inside every window — so reverting the fix reddens the
+page only while the runner is behind eleven in London, and the stamp at any
+hour. Eleven mutations checked across the three files, all red.
 
 ---
 

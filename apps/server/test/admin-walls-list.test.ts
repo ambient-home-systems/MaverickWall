@@ -144,7 +144,12 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     // list is now a real device that can have one.
     expect(grid).toContain('<span class="tag">Browser</span>');
     expect(grid).toContain('<span class="tag">E-paper</span>');
-    expect(grid.match(/Last seen never/g)?.length).toBe(2);
+    // The literal moved and the two cards did not (RFC 016 phase 0): the line
+    // is `presence`'s words now, one per kind, where "Last seen never" was one
+    // sentence for a link nobody opened and a wall that drew once and stopped.
+    // Named in list order (Hall before Kitchen) rather than counted, because a
+    // count of an alternation stays at two if both kinds say the same thing.
+    expect(grid.match(/Not paired yet|Waiting for its device/g)).toEqual(['Waiting for its device', 'Not paired yet']);
     expect(grid).toContain('800×480');
   });
 

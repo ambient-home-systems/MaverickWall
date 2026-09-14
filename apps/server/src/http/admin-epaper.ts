@@ -24,13 +24,10 @@ import { encodePng1bit } from '../epaper/png.js';
 import { householdSetUp } from '../modules/index.js';
 import { checkbox, optionalText, parse, quarterTurn, text, z } from '../validation.js';
 import {
-  ago,
-  EPAPER_SEEN_WINDOW_MS,
   layoutEditorMount,
   navModules,
   pairingSecret,
   omissionFacts,
-  seenDot,
   todoListChoices,
   widgetsNotDrawn,
   type AdminDeps,
@@ -49,6 +46,7 @@ import {
   textField,
 } from './html.js';
 import { ingressPath } from './ingress.js';
+import { ago, presence, presenceDot } from './presence.js';
 import { readSaved, savedRedirect } from './saved.js';
 import type { RevealStore } from './reveal.js';
 import { selfHref } from './self.js';
@@ -1412,14 +1410,15 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
      */
     const at = (deps.now ?? Date.now)();
     const from = screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`;
+    const seen = presence(screen, at);
     const statusLine =
-      screen.lastSeenAt === null
+      seen.state === 'unpaired' || screen.lastSeenAt === null
         ? `<b>Never connected</b> · nothing has fetched this panel's picture yet`
-        : at - screen.lastSeenAt < EPAPER_SEEN_WINDOW_MS
+        : seen.state === 'fresh'
           ? `<b>Online</b> · last seen ${escapeHtml(ago(screen.lastSeenAt, at))}${from}`
           : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(screen.lastSeenAt, at))}${from}`;
     const statusAndMenu =
-      `<p class="wall-status">${seenDot(screen.lastSeenAt, at, EPAPER_SEEN_WINDOW_MS)}` +
+      `<p class="wall-status">${presenceDot(seen)}` +
       `<span>${statusLine}</span></p>` +
       `<details class="ovf" data-overflow>` +
       `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
