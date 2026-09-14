@@ -1576,6 +1576,17 @@ export interface AdminSourceRow {
   readonly personId: string | null;
   readonly kind: string;
   readonly haEntityId: string | null;
+  /** The account an `ics` feed signs in as, in clear. Null for most feeds. */
+  readonly authUsername: string | null;
+  /**
+   * Whether a password is stored, as a 1 or a 0 — **never the envelope**.
+   *
+   * The settings row has to say that there is one to replace, and it has no
+   * business holding the value to say it: `api/feed-credentials.ts` is the one
+   * thing in the server that reads that column, and a projection feeding a
+   * page is not it.
+   */
+  readonly hasAuthPassword: number;
   /**
    * When the household added it. Read so the row can tell a calendar that has
    * *not yet* had its first sync from one that has been failing to sync since
@@ -1603,6 +1614,8 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
               allow_loopback AS allowLoopback, allow_http AS allowHttp,
               show_in_grid AS showInGrid,
               color, person_id AS personId, kind, ha_entity_id AS haEntityId,
+              auth_username AS authUsername,
+              CASE WHEN auth_password_encrypted IS NULL THEN 0 ELSE 1 END AS hasAuthPassword,
               created_at AS createdAt
          FROM calendar_sources
         ORDER BY name`,

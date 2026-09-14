@@ -18,6 +18,7 @@ import type { SqliteDatabase } from '../db/open.js';
 import {
   errorBlock,
   escapeHtml,
+  feedCredentialFields,
   networkAccessDisclosure,
   networkAccessSuggestion,
   noticeBlock,
@@ -59,6 +60,10 @@ const calendarBody = z.object({
   allow_lan: checkbox(),
   allow_loopback: checkbox(),
   allow_http: checkbox(),
+  // Both optional: most calendars need neither, and the same two fields the
+  // admin's add form asks for, on the same schema shape (RFC 013 §4.2, §10).
+  auth_username: optionalText(200),
+  auth_password: optionalText(500),
   test: optionalText(20),
 });
 
@@ -556,6 +561,10 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
             allowPrivateNetwork: typeof body['allow_lan'] === 'string',
             allowLoopback: typeof body['allow_loopback'] === 'string',
             allowHttp: typeof body['allow_http'] === 'string',
+            // The account comes back; the password never does, on any branch —
+            // the same deliberate exception to the echo rule the admin's own
+            // settings row makes (RFC 013 §4.5).
+            username: typeof body['auth_username'] === 'string' ? body['auth_username'] : '',
           },
           { message: shapedFeed.message },
         ),
@@ -568,7 +577,16 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     const allowPrivateNetwork = shapedFeed.value.allow_lan;
     const allowLoopback = shapedFeed.value.allow_loopback;
     const allowHttp = shapedFeed.value.allow_http;
-    const values = { name, url, allowPrivateNetwork, allowLoopback, allowHttp };
+    const username = shapedFeed.value.auth_username;
+    const password = shapedFeed.value.auth_password;
+    const values = {
+      name,
+      url,
+      allowPrivateNetwork,
+      allowLoopback,
+      allowHttp,
+      username: username ?? '',
+    };
 
     /*
      * Fetched and parsed before it is stored.
@@ -583,6 +601,8 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
         allowPrivateNetwork,
         allowLoopback,
         allowHttp,
+        ...(username === undefined ? {} : { username }),
+        ...(password === undefined ? {} : { password }),
         // The zone chosen a step ago. Expanding a feed against the wrong one
         // would report the wrong dates back in the preview.
         timezone: readHousehold(deps.db).timezone,
@@ -603,7 +623,15 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
     const added = addCalendarSource(
       deps.db,
       deps.keyring,
-      { name, url, allowPrivateNetwork, allowLoopback, allowHttp },
+      {
+        name,
+        url,
+        allowPrivateNetwork,
+        allowLoopback,
+        allowHttp,
+        ...(username === undefined ? {} : { username }),
+        ...(password === undefined ? {} : { password }),
+      },
       now(),
     );
     if (!added.ok) {
@@ -872,6 +900,8 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
       allowPrivateNetwork?: boolean;
       allowLoopback?: boolean;
       allowHttp?: boolean;
+      /** The account, echoed on a 400. Never the password. */
+      username?: string;
     } = {},
     error?: {
       message: string;
@@ -912,6 +942,23 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
           required: true,
           placeholder: 'https://…/basic.ics',
           value: values.url ?? '',
+        }) +
+        /*
+         * Folded shut, like the three network opt-ins below it and for the same
+         * reason: most calendars need neither field, and a household in their
+         * third minute of ownership should not be asked two questions that do
+         * not apply to them. It opens on its own when the address was refused
+         * for want of a sign-in, and stays open once a username is in it — a
+         * control that vanishes on the next 400 is a control silently emptied.
+         *
+         * Script-free, which is the whole constraint on this screen: a
+         * `<details>` a server can render open. `wizard-noscript.test.ts`
+         * asserts this page serves exactly one script and that it is the theme
+         * script, and nothing here adds a second.
+         */
+        feedCredentialFields({
+          username: values.username ?? '',
+          open: suggestion !== undefined && suggestion.includes('username and password'),
         }) +
         (networkOptions.length === 0 && !anyOn
           ? ''

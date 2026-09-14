@@ -21,6 +21,16 @@ export interface AddSourceInput {
   readonly allowHttp?: boolean;
   /** Whose calendar this is, set at add time. Null or absent means "Everyone". */
   readonly personId?: string | null;
+  /**
+   * The account this feed signs in as, when it needs one (RFC 013 Phase A).
+   *
+   * Both in clear here and only here: the password is sealed on the way into
+   * the row, a few lines below, and is never held anywhere else. Absent on
+   * either half means the feed signs in as nobody — half a credential is not
+   * one, which `connectionFor` states and enforces on the wire.
+   */
+  readonly username?: string;
+  readonly password?: string;
 }
 
 export type AddSourceResult =
@@ -65,14 +75,28 @@ export function addCalendarSource(
 
   const id = randomBytes(8).toString('hex');
 
-  // Rotated rather than left to the column default, which is one fixed blue:
-  // three calendars all drawing the same colour is a wall that cannot say whose
-  // event anything is. See `palette.ts`.
+  /*
+   * Stored only when both halves are there, and the empty string is not a
+   * half.
+   *
+   * A username with no password composes no header (`connectionFor`), so
+   * storing one alone would put an account on the settings row for a feed that
+   * signs in as nobody — a state a household can read as configured and the
+   * wire cannot. Nulls on both is exactly the row every feed had before this
+   * column existed.
+   */
+  const username = input.username?.trim() ?? '';
+  const password = input.password ?? '';
+  const signsIn = username !== '' && password !== '';
+
+  // Colour is rotated rather than left to the column default, which is one
+  // fixed blue: three calendars all drawing the same colour is a wall that
+  // cannot say whose event anything is. See `palette.ts`.
   db.prepare(
     `INSERT INTO calendar_sources
        (id, name, url_encrypted, url_host, color, person_id, allow_private_network, allow_loopback,
-        allow_http, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        allow_http, auth_username, auth_password_encrypted, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.name,
@@ -83,6 +107,8 @@ export function addCalendarSource(
     input.allowPrivateNetwork === true ? 1 : 0,
     input.allowLoopback === true ? 1 : 0,
     input.allowHttp === true ? 1 : 0,
+    signsIn ? username : null,
+    signsIn ? keyring.encrypt(password, 'feed-password') : null,
     at,
     at,
   );

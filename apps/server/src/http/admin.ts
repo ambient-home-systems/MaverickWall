@@ -115,7 +115,7 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
-import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, icon,
+import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, feedCredentialFields, icon,
   networkAccessDisclosure, networkAccessSuggestion, page, saveRow,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
@@ -136,6 +136,15 @@ const feedBody = z.object({
   allow_lan: checkbox(),
   allow_loopback: checkbox(),
   allow_http: checkbox(),
+  /*
+   * Both optional, because most feeds need neither, and `optionalText` rather
+   * than `.optional()` for the reason every text field here is: a browser posts
+   * `""` for an empty input and `z.string().min(1).optional()` refuses that and
+   * fails the whole object. Long enough for a passphrase; a password is not
+   * length-limited by anything but storage.
+   */
+  auth_username: optionalText(200),
+  auth_password: optionalText(500),
   action: optionalText(10),
 });
 
@@ -151,6 +160,18 @@ const sourceSettingsBody = z.object({
   allow_lan: checkbox(),
   allow_loopback: checkbox(),
   allow_http: checkbox(),
+  auth_username: optionalText(200),
+  /**
+   * A *new* password. Blank means keep what is stored (RFC 013 §4.5).
+   *
+   * The row holds a keyring envelope rather than plaintext, so there is nothing
+   * to prefill this field with, and blank is the form's only honest reading of
+   * "I did not touch it". Blank cannot also mean "delete it" — that is
+   * indistinguishable from having nothing to say — so removal is the switch
+   * below and never an inference from this.
+   */
+  auth_password: optionalText(500),
+  auth_password_remove: checkbox(),
 });
 
 /**
@@ -177,6 +198,16 @@ interface SourceEcho {
   readonly allowLan: boolean;
   readonly allowLoopback: boolean;
   readonly allowHttp: boolean;
+  readonly authUsername: string;
+  /*
+   * And **no password**. That is a deliberate exception to the echo rule rather
+   * than an oversight (RFC 013 §4.5): echoing it back means putting it in the
+   * response HTML and in a browser's own form-autofill memory, for the one
+   * field on the page that exists to be kept out of both. It blanks on any
+   * re-render, 400 included, and the household re-types it if that was the
+   * field actually at fault. There is no field here for it to be read into.
+   */
+  readonly removePassword: boolean;
 }
 
 /** The echo, read off the raw body — before any schema has had an opinion. */
@@ -192,6 +223,8 @@ function sourceEchoOf(sourceId: string, body: Record<string, unknown>): SourceEc
     allowLan: typeof body['allow_lan'] === 'string',
     allowLoopback: typeof body['allow_loopback'] === 'string',
     allowHttp: typeof body['allow_http'] === 'string',
+    authUsername: str('auth_username'),
+    removePassword: typeof body['auth_password_remove'] === 'string',
   };
 }
 
@@ -1428,6 +1461,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowPrivateNetwork: typeof body['allow_lan'] === 'string',
       allowLoopback: typeof body['allow_loopback'] === 'string',
       allowHttp: typeof body['allow_http'] === 'string',
+      // The account comes back so a bad address does not cost it. The password
+      // never does, on any branch — see `SourceEcho`, and RFC 013 §4.5.
+      username: typeof body['auth_username'] === 'string' ? body['auth_username'] : '',
     };
     if (!shaped.ok) return c.html(calendarsPage(c, echo, { message: shaped.message }), 400);
 
@@ -1443,7 +1479,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const allowPrivateNetwork = shaped.value.allow_lan;
     const allowLoopback = shaped.value.allow_loopback;
     const allowHttp = shaped.value.allow_http;
-    const values = { name, url, allowPrivateNetwork, allowLoopback, allowHttp };
+    const username = shaped.value.auth_username;
+    const password = shaped.value.auth_password;
+    const values = {
+      name,
+      url,
+      allowPrivateNetwork,
+      allowLoopback,
+      allowHttp,
+      username: username ?? '',
+    };
 
     const tested = await testFeed(
       {
@@ -1451,6 +1496,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         allowPrivateNetwork,
         allowLoopback,
         allowHttp,
+        ...(username === undefined ? {} : { username }),
+        ...(password === undefined ? {} : { password }),
         timezone: readHousehold(deps.db).timezone,
       },
       deps.fetcher,
@@ -1479,7 +1526,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const added = addCalendarSource(
       deps.db,
       deps.keyring,
-      { name, url, personId, allowPrivateNetwork, allowLoopback, allowHttp },
+      {
+        name,
+        url,
+        personId,
+        allowPrivateNetwork,
+        allowLoopback,
+        allowHttp,
+        ...(username === undefined ? {} : { username }),
+        ...(password === undefined ? {} : { password }),
+      },
       // The app's clock, which is what `firstSyncPending` reads the stamp back
       // against a few lines further down this same file.
       now(),
@@ -1515,6 +1571,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // The UPDATE's own answer, not a second lookup: no row means the calendar
     // went in another tab, and "Calendar settings saved." for one that is not
     // there is the same false claim `/sync` and `/delete` are guarded against.
+    /*
+     * Three states, and only one of them is inferred from a blank field.
+     *
+     * "Remove the password" wins outright, because a household who ticked it
+     * and also typed something has said the clearer of the two things. A typed
+     * value is a rotation. Blank with the switch off is "I did not touch this",
+     * which `updateSource` reads as `undefined` and leaves alone — the reading
+     * §4.5 argues is the only honest one for a field with nothing to prefill it.
+     *
+     * The username follows the password on removal: leaving an account name on
+     * a row whose password is gone puts a credential on the settings row that
+     * composes no header, which is a state a household reads as configured and
+     * the wire does not.
+     */
+    const newPassword =
+      shaped.value.auth_password_remove
+        ? null
+        : shaped.value.auth_password === undefined
+          ? undefined
+          : deps.keyring.encrypt(shaped.value.auth_password, 'feed-password');
+
     const saved = updateSource(deps.db, c.req.param('id') ?? '', {
       name: shaped.value.name,
       color: shaped.value.color,
@@ -1524,6 +1601,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowPrivateNetwork: shaped.value.allow_lan,
       allowLoopback: shaped.value.allow_loopback,
       allowHttp: shaped.value.allow_http,
+      authUsername: shaped.value.auth_password_remove ? null : (shaped.value.auth_username ?? null),
+      ...(newPassword === undefined ? {} : { authPasswordEncrypted: newPassword }),
     });
     return saved
       ? savedRedirect(c, '/admin/calendars', 'calendar-settings')
@@ -5241,6 +5320,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowLan: echo?.allowLan ?? source.allowPrivateNetwork === 1,
       allowLoopback: echo?.allowLoopback ?? source.allowLoopback === 1,
       allowHttp: echo?.allowHttp ?? source.allowHttp === 1,
+      authUsername: echo?.authUsername ?? source.authUsername ?? '',
+      // Never a password. The field is drawn blank on every branch; what the
+      // row knows, and all it needs to know, is whether there is one to say
+      // "leave blank to keep" about.
+      removePassword: echo?.removePassword ?? false,
     };
     const personOptions =
       `<option value=""${shown.personId === null ? ' selected' : ''}>Everyone</option>` +
@@ -5286,10 +5370,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // The host and never the path. The path is the credential. A Home
       // Assistant calendar has neither — it is an entity read through the one
       // connection — so it says what it is rather than "unknown host".
+      /*
+       * The host, never the path — the path is the credential — and the
+       * account beside it where there is one.
+       *
+       * Which account a feed signs in as is the difference between two
+       * identical-looking rows and it is the first thing to check when one of
+       * them stops working: a feed signing in as the wrong account fails
+       * exactly the way one with the wrong password does. It is a username, not
+       * a credential, which is why the column is in clear at all.
+       */
       `<p class="host">${escapeHtml(
         source.kind === 'homeassistant'
           ? `Home Assistant · ${source.haEntityId ?? 'calendar entity'}`
-          : source.urlHost ?? 'unknown host',
+          : (source.urlHost ?? 'unknown host') +
+            (source.authUsername === null || source.authUsername === ''
+              ? ''
+              : ` · as ${source.authUsername}`),
       )}</p>` +
       `</div>` +
       `<details class="ovf" data-overflow>` +
@@ -5371,6 +5468,39 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'calendar that would otherwise fill every day — its events still ' +
           'appear in the upcoming list.',
       }) +
+      /*
+       * Signing in, for a feed that has to. Not drawn for a Home Assistant
+       * calendar for the same reason the network switches below are not: it has
+       * no address of its own and reaches its events through the one
+       * connection, with that connection's credential.
+       *
+       * Two controls rather than one, and that is §4.5's whole argument. The
+       * field is blank because the row holds an envelope and there is nothing to
+       * prefill it with, so blank has to mean "I did not touch this" — leaving
+       * removal with nowhere to live but a switch of its own. Inferring removal
+       * from a blank field would make "I have nothing to say about the password"
+       * and "delete it" the same submission.
+       */
+      (source.kind === 'homeassistant'
+        ? ''
+        : feedCredentialFields({
+            username: shown.authUsername,
+            open: echo !== undefined,
+            passwordLabel: source.hasAuthPassword === 1 ? 'Change password' : 'Password',
+            ...(source.hasAuthPassword === 1
+              ? { passwordHint: 'A password is stored. Leave this blank to keep it.' }
+              : {}),
+          }) +
+          (source.hasAuthPassword === 1
+            ? switchRow({
+                label: 'Remove the password',
+                name: 'auth_password_remove',
+                checked: shown.removePassword,
+                hint:
+                  'For a calendar that no longer needs signing in to. This also ' +
+                  'clears the username, since one without the other signs in as nobody.',
+              })
+            : '')) +
       // Named as a risk rather than as a feature, because it is one — and not
       // drawn at all for a Home Assistant calendar, which is not fetched from
       // an address the household typed. Its events arrive through the one
@@ -5518,6 +5648,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowPrivateNetwork?: boolean;
       allowLoopback?: boolean;
       allowHttp?: boolean;
+      /** The account, echoed on a 400. Never the password — see `SourceEcho`. */
+      username?: string;
     } = {},
     error?: {
       message: string;
@@ -5642,6 +5774,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               placeholder: 'https://…/basic.ics',
               value: values.url ?? '',
             }) +
+            feedCredentialFields({ username: values.username ?? '' }) +
             // Owner is offered at add time only when there is someone to pick,
             // so a household with no people never sees a control that does
             // nothing.
