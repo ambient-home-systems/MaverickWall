@@ -355,7 +355,7 @@ describe('adding a CalDAV account', () => {
   it('removing the last calendar removes the account, through the screen', async () => {
     const server = await startCalDavFake({ credential: CREDENTIAL });
     servers.push(server);
-    const { form, db } = await harness();
+    const { form, call, db } = await harness();
 
     const pick = await (
       await form('/admin/calendars/caldav', {
@@ -372,6 +372,21 @@ describe('adding a CalDAV account', () => {
     for (const [name, value] of boxes) fields[name] = value;
     fields['name_0'] = 'Home';
     await form('/admin/calendars/caldav/add', fields);
+
+    /*
+     * The account's own Remove leads to a confirmation page, and that page is a
+     * GET nothing else here opens — `destructive()` renders a form that leads
+     * to it rather than acting, so a 500 there is a Remove a household can
+     * press and never complete. Checked on the way past: it names what is lost,
+     * which for an account is more than for one calendar.
+     */
+    const accountId = (db.prepare('SELECT id FROM caldav_accounts').get() as { id: string }).id;
+    const confirm = await call(`/admin/calendars/caldav/${accountId}/delete`);
+    expect(confirm.status).toBe(200);
+    const confirmHtml = await confirm.text();
+    expect(confirmHtml).toContain(USERNAME);
+    expect(confirmHtml).toContain('password is deleted');
+    expect(confirmHtml).not.toContain(PASSWORD);
 
     const sourceId = (
       db.prepare(`SELECT id FROM calendar_sources WHERE kind = 'caldav'`).get() as { id: string }
