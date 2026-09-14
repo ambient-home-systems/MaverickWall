@@ -1,5 +1,6 @@
 import { expandCalendar } from '@maverick-wall/calendar';
 import { analyseTitles, FETCH_LIMITS, requiredNetworkOptions, validateOutboundUrl, type Fetcher, type NetworkOption, type TitleObservation } from '@maverick-wall/core';
+import { connectionFor } from './feed-credentials.js';
 
 /**
  * Try a calendar URL before anything is saved.
@@ -24,6 +25,15 @@ export interface TestFeedRequest {
   readonly allowLoopback?: boolean;
   readonly allowHttp?: boolean;
   readonly timezone: string;
+  /**
+   * The account to sign in as, when the household has given one.
+   *
+   * In clear, and only for the length of this request: nothing is stored yet —
+   * the whole point of this screen is answering "does this work" before a row
+   * exists — so there is no envelope to open and nothing here writes one.
+   */
+  readonly username?: string;
+  readonly password?: string;
 }
 
 export interface TestFeedEvent {
@@ -126,11 +136,26 @@ export async function testFeed(
   request: TestFeedRequest,
   fetcher: Fetcher,
 ): Promise<TestFeedResult> {
-  const policy = {
-    ...(request.allowPrivateNetwork === true ? { allowPrivateNetwork: true } : {}),
-    ...(request.allowLoopback === true ? { allowLoopback: true } : {}),
-    ...(request.allowHttp === true ? { allowHttp: true } : {}),
-  };
+  /*
+   * The same resolver the sync job uses, with the password in clear rather
+   * than in an envelope.
+   *
+   * That is the whole reason `connectionFor` takes a union: the bytes this
+   * screen puts on the wire have to be the bytes the sync puts on the wire an
+   * hour later, or a feed that tests green fails silently once it is stored —
+   * which is precisely the failure `testFeed` exists to remove.
+   */
+  const connection = connectionFor({
+    url: request.url,
+    allowPrivateNetwork: request.allowPrivateNetwork === true,
+    allowLoopback: request.allowLoopback === true,
+    allowHttp: request.allowHttp === true,
+    authUsername: request.username,
+    authPassword: { typed: request.password },
+  });
+  const policy = connection.policy;
+  /** Whether this attempt actually carried a credential, which is not the same as being given one. */
+  const sentCredentials = connection.headers['authorization'] !== undefined;
 
   const validated = validateOutboundUrl(request.url, policy);
   if (!validated.ok) {
@@ -152,10 +177,11 @@ export async function testFeed(
   }
 
   const response = await fetcher.fetch({
-    url: request.url,
+    url: connection.url,
     policy,
     maxBytes: FETCH_LIMITS.ics,
     acceptContentTypes: ICS_CONTENT_TYPES,
+    ...(sentCredentials ? { headers: connection.headers } : {}),
     // Shorter than a background sync. Somebody is watching a spinner.
     timeoutMs: 15_000,
   });

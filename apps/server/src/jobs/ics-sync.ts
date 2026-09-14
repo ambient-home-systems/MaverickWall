@@ -1,5 +1,6 @@
 import { expandCalendar } from '@maverick-wall/calendar';
-import { FETCH_LIMITS, type Fetcher, type JobHandler, type JobRecord, type JobResult, type UrlPolicy } from '@maverick-wall/core';
+import { FETCH_LIMITS, type Fetcher, type JobHandler, type JobRecord, type JobResult } from '@maverick-wall/core';
+import { connectionFor } from '../api/feed-credentials.js';
 import { createEventWriter, toEventRow, type EventRow } from './events.js';
 import type { Keyring } from '../secrets/keyring.js';
 import type { SqliteDatabase } from '../db/open.js';
@@ -49,6 +50,8 @@ export interface CalendarSourceRow {
   readonly etag: string | null;
   readonly lastModified: string | null;
   readonly consecutiveFailures: number;
+  readonly authUsername: string | null;
+  readonly authPasswordEncrypted: string | null;
 }
 
 export interface IcsSyncDeps {
@@ -82,7 +85,9 @@ export function createIcsSyncHandler(deps: IcsSyncDeps): JobHandler {
             allow_private_network AS allowPrivateNetwork,
             allow_loopback AS allowLoopback, allow_http AS allowHttp,
             etag, last_modified AS lastModified,
-            consecutive_failures AS consecutiveFailures
+            consecutive_failures AS consecutiveFailures,
+            auth_username AS authUsername,
+            auth_password_encrypted AS authPasswordEncrypted
        FROM calendar_sources WHERE id = ?`,
   );
 
@@ -127,17 +132,45 @@ export function createIcsSyncHandler(deps: IcsSyncDeps): JobHandler {
       );
     }
 
-    const policy: UrlPolicy = {
-      allowPrivateNetwork: source.allowPrivateNetwork === 1,
-      allowLoopback: source.allowLoopback === 1,
-      allowHttp: source.allowHttp === 1,
-    };
+    /*
+     * Address, policy and credential resolved together, in one place.
+     *
+     * Not three reads at this call site: the three network opt-ins and the
+     * `authorization` header are the same question — what this connection is
+     * allowed to be — and reading them separately here is how `testFeed` and
+     * this job come to disagree about a feed neither of them can test against
+     * the other.
+     */
+    const connection = connectionFor(
+      {
+        url: opened.value,
+        allowPrivateNetwork: source.allowPrivateNetwork === 1,
+        allowLoopback: source.allowLoopback === 1,
+        allowHttp: source.allowHttp === 1,
+        authUsername: source.authUsername,
+        authPassword: { stored: source.authPasswordEncrypted },
+      },
+      deps.keyring,
+    );
+
+    if (connection.passwordUnreadable) {
+      // The decrypt-failure branch above, one column along, and it reaches a
+      // household the same way: a backup restored without its key. Not
+      // retryable, and the cached events stay.
+      return fail(
+        sourceId,
+        'The stored password for this calendar could not be read. It was most ' +
+          'likely restored from a backup without its encryption key. Enter it ' +
+          'again on the Calendars page.',
+      );
+    }
 
     const response = await deps.fetcher.fetch({
-      url: opened.value,
-      policy,
+      url: connection.url,
+      policy: connection.policy,
       maxBytes: FETCH_LIMITS.ics,
       acceptContentTypes: ICS_CONTENT_TYPES,
+      ...(Object.keys(connection.headers).length > 0 ? { headers: connection.headers } : {}),
       conditional: {
         ...(source.etag ? { etag: source.etag } : {}),
         ...(source.lastModified ? { lastModified: source.lastModified } : {}),
