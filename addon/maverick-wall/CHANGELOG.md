@@ -16,6 +16,43 @@
 
 ## Unreleased
 
+**A calendar can have a username and a password.** Nextcloud, Baïkal, Radicale,
+SOGo and Fastmail, plus any school or work feed behind a sign-in, can be added
+now. Open **Sign in to this calendar** under the address on **Calendars → Add**
+and give it both — where the server offers one, an app password rather than your
+account password. For Nextcloud: **Settings**, then **Calendar**, then the three
+dots beside the calendar, **Copy internal link**, and add `?export` to the end.
+
+**Passwords can be changed without re-adding the calendar.** The box on a
+calendar's settings is blank because there is nothing to show you — the password
+is encrypted and never readable again — so leaving it blank keeps what is
+stored, typing a new one replaces it, and **Remove the password** takes it off a
+calendar that no longer needs one.
+
+**A calendar whose password stops working says so, and stops trying.** An app
+password that has been revoked or reissued shows a message on the Calendars page
+naming what to do. It does not keep retrying every fifteen minutes: a wrong
+password on a loop is how Nextcloud's own brute-force protection and Apple's
+account lockout get triggered against your account. Entering a new one starts it
+again straight away.
+
+**A sign-in that fails now says which of three things went wrong** — that the
+calendar needs a username and password, that the ones given were not accepted,
+or that the address redirected somewhere the password is not sent and the other
+address is the one to use.
+
+**Google, iCloud and Microsoft 365 have a route, and the Calendars page now says
+so.** All three reach a wall through Home Assistant's own integrations, with
+Home Assistant doing the signing in — and nothing here mentioned it. The page now
+names them, says which are prompt and which are not (Home Assistant's Remote
+Calendar refreshes once a day, and a Google secret address can be hours behind
+whatever you use), and links to the setup.
+
+**Your backup needs the key file for one more reason.** Feed passwords are
+encrypted beside calendar addresses, so `.secret` restores both. The diagnostics
+export is unchanged and still safe to hand over: it carries no calendar
+addresses, no event titles, and not the account a calendar signs in as.
+
 ## 0.63.0
 
 **Tick things off your Home Assistant list, from the wall.** Put a To-do widget

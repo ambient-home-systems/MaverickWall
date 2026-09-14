@@ -344,3 +344,44 @@ describe('rotating a stored password', () => {
     expect(without).toContain('name="auth_password"');
   });
 });
+
+describe('the route through Home Assistant', () => {
+  it('is on the Calendars page with no Home Assistant connected', async () => {
+    /*
+     * The whole point of this copy, and the thing today's screen would have got
+     * wrong by default: the calendar picker beside it only appears once a
+     * household has a live Home Assistant connection, which is right for a
+     * control that needs one to do anything. This is the opposite case — a
+     * household with *no* connection is exactly who needs telling that making
+     * one is the way to reach Google and iCloud. Gated on the same condition,
+     * the sentence would only ever be read by households who had already solved
+     * the problem it describes.
+     */
+    const h = await harness();
+    const html = await (await h.call('/admin/calendars')).text();
+
+    // Nothing here has connected Home Assistant, which is the state under test.
+    expect(html).not.toContain('From Home Assistant');
+
+    expect(html).toContain('Google, iCloud and Microsoft 365');
+    // Named rather than gestured at: §12 decides that naming Home Assistant's
+    // own integrations is more useful and ages worse, and takes the useful half.
+    expect(html).toContain('Google Calendar');
+    expect(html).toContain('CalDAV');
+    expect(html).toContain('Remote Calendar');
+    // The two caveats that have to be in the copy rather than in a footnote.
+    expect(html).toContain('once a day');
+    expect(html).toContain('hours behind');
+    expect(html).toContain('Home Assistant failing is all of them');
+  });
+
+  it('links relatively, so an ingress household stays inside the add-on', async () => {
+    // An absolute `/admin/home-assistant` under the supervisor's ingress prefix
+    // lands in Home Assistant's own UI. The single `<base>` is what carries a
+    // relative one, which is why every link in this admin is relative.
+    const h = await harness();
+    const html = await (await h.call('/admin/calendars')).text();
+    expect(html).toContain('href="admin/home-assistant"');
+    expect(html).not.toContain('href="/admin/home-assistant"');
+  });
+});

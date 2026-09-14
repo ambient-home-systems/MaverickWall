@@ -99,10 +99,21 @@ function harness(appVersion = '9.9.9') {
     `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
      VALUES ('singleton', 'Europe/London', 'board', ?, ?, ?)`,
   ).run(at, at, at);
+  /*
+   * The username is shaped like an email address on purpose.
+   *
+   * `auth_username` is in clear on the row because the settings screen has to
+   * show which account a feed uses — and a Basic-auth username is very often an
+   * address, which is exactly the thing this export promises it carries none
+   * of. It is the column where that promise would first be broken, so the
+   * fixture makes it the obvious one to break.
+   */
   db.prepare(
     `INSERT INTO calendar_sources
-       (id, name, url_encrypted, url_host, created_at, updated_at)
-     VALUES ('s1', 'Mum''s work rota', 'mw1.SUPERSECRETCIPHERTEXT', 'calendar.google.com', ?, ?)`,
+       (id, name, url_encrypted, url_host, auth_username, auth_password_encrypted,
+        created_at, updated_at)
+     VALUES ('s1', 'Mum''s work rota', 'mw1.SUPERSECRETCIPHERTEXT', 'calendar.google.com',
+             'rota.account@example.com', 'mw1.SEALEDFEEDPASSWORD', ?, ?)`,
   ).run(at, at);
   db.prepare(
     `INSERT INTO calendar_events_cache
@@ -211,6 +222,11 @@ describe('diagnostics', () => {
     expect(text).not.toContain('Ellie');
     expect(text).not.toContain('Pregnancy test');
     expect(text).not.toContain('Things to buy');
+    // The account a feed signs in as, which is a username and very often an
+    // email address — so it is left out of the projection entirely rather than
+    // trusted not to be one.
+    expect(text).not.toContain('rota.account@example.com');
+    expect(text).not.toContain('SEALEDFEEDPASSWORD');
     // The host is the one thing kept, because a failing feed fails at a host.
     expect(text).toContain('calendar.google.com');
   });

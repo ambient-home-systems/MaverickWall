@@ -5640,6 +5640,57 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+  /**
+   * The route to Google and iCloud, said where somebody has the problem
+   * (RFC 013 Phase B).
+   *
+   * Google, iCloud, Microsoft 365 and Nextcloud all reach a wall today through
+   * a Home Assistant calendar entity, with Home Assistant doing the signing in
+   * — and nothing in this product said so anywhere but the Home Assistant
+   * screen itself, which is not where anybody stands when they have this
+   * problem.
+   *
+   * **It renders whether or not Home Assistant is connected, and that is the
+   * whole point rather than a detail.** The calendar picker above it needs a
+   * live connection to do anything, which is right for a control; this is the
+   * opposite case. A household with *no* connection is exactly who needs to be
+   * told that making one is a way to reach Google and iCloud, so gating it on
+   * the same condition as the picker would leave the sentence readable only by
+   * households who had already solved the problem it describes.
+   *
+   * Naming Home Assistant's own integrations is a decision rather than an
+   * oversight (§12): it is more useful and it ages worse, and the useful half
+   * wins. The link is **relative**, because the single `<base>` is what carries
+   * it through the supervisor's ingress prefix and an absolute `/…` would land
+   * a sidebar household in Home Assistant's own UI.
+   */
+  function homeAssistantRouteSection(): string {
+    return section(
+      'Google, iCloud and Microsoft 365',
+      undefined,
+      `<p>These do not offer an address this app can use on its own — Apple offers ` +
+        `none at all, and Google's is a secret link rather than a sign-in. Home ` +
+        `Assistant has integrations for all of them, and a calendar it holds can be ` +
+        `added here with no address to find.</p>` +
+        `<ul class="plain">` +
+        `<li><strong>Google Calendar</strong> and <strong>Microsoft 365</strong> have ` +
+        `integrations of their own, and keep up promptly.</li>` +
+        `<li><strong>iCloud</strong> goes through Home Assistant's <strong>CalDAV</strong> ` +
+        `integration, with an Apple ID and an app-specific password.</li>` +
+        `<li><strong>Remote Calendar</strong> takes a plain iCal address and refreshes ` +
+        `<strong>once a day</strong> — slower than adding that address here directly, so ` +
+        `it is the wrong way round for a feed you already have the address of.</li>` +
+        `</ul>` +
+        `<p class="hint">A Google secret iCal address added here works, and how fresh ` +
+        `it is is Google's decision rather than ours: Google caches it on its own ` +
+        `schedule and it can be hours behind. That is the one thing the Home Assistant ` +
+        `route genuinely fixes. What it costs is that every calendar then depends on ` +
+        `Home Assistant being well — one feed failing is one calendar, and Home ` +
+        `Assistant failing is all of them.</p>` +
+        `<p><a href="admin/home-assistant">Set up Home Assistant</a></p>`,
+    );
+  }
+
   function calendarsPage(
     c: Context,
     values: {
@@ -5754,6 +5805,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               )
               .join('')) +
         haCalendarSection(haCalendars, sources) +
+        homeAssistantRouteSection() +
         section(
           'Add a calendar',
           undefined,

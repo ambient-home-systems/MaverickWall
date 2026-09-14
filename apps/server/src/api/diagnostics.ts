@@ -101,6 +101,23 @@ export function buildDiagnostics(input: DiagnosticsInput): Diagnostics {
     | { timezone: string; theme: string; setupCompletedAt: number | null; shiftEnabled: number }
     | undefined;
 
+  /*
+   * The host and never the account.
+   *
+   * `auth_username` is the one column on this table where "it is not a
+   * credential" is not the end of the argument: a Basic-auth username is very
+   * often an **email address**, which is exactly what this export promises it
+   * contains none of. It is in clear on the row because the settings screen has
+   * to show which account a feed uses, and that is a different audience from a
+   * file written to be handed to a stranger.
+   *
+   * What actually keeps it out is the **projection** a hundred lines below,
+   * which names every field it carries; not selecting it here is a belt over
+   * that, and a measured one — selecting it alone leaves the export unchanged,
+   * because the projection is what decides. `system.test.ts` seeds a username
+   * shaped like an address and asserts it does not survive, and that assertion
+   * goes red when the projection carries it rather than when this query does.
+   */
   const sources = db
     .prepare(
       `SELECT url_host AS host, enabled, event_count AS eventCount,

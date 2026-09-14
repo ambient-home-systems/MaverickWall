@@ -8,8 +8,9 @@ Everything is in the data directory. Two files matter:
 - `.secret` — the encryption key.
 
 **They are not interchangeable and you need both.** The database alone restores
-everything except your calendar addresses: those are encrypted, and without the
-key they cannot be read. You would be re-pasting every feed URL.
+everything except your calendar addresses and feed passwords: those are
+encrypted, and without the key they cannot be read. You would be re-pasting
+every feed URL, and re-entering the password for any calendar that signs in.
 
 Copying the directory while the container is running is not safe — SQLite is in
 WAL mode and you would get a torn copy. Either stop the container first, or use
@@ -35,8 +36,8 @@ database, and whatever they replace is renamed rather than deleted. Swapping a
 file under a running process, mid-sync, with WAL readers attached is how a
 restore becomes a corruption.
 
-Restoring the database without the key leaves your calendar addresses there
-and unreadable — the wall will say so rather than failing quietly — so upload
+Restoring the database without the key leaves your calendar addresses and feed
+passwords there and unreadable — the wall will say so rather than failing quietly — so upload
 both if you have both. On the Home Assistant add-on this is the only way to
 restore the key at all: there is no shell and no way to place `.secret` in the
 data directory by hand.
@@ -67,15 +68,16 @@ address, set `BASE_URL` to it so sign-in and pairing links resolve correctly.
 The add-on needs nothing set here; Home Assistant's own address is what the
 sidebar and any pairing link already use. Either way, point each screen's
 browser at the new address. `.secret` has to make the trip — without it every
-calendar address is unreadable ciphertext, which reads exactly like the
-"restore without the key" case above.
+calendar address and every stored feed password is unreadable ciphertext, which
+reads exactly like the "restore without the key" case above.
 
 ## Diagnostics
 
 **System → Diagnostics** is the one that is safe to hand to somebody else.
 Hostnames, counts, job state and a log tail — no email addresses, no event
-titles, no feed names. There is a test that stuffs a database with all three
-and asserts none of them appear; that test is the feature.
+titles, no feed names, and not the account a calendar signs in as, which is
+usually an email address too. There is a test that stuffs a database with all
+four and asserts none of them appear; that test is the feature.
 
 ## Home Assistant add-on
 
