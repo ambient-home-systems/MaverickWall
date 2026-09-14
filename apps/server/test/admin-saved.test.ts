@@ -31,7 +31,8 @@ import { SAVED_MESSAGES } from '../src/http/saved.js';
 import { seedDefaultRules, writeRule } from '../src/api/rules.js';
 import { createPerson, saveShiftPlan } from '../src/api/queries.js';
 import { watchEntity, writeHaSettings } from '../src/modules/homeassistant/store.js';
-import { createTheme } from '../src/api/themes.js';
+import { createTheme, FALLBACK_THEME } from '../src/api/themes.js';
+import { themeName } from '../src/http/theme-cards.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
@@ -690,7 +691,7 @@ describe('destructive actions ask first', () => {
     expect(h.db.prepare(`SELECT COUNT(*) n FROM themes WHERE id = ?`).get(theme.id)).toEqual({ n: 0 });
   });
 
-  it('removing a theme in use names what switches to Board', async () => {
+  it('removing a theme in use names the walls and the theme they will wear', async () => {
     const h = await harness();
     const theme = createTheme(h.db, {
       name: 'Sea glass',
@@ -711,10 +712,18 @@ describe('destructive actions ask first', () => {
       .run(stamp, `custom:${theme.id}`, stamp, stamp, stamp, `custom:${theme.id}`, stamp, stamp);
 
     const interstitial = await (await h.call(`/admin/themes/${theme.id}/delete`)).text();
-    // A real sentence, not a bare comma-join — "and" before the last item,
-    // and no lowercase word opening a paragraph.
+    /*
+     * A real sentence, not a bare comma-join — "and" before the last item, and
+     * no lowercase word opening a paragraph.
+     *
+     * The theme it names is composed the way the page composes it rather than
+     * typed, which is the fix this assertion was caught by: it read "Board"
+     * for releases after Board stopped existing, and a literal on both sides
+     * is how a wrong name stays agreed with itself (RFC 015 §2.1).
+     */
     expect(interstitial).toContain(
-      'In use by the household default, “Kitchen”, and “Lounge” — they switch to Board.',
+      `In use by the household default, “Kitchen”, and “Lounge” — they switch to ` +
+        `${themeName(FALLBACK_THEME)}.`,
     );
   });
 
