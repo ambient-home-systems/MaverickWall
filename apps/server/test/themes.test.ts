@@ -238,8 +238,16 @@ describe('resolveTheme', () => {
     expect(resolved.tokens?.['--s-day-tint']).toMatch(/^#[0-9a-f]{6}$/);
   });
 
-  it('falls back to board for a missing custom id rather than blanking a wall', () => {
-    expect(resolveTheme(db(), 'custom:does-not-exist')).toEqual({ shape: 'board' });
+  /*
+   * The fallback names a *live* theme, which is the whole of the fix: it used
+   * to answer `board`, a key that has not named a theme for releases and which
+   * only reached a wall at all because the display bundle's `LEGACY_ALIASES`
+   * maps it onto `panels`. So nothing on a wall moves — `applyTheme`'s
+   * built-in branch resolves either string to the same tokens and the same
+   * `data-theme` — and the manifest stops carrying a retired name.
+   */
+  it('falls back to panels for a missing custom id rather than blanking a wall', () => {
+    expect(resolveTheme(db(), 'custom:does-not-exist')).toEqual({ shape: 'panels' });
   });
 });
 

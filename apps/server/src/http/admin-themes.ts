@@ -1,17 +1,19 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, escapeHtml, errorBlock, icon, page, selectField, textField } from './html.js';
-import { destructive, emptyState, listRow, section } from './components.js';
+import { confirmDestroyPage, escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import { destructive, section, tag } from './components.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
   COLOUR_TOKENS,
   createTheme,
   deleteTheme,
+  FALLBACK_THEME,
   FONTS,
   FONT_TOKENS,
   readTheme,
   readThemes,
   themeTokensSchema,
   themeUsage,
+  themeUsageOf,
   updateTheme,
   type ThemeRow,
   type ThemeTokens,
@@ -20,18 +22,32 @@ import { colour, oneOf, parse, text } from '../validation.js';
 import { generateThemeTokens } from '../api/theme-generator.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
+import {
+  LEGACY_THEME_ALIASES,
+  themeChoices,
+  themeDisplayCard,
+  themeName,
+  type ThemeChoice,
+} from './theme-cards.js';
 
 /**
- * The custom-theme builder (system settings).
+ * Themes: the gallery, and the custom-theme builder.
  *
- * The four built-in directions live in the display bundle as code; this screen
- * is where a household builds its own. The form is server-rendered and saves
- * with a plain POST — it works with no scripting — and `assets/theme-editor.js`
- * enhances it with a live preview and contrast guidance. A custom theme is
- * selectable on the Walls page exactly like a built-in.
+ * The built-in token sets live in the display bundle as code; this screen is
+ * where every theme a wall can draw is seen, and where a household builds one
+ * of its own. The form is server-rendered and saves with a plain POST — it
+ * works with no scripting — and `assets/theme-editor.js` enhances it with a
+ * live preview and contrast guidance. A custom theme is selectable on a wall's
+ * own page exactly like a built-in.
  */
 
-/** A new theme starts from Board's palette — a known-legible dark default. */
+/**
+ * A new theme starts from a known-legible dark palette.
+ *
+ * Deliberately not described as any shipped theme's: it is close to none of
+ * the five, and naming it after one is how a screen comes to name a theme that
+ * no longer exists (RFC 015 §2.1).
+ */
 const DEFAULT_TOKENS: ThemeTokens = {
   '--bg': '#0B0E11',
   '--panel': '#151A21',
@@ -47,14 +63,28 @@ const DEFAULT_TOKENS: ThemeTokens = {
   '--radius': '0.2rem',
 };
 
-/** Each editable colour with the plain-language account of what it drives. */
+/**
+ * Each editable colour with the plain-language account of what it drives.
+ *
+ * `--faint`'s line carries one more thing, and it is the second of RFC 015
+ * §2.6's four facts: it is deliberately below the contrast bar, so the
+ * contrast guide beside the preview flags it on every theme ever built. Said
+ * here rather than beside the guide, because the guide is where somebody reads
+ * the warning and this is where they would otherwise go to "fix" it.
+ */
 const TOKEN_HELP: readonly { readonly key: string; readonly label: string; readonly help: string }[] = [
   { key: '--bg', label: 'Background', help: 'The wall behind everything.' },
   { key: '--panel', label: 'Panels', help: 'The surface of cards and the month grid.' },
   { key: '--rule', label: 'Lines', help: 'Hairline borders between things.' },
   { key: '--ink', label: 'Text', help: 'The main reading colour.' },
   { key: '--muted', label: 'Muted text', help: 'Secondary text — times and labels.' },
-  { key: '--faint', label: 'Faint text', help: 'The quietest text — past days.' },
+  {
+    key: '--faint',
+    label: 'Faint text',
+    help:
+      'The quietest text — past days. Deliberately below the contrast bar: it is ' +
+      'meant to recede, so the guide flagging it is not a fault to fix.',
+  },
   { key: '--accent', label: 'Accent', help: 'Today, and highlights across the wall.' },
   { key: '--s-day', label: 'Day shift', help: 'The colour of a day shift.' },
   { key: '--s-night', label: 'Night shift', help: 'The colour of a night shift.' },
@@ -70,11 +100,6 @@ const RADII: readonly { readonly value: string; readonly label: string }[] = [
 ];
 
 const nameBody = text('A name for the theme', 60);
-
-/** Three representative colours for a swatch strip. */
-function swatch(tokens: Readonly<Record<string, string | undefined>>): readonly string[] {
-  return [tokens['--bg'] ?? '#0B0E11', tokens['--accent'] ?? '#E8A33D', tokens['--s-night'] ?? '#4C7FD1'];
-}
 
 export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
   // ---- routes --------------------------------------------------------------
@@ -135,7 +160,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
    * Removing a theme asks first — the same GET-then-POST shape as every other
    * destructive control, in place of the one-click "Delete" the card used to
    * post directly. A theme in use never bricks a wall (`resolveTheme` falls
-   * back to Board), but naming which walls change is still the honest thing
+   * back to Panels), but naming which walls change is still the honest thing
    * to put in front of the button.
    */
   app.get('/admin/themes/:id/delete', (c: Context) => {
@@ -145,7 +170,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const usage = themeUsage(deps.db, id);
     const affected = [
       ...(usage.household ? ['the household default'] : []),
-      ...usage.screens.map((name) => `“${name}”`),
+      ...usage.screens.map((wall) => `“${wall.name}”`),
     ];
     return c.html(
       confirmDestroyPage({
@@ -162,7 +187,11 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
               // default" or a screen's own name — and Intl.ListFormat supplies
               // the "and" a plain join() drops for two or more items.
               `In use by ${new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(affected)} ` +
-              `— ${affected.length === 1 ? 'it switches' : 'they switch'} to Board.`,
+              `— ${affected.length === 1 ? 'it switches' : 'they switch'} to ` +
+              // Through `themeName`, never a literal: this sentence said
+              // "Board" for releases after Board stopped existing, and a
+              // literal is the only way that can happen (RFC 015 §2.1).
+              `${themeName(FALLBACK_THEME)}.`,
         destroyAction: `admin/themes/${encodeURIComponent(id)}/delete`,
         destroyLabel: 'Remove it',
         cancelAction: 'admin/themes',
@@ -203,36 +232,70 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   // ---- pages ---------------------------------------------------------------
 
+  /**
+   * Every theme a wall can draw, in one grid.
+   *
+   * This screen is named after colour and, until now, was the one screen in
+   * the admin where colour could not be chosen and the built-ins were named
+   * nowhere — except inside an empty state that vanished the moment a
+   * household made a theme of their own (RFC 015 §2.1, §2.2). So the list is
+   * the five built-ins *and* whatever the household built, always, and each
+   * card says which walls are wearing it.
+   *
+   * There is no empty state any more, and its sentence is deleted rather than
+   * reworded: it named four built-in directions, three of which had not
+   * existed for releases, and with the five always listed there is nothing for
+   * an empty state to be about.
+   *
+   * A built-in card offers nothing yet. Duplicate is the obvious control and
+   * it would have to *write a token set* the server does not hold — the five
+   * palettes live in `apps/display/src/theme.ts` — so it waits on a
+   * parity-tested transcription rather than on a button (RFC 015 §3.4).
+   */
   function themesPage(c: Context, error?: string): string {
     const custom = readThemes(deps.db);
-    // A three-colour swatch strip identifying the theme, and the two actions
-    // that operate on it. Small enough that `listRow` — a lead, a title, a
-    // trail — fits exactly; there is no second line of detail to show, so
-    // `body.detail` is left unset.
-    const themeRow = (theme: ThemeRow): string => {
-      const id = encodeURIComponent(theme.id);
-      return listRow(
-        // The swatch strip: a tokenised class rather than an inline flex box, and
-        // each bar carries only its colour, as a custom property.
-        `<div class="theme-swatch">` +
-          swatch(theme.tokens).map((c) => `<i style="--swatch:${escapeHtml(c)}"></i>`).join('') +
-          `</div>`,
-        { title: theme.name },
-        // Edit stays the one visible control; the destructive Delete moves into
-        // the ⋮ the rest of the admin's lists use, so a click on Edit is never a
-        // neighbour of a delete. The GET it leads to names exactly which walls
-        // change (`destructive()`, its confirm page), which is what made this a
-        // two-step control at all.
-        `<a class="btn btn-ghost btn-sm" href="admin/themes/${id}">Edit</a>` +
-          `<details class="ovf" data-overflow>` +
-          `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
-          `aria-label="More actions for ${escapeHtml(theme.name)}" title="More">${icon('more')}</summary>` +
-          `<div class="ovf-menu" role="menu">` +
-          destructive('Delete', {
-            thing: theme.name,
-            confirmAction: `admin/themes/${id}/delete`,
-          }) +
-          `</div></details>`,
+
+    /*
+     * Which stored references count as this card.
+     *
+     * A built-in is worn under its own key and under every retired key that
+     * folds onto it, because a household who never changed the setting still
+     * stores `board` — so Panels must claim those walls rather than leaving
+     * them attributed to a theme no card on this page represents.
+     */
+    const refsFor = (choice: ThemeChoice): readonly string[] => [
+      choice.ref,
+      ...Object.keys(LEGACY_THEME_ALIASES).filter(
+        (retired) => LEGACY_THEME_ALIASES[retired] === choice.ref,
+      ),
+    ];
+
+    const cardFor = (choice: ThemeChoice): string => {
+      const usage = themeUsageOf(deps.db, refsFor(choice));
+      /*
+       * Who is wearing it, as words. A tag per wall, by name, plus the
+       * household row while there still is one — a wall that has set no theme
+       * of its own is drawing that row, and saying so is the only way this
+       * page accounts for every wall in the house.
+       */
+      const tags =
+        (usage.household ? tag('Household default', 'accent') : '') +
+        usage.screens.map((wall) => tag(wall.name)).join('');
+      const id = choice.ref.startsWith('custom:') ? choice.ref.slice('custom:'.length) : '';
+      const actions =
+        id === ''
+          ? ''
+          : `<div class="tm-act">` +
+            `<a class="btn btn-ghost btn-sm" href="admin/themes/${encodeURIComponent(id)}">Edit</a>` +
+            destructive('Remove', {
+              thing: choice.name,
+              variant: 'button',
+              confirmAction: `admin/themes/${encodeURIComponent(id)}/delete`,
+            }) +
+            `</div>`;
+      return themeDisplayCard(
+        choice,
+        (tags === '' ? '' : `<div class="tm-use">${tags}</div>`) + actions,
       );
     };
 
@@ -245,20 +308,15 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       saved: readSaved(c),
       action: { label: 'New theme', href: 'admin/themes/new' },
       intro:
-        'Build your own colours for the wall. A theme you make here is selectable on ' +
-        'the Walls page, as the default or for one wall, beside the four built in.',
+        'Every colour scheme a wall can draw — the ones that ship, and the ones ' +
+        'you build. A wall picks its own on the wall’s own page.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        (custom.length === 0
-          ? // No action offered: "New theme" is already the page's one primary,
-            // in the app bar above. A second one here would only scroll to it.
-            emptyState(
-              'No custom themes yet. The four built-in directions (Board, Kitchen Slate, ' +
-                'Paper Almanac, Glance) can be chosen in each wall’s settings. Make your ' +
-                'own with “New theme”.',
-            )
-          : custom.map(themeRow).join('')) +
-
+        section(
+          'All themes',
+          'The tags say which walls are wearing each one.',
+          `<div class="themegrid">${themeChoices(custom).map(cardFor).join('')}</div>`,
+        ) +
         section(
           'Generate from a colour',
           'Pick one colour — the seed — and a whole matching theme is worked out from ' +
@@ -350,22 +408,47 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
           attrs: 'maxlength="60"',
         }) +
 
-        `<label class="tb-group">Colours</label>` +
-        TOKEN_HELP.map(colourField).join('') +
+        section(
+          'Colours',
+          'Four more colours are worked out from these and are not on this form: the ' +
+            'ink an event’s name is drawn in, the ink for the scaffolding around it — ' +
+            'date numerals, weekday heads, week numbers — the ink for the quiet things ' +
+            'like overflow counts and past times, and the hairline between weeks. The ' +
+            'scaffolding ink is mixed from your text colour and your background, and ' +
+            'the mix is pushed further until it clears 4.5:1 against that background, ' +
+            'so a low-contrast pair comes back corrected rather than as you set it.',
+          TOKEN_HELP.filter((t) => !t.key.startsWith('--s-')).map(colourField).join(''),
+        ) +
 
-        selectField({
-          label: 'Corners',
-          name: 'radius',
-          optionsHtml: RADII.map(
-            (r) =>
-              `<option value="${escapeHtml(r.value)}"${r.value === currentRadius ? ' selected' : ''}>` +
-              `${escapeHtml(r.label)}</option>`,
-          ).join(''),
-        }) +
+        section(
+          'Shift colours',
+          'These have to be told apart from across a room, not on a phone held at ' +
+            'arm’s length — which is why there are four of them, and why Panels is the ' +
+            'one to start from for a household with a rota: its four hues separate ' +
+            'best at ten feet. Two colours that read clearly here can be one colour ' +
+            'from the far end of a kitchen.',
+          TOKEN_HELP.filter((t) => t.key.startsWith('--s-')).map(colourField).join(''),
+        ) +
 
-        `<label class="tb-group">Fonts</label>` +
-        fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
-        fontField('--f-sans', 'Body', 'Event titles and the everyday text.') +
+        section(
+          'Corners and type',
+          'A theme is colour, the corner radius and the faces — and nothing else. How ' +
+            'large the type is comes from the wall’s own size and the distance it is ' +
+            'read from, under Device and time on that wall’s settings; where each ' +
+            'widget sits and how big its box is comes from the layout editor. If the ' +
+            'text on a wall is too small, neither answer is on this page.',
+          selectField({
+            label: 'Corners',
+            name: 'radius',
+            optionsHtml: RADII.map(
+              (r) =>
+                `<option value="${escapeHtml(r.value)}"${r.value === currentRadius ? ' selected' : ''}>` +
+                `${escapeHtml(r.label)}</option>`,
+            ).join(''),
+          }) +
+            fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
+            fontField('--f-sans', 'Body', 'Event titles and the everyday text.'),
+        ) +
 
         `<button type="submit">${editing ? 'Save theme' : 'Create theme'}</button>` +
         `</div>` +

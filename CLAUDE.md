@@ -464,15 +464,23 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3275 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 495 · server 2313. CI runs the whole suite and then the README's
-one-liner against a clean volume on Linux, which is the only place the install
-has ever been wrong. Measured on a clean run rather than added to the previous
-figure, which is the discipline the paragraph below spells out at length for the
-*other* count on this page and which applies to this one identically: RFC 013's
-four new server suites are +211 between them, and an arithmetic that happened to
-agree would prove nothing, because the way these numbers have always gone wrong
-is somebody incrementing rather than running.
+**3280 tests passing**, over 230 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2318 over 185 files. CI runs the whole suite
+and then the README's one-liner against a clean volume on Linux, which is the
+only place the install has ever been wrong. Measured on a clean run rather than
+added to the previous figure, which is the discipline the paragraph below spells
+out at length for the *other* count on this page and which applies to this one
+identically: RFC 013's four new server suites are +211 between them, and an
+arithmetic that happened to agree would prove nothing, because the way these
+numbers have always gone wrong is somebody incrementing rather than running.
+
+**A clone with no tags fails one of them and the message says why**, which is
+worth knowing before reading a red suite as a regression.
+`changelog-shape.test.ts` compares the shipped changelog against itself at the
+last tag and **refuses** rather than passing when it cannot read one — "this
+needs the tags and their commits: in CI, `fetch-depth: 0` on the checkout;
+locally, `git fetch --tags --unshallow`". A shallow or tagless clone is exactly
+the state that would otherwise let it pass over the thing it exists to catch.
 
 **Two of them were red for all but about two minutes a day, and it is the
 bootstrap code's fault a third time.** `admin-status-claims` and
@@ -5985,6 +5993,79 @@ deliberately not extended to the browser wall's `/d/manifest`: a cookie cannot
 leave a browser the way a URL leaves a device, so that is a separate decision
 rather than an oversight.
 
+**Themes is where every theme is seen now, and the screen named after colour
+used to be the one screen where colour could not be chosen (RFC 015 phase 1).**
+A household reported two places to pick colours; counted from the source it is
+three screens and **six** mechanisms, and `/admin/themes` was not one of them —
+it listed a household's own themes and named the built-ins nowhere except
+inside an `emptyState` drawn only when there were no custom themes, so making
+one theme of your own removed the other five from the product. That sentence
+also named four built-in directions of which three had not existed for
+releases. It is deleted rather than reworded: with the five always listed there
+is nothing for an empty state to be about.
+
+The page is one grid of every theme a wall can draw, each card carrying its
+swatches, a line of what it is for, and **a tag per wall wearing it**.
+`themeUsage` had answered that question — *which wall is wearing this* —
+correctly and expensively for one caller, the delete confirmation, which is to
+say it was computed and tested and read only at the moment a household was
+destroying something. `themeUsageOf` asks it of a **set** of references, and
+the set is the point: a household who never changed the setting still stores
+`board`, so Panels has to claim those walls or the tags add up to fewer walls
+than the house has. Which retired key folds onto which live one stays the http
+layer's table, so nothing in `api/` has to know retired keys exist.
+
+**`THEMES` and its card moved out of `admin.ts` into `http/theme-cards.ts`**,
+and the move is about who needs the table: `admin-themes.ts` could not reach it
+without importing `admin.ts`, which imports `admin-themes.ts` back to register
+its routes. The card is split so it can be drawn with a radio (the picker) or
+without one (the gallery) — one markup and one stylesheet rule, because two
+builders is two answers to "what does Almanac look like", which is this RFC's
+own complaint one level up.
+
+**Three sentences naming a theme that no longer exists are fixed and a fourth
+is named rather than changed**, and the fourth is the useful one.
+`resolveTheme`'s dangling-reference fallback answers `panels` now, which draws
+exactly what it drew — the bundle's `LEGACY_ALIASES` has always folded `board`
+there — and stops a retired key travelling in a manifest. The `'board'` on the
+line below it reads like the identical fault and is the opposite of one:
+`applyTheme`'s custom-tokens branch writes the shape onto `data-theme`
+*verbatim* rather than resolving it, and `:root[data-theme="panels"]` is a live
+card rule, so `board` there is a **neutral sentinel** — the one value no shape
+rule matches — chosen so a custom theme inherits the default shape. Renaming it
+would repaint every custom-theme wall. Giving it an honest name needs a
+`neutral` key in the display bundle.
+
+**`admin-vocabulary.test.ts` gained the theme names**, and making that
+assertion able to fail took two goes, which is the part worth keeping. With the
+literal "Board" put back on the delete confirmation the sweep stayed green
+twice: the confirmation is reachable only from a *custom* theme's card, so with
+none seeded it was on no page the crawl could see — this file's own stated
+blind spot, a conditional section — and then because an *unused* theme's
+removal reads "Nothing is using it right now", which is the branch that names
+no theme at all. The crawl seeds a theme and a wall wears it; only then is the
+mutation red.
+
+**The builder says what breaks, beside the control it breaks.** Four facts that
+lived in the design file and in this document and nowhere a household reads:
+why there are four shift hues and why Panels is the one to start from with a
+rota (they have to separate at ten feet); that `--faint` is deliberately below
+the contrast bar, said on `--faint`'s own help line rather than beside the
+guide, because that is where somebody would go to "fix" it; that four more inks
+are derived from these and that `scaffoldInk` pushes its mix until it clears
+4.5:1 against the theme's own ground, so a low-contrast pair comes back
+corrected; and what a theme does **not** control — type size is the wall's own
+size and reading distance under Device and time, and the boxes are the layout
+editor's. `--radius` is the one non-colour control on the page and it actively
+encourages the belief that "the text is too small" is answerable here.
+
+**No schema, no migration, no manifest shape, and nothing in `apps/display`.**
+Retiring the household theme — four columns, two migrations, `createScreen`
+taking a theme it does not default, every door — is RFC 015 phase 2 and is not
+done; one control for the choice, wherever it is taken, is phase 3. **Still
+unproven where it counts:** nobody has looked at the gallery on a real phone or
+in a real supervisor's sidebar.
+
 ---
 
 ## Open decisions
@@ -6078,11 +6159,40 @@ rather than an oversight.
 
 ## The design file
 
-`maverick-wall-design-directions.html` (in the project, not the repo) defines
-four themes as CSS custom property sets: **Board** (dark, amber), **Kitchen
-Slate** (warm dark, gold), **Paper Almanac** (light paper, red), **Glance**
-(near-black, white).
+**This section named four themes, three of which had not existed for releases,
+and it is the clearest example on this page of what the header warning is
+about.** `maverick-wall-design-directions.html` (in the project, not the repo)
+is where the directions were drawn, and the drawings were reworked; the prose
+here outlived them and then became what somebody copied from — the same four
+names reached `/admin/themes` and were read by households (RFC 015 §2.1). The
+authority is `apps/display/src/theme.ts`, whose `THEMES` is the token sets the
+bundle draws, and `apps/server/src/http/theme-cards.ts`, whose `THEMES` is what
+a household is offered.
 
-Decided: **Board as default, Almanac scheduled for daylight hours.** Board's
-shift hues separate best at ten feet; Almanac at 2am is a lamp. Themes are pure
-token sets with no logic differences.
+The five that ship: **Panels** (dark, each widget a card), **Household** (warm
+daylight paper), **Blueprint** (light technical wireframe), **Paper Almanac**
+(the month, as a ledger), **Swiss** (near-black, typographic, no cards). Themes
+are token sets; the only logic in one is a handful of *shape* rules keyed on
+`data-theme` — Almanac's ledger, Panels' cards, Blueprint's square corners.
+
+**Board, Kitchen Slate and Glance survive only as aliases.** They are every
+member of `LEGACY_THEME_ALIASES` on the server and `LEGACY_ALIASES` in the
+bundle, all three folding onto Panels — dark onto dark, deliberately, since
+aliasing the warm-dark Slate onto the warm-*light* Household would turn a wall
+inside out on upgrade. They are not choosable anywhere and
+`admin-vocabulary.test.ts` now fails if any served admin page names one.
+
+`board` survives in one more place and is not an alias there: `resolveTheme`
+hands a *custom* theme `shape: 'board'` because it is the one value no
+`:root[data-theme="…"]` rule matches, so a custom theme inherits the default
+shape rather than Panels' cards. A neutral sentinel wearing a retired name.
+Renaming it needs a real `neutral` key in the display bundle.
+
+~~Decided: **Board as default, Almanac scheduled for daylight hours.**~~
+**Superseded by RFC 015.** The reasoning is intact and is why Panels is the
+one recommended for a household with a rota — its shift hues separate best at
+ten feet, and Almanac at 2am is a lamp — but *Board* is Panels now, and the
+larger half is that **there should be no default theme at all**: a setting
+whose right value differs per wall is not a household default that walls may
+override, it is a per-wall setting with a misleading home. Retiring
+`household_settings.theme` is RFC 015 phase 2 and has not been done.

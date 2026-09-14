@@ -1217,11 +1217,11 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 /* 1000px, not the shell's 900: below this the 320px preview column starves
  * the controls beside the 264px drawer. */
 @media(max-width:1000px){.theme-builder{grid-template-columns:1fr}}
+/* The builder's own groups are sections now (RFC 015 phase 1), so the four
+ * facts §2.6 asks for sit in a section's help line beside the controls they
+ * are about rather than in a bare kicker with nowhere to say anything. The
+ * .tb-group rule went with them. */
 .tb-controls{min-width:0}
-.tb-controls>.tb-group{display:block;margin:var(--mw-s-5) 0 var(--mw-s-1);
-  font:var(--mw-t-h4);
-  letter-spacing:var(--mw-t-h4-tracking);
-  color:var(--mw-ink-2)}
 .tf-row{display:flex;align-items:center;gap:var(--mw-s-3);margin:var(--mw-s-2) 0}
 .tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:var(--mw-s-1);margin:0}
 .tf-row b{display:block;font-size:var(--mw-t-h4-size);font-weight:600}
@@ -1234,11 +1234,16 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 /* ---- Theme picker cards (Display) ---------------------------------------- */
 .themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--mw-s-4);margin-top:var(--mw-s-2)}
 @media(max-width:560px){.themegrid{grid-template-columns:1fr}}
-/* A selectable filled card: the swatch strip bleeds to the corner, the chosen
- * one carries a 2px primary ring (a shadow, so nothing shifts). */
+/* A filled card: the swatch strip bleeds to the corner, and where the card is
+ * a control the chosen one carries a 2px primary ring (a shadow, so nothing
+ * shifts). One rule, two elements: the gallery draws a <div> with nothing to
+ * choose and the picker draws the same card as a <label> around a radio
+ * (RFC 015 phase 1), so the pointer affordance and the hover wash are scoped
+ * to the label — a card that cannot be pressed must not look pressable. */
 .themecard{position:relative;display:block;
   background:var(--mw-surface-3);
-  border-radius:var(--mw-r-3);overflow:hidden;cursor:pointer}
+  border-radius:var(--mw-r-3);overflow:hidden}
+label.themecard{cursor:pointer}
 .themecard input{position:absolute;opacity:0;pointer-events:none}
 .themecard .sw{height:60px;display:flex}
 .themecard .sw i{flex:1}
@@ -1248,6 +1253,11 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
   letter-spacing:var(--mw-t-h4-tracking);display:block;
   color:var(--mw-ink)}
 .themecard .cap small{color:var(--mw-ink-2);font-size:var(--mw-t-label-xs-size)}
+/* The gallery card's trail, under the caption: who is wearing this theme, then
+ * what can be done to it. Only the gallery draws either — a control inside the
+ * picker's <label> is a control the label steals the click from. */
+.themecard .tm-use{display:flex;flex-wrap:wrap;gap:var(--mw-s-1);margin-top:var(--mw-s-2)}
+.themecard .tm-act{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin-top:var(--mw-s-3)}
 /* The Themes list row's swatch strip — a 66x34 three-colour preview as the
  * listRow lead. The dimensions are a fixed preview size (like .cpreview's
  * width), the corner is a token, and each bar carries only its colour, as a
@@ -1255,7 +1265,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 .theme-swatch{display:flex;width:66px;height:34px;border-radius:var(--mw-r-3);
   overflow:hidden;flex:0 0 auto}
 .theme-swatch i{flex:1;background:var(--swatch)}
-.themecard:hover .cap{background:color-mix(in srgb,
+label.themecard:hover .cap{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .themecard:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
 
