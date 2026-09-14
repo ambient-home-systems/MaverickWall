@@ -225,12 +225,16 @@ describe('creating a wall', () => {
                 width: box === undefined ? -1 : Math.round(box.width),
                 scrollWidth: document.documentElement.scrollWidth,
                 clientWidth: document.documentElement.clientWidth,
+                // The whole form, so the card's position can be read as a
+                // share of it rather than as a bare number.
+                scrollHeight: document.documentElement.scrollHeight,
               };
             });
             // eslint-disable-next-line no-console
             console.log(
-              `[RFC 015 phase 3] 390px: first theme card at y=${geometry.top}, ` +
-                `w=${geometry.width}; page ${geometry.scrollWidth}px in a ${geometry.clientWidth}px viewport`,
+              `[RFC 015 phase 3] 390px: first theme card at y=${geometry.top} of ` +
+                `${geometry.scrollHeight}, w=${geometry.width}; page ${geometry.scrollWidth}px ` +
+                `in a ${geometry.clientWidth}px viewport`,
             );
             expect(geometry.top, 'no theme card on the page at all').toBeGreaterThan(0);
             expect(
