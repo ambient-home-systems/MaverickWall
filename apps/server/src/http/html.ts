@@ -1258,6 +1258,15 @@ label.themecard{cursor:pointer}
  * picker's <label> is a control the label steals the click from. */
 .themecard .tm-use{display:flex;flex-wrap:wrap;gap:var(--mw-s-1);margin-top:var(--mw-s-2)}
 .themecard .tm-act{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin-top:var(--mw-s-3)}
+/* "Suggested for Sky Week", written into the picker's card by
+ * template-gallery.js when the starting layout names a theme (RFC 015 3.1).
+ * The accent ink is what tells it from the caption above it; it is a word and
+ * never a ring, because a ring is what a checked card wears and this card is
+ * deliberately not checked. Minted by the script, so the [hidden] rule is what
+ * keeps an unsuggested card from carrying an empty line. */
+.themecard .tm-sugg{display:block;margin-top:var(--mw-s-1);
+  color:var(--mw-accent-soft-ink)}
+.themecard .tm-sugg[hidden]{display:none}
 /* The Themes list row's swatch strip — a 66x34 three-colour preview as the
  * listRow lead. The dimensions are a fixed preview size (like .cpreview's
  * width), the corner is a token, and each bar carries only its colour, as a

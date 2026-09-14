@@ -25,6 +25,7 @@ import {
   readHousehold,
   requestSyncNow,
   createScreen,
+  setOwnerTheme,
   readLayoutWidgets,
   panelCanvasOwner,
   clearLayout,
@@ -648,6 +649,11 @@ function wallTemplatePreviews(
 ): readonly Record<string, unknown>[] {
   return catalogue.map((t) => ({
     id: t.id,
+    // The name travels for the suggestion on `/admin/walls/new`: a card
+    // reading "Suggested for Sky Week" has to name the card the household just
+    // pressed, and reading it back out of the DOM would be a second copy of a
+    // string this JSON already holds (RFC 015 §3.1).
+    name: t.name,
     aspect: t.portrait.aspect,
     widgets: t.portrait.widgets,
     ...(t.theme !== undefined ? { theme: t.theme } : {}),
@@ -2887,6 +2893,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       template.id === 'classic' ? classicSeed(deps.db, id, householdSetUp(deps.db)) : template,
       seedAspects(deps.db, id),
     );
+    /*
+     * And the theme the household chose wins over the template's own.
+     *
+     * `applyTemplate` writes `template.theme` when the card names one, which is
+     * right on the gallery — pressing Sky Week there *is* asking for Almanac,
+     * and the strip now says so — and wrong here, where the household answered
+     * the same question themselves two fields further down this form. Twelve of
+     * the fourteen templates name a theme, so without this the step phase 2
+     * made mandatory is a control that does nothing on twelve fourteenths of
+     * the page: measured in a real browser, choosing Sky Week and then Panels
+     * made an Almanac wall (RFC 015 §3.1, and the `options.json` rule).
+     *
+     * Written *after* rather than instead, because `applyTemplate` is the one
+     * place that keeps a canvas and its theme consistent and the template's
+     * backgrounds are authored for its own theme. What is overridden is the
+     * answer, never the ordering that produced it — and the household was shown
+     * the template's theme as a suggestion on the card before they chose.
+     */
+    setOwnerTheme(deps.db, id, shaped.value.theme);
     // Shown on the page the redirect lands on, not here: a POST's own answer
     // is a page a reload resubmits (a second wall) and Back cannot return to.
     reveals.put(id, issued, now());
@@ -5007,10 +5032,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<legend class="field-label">Theme</legend>` +
         themeCards(said('theme'), readThemes(deps.db)) +
         `</fieldset>` +
-        `<p class="field-hint">How this wall looks — its colours and type. Panels separates ` +
-        `the shift colours best from across a room. Build your own on the ` +
-        `<a class="link" href="admin/themes">Themes</a> page; you can change this ` +
-        `wall’s afterwards on its own page.</p>` +
+        `<p class="field-hint">A wall keeps the theme you pick here until you change it ` +
+        `on the wall’s own page.</p>` +
         /*
          * The submit rides the foot of the viewport while the form is on
          * screen, rather than sitting 3,700px down behind fourteen previews.

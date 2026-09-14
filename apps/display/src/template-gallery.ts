@@ -49,6 +49,13 @@ function placed(widgets: readonly TemplateWidget[]): readonly ManifestWidget[] {
 
 interface TemplatePreview {
   readonly id: string;
+  /**
+   * The template's own name, as the gallery card reads it.
+   *
+   * Only the add-a-wall form uses it, for the theme suggestion below; a
+   * gallery card already has its name typed beside it on the server.
+   */
+  readonly name?: string;
   readonly aspect: number;
   readonly widgets: readonly TemplateWidget[];
   /**
@@ -92,6 +99,73 @@ interface GalleryData {
   readonly panelFields?: readonly string[];
 }
 
+/**
+ * Choosing a starting layout *suggests* a theme, and can never choose one
+ * (RFC 015 §3.1).
+ *
+ * Twelve of the fourteen shipped wall templates name a theme and applying one
+ * writes it, so on `/admin/walls/new` the two fields are related and nothing on
+ * the page said so: a household picked Sky Week, picked Panels beside it, and
+ * the wall they were about to make would have come out Almanac.
+ *
+ * **It marks, and it never checks.** The no-script form is the specification —
+ * nothing preselected, a choice still required — because a preselected card is
+ * a default wearing a different hat and the household would proceed past it
+ * exactly as they proceeded past the household setting this RFC retired. So
+ * this writes a *word* into the suggested card and touches no radio's
+ * `checked`, and a household with scripting blocked picks a template and then
+ * picks a theme, which is the mandate working as stated rather than degraded.
+ *
+ * The suggestion is drawn from whatever template is checked when the page
+ * arrives as well as on every change, because a form re-rendered at 400 comes
+ * back with the household's own choices echoed into it — a suggestion that
+ * only ever appeared on a click would be missing on the one render where the
+ * household is being asked to look at the form again.
+ *
+ * It does nothing at all on a page that has one of the two fields and not the
+ * other, which is every other page this script runs on.
+ */
+function wireThemeSuggestion(templates: readonly TemplatePreview[]): void {
+  const themes = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="theme"]'));
+  const layouts = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="template"]'));
+  if (themes.length === 0 || layouts.length === 0) return;
+
+  const byId = new Map(templates.map((one) => [one.id, one]));
+  /*
+   * One slot per theme card, minted here rather than rendered by the server.
+   *
+   * The server's card is the *same markup* on three screens — the gallery, the
+   * wall's own page and this form — and an empty element for a suggestion that
+   * only this page can make would be two of those carrying furniture for a
+   * behaviour they do not have.
+   */
+  const slots = new Map<string, HTMLElement>();
+  for (const input of themes) {
+    const cap = input.parentElement?.querySelector('.cap');
+    if (!(cap instanceof HTMLElement)) continue;
+    const slot = document.createElement('small');
+    slot.className = 'tm-sugg';
+    slot.hidden = true;
+    cap.appendChild(slot);
+    slots.set(input.value, slot);
+  }
+
+  const mark = (): void => {
+    const chosen = layouts.filter((one) => one.checked)[0];
+    const template = chosen === undefined ? undefined : byId.get(chosen.value);
+    const theme = template?.theme;
+    const name = template?.name;
+    slots.forEach((slot, ref) => {
+      const suggested = theme !== undefined && name !== undefined && ref === theme;
+      slot.textContent = suggested ? `Suggested for ${name}` : '';
+      slot.hidden = !suggested;
+    });
+  };
+
+  for (const radio of layouts) radio.addEventListener('change', mark);
+  mark();
+}
+
 function boot(): void {
   // Confirm the destructive forms whether or not the preview machinery runs.
   for (const form of Array.from(document.querySelectorAll<HTMLFormElement>('form[data-confirm]'))) {
@@ -118,6 +192,11 @@ function boot(): void {
   }
   const byId = new Map(data.templates.map((t) => [t.id, t]));
   const screenQuery = data.owner === null ? '' : `?screen=${encodeURIComponent(data.owner)}`;
+
+  // Before the panel branch returns, because it is the same page's other field
+  // rather than anything to do with previews — and a panel has no theme, so on
+  // a panel's form there are no theme cards and this is a no-op.
+  wireThemeSuggestion(data.templates);
 
   /*
    * A panel's cards: one real frame each, from the renderer the device runs.
