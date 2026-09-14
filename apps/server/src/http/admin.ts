@@ -435,7 +435,18 @@ import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
 import { offeredTimezones } from './setup.js';
 import { selfHref } from './self.js';
-import { isValidThemeRef, readThemes, type ThemeRow } from '../api/themes.js';
+import { isValidThemeRef, readThemes } from '../api/themes.js';
+/*
+ * The theme table and its card, which used to live in this file (RFC 015 phase
+ * 1). Moved so `admin-themes.ts` — the screen actually about colour — can reach
+ * them without importing this module, which imports it back.
+ */
+import {
+  displayThemeRef,
+  themeCards,
+  themeName,
+  THEMES,
+} from './theme-cards.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
 import { readHaSettings } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
@@ -632,90 +643,6 @@ const displayBody = z
   });
 
 const HHMM_SHAPE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
-
-const THEMES = [
-  { key: 'panels', label: 'Panels — dark, each widget a card' },
-  { key: 'household', label: 'Household — warm daylight paper' },
-  { key: 'blueprint', label: 'Blueprint — light technical wireframe' },
-  { key: 'almanac', label: 'Paper Almanac — the month, as a ledger' },
-  { key: 'swiss', label: 'Swiss — near-black, typographic, no cards' },
-] as const;
-
-/**
- * The three swatch colours per theme, for the wall settings theme cards —
- * background, accent, a shift hue. Taken from the design file's token sets so
- * the card previews what the wall will actually look like. Kept beside `THEMES`
- * so a theme added to one is a visible hole in the other.
- */
-const THEME_SWATCHES: Readonly<Record<string, readonly [string, string, string]>> = {
-  panels: ['#14181E', '#5C93E0', '#E8A33D'],
-  household: ['#F4F0E8', '#B5651F', '#4C7FD1'],
-  blueprint: ['#F2F2F3', '#5980A6', '#2F5D8C'],
-  almanac: ['#FBF8F1', '#B3372B', '#2F5D8C'],
-  swiss: ['#09090B', '#FFB224', '#5C93E0'],
-};
-
-/**
- * Retired theme keys mapped to their surviving equivalent, mirroring the
- * display bundle's `LEGACY_ALIASES`. A household who never changed the setting
- * still carries `board` in the database; normalising it here highlights the
- * right card and pre-selects the right option, so the picker matches the wall.
- */
-const LEGACY_THEME_ALIASES: Readonly<Record<string, string>> = {
-  board: 'panels',
-  slate: 'panels',
-  glance: 'panels',
-};
-
-/** A stored theme reference as the picker should show it — retired keys folded
- *  onto their survivor, everything else (a built-in or a `custom:<id>`) as-is. */
-function displayThemeRef(ref: string): string {
-  return LEGACY_THEME_ALIASES[ref] ?? ref;
-}
-
-/** The bare display name of a built-in theme key, e.g. `panels` → "Panels".
- *  Used to tell a household which theme a template was designed for. */
-function themeName(key: string): string {
-  const found = THEMES.find((t) => t.key === key);
-  return found ? found.label.split(' — ')[0] ?? found.label : key;
-}
-
-/**
- * The theme picker as selectable cards, scriptless.
- *
- * A radio per theme wrapped in a `.themecard` label: it posts `theme` exactly
- * as the old `<select>` did, so the handler is unchanged, and the amber ring on
- * the checked card is pure CSS (`:has(input:checked)`), which is fine in the
- * admin — rule two is about the locked wall tablet, not the household's phone.
- */
-function themeCards(selected: string, custom: readonly ThemeRow[] = []): string {
-  const cardFor = (value: string, name: string, caption: string, swatches: readonly string[]): string =>
-    `<label class="themecard">` +
-    `<input type="radio" name="theme" value="${escapeHtml(value)}"${value === selected ? ' checked' : ''}>` +
-    `<div class="sw">` +
-    swatches.map((c) => `<i style="background:${escapeHtml(c)}"></i>`).join('') +
-    `</div>` +
-    `<div class="cap"><b>${escapeHtml(name)}</b><small>${escapeHtml(caption)}</small></div>` +
-    `</label>`;
-
-  const builtins = THEMES.map((theme) => {
-    const [name, ...rest] = theme.label.split(' — ');
-    const swatches = THEME_SWATCHES[theme.key] ?? ['#0B0E11', '#E0A33E', '#4C7FD1'];
-    return cardFor(theme.key, name ?? theme.key, rest.join(' — '), swatches);
-  }).join('');
-
-  const customCards = custom
-    .map((theme) =>
-      cardFor(`custom:${theme.id}`, theme.name, 'Your theme', [
-        theme.tokens['--bg'] ?? '#0B0E11',
-        theme.tokens['--accent'] ?? '#E8A33D',
-        theme.tokens['--s-night'] ?? '#4C7FD1',
-      ]),
-    )
-    .join('');
-
-  return `<div class="themegrid">${builtins}${customCards}</div>`;
-}
 
 /**
  * What `template-gallery.js` needs to draw a wall template's preview.

@@ -1234,11 +1234,16 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 /* ---- Theme picker cards (Display) ---------------------------------------- */
 .themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--mw-s-4);margin-top:var(--mw-s-2)}
 @media(max-width:560px){.themegrid{grid-template-columns:1fr}}
-/* A selectable filled card: the swatch strip bleeds to the corner, the chosen
- * one carries a 2px primary ring (a shadow, so nothing shifts). */
+/* A filled card: the swatch strip bleeds to the corner, and where the card is
+ * a control the chosen one carries a 2px primary ring (a shadow, so nothing
+ * shifts). One rule, two elements: the gallery draws a <div> with nothing to
+ * choose and the picker draws the same card as a <label> around a radio
+ * (RFC 015 phase 1), so the pointer affordance and the hover wash are scoped
+ * to the label — a card that cannot be pressed must not look pressable. */
 .themecard{position:relative;display:block;
   background:var(--mw-surface-3);
-  border-radius:var(--mw-r-3);overflow:hidden;cursor:pointer}
+  border-radius:var(--mw-r-3);overflow:hidden}
+label.themecard{cursor:pointer}
 .themecard input{position:absolute;opacity:0;pointer-events:none}
 .themecard .sw{height:60px;display:flex}
 .themecard .sw i{flex:1}
@@ -1255,7 +1260,7 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 .theme-swatch{display:flex;width:66px;height:34px;border-radius:var(--mw-r-3);
   overflow:hidden;flex:0 0 auto}
 .theme-swatch i{flex:1;background:var(--swatch)}
-.themecard:hover .cap{background:color-mix(in srgb,
+label.themecard:hover .cap{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .themecard:has(input:checked){box-shadow:0 0 0 2px var(--mw-accent)}
 
