@@ -927,6 +927,16 @@ describe('the Calendars list', () => {
    * asserted against itself would pass just as happily on a list that renders
    * whatever it was handed a moment ago, which is the thing a list of somebody
    * else's rows can most easily be.
+   *
+   * Checked by reverting, which is what says these two are a gate rather than a
+   * description. `calendarRows()` returning `''` reddens three: both of the
+   * ones below and, one describe up, the unreachable house reading its own
+   * stored row back. Dropping the `lastError` branch so no row is ever tagged
+   * reddens exactly one — the second of these — and drawing the tag on every
+   * row regardless reddens exactly the other, on its `not.toContain`. That
+   * third mutation is the one worth running: a list that tags everything is a
+   * list whose tag means nothing, and the round trip is the only assertion in
+   * the file that can see it.
    */
   it('adds here, reads back here, and goes when the source goes on the Calendars page', async () => {
     const { h } = await connected();

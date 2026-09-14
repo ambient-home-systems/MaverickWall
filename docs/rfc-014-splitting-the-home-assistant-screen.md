@@ -1,6 +1,6 @@
 # RFC 014 — Splitting the Home Assistant screen
 
-Status: **implemented** (phases 1 and 2) · Owner: — · First drafted 2026-09-13 ·
+Status: **implemented** · Owner: — · First drafted 2026-09-13 ·
 Revised 2026-09-13 · Implemented 2026-09-14 ·
 Relates to `apps/server/src/http/admin-ha.ts`,
 `apps/server/src/http/components.ts`, `apps/server/src/http/saved.ts`,
@@ -680,6 +680,15 @@ behaviour change in this document and should be reviewable on its own; its
 shape is written out in §9. Phase 1 stands without it — the Calendars
 sub-screen exists either way and carries the add form — so this is an addition
 to a shipped screen rather than the last piece of an unfinished one.
+
+**It was not, in the end, reviewable on its own: phase 2 shipped inside phase
+1's own commit (`426c126`), so the one behaviour change in this document went
+out in a diff of 1,518 lines about routing.** Recorded rather than edited away,
+because the paragraph above it is a good argument and the thing that defeated
+it was nothing more than both phases being in front of the same person at the
+same time — which is how a phase boundary is usually lost, and the reason to
+write the boundary down is that it is the only thing that can be pointed at
+afterwards.
 
 **§3.1's disclosure option stays in the text, and it is the fallback rather
 than a step.** If the split is judged too large, folding the add-forms on the
