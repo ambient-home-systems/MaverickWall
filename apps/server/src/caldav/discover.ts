@@ -361,25 +361,26 @@ export async function discover(fetcher: Fetcher, input: DiscoverInput): Promise<
   }
 
   /*
-   * The host check on what step 1 found, before anything is signed. A
-   * well-known redirect that leaves the typed host is a redirect that chose
-   * where the password goes, and it is exactly as much of a decision as
-   * `calendar-home-set` making the same move two hops later.
+   * There is deliberately **no second host check here**, and the reason is
+   * worth the lines it saves.
+   *
+   * A first draft repeated `decideHost` on what step 1 found, on the argument
+   * that a well-known redirect leaving the typed host chooses where the
+   * password goes just as much as `calendar-home-set` does two hops later.
+   * True, and already handled: `propfind` runs the rule before it builds its
+   * request, so the credentialled hop to `contextUrl` is checked whatever this
+   * function does. Deleting the block turned no assertion red, which is this
+   * repository's own test for a line that is not a fix.
+   *
+   * Its second branch was worse than redundant — it was unreachable.
+   * `contextUrl` starts as an address `hostKey` has already read and is only
+   * ever replaced by one `hostKey` can read, so `unreadable` could not happen,
+   * and the fallback under it could never run.
+   *
+   * What is left is the property that matters: **one place applies the host
+   * rule**, and it is the place that attaches the credential. Two readers of
+   * one rule is the drift this repository's bug table is mostly made of.
    */
-  const afterWellKnown = decideHost({
-    typedUrl: input.serverUrl,
-    nextUrl: contextUrl,
-    confirmedHost: input.confirmedHost,
-  });
-  if (afterWellKnown.status === 'needs-confirmation') {
-    return { status: 'needs-confirmation', host: afterWellKnown.host };
-  }
-  if (afterWellKnown.status === 'unreadable') {
-    // Fall back to the address the household typed rather than refusing: they
-    // gave us something readable, and a server's own redirect being unreadable
-    // is not a reason to refuse the address that was.
-    contextUrl = input.serverUrl;
-  }
 
   // Step 2 — who are we?
   const principalHop = await propfind(
