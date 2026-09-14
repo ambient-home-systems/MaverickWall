@@ -5805,7 +5805,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               )
               .join('')) +
         haCalendarSection(haCalendars, sources) +
-        homeAssistantRouteSection() +
         section(
           'Add a calendar',
           undefined,
@@ -5871,7 +5870,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             `</div></form>`,
           // The fragment the empty state's action links to.
           'add',
-        ),
+        ) +
+        /*
+         * Below the form, and the position is measured rather than chosen.
+         *
+         * Above it, on a household with no calendars yet, the first thing on
+         * the page a person can *press* was this section's own link — 873px
+         * down an 844px phone, so an empty Calendars page opened on a phone
+         * showed nothing actionable without scrolling. `browser-wall.test.ts`
+         * caught it, which is the assertion it exists for.
+         *
+         * It also reads better this way round: somebody arrives here to type an
+         * address, and this is what to do when their provider has none worth
+         * typing.
+         */
+        homeAssistantRouteSection(),
     });
   }
 }

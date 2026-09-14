@@ -375,6 +375,24 @@ describe('the route through Home Assistant', () => {
     expect(html).toContain('Home Assistant failing is all of them');
   });
 
+  it('sits below the add form, so an empty page has something to press', async () => {
+    /*
+     * Placement, asserted because it was wrong first and a browser found it.
+     *
+     * Above the form, on a household with no calendars yet, this section's own
+     * link was the first thing on the page anybody could press — 873px down an
+     * 844px phone. `browser-wall.test.ts` measures that directly; this pins the
+     * *order* from a document a test can read without a browser, so the two
+     * cannot drift apart silently.
+     */
+    const h = await harness();
+    const html = await (await h.call('/admin/calendars')).text();
+    const form = html.indexOf('action="admin/calendars"');
+    const route = html.indexOf('Google, iCloud and Microsoft 365');
+    expect(form).toBeGreaterThan(-1);
+    expect(route).toBeGreaterThan(form);
+  });
+
   it('links relatively, so an ingress household stays inside the add-on', async () => {
     // An absolute `/admin/home-assistant` under the supervisor's ingress prefix
     // lands in Home Assistant's own UI. The single `<base>` is what carries a
