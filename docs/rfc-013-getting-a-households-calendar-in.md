@@ -399,7 +399,7 @@ weekly event, the HA route is measurably cheaper than the ICS one.
 
 ### 6.0 What is built, as of this line
 
-The **transport half** is in `apps/server/src/caldav/` and
+**Phase C is complete.** The transport half is in `apps/server/src/caldav/` and
 `packages/core/src/ports/fetcher.ts`:
 
 | Section | Where it landed |
@@ -410,20 +410,38 @@ The **transport half** is in `apps/server/src/caldav/` and
 | §6.4 / §6.5 the REPORT and the split | `caldav/query.ts` |
 | §6.8 the XML reader | `caldav/multistatus.ts` |
 
-**Nothing a household can reach.** There is no `caldav_accounts` table (§6.2.1),
-no `kind = 'caldav'`, no sync job (§6.6), no `testFeed` stage (§6.7) and no
-screen. `discover` has no caller in the application; its callers are its tests.
-So the security boundary this phase widens is in place and reviewable *before*
-anything is wired to it, which is the same ordering RFC 012 phase 1 used for the
-same reason.
+And the **product half** is wired to it:
+
+| Section | Where it landed |
+|---|---|
+| §6.2.1 the account table | `db/schema.ts` `caldavAccounts`, migration `0043`, `api/caldav-accounts.ts` |
+| §6.2.2 the one resolver | `api/feed-credentials.ts` `connectionFor`, reading the account first |
+| §6.3.1 the confirmation | `api/caldav-pending.ts` plus three POSTs on `/admin/calendars` |
+| §6.6 the CTag and the sync | `jobs/caldav-sync.ts`, one job per collection |
+| §6.7 the fourth stage and the picker | `api/test-feed.ts` `testCaldavAccount`, `http/admin.ts` |
+| D7 the CLI | `add-source --caldav`, `diagnose-source`'s account/host/CTag lines |
+
+**That ordering is the part worth keeping.** This section previously read
+"nothing a household can reach", and it was accurate: the security boundary this
+phase widens was in place and reviewable *before* anything was wired to it,
+which is the same ordering RFC 012 phase 1 used for the same reason. Reviewing a
+widened outbound boundary on its own, and the feature that uses it separately, is
+cheaper than reviewing both at once — and it is why the host policy was a pure
+table with a bypass list before it was ever a screen.
 
 Two things §11 asks for remain unproven and are unproven in the way that
 matters. **No real iCloud account has been seen**: the partition-host hop is
 modelled by a second loopback server, and whether Apple's `calendar-data` parses
-is exactly as open as it was. **No real Nextcloud has been seen either** — the
-fixtures under `apps/server/test/fixtures/caldav/synthetic/` are authored from
-documented shapes, `real/` is empty, and `real/MISSING.md` says which four files
-would close it.
+is exactly as open as it was. **No real Nextcloud has been seen either** — but
+`real/` is no longer empty: five responses from a real **SabreDAV 4.7.1**, the
+library Nextcloud's calendar app is built on, are committed byte for byte and
+read by `caldav-real-fixtures.test.ts`. That is a real producer rather than an
+author, and it earned its place on the first run by writing the CalDAV namespace
+as `cal:` where every synthetic fixture here writes `C:` — §6.8's named failure,
+found the moment non-authored bytes arrived. It is still not Nextcloud's own
+deployment (its routing, its principals, the redirect it issues on a wrong
+trailing slash) and it is emphatically not Apple; `real/MISSING.md` says which
+files would close the rest.
 
 ### 6.1 iCloud has no other door
 
@@ -894,6 +912,12 @@ type, because a fourth stage and a calendar picker are not per-provider
 cosmetics. That is the file to review hardest.
 
 ## 10. Phases
+
+**A, B and C have shipped; D has not.** The descriptions below are kept as
+written rather than rewritten in the past tense, because what they record is the
+*scope each phase was committed to* — which is the thing worth checking a
+shipped phase against. §6.0 says where Phase C actually landed, file by file,
+and what about it is still unproven.
 
 **A — a feed can have a password.** Migration, two columns, two fields on the
 admin form and the same two — script-free — on the wizard's own calendar step

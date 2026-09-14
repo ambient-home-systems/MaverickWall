@@ -114,7 +114,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and thirty-eight real bugs**, and the pattern in how is the most
+This project has found **one hundred and forty-seven real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -280,6 +280,15 @@ useful thing in this document:
 | One of two clear branches deleted, with every poll in the test a 304 | Nudging the cache so the next poll carried a body, which is the other branch |
 | A frame called blank because it weighed 359 bytes | Decoding it: 1,800 inked pixels, and a sparse 1-bit PNG compresses to almost nothing |
 | A fake that refused a summary where Home Assistant ticks the wrong item | Copying `_find_by_uid_or_summary`, so the fixture could show the bug it was built for |
+| **Discovery refused every server that has never heard of RFC 6764** | Pointing the CLI at a real SabreDAV, which 404s `/.well-known/caldav` |
+| A working CalDAV calendar reporting `http=false` above a request that had just succeeded over http | Reading `diagnose-source`'s own output against that server |
+| A diagnosis that probed a collection with a `GET`, which every CalDAV server answers 405 | The same reading — it would have called a healthy calendar broken |
+| Two calendars called "Home", and the CLI silently picking whichever was listed first | Creating the second one and running it |
+| **A declared `ON DELETE CASCADE` that never reached the database** | Running both spellings against a real `better-sqlite3`, rather than reading `schema.ts` |
+| A host confirmation drawn at the foot of a page every POST returns to the top of | Moving the form, after a test caught it being a second primary |
+| **An admin-copy crawl blind to every conditional section on the page** | Planting a retired noun in one and watching the whole suite stay green |
+| A mutation that came back green because the edit never applied to the file | Asserting the anchor matched before believing the run |
+| A disclosure assertion that passed on every render, open or shut | Asking whether *any* `<details>` was open, then asking which one |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -455,10 +464,15 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3064 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 495 · server 2102. CI runs the whole suite and then the README's
+**3275 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 495 · server 2313. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
-has ever been wrong.
+has ever been wrong. Measured on a clean run rather than added to the previous
+figure, which is the discipline the paragraph below spells out at length for the
+*other* count on this page and which applies to this one identically: RFC 013's
+four new server suites are +211 between them, and an arithmetic that happened to
+agree would prove nothing, because the way these numbers have always gone wrong
+is somebody incrementing rather than running.
 
 **Two of them were red for all but about two minutes a day, and it is the
 bootstrap code's fault a third time.** `admin-status-claims` and
@@ -511,8 +525,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**226 of the server's tests fail without a real Chromium and say so**, across
-35 files, which is worth knowing before reading a red suite as a regression. A
+**227 of the server's tests fail without a real Chromium and say so**, across
+36 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -525,11 +539,14 @@ all — measured in passing, while running the suite for something else. **And
 it read 220 over 33 while the truth was 222 over 34**, re-measured for the
 to-do list's two browser tests the same way — the server suite run with
 `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing, every failure checked to be the
-browser's own sentence — rather than incremented by the files added. It is 226
-over 35 now, measured the same way and for the same reason — and this time the
-measurement happens to agree with the arithmetic the tick's own four tests
-predict, which is a coincidence worth nothing: the only thing that makes the
-number true is that the run was made. That is
+browser's own sentence — rather than incremented by the files added. It read 226
+over 35 while the truth was **227 over 36**, and that one is the cleanest
+demonstration this paragraph has: RFC 013 added four server suites and **not one
+browser test**, so the arithmetic said the number could not have moved and the
+number had moved anyway. It was already wrong before that work started; running
+it is the only thing that could have said so. Every one of the 36 was checked to
+be the browser's own sentence rather than a real failure hiding in the count,
+which is the other half of the method and the half an incrementer skips. That is
 the right failure — these measure layout, and a browser test that silently skips
 is this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
@@ -545,12 +562,173 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (29 tables, 42 migrations) · migrations behind a
+secrets at rest · the schema (30 tables, 44 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
 wizard and sign-in, server-rendered** · **Calendars screen** (add with a real
 feed test, sync now, remove) · **the wall itself, drawing real data**.
+
+**A household can get their calendar in three ways now, and the third is the
+one this product had no honest answer for (RFC 013).** Nothing in this section
+recorded any of it until Phase C shipped, which is this section's own warning
+arriving on schedule: three phases of work, live, and invisible in the first
+document every contributor reads.
+
+**A — a feed can carry a username and a password.** Two columns on
+`calendar_sources`, two fields on the add form and the same two on the wizard's
+calendar step, the CLI's `--user` and `--password-stdin`. It gets Nextcloud,
+Baïkal, Radicale, SOGo, Fastmail and every school feed behind a sign-in, with no
+protocol work at all. Two things in it are decisions rather than plumbing. A
+**401 has three causes and gets three sentences** — credentials needed and
+absent, supplied and wrong, and supplied and *dropped by a redirect* — because
+reporting all three as "that password was not accepted" turns the best screen in
+the admin into a shrug, and for two of them the action it names does nothing.
+And a refused sign-in is **held for a week rather than retried on the ladder**:
+no amount of waiting turns a wrong password right, and a feed knocking every
+fifteen minutes is how Nextcloud's brute-force protection and Apple's account
+lockout get triggered against a household's own account. An edit is what
+releases it, which is the path that actually recovers this.
+
+**B — the route through Home Assistant is named where somebody has the
+problem.** Google, iCloud, Microsoft 365 and Nextcloud all reach a wall today
+through a Home Assistant calendar entity, and nothing said so anywhere but the
+Home Assistant screen itself, which is not where anybody stands when they have
+this problem. It renders on Calendars **whether or not Home Assistant is
+connected**, which is the whole point rather than a detail: a household with no
+connection is exactly who needs telling that making one is a way to reach
+Google and iCloud, so gating it on the same condition as the entity picker
+above it would leave the sentence readable only by households who had already
+solved the problem it describes.
+
+**C — CalDAV, which is the only door iCloud has.** Apple has no calendar API,
+no OAuth for calendars and no personal access tokens; CalDAV against
+`caldav.icloud.com` with an Apple ID and an app-specific password is the entire
+surface. What an iCloud household was told to do before this was use a public
+share link, which is **unauthenticated** — anyone holding the URL reads the
+family's calendar — so the alternative to building this was a privacy answer
+this product should not be giving. That is why it was committed rather than
+costed.
+
+**`caldav_accounts` is the one place CalDAV does not fit the existing shape,
+and password rotation is what decides it.** An ICS feed is one URL to one
+calendar and `calendar_sources` is exactly that; a CalDAV account is **one
+credential to many calendars**. Asking of every column whether it is a fact
+about the account or about the calendar splits them cleanly — colour, owner,
+visibility, `show_in_grid`, the CTag and every health column are per calendar;
+the credential, the three network opt-ins and the discovered URLs are per
+account. Under a flat scheme a household regenerating an app-specific password
+edits four rows with the same value, and missing one presents as "one of my
+calendars stopped updating", which is about the hardest fault for a household to
+describe and for `diagnose-source` to be pointed at. The assertion that *is*
+that argument — three calendars, one password change, all three sync — fails on
+two of the three under a flat scheme, which makes it the test somebody
+flattening the schema later would have to delete rather than adjust.
+
+**The premise was checked in front of a real account before the table was
+written**, which is the RFC's own gate and worth more than the table: if
+households reliably have one calendar per account, the parent table, the join,
+the cascade and the admin concept are all bought for nothing, and that is cheap
+to find out before and expensive after.
+
+**`connectionFor` reads the account first and the row's own columns second, and
+the half that matters is the policy rather than the header.** One resolver for
+all three kinds, so the sync jobs, `testFeed` and the CLI all call it and none
+of them knows there are two storage locations. A header-only resolver would have
+left the three network opt-ins read from the calendar row for an ICS feed and
+from the account row for a CalDAV one — two shapes, two readers, which is the
+drift the whole seam exists to prevent one layer down from where it names it.
+
+**Discovery is server-directed twice, so the password stops before it moves.**
+The well-known redirect chooses the context path and `calendar-home-set` chooses
+the host the calendars live on, and we attach an app-specific password to every
+hop after the first — a credential-disclosure primitive with the SSRF guard's
+shape that the guard has nothing to say about. It cannot simply be refused,
+because iCloud *requires* the move: `caldav.icloud.com` is typed and
+`pNN-caldav.icloud.com` is where the calendars are. Same host is silent, a
+different host is confirmed once and stored. **The password crosses that round
+trip without being echoed because it does not cross it at all** — it is held in
+memory under an opaque id (`api/caldav-pending.ts`), so the confirmation page
+carries the id and nothing else and there is nothing in that markup for a
+browser's autofill or a screenshot to remember. In memory and nowhere else,
+deliberately: writing it to `/data` would store an Apple ID password *before*
+the household has agreed to store it, which is the thing the step exists to ask.
+
+**One resource per event is better than what the ICS path can do.** Each CalDAV
+resource is a complete `VCALENDAR` holding one series and its overrides, so
+`expandCalendar` runs once per resource and one malformed resource costs one
+event rather than the calendar — the first row of the table above, made
+structurally impossible for this kind. The assertion puts a truncated resource
+**between** two good ones, because one at the end passes on a reader that stops
+at the first failure. And `<C:expand>` is refused outright: server-side
+expansion takes `packages/calendar` off the path and lands a household's
+birthday on a different day depending on their provider.
+
+**The CTag needed no schema change and no new concept.** A collection's
+`CS:getctag` is an ETag for a collection, so it lives in `calendar_sources.etag`
+and an unchanged calendar costs one `PROPFIND` and no `REPORT`. `testFeed` grew
+a fourth stage, `discover`, and the distinction is the whole value: *the address
+is not a CalDAV server*, *you are signed in and that account has no calendars*
+and *that password was not accepted* are three different sentences naming three
+different next actions, and collapsing them into "could not connect" would
+reduce the best screen in the admin to the worst kind of error.
+
+**A real SabreDAV found four faults, and it is the same lesson as every other
+row in the table above.** No Docker daemon was available, so Nextcloud could not
+be run — but SabreDAV is the library Nextcloud's calendar app is *built* on and
+runs under `php -S`. The sharpest: **discovery adopted the well-known hop's
+final URL unconditionally**, so a server answering **404** at
+`/.well-known/caldav` had that dead path taken as its context URL and every
+later hop aimed at it, refusing the server with "it may not be a CalDAV server"
+— which is precisely what the comment above that hop says must not happen. No
+fake could see it, because every fake modelled the redirect and the whole
+question is what a server does when it has none. The other three were found by
+reading the tool's own output: `diagnose-source` printed the *calendar row's*
+three switches for a CalDAV calendar, where they are always false, so a working
+calendar reported `http=false` directly above a request that had just succeeded
+over plain http; it probed a collection with a `GET`, which every CalDAV server
+answers 405, so it would have called a healthy calendar broken; and the CLI
+picked silently between two calendars with the same display name, which is
+`_find_by_uid_or_summary` one feature along. Five of its responses are committed
+byte for byte under `test/fixtures/caldav/real/` and read by a test — they
+earned it immediately, writing the CalDAV namespace as `cal:` where every
+synthetic fixture in the corpus writes `C:`, which is exactly the divergence the
+RFC says this reader dies on.
+
+**The declared `ON DELETE CASCADE` is not in the database, and that is worth
+knowing before trusting the schema file.** drizzle-kit drops the FK action from
+an `ALTER TABLE ADD COLUMN`, so SQLite applies `NO ACTION` and deleting an
+account that still has calendars is *refused* rather than cascaded — measured
+against a real `better-sqlite3` with `foreign_keys = ON`, both spellings, rather
+than read off `schema.ts`. `person_id` has had the identical divergence since
+`0006` and the repository's existing answer to it is `deletePerson`, which nulls
+the column itself inside the transaction; `deleteSource` now does the same for
+the account. The declaration stays because it is the correct intent and is what
+a future recreate of that table would emit. What it is not is a thing to rely on
+today, and `migration-upgrade.test.ts` asserts the refusal so that a drizzle
+which starts emitting the action turns red and somebody reads the code
+compensating for its absence.
+
+**Still unproven where it counts, and it is the part with no substitute.** **No
+real iCloud account has been touched**: the partition-host hop is modelled by a
+second loopback server and whether Apple's `calendar-data` parses is exactly as
+open as it was, which is the one item the RFC says no fixture stands in for.
+**No real Nextcloud** either — SabreDAV is its DAV library rather than its
+deployment, so its own routing, principals and the redirect it issues on a wrong
+trailing slash are all untested. Nobody has added an account through these
+screens on a real phone or in a real supervisor's sidebar. And the rotation
+case, which is the whole argument of the table, is proven against a second
+loopback server standing in for a regenerated Apple password rather than against
+Apple.
+
+**Deliberately not in the wizard.** The wizard asks for one ICS address because
+its job is something on the wall in the first five minutes, and its calendar
+step is already skippable; a CalDAV account is three fields, a possible host
+confirmation and a picker, which is a second journey inside the one screen that
+has to stay a straight line. An iCloud household adds it from Calendars
+afterwards and `docs/first-run.md` says so where they are standing. The evidence
+that would reopen it is adding an account from Calendars turning out to be the
+commonest first act.
 
 **Chores are built end to end, and the split is the design (RFC 008).** A
 chore has two lifecycles with nothing in common: *defining* one is rare and
