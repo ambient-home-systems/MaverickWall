@@ -569,6 +569,23 @@ describe('theme tokens in the manifest', () => {
     expect(manifest.theme.daytimeEndsAt).toBe('21:00');
   });
 
+  it('carries the schedule from the wall and nowhere else', () => {
+    // No daytime theme on the wall is the same theme all day, whatever any
+    // other row might once have said; there is no household schedule now.
+    const manifest = buildManifest({
+      ...BASE,
+      screen: { orientation: 'auto', rotation: 0, theme: 'almanac' },
+    });
+    expect(manifest.theme).toEqual({ active: 'almanac', activeShape: 'almanac' });
+  });
+
+  it('wears the stand-in for a document built for no wall, so it still draws', () => {
+    // Not a default — nobody inherits it. It is what the degraded document and
+    // the admin's previews wear because they name no wall (RFC 015 §3.2).
+    const manifest = buildManifest({ ...BASE, resolveTheme: (ref) => ({ shape: ref }) });
+    expect(manifest.theme.active).toBe(STAND_IN_THEME);
+    expect(manifest.theme.activeShape).toBe('panels');
+  });
 });
 
 describe('per-type shift colour and times', () => {

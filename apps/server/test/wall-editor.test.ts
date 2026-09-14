@@ -323,6 +323,33 @@ describe('wall settings are categories, and every field kept its name', () => {
     expect(html).toContain('Household default — 6 weeks');
   });
 
+  it('offers this wall its own theme and nothing to inherit, and says what a blank schedule is', async () => {
+    /*
+     * RFC 015 phase 2. The theme select used to lead with "Household default —
+     * <theme>" and the daylight select with "Household default — the same
+     * theme all day". There is no household theme now, so the first is exactly
+     * the themes this wall can draw, with the one it wears selected, and the
+     * daylight select's blank says what a blank *is* — the same theme all day
+     * — rather than what somebody else's row would have said. Asserted as what
+     * the page says, not as the absence of the old sentence: an assertion that
+     * "the household default no longer applies" passes just as happily on a
+     * page offering no theme at all.
+     */
+    const h = await ready();
+    h.pairScreen('s7b', 'Kitchen', 'almanac');
+    const html = await (await h.call('/admin/walls/s7b')).text();
+    const form = settingsFormOf(html);
+    const themeAt = form.indexOf('name="theme"');
+    const themeSelect = form.slice(themeAt, form.indexOf('</select>', themeAt));
+    expect(themeSelect).not.toContain('Household default');
+    expect(themeSelect).not.toContain('value=""');
+    expect(themeSelect).toContain('<option value="almanac" selected>');
+    const dayAt = form.indexOf('name="daytime_theme"');
+    const daySelect = form.slice(dayAt, form.indexOf('</select>', dayAt));
+    expect(daySelect).toContain('<option value="" selected>Same theme all day</option>');
+    expect(daySelect).not.toContain('Household default');
+  });
+
   it('lists a screen’s own zone this build’s Intl has never heard of', async () => {
     /*
      * The fifth closed list (RFC 009 Phase 3.1), and the one with the sharpest

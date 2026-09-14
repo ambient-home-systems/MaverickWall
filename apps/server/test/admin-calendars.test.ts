@@ -574,6 +574,22 @@ describe('display settings', () => {
     expect(manifest.theme.daytime).toBeUndefined();
   });
 
+  it('ignores a theme posted to System, because there is nowhere for it to go', async () => {
+    /*
+     * A page cached from before the household theme was retired still posts
+     * `theme`. It is neither refused nor written: the content it also carries
+     * saves, and the wall goes on wearing its own.
+     */
+    const h = await harness();
+    const wall = pair(h.db, 'Kitchen');
+    const response = await h.form('/admin/display', {
+      theme: 'almanac', daytime_theme: 'none',
+      today_events: '8', next_days: '6', horizon_weeks: '5', week_start: 'sunday',
+    });
+    expect(response.status).toBe(302);
+    expect((await manifestOf(h, wall.token)).theme.active).toBe('panels');
+  });
+
   it('refuses a wall a theme it cannot draw', async () => {
     const h = await harness();
     const wall = pair(h.db, 'Kitchen');
@@ -1200,6 +1216,15 @@ describe('per-screen overrides', () => {
     const manifest = await manifestFor(h, screen.token);
     expect(manifest.theme.active).toBe('panels');
     expect(manifest.timezone).toBe('Europe/London');
+  });
+
+  it('refuses to save a wall with no theme at all', async () => {
+    // Blank used to mean "follow the household"; there is nothing to follow
+    // (RFC 015 phase 2), so a blank is a refusal and the wall keeps its own.
+    const h = await harness();
+    const screen = pairOne(h.db, 'Kitchen');
+    expect((await h.form(`/admin/screens/${screen.id}`, settings({ theme: '' }))).status).toBe(400);
+    expect((await manifestFor(h, screen.token)).theme.active).toBe('panels');
   });
 
   it('lets one screen take its own theme, night schedule and zone', async () => {

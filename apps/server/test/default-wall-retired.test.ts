@@ -236,6 +236,110 @@ async function manifestOf(
   return (await response.json()) as never;
 }
 
+describe('a wall names its own theme on every door that makes one', () => {
+  /*
+   * RFC 015 phase 2, and the finding of the seeding test above repeating one
+   * column along: the device-flow approve and the CLI both created a wall and
+   * stopped, and the household default hid the omission for as long as it
+   * existed — a wall silently drawing Panels while the household had chosen
+   * Almanac everywhere else. There is no default now, so every door answers,
+   * `createScreen` takes the answer as a parameter it does not default, and
+   * this walks the two doors a request can reach. The third, `add-screen`, is
+   * walked by the compiler: it cannot call `createScreen` without one.
+   */
+  it('carries the chosen theme through the add page and the device flow into the manifest', async () => {
+    const h = await harness();
+
+    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'almanac' });
+    expect(made.status).toBe(303);
+
+    const started = await h.post(`${B}/d/pair/device-start`, {});
+    const { userCode } = (await started.json()) as { userCode: string };
+    const approved = await h.post(`${B}/admin/screens/approve`, {
+      code: userCode,
+      name: 'Hallway',
+      action: 'approve',
+      theme: 'blueprint',
+    });
+    expect(approved.status).toBe(200);
+
+    const walls = h.db
+      .prepare(`SELECT id, name, theme FROM screens ORDER BY name`)
+      .all() as { id: string; name: string; theme: string }[];
+    expect(walls.map((w) => [w.name, w.theme])).toEqual([
+      ['Hallway', 'blueprint'],
+      ['Kitchen', 'almanac'],
+    ]);
+    for (const wall of walls) {
+      expect((await manifestOf(h, wall.id)).theme.active, wall.name).toBe(wall.theme);
+    }
+  });
+
+  it('refuses the add page a wall with no theme, and writes no row', async () => {
+    // The form is a convenience and the POST is the boundary: a hand-posted
+    // body with no theme is a 400, not a wall wearing whatever a column defaults to.
+    const h = await harness();
+    const refused = await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    expect(refused.status).toBe(400);
+    // The refusal is the add page again, with what was typed still in it.
+    const page = await refused.text();
+    expect(page).toContain('value="Kitchen"');
+    expect(page).toContain('name="theme"');
+    expect(h.db.prepare('SELECT count(*) AS n FROM screens').get()).toEqual({ n: 0 });
+  });
+
+  it('refuses to approve a pairing with no theme, before the code is spent', async () => {
+    /*
+     * Refusing *after* the token was bound would leave the flow approved with
+     * no screen — the orphan the approve handler's ordering exists to prevent.
+     * So the code is still pending afterwards, and the same code goes through
+     * once a theme is chosen.
+     */
+    const h = await harness();
+    const started = await h.post(`${B}/d/pair/device-start`, {});
+    const { userCode } = (await started.json()) as { userCode: string };
+
+    const refused = await h.post(`${B}/admin/screens/approve`, {
+      code: userCode,
+      name: 'Hallway',
+      action: 'approve',
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain('Choose a theme for this wall.');
+    expect(h.db.prepare('SELECT count(*) AS n FROM screens').get()).toEqual({ n: 0 });
+
+    const approved = await h.post(`${B}/admin/screens/approve`, {
+      code: userCode,
+      name: 'Hallway',
+      action: 'approve',
+      theme: 'swiss',
+    });
+    expect(approved.status).toBe(200);
+    expect(h.db.prepare('SELECT name, theme FROM screens').all()).toEqual([
+      { name: 'Hallway', theme: 'swiss' },
+    ]);
+  });
+
+  it('still resolves a theme for a wall whose stored theme names nothing', async () => {
+    /*
+     * Rule nine, and the assertion RFC 015 §3.2 asks for: retiring the
+     * household default must not retire the fallback. A wall storing a
+     * `custom:` reference to a theme that is gone still gets a document with a
+     * real shape in it — `resolveTheme`'s own floor — rather than a manifest
+     * the display has to rescue, or nothing.
+     */
+    const h = await harness();
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
+    const { id } = h.db.prepare('SELECT id FROM screens').get() as { id: string };
+    h.db.prepare(`UPDATE screens SET theme = 'custom:missing' WHERE id = ?`).run(id);
+
+    const manifest = await manifestOf(h, id);
+    expect(manifest.theme.active).toBe('custom:missing');
+    expect(manifest.theme.activeShape).toBe('panels');
+    expect(manifest.theme.activeTokens).toBeUndefined();
+  });
+});
+
 describe('the Default wall is not a display any more', () => {
   it('sends its page to System and keeps it off the Walls list', async () => {
     const h = await harness();

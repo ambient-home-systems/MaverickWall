@@ -270,6 +270,47 @@ describe('the theme builder', () => {
     expect(cardNamed(html, 'Paper Almanac')).not.toContain('Hall');
   });
 
+  it('re-dresses every wall wearing a theme when it is deleted, in Panels, and says so first', async () => {
+    /*
+     * RFC 015 §3.4. A bare DELETE left a wall pointing at a row that was gone,
+     * rescued at read time — which under "every wall names its own theme" is a
+     * wall wearing a value nobody chose. Two walls wear it, one as its theme
+     * and one as its daylight theme too; the confirmation names both and what
+     * they will wear, and after the delete both rows and both manifests say
+     * Panels.
+     */
+    const h = await harness();
+    await h.form('/admin/themes', themeFields('Sunset'));
+    const id = readThemes(h.db)[0]?.id ?? '';
+    const ref = `custom:${id}`;
+    const kitchen = wearing(h.db, 'w-k', 'Kitchen', ref);
+    const hall = wearing(h.db, 'w-h', 'Hall', ref);
+    h.db.prepare(`UPDATE screens SET daytime_theme = ?, daytime_starts_at = '07:00', daytime_ends_at = '21:00' WHERE id = 'w-h'`).run(ref);
+
+    const confirm = await (await h.call(`/admin/themes/${id}/delete`)).text();
+    expect(confirm).toContain('Kitchen');
+    expect(confirm).toContain('Hall');
+    expect(confirm).toContain('they switch to Panels.');
+
+    const removed = await h.form(`/admin/themes/${id}/delete`, {});
+    expect(removed.status).toBe(302);
+    expect(readThemes(h.db)).toHaveLength(0);
+    expect(
+      h.db.prepare(`SELECT id, theme, daytime_theme AS daytime FROM screens ORDER BY id`).all(),
+    ).toEqual([
+      { id: 'w-h', theme: 'panels', daytime: null },
+      { id: 'w-k', theme: 'panels', daytime: null },
+    ]);
+    for (const token of [kitchen, hall]) {
+      const manifest = (await (
+        await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
+      ).json()) as { theme: { active: string; activeShape: string; daytime?: string } };
+      expect(manifest.theme.active).toBe('panels');
+      expect(manifest.theme.activeShape).toBe('panels');
+      expect(manifest.theme.daytime).toBeUndefined();
+    }
+  });
+
   it('edits and deletes a theme', async () => {
     const h = await harness();
     await h.form('/admin/themes', themeFields('Sunset'));

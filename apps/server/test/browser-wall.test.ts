@@ -1235,3 +1235,39 @@ describe('5 · a phone', () => {
     SLOW,
   );
 });
+
+describe('6 · a wall wearing a theme that is gone', () => {
+  /*
+   * RFC 015 §3.2's one assertion for the display: retiring the household
+   * default must not retire the *fallback*. A wall whose stored theme names a
+   * custom theme that no longer exists gets a manifest with a real shape in it
+   * (`resolveTheme`'s floor) and the bundle draws it — a canvas with widgets
+   * on it, under a live `data-theme`, rather than nothing. Measured on the
+   * glass, because a manifest that resolves and a wall that draws are two
+   * different facts and only the second is rule nine.
+   */
+  it(
+    'still draws a canvas with widgets on it',
+    async () => {
+      const wall = await fresh({ feed: true });
+      const link = await wall.pairLink();
+      wall.db.prepare(`UPDATE screens SET theme = 'custom:missing'`).run();
+      const context = await (await browser()).newContext({ viewport: { width: 1080, height: 1920 } });
+      try {
+        const page = await context.newPage();
+        await page.goto(link, { waitUntil: 'load' });
+        await settleWall(page);
+        const state = await wallState(page);
+        expect(state.canvases).toBe(1);
+        expect(state.widgets, 'a wall with a dangling theme drew nothing').toBeGreaterThan(0);
+        // The shape the manifest resolved to, applied — not the dangling key.
+        expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe(
+          'panels',
+        );
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});
