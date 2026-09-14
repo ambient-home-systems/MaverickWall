@@ -2200,6 +2200,15 @@ pre.code{background:var(--mw-surface-2);
 .wset-group{position:relative;margin:var(--mw-s-5) 0 0}
 .wset-group:first-of-type{margin-top:var(--mw-s-4)}
 .wset-group>.kick{margin:0 0 var(--mw-s-2)}
+/* The theme picker inside the wall's settings sheet: the same .themegrid of
+ * .themecard labels the creation page and Themes draw, so the choice has one
+ * appearance wherever it is taken (RFC 015 3.5). A bare fieldset, because the
+ * cards are already the surface and a border round them would be a box round a
+ * box -- .tplpick-field one form along is written the same way. The grid's own
+ * max-width:560px rule drops it to one column, so nothing here has a width of
+ * its own to keep in step with the sheet's 720px cap. */
+.wset-themes{border:0;padding:0;margin:0;min-width:0}
+.wset-themes>.themegrid{margin-bottom:var(--mw-s-4)}
 
 /* ---- Compact settings rows ---------------------------------------------- */
 /* A grouped surface of rows, with dividers rather than a box round each one. */

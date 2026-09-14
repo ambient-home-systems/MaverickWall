@@ -169,7 +169,10 @@ describe('the theme builder', () => {
     const row = h.db.prepare('SELECT theme FROM screens WHERE id = ?').get(wall) as { theme: string };
     expect(row.theme).toBe(`custom:${id}`);
     const page = await (await h.call(`/admin/walls/${wall}`)).text();
-    expect(page).toContain(`<option value="custom:${id}" selected>`);
+    // A card now, not an option (RFC 015 phase 3): the same picker the wall was
+    // created with, checked on what it is wearing.
+    expect(page).toContain(`<input type="radio" name="theme" value="custom:${id}" checked>`);
+    expect(page).toContain('Sunset');
   });
 
   it('refuses a theme reference that does not exist, on both doors', async () => {
@@ -323,5 +326,100 @@ describe('the theme builder', () => {
     const removed = await h.form(`/admin/themes/${id}/delete`, {});
     expect(removed.status).toBe(302);
     expect(readThemes(h.db)).toHaveLength(0);
+  });
+});
+
+/**
+ * One control, wherever the choice is taken (RFC 015 §3.5, phase 3).
+ *
+ * A wall's theme used to be chosen on `/admin/walls/new` as a grid of cards and
+ * on the wall's own page as a plain `<select>` — one stored value rendered
+ * through two controls, which is `shifts[0]` / `display_mode` / `cellEvents`
+ * occurring in the furniture rather than in a renderer, and the mechanism by
+ * which the two came to offer different things is simply that nothing compared
+ * them.
+ *
+ * So this compares them: the same markup, and the same set of values. It reads
+ * the *rendered* pages rather than calling `themeCards` twice, because calling
+ * one builder twice proves only that a function is deterministic — what is
+ * under test is that both screens call it, and with the household's own themes.
+ */
+describe('the two places a wall’s theme is chosen', () => {
+  /** Every `theme` radio a page offers, in the order it offers them. */
+  const offered = (html: string): readonly string[] =>
+    [...html.matchAll(/<input type="radio" name="theme" value="([^"]*)"/g)].map((m) => m[1] as string);
+
+  /** The one card a page has checked, if any. */
+  const checked = (html: string): readonly string[] =>
+    [...html.matchAll(/<input type="radio" name="theme" value="([^"]*)" checked>/g)].map(
+      (m) => m[1] as string,
+    );
+
+  it('offer the same themes, custom ones included, in the same order', async () => {
+    const h = await harness();
+    // Two custom themes, because one cannot tell "appends the household's" from
+    // "appends the household's *first*", and order is half of "the same list".
+    await h.form('/admin/themes', themeFields('Sea glass'));
+    await h.form('/admin/themes', themeFields('Sunset'));
+    const custom = readThemes(h.db).map((theme) => `custom:${theme.id}`);
+    expect(custom).toHaveLength(2);
+
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'almanac' });
+    expect(made.status, 'the wall must exist for its page to be read').toBe(303);
+    const wallId = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
+    expect(wallId).not.toBe('');
+
+    const creation = await (await h.call('/admin/walls/new')).text();
+    const wall = await (await h.call(`/admin/walls/${wallId}`)).text();
+
+    const expected = [...THEMES.map((t) => t.key), ...custom];
+    expect(offered(creation), 'the creation page').toEqual(expected);
+    expect(offered(wall), 'the wall’s own page').toEqual(expected);
+    // And the same card, not merely the same values: a second builder drifting
+    // is what the RFC is about, and two grids of identical radios in different
+    // markup would satisfy the weaker reading.
+    expect(creation, 'the creation page draws the shared card').toContain('class="themecard"');
+    expect(wall, 'the wall’s page draws the shared card').toContain('class="themecard"');
+    for (const ref of expected) {
+      const card = (html: string): string => {
+        const at = html.indexOf(`name="theme" value="${ref}"`);
+        return html.slice(at, html.indexOf('</label>', at));
+      };
+      // Minus the `checked` attribute, which is the one thing that must differ.
+      const strip = (markup: string): string => markup.replace(' checked>', '>');
+      expect(strip(card(wall)), `${ref}'s card`).toBe(strip(card(creation)));
+    }
+  });
+
+  it('check nothing on the creation page and the wall’s own theme on its page', async () => {
+    /*
+     * The half that must *not* match, and it is the mandate: nothing is
+     * preselected when a wall is being created, because a preselected card is a
+     * default wearing a different hat and the household would proceed past it
+     * exactly as they proceeded past the setting (RFC 015 §3.1). The wall's own
+     * page is the opposite case — a wall always has a theme, so a page with
+     * nothing checked there would be a control that cannot show its own state.
+     */
+    const h = await harness();
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'almanac' });
+    const wallId = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
+
+    expect(checked(await (await h.call('/admin/walls/new')).text())).toEqual([]);
+    expect(checked(await (await h.call(`/admin/walls/${wallId}`)).text())).toEqual(['almanac']);
+  });
+
+  it('keeps a retired key on the card it folds onto, rather than checking nothing', async () => {
+    /*
+     * A wall stored as `board` is wearing Panels — the display bundle's own
+     * alias table says so — and there is no Board card for it to check. With
+     * the raw value handed to the picker every one of those walls opens on a
+     * grid with nothing checked, which reads as "this wall has no theme" on the
+     * one screen whose whole subject is that every wall has one.
+     */
+    const h = await harness();
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'panels' });
+    const wallId = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
+    h.db.prepare(`UPDATE screens SET theme = 'board' WHERE id = ?`).run(wallId);
+    expect(checked(await (await h.call(`/admin/walls/${wallId}`)).text())).toEqual(['panels']);
   });
 });

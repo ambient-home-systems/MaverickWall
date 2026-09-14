@@ -328,7 +328,7 @@ describe('wall settings are categories, and every field kept its name', () => {
      * RFC 015 phase 2. The theme select used to lead with "Household default —
      * <theme>" and the daylight select with "Household default — the same
      * theme all day". There is no household theme now, so the first is exactly
-     * the themes this wall can draw, with the one it wears selected, and the
+     * the themes this wall can draw, with the one it wears checked, and the
      * daylight select's blank says what a blank *is* — the same theme all day
      * — rather than what somebody else's row would have said. Asserted as what
      * the page says, not as the absence of the old sentence: an assertion that
@@ -339,15 +339,39 @@ describe('wall settings are categories, and every field kept its name', () => {
     h.pairScreen('s7b', 'Kitchen', 'almanac');
     const html = await (await h.call('/admin/walls/s7b')).text();
     const form = settingsFormOf(html);
-    const themeAt = form.indexOf('name="theme"');
-    const themeSelect = form.slice(themeAt, form.indexOf('</select>', themeAt));
-    expect(themeSelect).not.toContain('Household default');
-    expect(themeSelect).not.toContain('value=""');
-    expect(themeSelect).toContain('<option value="almanac" selected>');
+
+    /*
+     * And the theme is a grid of cards now rather than a select (RFC 015 phase
+     * 3, §3.5), so this reads the radios — same field name, same values, one
+     * appearance with the creation page. The card the wall wears is the checked
+     * one and nothing offers a blank, because "no theme" is not a state a wall
+     * has.
+     */
+    const themeInputs = [...form.matchAll(/<input type="radio" name="theme" value="([^"]*)"( checked)?>/g)];
+    expect(themeInputs.length, 'no theme cards on the wall’s own page').toBeGreaterThan(4);
+    expect(themeInputs.map((m) => m[1])).not.toContain('');
+    expect(themeInputs.filter((m) => m[2] !== undefined).map((m) => m[1])).toEqual(['almanac']);
+    // Scoped to the picker: the *content* defaults on the same form still
+    // inherit and still say so, so a form-wide sweep here would be asserting
+    // the wrong thing about a different panel.
+    const fieldset = form.slice(
+      form.indexOf('<fieldset class="wset-themes">'),
+      form.indexOf('</fieldset>', form.indexOf('<fieldset class="wset-themes">')),
+    );
+    expect(fieldset).not.toContain('Household default');
+    expect(fieldset, 'the picker is the shared card grid').toContain('class="themegrid"');
+
     const dayAt = form.indexOf('name="daytime_theme"');
     const daySelect = form.slice(dayAt, form.indexOf('</select>', dayAt));
     expect(daySelect).toContain('<option value="" selected>Same theme all day</option>');
     expect(daySelect).not.toContain('Household default');
+    // One hint about the daylight window, in System's own words, rather than a
+    // hint and a trailing paragraph saying the second half of it (RFC 015 §2.7).
+    expect(form).toContain('A lighter theme during the hours below. A dark theme at noon');
+    expect(
+      [...form.matchAll(/A dark theme at noon/g)].length,
+      'the daylight window is written twice again',
+    ).toBe(1);
   });
 
   it('lists a screen’s own zone this build’s Intl has never heard of', async () => {

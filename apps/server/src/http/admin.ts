@@ -4420,26 +4420,53 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ) +
       wsetGroup(
         'Theme',
+        /*
+         * The same cards the creation page and Themes draw, and that is the
+         * whole of RFC 015 §3.5: one decision with one appearance wherever it
+         * is taken. This pane rendered a `<select>` while `/admin/walls/new`
+         * rendered `themeCards` — one stored value through two controls, which
+         * is `shifts[0]` occurring in the furniture rather than in a renderer,
+         * and `THEME_SWATCHES`' own docstring has said since it was written
+         * that the colours are "for the wall settings theme cards".
+         *
+         * Checked on the wall's current theme, custom themes included, through
+         * the same `readThemes` the picker on every other screen reads — so a
+         * household who built a theme meets it here in the grid rather than
+         * as the last line of a list.
+         *
+         * There is no "Household default" card, because there is no household
+         * theme to follow (RFC 015 phase 2): the grid is exactly the themes
+         * this wall can draw.
+         */
+        `<fieldset class="wset-themes">` +
+        `<legend class="field-label">Theme</legend>` +
+        themeCards(displayThemeRef(screen.theme ?? ''), readThemes(deps.db)) +
+        `</fieldset>` +
         `<div class="rows">` +
-          // No "Household default" option on either select (RFC 015 phase 2):
-          // there is no household theme, so this wall's theme is its own and the
-          // list is exactly the themes it can draw. Blank on the daylight select
-          // is a real answer — the same theme all day — and says so.
-          selectRow({
-            label: 'Theme',
-            name: 'theme',
-            wide: true,
-            optionsHtml:
-              THEMES.map((theme) =>
-                option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
-              ).join('') +
-              customThemeOptions(screen.theme),
-          }) +
+          /*
+           * The daylight theme stays a `<select>`, deliberately. Two card grids
+           * on one pane are two controls that look identical and answer
+           * different questions, and the one a household reaches for first is
+           * whichever is nearer the top. It is also the half with a real
+           * *absence* in it — "Same theme all day" — and an absence is a line
+           * in a list rather than a card in a grid.
+           */
           selectRow({
             label: 'Daytime theme',
             name: 'daytime_theme',
             wide: true,
-            hint: 'A lighter theme during the hours below.',
+            /*
+             * One hint, and it is System's own words before that screen's
+             * "Wall appearance" section was retired with the household theme
+             * (RFC 015 phase 2). This page used to split the same two sentences
+             * across a hint and a trailing paragraph while System carried both
+             * in one — two screens saying one thing differently, which is §2.7
+             * expressed as furniture. There is one screen now, so there is one
+             * hint.
+             */
+            hint:
+              'A lighter theme during the hours below. A dark theme at noon is a hole in ' +
+              'the wall; a light one at 2am is a lamp.',
             optionsHtml:
               option('', 'Same theme all day', !scheduled) +
               THEMES.map((theme) =>
@@ -4465,9 +4492,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             value: screen.daytimeEndsAt ?? '21:00',
           }) +
           `</div></div></div>` +
-          `</div>` +
-          `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at 2am ` +
-          `is a lamp.</p>`,
+          `</div>`,
       );
 
     // --- Content defaults -------------------------------------------------
@@ -4730,7 +4755,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('appearance', 'Appearance', 'The layout this wall starts from and how it looks. Anything left on the household default follows the wall defaults on System.', appearance, true) +
+      wsetPanel('appearance', 'Appearance', 'The layout this wall starts from and how it looks. Both are this wall’s own — nothing here is shared with another wall.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
       // Both switches, not just the alert one — this panel is now where every
