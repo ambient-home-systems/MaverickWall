@@ -47,6 +47,54 @@ const SERVER_SRC = 'apps/server/src';
 const ADAPTER = `${SERVER_SRC}/net/fetcher.ts`;
 const ADAPTER_DECLARATION = 'async postJson(request: PostJsonRequest): Promise<PostJsonOutcome> {';
 
+/**
+ * The second door RFC 013 §6.3 opened, and why this file had to grow a scan for
+ * it.
+ *
+ * When this test was written, `fetch` was GET-only and `postJson` was the only
+ * way a POST could leave this process — so scanning for `postJson(` scanned for
+ * every POST. That stopped being true the moment `FetchRequest` gained a
+ * `method`: `fetcher.fetch({ method: 'POST', url: haUrl, body })` is a POST at
+ * a household's Home Assistant that never reads `HA_SERVICES`, and the scan
+ * above cannot see it. It is the exact failure RFC 013 §6.3 warns about — two
+ * RFCs each owning a slightly different version of one method allowlist.
+ *
+ * The scan is on the **call**, deliberately, and not on the token. A bare
+ * `method: 'POST'` occurs in `http/app.ts`, where `authApi` builds an
+ * in-process `Request` and hands it to Better Auth's handler — that never
+ * touches a socket, so a token scan would report a false positive and buy an
+ * exemption list, which is how a guard becomes a list somebody remembers to
+ * shrink. A `.fetch(...)` call is the outbound boundary and nothing else is.
+ */
+const POST_METHOD = "method: 'POST'";
+
+/**
+ * The argument text of every `.fetch(` call in a file, brace-matched.
+ *
+ * Crude in the same way `enclosingFunction` above is crude, and for the same
+ * reason: a real parse would answer a question nobody is asking. What is being
+ * checked is whether any call site asks the guarded boundary for a POST.
+ */
+function fetchCallArguments(source: string): string[] {
+  const calls: string[] = [];
+  const token = '.fetch(';
+  for (let at = source.indexOf(token); at !== -1; at = source.indexOf(token, at + 1)) {
+    let depth = 0;
+    for (let i = at + token.length - 1; i < source.length; i++) {
+      const ch = source[i];
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        depth--;
+        if (depth === 0) {
+          calls.push(source.slice(at, i + 1));
+          break;
+        }
+      }
+    }
+  }
+  return calls;
+}
+
 /** The one door. */
 const DOOR = `${SERVER_SRC}/modules/homeassistant/client.ts`;
 
@@ -144,6 +192,43 @@ describe('the source scan: one door, and it is this one', () => {
     expect(files).toContain(DOOR);
     expect(files).toContain(ADAPTER);
     expect(postJsonHits().length).toBeGreaterThan(0);
+  });
+});
+
+describe('the other way a POST could leave', () => {
+  it('has no call site at all outside the JSON adapter', () => {
+    /*
+     * `fetch` grew a method in RFC 013 §6.3 and a POST through it would bypass
+     * `HA_SERVICES` completely. Nothing needs one — CalDAV speaks `PROPFIND`
+     * and `REPORT` — so the honest guard is zero rather than an allowlist, and
+     * a future caller that genuinely wants one has to change this line and say
+     * why in the same commit.
+     *
+     * The adapter's own `POST: 'refuse'` in `REDIRECT_POLICY` and its
+     * `method: 'POST'` when it builds `postJson`'s wire request are the
+     * implementation and are not doors, so they are exempted by file and
+     * counted rather than skipped — the same shape as the declaration
+     * exemption above.
+     */
+    const posting: string[] = [];
+    let calls = 0;
+    for (const file of filesUnder(SERVER_SRC)) {
+      const name = relative(ROOT, file);
+      for (const call of fetchCallArguments(readFileSync(file, 'utf8'))) {
+        calls++;
+        if (call.includes(POST_METHOD)) posting.push(`${name}  ${call.slice(0, 120)}`);
+      }
+    }
+
+    expect(
+      posting,
+      `a .fetch() asking for POST — a POST that never reads HA_SERVICES:\n${posting.join('\n')}`,
+    ).toEqual([]);
+
+    // And the scan is looking at something. A brace matcher that silently found
+    // no calls would pass for ever, which is this project's own complaint about
+    // an assertion no edit can turn red.
+    expect(calls).toBeGreaterThan(10);
   });
 });
 

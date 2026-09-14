@@ -1,6 +1,7 @@
 # RFC 013 — Getting a household's calendar in
 
-Status: **proposed; nothing built** · Owner: — · First drafted 2026-09-13 ·
+Status: **Phases A and B shipped; Phase C's transport shipped, the rest of
+Phase C not started** · Owner: — · First drafted 2026-09-13 ·
 Relates to `apps/server/src/db/schema.ts` (`calendar_sources`),
 `apps/server/src/api/test-feed.ts`, `apps/server/src/jobs/ics-sync.ts`,
 `apps/server/src/jobs/ha-calendar-sync.ts`,
@@ -396,6 +397,34 @@ weekly event, the HA route is measurably cheaper than the ICS one.
 
 ## 6. Phase C — CalDAV, for Apple
 
+### 6.0 What is built, as of this line
+
+The **transport half** is in `apps/server/src/caldav/` and
+`packages/core/src/ports/fetcher.ts`:
+
+| Section | Where it landed |
+|---|---|
+| §6.3 the Fetcher | `FetchRequest.method`/`body`, `REDIRECT_POLICY`, `FETCH_LIMITS.dav` |
+| §6.3.1 the host policy | `caldav/host-policy.ts`, pure |
+| §6.2 discovery | `caldav/discover.ts` |
+| §6.4 / §6.5 the REPORT and the split | `caldav/query.ts` |
+| §6.8 the XML reader | `caldav/multistatus.ts` |
+
+**Nothing a household can reach.** There is no `caldav_accounts` table (§6.2.1),
+no `kind = 'caldav'`, no sync job (§6.6), no `testFeed` stage (§6.7) and no
+screen. `discover` has no caller in the application; its callers are its tests.
+So the security boundary this phase widens is in place and reviewable *before*
+anything is wired to it, which is the same ordering RFC 012 phase 1 used for the
+same reason.
+
+Two things §11 asks for remain unproven and are unproven in the way that
+matters. **No real iCloud account has been seen**: the partition-host hop is
+modelled by a second loopback server, and whether Apple's `calendar-data` parses
+is exactly as open as it was. **No real Nextcloud has been seen either** — the
+fixtures under `apps/server/test/fixtures/caldav/synthetic/` are authored from
+documented shapes, `real/` is empty, and `real/MISSING.md` says which four files
+would close it.
+
 ### 6.1 iCloud has no other door
 
 Apple has no calendar API, no OAuth for calendars, and no personal access
@@ -584,6 +613,24 @@ a byte ceiling picked for the other. And the accepted-content-type check grows
 they answer with — beside the JSON allowance RFC 012 needs; the 2xx status
 check already passes a `207 Multi-Status` through unmodified, because it was
 written as a range rather than a single code, so nothing there needs to move.
+
+**As built, `postJson` survived rather than being folded in**, and the reason is
+worth one line because this section predicted the opposite. It is now `fetch`
+with the method fixed to `POST` *and four things `fetch` does not do*: it
+serialises the body itself so a caller cannot hand over text claiming to be
+JSON, it fixes both content types, it sends no conditional request, and it keeps
+a non-2xx body as the upstream's own diagnosis. Collapsing them would mean a
+JSON POST whose body a caller composed as a string, which is precisely what
+`ha-write-boundary.test.ts` holds to one function.
+
+That test had to grow a second scan in the same commit, and it is the failure
+this section warns about arriving on schedule. It scanned for `postJson(`
+because, when it was written, that was the only way a POST could leave the
+process — so scanning for it scanned for every POST. With a `method` on
+`FetchRequest` that stopped being true, and a `fetch` POST at a household's Home
+Assistant would never read `HA_SERVICES` at all. It scans `.fetch(` calls now
+and asserts none asks for POST: zero rather than an allowlist, because nothing
+needs one.
 
 **RFC 012 should reference this section rather than defining `postJson`'s
 shape a second time.** Both RFCs arrive at the same conclusion — one widening

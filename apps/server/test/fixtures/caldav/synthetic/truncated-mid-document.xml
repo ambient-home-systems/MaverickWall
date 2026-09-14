@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.com/ns">
+ <d:response>
+  <d:href>/remote.php/dav/calendars/REDACTED/</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:resourcetype>
+     <d:collection/>
+    </d:resourcetype>
+    <d:displayname>calendars</d:displayname>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+  <d:propstat>
+   <d:prop>
+    <cal:supported-calendar-component-set/>
+    <cs:getctag/>
+   </d:prop>
+   <d:

