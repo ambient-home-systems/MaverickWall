@@ -144,9 +144,20 @@ async function crawl(): Promise<readonly Rendered[]> {
   const home = await install({ feed: true });
   installation = home;
 
-  // Three things the household would have that a bare install does not, so the
+  // Four things the household would have that a bare install does not, so the
   // pages that only exist for them are crawled rather than skipped: a paired
-  // browser wall, an e-paper panel, and a wall part-way through pairing.
+  // browser wall, an e-paper panel, a wall part-way through pairing, and a
+  // custom theme.
+  //
+  // The theme is the newest of the four and it is here because of what it
+  // makes reachable rather than because a household would have one: the Edit
+  // and Remove controls on a theme card exist only for a custom theme, and the
+  // remove *confirmation* is the page that told a household their walls would
+  // "switch to Board" for releases after Board stopped existing (RFC 015 §2.1).
+  // Without one seeded, that sentence is on no page this crawl can see — which
+  // is this file's own stated blind spot, a conditional section, and the
+  // reason the retired-name assertions below would otherwise pass over the
+  // very fault they were written for.
   const madeWall = await home.post('/admin/screens', { name: 'Kitchen' });
   expect(madeWall.status, 'the wall must be created for its pages to be crawled').toBe(303);
   const madePanel = await home.post('/admin/epaper', {
@@ -193,6 +204,43 @@ async function crawl(): Promise<readonly Rendered[]> {
        VALUES ('vocab-cal', 'Home', 'caldav', 'vocab-acct', 'mw1:sealed', '#AA3311', NULL, ?, ?)`,
     )
     .run(stamp, stamp);
+
+  const madeTheme = await home.post('/admin/themes', {
+    name: 'Sea glass',
+    '--bg': '#101418',
+    '--panel': '#1b2028',
+    '--rule': '#2a333f',
+    '--ink': '#e9eef4',
+    '--muted': '#9ba7b4',
+    '--faint': '#68727e',
+    '--accent': '#e0a33e',
+    '--s-day': '#e0a33e',
+    '--s-night': '#4c7fd1',
+    '--s-break': '#35916a',
+    '--s-straight': '#6b7684',
+    radius: '0.4rem',
+  });
+  expect(madeTheme.status, 'the theme must be created for its own pages to be crawled').toBe(302);
+  /*
+   * And the wall wears it, because the confirmation has two branches and only
+   * one of them names a theme: an unused theme's removal reads "Nothing is
+   * using it right now." A theme nobody is wearing makes that page reachable
+   * and its sentence invisible, which is a crawl that looks like it covers the
+   * fault and does not.
+   */
+  const themeId = (
+    home.db.prepare('SELECT id FROM themes LIMIT 1').get() as { id: string } | undefined
+  )?.id;
+  expect(themeId, 'the theme must be stored for a wall to wear it').not.toBeUndefined();
+  const wallId = /\/admin\/walls\/([^/]+)\/pair/.exec(madeWall.headers.get('location') ?? '')?.[1];
+  expect(wallId, 'the wall must exist for it to wear the theme').not.toBeUndefined();
+  const worn = await home.post(`/admin/screens/${wallId ?? ''}`, {
+    name: 'Kitchen',
+    orientation: 'auto',
+    rotation: '0',
+    theme: `custom:${themeId ?? ''}`,
+  });
+  expect(worn.status, 'the wall must actually be wearing the theme').toBe(302);
 
   const started = await fetch(`${home.base}/d/pair/device-start`, {
     method: 'POST',
@@ -313,6 +361,9 @@ describe('the admin, read out loud', () => {
         '/admin/home-assistant/calendars',
         '/admin/home-assistant/lists',
         '/admin/home-assistant/alerts',
+        // The gallery, and the builder behind it. Both carry theme names.
+        '/admin/themes',
+        '/admin/themes/new',
       ]) {
         expect(seen, `the crawl never reached ${required}`).toContain(required);
       }
@@ -324,6 +375,17 @@ describe('the admin, read out loud', () => {
       expect(
         seen.filter((p) => /^\/admin\/epaper\/[0-9a-f]{8,}\/design$/.test(p)).length,
         'the e-paper panel’s design page',
+      ).toBeGreaterThan(0);
+      /*
+       * And the remove-a-theme confirmation, which is the page that named a
+       * theme nobody could choose. It is reachable only from a custom theme's
+       * own card, so this is the assertion that the seeded theme is still
+       * doing its job — without it the retired-name sweep below would go on
+       * passing over a sentence it can no longer see.
+       */
+      expect(
+        seen.filter((p) => /^\/admin\/themes\/[0-9a-f]{8,}\/delete$/.test(p)).length,
+        'the remove-a-theme confirmation',
       ).toBeGreaterThan(0);
       expect(seen.length, `too few pages to be a sweep: ${seen.length}`).toBeGreaterThan(25);
     },
@@ -355,6 +417,49 @@ describe('the admin, read out loud', () => {
       expect(
         offenders,
         `a retired noun is back (allow-list: ${ALLOWED.length} entries):\n  ${offenders.join('\n  ')}`,
+      ).toEqual([]);
+      expect(stale, `allow-list entries that match nothing any more: ${stale.join(', ')}`).toEqual(
+        [],
+      );
+    },
+    SLOW,
+  );
+
+  it(
+    'names no theme that no longer exists',
+    async () => {
+      /*
+       * Board, Kitchen Slate and Glance are every member of
+       * `LEGACY_THEME_ALIASES`, all three folding onto Panels. The live set is
+       * `THEMES` and it is five: Panels, Household, Blueprint, Paper Almanac,
+       * Swiss.
+       *
+       * They survived on served pages for releases, and in four places, which
+       * is the argument for a sweep rather than a fix: `/admin/themes` named
+       * four built-in directions of which three were retired and omitted three
+       * that ship, the delete confirmation told a household their walls would
+       * "switch to Board", and it had propagated into CLAUDE.md and back out
+       * again (RFC 015 §2.1). A retired *name* is worse than a retired noun,
+       * because it is a thing a household can go looking for and not find.
+       *
+       * Case-sensitive on purpose: the admin legitimately says "at a glance"
+       * and an ESPHome recipe legitimately says `board: esp32dev`. It is the
+       * proper nouns that are retired, not the words.
+       */
+      const DEAD_THEMES = /\b(Board|Kitchen Slate|Slate|Glance)\b/g;
+
+      /*
+       * One entry, defended: **Chore Board** is a shipped wall template and the
+       * board is the thing on the wall. Allow-listed by the sentence rather
+       * than by weakening the match, and read in both directions — the day no
+       * template is called that, this entry fails as stale.
+       */
+      const ALLOWED: readonly string[] = ['Chore Board'];
+
+      const { offenders, stale } = sweep(await pages(), DEAD_THEMES, ALLOWED);
+      expect(
+        offenders,
+        `a theme that no longer exists is named on a page:\n  ${offenders.join('\n  ')}`,
       ).toEqual([]);
       expect(stale, `allow-list entries that match nothing any more: ${stale.join(', ')}`).toEqual(
         [],
