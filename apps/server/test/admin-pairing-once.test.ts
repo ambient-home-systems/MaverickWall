@@ -140,7 +140,7 @@ describe('the reveal store', () => {
 describe('pairing a browser wall', () => {
   it('redirects from the POST to a page that shows the link once, and never caches it', async () => {
     const h = await harness();
-    const made = await h.form('/admin/screens', { name: 'Kitchen' });
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'panels' });
     expect(made.status).toBe(303);
     const location = made.headers.get('location') ?? '';
     expect(location).toBe(`/admin/walls/${h.screenId()}/pair`);
@@ -161,7 +161,7 @@ describe('pairing a browser wall', () => {
 
   it('a second visit — a reload, or Back — says the link was shown and offers a new one', async () => {
     const h = await harness();
-    const made = await h.form('/admin/screens', { name: 'Kitchen' });
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'panels' });
     const location = made.headers.get('location') ?? '';
     const token = pairToken(await (await h.call(location)).text()) as string;
 
@@ -187,7 +187,7 @@ describe('pairing a browser wall', () => {
   it('regenerating takes the same one hop, retires the old link and is shown once', async () => {
     const h = await harness();
     const first = pairToken(
-      await (await h.call((await h.form('/admin/screens', { name: 'Kitchen' })).headers.get('location') ?? '')).text(),
+      await (await h.call((await h.form('/admin/screens', { name: 'Kitchen', theme: 'panels' })).headers.get('location') ?? '')).text(),
     ) as string;
     const id = h.screenId();
 
@@ -207,7 +207,7 @@ describe('pairing a browser wall', () => {
     const prefix = '/api/hassio_ingress/SESSION123';
     const made = await h.form(
       'http://a0d7b954-maverick-wall:8080/admin/screens',
-      { name: 'Ingress' },
+      { name: 'Ingress', theme: 'panels' },
       { [INGRESS_HEADER]: prefix },
     );
     expect(made.status).toBe(303);
@@ -324,7 +324,7 @@ describe('a typed pairing code', () => {
   it('with a code already approved, says that and offers the field for the next one', async () => {
     const h = await harness();
     const code = await pending(h);
-    expect((await h.form('/admin/screens/approve', { code, name: 'TV', action: 'approve' })).status).toBe(200);
+    expect((await h.form('/admin/screens/approve', { code, name: 'TV', action: 'approve', theme: 'panels' })).status).toBe(200);
 
     const res = await h.call(`/admin/screens/approve?code=${code}`);
     expect(res.status).toBe(409);
@@ -357,7 +357,7 @@ describe('a typed pairing code', () => {
     const code = await pending(h);
     await h.form('/admin/screens/approve', { code, name: 'TV', action: 'deny' });
 
-    const res = await h.form('/admin/screens/approve', { code, name: 'TV', action: 'approve' });
+    const res = await h.form('/admin/screens/approve', { code, name: 'TV', action: 'approve', theme: 'panels' });
     expect(res.status).toBe(409);
     const html = await res.text();
     expect(html).toContain('nothing was paired');

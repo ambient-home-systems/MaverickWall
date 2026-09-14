@@ -40,8 +40,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const RENDER = join(HERE, '..', '..', 'display', 'src', 'render.ts');
 
 const HOUSEHOLD = (over: Partial<HouseholdRow> = {}): HouseholdRow => ({
-  timezone: 'Europe/London', theme: 'board', daytimeTheme: null, daytimeStartsAt: null,
-  daytimeEndsAt: null, shiftEnabled: 0, displayTodayEvents: 8, displayNextDays: 6,
+  timezone: 'Europe/London', shiftEnabled: 0, displayTodayEvents: 8, displayNextDays: 6,
   displayHorizonWeeks: 5, displayBlocks: 'now,next,horizon', clock24: 1, weekStart: 'sunday',
   layoutMode: 'freeform', layoutAspect: 0.5625, layoutLandscapeAspect: 1.7778,
   layoutBackground: null, layoutLandscapeBackground: null,

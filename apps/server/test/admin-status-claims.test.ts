@@ -190,7 +190,7 @@ describe('the Overview calendar chip', () => {
 
       // Pair a wall and have it call in, and the page has nothing left to
       // ask: one row, in the well tone, that names what is syncing and online.
-      await home.post('/admin/screens', { name: 'Kitchen' });
+      await home.post('/admin/screens', { name: 'Kitchen', theme: 'panels' });
       home.db.prepare('UPDATE screens SET last_seen_at = ?').run(home.now());
       const allGood = textOf(await (await home.call('/admin')).text());
       expect(allGood).toContain('Everything is running');

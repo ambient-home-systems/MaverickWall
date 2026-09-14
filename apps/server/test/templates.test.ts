@@ -160,13 +160,20 @@ describe('applying a template', () => {
     expect(aspects).toEqual({ p: sky.portrait.aspect, l: sky.landscape.aspect });
   });
 
-  it('sets the template theme and per-orientation backgrounds (Phase 3c)', () => {
+  it('sets the template theme and per-orientation backgrounds on a wall (Phase 3c)', () => {
+    // On a *wall*: the household row has no theme to set any more (RFC 015
+    // phase 2), so a template's theme reaches the screen it is applied to.
     const d = db();
+    const at = Date.now();
+    d.prepare(
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('wallT', 'Kitchen', 'h', 'panels', ?, ?, ?)`,
+    ).run(at, at, at);
     const sky = findTemplate('sky-calendar')!;
-    applyTemplate(d, null, sky);
+    applyTemplate(d, 'wallT', sky);
     const row = d
       .prepare(
-        `SELECT theme, layout_background AS p, layout_landscape_background AS l FROM household_settings`,
+        `SELECT theme, layout_background AS p, layout_landscape_background AS l FROM screens WHERE id = 'wallT'`,
       )
       .get() as { theme: string; p: string; l: string };
     expect(row.theme).toBe('almanac');
@@ -201,8 +208,8 @@ describe('copying a layout from another display', () => {
     const d = db();
     const at = Date.now();
     d.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('wallA','Kitchen','h',?,?,?)`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('wallA', 'Kitchen', 'h', 'panels',?,?,?)`,
     ).run(at, at, at);
 
     // The default gets a template; copy it onto the Kitchen wall.
@@ -230,8 +237,8 @@ describe('copying a layout from another display', () => {
     const d = db();
     const at = Date.now();
     d.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('wallB','Hall','h',?,?,?)`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('wallB', 'Hall', 'h', 'panels',?,?,?)`,
     ).run(at, at, at);
     // The default has never been arranged — copying it must not invent a canvas.
     copyLayout(d, null, 'wallB');

@@ -127,7 +127,7 @@ function pairUrl(html: string): string | undefined {
 describe('adding a screen from the admin UI', () => {
   it('creates a screen and hands back a pairing link', async () => {
     const h = await harness();
-    const response = await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Kitchen' });
+    const response = await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Kitchen', theme: 'panels' });
     const html = await shown(h, response, 'http://192.168.1.10:8080');
     expect(html).toContain('Pair Kitchen');
     // A screen row now exists, unpaired but for its token.
@@ -141,7 +141,7 @@ describe('adding a screen from the admin UI', () => {
     const h = await harness();
     const html = await shown(
       h,
-      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Hall' }),
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Hall', theme: 'panels' }),
       'http://192.168.1.10:8080',
     );
     expect(pairUrl(html)).toBe(extractToken(html, 'http://192.168.1.10:8080'));
@@ -154,7 +154,7 @@ describe('adding a screen from the admin UI', () => {
     const h = await harness();
     const html = await shown(
       h,
-      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' }),
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall', theme: 'panels' }),
       'http://192.168.1.10:8080',
     );
     const token = new URL(pairUrl(html) ?? '').searchParams.get('token');
@@ -170,7 +170,7 @@ describe('adding a screen from the admin UI', () => {
     const h = await harness();
     const html = await shown(
       h,
-      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall' }),
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'Wall', theme: 'panels' }),
       'http://192.168.1.10:8080',
     );
     const token = new URL(pairUrl(html) ?? '').searchParams.get('token');
@@ -198,7 +198,7 @@ describe('pairing through Home Assistant ingress', () => {
       h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
-        { name: 'Ingress' },
+        { name: 'Ingress', theme: 'panels' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
       ),
       'http://a0d7b954-maverick-wall:8080',
@@ -218,7 +218,7 @@ describe('pairing through Home Assistant ingress', () => {
       h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
-        { name: 'Unset' },
+        { name: 'Unset', theme: 'panels' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
       ),
       'http://a0d7b954-maverick-wall:8080',
@@ -257,7 +257,7 @@ describe('when the supervisor knows the port state', () => {
       h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
-        { name: 'TV' },
+        { name: 'TV', theme: 'panels' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
       ),
       'http://a0d7b954-maverick-wall:8080',
@@ -283,7 +283,7 @@ describe('when the supervisor knows the port state', () => {
       h,
       await h.post(
         'http://a0d7b954-maverick-wall:8080/admin/screens',
-        { name: 'TV' },
+        { name: 'TV', theme: 'panels' },
         { [INGRESS_HEADER]: '/api/hassio_ingress/SESSION123' },
       ),
       'http://a0d7b954-maverick-wall:8080',
@@ -300,7 +300,7 @@ describe('pairing a screen by code', () => {
     const h = baseUrl === undefined ? await harness() : await harness(baseUrl);
     const html = await shown(
       h,
-      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'TV' }),
+      await h.post('http://192.168.1.10:8080/admin/screens', { name: 'TV', theme: 'panels' }),
       'http://192.168.1.10:8080',
     );
     const code = pairCode(html);

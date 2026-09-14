@@ -87,7 +87,7 @@ async function harness() {
 
   // Pair a screen exactly as the admin does, and pull its token out of the link.
   // The POST redirects to the page that shows the link once; follow it.
-  const made = await post('http://localhost:8080/admin/screens', { name: 'eInk' });
+  const made = await post('http://localhost:8080/admin/screens', { name: 'eInk', theme: 'panels' });
   const html = await (await call(`http://localhost:8080${made.headers.get('location') ?? ''}`)).text();
   const token = /\/pair\?token=([^<\s"]+)/.exec(html)?.[1];
   if (token === undefined) throw new Error('no pairing token in the admin page');

@@ -255,7 +255,7 @@ describe('adding a wall and adding a panel are one shape', () => {
 
   it('offers the wall size list the wall’s own settings page offers', async () => {
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     const settings = await h.html(`/admin/walls/${h.newest().id}`);
     /*
      * A drift guard rather than a behaviour: both forms read
@@ -277,7 +277,7 @@ describe('adding a browser wall', () => {
    */
   it('creates the same wall as before from a name alone', async () => {
     const h = await harness();
-    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     expect(made.status).toBe(303);
     expect(made.headers.get('location')).toMatch(/\/admin\/walls\/[0-9a-f]+\/pair$/);
 
@@ -293,7 +293,7 @@ describe('adding a browser wall', () => {
 
   it('stores the size and the mounting the household gave it', async () => {
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Hall', panel_size: 'tv-32', rotation: '90' });
+    await h.post(`${B}/admin/screens`, { name: 'Hall', panel_size: 'tv-32', rotation: '90', theme: 'panels' });
     const screen = h.newest();
     const preset = wallSizePreset('tv-32');
     expect(preset).toBeDefined();
@@ -312,7 +312,7 @@ describe('adding a browser wall', () => {
 
   it('keeps a typed reading distance over the preset’s own', async () => {
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Hall', panel_size: 'tv-32', read_distance_mm: '2500' });
+    await h.post(`${B}/admin/screens`, { name: 'Hall', panel_size: 'tv-32', read_distance_mm: '2500', theme: 'panels' });
     expect(h.newest().readDistanceMm).toBe(2500);
   });
 
@@ -320,6 +320,7 @@ describe('adding a browser wall', () => {
     const h = await harness();
     await h.post(`${B}/admin/screens`, {
       name: 'Odd one',
+      theme: 'panels',
       panel_size: WALL_SIZE_CUSTOM,
       panel_width_mm: '321',
       panel_height_mm: '210',
@@ -331,7 +332,7 @@ describe('adding a browser wall', () => {
 
   it('starts from the template the household picked', async () => {
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Study', template: 'minimal-clock' });
+    await h.post(`${B}/admin/screens`, { name: 'Study', template: 'minimal-clock', theme: 'panels' });
     const types = h.widgetTypes(h.newest().id);
     const wanted = TEMPLATES.find((one) => one.id === 'minimal-clock');
     expect(wanted).toBeDefined();
@@ -357,7 +358,7 @@ describe('adding a browser wall', () => {
     const short = Math.min(preset?.widthMm ?? 0, preset?.heightMm ?? 0);
 
     for (const template of ['classic', 'sky-week']) {
-      await h.post(`${B}/admin/screens`, { name: `W ${template}`, panel_size: 'eink-13.3', template });
+      await h.post(`${B}/admin/screens`, { name: `W ${template}`, theme: 'panels', panel_size: 'eink-13.3', template });
       const screen = h.newest();
       expect(screen.layoutAspect ?? 0, `${template} portrait`).toBeCloseTo(short / long, 4);
       expect(screen.layoutLandscapeAspect ?? 0, `${template} landscape`).toBeCloseTo(long / short, 4);
@@ -379,7 +380,7 @@ describe('adding a browser wall', () => {
      * "Nothing on this wall yet." note rather than nothing at all.
      */
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Fresh', template: 'blank' });
+    await h.post(`${B}/admin/screens`, { name: 'Fresh', template: 'blank', theme: 'panels' });
     const screen = h.newest();
     expect(screen.layoutMode).toBe('freeform');
     expect(h.widgetTypes(screen.id)).toEqual([]);
@@ -388,7 +389,7 @@ describe('adding a browser wall', () => {
   it('refuses a panel’s template at a wall, and makes no wall doing it', async () => {
     const h = await harness();
     const before = h.screens().length;
-    const refused = await h.post(`${B}/admin/screens`, { name: 'Sneaky', template: 'panel-built-in' });
+    const refused = await h.post(`${B}/admin/screens`, { name: 'Sneaky', template: 'panel-built-in', theme: 'panels' });
     expect(refused.status).toBe(400);
     expect(h.screens().length).toBe(before);
   });
@@ -409,6 +410,7 @@ describe('adding a browser wall', () => {
     const h = await harness();
     const refused = await h.post(`${B}/admin/screens`, {
       name: 'Nearly',
+      theme: 'panels',
       panel_size: WALL_SIZE_CUSTOM,
       panel_height_mm: '210',
       read_distance_mm: '900',

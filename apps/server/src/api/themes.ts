@@ -351,19 +351,35 @@ export function updateTheme(
   return result.changes > 0;
 }
 
+/**
+ * Delete a custom theme, and re-dress every wall wearing it in the same
+ * transaction (RFC 015 §3.4).
+ *
+ * A bare `DELETE` left a wall storing `custom:<id>` pointing at a row that was
+ * gone, and `resolveTheme` rescued it at read time. That is rule nine working —
+ * and, under "every wall names its own theme", it is also a wall wearing a
+ * value nobody chose, arriving through the back door. So every wearer is
+ * written `FALLBACK_THEME` first, a daylight theme that named it is cleared
+ * (the same theme all day, which is what the wall then draws), and only then
+ * is the row removed — one transaction, so a wall polling mid-delete reads the
+ * old state or the new one and never a dangling reference. The confirmation
+ * page says which walls this reaches and what they will wear, through
+ * `themeName(FALLBACK_THEME)`, never a literal.
+ */
 export function deleteTheme(db: SqliteDatabase, id: string): void {
-  db.prepare('DELETE FROM themes WHERE id = ?').run(id);
+  const ref = `${CUSTOM_PREFIX}${id}`;
+  const at = Date.now();
+  db.transaction(() => {
+    db.prepare('UPDATE screens SET theme = ?, updated_at = ? WHERE theme = ?').run(FALLBACK_THEME, at, ref);
+    db.prepare('UPDATE screens SET daytime_theme = NULL, updated_at = ? WHERE daytime_theme = ?').run(at, ref);
+    db.prepare('DELETE FROM themes WHERE id = ?').run(id);
+  })();
 }
 
 /**
- * Where a custom theme is actually drawn — the household default, and any
- * screen with its own override — so removing it can name what changes rather
- * than only that it will.
- *
- * `resolveTheme` already falls back to Panels for a reference that no longer
- * resolves (rule nine: a deleted theme degrades a wall, it never bricks one),
- * so this is purely for the household's benefit at the moment of deleting —
- * nothing here is a precondition for the delete itself.
+ * Where a custom theme is actually drawn — every screen wearing it, as its
+ * theme or as its daylight theme — so removing it can name what changes rather
+ * than only that it will. `deleteTheme` re-dresses exactly this set.
  */
 export function themeUsage(db: SqliteDatabase, id: string): ThemeUsage {
   return themeUsageOf(db, [`${CUSTOM_PREFIX}${id}`]);
@@ -376,8 +392,10 @@ export interface ThemeWearer {
 }
 
 export interface ThemeUsage {
-  /** Whether the household row names it — still a thing in RFC 015 phase 1. */
-  readonly household: boolean;
+  /**
+   * Only walls. There used to be a `household` member here, for the row every
+   * wall inherited from; that row names no theme any more (RFC 015 phase 2).
+   */
   readonly screens: readonly ThemeWearer[];
 }
 
@@ -395,15 +413,8 @@ export interface ThemeUsage {
  * will eventually want to press.
  */
 export function themeUsageOf(db: SqliteDatabase, refs: readonly string[]): ThemeUsage {
-  if (refs.length === 0) return { household: false, screens: [] };
+  if (refs.length === 0) return { screens: [] };
   const holes = refs.map(() => '?').join(',');
-  const household =
-    db
-      .prepare(
-        `SELECT 1 FROM household_settings WHERE id = 'singleton'
-           AND (theme IN (${holes}) OR daytime_theme IN (${holes}))`,
-      )
-      .get(...refs, ...refs) !== undefined;
   const screens = db
     .prepare(
       `SELECT id, name FROM screens
@@ -411,16 +422,21 @@ export function themeUsageOf(db: SqliteDatabase, refs: readonly string[]): Theme
         ORDER BY name`,
     )
     .all(...refs, ...refs) as ThemeWearer[];
-  return { household, screens };
+  return { screens };
 }
 
 /**
- * Is a stored theme reference one the wall can actually draw? Empty (follow the
- * default), a built-in key, or a `custom:<id>` that still exists. Used by the
- * form validators so a household cannot pin a wall to a theme that was deleted.
+ * Is a theme reference one the wall can actually draw? A built-in key, or a
+ * `custom:<id>` that still exists. Used by the form validators so a household
+ * cannot pin a wall to a theme that was deleted.
+ *
+ * An empty string is **not** valid here any more. It used to mean "follow the
+ * household default", and that default is retired (RFC 015 phase 2): a wall
+ * has to name a theme. The one control where blank is still an answer — the
+ * daylight theme, where it means the same theme all day — decides that before
+ * asking this.
  */
 export function isValidThemeRef(db: SqliteDatabase, ref: string, builtins: readonly string[]): boolean {
-  if (ref === '') return true;
   if (builtins.includes(ref)) return true;
   if (!ref.startsWith(CUSTOM_PREFIX)) return false;
   return readTheme(db, ref.slice(CUSTOM_PREFIX.length)) !== undefined;

@@ -47,8 +47,8 @@ function harness(options: { setupComplete?: boolean } = {}) {
 
   const now = Date.now();
   db.prepare(
-    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
-     VALUES ('singleton', 'America/New_York', 'board', ?, ?, ?)`,
+    `INSERT INTO household_settings (id, timezone, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'America/New_York', ?, ?, ?)`,
   ).run(options.setupComplete === false ? null : now, now, now);
 
   const app = createApp({
@@ -208,8 +208,8 @@ describe('auth mounted in the app', () => {
     runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 1000 });
     const stamp = Date.now();
     db.prepare(
-      `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
-       VALUES ('singleton', 'America/New_York', 'board', ?, ?, ?)`,
+      `INSERT INTO household_settings (id, timezone, setup_completed_at, created_at, updated_at)
+       VALUES ('singleton', 'America/New_York', ?, ?, ?)`,
     ).run(stamp, stamp, stamp);
 
     const app = createApp({

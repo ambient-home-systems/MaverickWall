@@ -113,7 +113,7 @@ function navGroups(html: string): { label: string | null; items: string[] }[] {
 describe('the Walls list is one card shape for every kind of wall', () => {
   it('draws the Default wall, a browser wall and an e-paper panel as the same link card', async () => {
     const h = await harness();
-    await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     await h.form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
     const html = await h.text('/admin/walls');
     const start = html.indexOf('<div class="grid g2">');
@@ -202,7 +202,7 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     const h = await harness();
     // A real wall to follow: `follow:default` pointed at the shared Default
     // wall, which is retired — a panel follows a wall a household actually has.
-    await h.form('/admin/screens', { name: 'Kitchen' });
+    await h.form('/admin/screens', { name: 'Kitchen', theme: 'panels' });
     const wall = h.screenId('browser');
     await h.form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
     const id = h.screenId('epaper');
@@ -243,7 +243,7 @@ describe('the sidebar is grouped by subject', () => {
 
   it('draws no kicker over a top-level page, and keeps the back link on a nested one', async () => {
     const h = await harness();
-    await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     for (const path of ['/admin', '/admin/walls', '/admin/modules', '/admin/system']) {
       const html = await h.text(path);
       // The bar used to print the nav group's label here — "Walls" over the

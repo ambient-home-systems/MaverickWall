@@ -109,7 +109,11 @@ export function applyTemplate(
 ): void {
   // Set the designed theme first, so it and the canvas backgrounds are
   // consistent — a template's light background must not land under a dark theme.
-  if (template.theme !== undefined) setOwnerTheme(db, owner, template.theme);
+  // Only a screen can wear one: the household row has no theme (RFC 015 phase
+  // 2), and the one template still seeded onto it — Classic, by
+  // `backfillClassic`'s `seedIfEmpty(null)` — names none, so this branch is
+  // never reached with a null owner and a theme together.
+  if (template.theme !== undefined && owner !== null) setOwnerTheme(db, owner, template.theme);
   for (const orientation of ORIENTATIONS) {
     const canvas = template[orientation];
     replaceLayout(db, owner, orientation, {

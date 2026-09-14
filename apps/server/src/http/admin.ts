@@ -319,9 +319,13 @@ const screenBody = z.object({
   // asking for the default, and taking it as `0` would silently stand a wall
   // that is hung sideways back up.
   rotation: quarterTurn(),
-  // A built-in key or a `custom:<id>`; blank follows the household. Wide enough
-  // for `custom:` + a 16-char id. Existence is checked in the handler.
-  theme: optionalText(64),
+  // A built-in key or a `custom:<id>`, and required: there is no household
+  // theme for a blank to follow (RFC 015 phase 2), and this form always
+  // renders the control with no blank option, so a body that has lost it is a
+  // broken client. Wide enough for `custom:` + a 16-char id. Existence is
+  // checked in the handler. The daylight theme *is* optional — blank there is
+  // the same theme all day, a real answer.
+  theme: text('A theme', 64),
   daytime_theme: optionalText(64),
   daytime_starts_at: optionalText(5),
   daytime_ends_at: optionalText(5),
@@ -374,6 +378,13 @@ const screenBody = z.object({
  */
 const newScreenBody = z.object({
   name: text('A name for the wall', 80),
+  /**
+   * Required, with nothing preselected on the form (RFC 015 §3.1): a wall
+   * cannot exist without a theme and a preselected card is a default wearing a
+   * different hat. Membership — a built-in or a `custom:<id>` that still
+   * exists — is checked in the handler, which can see the database.
+   */
+  theme: text('A theme for the wall', 64),
   rotation: quarterTurn(0),
   panel_size: optionalText(20),
   panel_width_mm: optionalText(6),
@@ -397,6 +408,9 @@ const approveDeviceBody = z.object({
   code: text('A pairing code', 32),
   name: text('A name for the wall', 80),
   action: oneOf('an action', ['approve', 'deny']),
+  // Optional in the *shape* only because Decline needs no theme; Approve
+  // refuses without one in the handler, before the token is bound.
+  theme: optionalText(64),
 });
 
 /**
@@ -600,14 +614,13 @@ function blockOrder(
  */
 const themeKeys = ['household', 'blueprint', 'panels', 'almanac', 'swiss'] as const;
 
+/*
+ * No theme and no daylight schedule here any more (RFC 015 phase 2): those
+ * were the household default every wall inherited, and a wall names its own on
+ * its own page. What is left is content and the clock.
+ */
 const displayBody = z
   .object({
-    // A built-in key or a `custom:<id>` — existence is checked in the handler
-    // against the themes table, since the schema cannot see the database.
-    theme: text('a theme', 64),
-    daytime_theme: optionalText(64),
-    daytime_starts_at: optionalText(5),
-    daytime_ends_at: optionalText(5),
     today_events: bounded('Events listed for today', 1, 20),
     next_days: bounded('Days in the week ahead', 0, 14),
     horizon_weeks: bounded('Weeks in the month grid', 1, 8),
@@ -617,29 +630,6 @@ const displayBody = z
     // Which day the month grid starts on. Sunday is the default the column ships
     // with; a select always submits one of the two, so it is required.
     week_start: oneOf('a week start', ['sunday', 'monday']),
-  })
-  .superRefine((value, ctx) => {
-    const chosen = value.daytime_theme;
-    if (chosen === undefined || chosen === 'none') return;
-
-    if (!(themeKeys as readonly string[]).includes(chosen)) {
-      ctx.addIssue({ code: 'custom', message: 'Choose a daylight theme from the list.' });
-      return;
-    }
-    const from = value.daytime_starts_at;
-    const to = value.daytime_ends_at;
-    if (from === undefined || to === undefined || !HHMM_SHAPE.test(from) || !HHMM_SHAPE.test(to)) {
-      ctx.addIssue({ code: 'custom', message: 'Enter the daylight hours as HH:MM.' });
-      return;
-    }
-    if (from === to) {
-      ctx.addIssue({
-        code: 'custom',
-        message:
-          'The daylight hours start and end at the same time. A window of no length ' +
-          'would never switch — set them apart, or turn the schedule off.',
-      });
-    }
   });
 
 const HHMM_SHAPE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -2619,6 +2609,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ));
     }
 
+    /*
+     * A theme, before anything is bound (RFC 015 §4.1). Every wall names its
+     * own and there is no household default behind it, so approving without
+     * one would write a row the database refuses — and refusing *after*
+     * `approve` bound the token would leave the flow approved with no screen,
+     * which is exactly the orphan the ordering below exists to prevent. Back to
+     * the prompt with the name kept and the code still pending, so the same
+     * code goes through once a card is chosen.
+     */
+    const theme = shaped.value.theme ?? '';
+    if (theme === '' || !isValidThemeRef(deps.db, theme, themeKeys)) {
+      return c.html(approvePromptPage(c, code, name, 'Choose a theme for this wall.'), 400);
+    }
+
     // Issue the token first, then try to bind it to the still-pending flow.
     // Binding before creating the screen row is what prevents an orphan: if the
     // flow expired or was already approved (a double submit, or a scan racing a
@@ -2636,7 +2640,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ), 409);
     }
     const id = randomBytes(6).toString('hex');
-    createScreen(deps.db, id, name, pairingSecret(issued));
+    createScreen(deps.db, id, name, pairingSecret(issued), theme);
     /*
      * Seed it, like every other door that makes a wall.
      *
@@ -2681,7 +2685,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // '' follows the household, '1' forces 24-hour, '0' forces 12-hour.
     const clockRaw = shaped.value.clock_24 ?? '';
     const clock24 = clockRaw === '1' ? 1 : clockRaw === '0' ? 0 : null;
-    const theme = shaped.value.theme ?? '';
+    // The theme is this wall's own and required; the schedule is optional,
+    // and blank is the same theme all day rather than a fallback.
+    const theme = shaped.value.theme;
     const daytimeTheme = shaped.value.daytime_theme ?? '';
     const startsAt = shaped.value.daytime_starts_at ?? '';
     const endsAt = shaped.value.daytime_ends_at ?? '';
@@ -2690,11 +2696,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (!isValidThemeRef(deps.db, theme, themeKeys)) {
       return c.html(displayDetailPage(id, 'Choose a theme from the list.', c), 400);
     }
-    if (!isValidThemeRef(deps.db, daytimeTheme, themeKeys)) {
+    const scheduled = daytimeTheme !== '';
+    if (scheduled && !isValidThemeRef(deps.db, daytimeTheme, themeKeys)) {
       return c.html(displayDetailPage(id, 'Choose a daylight theme from the list.', c), 400);
     }
 
-    const scheduled = daytimeTheme !== '';
     if (scheduled && (!HHMM_SHAPE.test(startsAt) || !HHMM_SHAPE.test(endsAt))) {
       return c.html(displayDetailPage(id, 'Enter this wall’s daylight hours as HH:MM.', c), 400);
     }
@@ -2766,7 +2772,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         name,
         orientation,
         rotation,
-        theme: theme === '' ? null : theme,
+        theme,
         timezone: timezone === '' ? null : timezone,
         daytimeTheme: scheduled ? daytimeTheme : null,
         daytimeStartsAt: scheduled ? startsAt : null,
@@ -2824,6 +2830,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (!size.ok) return c.html(newWallPage(c, size.message, body), 400);
 
     /*
+     * A built-in or a custom theme that still exists. The schema says a theme
+     * was named; only this can say the wall can draw it. Back to the form with
+     * everything else kept, like every other refusal on this page.
+     */
+    if (!isValidThemeRef(deps.db, shaped.value.theme, themeKeys)) {
+      return c.html(newWallPage(c, 'Choose a theme from the list.', body), 400);
+    }
+
+    /*
      * A wall may start from any wall template, and from no other list — the
      * gallery's own rule (`apply-template`), which exists because one lookup
      * shared with the panels would let a hand-posted `panel-built-in` put a
@@ -2838,7 +2853,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     const issued = issueDisplayToken();
     const id = randomBytes(6).toString('hex');
-    createScreen(deps.db, id, shaped.value.name, pairingSecret(issued));
+    createScreen(deps.db, id, shaped.value.name, pairingSecret(issued), shaped.value.theme);
     /*
      * The hardware facts first, then the canvas — and that order is the whole
      * reason this page can ask for a size at all.
@@ -2949,36 +2964,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const shaped = parse(displayBody, body);
     if (!shaped.ok) return c.html(systemPage(c, shaped.message), 400);
 
-    // A built-in or a custom theme that still exists — the schema let any string
-    // through so the check could see the database.
-    if (!isValidThemeRef(deps.db, shaped.value.theme, themeKeys)) {
-      return c.html(systemPage(c, 'Choose a theme from the list.'), 400);
-    }
-
-    /*
-     * "Same theme all day" is a choice, not a missing value.
-     *
-     * Stored as null, which is what the manifest reads as "no schedule". A
-     * household with one theme should not have to think about a time window
-     * that does nothing.
-     */
-    const daytimeRaw = shaped.value.daytime_theme;
-    const scheduled = daytimeRaw !== undefined && daytimeRaw !== 'none';
-    if (scheduled && !isValidThemeRef(deps.db, daytimeRaw, themeKeys)) {
-      return c.html(systemPage(c, 'Choose a daylight theme from the list.'), 400);
-    }
-
+    // No theme read here, deliberately (RFC 015 phase 2): a stale page posting
+    // `theme` or `daytime_theme` has those fields ignored rather than written
+    // anywhere, because there is nowhere left for them to go.
     const order = blockOrder(body, readHousehold(deps.db).displayBlocks);
     if ('error' in order) return c.html(systemPage(c, order.error), 400);
 
     writeDisplaySettings(deps.db, {
-      theme: shaped.value.theme,
-      daytimeTheme: scheduled ? daytimeRaw : null,
-      // `?? null` because the schema only guarantees these are present when a
-      // daylight theme was chosen, and `scheduled` is exactly that condition —
-      // but the type does not know the two are linked.
-      daytimeStartsAt: scheduled ? (shaped.value.daytime_starts_at ?? null) : null,
-      daytimeEndsAt: scheduled ? (shaped.value.daytime_ends_at ?? null) : null,
       todayEvents: shaped.value.today_events,
       nextDays: shaped.value.next_days,
       horizonWeeks: shaped.value.horizon_weeks,
@@ -3543,16 +3535,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * 12-hour clock *and* silently take the daylight schedule off every wall.
    * Sections are markup; the form spans them.
    *
-   * The daylight window is drawn whatever the daytime theme says, unlike on the
-   * wall's own settings sheet where a script reveals it. That page loads
-   * `display-editor.js` and this one does not, so a `hidden` group here would be
-   * a control nobody could ever reach — the chores form's rule, which is that no
-   * group is rendered hidden and the hint carries the condition instead.
+   * No "Wall appearance" section any more (RFC 015 phase 2). The household
+   * theme and its daylight schedule were the default every wall inherited, and
+   * the default was what let five other mechanisms decide a wall's colour
+   * unseen; a wall names its own theme on its own page now, and Themes is
+   * where every theme is seen. What every wall still inherits is content and
+   * the clock, which is what is left here.
    */
   function wallDefaultsForm(): string {
     const household = readHousehold(deps.db);
-    const custom = readThemes(deps.db);
-    const scheduled = household.daytimeTheme !== null && household.daytimeTheme !== '';
 
     const number = (
       name: string,
@@ -3572,51 +3563,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         attrs: `inputmode="numeric" min="${low}" max="${high}"`,
       });
 
-    const themeOption = (value: string, label: string, selected: boolean): string =>
-      `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
-    const daytimeSelected = scheduled ? displayThemeRef(household.daytimeTheme ?? '') : '';
-
     return (
       `<form method="post" action="admin/display"${dirtyForm()}>` +
-      section(
-        'Wall appearance',
-        'The look every wall starts from. A wall can override any of it on its own page.',
-        `<p class="hint">How a wall looks — its colours and type. Panels separates the ` +
-          `shift colours best from across a room. Build your own on the ` +
-          `<a class="link" href="admin/themes">Themes</a> page.</p>` +
-          themeCards(displayThemeRef(household.theme), custom) +
-          selectField({
-            label: 'Daytime theme',
-            name: 'daytime_theme',
-            hint: 'A lighter theme during the hours below. A dark theme at noon is a hole in the wall; a light one at 2am is a lamp.',
-            optionsHtml:
-              themeOption('none', 'The same theme all day', daytimeSelected === '') +
-              THEMES.map((theme) =>
-                themeOption(theme.key, theme.label, theme.key === daytimeSelected),
-              ).join('') +
-              custom
-                .map((theme) =>
-                  themeOption(`custom:${theme.id}`, theme.name, `custom:${theme.id}` === daytimeSelected),
-                )
-                .join(''),
-          }) +
-          `<div class="grid g2"><div>` +
-          textField({
-            label: 'From',
-            name: 'daytime_starts_at',
-            type: 'time',
-            value: household.daytimeStartsAt ?? '07:00',
-            hint: 'Only used when a daytime theme is set.',
-          }) +
-          `</div><div>` +
-          textField({
-            label: 'Until',
-            name: 'daytime_ends_at',
-            type: 'time',
-            value: household.daytimeEndsAt ?? '21:00',
-          }) +
-          `</div></div>`,
-      ) +
       section(
         'Wall content',
         'How much the calendars show, on every wall that has not said otherwise.',
@@ -4258,7 +4206,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * the code at the Walls page. The code travels in a hidden field so the one
    * form carries it to whichever button the household presses.
    */
-  function approvePromptPage(c: Context, userCode: string): string {
+  function approvePromptPage(c: Context, userCode: string, name = 'New wall', problem?: string): string {
     return page({
       modules: navModules(deps.db),
       title: 'Approve this wall',
@@ -4267,8 +4215,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       heading: 'A wall wants to pair',
       intro:
         'A wall on your network is asking to join your household. Give it a ' +
-        'name and approve it, or decline if you did not start this.',
+        'name and a theme and approve it, or decline if you did not start this.',
       body:
+        (problem === undefined ? '' : errorBlock(problem)) +
         `<p class="hint">Pairing code from the wall: ` +
         `<span class="code">${escapeHtml(formatShortCode(userCode))}</span></p>` +
         `<form method="post" action="admin/screens/approve">` +
@@ -4277,11 +4226,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           label: 'Name',
           name: 'name',
           required: true,
-          value: 'New wall',
+          value: name,
           placeholder: 'Kitchen',
           hint: 'This is how the wall shows up on the Walls page.',
           attrs: 'maxlength="80"',
         }) +
+        /*
+         * The picker, with nothing preselected — the same rule as the add page
+         * (RFC 015 §3.1). This door used to create a wall with no theme and
+         * nothing said so; the household picks one here, or the code stays
+         * pending until they do.
+         */
+        `<fieldset class="tplpick-field">` +
+        `<legend class="field-label">Theme</legend>` +
+        themeCards('', readThemes(deps.db)) +
+        `</fieldset>` +
         `<button type="submit" name="action" value="approve">Approve</button> ` +
         `<button class="secondary" type="submit" name="action" value="deny" ` +
         `formnovalidate>Decline</button>` +
@@ -4337,17 +4296,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       body +
       `</div>`
     );
-  }
-
-  /** The display name of a theme reference — a built-in key or `custom:<id>`. */
-  function themeLabel(ref: string | null): string {
-    const value = displayThemeRef(ref ?? '');
-    if (value === '') return 'the same theme all day';
-    if (value.startsWith('custom:')) {
-      const found = readThemes(deps.db).find((t) => `custom:${t.id}` === value);
-      return found?.name ?? 'a theme you built';
-    }
-    return themeName(value);
   }
 
   /**
@@ -4462,12 +4410,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       wsetGroup(
         'Theme',
         `<div class="rows">` +
+          // No "Household default" option on either select (RFC 015 phase 2):
+          // there is no household theme, so this wall's theme is its own and the
+          // list is exactly the themes it can draw. Blank on the daylight select
+          // is a real answer — the same theme all day — and says so.
           selectRow({
             label: 'Theme',
             name: 'theme',
             wide: true,
             optionsHtml:
-              option('', `Household default — ${themeLabel(household.theme)}`, screen.theme === null) +
               THEMES.map((theme) =>
                 option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
               ).join('') +
@@ -4479,11 +4430,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             wide: true,
             hint: 'A lighter theme during the hours below.',
             optionsHtml:
-              option(
-                '',
-                `Household default — ${themeLabel(household.daytimeTheme)}`,
-                screen.daytimeTheme === null,
-              ) +
+              option('', 'Same theme all day', !scheduled) +
               THEMES.map((theme) =>
                 option(theme.key, theme.label, displayThemeRef(screen.daytimeTheme ?? '') === theme.key),
               ).join('') +
@@ -5011,6 +4958,23 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * strictly more than the select said.
          */
         templateCards(template) +
+        /*
+         * A theme, with nothing preselected (RFC 015 §3.1, phase 2). A wall
+         * cannot exist without one and there is no household default to fall
+         * back on, so the household has to choose — a preselected card is a
+         * default wearing a different hat, and they would proceed past it
+         * exactly as they did the setting. The same `themeCards` the wall's own
+         * page and Themes draw, so the choice has one appearance. Echoed on a
+         * refusal, like every other field on this form.
+         */
+        `<fieldset class="tplpick-field">` +
+        `<legend class="field-label">Theme</legend>` +
+        themeCards(said('theme'), readThemes(deps.db)) +
+        `</fieldset>` +
+        `<p class="field-hint">How this wall looks — its colours and type. Panels separates ` +
+        `the shift colours best from across a room. Build your own on the ` +
+        `<a class="link" href="admin/themes">Themes</a> page; you can change this ` +
+        `wall’s afterwards on its own page.</p>` +
         /*
          * The submit rides the foot of the viewport while the form is on
          * screen, rather than sitting 3,700px down behind fourteen previews.

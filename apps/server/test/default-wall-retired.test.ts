@@ -117,7 +117,7 @@ describe('retiring the shared Default wall', () => {
       tokenHash: 'h',
       pairingCodeHash: 'p',
       pairingCodeExpiresAt: Date.now() + 60_000,
-    });
+    }, 'panels');
     expect(readLayoutWidgets(db, 'inheriting', 'portrait')).toEqual([]);
 
     retireDefaultWall(db, householdSetUp(db));
@@ -139,7 +139,7 @@ describe('retiring the shared Default wall', () => {
       tokenHash: 'h',
       pairingCodeHash: 'p',
       pairingCodeExpiresAt: Date.now() + 60_000,
-    });
+    }, 'panels');
     const mine = TEMPLATES.find((one) => one.id === 'sky-week')!;
     applyTemplate(db, 'own', mine);
 
@@ -178,7 +178,7 @@ describe('retiring the shared Default wall', () => {
       tokenHash: 'h',
       pairingCodeHash: 'p',
       pairingCodeExpiresAt: Date.now() + 60_000,
-    });
+    }, 'panels');
     retireDefaultWall(db, householdSetUp(db));
     expect(readLayoutWidgets(db, 'w', 'portrait').length).toBeGreaterThan(0);
 
@@ -200,7 +200,7 @@ describe('retiring the shared Default wall', () => {
     const h = await harness();
 
     // The add page.
-    await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     // The device flow: a wall starts pairing and the household approves it.
     const started = await h.post(`${B}/d/pair/device-start`, {});
     expect(started.status).toBe(200);
@@ -209,6 +209,7 @@ describe('retiring the shared Default wall', () => {
       code: userCode,
       name: 'Hallway',
       action: 'approve',
+      theme: 'panels',
     });
     expect(approved.status).toBe(200);
 
@@ -225,6 +226,16 @@ describe('retiring the shared Default wall', () => {
   });
 });
 
+/** The document a named wall draws, read the way the editor's preview reads it. */
+async function manifestOf(
+  h: Awaited<ReturnType<typeof harness>>,
+  id: string,
+): Promise<{ theme: { active: string; activeShape: string; activeTokens?: unknown } }> {
+  const response = await h.call(`${B}/admin/layout/preview.json?screen=${encodeURIComponent(id)}`);
+  expect(response.status).toBe(200);
+  return (await response.json()) as never;
+}
+
 describe('the Default wall is not a display any more', () => {
   it('sends its page to System and keeps it off the Walls list', async () => {
     const h = await harness();
@@ -237,14 +248,16 @@ describe('the Default wall is not a display any more', () => {
     expect(list).not.toContain('admin/walls/default');
   });
 
-  it('keeps every setting it held, on System, and saves them from there', async () => {
+  it('keeps the content and clock settings it held, on System, and saves them from there', async () => {
+    /*
+     * Everything the Default wall's settings sheet carried, less the theme and
+     * its daylight schedule: those were the household default every wall
+     * inherited, and they are retired with RFC 015 phase 2 — a wall names its
+     * own on its own page. What every wall still inherits is here.
+     */
     const h = await harness();
     const page = await (await h.call(`${B}/admin/system`)).text();
-    // Everything the Default wall's settings sheet carried.
     for (const field of [
-      'name="theme"',
-      'name="daytime_theme"',
-      'name="daytime_starts_at"',
       'name="today_events"',
       'name="next_days"',
       'name="horizon_weeks"',
@@ -253,10 +266,11 @@ describe('the Default wall is not a display any more', () => {
     ]) {
       expect(page, `System lost ${field}`).toContain(field);
     }
+    for (const gone of ['name="theme"', 'name="daytime_theme"', 'name="daytime_starts_at"', 'Wall appearance']) {
+      expect(page, `System still offers ${gone}`).not.toContain(gone);
+    }
 
     const saved = await h.post(`${B}/admin/display`, {
-      theme: 'almanac',
-      daytime_theme: 'none',
       today_events: '9',
       next_days: '4',
       horizon_weeks: '5',
@@ -267,42 +281,43 @@ describe('the Default wall is not a display any more', () => {
     expect(saved.headers.get('location')).toBe('/admin/system?saved=screen-settings');
     const row = h.db
       .prepare(
-        `SELECT theme, display_today_events AS today, week_start AS weekStart
+        `SELECT display_today_events AS today, week_start AS weekStart
            FROM household_settings WHERE id = 'singleton'`,
       )
-      .get() as { theme: string; today: number; weekStart: string };
-    expect(row).toEqual({ theme: 'almanac', today: 9, weekStart: 'monday' });
+      .get() as { today: number; weekStart: string };
+    expect(row).toEqual({ today: 9, weekStart: 'monday' });
   });
 
-  it('is one form, so saving the clock cannot clear the daylight schedule', async () => {
+  it('is one form, so saving the clock cannot clear the week start', async () => {
     /*
      * The unticked-checkbox rule, one page along. `POST /admin/display` writes
-     * every field it is given, so three sections posting separately would let a
-     * form carrying only the clock save a 12-hour clock *and* take the daylight
-     * theme off every wall. Sections are markup; the form spans them.
+     * every field it is given, so two sections posting separately would let a
+     * form carrying only the clock save a 12-hour clock *and* reset the
+     * content counts. Sections are markup; the form spans them.
      */
     const h = await harness();
     const page = await (await h.call(`${B}/admin/system`)).text();
     const start = page.indexOf('action="admin/display"');
     expect(start, 'no wall-defaults form on System').toBeGreaterThan(-1);
     const form = page.slice(start, page.indexOf('</form>', start));
-    for (const field of ['name="theme"', 'name="daytime_theme"', 'name="week_start"', 'name="clock_24"']) {
+    for (const field of ['name="today_events"', 'name="week_start"', 'name="clock_24"']) {
       expect(form, `${field} is outside the one form that writes it`).toContain(field);
     }
   });
 
-  it('shows every conditional field, because System ships no script to reveal them', async () => {
+  it('ships no field hidden, because System has no script to reveal one', async () => {
     /*
      * The wall's own settings sheet hides the daylight window until a daytime
      * theme is set, and `display-editor.js` reveals it. System does not load
      * that module, so a group rendered `hidden` here would be a control nobody
-     * could ever reach — the chores form's rule.
+     * could ever reach — the chores form's rule. There is no conditional field
+     * left on this form now that the daylight schedule is the wall's; the rule
+     * stays asserted so the next one arrives visible.
      */
     const h = await harness();
     const page = await (await h.call(`${B}/admin/system`)).text();
     const start = page.indexOf('action="admin/display"');
     const form = page.slice(start, page.indexOf('</form>', start));
-    expect(form).toContain('name="daytime_starts_at"');
     expect(form, 'a field ships hidden with nothing to reveal it').not.toMatch(/<div[^>]*\bhidden[^>]*>/);
   });
 });

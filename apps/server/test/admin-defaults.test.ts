@@ -186,7 +186,7 @@ describe('the Overview says what needs attention and what the wall draws today',
 
   it('lists a wall that has never connected, and links to its page', async () => {
     const h = await harness();
-    await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     const html = await h.text('/admin');
     expect(html).toContain('Kitchen tablet has never connected');
     expect(html).not.toContain('No walls paired yet');
@@ -277,7 +277,7 @@ describe('a new pairing link is asked for, never stumbled into', () => {
 
   it('names the control for what it does and says what it costs on a wall that has never connected', async () => {
     const h = await harness();
-    await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     const page = await h.text(`/admin/walls/${screenId(h)}`);
     // The old label read as "show me the link" and revoked it.
     expect(page).not.toContain('>Pairing link');
@@ -297,7 +297,7 @@ describe('a new pairing link is asked for, never stumbled into', () => {
 
   it('turns red and says the wall drops off once the wall has connected', async () => {
     const h = await harness();
-    await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     const id = screenId(h);
     h.db.prepare(`UPDATE screens SET last_seen_at = ? WHERE id = ?`).run(Date.now(), id);
     const page = await h.text(`/admin/walls/${id}`);
@@ -311,7 +311,7 @@ describe('a new pairing link is asked for, never stumbled into', () => {
 
   it('tells the household on the pairing page itself that a new link retires this one', async () => {
     const h = await harness();
-    const made = await h.form('/admin/screens', { name: 'Kitchen tablet' });
+    const made = await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     const shown = await (await h.call(made.headers.get('location') ?? '')).text();
     expect(shown).not.toContain('costs nothing');
     expect(shown).toContain('this one stops working when you do');

@@ -3,6 +3,7 @@ import type { ShiftPlan, ShiftType } from '@maverick-wall/core';
 import {
   buildManifest,
   manifestEtag,
+  STAND_IN_THEME,
   type BuildManifestInput,
   type EventCacheRow,
   type HouseholdRow,
@@ -18,10 +19,6 @@ const NOW = Date.parse('2026-09-10T12:00:00Z');
 
 const HOUSEHOLD: HouseholdRow = {
   timezone: 'America/New_York',
-  theme: 'board',
-  daytimeTheme: 'almanac',
-  daytimeStartsAt: '07:00',
-  daytimeEndsAt: '21:00',
   shiftEnabled: 1,
   displayTodayEvents: 8,
   displayNextDays: 6,
@@ -522,20 +519,35 @@ describe('two people', () => {
 });
 
 describe('theme tokens in the manifest', () => {
+  /*
+   * The theme is the *wall's* (RFC 015 phase 2): the household row carries
+   * none, so every case here hands it over on the screen block, and the one
+   * that hands over no screen at all is the stand-in.
+   */
+  const WALL = {
+    orientation: 'auto',
+    rotation: 0,
+    theme: 'panels',
+    daytimeTheme: 'almanac',
+    daytimeStartsAt: '07:00',
+    daytimeEndsAt: '21:00',
+  } as const;
+
   it('carries only the shape for a built-in — the display bundle owns its tokens', () => {
     const manifest = buildManifest({
       ...BASE,
+      screen: WALL,
       resolveTheme: (ref) => ({ shape: ref }),
     });
-    expect(manifest.theme.active).toBe('board');
-    expect(manifest.theme.activeShape).toBe('board');
+    expect(manifest.theme.active).toBe('panels');
+    expect(manifest.theme.activeShape).toBe('panels');
     expect(manifest.theme.activeTokens).toBeUndefined();
   });
 
   it('carries the resolved token set for a custom active theme', () => {
     const manifest = buildManifest({
       ...BASE,
-      household: { ...HOUSEHOLD, theme: 'custom:abc' },
+      screen: { ...WALL, theme: 'custom:abc' },
       resolveTheme: (ref) =>
         ref === 'custom:abc' ? { tokens: { '--bg': '#123456' }, shape: 'board' } : { shape: ref },
     });
@@ -547,13 +559,16 @@ describe('theme tokens in the manifest', () => {
   it('resolves the daytime theme too', () => {
     const manifest = buildManifest({
       ...BASE,
-      household: { ...HOUSEHOLD, daytimeTheme: 'custom:day' },
+      screen: { ...WALL, daytimeTheme: 'custom:day' },
       resolveTheme: (ref) =>
         ref === 'custom:day' ? { tokens: { '--bg': '#ffffff' }, shape: 'board' } : { shape: ref },
     });
     expect(manifest.theme.daytime).toBe('custom:day');
     expect(manifest.theme.daytimeTokens).toEqual({ '--bg': '#ffffff' });
+    expect(manifest.theme.daytimeStartsAt).toBe('07:00');
+    expect(manifest.theme.daytimeEndsAt).toBe('21:00');
   });
+
 });
 
 describe('per-type shift colour and times', () => {

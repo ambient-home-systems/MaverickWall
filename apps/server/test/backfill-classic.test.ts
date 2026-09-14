@@ -36,8 +36,8 @@ function seeded() {
   ).run(at, at);
   const screen = (id: string, name: string): void => {
     db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'panels', ?, ?, ?)`,
     ).run(id, name, `hash-${id}`, at, at, at);
   };
   // Two auto walls (no widgets) and one that already arranged a canvas.

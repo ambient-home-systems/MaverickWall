@@ -103,7 +103,7 @@ async function harness() {
    * test about a wall's page has to have a wall.
    */
   const pairedWallId = async (name = 'Kitchen'): Promise<string> => {
-    const made = await form('/admin/screens', { name });
+    const made = await form('/admin/screens', { name, theme: 'panels' });
     const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1];
     if (id === undefined) throw new Error('pairing did not redirect to a wall');
     return decodeURIComponent(id);
@@ -701,7 +701,6 @@ describe('destructive actions ask first', () => {
         '--s-night': '#4C7FD1', '--s-break': '#35916A', '--s-straight': '#6B7684', '--radius': '0.2rem',
       },
     });
-    h.db.prepare(`UPDATE household_settings SET theme = ? WHERE id = 'singleton'`).run(`custom:${theme.id}`);
     const stamp = Date.now();
     h.db
       .prepare(
@@ -722,8 +721,7 @@ describe('destructive actions ask first', () => {
      * is how a wrong name stays agreed with itself (RFC 015 §2.1).
      */
     expect(interstitial).toContain(
-      `In use by the household default, “Kitchen”, and “Lounge” — they switch to ` +
-        `${themeName(FALLBACK_THEME)}.`,
+      `In use by “Kitchen” and “Lounge” — they switch to ${themeName(FALLBACK_THEME)}.`,
     );
   });
 

@@ -25,13 +25,7 @@ const HOUSEHOLD_DEFAULTS: HouseholdRow = {
   // while the wizard preselected `Etc/UTC`, so the boot log and the screen that
   // chooses the zone disagreed on a fresh install. See `src/timezone.ts`.
   timezone: DEFAULT_TIMEZONE,
-  // Panels is the new dark default. The stored column default is still `board`
-  // (changing it would need a table-recreate migration for no gain), which the
-  // display resolves to Panels — so a fresh install and this fallback agree.
-  theme: 'panels',
-  daytimeTheme: null,
-  daytimeStartsAt: null,
-  daytimeEndsAt: null,
+  // No theme here, and none in the row (RFC 015 phase 2): a wall names its own.
   shiftEnabled: 0,
   displayTodayEvents: 8,
   displayNextDays: 6,
@@ -49,8 +43,7 @@ const HOUSEHOLD_DEFAULTS: HouseholdRow = {
 export function readHousehold(db: SqliteDatabase): HouseholdRow {
   const row = db
     .prepare(
-      `SELECT timezone, theme, daytime_theme AS daytimeTheme,
-              daytime_starts_at AS daytimeStartsAt, daytime_ends_at AS daytimeEndsAt,
+      `SELECT timezone,
               shift_enabled AS shiftEnabled,
               display_today_events AS displayTodayEvents,
               display_next_days AS displayNextDays,
@@ -1015,9 +1008,14 @@ export interface ScreenSettings {
   readonly name: string;
   readonly orientation: string;
   readonly rotation: number;
+  /**
+   * The wall's own theme, always (RFC 015 phase 2). There is no household
+   * theme to follow, and the `CHECK` on `screens` refuses a null here.
+   */
+  readonly theme: string;
   /** Null on any of these means "follow the household". */
-  readonly theme: string | null;
   readonly timezone: string | null;
+  /** Null is the same theme all day — a real answer, not a fallback. */
   readonly daytimeTheme: string | null;
   readonly daytimeStartsAt: string | null;
   readonly daytimeEndsAt: string | null;
@@ -1141,19 +1139,30 @@ export interface PairingSecret {
   readonly pairingCodeExpiresAt: number | null;
 }
 
+/**
+ * Create a browser wall.
+ *
+ * `theme` is required and **deliberately not defaulted** — `addCalendarSource`'s
+ * rule for its clock, verbatim: a default is precisely how the household
+ * fallback this retires would come back, one door at a time. Every caller has
+ * to answer, and the compiler is what walks the doors (RFC 015 §4.1). The
+ * value is a built-in key or a `custom:<id>`, validated by the caller; the
+ * `CHECK` on `screens` refuses a null regardless of who forgot.
+ */
 export function createScreen(
   db: SqliteDatabase,
   id: string,
   name: string,
   pairing: PairingSecret,
+  theme: string,
 ): void {
   const at = Date.now();
   db.prepare(
     `INSERT INTO screens
-       (id, name, token_hash, pairing_code_hash, pairing_code_expires_at,
+       (id, name, token_hash, pairing_code_hash, pairing_code_expires_at, theme,
         token_issued_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, name, pairing.tokenHash, pairing.pairingCodeHash, pairing.pairingCodeExpiresAt, at, at, at);
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, pairing.tokenHash, pairing.pairingCodeHash, pairing.pairingCodeExpiresAt, theme, at, at, at);
 }
 
 /**
@@ -1516,10 +1525,6 @@ export function recordUpdateCheck(
 }
 
 export interface DisplaySettings {
-  readonly theme: string;
-  readonly daytimeTheme: string | null;
-  readonly daytimeStartsAt: string | null;
-  readonly daytimeEndsAt: string | null;
   readonly todayEvents: number;
   readonly nextDays: number;
   readonly horizonWeeks: number;
@@ -1529,24 +1534,19 @@ export interface DisplaySettings {
 }
 
 /**
- * Save what the household chose for the wall.
+ * Save what the household chose for every wall's content and clock.
  *
- * Values are already validated by the caller; this only writes. `null` for the
- * daylight theme means "one theme all day", which is a real choice rather than
- * a missing value, so it is stored rather than skipped.
+ * Values are already validated by the caller; this only writes. No theme and
+ * no daylight schedule: those were the household default every wall inherited
+ * and are retired (RFC 015 phase 2) — a wall names its own on its own page.
  */
 export function writeDisplaySettings(db: SqliteDatabase, settings: DisplaySettings): void {
   db.prepare(
     `UPDATE household_settings
-        SET theme = ?, daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
-            display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
+        SET display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
             display_blocks = ?, clock_24 = ?, week_start = ?, updated_at = ?
       WHERE id = 'singleton'`,
   ).run(
-    settings.theme,
-    settings.daytimeTheme,
-    settings.daytimeStartsAt,
-    settings.daytimeEndsAt,
     settings.todayEvents,
     settings.nextDays,
     settings.horizonWeeks,
@@ -1820,17 +1820,14 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
 }
 
 /**
- * Set a display's theme — used when applying a template that names one so its
- * backgrounds are readable (RFC 005 Phase 3c). The owner is the shared Default
- * (null) or a screen; a built-in key, validated by the caller.
+ * Set a wall's theme — used when applying a template that names one so its
+ * backgrounds are readable (RFC 005 Phase 3c). A screen id only: the household
+ * row has no theme to set any more (RFC 015 phase 2), so the branch that wrote
+ * one is gone rather than left writing to a column that does not exist. A
+ * built-in key or `custom:<id>`, validated by the caller.
  */
-export function setOwnerTheme(db: SqliteDatabase, owner: string | null, theme: string): void {
-  const at = Date.now();
-  if (owner === null) {
-    db.prepare(`UPDATE household_settings SET theme = ?, updated_at = ? WHERE id = 'singleton'`).run(theme, at);
-  } else {
-    db.prepare('UPDATE screens SET theme = ?, updated_at = ? WHERE id = ?').run(theme, at, owner);
-  }
+export function setOwnerTheme(db: SqliteDatabase, owner: string, theme: string): void {
+  db.prepare('UPDATE screens SET theme = ?, updated_at = ? WHERE id = ?').run(theme, Date.now(), owner);
 }
 
 export function touchScreen(db: SqliteDatabase, id: string, ip: string | null, agent: string | null): void {

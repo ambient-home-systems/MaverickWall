@@ -43,14 +43,14 @@ function harness(wrapDb: (db: SqliteDatabase) => SqliteDatabase = (db) => db) {
   // route here would answer with a redirect to `/setup`, which is the gate
   // doing its job rather than these routes misbehaving.
   db.prepare(
-    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
-     VALUES ('singleton', 'America/New_York', 'board', ?, ?, ?)`,
+    `INSERT INTO household_settings (id, timezone, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'America/New_York', ?, ?, ?)`,
   ).run(now, now, now);
 
   const issued = issueDisplayToken();
   db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-     VALUES ('screen1', 'Kitchen', ?, ?, ?, ?)`,
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('screen1', 'Kitchen', ?, 'panels', ?, ?, ?)`,
   ).run(issued.tokenHash, now, now, now);
 
   // Auth is required rather than defaulted: a fallback signing secret would be
@@ -221,13 +221,13 @@ function harnessWithBrokenBuild(options: { failOnCall: number; breakSchema?: boo
 
   const at = Date.now();
   db.prepare(
-    `INSERT INTO household_settings (id, timezone, theme, setup_completed_at, created_at, updated_at)
-     VALUES ('singleton', 'America/New_York', 'board', ?, ?, ?)`,
+    `INSERT INTO household_settings (id, timezone, setup_completed_at, created_at, updated_at)
+     VALUES ('singleton', 'America/New_York', ?, ?, ?)`,
   ).run(at, at, at);
   const issued = issueDisplayToken();
   db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-     VALUES ('screen1', 'Kitchen', ?, ?, ?, ?)`,
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('screen1', 'Kitchen', ?, 'panels', ?, ?, ?)`,
   ).run(issued.tokenHash, at, at, at);
 
   if (breakSchema) {

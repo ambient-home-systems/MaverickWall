@@ -164,7 +164,7 @@ describe('choosing what a panel draws', () => {
 
   it('draws the wall’s canvas, and follows it as the wall changes', async () => {
     const h = await harness();
-    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    const made = await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     const wall = await (await h.call(`${B}${made.headers.get('location') ?? ''}`)).text();
     expect(wall).toContain('Kitchen');
     const wallId = (
@@ -325,7 +325,7 @@ describe('choosing what a panel draws', () => {
     // in place would answer with the wall's canvas and read as having done
     // nothing.
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Study' });
+    await h.post(`${B}/admin/screens`, { name: 'Study', theme: 'panels' });
     const wallId = (
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Study'`).get() as { id: string }
     ).id;
@@ -345,7 +345,7 @@ describe('the panel’s design page while it follows', () => {
   it('says where to arrange it, and does not offer a second place to', async () => {
     const h = await harness();
     const wallId = (
-      (await h.post(`${B}/admin/screens`, { name: 'Kitchen' }),
+      (await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' }),
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string })
     ).id;
     const p = await panel(h, 'Porch');
@@ -372,7 +372,7 @@ describe('the panel’s design page while it follows', () => {
     const p = await panel(h, 'Porch');
     // A real wall to follow. The picker used to always carry the Default wall,
     // so it had a follow option on a household with no walls at all.
-    await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     const wallId = (
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string }
     ).id;
@@ -412,7 +412,7 @@ describe('the panel’s design page while it follows', () => {
 describe('the ink lane in a wall’s editor', () => {
   it('appears exactly when a panel is looking at that canvas', async () => {
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     const wallId = (
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string }
     ).id;
@@ -432,7 +432,7 @@ describe('the ink lane in a wall’s editor', () => {
     expect(withPanel).toContain('Drop shadow');
 
     // And it is on the canvas the panel actually follows, not on every wall.
-    await h.post(`${B}/admin/screens`, { name: 'Hallway' });
+    await h.post(`${B}/admin/screens`, { name: 'Hallway', theme: 'panels' });
     const other = (
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Hallway'`).get() as { id: string }
     ).id;
@@ -443,7 +443,7 @@ describe('the ink lane in a wall’s editor', () => {
 describe('an ink override, from the editor to the glass', () => {
   it('changes the panel and leaves the wall alone', async () => {
     const h = await harness();
-    await h.post(`${B}/admin/screens`, { name: 'Kitchen' });
+    await h.post(`${B}/admin/screens`, { name: 'Kitchen', theme: 'panels' });
     const wallId = (
       h.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string }
     ).id;

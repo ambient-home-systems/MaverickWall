@@ -90,8 +90,8 @@ function seedHouseholdData(db: SqliteDatabase): void {
      VALUES ('cal1', 'Family', 'ciphertext', 'example.com', '#4C7FD1', 1, 1, ?, ?)`,
   ).run(stamp, stamp);
   db.prepare(
-    `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-     VALUES ('screen1', 'Kitchen', 'hash', ?, ?, ?)`,
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES ('screen1', 'Kitchen', 'hash', 'panels', ?, ?, ?)`,
   ).run(stamp, stamp, stamp);
 }
 

@@ -4,6 +4,7 @@ import { formatShortCode, hashShortCode, issueDisplayToken, PAIRING_CODE_TTL_MS 
 import { createScreen } from '../api/queries.js';
 import { applyTemplate, classicSeed } from '../api/templates.js';
 import { householdSetUp } from '../modules/index.js';
+import { THEMES } from '../http/theme-cards.js';
 
 /**
  * Pair a screen from the command line.
@@ -12,9 +13,15 @@ import { householdSetUp } from '../modules/index.js';
  * only way to pair a display over SSH, and the only way to do it at all before
  * an account exists.
  *
- *   node dist/tools/add-screen.js "Kitchen"
+ *   node dist/tools/add-screen.js "Kitchen" --theme panels
  *   node dist/tools/add-screen.js --list
  *   node dist/tools/add-screen.js --revoke <id>
+ *
+ * `--theme` is required. A wall names its own theme and there is no household
+ * default to fall back to (RFC 015 phase 2); this is the third of three doors
+ * that create one, and the one `default-wall-retired` found silently skipping
+ * the canvas — so it is refused up front rather than left to the database's
+ * CHECK, with the keys it would take printed beside the refusal.
  *
  * The token is printed once and then only its hash is stored. There is no way
  * to recover it afterwards, which is the point — pair again to get a new one.
@@ -72,8 +79,20 @@ if (argv[0] === '--revoke') {
 }
 
 const name = argv[0];
-if (!name) {
-  console.error('usage: add-screen <name> | --list | --revoke <id>');
+const themeFlag = argv.indexOf('--theme');
+const theme = themeFlag === -1 ? undefined : argv[themeFlag + 1];
+const themeKeys: readonly string[] = THEMES.map((one) => one.key);
+if (!name || name.startsWith('--')) {
+  console.error('usage: add-screen <name> --theme <key> | --list | --revoke <id>');
+  process.exit(1);
+}
+if (theme === undefined || theme === '') {
+  console.error('A wall needs a theme: add --theme <key>, one of');
+  for (const one of THEMES) console.error(`  ${one.key.padEnd(10)} ${one.label}`);
+  process.exit(1);
+}
+if (!themeKeys.includes(theme)) {
+  console.error(`"${theme}" is not a theme this build draws. One of: ${themeKeys.join(', ')}`);
   process.exit(1);
 }
 
@@ -82,11 +101,17 @@ const id = randomBytes(6).toString('hex');
 
 // Through the same writer the admin uses, so a CLI-paired screen carries the
 // same short code — the code entry on the display works whichever door made it.
-createScreen(db, id, name, {
-  tokenHash: issued.tokenHash,
-  pairingCodeHash: hashShortCode(issued.shortCode),
-  pairingCodeExpiresAt: Date.now() + PAIRING_CODE_TTL_MS,
-});
+createScreen(
+  db,
+  id,
+  name,
+  {
+    tokenHash: issued.tokenHash,
+    pairingCodeHash: hashShortCode(issued.shortCode),
+    pairingCodeExpiresAt: Date.now() + PAIRING_CODE_TTL_MS,
+  },
+  theme,
+);
 /*
  * And seed it, exactly as the admin's own doors do.
  *
@@ -102,7 +127,7 @@ applyTemplate(db, id, classicSeed(db, id, householdSetUp(db)));
 
 const port = process.env['PORT'] ?? '8080';
 
-console.log(`Paired "${name}" as ${id}.`);
+console.log(`Paired "${name}" as ${id}, wearing ${theme}.`);
 console.log('');
 console.log('  Point the display at:');
 console.log(`    http://<this-host>:${port}/pair?token=${issued.token}`);

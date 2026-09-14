@@ -154,26 +154,14 @@ describe('the generate route, through to the wall', () => {
     expect(id, `redirect ${location} should open the new theme`).toBeDefined();
     expect(location).toBe(`/admin/themes/${id}?saved=theme-generated`);
 
-    // Select it as the household default through the display-settings route.
-    const selected = await h.form('/admin/display', {
-      theme: `custom:${id}`,
-      daytime_theme: '',
-      daytime_starts_at: '07:00',
-      daytime_ends_at: '21:00',
-      today_events: '8',
-      next_days: '5',
-      horizon_weeks: '5',
-      week_start: 'sunday',
-    });
-    expect(selected.status).toBe(302);
-
-    // Read the manifest the way a paired wall does.
+    // A wall wears it — there is no household default to select it as
+    // (RFC 015 phase 2) — and the manifest is read the way that wall polls it.
     const issued = issueDisplayToken();
     const at = Date.now();
     h.db.prepare(
-      `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
-       VALUES ('wall1', 'Kitchen', ?, ?, ?, ?)`,
-    ).run(issued.tokenHash, at, at, at);
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES ('wall1', 'Kitchen', ?, ?, ?, ?, ?)`,
+    ).run(issued.tokenHash, `custom:${id}`, at, at, at);
     const manifest = (await (
       await h.call('/d/manifest', { headers: { authorization: `Bearer ${issued.token}` } })
     ).json()) as {

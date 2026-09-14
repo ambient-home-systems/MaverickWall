@@ -10,14 +10,26 @@ import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
+import { issueDisplayToken } from '../src/auth/tokens.js';
 import { readThemes } from '../src/api/themes.js';
 import { THEMES } from '../src/http/theme-cards.js';
 
 /**
  * Themes, driven through the real admin routes: the gallery, and the builder —
- * create, list, edit, delete, and a custom theme chosen as the household
- * default and refused when it does not exist.
+ * create, list, edit, delete, a custom theme chosen for a wall and refused
+ * when it does not exist, and a theme in use deleted out from under its walls.
  */
+
+/** A wall wearing a theme, straight into the table, and the token to poll as it. */
+function wearing(db: ReturnType<typeof openDatabase>['db'], id: string, name: string, theme: string) {
+  const issued = issueDisplayToken();
+  const at = Date.now();
+  db.prepare(
+    `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, issued.tokenHash, theme, at, at, at);
+  return issued.token;
+}
 
 /** The text of one `.themecard`, tags and all, as a household reads it. */
 function themeCardTexts(html: string): readonly string[] {
@@ -136,52 +148,42 @@ describe('the theme builder', () => {
     expect(readThemes(h.db)).toHaveLength(0);
   });
 
-  it('offers the theme in the wall defaults and accepts it as the default', async () => {
+  it('offers the theme where a wall is made and on the wall’s own page, and a wall can wear it', async () => {
+    /*
+     * The household default is retired (RFC 015 phase 2), so a custom theme is
+     * offered on the two pages that decide what a *wall* wears — and nowhere
+     * on System, which has no colour left to offer.
+     */
     const h = await harness();
     await h.form('/admin/themes', themeFields('Sunset'));
     const id = readThemes(h.db)[0]?.id ?? '';
 
-    // On System: the wall defaults moved there with the Default wall's retirement.
-    const appearance = await (await h.call('/admin/system')).text();
-    expect(appearance).toContain(`custom:${id}`);
-    expect(appearance).toContain('Sunset');
+    const add = await (await h.call('/admin/walls/new')).text();
+    expect(add).toContain(`custom:${id}`);
+    expect(add).toContain('Sunset');
+    expect(await (await h.call('/admin/system')).text()).not.toContain(`custom:${id}`);
 
-    const saved = await h.form('/admin/display', {
-      theme: `custom:${id}`,
-      daytime_theme: 'none',
-      daytime_starts_at: '07:00',
-      daytime_ends_at: '21:00',
-      today_events: '8',
-      next_days: '6',
-      horizon_weeks: '5',
-      week_start: 'sunday',
-      block_1: 'now',
-      block_2: 'next',
-      block_3: 'horizon',
-    });
-    expect(saved.status).toBe(302);
-    const row = h.db.prepare(`SELECT theme FROM household_settings WHERE id = 'singleton'`).get() as {
-      theme: string;
-    };
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: `custom:${id}` });
+    expect(made.status).toBe(303);
+    const wall = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
+    const row = h.db.prepare('SELECT theme FROM screens WHERE id = ?').get(wall) as { theme: string };
     expect(row.theme).toBe(`custom:${id}`);
+    const page = await (await h.call(`/admin/walls/${wall}`)).text();
+    expect(page).toContain(`<option value="custom:${id}" selected>`);
   });
 
-  it('refuses a theme reference that does not exist', async () => {
+  it('refuses a theme reference that does not exist, on both doors', async () => {
     const h = await harness();
-    const res = await h.form('/admin/display', {
-      theme: 'custom:deadbeef',
-      daytime_theme: 'none',
-      daytime_starts_at: '07:00',
-      daytime_ends_at: '21:00',
-      today_events: '8',
-      next_days: '6',
-      horizon_weeks: '5',
-      week_start: 'sunday',
-      block_1: 'now',
-      block_2: 'next',
-      block_3: 'horizon',
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'custom:deadbeef' });
+    expect(made.status).toBe(400);
+    expect(h.db.prepare('SELECT count(*) AS n FROM screens').get()).toEqual({ n: 0 });
+
+    wearing(h.db, 'w1', 'Kitchen', 'panels');
+    const saved = await h.form('/admin/screens/w1', {
+      name: 'Kitchen', orientation: 'auto', rotation: '0', theme: 'custom:deadbeef',
     });
-    expect(res.status).toBe(400);
+    expect(saved.status).toBe(400);
+    expect(h.db.prepare(`SELECT theme FROM screens WHERE id = 'w1'`).get()).toEqual({ theme: 'panels' });
   });
 
   /*
@@ -233,7 +235,7 @@ describe('the theme builder', () => {
    */
   it('tags each theme with the walls wearing it, by name', async () => {
     const h = await harness();
-    const made = await h.form('/admin/screens', { name: 'Kitchen' });
+    const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'panels' });
     const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
     expect(id, 'the wall must exist for its name to be a tag').not.toBe('');
     const saved = await h.form(`/admin/screens/${id}`, {
@@ -251,17 +253,21 @@ describe('the theme builder', () => {
   });
 
   /*
-   * The household row still exists in this phase, and a wall that has set no
-   * theme of its own is drawing it — so the page has to account for it or the
-   * tags add up to fewer walls than the house has. It lands on **Panels**
-   * rather than nowhere, because the column's default is still the retired
-   * `board` and `LEGACY_THEME_ALIASES` folds it there.
+   * There is no household row to account for any more (RFC 015 phase 2): every
+   * wall names its own theme, so the tags across the page add up to exactly
+   * the walls in the house. A wall still carrying the retired `board` — the
+   * raw value the migration copied — is claimed by Panels, where
+   * `LEGACY_THEME_ALIASES` folds it, rather than by no card at all.
    */
-  it('shows the household row as a tag, folded onto the theme it resolves to', async () => {
+  it('tags every wall on exactly one card, with no household row among them', async () => {
     const h = await harness();
+    wearing(h.db, 'w-board', 'Hall', 'board');
+    wearing(h.db, 'w-alm', 'Kitchen', 'almanac');
     const html = await (await h.call('/admin/themes')).text();
-    expect(cardNamed(html, 'Panels')).toContain('Household default');
-    expect(cardNamed(html, 'Paper Almanac')).not.toContain('Household default');
+    expect(html).not.toContain('Household default');
+    expect(cardNamed(html, 'Panels')).toContain('Hall');
+    expect(cardNamed(html, 'Paper Almanac')).toContain('Kitchen');
+    expect(cardNamed(html, 'Paper Almanac')).not.toContain('Hall');
   });
 
   it('edits and deletes a theme', async () => {

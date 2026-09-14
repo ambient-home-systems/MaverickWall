@@ -168,10 +168,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const theme = readTheme(deps.db, id);
     if (theme === undefined) return c.redirect('/admin/themes', 302);
     const usage = themeUsage(deps.db, id);
-    const affected = [
-      ...(usage.household ? ['the household default'] : []),
-      ...usage.screens.map((wall) => `“${wall.name}”`),
-    ];
+    const affected = usage.screens.map((wall) => `“${wall.name}”`);
     return c.html(
       confirmDestroyPage({
         self: selfHref(c),
@@ -183,9 +180,10 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
           affected.length === 0
             ? 'Nothing is using it right now.'
             : // A leading verb, not a bare list, so the sentence reads naturally
-              // whatever the list starts with — a lowercase "the household
-              // default" or a screen's own name — and Intl.ListFormat supplies
-              // the "and" a plain join() drops for two or more items.
+              // whatever the list starts with, and Intl.ListFormat supplies
+              // the "and" a plain join() drops for two or more items. Every
+              // wall named here is re-dressed by `deleteTheme` itself, in the
+              // same transaction as the delete (RFC 015 §3.4).
               `In use by ${new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(affected)} ` +
               `— ${affected.length === 1 ? 'it switches' : 'they switch'} to ` +
               // Through `themeName`, never a literal: this sentence said
@@ -273,14 +271,11 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const cardFor = (choice: ThemeChoice): string => {
       const usage = themeUsageOf(deps.db, refsFor(choice));
       /*
-       * Who is wearing it, as words. A tag per wall, by name, plus the
-       * household row while there still is one — a wall that has set no theme
-       * of its own is drawing that row, and saying so is the only way this
-       * page accounts for every wall in the house.
+       * Who is wearing it, as words: a tag per wall, by name. Every wall names
+       * its own theme (RFC 015 phase 2), so the tags across the page add up to
+       * every wall in the house with nothing left to a household row.
        */
-      const tags =
-        (usage.household ? tag('Household default', 'accent') : '') +
-        usage.screens.map((wall) => tag(wall.name)).join('');
+      const tags = usage.screens.map((wall) => tag(wall.name)).join('');
       const id = choice.ref.startsWith('custom:') ? choice.ref.slice('custom:'.length) : '';
       const actions =
         id === ''

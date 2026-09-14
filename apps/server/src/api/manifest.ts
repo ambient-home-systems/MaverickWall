@@ -32,6 +32,19 @@ import { physicalWall } from '../wall-sizes.js';
 
 export const MANIFEST_VERSION = 1;
 
+/**
+ * What a document built for no wall wears.
+ *
+ * A stand-in, not a default (RFC 015 §3.2): a default is a value a household's
+ * walls inherit, and nothing inherits this. It is the theme of the document a
+ * wall gets when its database could not be read — there *is* no screen row to
+ * ask — and of the admin's own previews, which name no wall. Every real wall
+ * carries its own theme in its row, and the `CHECK` on `screens` refuses one
+ * that does not. `panels`, because the display bundle's own unknown-key
+ * fallback is Panels too, so the two floors agree.
+ */
+export const STAND_IN_THEME = 'panels';
+
 /** Everything a wall can show. Order is the household's to choose. */
 export type DisplayBlock = 'now' | 'weather' | 'home' | 'next' | 'horizon' | `ext:${string}`;
 
@@ -757,10 +770,7 @@ export interface SourceRow {
 
 export interface HouseholdRow {
   readonly timezone: string;
-  readonly theme: string;
-  readonly daytimeTheme: string | null;
-  readonly daytimeStartsAt: string | null;
-  readonly daytimeEndsAt: string | null;
+  // No theme and no daylight schedule: a wall names its own (RFC 015 phase 2).
   readonly shiftEnabled: number;
   readonly displayTodayEvents: number;
   readonly displayNextDays: number;
@@ -870,8 +880,15 @@ export interface BuildManifestInput {
     readonly allowDismiss?: boolean;
     readonly allowChores?: boolean;
     readonly allowTodo?: boolean;
-    readonly theme?: string | null;
+    /**
+     * The wall's own theme, and nothing behind it (RFC 015 phase 2). Required
+     * rather than nullable, so a caller that builds a document for a wall has
+     * to say what it wears — the household row it used to fall back to has no
+     * theme any more.
+     */
+    readonly theme: string;
     readonly timezone?: string | null;
+    /** Null is the same theme all day; the hours are the wall's own too. */
     readonly daytimeTheme?: string | null;
     readonly daytimeStartsAt?: string | null;
     readonly daytimeEndsAt?: string | null;
@@ -1259,20 +1276,24 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   });
 
   /*
-   * The screen's own look, falling back to the household's.
+   * The screen's own look, and nothing behind it (RFC 015 phase 2).
    *
-   * Resolved here rather than on the display, because the display should not
-   * have to know there are two places a theme can come from — and because a
-   * screen that overrides the theme but not the schedule wants the household's
-   * schedule applied to its own themes, which is fiddly to express twice.
+   * This used to fall back to the household's theme and schedule, field by
+   * field, and that fallback was the thing that let five other mechanisms
+   * decide a wall's colour without anybody seeing it (RFC 015 §2.8). The
+   * household row has no theme now; a wall names its own, and the `CHECK` on
+   * `screens` is what makes `input.screen.theme` a string rather than a
+   * hope. A document built for *no* wall at all — the stand-in a wall gets
+   * when its database could not be read, the admin's previews — wears
+   * `STAND_IN_THEME`, which is not a default: nobody inherits it.
    */
-  const pick = (screenValue: string | null | undefined, householdValue: string | null): string | null =>
-    screenValue === undefined || screenValue === null || screenValue === '' ? householdValue : screenValue;
+  const pick = (screenValue: string | null | undefined): string | null =>
+    screenValue === undefined || screenValue === null || screenValue === '' ? null : screenValue;
 
-  const activeTheme = pick(input.screen?.theme, input.household.theme) ?? input.household.theme;
-  const daytimeTheme = pick(input.screen?.daytimeTheme, input.household.daytimeTheme);
-  const daytimeStartsAt = pick(input.screen?.daytimeStartsAt, input.household.daytimeStartsAt);
-  const daytimeEndsAt = pick(input.screen?.daytimeEndsAt, input.household.daytimeEndsAt);
+  const activeTheme = pick(input.screen?.theme) ?? STAND_IN_THEME;
+  const daytimeTheme = pick(input.screen?.daytimeTheme);
+  const daytimeStartsAt = pick(input.screen?.daytimeStartsAt);
+  const daytimeEndsAt = pick(input.screen?.daytimeEndsAt);
 
   // Resolve the active (and any daytime) theme to what the display needs: a
   // built-in yields just its shape, a custom theme its token set too. Falls back
@@ -1296,7 +1317,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
     generatedAt: input.now,
     // A holiday home on another clock is a real case, and the whole grid is
     // anchored on this.
-    timezone: pick(input.screen?.timezone, input.household.timezone) ?? input.household.timezone,
+    timezone: pick(input.screen?.timezone) ?? input.household.timezone,
     theme,
     window: { from, to },
     /*
