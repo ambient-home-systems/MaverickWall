@@ -31,7 +31,7 @@ the author's own testing environment**
 > (§3.4); and **Duplicate costs a transcription of five token sets the server
 > does not hold**, which the document priced at nothing (§3.4). The rest are
 > facts: `screens` carries 46 columns and not 92, `migration-upgrade.test.ts`
-> already walks three screens, §4 drops four household columns and not two,
+> already walks four screens, §4 drops four household columns and not two,
 > §2.1's one retired-name site is four, §3.1's suggestion needs a script the
 > page does not load, §3.6's saved strip collides with `saved.ts`'s own rule,
 > and §6 lists the tests to write and none of the ones that have to change.
@@ -524,17 +524,21 @@ So the review requirement is unchanged and is now cheap to meet: **generate the
 migration, then read the `INSERT … SELECT` column list against the old table's
 columns before running it**, exactly as `0009` was.
 
-`migration-upgrade.test.ts` **already walks three screens**, which the first
-draft said it did not: `scr-1`, paired before `orientation` and `rotation`
-existed (0004) and hung sideways once they did; `scr-eink`, turned into an
-800×480 panel; and `scr-todo`. What it has never held is a screen with a
-**theme state** — every one of those three is inserted with `(id, name,
-token_hash, token_issued_at, created_at, updated_at)` and never touched the
-column. So the work is not "add a screen", it is **extend the existing walk
-with three theme states**: a wall with its own theme, a wall following a
-household on `almanac`, and a wall following a household still carrying
-`board`. The third is the one that can tell a resolved backfill from a copied
-one, which is why a fixture using a live key proves nothing (§6).
+`migration-upgrade.test.ts` **already walks four screens**, which the first
+draft said it walked none of: `scr-1`, paired before `orientation` and
+`rotation` existed (0004) and hung sideways once they did; `scr-eink`, turned
+into an 800×480 panel; `scr-todo`; and `scr-dav`, which RFC 013 §6.2.1 added
+"precisely because a table recreate elsewhere would still be visible" — the
+review step in this very section, already written down one migration earlier.
+
+What none of the four has ever held is a **theme state**: every one is
+inserted with `(id, name, token_hash, token_issued_at, created_at, updated_at)`
+and never touches the column. So the work is not "add a screen", it is
+**extend the existing walk with three theme states**: a wall with its own
+theme, a wall following a household on `almanac`, and a wall following a
+household still carrying `board`. The third is the one that can tell a
+resolved backfill from a copied one, which is why a fixture using a live key
+proves nothing (§6).
 
 ### 4.1 Every door, and this is where the last one hides
 
@@ -621,9 +625,10 @@ it to. What replaces it is the constraint.
 - **The migration's copy step preserves the resolved theme**, if the `COALESCE`
   form is taken — one case per state that exists today (own theme, following an
   Almanac household, following a household still carrying `board`) against
-  `migration-upgrade.test.ts`. That file already walks **three** screens
-  (`scr-1`, `scr-eink`, `scr-todo`); what it has never held is one with a theme
-  state, so the work is to extend the existing walk rather than to add a screen.
+  `migration-upgrade.test.ts`. That file already walks **four** screens
+  (`scr-1`, `scr-eink`, `scr-todo`, `scr-dav`); what none of them has ever held
+  is a theme state, so the work is to extend the existing walk rather than to
+  add a screen.
 - **A wall cannot be created without a theme, through every door** — the §4.1
   table as a test that walks all three, in the shape `default-wall-retired.test.ts`
   already walks them. `createScreen` gaining a required parameter means the
