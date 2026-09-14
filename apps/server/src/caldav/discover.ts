@@ -254,6 +254,27 @@ async function propfind(
         ),
       };
     }
+    /*
+     * A 4xx is not a broken network and must not be reported as one.
+     *
+     * `unreachable` is documented as retryable, and the sync job backs off on
+     * it — so a 404 filed there is a collection that has moved being retried
+     * every fifteen minutes for ever, with a household told to check their
+     * connection. Anything below 500 is a fact about the *address*, which is
+     * something they can act on.
+     */
+    const httpStatus = outcome.httpStatus;
+    if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500) {
+      return {
+        ok: false,
+        result: failure(
+          'not-caldav',
+          `That address answered ${httpStatus}. It may not be a CalDAV server, or the calendar ` +
+            `may have moved.`,
+          stage,
+        ),
+      };
+    }
     return { ok: false, result: failure('unreachable', outcome.message, stage) };
   }
 
