@@ -726,6 +726,13 @@ export const calendarSources = sqliteTable(
      * A keyring envelope, never a URL in clear. A Google private iCal address
      * is a bearer credential that never expires, and `/data` is exactly what
      * people copy to a NAS and attach to bug reports.
+     *
+     * **That is true of an uncredentialed feed and only of one.** Since a feed
+     * can carry a username and a password (RFC 013 Phase A), the address of a
+     * credentialed feed is no longer a password by itself: a Nextcloud
+     * collection URL without the app password beside it fetches nothing. Both
+     * secrets are keyring envelopes, so the trade is even — a second thing to
+     * store, and a leaked row worth less than it used to be.
      */
     urlEncrypted: text('url_encrypted'),
     /** Host only, for display and diagnostics. Never the path or the token. */
@@ -739,6 +746,35 @@ export const calendarSources = sqliteTable(
      * The credential is the token, and it lives in one place.
      */
     haEntityId: text('ha_entity_id'),
+
+    /**
+     * The account an `ics` feed signs in as, when it needs to (RFC 013 Phase A).
+     *
+     * In clear, and deliberately so: the settings row has to show *which*
+     * account a feed uses, the same argument `ha_entity_id` above makes. It is
+     * not the same argument as that one in every direction, though, and the
+     * difference is worth writing down where somebody would otherwise copy it:
+     * a Basic-auth username is very often an **email address**, which is
+     * exactly what `api/diagnostics.ts` promises its export contains none of.
+     * So this column is left out of that projection entirely, and the test that
+     * stuffs a database with personal data and asserts none of it survives now
+     * seeds one of these too.
+     *
+     * Null for a feed that needs no sign-in, which is most of them, and for
+     * every `homeassistant` source — those are reached through the one
+     * connection with that connection's credential.
+     */
+    authUsername: text('auth_username'),
+    /**
+     * The password that goes with it. A keyring envelope, purpose
+     * `feed-password`, never anything readable.
+     *
+     * It is never echoed back to a form, never formatted into `last_error`,
+     * and never printed by a CLI tool: it crosses this codebase exactly as far
+     * as the keyring and the outbound `authorization` header, and
+     * `api/feed-credentials.ts` is the one place that reads it.
+     */
+    authPasswordEncrypted: text('auth_password_encrypted'),
 
     // Every insert path supplies a colour now (`api/palette.ts` rotates one), so
     // this default is a floor nothing reaches — kept as the migrations created
