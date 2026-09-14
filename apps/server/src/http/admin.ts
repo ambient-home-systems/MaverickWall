@@ -6258,7 +6258,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           allowHttp: echo?.allowHttp === true,
           open: (caldav?.error?.networkOptions ?? []).length > 0,
         }) +
-        `<div class="row"><button type="submit">Find my calendars</button></div>` +
+        /*
+         * Secondary, and the page's own rule is why.
+         *
+         * `calendarsPage` settles the hierarchy a few hundred lines down: "Add
+         * is the one thing this screen exists to do, so it is the filled button
+         * and the only one on the page", which is what put Test feed in the
+         * outlined variant beside it. A filled button here is a second primary
+         * competing with it for the commoner act — `browser-calendars.test.ts`
+         * caught exactly that, which is the assertion it exists for.
+         *
+         * The two buttons in the *confirm* and *pick* states above stay filled,
+         * and that is the same rule rather than an exception to it: those
+         * renders are a household mid-flow, drawn above the rows precisely
+         * because that is what they are doing now, and the button that finishes
+         * what they started is the primary of that page.
+         */
+        `<div class="row">` +
+        `<button class="secondary" type="submit">Find my calendars</button></div>` +
         `</form></details>`,
     );
   }
