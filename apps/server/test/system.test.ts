@@ -121,6 +121,25 @@ function harness(appVersion = '9.9.9') {
         source_tzid, synced_at)
      VALUES ('e1', 's1', 'u1', 'Divorce lawyer', ?, ?, '2026-08-05', '2026-08-05', 'UTC', ?)`,
   ).run(at, at + 3_600_000, at);
+  /*
+   * And a CalDAV account, whose username is the *same* hazard one table along
+   * (RFC 013 §6.2.1).
+   *
+   * `caldav_accounts.username` is in clear for the reason `auth_username` above
+   * is — the screen has to show which account a household signed in as — and on
+   * iCloud it is **always** an Apple ID, which is always an email address. So it
+   * is the next column where this export's promise would first be broken, and
+   * the fixture makes it as obvious to break as the one above it. The account's
+   * `server_host` is deliberately *not* secret and is not asserted against; what
+   * must not survive is the address of a person.
+   */
+  db.prepare(
+    `INSERT INTO caldav_accounts
+       (id, server_url_encrypted, server_host, username, password_encrypted,
+        created_at, updated_at)
+     VALUES ('a1', 'mw1.SEALEDSERVERURL', 'caldav.icloud.com',
+             'secret.apple.id@example.com', 'mw1.SEALEDAPPPASSWORD', ?, ?)`,
+  ).run(at, at);
   db.prepare(
     `INSERT INTO people (id, name, color, created_at, updated_at) VALUES ('p1', 'Ellie', '#fff', ?, ?)`,
   ).run(at, at);
@@ -227,6 +246,15 @@ describe('diagnostics', () => {
     // trusted not to be one.
     expect(text).not.toContain('rota.account@example.com');
     expect(text).not.toContain('SEALEDFEEDPASSWORD');
+    /*
+     * And the same hazard one table along (RFC 013 §6.2.1). A CalDAV account's
+     * username is in clear for the reason the one above it is, and on iCloud it
+     * is always an Apple ID — always an address. `caldav_accounts` is simply
+     * not in this projection, which is why this passes; the assertion is here
+     * so that adding it later is a red test rather than a quiet leak.
+     */
+    expect(text).not.toContain('secret.apple.id@example.com');
+    expect(text).not.toContain('SEALEDAPPPASSWORD');
     // The host is the one thing kept, because a failing feed fails at a host.
     expect(text).toContain('calendar.google.com');
   });

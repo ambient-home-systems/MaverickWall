@@ -6491,9 +6491,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
                 sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined),
               )
               .join('')) +
+        /*
+         * A submission that came back with something to say goes **above the
+         * rows**, and the ordinary form goes near the foot.
+         *
+         * Same rule, same reason, as the row echo a few lines up: a POST
+         * re-renders the page with the viewport at the top, so a confirmation
+         * or a picker drawn where the form was — below the calendars, below
+         * Home Assistant, below "Add a calendar" — is an answer the household
+         * has to go looking for. The ordinary *form* belongs down there, after
+         * the ICS one, because pasting an address is the common case and this
+         * is the "my provider is iCloud" answer beside the "my provider is
+         * Google" one.
+         */
+        (caldav === undefined ? '' : caldavSection(caldav, people)) +
         haCalendarSection(haCalendars, sources) +
         caldavAccountsSection(sources) +
-        caldavSection(caldav, people) +
         section(
           'Add a calendar',
           undefined,
@@ -6560,6 +6573,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           // The fragment the empty state's action links to.
           'add',
         ) +
+        // The ordinary form, where a household who is not mid-flow meets it.
+        (caldav === undefined ? caldavSection(undefined, people) : '') +
         /*
          * Below the form, and the position is measured rather than chosen.
          *
