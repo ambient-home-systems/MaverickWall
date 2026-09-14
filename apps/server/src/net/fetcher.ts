@@ -97,6 +97,8 @@ type WireOutcome =
       readonly httpStatus?: number;
       readonly retryAfterSeconds?: number;
       readonly responseBody?: string;
+      readonly finalUrl?: string;
+      readonly credentialsDropped?: boolean;
     };
 
 function rejected(
@@ -700,6 +702,15 @@ export function createFetcher(): Fetcher {
         }
 
         let headers = baseHeaders;
+        /*
+         * Whether a hop to another origin has taken a credential off the
+         * request, tracked across the loop rather than derived afterwards.
+         *
+         * By the time a failure comes back, `headers` no longer holds what was
+         * stripped and `target` no longer holds where it was stripped from —
+         * the only place this is knowable is the moment the filter runs.
+         */
+        let credentialsDropped = false;
 
         for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
           const resolution = await resolveAndCheck(target.hostname, request.policy);
@@ -724,8 +735,19 @@ export function createFetcher(): Fetcher {
             headers,
           );
           if (result.kind === 'done') {
-            return result.outcome.status === 'ok'
-              ? { ...result.outcome, finalUrl: target.href }
+            if (result.outcome.status === 'ok') return { ...result.outcome, finalUrl: target.href };
+            /*
+             * A failure says where it got to, and whether a credential made it
+             * there. `testFeed` cannot otherwise tell a wrong password from a
+             * right one dropped across a redirect — the two are the same 401
+             * (RFC 013 §4.4).
+             */
+            return result.outcome.status === 'failed'
+              ? {
+                  ...result.outcome,
+                  finalUrl: target.href,
+                  ...(credentialsDropped ? { credentialsDropped: true } : {}),
+                }
               : result.outcome;
           }
 
@@ -748,9 +770,15 @@ export function createFetcher(): Fetcher {
 
           if (isCrossOrigin(target, next.value)) {
             // Credentials are scoped to the origin they were issued for.
-            headers = Object.fromEntries(
-              Object.entries(headers).filter(([key]) => !SENSITIVE_HEADERS.includes(key)),
+            const kept = Object.entries(headers).filter(
+              ([key]) => !SENSITIVE_HEADERS.includes(key),
             );
+            // Recorded only when something was actually removed: a redirect
+            // across origins on a request that carried no credential has
+            // dropped nothing, and reporting otherwise would put a diagnosis
+            // about a password on a feed that has none.
+            if (kept.length !== Object.keys(headers).length) credentialsDropped = true;
+            headers = Object.fromEntries(kept);
           }
 
           target = next.value;
