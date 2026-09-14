@@ -464,15 +464,23 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3275 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 495 · server 2313. CI runs the whole suite and then the README's
-one-liner against a clean volume on Linux, which is the only place the install
-has ever been wrong. Measured on a clean run rather than added to the previous
-figure, which is the discipline the paragraph below spells out at length for the
-*other* count on this page and which applies to this one identically: RFC 013's
-four new server suites are +211 between them, and an arithmetic that happened to
-agree would prove nothing, because the way these numbers have always gone wrong
-is somebody incrementing rather than running.
+**3280 tests passing**, over 230 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2318 over 185 files. CI runs the whole suite
+and then the README's one-liner against a clean volume on Linux, which is the
+only place the install has ever been wrong. Measured on a clean run rather than
+added to the previous figure, which is the discipline the paragraph below spells
+out at length for the *other* count on this page and which applies to this one
+identically: RFC 013's four new server suites are +211 between them, and an
+arithmetic that happened to agree would prove nothing, because the way these
+numbers have always gone wrong is somebody incrementing rather than running.
+
+**A clone with no tags fails one of them and the message says why**, which is
+worth knowing before reading a red suite as a regression.
+`changelog-shape.test.ts` compares the shipped changelog against itself at the
+last tag and **refuses** rather than passing when it cannot read one — "this
+needs the tags and their commits: in CI, `fetch-depth: 0` on the checkout;
+locally, `git fetch --tags --unshallow`". A shallow or tagless clone is exactly
+the state that would otherwise let it pass over the thing it exists to catch.
 
 **Two of them were red for all but about two minutes a day, and it is the
 bootstrap code's fault a third time.** `admin-status-claims` and
