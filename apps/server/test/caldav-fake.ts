@@ -67,6 +67,17 @@ export interface FakeOptions {
   /** Answer `/.well-known/caldav` with a redirect to this path. Default `/dav/`. */
   readonly wellKnownTarget?: string;
   /**
+   * Answer `/.well-known/caldav` with a **404**, which is what a server that has
+   * never heard of RFC 6764 does.
+   *
+   * Not a curiosity: SabreDAV — the library Nextcloud's calendar is built on —
+   * 404s that path unless somebody mounts a plugin for it, so this is the
+   * ordinary self-hosted case rather than an edge one. Modelling only the
+   * redirect is what let discovery adopt the dead path as its context URL and
+   * refuse every such server with "it may not be a CalDAV server".
+   */
+  readonly wellKnownMissing?: boolean;
+  /**
    * What each collection answers a `REPORT` with, keyed by its path.
    *
    * A whole `multistatus` string rather than a list of `VCALENDAR`s, because
@@ -209,6 +220,11 @@ export async function startCalDavFake(options: FakeOptions): Promise<CalDavFake>
         body: Buffer.concat(chunks).toString('utf8'),
       });
 
+      if (path === '/.well-known/caldav' && options.wellKnownMissing === true) {
+        res.writeHead(404, XML);
+        res.end('<d:error xmlns:d="DAV:"/>');
+        return;
+      }
       if (path === '/.well-known/caldav') {
         // RFC 6764 §6. Unauthenticated: the client has nothing to prove yet and
         // this is the hop that tells it where the context path is.

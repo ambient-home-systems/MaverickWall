@@ -344,8 +344,9 @@ export async function discover(fetcher: Fetcher, input: DiscoverInput): Promise<
    * that has never heard of RFC 6764.
    */
   let contextUrl = input.serverUrl;
+  const wellKnownUrl = absolute('/.well-known/caldav', input.serverUrl) ?? input.serverUrl;
   const wellKnown = await fetcher.fetch({
-    url: absolute('/.well-known/caldav', input.serverUrl) ?? input.serverUrl,
+    url: wellKnownUrl,
     policy: input.policy,
     method: 'PROPFIND',
     body: PRINCIPAL_BODY,
@@ -354,10 +355,33 @@ export async function discover(fetcher: Fetcher, input: DiscoverInput): Promise<
     headers: { depth: '0' },
   });
   if (wellKnown.status === 'ok' || wellKnown.status === 'failed') {
-    // A 401 here is as useful as a 207: what is wanted is where it *got to*,
-    // which is why Phase A putting `finalUrl` on a failure matters to this file.
+    /*
+     * A 401 here is as useful as a 207: what is wanted is where it *got to*,
+     * which is why Phase A putting `finalUrl` on a failure matters to this file.
+     *
+     * **But only when it actually got somewhere else.** The paragraph above
+     * says plenty of servers have never heard of RFC 6764 and that the typed
+     * address is then already the context path — and the first version of this
+     * adopted `finalUrl` unconditionally, so a server that simply answers 404
+     * at `/.well-known/caldav` had *that dead path* taken as its context and
+     * every later hop aimed at it. Every self-hosted server that does not
+     * implement the well-known URI was refused with "it may not be a CalDAV
+     * server", which is the precise failure the comment above says must not
+     * happen.
+     *
+     * No fake could see it: a fake that models RFC 6764 redirects, and the
+     * whole question is what happens when a server does not. Found by pointing
+     * this at a real SabreDAV, which is the library Nextcloud's calendar is
+     * built on, and which 404s that path unless somebody mounts a plugin for
+     * it.
+     *
+     * So the test is *movement*: a redirect changes the URL, and a 404 in place
+     * does not. Comparing against the address we asked for is what tells them
+     * apart, and it needs no opinion about which status codes count.
+     */
     const reached = wellKnown.finalUrl;
-    if (reached !== undefined && hostKey(reached) !== undefined) contextUrl = reached;
+    const moved = reached !== undefined && reached !== wellKnownUrl;
+    if (moved && hostKey(reached) !== undefined) contextUrl = reached;
   }
 
   /*

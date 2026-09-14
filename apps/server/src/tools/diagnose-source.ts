@@ -4,6 +4,9 @@ import { openAndMigrate } from '../db/bootstrap.js';
 import { createKeyring, loadOrCreateMasterKey } from '../secrets/keyring.js';
 import { createFetcher } from '../net/fetcher.js';
 import { connectionFor } from '../api/feed-credentials.js';
+import { accountForSource } from '../api/caldav-accounts.js';
+import { CTAG_BODY } from '../caldav/query.js';
+import { CALENDARSERVER_NS, prop, readMultistatus } from '../caldav/multistatus.js';
 
 /**
  * Fetch a calendar source and report what actually came back.
@@ -30,22 +33,26 @@ console.log('');
 interface SourceRow {
   readonly id: string;
   readonly name: string;
+  readonly kind: string;
   readonly urlEncrypted: string;
+  readonly etag: string | null;
   readonly allowPrivateNetwork: number;
   readonly allowLoopback: number;
   readonly allowHttp: number;
   readonly authUsername: string | null;
   readonly authPasswordEncrypted: string | null;
+  readonly caldavAccountId: string | null;
 }
 
 const wanted = process.argv[2];
 const sources = db
   .prepare(
-    `SELECT id, name, url_encrypted AS urlEncrypted,
+    `SELECT id, name, kind, url_encrypted AS urlEncrypted, etag,
             allow_private_network AS allowPrivateNetwork,
             allow_loopback AS allowLoopback, allow_http AS allowHttp,
             auth_username AS authUsername,
-            auth_password_encrypted AS authPasswordEncrypted
+            auth_password_encrypted AS authPasswordEncrypted,
+            caldav_account_id AS caldavAccountId
        FROM calendar_sources ${wanted ? 'WHERE id = ?' : ''}`,
   )
   .all(...(wanted ? [wanted] : [])) as SourceRow[];
@@ -85,10 +92,17 @@ for (const source of sources) {
   }
   console.log(`  host:        ${host}`);
   console.log(`  path length: ${opened.value.length} characters`);
-  console.log(
-    `  policy:      lan=${source.allowPrivateNetwork === 1} ` +
-      `loopback=${source.allowLoopback === 1} http=${source.allowHttp === 1}`,
-  );
+
+  /*
+   * The account, when this calendar is reached through one (RFC 013 §6.2.1).
+   *
+   * Read *before* `connectionFor`, because it is what that function reads
+   * first: printing the row's own columns for a CalDAV calendar would describe
+   * a connection this server never makes, which is precisely the "one meaning,
+   * two places" fault §6.2.2 exists to prevent, in the tool somebody points at
+   * a calendar that is not working.
+   */
+  const account = accountForSource(db, source.caldavAccountId);
 
   // The same resolver the sync job uses, so what this tool exercises is the
   // connection the sync will actually make rather than a second opinion of it.
@@ -100,9 +114,105 @@ for (const source of sources) {
       allowHttp: source.allowHttp === 1,
       authUsername: source.authUsername,
       authPassword: { stored: source.authPasswordEncrypted },
+      ...(account === undefined ? {} : { account }),
     },
     keyring,
   );
+
+  /*
+   * The **resolved** policy, printed after the resolver rather than off the
+   * row.
+   *
+   * For a CalDAV calendar the three switches live on the account (§6.2.1), so
+   * the calendar's own columns are always false — and this line printed them,
+   * which had a healthy calendar reporting `http=false` directly above a
+   * `PROPFIND` that had just succeeded over plain http. That is §6.2.2's "one
+   * meaning, two places" arriving in the one tool whose whole job is to say
+   * what the sync is actually doing. Found by running it against a real server
+   * and reading the output, which is the only way this kind of wrong is ever
+   * visible.
+   */
+  console.log(
+    `  policy:      lan=${connection.policy.allowPrivateNetwork === true} ` +
+      `loopback=${connection.policy.allowLoopback === true} ` +
+      `http=${connection.policy.allowHttp === true}` +
+      (source.caldavAccountId === null ? '' : ' (from the CalDAV account)'),
+  );
+
+  if (source.kind === 'caldav') {
+    /*
+     * What a CalDAV calendar's diagnosis needs that an ICS feed's does not.
+     *
+     * The **account** because one credential reaches several calendars, so
+     * "which of my calendars stopped" is answered by knowing they share one.
+     * The **confirmed host** because it is the only record of the decision
+     * §6.3.1 asked the household to make, and a calendar failing after Apple
+     * moved an account to a new partition host looks like a wrong password
+     * from every other angle. The **CTag** because an unchanged one is why a
+     * sync did no work, and a household staring at "synced 2 minutes ago" with
+     * yesterday's events needs to be told the server said nothing had changed.
+     */
+    console.log(`  kind:        CalDAV collection`);
+    console.log(`  account:     ${account === undefined ? '(missing — the account row is gone)' : account.username}`);
+    console.log(
+      `  host policy: ${
+        account?.confirmedHost == null
+          ? 'discovery stayed on the address that was typed'
+          : `confirmed ${account.confirmedHost}`
+      }`,
+    );
+    console.log(`  CTag:        ${source.etag ?? '(none stored — the next sync will fetch everything)'}`);
+
+    /*
+     * And the probe is the one the sync actually makes, not a GET.
+     *
+     * A `GET` with ICS content types against a collection href is answered with
+     * a 405 or an HTML listing by every CalDAV server there is — so running the
+     * ICS path here would report a perfectly healthy calendar as failing, which
+     * is the exact false diagnosis this tool exists to remove. The CTag
+     * `PROPFIND` is what the sync sends every fifteen minutes, so what this
+     * prints is what is actually happening.
+     */
+    const probe = await fetcher.fetch({
+      url: connection.url,
+      policy: connection.policy,
+      method: 'PROPFIND',
+      body: CTAG_BODY,
+      maxBytes: FETCH_LIMITS.dav,
+      acceptContentTypes: ['application/xml', 'text/xml'],
+      headers: { ...connection.headers, depth: '0' },
+    });
+
+    console.log(`  PROPFIND:    ${probe.status}`);
+    if (probe.status === 'rejected' || probe.status === 'failed') {
+      console.log(`  code:        ${probe.code}`);
+      console.log(`  message:     ${probe.message}`);
+      if (probe.status === 'failed' && probe.httpStatus !== undefined) {
+        console.log(`  http status: ${probe.httpStatus}`);
+        if (probe.httpStatus === 401 || probe.httpStatus === 403) {
+          console.log('  The password was refused. It is one password for every calendar on this');
+          console.log('  account, so the others will be failing too — change it once.');
+        }
+      }
+      console.log('');
+      continue;
+    }
+    if (probe.status === 'ok') {
+      const live = ctagOf(probe.body);
+      console.log(`  server CTag: ${live ?? '(the server sent none — every sync fetches everything)'}`);
+      if (live !== undefined && source.etag !== null) {
+        if (live === source.etag) {
+          console.log('  Unchanged since the last sync, so the next one will do no work.');
+          console.log('  If the wall is showing stale events, the server is saying nothing');
+          console.log('  has changed — the fault is upstream rather than here.');
+        } else {
+          console.log('  Changed since the last sync, so the next one will fetch it again.');
+        }
+      }
+    }
+    console.log('');
+    continue;
+  }
 
   /*
    * The account, and never the password.
@@ -202,3 +312,14 @@ for (const source of sources) {
 }
 
 db.close();
+
+/** `CS:getctag` off a `PROPFIND` answer, or undefined when the server sends none. */
+function ctagOf(xml: string): string | undefined {
+  const document = readMultistatus(xml);
+  if (!document.ok) return undefined;
+  for (const response of document.responses) {
+    const value = prop(response, CALENDARSERVER_NS, 'getctag')?.text;
+    if (value !== undefined && value !== '') return value;
+  }
+  return undefined;
+}

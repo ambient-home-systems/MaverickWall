@@ -81,9 +81,14 @@ describe('testCaldavAccount', () => {
     expect(confirmation.ok === false && confirmation.needsConfirmation?.host).toBeDefined();
 
     for (const result of [wrongPassword, noCalendars, notAServer]) {
+      // Narrowed rather than asserted through `&&`: the union's confirmation
+      // arm genuinely has no `stage`, and reaching for one through a boolean
+      // is how a test asks a question the type says is meaningless.
       expect(result.ok).toBe(false);
-      expect(result.ok === false && result.needsConfirmation).toBeUndefined();
-      expect(result.ok === false && result.stage).toBe('discover');
+      if (result.ok) throw new Error('expected a refusal');
+      expect(result.needsConfirmation).toBeUndefined();
+      if (result.needsConfirmation !== undefined) throw new Error('expected a refusal');
+      expect(result.stage).toBe('discover');
     }
 
     const sentences = [wrongPassword, noCalendars, notAServer].map((result) =>
