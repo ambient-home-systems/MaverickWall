@@ -1,5 +1,6 @@
 import { expandCalendar } from '@maverick-wall/calendar';
-import { analyseTitles, FETCH_LIMITS, requiredNetworkOptions, validateOutboundUrl, type Fetcher, type NetworkOption, type TitleObservation } from '@maverick-wall/core';
+import { analyseTitles, FETCH_LIMITS, requiredNetworkOptions, validateOutboundUrl, type Fetcher, type NetworkOption, type TitleObservation, type UrlPolicy } from '@maverick-wall/core';
+import { discover, type DiscoverFailureCode } from '../caldav/discover.js';
 import { connectionFor } from './feed-credentials.js';
 
 /**
@@ -65,7 +66,21 @@ export type TestFeedResult =
     }
   | {
       readonly ok: false;
-      readonly stage: 'url' | 'fetch' | 'parse';
+      /**
+       * Which question failed, and the fourth one is the whole value of §6.7.
+       *
+       * `discover` is CalDAV's, and it exists because *the address is fine and
+       * the password is wrong* is a completely different sentence from *you are
+       * signed in and that account has no calendars*, and both are different
+       * again from *that address is not a CalDAV server*. Collapsing them into
+       * "could not connect" would reduce the best screen in the admin to the
+       * worst kind of error.
+       *
+       * It is the same failure *shape* as the other three deliberately, so the
+       * admin's error rendering is reused rather than copied: one `errorBlock`,
+       * one suggestion slot, one `networkOptions` list.
+       */
+      readonly stage: 'url' | 'fetch' | 'parse' | 'discover';
       readonly message: string;
       /** Something the person can actually do. Absent when there is nothing. */
       readonly suggestion?: string;
@@ -367,4 +382,186 @@ export async function testFeed(
     })),
     warnings: expanded.meta.warnings.slice(0, 5).map((warning) => warning.message),
   };
+}
+
+/**
+ * Trying a CalDAV account before anything is saved (RFC 013 §6.7).
+ *
+ * `testFeed`'s job one protocol along, and the same argument for it: somebody
+ * typing `caldav.icloud.com` and an app-specific password has no way to know
+ * whether they copied the password right, whether two-factor got in the way, or
+ * whether the address is even a CalDAV server. Running the discovery and
+ * showing them their own calendar *names* answers all of that before a row
+ * exists.
+ *
+ * **It answers a picker rather than a preview**, which is the step the ICS path
+ * does not have: a CalDAV account has several calendars and the household has
+ * to choose. That is closer to the Home Assistant calendar-entity flow than to
+ * pasting a URL, and the screen reuses that shape rather than inventing one.
+ *
+ * Nothing here stores anything, exactly as `testFeed` stores nothing — the
+ * password is in clear for the length of one request and is handed to
+ * `discover`, which is the only thing that puts it on a wire.
+ */
+export interface TestCaldavRequest {
+  readonly serverUrl: string;
+  readonly username: string;
+  readonly password: string;
+  readonly allowPrivateNetwork?: boolean;
+  readonly allowLoopback?: boolean;
+  readonly allowHttp?: boolean;
+  /** A host the household has already been shown and accepted (§6.3.1). */
+  readonly confirmedHost?: string | null;
+}
+
+export interface TestCaldavCalendar {
+  readonly url: string;
+  readonly displayName: string;
+  readonly ctag?: string;
+}
+
+export type TestCaldavResult =
+  | {
+      readonly ok: true;
+      /** The host the calendars actually live on, which may not be the typed one. */
+      readonly host: string;
+      readonly principalUrl: string;
+      readonly homeSetUrl: string;
+      /** What the household picks from. Never empty — that is its own sentence. */
+      readonly calendars: readonly TestCaldavCalendar[];
+    }
+  /**
+   * Not a failure: a **question**, and it has its own arm because it is neither
+   * ok nor wrong (§6.3.1).
+   *
+   * Discovery wants to leave the host the household typed, and the credential
+   * has not been sent there. The caller names this host on a confirmation
+   * screen and runs this again with it as `confirmedHost`. Filing it under
+   * `ok: false` with a message would have made it an error somebody has to read
+   * past, and every caller would need to tell it from a real one by matching on
+   * the sentence.
+   */
+  | { readonly ok: false; readonly needsConfirmation: { readonly host: string } }
+  | {
+      readonly ok: false;
+      readonly needsConfirmation?: undefined;
+      readonly stage: 'url' | 'fetch' | 'parse' | 'discover';
+      readonly message: string;
+      readonly suggestion?: string;
+      readonly networkOptions: readonly NetworkOption[];
+    };
+
+/**
+ * The four sentences §6.7 names, mapped from `discover`'s own outcome.
+ *
+ * Each one names a different next action, which is the entire reason the codes
+ * are distinct in `discover` rather than being one `failed`. A suggestion that
+ * names no control, per the rule at `suggestionFor`: this module is a layer
+ * below the forms and does not know what any switch is called.
+ */
+function caldavSuggestion(code: DiscoverFailureCode): string | undefined {
+  switch (code) {
+    case 'not-caldav':
+      return 'Check the address. For iCloud it is caldav.icloud.com, and for a self-hosted server it is usually the address you sign in to rather than a link to one calendar.';
+    case 'unauthorized':
+      return 'For iCloud this needs an app-specific password created at appleid.apple.com, not the Apple ID password itself. For Nextcloud and similar, an app password rather than the account password is usually what is wanted.';
+    case 'no-calendars':
+      return 'Check you signed in as the right account. A calendar somebody shared with you may need accepting in their app first.';
+    case 'unreachable':
+      return 'The server did not answer. It may be temporarily down, or the address may have a typo in it.';
+    default:
+      return undefined;
+  }
+}
+
+export async function testCaldavAccount(
+  request: TestCaldavRequest,
+  fetcher: Fetcher,
+): Promise<TestCaldavResult> {
+  const policy: UrlPolicy = {
+    ...(request.allowPrivateNetwork === true ? { allowPrivateNetwork: true } : {}),
+    ...(request.allowLoopback === true ? { allowLoopback: true } : {}),
+    ...(request.allowHttp === true ? { allowHttp: true } : {}),
+  };
+
+  /*
+   * The address is checked here as well as inside the chain, and that is not a
+   * duplicate: `validateOutboundUrl` is what produces `networkOptions`, which
+   * is the aggregate answer a form needs to reveal every switch at once rather
+   * than one per submission. `discover` refuses the same address a hop later
+   * with a sentence that names no switch.
+   */
+  const validated = validateOutboundUrl(request.serverUrl, policy);
+  if (!validated.ok) {
+    const networkOptions = requiredNetworkOptions(request.serverUrl, policy);
+    const suggestion = networkOptions.length > 0 ? undefined : suggestionFor(validated.error.code);
+    return {
+      ok: false,
+      stage: 'url',
+      message: validated.error.message,
+      ...(suggestion !== undefined ? { suggestion } : {}),
+      networkOptions,
+    };
+  }
+
+  const result = await discover(fetcher, {
+    serverUrl: request.serverUrl,
+    username: request.username,
+    password: request.password,
+    policy,
+    ...(request.confirmedHost === undefined ? {} : { confirmedHost: request.confirmedHost }),
+    // Shorter than a background sync: somebody is watching a spinner, and this
+    // is four round trips rather than one.
+    timeoutMs: 15_000,
+  });
+
+  if (result.status === 'needs-confirmation') {
+    return { ok: false, needsConfirmation: { host: result.host } };
+  }
+
+  if (result.status === 'failed') {
+    /*
+     * A refusal by the guard keeps the aggregate answer, exactly as the ICS
+     * path does: the guard stops at the first rule that refuses, so a form
+     * given one code at a time takes three submissions to add a loopback http
+     * server.
+     */
+    const networkOptions =
+      result.code === 'refused' ? requiredNetworkOptions(request.serverUrl, policy) : [];
+    const suggestion = networkOptions.length > 0 ? undefined : caldavSuggestion(result.code);
+    return {
+      ok: false,
+      // Everything past the address is `discover`'s own stage, which is the
+      // distinction §6.7 is for; a bad address is still `url`, so the two
+      // screens agree about what that word means.
+      stage: result.code === 'bad-address' ? 'url' : 'discover',
+      message: result.message,
+      ...(suggestion !== undefined ? { suggestion } : {}),
+      networkOptions,
+    };
+  }
+
+  return {
+    ok: true,
+    // The host the calendars are actually on, which on iCloud is the partition
+    // host rather than the one that was typed. It is what the account row
+    // stores as `confirmedHost` when it differs.
+    host: hostOf(result.homeSetUrl) ?? validated.value.hostname,
+    principalUrl: result.principalUrl,
+    homeSetUrl: result.homeSetUrl,
+    calendars: result.calendars.map((calendar) => ({
+      url: calendar.url,
+      displayName: calendar.displayName,
+      ...(calendar.ctag !== undefined ? { ctag: calendar.ctag } : {}),
+    })),
+  };
+}
+
+/** Host only, for a sentence and for the stored `confirmedHost`. */
+function hostOf(url: string): string | undefined {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
 }

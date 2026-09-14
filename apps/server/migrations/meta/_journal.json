@@ -302,6 +302,13 @@
       "when": 1789386483456,
       "tag": "0042_faulty_lightspeed",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1789397874617,
+      "tag": "0043_unique_medusa",
+      "breakpoints": true
     }
   ]
 }

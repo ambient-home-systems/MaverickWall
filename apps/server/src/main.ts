@@ -8,6 +8,7 @@ import { createJobStore, ensureJob, removeJobsNotIn } from './jobs/store.js';
 import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
+import { createCaldavSyncHandler } from './jobs/caldav-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
@@ -277,6 +278,23 @@ async function main(): Promise<void> {
        * a household's Google feed into an hour-long retry.
        */
       'ha-calendar-sync': createHaCalendarSyncHandler({
+        db,
+        fetcher,
+        keyring,
+        timezone: () => readHousehold(db).timezone,
+      }),
+      /*
+       * And the third, for the same reason there is a second (RFC 013 §6.2.1).
+       *
+       * Its own kind rather than a branch inside `ics-sync` so the three back
+       * off independently — but here the argument is sharper than "a rebooting
+       * Home Assistant must not slow a Google feed": the CTag is **per
+       * collection**, so three calendars on one iCloud account are three jobs,
+       * and one of them failing must not take the other two down. Only
+       * discovery is per account, and it is cached on the account row rather
+       * than run on a schedule at all.
+       */
+      'caldav-sync': createCaldavSyncHandler({
         db,
         fetcher,
         keyring,
@@ -664,12 +682,17 @@ function registerJobs(db: SqliteDatabase): void {
   // reconciling both against one list would delete every job of the other.
   const icsKeys: string[] = [];
   const haKeys: string[] = [];
+  const caldavKeys: string[] = [];
   sources.forEach((source, index) => {
     const at = Date.now() + 5_000 + index * 2_000;
     if (source.kind === 'homeassistant') {
       const key = `ha-calendar-sync:${source.id}`;
       haKeys.push(key);
       ensureJob(db, key, 'ha-calendar-sync', at);
+    } else if (source.kind === 'caldav') {
+      const key = `caldav-sync:${source.id}`;
+      caldavKeys.push(key);
+      ensureJob(db, key, 'caldav-sync', at);
     } else {
       const key = `ics-sync:${source.id}`;
       icsKeys.push(key);
@@ -678,6 +701,9 @@ function registerJobs(db: SqliteDatabase): void {
   });
   removeJobsNotIn(db, 'ics-sync', icsKeys);
   removeJobsNotIn(db, 'ha-calendar-sync', haKeys);
+  // Its own list, because `removeJobsNotIn` reconciles one kind at a time and
+  // reconciling a kind against another's list deletes every job of it.
+  removeJobsNotIn(db, 'caldav-sync', caldavKeys);
 
   ensureJob(db, 'optimize', 'optimize', Date.now() + 60_000);
   // Soon, but not instantly: a restart during a storm should get back into

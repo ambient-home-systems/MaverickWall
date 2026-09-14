@@ -161,6 +161,39 @@ async function crawl(): Promise<readonly Rendered[]> {
   // with sentences of its own to proofread.
   const shownOnce = [madeWall, madePanel].map((made) => made.headers.get('location') ?? '');
   expect(shownOnce.every((path) => path.startsWith('/admin/'))).toBe(true);
+  /*
+   * A CalDAV account, written straight into the database rather than added
+   * through its own form (RFC 013 §6.2.1).
+   *
+   * The section that draws it is conditional — no accounts, no section — so
+   * without this the copy on it is never proofread by this crawl, which is the
+   * same blind spot this file already states for the Home Assistant page. It is
+   * seeded rather than added because adding one means a live CalDAV server, and
+   * what is under test here is the *sentences*, not the discovery.
+   *
+   * A calendar hangs off it, and a failing one, because the account card says
+   * different things in each state and only a card with both can proofread
+   * both.
+   */
+  const stamp = home.now();
+  home.db
+    .prepare(
+      `INSERT INTO caldav_accounts
+         (id, server_url_encrypted, server_host, username, password_encrypted,
+          principal_url, home_set_url, confirmed_host, created_at, updated_at)
+       VALUES ('vocab-acct', 'mw1:sealed', 'caldav.icloud.example', 'jane@icloud.example',
+               'mw1:sealed', '/principals/jane/', '/calendars/jane/',
+               'p42-caldav.icloud.example', ?, ?)`,
+    )
+    .run(stamp, stamp);
+  home.db
+    .prepare(
+      `INSERT INTO calendar_sources
+         (id, name, kind, caldav_account_id, url_encrypted, color, last_error, created_at, updated_at)
+       VALUES ('vocab-cal', 'Home', 'caldav', 'vocab-acct', 'mw1:sealed', '#AA3311', NULL, ?, ?)`,
+    )
+    .run(stamp, stamp);
+
   const started = await fetch(`${home.base}/d/pair/device-start`, {
     method: 'POST',
     headers: { origin: home.base },

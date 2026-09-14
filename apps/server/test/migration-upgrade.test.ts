@@ -372,6 +372,112 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('gives a screen and a calendar the CalDAV table and column, changing neither (0043)', () => {
+    /*
+     * RFC 013 Phase C's one migration, walked with the two rows a household
+     * actually has: a screen paired at 0000 and an ICS feed added at 0000 with
+     * events in its cache.
+     *
+     * §6.2.1 predicts this migration is additive — one `CREATE TABLE` and one
+     * nullable `ALTER TABLE ADD COLUMN` — so rule seven's `0009` hazard does not
+     * apply. That is worth *checking* rather than assuming, because `0009` is
+     * the one migration fault in this repository that reported success, and it
+     * sat on this very table.
+     *
+     * Two things beyond the rows surviving. **Widening `kind` to carry
+     * `'caldav'` must emit no DDL at all**: a drizzle SQLite text enum is a
+     * compile-time narrowing over a plain `text` column, not a `CHECK`, and a
+     * `CHECK` here would mean a table recreate on somebody's calendars. The
+     * assertion is that the upgraded database *accepts* the new value, which is
+     * the property a `CHECK` would take away — reading the SQL for the word
+     * would pass just as happily against a constraint spelled differently.
+     *
+     * And the new column reaches an existing feed as **NULL rather than 0 or an
+     * empty string**: `connectionFor` reads "no account" off exactly that, so a
+     * default of anything else would point every ICS feed in the world at an
+     * account row that does not exist.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    for (const entry of entries) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0000')) {
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES ('scr-dav', 'Hall', 'hash-dav', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+        db.prepare(
+          `INSERT INTO calendar_sources (id, name, url_encrypted, color, created_at, updated_at)
+           VALUES ('src-dav', 'Family', 'mw1:sealed', '#4C7FD1', ?, ?)`,
+        ).run(stamp, stamp);
+        db.prepare(
+          `INSERT INTO calendar_events_cache
+             (id, source_id, uid, title, starts_at, ends_at, all_day, start_local_date,
+              end_local_date, source_tzid, status, is_recurring_instance, synced_at)
+           VALUES ('e1', 'src-dav', 'u1', 'Dentist', ?, ?, 0, '2026-03-02', '2026-03-02',
+                   'Europe/London', 'CONFIRMED', 0, ?)`,
+        ).run(stamp, stamp + 3_600_000, stamp);
+      }
+    }
+
+    // The feed is untouched, still an ICS feed, still with its event.
+    expect(
+      db
+        .prepare(
+          `SELECT kind, url_encrypted AS url, color, caldav_account_id AS accountId
+             FROM calendar_sources WHERE id = 'src-dav'`,
+        )
+        .get(),
+    ).toEqual({ kind: 'ics', url: 'mw1:sealed', color: '#4C7FD1', accountId: null });
+    expect(
+      db.prepare(`SELECT count(*) AS n FROM calendar_events_cache WHERE source_id = 'src-dav'`).get(),
+    ).toEqual({ n: 1 });
+    // And the screen, which this migration has nothing to do with and which is
+    // here precisely because a table recreate elsewhere would still be visible.
+    expect(db.prepare(`SELECT name FROM screens WHERE id = 'scr-dav'`).get()).toEqual({
+      name: 'Hall',
+    });
+
+    // The new table is there and empty.
+    expect(db.prepare('SELECT count(*) AS n FROM caldav_accounts').get()).toEqual({ n: 0 });
+
+    /*
+     * No `CHECK` on `kind`, asserted by writing the new value rather than by
+     * reading the DDL for the word.
+     */
+    db.prepare(
+      `INSERT INTO caldav_accounts
+         (id, server_url_encrypted, username, password_encrypted, created_at, updated_at)
+       VALUES ('acct-1', 'mw1:server', 'jane@icloud.example', 'mw1:pw', ?, ?)`,
+    ).run(stamp, stamp);
+    db.prepare(
+      `INSERT INTO calendar_sources
+         (id, name, kind, caldav_account_id, url_encrypted, etag, color, created_at, updated_at)
+       VALUES ('src-c', 'Home', 'caldav', 'acct-1', 'mw1:href', 'ctag-1', '#AA3311', ?, ?)`,
+    ).run(stamp, stamp);
+    expect(
+      db.prepare(`SELECT kind, etag FROM calendar_sources WHERE id = 'src-c'`).get(),
+    ).toEqual({ kind: 'caldav', etag: 'ctag-1' });
+
+    /*
+     * And the FK is real but carries **no action**, which is the thing reading
+     * the migration caught and which `removeCaldavAccount` exists to work
+     * around. The schema declares `ON DELETE CASCADE`; drizzle-kit drops it
+     * from an `ALTER TABLE ADD COLUMN`, so SQLite applies `NO ACTION` and the
+     * delete is refused. Asserted here rather than left as a comment, so that a
+     * future drizzle that *does* emit the action turns this red and somebody
+     * reads the code that is compensating for its absence.
+     */
+    db.pragma('foreign_keys = ON');
+    expect(() => db.prepare(`DELETE FROM caldav_accounts WHERE id = 'acct-1'`).run()).toThrow(
+      /FOREIGN KEY constraint failed/,
+    );
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    db.close();
+  });
+
   it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
     // A wall arranged before the two-canvas split has widgets with no
     // orientation column. The 0024 migration adds it with a `portrait` default,

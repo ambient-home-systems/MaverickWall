@@ -282,4 +282,48 @@ describe('what discovery says when it cannot finish', () => {
     });
     expect(result.status === 'failed' && result.code).toBe('refused');
   });
+
+  it('completes against a server with no /.well-known/caldav at all', async () => {
+    /*
+     * The ordinary self-hosted case, and it was broken.
+     *
+     * `discover` adopted the well-known hop's `finalUrl` unconditionally — so a
+     * server that answers **404** at that path had the dead path taken as its
+     * context URL, and every later hop aimed at it. The result was
+     * `not-caldav`: "that address answered 404, it may not be a CalDAV server",
+     * for a perfectly good server. That is precisely the outcome the comment
+     * above the hop says must not happen ("failing the whole add here would
+     * refuse every self-hosted server that has never heard of RFC 6764").
+     *
+     * No fake could have caught it while every fake modelled the redirect, and
+     * the whole question is what happens when a server does not implement it.
+     * Found by pointing the CLI at a real SabreDAV — the library Nextcloud's
+     * calendar is built on, which 404s that path by default.
+     */
+    const plain = await startCalDavFake({ credential: CREDENTIAL, wellKnownMissing: true });
+    try {
+      const result = await discover(fetcher, {
+        // The context path itself, which is what a household types when there
+        // is no well-known redirect to find it for them — `https://…/dav/` on
+        // a self-hosted server, and what its own setup page tells them to use.
+        serverUrl: `${plain.base}/dav/`,
+        username: USERNAME,
+        password: PASSWORD,
+        policy: LOOPBACK,
+      });
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.calendars.map((calendar) => calendar.displayName)).toEqual([
+        'Home',
+        'School & clubs',
+      ]);
+      // And the chain used the address that was typed, rather than the dead
+      // well-known path, which is the thing that was actually wrong.
+      expect(plain.seen.some((record) => record.path === '/.well-known/caldav')).toBe(true);
+      expect(plain.signedIn().some((record) => record.path.startsWith('/.well-known'))).toBe(false);
+    } finally {
+      await plain.close();
+    }
+  });
 });

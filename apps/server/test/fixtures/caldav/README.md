@@ -7,24 +7,43 @@ RFC 013 §6.8 names the way this reader goes wrong — "a reader that handles on
 server's prefixes and not another's works against Nextcloud and fails against
 iCloud" — and only the second kind can catch that.
 
-## `real/` is empty, and that is a gap rather than an omission
+## `real/` holds a real SabreDAV, and that is half the gap closed
 
-Neither a real Nextcloud nor a real iCloud response was captured. Both were
-attempted and both were blocked by this environment rather than by effort:
+**What is there.** Five files captured from a real **SabreDAV 4.7.1** — the
+library Nextcloud's own calendar app is built on — stood up locally over PHP's
+built-in server with three calendars on one credential and two real events on
+them. Byte for byte, and not authored: `sabredav-principal.xml`,
+`sabredav-home-set-href.xml`, `sabredav-home-set.xml`, `sabredav-ctag.xml` and
+`sabredav-report.xml`, read by `caldav-real-fixtures.test.ts`.
+
+They earned their place on the first run. This server writes the CalDAV
+namespace as **`cal:`** where every synthetic fixture in this corpus writes
+`C:`, which is exactly the class of difference §6.8 says is how this reader
+goes wrong. It also confirms the two-`propstat` 200/404 shape the synthetic
+Nextcloud fixture below only *claims* is SabreDAV's — and adds a case nobody
+had modelled, which is that SabreDAV's scheduling inbox and outbox come back in
+the same `Depth: 1` listing as the calendars and must not be offered as
+calendars.
+
+**What is still missing, and it is the half that matters most.** SabreDAV is
+not Nextcloud (which mounts it behind its own routing, its own principals and
+its own trailing-slash redirect) and it is emphatically not iCloud. In
+particular the **partition-host hop** — the one §6.3.1's whole policy exists
+for — is still modelled by a second loopback server rather than seen, and
+whether Apple's `calendar-data` parses is exactly as open as it was.
 
 - **Nextcloud.** The plan was a container (`nextcloud:30-apache`, SQLite, an app
-  password) and a `PROPFIND` against it, captured byte for byte. The image could
-  not be pulled — the registry CDN is refused by the outbound policy here and
-  Docker Hub rate-limited the manifest request. `demo.nextcloud.com` is refused
-  too.
+  password). No Docker daemon is available in this environment at all, so the
+  image could not be pulled or run. SabreDAV over `php -S` is what was reachable
+  and is a real producer, which is why it is here rather than nothing.
 - **iCloud.** Needs an Apple ID and an app-specific password. There is no
   substitute and no fixture that stands in for one — §11 says so and it is
   right.
 
-So everything below is under `synthetic/` and is **authored from the
-documented shapes**, not captured. Read that as the limit it is: these files
-prove the reader does what it claims about namespaces, entities and depth, and
-they cannot prove it reads what Apple actually sends.
+So `synthetic/` below is still **authored from the documented shapes**, not
+captured. Read that as the limit it is: those files prove the reader does what
+it claims about namespaces, entities and depth, and they cannot prove it reads
+what Apple actually sends.
 
 ### What is missing, specifically
 
@@ -33,7 +52,7 @@ they cannot prove it reads what Apple actually sends.
 | `real/icloud-home-set.xml` | A real Apple ID, `PROPFIND Depth: 1` on the calendar home set | Apple's own prefixes and namespace habits; whether `getctag` is present; what a partition host's hrefs look like |
 | `real/icloud-principal.xml` | The same account, `PROPFIND Depth: 0` on `/` | The `calendar-home-set` href that names `pNN-caldav.icloud.com` — the hop §6.3.1's whole policy exists for, which no local fake proves |
 | `real/icloud-calendar-data.xml` | A `REPORT` against one of that account's calendars | Whether Apple's `calendar-data` parses. HA carries an open issue about Apple serving iCal that strict parsers reject, and §11 calls a hostile fixture copied from a real iCloud resource "the first thing to write, before any of the transport" |
-| `real/nextcloud-home-set.xml` | A real Nextcloud, app password | Whether `synthetic/nextcloud-home-set.xml` below is actually SabreDAV's output, including the `404` propstat shape and the redirect Nextcloud issues when the trailing slash is wrong |
+| `real/nextcloud-home-set.xml` | A real Nextcloud, app password | The redirect Nextcloud issues when the trailing slash is wrong, and whether its own routing changes the hrefs. The `404` propstat shape is no longer open — `real/sabredav-home-set.xml` settles that half |
 
 ## `synthetic/`
 

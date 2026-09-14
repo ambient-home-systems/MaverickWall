@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/"><d:response><d:href>/calendars/household/work/standup.ics</d:href><d:propstat><d:prop><d:getetag>&quot;33f647fecca13ec363deb6e01dda684c&quot;</d:getetag><cal:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Maverick Wall//fixture//EN
+BEGIN:VTIMEZONE
+TZID:America/New_York
+BEGIN:DAYLIGHT
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+DTSTART:20260308T020000
+TZNAME:EDT
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:weekly-standup@example.invalid
+DTSTAMP:20260301T120000Z
+DTSTART;TZID=America/New_York:20260302T090000
+DTEND;TZID=America/New_York:20260302T093000
+RRULE:FREQ=WEEKLY;COUNT=4
+SUMMARY:Weekly standup
+END:VEVENT
+END:VCALENDAR
+</cal:calendar-data></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>

@@ -1,4 +1,14 @@
-# Nothing here yet, and this file names what
+# What is still missing, and this file names it
+
+A real **SabreDAV** is here now (`sabredav-*.xml`, five files, read by
+`caldav-real-fixtures.test.ts`) — the library Nextcloud's calendar is built on,
+captured byte for byte from a local instance with three calendars on one
+credential. That closed item 4 below by most of the way and found a real
+difference doing it: SabreDAV writes the CalDAV namespace as `cal:` where every
+synthetic fixture here writes `C:`.
+
+What it does **not** close is the whole Apple side, which is the half §11 calls
+the one with no substitute.
 
 `../README.md` has the detail. In one line each, and in the order they matter:
 
@@ -11,11 +21,14 @@
    strict parsers reject, and `packages/calendar` is a strict parser.
 3. **`icloud-home-set.xml`** — Apple's prefixes and whether it answers
    `getctag`.
-4. **`nextcloud-home-set.xml`** — a real SabreDAV answer, to check the
-   synthetic one beside it is actually its shape.
+4. **`nextcloud-home-set.xml`** — *mostly closed.* `sabredav-home-set.xml` is a
+   real answer from the same library and confirms the two-`propstat` 200/404
+   shape. What is left is Nextcloud's own routing on top of it, and the redirect
+   it issues when the trailing slash is wrong.
 
 1–3 need an Apple ID with an app-specific password. 4 needs a Nextcloud that can
-be reached; a container is enough and it was the plan.
+be reached; a container is enough and was the plan, but this environment has no
+Docker daemon at all.
 
 Deliberately **not** a placeholder fixture. A file here that no test reads is
 harmless; a file here that a test reads and that nobody captured is a test

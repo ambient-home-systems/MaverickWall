@@ -108,7 +108,20 @@ import {
   type Draft,
   type PlanKind,
 } from './shifts.js';
-import { testFeed, type TestFeedResult } from '../api/test-feed.js';
+import { testCaldavAccount, testFeed, type TestCaldavResult, type TestFeedResult } from '../api/test-feed.js';
+import {
+  addCaldavCalendar,
+  createCaldavAccount,
+  readCaldavAccounts,
+  removeCaldavAccount,
+  rotateCaldavPassword,
+} from '../api/caldav-accounts.js';
+import {
+  dropPendingCaldav,
+  holdPendingCaldav,
+  readPendingCaldav,
+  updatePendingCaldav,
+} from '../api/caldav-pending.js';
 import { dueOn, type CivilDate, type Fetcher, type NetworkOption, type ShiftPlan } from '@maverick-wall/core';
 import { activeOn, readChores } from '../api/chores.js';
 import type { Keyring } from '../secrets/keyring.js';
@@ -146,6 +159,51 @@ const feedBody = z.object({
   auth_username: optionalText(200),
   auth_password: optionalText(500),
   action: optionalText(10),
+});
+
+/**
+ * Adding a CalDAV account (RFC 013 §6.7).
+ *
+ * `server_url` rather than `url`, because what a household types here is the
+ * *server* and not a calendar: on iCloud it is `caldav.icloud.com` and the
+ * calendars are discovered from it. Both credential fields are required, unlike
+ * the ICS form's, because a CalDAV account with no sign-in is not a thing that
+ * exists — there is nothing to discover anonymously.
+ */
+const caldavAddBody = z.object({
+  server_url: text('An address', 2048),
+  caldav_username: text('A username', 200),
+  caldav_password: text('A password', 500),
+  allow_lan: checkbox(),
+  allow_loopback: checkbox(),
+  allow_http: checkbox(),
+});
+
+/**
+ * Confirming the host discovery moved to (§6.3.1).
+ *
+ * **The password is not in this body**, which is the whole mechanism rather than
+ * an omission: it was consumed by the first POST and is held under `pending`,
+ * so the confirmation page has nothing to echo and a browser's autofill has
+ * nothing to remember. `host` travels too, as the hidden field §6.3.1 names, so
+ * what the household agreed to is what gets stored — reading it back off the
+ * pending record alone would store a host they were never shown if a second
+ * submission raced the first.
+ */
+const caldavConfirmBody = z.object({
+  pending: text('A pending account', 128),
+  host: text('A host', 253),
+});
+
+/** Ticking which discovered calendars become rows (§6.7). */
+const caldavPickBody = z.object({
+  pending: text('A pending account', 128),
+  person_id: optionalText(40),
+});
+
+/** A new password for an account, for every calendar on it at once (§6.2.1). */
+const caldavPasswordBody = z.object({
+  caldav_password: optionalText(500),
 });
 
 const sourceSettingsBody = z.object({
@@ -1636,6 +1694,350 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * A single POST button would be one misclick away from losing a calendar,
    * and there is no script here to raise a confirm dialogue.
    */
+  // -------------------------------------------------------------------------
+  // CalDAV — an account, its host, and which of its calendars to keep
+  // -------------------------------------------------------------------------
+
+  /**
+   * What the household typed, echoed on a refusal. Never the password (§4.5).
+   */
+  interface CaldavEcho {
+    readonly serverUrl: string;
+    readonly username: string;
+    readonly allowPrivateNetwork: boolean;
+    readonly allowLoopback: boolean;
+    readonly allowHttp: boolean;
+  }
+
+  /**
+   * One place that turns a discovery outcome into a page, because there are two
+   * callers and three outcomes.
+   *
+   * The first POST and the confirm POST both end here, so the confirmation
+   * screen and the picker cannot come to look different depending on which
+   * submission produced them — which is what would happen with a copy in each
+   * handler, and is the shape of half this repository's bug table.
+   *
+   * `existing` is the id already held, when this is the confirm step: holding a
+   * *second* copy of the same password under a second id would leave one of
+   * them in memory with nothing to drop it but the sweep.
+   */
+  async function respondToDiscovery(
+    c: Context,
+    result: TestCaldavResult,
+    held: {
+      serverUrl: string;
+      username: string;
+      password: string;
+      allowPrivateNetwork: boolean;
+      allowLoopback: boolean;
+      allowHttp: boolean;
+      confirmedHost?: string | null;
+    },
+    echo: CaldavEcho,
+    existing?: string,
+  ): Promise<Response> {
+    const at = now();
+
+    if (!result.ok && result.needsConfirmation !== undefined) {
+      const id = existing ?? holdPendingCaldav(held, at);
+      if (existing !== undefined) updatePendingCaldav(existing, held, at);
+      return c.html(
+        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+          echo,
+          confirm: { pending: id, host: result.needsConfirmation.host },
+        }),
+      );
+    }
+
+    if (!result.ok) {
+      return c.html(
+        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+          echo,
+          error: {
+            message: result.message,
+            ...(result.suggestion !== undefined ? { suggestion: result.suggestion } : {}),
+            networkOptions: result.networkOptions,
+          },
+        }),
+        400,
+      );
+    }
+
+    const resolved = {
+      ...held,
+      principalUrl: result.principalUrl,
+      homeSetUrl: result.homeSetUrl,
+    };
+    const id = existing ?? holdPendingCaldav(resolved, at);
+    if (existing !== undefined) updatePendingCaldav(existing, resolved, at);
+
+    return c.html(
+      calendarsPage(c, {}, undefined, undefined, [], undefined, {
+        echo,
+        pick: { pending: id, host: result.host, calendars: result.calendars },
+      }),
+    );
+  }
+
+
+  /*
+   * Three plain POSTs and no script, which is the add flow §6.3.1 specifies.
+   *
+   * The sequence is **test → (confirm) → pick**, and the middle step only
+   * happens when discovery wants to leave the host the household typed. What
+   * makes it safe is that the password is *held* between submissions rather
+   * than echoed: `caldav-pending.ts` keeps it in memory under an opaque id, so
+   * the confirmation page and the picker carry the id and nothing else. A test
+   * asserts the password does not appear in either response, because "it is not
+   * in the markup" is exactly the kind of claim that stops being true when
+   * somebody adds a convenient hidden field.
+   */
+  app.post('/admin/calendars/caldav', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(caldavAddBody, body);
+    // Echoed on every failure so a refused password never also costs the
+    // address and the username. The password itself never is (§4.5).
+    const echo: CaldavEcho = {
+      serverUrl: typeof body['server_url'] === 'string' ? body['server_url'] : '',
+      username: typeof body['caldav_username'] === 'string' ? body['caldav_username'] : '',
+      allowPrivateNetwork: typeof body['allow_lan'] === 'string',
+      allowLoopback: typeof body['allow_loopback'] === 'string',
+      allowHttp: typeof body['allow_http'] === 'string',
+    };
+    if (!shaped.ok) {
+      return c.html(calendarsPage(c, {}, undefined, undefined, [], undefined, { echo, error: { message: shaped.message } }), 400);
+    }
+
+    const result = await testCaldavAccount(
+      {
+        serverUrl: shaped.value.server_url,
+        username: shaped.value.caldav_username,
+        password: shaped.value.caldav_password,
+        allowPrivateNetwork: shaped.value.allow_lan,
+        allowLoopback: shaped.value.allow_loopback,
+        allowHttp: shaped.value.allow_http,
+      },
+      deps.fetcher,
+    );
+
+    return respondToDiscovery(c, result, {
+      serverUrl: shaped.value.server_url,
+      username: shaped.value.caldav_username,
+      password: shaped.value.caldav_password,
+      allowPrivateNetwork: shaped.value.allow_lan,
+      allowLoopback: shaped.value.allow_loopback,
+      allowHttp: shaped.value.allow_http,
+    }, echo);
+  });
+
+  /**
+   * "Yes, send my password to that host" (§6.3.1).
+   *
+   * Pressing Continue re-submits the id and the host and nothing else, and that
+   * is what tells the handler the household has seen and accepted where
+   * discovery is going. Only then does the chain run past the hop it stopped
+   * at.
+   */
+  app.post('/admin/calendars/caldav/confirm', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(caldavConfirmBody, body);
+    if (!shaped.ok) return c.redirect('/admin/calendars', 302);
+
+    const held = readPendingCaldav(shaped.value.pending, now());
+    if (held === undefined) {
+      // Expired, or a restart. Nothing to apologise for and nothing to recover:
+      // the form is three fields and the household is standing at it.
+      return c.html(
+        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+          error: {
+            message: 'That took a little too long, so the password was not kept. Enter it again.',
+          },
+        }),
+        400,
+      );
+    }
+
+    const confirmed = { ...held, confirmedHost: shaped.value.host };
+    updatePendingCaldav(shaped.value.pending, confirmed, now());
+
+    const result = await testCaldavAccount(
+      {
+        serverUrl: confirmed.serverUrl,
+        username: confirmed.username,
+        password: confirmed.password,
+        allowPrivateNetwork: confirmed.allowPrivateNetwork,
+        allowLoopback: confirmed.allowLoopback,
+        allowHttp: confirmed.allowHttp,
+        confirmedHost: shaped.value.host,
+      },
+      deps.fetcher,
+    );
+
+    return respondToDiscovery(c, result, confirmed, {
+      serverUrl: confirmed.serverUrl,
+      username: confirmed.username,
+      allowPrivateNetwork: confirmed.allowPrivateNetwork,
+      allowLoopback: confirmed.allowLoopback,
+      allowHttp: confirmed.allowHttp,
+    }, shaped.value.pending);
+  });
+
+  /** Ticking calendars, which is the first thing here that writes a row (§6.7). */
+  app.post('/admin/calendars/caldav/add', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(caldavPickBody, body);
+    if (!shaped.ok) return c.redirect('/admin/calendars', 302);
+
+    const held = readPendingCaldav(shaped.value.pending, now());
+    if (held === undefined || held.principalUrl === undefined || held.homeSetUrl === undefined) {
+      return c.html(
+        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+          error: {
+            message: 'That took a little too long, so the password was not kept. Enter it again.',
+          },
+        }),
+        400,
+      );
+    }
+
+    /*
+     * Which ones were ticked, and their names and CTags, out of the body.
+     *
+     * The URL travels in a hidden field beside each checkbox rather than being
+     * re-discovered: re-running the chain here would be four more requests to
+     * answer a question already answered, and — worse — could offer a different
+     * set from the one the household just looked at.
+     */
+    const picked: { url: string; name: string; ctag: string | null }[] = [];
+    for (const [key, value] of Object.entries(body)) {
+      const match = /^calendar_(\d+)$/.exec(key);
+      if (match === null || typeof value !== 'string' || value === '') continue;
+      const index = match[1];
+      const name = body[`name_${index}`];
+      const ctag = body[`ctag_${index}`];
+      picked.push({
+        url: value,
+        name: typeof name === 'string' && name.trim() !== '' ? name.trim().slice(0, 80) : 'Calendar',
+        ctag: typeof ctag === 'string' && ctag !== '' ? ctag : null,
+      });
+    }
+
+    if (picked.length === 0) {
+      // Nothing ticked is not an error and not a save: it is somebody who
+      // changed their mind, and the honest answer is the page they came from.
+      dropPendingCaldav(shaped.value.pending);
+      return c.redirect('/admin/calendars', 302);
+    }
+
+    const owner = shaped.value.person_id;
+    const personId =
+      owner !== undefined && readPeopleAdmin(deps.db).some((p) => p.id === owner) ? owner : null;
+
+    const at = now();
+    const accountId = createCaldavAccount(
+      deps.db,
+      deps.keyring,
+      {
+        serverUrl: held.serverUrl,
+        username: held.username,
+        password: held.password,
+        principalUrl: held.principalUrl,
+        homeSetUrl: held.homeSetUrl,
+        ...(held.confirmedHost == null ? {} : { confirmedHost: held.confirmedHost }),
+        allowPrivateNetwork: held.allowPrivateNetwork,
+        allowLoopback: held.allowLoopback,
+        allowHttp: held.allowHttp,
+      },
+      at,
+    );
+    for (const calendar of picked) {
+      addCaldavCalendar(
+        deps.db,
+        deps.keyring,
+        {
+          accountId,
+          name: calendar.name,
+          url: calendar.url,
+          ctag: calendar.ctag,
+          personId,
+        },
+        at,
+      );
+    }
+
+    // The moment the row exists, the held copy is the only other place that
+    // password lives. Drop it.
+    dropPendingCaldav(shaped.value.pending);
+    return savedRedirect(c, '/admin/calendars', 'calendar-added');
+  });
+
+  /**
+   * One new password, for every calendar on the account (§6.2.1).
+   *
+   * Blank keeps what is stored, which is `sourceSettingsBody`'s reading of the
+   * same field one table along and for the same reason: the column holds an
+   * envelope, so there is nothing to prefill the field with and blank is the
+   * only honest reading of "I did not touch it".
+   */
+  app.post('/admin/calendars/caldav/:id/password', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(caldavPasswordBody, body);
+    const typed = shaped.ok ? shaped.value.caldav_password : undefined;
+    if (typed === undefined || typed === '') return c.redirect('/admin/calendars', 302);
+
+    return rotateCaldavPassword(deps.db, deps.keyring, c.req.param('id') ?? '', typed, now())
+      ? savedRedirect(c, '/admin/calendars', 'calendar-settings')
+      : c.redirect('/admin/calendars', 302);
+  });
+
+  app.get('/admin/calendars/caldav/:id/delete', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    const account = readCaldavAccounts(deps.db).find((candidate) => candidate.id === id);
+    if (account === undefined) return c.redirect('/admin/calendars', 302);
+    const calendars = readAdminSources(deps.db).filter((source) => source.caldavAccountId === id);
+
+    return c.html(
+      confirmDestroyPage({
+        self: selfHref(c),
+        modules: navModules(deps.db),
+        title: 'Remove CalDAV account',
+        nav: 'calendars',
+        heading: `Remove ${account.username}?`,
+        /*
+         * It names what is lost, which for an account is more than for one
+         * calendar: the stored password goes too, so adding a calendar back
+         * later means typing it again. A household who only wants one of them
+         * off the wall wants the calendar's own Remove, and the alternative
+         * this offers is that sentence rather than a second button — there is
+         * no single action that means "remove one of these four".
+         */
+        intro:
+          `Its ${calendars.length} calendar${calendars.length === 1 ? '' : 's'} ` +
+          `disappear from the wall immediately and the stored password is deleted, so adding ` +
+          `them back later means entering it again. The calendars themselves are untouched — ` +
+          `this only stops Maverick Wall reading them.`,
+        ...(calendars.length === 0
+          ? {}
+          : {
+              body:
+                `<p class="hint">Going: ` +
+                calendars.map((source) => escapeHtml(source.name)).join(', ') +
+                `. To remove just one of them, use its own Remove instead.</p>`,
+            }),
+        destroyAction: `admin/calendars/caldav/${encodeURIComponent(id)}/delete`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/calendars',
+      }),
+    );
+  });
+
+  app.post('/admin/calendars/caldav/:id/delete', (c: Context) =>
+    removeCaldavAccount(deps.db, c.req.param('id') ?? '')
+      ? savedRedirect(c, '/admin/calendars', 'calendar-removed')
+      : c.redirect('/admin/calendars', 302),
+  );
+
   app.get('/admin/calendars/:id/delete', (c: Context) => {
     const id = c.req.param('id') ?? '';
     const source = readAdminSources(deps.db).find((candidate) => candidate.id === id);
@@ -5596,6 +5998,288 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * Drawn only when there is something to add. A household with no Home
    * Assistant, or one that has already added all of them, sees nothing.
    */
+  /**
+   * The accounts a household has, each with the calendars it reaches
+   * (RFC 013 §6.2.1).
+   *
+   * A CalDAV account is the one thing on this page that is not itself a
+   * calendar, and drawing it as one would be the flat schema this table exists
+   * to avoid, rendered: four rows all called `jane@icloud.example`, each with
+   * its own password field, three of which a household would forget to change.
+   * One row, its calendars named under it, and one control that fixes all of
+   * them at once.
+   */
+  function caldavAccountsSection(sources: readonly AdminSourceRow[]): string {
+    const accounts = readCaldavAccounts(deps.db);
+    if (accounts.length === 0) return '';
+
+    return section(
+      'CalDAV accounts',
+      'One sign-in, and the calendars it reaches. Changing the password here changes it for all of them.',
+      accounts
+        .map((account) => {
+          const mine = sources.filter((source) => source.caldavAccountId === account.id);
+          const id = encodeURIComponent(account.id);
+          /*
+           * The host is named when discovery moved to one, because it is the
+           * thing the household agreed to and the only place they can see what
+           * they agreed to after the fact. Silent when it never moved, which is
+           * every self-hosted server and is the case where naming it would be
+           * noise about a decision nobody made.
+           */
+          const where =
+            account.confirmedHost !== null
+              ? `${account.serverHost ?? ''} · calendars on ${account.confirmedHost}`
+              : (account.serverHost ?? '');
+
+          return card(
+            listRow(
+              '',
+              { title: account.username, detail: where },
+              tag(
+                `${mine.length} calendar${mine.length === 1 ? '' : 's'}`,
+                'neutral',
+              ),
+            ) +
+              (account.lastError === null
+                ? ''
+                : errorBlock(
+                    account.lastError,
+                    'Enter a new password below. It applies to every calendar on this account.',
+                  )) +
+              /*
+               * The calendars themselves as rows rather than a list of names,
+               * because each one is a thing with a state: a colour, and whether
+               * its last sync worked. A household looking at a red account card
+               * needs to see *which* of the four is failing, and a bare `<li>`
+               * cannot say it.
+               *
+               * Their own controls are deliberately not repeated here — each
+               * has its full row in the list above, and a second Remove beside
+               * the account's own Remove is two buttons a keystroke apart that
+               * destroy different amounts.
+               */
+              (mine.length === 0
+                ? emptyState('No calendars from this account are on the wall.')
+                : mine
+                    .map((source) =>
+                      listRow(
+                        '',
+                        {
+                          title: source.name,
+                          detail:
+                            source.lastError !== null
+                              ? 'Last sync failed'
+                              : `${source.eventCount} event${source.eventCount === 1 ? '' : 's'}`,
+                        },
+                        source.lastError !== null ? tag('Problem', 'danger') : '',
+                      ),
+                    )
+                    .join('')) +
+              `<form method="post" action="admin/calendars/caldav/${id}/password">` +
+              textField({
+                label: 'Change password',
+                name: 'caldav_password',
+                type: 'password',
+                hint: 'Leave blank to keep the one already stored. A new one applies to every calendar on this account.',
+                attrs: 'autocomplete="off"',
+              }) +
+              `<div class="row"><button class="secondary" type="submit">Save password</button></div>` +
+              `</form>` +
+              destructive('Remove account', {
+                thing: `${account.username} and its ${mine.length} calendar${mine.length === 1 ? '' : 's'}`,
+                confirmAction: `admin/calendars/caldav/${id}/delete`,
+                variant: 'button',
+              }),
+            account.lastError !== null ? { tone: 'danger' } : {},
+          );
+        })
+        .join(''),
+    );
+  }
+
+  /**
+   * Adding one: the form, the host question, and the picker (§6.3.1, §6.7).
+   *
+   * Three states of one section rather than three sections, because a household
+   * is in exactly one of them and the other two would be noise on the page they
+   * are reading. The form is what is there ordinarily; the other two replace it
+   * for one submission each.
+   */
+  function caldavSection(
+    caldav: Parameters<typeof calendarsPage>[6],
+    people: readonly PersonRecord[],
+  ): string {
+    const echo = caldav?.echo;
+
+    /*
+     * The host question (§6.3.1).
+     *
+     * It names the host in prose, carries the pending id and the host in hidden
+     * fields, and has one Continue button. **The password is not on this page**,
+     * and that is the mechanism rather than an oversight: it was consumed by the
+     * submission that got here and is held in memory under the id, so there is
+     * nothing in this markup for a browser's autofill or a screenshot to
+     * remember.
+     */
+    if (caldav?.confirm !== undefined) {
+      return section(
+        'Is that the right server?',
+        undefined,
+        card(
+          `<p>Signing in to <strong>${escapeHtml(echo?.serverUrl ?? '')}</strong> sent us on to ` +
+            `<strong>${escapeHtml(caldav.confirm.host)}</strong>, which is where this account’s ` +
+            `calendars live. Your password has <em>not</em> been sent there yet.</p>` +
+            `<p class="hint">Apple does this: you type caldav.icloud.com and your calendars are on a ` +
+            `numbered server such as p42-caldav.icloud.com. If you did not expect a second address, ` +
+            `stop here and check what you typed.</p>` +
+            `<form method="post" action="admin/calendars/caldav/confirm">` +
+            `<input type="hidden" name="pending" value="${escapeHtml(caldav.confirm.pending)}">` +
+            `<input type="hidden" name="host" value="${escapeHtml(caldav.confirm.host)}">` +
+            `<div class="row">` +
+            `<button type="submit">Continue to ${escapeHtml(caldav.confirm.host)}</button>` +
+            `</div></form>` +
+            `<form method="get" action="admin/calendars">` +
+            `<button class="secondary" type="submit">Stop</button></form>`,
+        ),
+      );
+    }
+
+    /*
+     * The picker (§6.7), shaped like the Home Assistant one above it for the
+     * reason that one is a list of rows rather than a `<select>`: the question a
+     * household arrives with is *which of my calendars go on the wall*, and a
+     * closed list makes them open it to find out.
+     *
+     * A checkbox each rather than an Add button each, because unlike the Home
+     * Assistant flow this is one submission that also creates the account — four
+     * round trips would mean four accounts, or an account created by the first
+     * press and joined by the rest, which is a state to get wrong.
+     */
+    if (caldav?.pick !== undefined) {
+      return section(
+        'Which calendars?',
+        `Signed in to ${caldav.pick.host}. Tick the ones to put on the wall — you can add more later.`,
+        card(
+          `<form method="post" action="admin/calendars/caldav/add">` +
+            `<input type="hidden" name="pending" value="${escapeHtml(caldav.pick.pending)}">` +
+            caldav.pick.calendars
+              .map((calendar, index) => {
+                const value = escapeHtml(calendar.url);
+                return (
+                  `<input type="hidden" name="name_${index}" value="${escapeHtml(calendar.displayName)}">` +
+                  (calendar.ctag === undefined
+                    ? ''
+                    : `<input type="hidden" name="ctag_${index}" value="${escapeHtml(calendar.ctag)}">`) +
+                  switchRow({
+                    label: calendar.displayName,
+                    name: `calendar_${index}`,
+                    checked: true,
+                    value,
+                  })
+                );
+              })
+              .join('') +
+            (people.length === 0
+              ? ''
+              : selectField({
+                  label: 'Belongs to',
+                  name: 'person_id',
+                  hint: 'When a calendar belongs to someone, its events take their colour on the wall.',
+                  optionsHtml:
+                    `<option value="" selected>Everyone</option>` +
+                    people
+                      .map(
+                        (person) =>
+                          `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
+                      )
+                      .join(''),
+                })) +
+            `<div class="row"><button type="submit">Add them</button></div></form>`,
+        ),
+      );
+    }
+
+    /*
+     * The ordinary form, folded shut.
+     *
+     * A `<details>` for the same reason the two on the ICS form are: most
+     * households pasting an address here have an ICS feed, and three fields plus
+     * three switches for the minority is a page everybody else reads past. It
+     * opens itself whenever a submission came back with something to say, which
+     * is the `networkAccessDisclosure` rule — an error naming a remedy folded
+     * shut underneath it is not a remedy.
+     */
+    const open = caldav !== undefined;
+    return section(
+      'Add a CalDAV account',
+      'For iCloud, and for any server that speaks CalDAV. One sign-in reaches every calendar on the account.',
+      (caldav?.error === undefined
+        ? ''
+        : errorBlock(
+            caldav.error.message,
+            networkAccessSuggestion(caldav.error.networkOptions ?? []) !== ''
+              ? networkAccessSuggestion(caldav.error.networkOptions ?? [])
+              : caldav.error.suggestion,
+          )) +
+        `<details class="disclose"${open ? ' open' : ''}>` +
+        `<summary>Add a CalDAV account</summary>` +
+        `<form method="post" action="admin/calendars/caldav">` +
+        textField({
+          label: 'Server address',
+          name: 'server_url',
+          required: true,
+          placeholder: 'https://caldav.icloud.com',
+          hint: 'For iCloud this is exactly https://caldav.icloud.com — the calendars themselves are found for you.',
+          value: echo?.serverUrl ?? '',
+        }) +
+        textField({
+          label: 'Username',
+          name: 'caldav_username',
+          required: true,
+          placeholder: 'you@example.com',
+          hint: 'For iCloud, your Apple ID.',
+          value: echo?.username ?? '',
+          attrs: 'autocomplete="off"',
+        }) +
+        textField({
+          label: 'Password',
+          name: 'caldav_password',
+          type: 'password',
+          required: true,
+          // Never a `value`, on any branch: the one field on this page that
+          // exists to stay out of the response and out of a browser's memory.
+          hint: 'For iCloud this must be an app-specific password, made at appleid.apple.com. Your Apple ID password will not work.',
+          attrs: 'autocomplete="off"',
+        }) +
+        networkAccessDisclosure({
+          allowPrivateNetwork: echo?.allowPrivateNetwork === true,
+          allowLoopback: echo?.allowLoopback === true,
+          allowHttp: echo?.allowHttp === true,
+          open: (caldav?.error?.networkOptions ?? []).length > 0,
+        }) +
+        /*
+         * Secondary, and the page's own rule is why.
+         *
+         * `calendarsPage` settles the hierarchy a few hundred lines down: "Add
+         * is the one thing this screen exists to do, so it is the filled button
+         * and the only one on the page", which is what put Test feed in the
+         * outlined variant beside it. A filled button here is a second primary
+         * competing with it for the commoner act — `browser-calendars.test.ts`
+         * caught exactly that, which is the assertion it exists for.
+         *
+         * The two buttons in the *confirm* and *pick* states above stay filled,
+         * and that is the same rule rather than an exception to it: those
+         * renders are a household mid-flow, drawn above the rows precisely
+         * because that is what they are doing now, and the button that finishes
+         * what they started is the primary of that page.
+         */
+        `<div class="row">` +
+        `<button class="secondary" type="submit">Find my calendars</button></div>` +
+        `</form></details>`,
+    );
+  }
+
   function haCalendarSection(
     available: readonly { readonly entityId: string; readonly name: string }[],
     sources: readonly AdminSourceRow[],
@@ -5725,6 +6409,26 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     haCalendars: readonly { readonly entityId: string; readonly name: string }[] = [],
     /** One row's unsaved values, when a save of that row came back at 400. */
     echo?: SourceEcho,
+    /**
+     * The CalDAV add flow's own state (RFC 013 §6.3.1, §6.7).
+     *
+     * One parameter carrying three mutually exclusive shapes rather than three
+     * parameters, because they *are* exclusive: a submission is a refusal, a
+     * question about a host, or a list of calendars to tick, and never two of
+     * those. Three optional parameters would make "confirm and pick at once"
+     * representable, which is a state no handler can produce and every reader
+     * would have to rule out.
+     */
+    caldav?: {
+      readonly echo?: CaldavEcho;
+      readonly error?: { message: string; suggestion?: string; networkOptions?: readonly NetworkOption[] };
+      readonly confirm?: { readonly pending: string; readonly host: string };
+      readonly pick?: {
+        readonly pending: string;
+        readonly host: string;
+        readonly calendars: readonly { readonly url: string; readonly displayName: string; readonly ctag?: string }[];
+      };
+    },
   ): string {
     const at = now();
     const sources = readAdminSources(deps.db);
@@ -5804,7 +6508,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
                 sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined),
               )
               .join('')) +
+        /*
+         * A submission that came back with something to say goes **above the
+         * rows**, and the ordinary form goes near the foot.
+         *
+         * Same rule, same reason, as the row echo a few lines up: a POST
+         * re-renders the page with the viewport at the top, so a confirmation
+         * or a picker drawn where the form was — below the calendars, below
+         * Home Assistant, below "Add a calendar" — is an answer the household
+         * has to go looking for. The ordinary *form* belongs down there, after
+         * the ICS one, because pasting an address is the common case and this
+         * is the "my provider is iCloud" answer beside the "my provider is
+         * Google" one.
+         */
+        (caldav === undefined ? '' : caldavSection(caldav, people)) +
         haCalendarSection(haCalendars, sources) +
+        caldavAccountsSection(sources) +
         section(
           'Add a calendar',
           undefined,
@@ -5871,6 +6590,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           // The fragment the empty state's action links to.
           'add',
         ) +
+        // The ordinary form, where a household who is not mid-flow meets it.
+        (caldav === undefined ? caldavSection(undefined, people) : '') +
         /*
          * Below the form, and the position is measured rather than chosen.
          *
