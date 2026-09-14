@@ -1576,6 +1576,8 @@ export interface AdminSourceRow {
   readonly personId: string | null;
   readonly kind: string;
   readonly haEntityId: string | null;
+  /** The CalDAV account this collection is reached through, or null (§6.2.1). */
+  readonly caldavAccountId: string | null;
   /** The account an `ics` feed signs in as, in clear. Null for most feeds. */
   readonly authUsername: string | null;
   /**
@@ -1614,6 +1616,7 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
               allow_loopback AS allowLoopback, allow_http AS allowHttp,
               show_in_grid AS showInGrid,
               color, person_id AS personId, kind, ha_entity_id AS haEntityId,
+              caldav_account_id AS caldavAccountId,
               auth_username AS authUsername,
               CASE WHEN auth_password_encrypted IS NULL THEN 0 ELSE 1 END AS hasAuthPassword,
               created_at AS createdAt
@@ -1633,13 +1636,52 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
  */
 export function deleteSource(db: SqliteDatabase, id: string): boolean {
   const remove = db.transaction((sourceId: string): boolean => {
-    // Both kinds. A source only ever has one of these, but deleting by kind
+    /*
+     * The account this calendar was reached through, read **before** the row
+     * goes, because afterwards there is nothing left to ask (RFC 013 §6.2.1).
+     */
+    const owner = db
+      .prepare('SELECT caldav_account_id AS accountId FROM calendar_sources WHERE id = ?')
+      .get(sourceId) as { accountId: string | null } | undefined;
+
+    // Every kind. A source only ever has one of these, but deleting by kind
     // would mean reading the row first to find out which — and getting that
     // wrong leaves a job fetching a source that no longer exists, on every
     // tick, forever.
     db.prepare('DELETE FROM job_state WHERE key = ?').run(`ics-sync:${sourceId}`);
     db.prepare('DELETE FROM job_state WHERE key = ?').run(`ha-calendar-sync:${sourceId}`);
-    return db.prepare('DELETE FROM calendar_sources WHERE id = ?').run(sourceId).changes > 0;
+    db.prepare('DELETE FROM job_state WHERE key = ?').run(`caldav-sync:${sourceId}`);
+    const gone = db.prepare('DELETE FROM calendar_sources WHERE id = ?').run(sourceId).changes > 0;
+
+    /*
+     * **Removing an account's last calendar removes the account and its
+     * credential** (§6.2.1, settled in the same commit as the schema rather
+     * than left to be discovered): an orphaned credential is a stored secret
+     * nothing uses, which is the spirit of rule six. A household wanting a
+     * calendar back temporarily has `enabled` and `visible`; removal is
+     * removal.
+     *
+     * It lives here rather than in a second CalDAV-aware remover for the reason
+     * this function already deletes three job keys it mostly does not need:
+     * **one writer**. Two functions that both remove a calendar are two places
+     * to forget the account, and the one that forgets is the one a household
+     * reaches from a screen nobody re-read.
+     *
+     * Deleted in code rather than by the constraint, which is not a choice:
+     * drizzle-kit drops the FK action from an `ALTER TABLE ADD COLUMN`, so the
+     * declared `ON DELETE CASCADE` reaches SQLite as `NO ACTION` — measured
+     * against a real `better-sqlite3`, not read off the schema. `deletePerson`
+     * has the identical problem with `person_id` and solves it identically.
+     */
+    if (gone && owner?.accountId != null) {
+      const left = db
+        .prepare('SELECT count(*) AS n FROM calendar_sources WHERE caldav_account_id = ?')
+        .get(owner.accountId) as { n: number };
+      if (left.n === 0) {
+        db.prepare('DELETE FROM caldav_accounts WHERE id = ?').run(owner.accountId);
+      }
+    }
+    return gone;
   });
   return remove(id);
 }
@@ -1649,8 +1691,8 @@ export function requestSyncNow(db: SqliteDatabase, id: string): void {
   db.prepare(
     `UPDATE job_state
         SET next_run_at = 0, consecutive_failures = 0, running_since = NULL
-      WHERE key IN (?, ?)`,
-  ).run(`ics-sync:${id}`, `ha-calendar-sync:${id}`);
+      WHERE key IN (?, ?, ?)`,
+  ).run(`ics-sync:${id}`, `ha-calendar-sync:${id}`, `caldav-sync:${id}`);
 }
 
 /**

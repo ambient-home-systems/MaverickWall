@@ -215,56 +215,18 @@ export function rotateCaldavPassword(
 }
 
 /**
- * Remove one calendar, and the account with it when it was the last one.
- *
- * §6.2.1 settles this in the same commit as the schema rather than leaving it
- * to be discovered: **an orphaned credential is a stored secret nothing uses**,
- * which is the spirit of rule six. A household wanting a calendar back
- * temporarily has `enabled` and `visible`; removal is removal.
- *
- * The account is deleted **in code**, inside the transaction, rather than by
- * the constraint. The FK on `calendar_sources.caldav_account_id` declares
- * `ON DELETE CASCADE` and does not have it: drizzle-kit drops the action from
- * an `ALTER TABLE ADD COLUMN`, so SQLite applies `NO ACTION` and the delete
- * would be *refused* — measured against a real `better-sqlite3` with
- * `foreign_keys = ON` rather than read off the schema file. `deletePerson` has
- * the identical problem with `person_id` and solves it the identical way, which
- * is why this is the repository's shape rather than a new one.
- *
- * Removing the events and the job row is the same work `removeSource` does for
- * every other kind, and it is done here rather than left to the caller so the
- * two cannot come apart.
- */
-export function removeCaldavCalendar(db: SqliteDatabase, sourceId: string): boolean {
-  const remove = db.transaction((id: string): boolean => {
-    const row = db
-      .prepare(`SELECT caldav_account_id AS accountId FROM calendar_sources WHERE id = ?`)
-      .get(id) as { accountId: string | null } | undefined;
-    if (row === undefined) return false;
-
-    db.prepare('DELETE FROM calendar_events_cache WHERE source_id = ?').run(id);
-    db.prepare('DELETE FROM job_state WHERE key = ?').run(`caldav-sync:${id}`);
-    const gone = db.prepare('DELETE FROM calendar_sources WHERE id = ?').run(id).changes > 0;
-
-    if (gone && row.accountId !== null) {
-      const left = db
-        .prepare('SELECT count(*) AS n FROM calendar_sources WHERE caldav_account_id = ?')
-        .get(row.accountId) as { n: number };
-      if (left.n === 0) {
-        db.prepare('DELETE FROM caldav_accounts WHERE id = ?').run(row.accountId);
-      }
-    }
-    return gone;
-  });
-  return remove(sourceId);
-}
-
-/**
  * Remove an account and every calendar on it, deliberately.
  *
- * The calendars go first and explicitly, for the reason above: the declared
- * cascade is not in the database, so deleting the account while its calendars
- * still point at it is refused rather than cascaded.
+ * Removing one calendar is `deleteSource`'s job — the one writer, which drops
+ * the account itself when that calendar was the last of them (§6.2.1). This is
+ * the other direction, for a household who wants the whole account gone rather
+ * than four calendars removed one at a time.
+ *
+ * The calendars go first and explicitly, and that is not a tidiness choice: the
+ * declared `ON DELETE CASCADE` does not reach the database — drizzle-kit drops
+ * the action from an `ALTER TABLE ADD COLUMN` — so deleting the account while
+ * its calendars still point at it is *refused* by SQLite rather than cascaded.
+ * Measured against a real `better-sqlite3` with `foreign_keys = ON`.
  */
 export function removeCaldavAccount(db: SqliteDatabase, accountId: string): boolean {
   const remove = db.transaction((id: string): boolean => {

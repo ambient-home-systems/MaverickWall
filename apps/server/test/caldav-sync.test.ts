@@ -13,9 +13,9 @@ import {
   addCaldavCalendar,
   createCaldavAccount,
   removeCaldavAccount,
-  removeCaldavCalendar,
   rotateCaldavPassword,
 } from '../src/api/caldav-accounts.js';
+import { deleteSource } from '../src/api/queries.js';
 import { startCalDavFake, type CalDavFake } from './caldav-fake.js';
 
 /**
@@ -395,7 +395,7 @@ describe('an account and its calendars (RFC 013 §6.2.1)', () => {
       .prepare('SELECT caldav_account_id AS a FROM calendar_sources WHERE id = ?')
       .get(id) as { a: string };
 
-    expect(removeCaldavCalendar(db, id)).toBe(true);
+    expect(deleteSource(db, id)).toBe(true);
     // The row is gone rather than the constraint having fired, which is what
     // the code-side delete is for: the declared cascade is not in the database.
     expect(
@@ -409,7 +409,7 @@ describe('an account and its calendars (RFC 013 §6.2.1)', () => {
 
   it('removing one of three leaves the account and the other two', () => {
     const { db, accountId, ids } = threeCalendars();
-    expect(removeCaldavCalendar(db, ids[0] as string)).toBe(true);
+    expect(deleteSource(db, ids[0] as string)).toBe(true);
 
     expect(
       db.prepare('SELECT count(*) AS n FROM caldav_accounts WHERE id = ?').get(accountId),
