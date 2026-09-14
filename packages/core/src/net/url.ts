@@ -171,14 +171,27 @@ export function validateOutboundUrl(raw: string, policy: UrlPolicy = {}): Valida
     );
   }
 
-  // Credentials in the URL. Beyond being a bad idea to store, `user@host` is a
-  // classic parser-confusion trick: the part a human reads as the host is the
-  // username, and the real destination follows the @.
+  /*
+   * Credentials in the URL. Beyond being a bad idea to store, `user@host` is a
+   * classic parser-confusion trick: the part a human reads as the host is the
+   * username, and the real destination follows the @.
+   *
+   * Both of those survive a feed being able to carry a username and a password
+   * (RFC 013 §4.3) and the refusal stays. What did not survive is the old
+   * remedy — "it should carry them in a token in the path" — which was true
+   * while there was nowhere else to put them and became, the day there was,
+   * a sentence telling somebody holding an app password that this product
+   * cannot use it.
+   *
+   * This is a pure package with no view of the form it is describing, so the
+   * replacement names what is asked for rather than a control: every screen
+   * that reaches here draws those two fields, and none of them shares a label.
+   */
   if (url.username !== '' || url.password !== '') {
     return reject(
       'userinfo-present',
       'Remove the username and password from the address. If the feed needs ' +
-        'credentials, it should carry them in a token in the path.',
+        'them, enter them in the username and password fields instead.',
     );
   }
 

@@ -33,6 +33,14 @@ export type SecretPurpose =
   | 'display-token'
   /** Credentials a recipe injects into its fetch (an API key). */
   | 'recipe-secret'
+  /**
+   * The password a calendar feed signs in with (RFC 013 Phase A).
+   *
+   * Its own purpose rather than a second use of `calendar-source-url`, because
+   * the purpose is bound into the ciphertext: without the split, a feed's
+   * address could be swapped into its password column and would still decrypt.
+   */
+  | 'feed-password'
   /** Session signing. */
   | 'session';
 

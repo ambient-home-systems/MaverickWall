@@ -74,6 +74,54 @@ That address is a password in effect — anybody holding it can read your
 calendar for ever. It is encrypted at rest here, and only the hostname is ever
 shown or logged.
 
+### A calendar that needs signing in
+
+Open **Sign in to this calendar** under the address and give it a username and
+a password. Both, or neither: a username on its own sends nothing, because half
+a credential is not a credential.
+
+For **Nextcloud**: open **Settings**, then **Calendar**, then the three dots
+beside the calendar you want, and **Copy internal link**. Add `?export` to the
+end of what you copied — that is what turns a calendar collection into a single
+`.ics` file. Then sign in with **an app password** rather than your account
+password: **Settings → Security → Create new app password**. An app password
+can be revoked on its own and does not unlock the rest of your account.
+
+Baïkal, Radicale, SOGo and Fastmail work the same way, as does any school or
+work feed behind a sign-in.
+
+The password is encrypted at rest beside the address, and never shown again —
+the box on the settings row is blank because there is nothing to show you, and
+leaving it blank keeps what is stored. To change one, type the new one; to take
+it off a calendar that no longer needs it, use **Remove the password**.
+
+If a password stops working — an app password revoked, a school one reissued —
+the calendar says so on the Calendars page and **stops trying** rather than
+retrying every fifteen minutes. That is deliberate: a wrong password on a loop
+is how Nextcloud's brute-force protection and Apple's account lockout get
+triggered against your own account. Entering a new one starts it again straight
+away.
+
+### Google, iCloud and Microsoft 365, through Home Assistant
+
+If you run Home Assistant, its own integrations are the best route for these —
+it does the signing in, and the calendars then appear here like any other.
+
+- **Google Calendar** and **Microsoft 365** have their own Home Assistant
+  integrations and keep up promptly.
+- **iCloud** has no ICS address worth using. The **CalDAV** integration with an
+  Apple ID and an app-specific password is the way in.
+- **Remote Calendar** takes a plain ICS address, and refreshes **once a day** —
+  so routing a feed through it is slower than adding the address here directly.
+
+Once Home Assistant has them, **Calendars** offers them under *From Home
+Assistant* with no address to find at all.
+
+A Google **secret iCal address** added here directly works, and how fresh it is
+is Google's decision rather than ours: Google caches it on its own schedule and
+it can be hours behind. If that matters, the Home Assistant route is the one
+that fixes it.
+
 ## Pairing a screen
 
 **Screens → Add.** You get a link and a QR code.

@@ -1,5 +1,6 @@
 import { expandCalendar } from '@maverick-wall/calendar';
 import { analyseTitles, FETCH_LIMITS, requiredNetworkOptions, validateOutboundUrl, type Fetcher, type NetworkOption, type TitleObservation } from '@maverick-wall/core';
+import { connectionFor } from './feed-credentials.js';
 
 /**
  * Try a calendar URL before anything is saved.
@@ -24,6 +25,15 @@ export interface TestFeedRequest {
   readonly allowLoopback?: boolean;
   readonly allowHttp?: boolean;
   readonly timezone: string;
+  /**
+   * The account to sign in as, when the household has given one.
+   *
+   * In clear, and only for the length of this request: nothing is stored yet —
+   * the whole point of this screen is answering "does this work" before a row
+   * exists — so there is no envelope to open and nothing here writes one.
+   */
+  readonly username?: string;
+  readonly password?: string;
 }
 
 export interface TestFeedEvent {
@@ -87,8 +97,16 @@ export type TestFeedResult =
  * and all five quoted labels — "allow local network", "allow loopback" — that
  * have never appeared on a checkbox anywhere in the product. The sentence that
  * names a switch is composed in `http/html.ts` from the table that renders it.
+ *
+ * **Two branches now point at the username and password fields, and that is a
+ * narrowing of the rule rather than a hole in it.** They name *what is being
+ * asked for* — "where the calendar's username and password are asked for
+ * below" — rather than a label on a control, which is the thing this module
+ * cannot know. Every form that reaches here draws those two fields, which is
+ * what makes the sentence true wherever it is read; a `<label>`'s wording is
+ * still nothing this file has an opinion about.
  */
-function suggestionFor(code: string): string | undefined {
+function suggestionFor(code: string, sentCredentials = false): string | undefined {
   switch (code) {
     case 'internal-suffix':
       // The one local-network code with a remedy worth stating, and it is not a
@@ -102,9 +120,32 @@ function suggestionFor(code: string): string | undefined {
       // address to reach for — one of these never resolves to anything.
       return undefined;
     case 'userinfo-present':
-      return 'Remove the username and password from the address.';
+      /*
+       * The refusal stays and the remedy changes (RFC 013 §4.3).
+       *
+       * `validateOutboundUrl` still refuses `https://me:pw@host/…` for both of
+       * the reasons written at the check — storing it is a bad idea, and
+       * `user@host` is a parser-confusion trick where the part a person reads
+       * as the host is the username. What stopped being true the day a feed
+       * could carry a credential is the old sentence's *implication*: it told
+       * somebody holding a Nextcloud app password that this product had
+       * nowhere to put it.
+       */
+      return 'Remove the username and password from the address, and enter them where the calendar’s username and password are asked for below.';
     case 'unacceptable-content-type':
-      return 'That address returned a web page rather than a calendar. In Google Calendar, use "Secret address in iCal format" — it ends in .ics';
+      /*
+       * A web page in place of a calendar meant exactly one thing — the wrong
+       * of Google's two links — until a feed could be credentialed. Now it
+       * means a second thing at least as often: a server answering an
+       * unauthenticated GET with an HTML sign-in page rather than with a bare
+       * 401. Which sentence is the likely one depends on whether this attempt
+       * signed in, so the second clause is offered only when it did not; with
+       * a credential already supplied, Google's link is the better guess and
+       * the sentence is left exactly as it was.
+       */
+      return sentCredentials
+        ? 'That address returned a web page rather than a calendar. In Google Calendar, use "Secret address in iCal format" — it ends in .ics'
+        : 'That address returned a web page rather than a calendar. In Google Calendar, use "Secret address in iCal format" — it ends in .ics. Or, if this calendar needs a username and password, enter them below.';
     case 'dns-failed':
       return 'Check the address for typos, and that this machine can reach the internet.';
     case 'address-rejected':
@@ -122,15 +163,84 @@ function suggestionFor(code: string): string | undefined {
   }
 }
 
+/**
+ * A 401 or a 403 has three different causes and three different fixes
+ * (RFC 013 §4.4).
+ *
+ * The one thing to get wrong here is reporting all three as "that password was
+ * not accepted", which turns the best screen in the admin into a shrug: it is
+ * the correct sentence for exactly one of them, and for the other two the
+ * action it names does nothing.
+ *
+ * The decision is taken from **what the request carried**, never from what the
+ * household typed. Those are not the same thing — a username with no password
+ * beside it composes no header at all (`connectionFor`), so a form with a name
+ * in it and the password field empty is a request that signed in as nobody, and
+ * telling that household their password was rejected would be a sentence about
+ * a field they have not filled in yet.
+ */
+function signInSuggestion(
+  response: { readonly code: string; readonly httpStatus?: number; readonly finalUrl?: string; readonly credentialsDropped?: boolean },
+  sentCredentials: boolean,
+): string | undefined {
+  if (response.code !== 'http-error') return undefined;
+  if (response.httpStatus !== 401 && response.httpStatus !== 403) return undefined;
+
+  if (response.credentialsDropped) {
+    /*
+     * The third case, and the only one whose remedy is not about the password.
+     *
+     * The credential reached the first address and was taken off the hop that
+     * followed, because credentials are scoped to the origin they were issued
+     * for. Phase A has no confirmation flow to re-attach it — that is §6.3.1's
+     * machinery, built for CalDAV — so the honest answer is to name where the
+     * address went and let the household point at it directly.
+     */
+    const where = originOf(response.finalUrl);
+    return where === undefined
+      ? 'That address redirected somewhere else, and a password is not sent across a redirect. Use the address it redirected to.'
+      : `The address redirected to ${where}, and the password is not sent there. Use that address instead.`;
+  }
+
+  return sentCredentials
+    ? 'The username or password was not accepted. If this is a Nextcloud or similar server, an app password rather than the account password is usually what is wanted.'
+    : 'This calendar needs a username and password; enter them below.';
+}
+
+/** The origin of a URL, for a sentence. Never the path, which is the credential. */
+function originOf(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function testFeed(
   request: TestFeedRequest,
   fetcher: Fetcher,
 ): Promise<TestFeedResult> {
-  const policy = {
-    ...(request.allowPrivateNetwork === true ? { allowPrivateNetwork: true } : {}),
-    ...(request.allowLoopback === true ? { allowLoopback: true } : {}),
-    ...(request.allowHttp === true ? { allowHttp: true } : {}),
-  };
+  /*
+   * The same resolver the sync job uses, with the password in clear rather
+   * than in an envelope.
+   *
+   * That is the whole reason `connectionFor` takes a union: the bytes this
+   * screen puts on the wire have to be the bytes the sync puts on the wire an
+   * hour later, or a feed that tests green fails silently once it is stored —
+   * which is precisely the failure `testFeed` exists to remove.
+   */
+  const connection = connectionFor({
+    url: request.url,
+    allowPrivateNetwork: request.allowPrivateNetwork === true,
+    allowLoopback: request.allowLoopback === true,
+    allowHttp: request.allowHttp === true,
+    authUsername: request.username,
+    authPassword: { typed: request.password },
+  });
+  const policy = connection.policy;
+  /** Whether this attempt actually carried a credential, which is not the same as being given one. */
+  const sentCredentials = connection.headers['authorization'] !== undefined;
 
   const validated = validateOutboundUrl(request.url, policy);
   if (!validated.ok) {
@@ -152,10 +262,11 @@ export async function testFeed(
   }
 
   const response = await fetcher.fetch({
-    url: request.url,
+    url: connection.url,
     policy,
     maxBytes: FETCH_LIMITS.ics,
     acceptContentTypes: ICS_CONTENT_TYPES,
+    ...(sentCredentials ? { headers: connection.headers } : {}),
     // Shorter than a background sync. Somebody is watching a spinner.
     timeoutMs: 15_000,
   });
@@ -165,7 +276,12 @@ export async function testFeed(
     // so the answer comes from the outcome rather than from the URL.
     const networkOptions =
       response.status === 'rejected' ? (response.networkOptions ?? []) : [];
-    const suggestion = networkOptions.length > 0 ? undefined : suggestionFor(response.code);
+    const signIn =
+      response.status === 'failed' ? signInSuggestion(response, sentCredentials) : undefined;
+    const suggestion =
+      networkOptions.length > 0
+        ? undefined
+        : (signIn ?? suggestionFor(response.code, sentCredentials));
     return {
       ok: false,
       stage: 'fetch',

@@ -3631,6 +3631,64 @@ export function networkAccessDisclosure(values: {
 }
 
 /**
+ * The username and password a feed signs in with (RFC 013 Phase A).
+ *
+ * One helper rather than two copies, because the add form and the wizard's own
+ * calendar step ask the identical question and the wizard is script-free — so
+ * whatever this is, it has to be markup a server can render open or shut with
+ * no JavaScript anywhere. It is the `networkAccessDisclosure` shape next door
+ * for the same reason it is: most feeds need neither field, and three lines for
+ * the common case is three lines somebody has to read past.
+ *
+ * **The password field is never given a value, on any branch.** Echoing it back
+ * on a 400 would mean putting it in the response HTML and in a browser's own
+ * form-autofill memory, for the one field on the page that exists to be kept
+ * out of both — the one deliberate exception to this admin's echo-on-400 rule
+ * (§4.5). `autocomplete="off"` is the same argument one layer out: a household
+ * whose browser offers to remember a calendar's app password alongside their
+ * own sign-in has been offered the wrong thing.
+ */
+export function feedCredentialFields(values: {
+  username?: string;
+  /**
+   * Force it open, for a submission refused because the feed wanted signing in
+   * to. An error naming a remedy the household cannot see is not a remedy —
+   * exactly the fault `networkAccessDisclosure` grew this attribute for.
+   */
+  open?: boolean;
+  /** What the label says when there is already a stored password to replace. */
+  passwordLabel?: string;
+  passwordHint?: string;
+}): string {
+  const username = values.username ?? '';
+  const open = values.open === true || username !== '';
+  return (
+    `<details class="disclose"${open ? ' open' : ''}>` +
+    `<summary>${escapeHtml(
+      username === '' ? 'Sign in to this calendar' : `Signs in as ${username}`,
+    )}</summary>` +
+    `<p class="hint">Most calendars need neither. A Nextcloud, Baïkal, Radicale or ` +
+    `Fastmail calendar, or a school or work feed behind a sign-in, needs both — and ` +
+    `where the server offers one, an app password rather than the account password.</p>` +
+    textField({
+      label: 'Username',
+      name: 'auth_username',
+      value: username,
+      attrs: 'autocomplete="off"',
+    }) +
+    textField({
+      label: values.passwordLabel ?? 'Password',
+      name: 'auth_password',
+      type: 'password',
+      // Never `value`. See the note above this function.
+      attrs: 'autocomplete="off"',
+      ...(values.passwordHint === undefined ? {} : { hint: values.passwordHint }),
+    }) +
+    `</details>`
+  );
+}
+
+/**
  * One control's label, by the `UrlPolicy` flag it sets.
  *
  * For a sentence composed somewhere the trailing "under Network access below"

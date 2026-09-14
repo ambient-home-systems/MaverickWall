@@ -107,7 +107,8 @@ describe('upgrading a database that is already in use', () => {
       .prepare(
         `SELECT name, kind, url_encrypted AS url, url_host AS host, color,
                 event_count AS eventCount, ha_entity_id AS entityId,
-                show_in_grid AS showInGrid
+                show_in_grid AS showInGrid, auth_username AS authUsername,
+                auth_password_encrypted AS authPassword
            FROM calendar_sources WHERE id = 'src-1'`,
       )
       .get() as Record<string, unknown>;
@@ -132,6 +133,21 @@ describe('upgrading a database that is already in use', () => {
        * for, and no test starting from an empty database can see it.
        */
       showInGrid: 1,
+      /*
+       * Null on both, on a row inserted long before either column existed
+       * (0042), and null rather than `''`.
+       *
+       * A feed can sign in now (RFC 013 Phase A), and every feed already
+       * subscribed signs in as nobody — which is exactly what it did last
+       * night. `api/feed-credentials.ts` reads null as "send no
+       * `authorization` header at all", so a default of the empty string here
+       * would be a username of `''` with an empty password beside it, and the
+       * question of whether that composes a header is one no household should
+       * ever have made to depend on a column default. The `kind = 'kind'`
+       * shape again, two columns along.
+       */
+      authUsername: null,
+      authPassword: null,
     });
 
     const events = db

@@ -76,7 +76,19 @@ async function controls(page: Page, formAction: string): Promise<Controls> {
     const inputs = names
       .map((name) => [name, form.querySelector(`input[name="${name}"]`)] as const)
       .filter((pair): pair is readonly [string, HTMLInputElement] => pair[1] !== null);
-    const details = form.querySelector('details') as HTMLDetailsElement | null;
+    /*
+     * The disclosure that holds *these three switches*, not the first one in
+     * the form.
+     *
+     * `form.querySelector('details')` was document order, which was the same
+     * element for as long as the network disclosure was the only one on the
+     * step. A feed can carry a username and a password now (RFC 013 Phase A),
+     * and that disclosure is rendered above this one — so the positional
+     * selector silently became a reading of a different element, and reported
+     * the network remedy as shut while it was open. `shifts[0]` again, in a
+     * test rather than in a renderer.
+     */
+    const details = (inputs[0]?.[1].closest('details') ?? null) as HTMLDetailsElement | null;
     const reachable: Record<string, boolean> = {};
     for (const [name, input] of inputs) {
       const rect = input.getBoundingClientRect();
@@ -122,14 +134,23 @@ describe('the wizard asks for no network access until something needs it', () =>
       ).toBe(0);
       expect(await errorText(page)).toBe('');
 
-      // And the two fields that matter are still there — "no controls" must not
-      // be a page that failed to render.
+      /*
+       * And the fields that matter are still there — "no controls" must not be
+       * a page that failed to render.
+       *
+       * The sign-in pair joins the name and the address here because a feed can
+       * carry a username and a password now, and they are the *same* kind of
+       * thing as the two above them: a question about the calendar, asked
+       * unconditionally, with no security decision in it. The three this test is
+       * about — the SSRF opt-ins — are still absent, which `shown.present` above
+       * is what asserts.
+       */
       const fields = await page.evaluate(() =>
         Array.from(document.querySelectorAll('form[action="setup/calendar"] input')).map(
           (input) => (input as HTMLInputElement).name,
         ),
       );
-      expect(fields).toEqual(['name', 'url']);
+      expect(fields).toEqual(['name', 'url', 'auth_username', 'auth_password']);
     },
     SLOW,
   );

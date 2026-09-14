@@ -1014,10 +1014,18 @@ describe('adding a calendar from the Calendars screen', () => {
       const form = page.locator('form[action="admin/calendars"]');
       await form.locator('input[name="name"]').fill('Just added');
       await form.locator('input[name="url"]').fill(url ?? '');
-      // The switches live in a collapsed <details>; a household opens it,
-      // because the refusal names them. Loopback and plain http are both
-      // needed to reach a test feed on 127.0.0.1.
-      await form.locator('summary').click();
+      /*
+       * The switches live in a collapsed <details>; a household opens it,
+       * because the refusal names them. Loopback and plain http are both
+       * needed to reach a test feed on 127.0.0.1.
+       *
+       * Named rather than taken by position. `form.locator('summary')` was
+       * unambiguous for as long as this form had one disclosure; a feed can
+       * carry a username and a password now (RFC 013 Phase A), and the sign-in
+       * pair is folded the same way — so a bare `summary` is two elements, and
+       * the one a positional selector would have picked is the wrong one.
+       */
+      await form.locator('summary', { hasText: 'Network access' }).click();
       await form.locator('input[name="allow_loopback"]').check();
       await form.locator('input[name="allow_http"]').check();
 

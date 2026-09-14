@@ -92,6 +92,31 @@ export type FetchOutcome =
       readonly httpStatus?: number;
       /** Honoured for 429 and 503, so backoff respects the upstream. */
       readonly retryAfterSeconds?: number;
+      /**
+       * The address that actually answered, after redirects. Absent when
+       * nothing was reached.
+       *
+       * The `ok` variant has always carried this; a failure needs it for the
+       * same reason and for one case in particular — see below.
+       */
+      readonly finalUrl?: string;
+      /**
+       * True when a hop to another origin stripped an `authorization` (or
+       * another sensitive header) the caller had supplied.
+       *
+       * Without this, a household who typed the *right* password sees the
+       * identical "that password was not accepted" sentence a household who
+       * typed the wrong one sees — because `isCrossOrigin` treats a protocol
+       * change on the same hostname as cross-origin, so a server redirecting
+       * its own `http://` to `https://` gets a second request with no
+       * credential on it and answers 401 to that. The remedy the sentence
+       * implies is to retype a password that was never the problem.
+       *
+       * So this is what lets a diagnosis point at the *address* instead
+       * (RFC 013 §4.4). Absent means no credential was dropped; it never means
+       * none was sent.
+       */
+      readonly credentialsDropped?: boolean;
     };
 
 /**

@@ -3,6 +3,7 @@ import { FETCH_LIMITS } from '@maverick-wall/core';
 import { openAndMigrate } from '../db/bootstrap.js';
 import { createKeyring, loadOrCreateMasterKey } from '../secrets/keyring.js';
 import { createFetcher } from '../net/fetcher.js';
+import { connectionFor } from '../api/feed-credentials.js';
 
 /**
  * Fetch a calendar source and report what actually came back.
@@ -14,9 +15,11 @@ import { createFetcher } from '../net/fetcher.js';
  *
  *   node dist/tools/diagnose-source.js [source-id]
  *
- * The feed URL is never printed. Only its host, the response shape, and the
- * first few lines of the body, which for a calendar are structural rather than
- * personal.
+ * The feed URL is never printed, and neither is a feed's password. Only the
+ * host, the account it signs in as, the response shape, and the first few
+ * lines of the body, which for a calendar are structural rather than personal.
+ * A password stored against a source is reported as the words "password
+ * stored" and nothing else — the same rule `lastError` follows.
  */
 
 const dataDir = process.env['DATA_DIR'] ?? '/data';
@@ -31,6 +34,8 @@ interface SourceRow {
   readonly allowPrivateNetwork: number;
   readonly allowLoopback: number;
   readonly allowHttp: number;
+  readonly authUsername: string | null;
+  readonly authPasswordEncrypted: string | null;
 }
 
 const wanted = process.argv[2];
@@ -38,7 +43,9 @@ const sources = db
   .prepare(
     `SELECT id, name, url_encrypted AS urlEncrypted,
             allow_private_network AS allowPrivateNetwork,
-            allow_loopback AS allowLoopback, allow_http AS allowHttp
+            allow_loopback AS allowLoopback, allow_http AS allowHttp,
+            auth_username AS authUsername,
+            auth_password_encrypted AS authPasswordEncrypted
        FROM calendar_sources ${wanted ? 'WHERE id = ?' : ''}`,
   )
   .all(...(wanted ? [wanted] : [])) as SourceRow[];
@@ -83,15 +90,52 @@ for (const source of sources) {
       `loopback=${source.allowLoopback === 1} http=${source.allowHttp === 1}`,
   );
 
-  const response = await fetcher.fetch({
-    url: opened.value,
-    policy: {
+  // The same resolver the sync job uses, so what this tool exercises is the
+  // connection the sync will actually make rather than a second opinion of it.
+  const connection = connectionFor(
+    {
+      url: opened.value,
       allowPrivateNetwork: source.allowPrivateNetwork === 1,
       allowLoopback: source.allowLoopback === 1,
       allowHttp: source.allowHttp === 1,
+      authUsername: source.authUsername,
+      authPassword: { stored: source.authPasswordEncrypted },
     },
+    keyring,
+  );
+
+  /*
+   * The account, and never the password.
+   *
+   * The username is already on the settings row, so printing it costs nothing
+   * and is often the whole diagnosis — a feed signing in as the wrong account
+   * looks identical to one signing in with the wrong password. The password
+   * itself crosses this codebase exactly as far as the keyring and the
+   * outbound header, and a terminal somebody is about to paste into an issue
+   * is neither.
+   */
+  console.log(`  signs in as: ${source.authUsername ?? '(nobody)'}`);
+  console.log(
+    `  password:    ${
+      source.authPasswordEncrypted === null
+        ? 'none stored'
+        : connection.passwordUnreadable
+          ? 'stored, but it could not be decrypted — it needs entering again'
+          : 'password stored'
+    }`,
+  );
+  if (source.authUsername !== null && connection.headers['authorization'] === undefined) {
+    // Half a credential is not a credential: `connectionFor` sends nothing, and
+    // a household looking at a 401 would otherwise have no way to see that.
+    console.log('  note:        no sign-in header was sent — a username needs a password beside it');
+  }
+
+  const response = await fetcher.fetch({
+    url: connection.url,
+    policy: connection.policy,
     maxBytes: FETCH_LIMITS.ics,
     acceptContentTypes: ['text/calendar', 'application/octet-stream', 'text/plain'],
+    ...(Object.keys(connection.headers).length > 0 ? { headers: connection.headers } : {}),
   });
 
   console.log(`  fetch:       ${response.status}`);
