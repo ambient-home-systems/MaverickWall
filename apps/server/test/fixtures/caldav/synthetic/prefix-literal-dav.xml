@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DAV:multistatus xmlns:DAV="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">
+ <DAV:response>
+  <DAV:href>/dav/calendars/REDACTED/personal/</DAV:href>
+  <DAV:propstat>
+   <DAV:prop>
+    <DAV:resourcetype><DAV:collection/><cal:calendar/></DAV:resourcetype>
+    <DAV:displayname>Home</DAV:displayname>
+    <cal:supported-calendar-component-set><cal:comp name="VEVENT"/></cal:supported-calendar-component-set>
+    <cs:getctag>ctag-1</cs:getctag>
+   </DAV:prop>
+   <DAV:status>HTTP/1.1 200 OK</DAV:status>
+  </DAV:propstat>
+ </DAV:response>
+</DAV:multistatus>

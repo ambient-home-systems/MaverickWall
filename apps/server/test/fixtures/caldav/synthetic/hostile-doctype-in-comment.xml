@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- <!DOCTYPE multistatus [ <!ENTITY xxe SYSTEM "file:///data/.secret"> ]> -->
+<d:multistatus xmlns:d="DAV:">
+ <d:response>
+  <d:href>/dav/calendars/REDACTED/personal/</d:href>
+ </d:response>
+</d:multistatus>
