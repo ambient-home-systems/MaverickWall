@@ -1217,11 +1217,11 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 /* 1000px, not the shell's 900: below this the 320px preview column starves
  * the controls beside the 264px drawer. */
 @media(max-width:1000px){.theme-builder{grid-template-columns:1fr}}
+/* The builder's own groups are sections now (RFC 015 phase 1), so the four
+ * facts §2.6 asks for sit in a section's help line beside the controls they
+ * are about rather than in a bare kicker with nowhere to say anything. The
+ * .tb-group rule went with them. */
 .tb-controls{min-width:0}
-.tb-controls>.tb-group{display:block;margin:var(--mw-s-5) 0 var(--mw-s-1);
-  font:var(--mw-t-h4);
-  letter-spacing:var(--mw-t-h4-tracking);
-  color:var(--mw-ink-2)}
 .tf-row{display:flex;align-items:center;gap:var(--mw-s-3);margin:var(--mw-s-2) 0}
 .tf-row input[type=color]{width:46px;height:34px;flex:0 0 auto;padding:var(--mw-s-1);margin:0}
 .tf-row b{display:block;font-size:var(--mw-t-h4-size);font-weight:600}

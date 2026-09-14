@@ -63,14 +63,28 @@ const DEFAULT_TOKENS: ThemeTokens = {
   '--radius': '0.2rem',
 };
 
-/** Each editable colour with the plain-language account of what it drives. */
+/**
+ * Each editable colour with the plain-language account of what it drives.
+ *
+ * `--faint`'s line carries one more thing, and it is the second of RFC 015
+ * §2.6's four facts: it is deliberately below the contrast bar, so the
+ * contrast guide beside the preview flags it on every theme ever built. Said
+ * here rather than beside the guide, because the guide is where somebody reads
+ * the warning and this is where they would otherwise go to "fix" it.
+ */
 const TOKEN_HELP: readonly { readonly key: string; readonly label: string; readonly help: string }[] = [
   { key: '--bg', label: 'Background', help: 'The wall behind everything.' },
   { key: '--panel', label: 'Panels', help: 'The surface of cards and the month grid.' },
   { key: '--rule', label: 'Lines', help: 'Hairline borders between things.' },
   { key: '--ink', label: 'Text', help: 'The main reading colour.' },
   { key: '--muted', label: 'Muted text', help: 'Secondary text — times and labels.' },
-  { key: '--faint', label: 'Faint text', help: 'The quietest text — past days.' },
+  {
+    key: '--faint',
+    label: 'Faint text',
+    help:
+      'The quietest text — past days. Deliberately below the contrast bar: it is ' +
+      'meant to recede, so the guide flagging it is not a fault to fix.',
+  },
   { key: '--accent', label: 'Accent', help: 'Today, and highlights across the wall.' },
   { key: '--s-day', label: 'Day shift', help: 'The colour of a day shift.' },
   { key: '--s-night', label: 'Night shift', help: 'The colour of a night shift.' },
@@ -394,22 +408,47 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
           attrs: 'maxlength="60"',
         }) +
 
-        `<label class="tb-group">Colours</label>` +
-        TOKEN_HELP.map(colourField).join('') +
+        section(
+          'Colours',
+          'Four more colours are worked out from these and are not on this form: the ' +
+            'ink an event’s name is drawn in, the ink for the scaffolding around it — ' +
+            'date numerals, weekday heads, week numbers — the ink for the quiet things ' +
+            'like overflow counts and past times, and the hairline between weeks. The ' +
+            'scaffolding ink is mixed from your text colour and your background, and ' +
+            'the mix is pushed further until it clears 4.5:1 against that background, ' +
+            'so a low-contrast pair comes back corrected rather than as you set it.',
+          TOKEN_HELP.filter((t) => !t.key.startsWith('--s-')).map(colourField).join(''),
+        ) +
 
-        selectField({
-          label: 'Corners',
-          name: 'radius',
-          optionsHtml: RADII.map(
-            (r) =>
-              `<option value="${escapeHtml(r.value)}"${r.value === currentRadius ? ' selected' : ''}>` +
-              `${escapeHtml(r.label)}</option>`,
-          ).join(''),
-        }) +
+        section(
+          'Shift colours',
+          'These have to be told apart from across a room, not on a phone held at ' +
+            'arm’s length — which is why there are four of them, and why Panels is the ' +
+            'one to start from for a household with a rota: its four hues separate ' +
+            'best at ten feet. Two colours that read clearly here can be one colour ' +
+            'from the far end of a kitchen.',
+          TOKEN_HELP.filter((t) => t.key.startsWith('--s-')).map(colourField).join(''),
+        ) +
 
-        `<label class="tb-group">Fonts</label>` +
-        fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
-        fontField('--f-sans', 'Body', 'Event titles and the everyday text.') +
+        section(
+          'Corners and type',
+          'A theme is colour, the corner radius and the faces — and nothing else. How ' +
+            'large the type is comes from the wall’s own size and the distance it is ' +
+            'read from, under Device and time on that wall’s settings; where each ' +
+            'widget sits and how big its box is comes from the layout editor. If the ' +
+            'text on a wall is too small, neither answer is on this page.',
+          selectField({
+            label: 'Corners',
+            name: 'radius',
+            optionsHtml: RADII.map(
+              (r) =>
+                `<option value="${escapeHtml(r.value)}"${r.value === currentRadius ? ' selected' : ''}>` +
+                `${escapeHtml(r.label)}</option>`,
+            ).join(''),
+          }) +
+            fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
+            fontField('--f-sans', 'Body', 'Event titles and the everyday text.'),
+        ) +
 
         `<button type="submit">${editing ? 'Save theme' : 'Create theme'}</button>` +
         `</div>` +
