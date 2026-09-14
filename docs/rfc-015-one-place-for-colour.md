@@ -1,6 +1,7 @@
 # RFC 015 — One place for colour, and no default theme
 
-Status: **proposed** · Owner: — · First drafted 2026-09-13 · Revised 2026-09-14 ·
+Status: **shipped** (phases 1, 2 and 3) · Owner: — · First drafted 2026-09-13 ·
+Revised 2026-09-14 · Shipped 2026-09-14 ·
 Relates to `apps/server/src/http/admin-themes.ts`,
 `apps/server/src/http/theme-cards.ts` (phase 1; `themeCards` and its table moved
 out of `admin.ts`), `apps/server/src/http/admin.ts` (`wallDefaultsForm`,
@@ -718,3 +719,37 @@ pieces because a column and its readers go together.
 (§3.5), the template repaint's two saved keys (§3.6), and the documentation.
 Duplicate (§3.4) lands here at the earliest, behind the parity test its
 transcription needs.
+
+> **Phase 3 shipped, and it found one thing this document did not anticipate.**
+> §3.1 reasoned the creation step through as a question of *what is
+> preselected* and got that exactly right — nothing is, the script marks a
+> suggestion and can never check a card. What it did not ask is what happens to
+> the answer afterwards. `applyTemplate` writes `template.theme` when the card
+> names one, the creation handler seeds the chosen template immediately after
+> creating the wall, and **twelve of the fourteen templates name a theme** — so
+> choosing Sky Week and then Panels made an Almanac wall. The step phase 2 made
+> mandatory was a control that did nothing on twelve fourteenths of the form,
+> which is the `options.json` rule arriving through the one door this document
+> spent a section defending. It is invisible from the markup: every assertion
+> §6 asks for passes over it, because each is about what the form *offers*. A
+> real browser driven end to end is what found it, which is this repository's
+> own table repeating.
+>
+> The fix is one line in the creation handler — the household's theme written
+> after the seed, never instead of it, because `applyTemplate` is the one place
+> a canvas and its theme are kept consistent. Applying a template *later*, from
+> the gallery, still repaints the wall and is meant to: that is the act §3.6
+> makes audible rather than silent.
+>
+> Three smaller things are worth recording against what was written here. The
+> suggestion needed the template's **name** as well as its theme, so
+> `wallTemplatePreviews` carries one — §3.1 assumed the script had what it
+> needed. The wall page's save bar is `display-editor.ts`'s rather than
+> `settings-form.ts`'s, so "Save arms on a card change" runs through a different
+> mechanism from the one a reader of §3.5 would look at; it arms on the settings
+> form's own `change`, which a label-wrapped radio fires. And the daylight
+> window's two sentences (§2.7) became one hint in System's own words, System's
+> section having been retired in phase 2 — so the divergence that section
+> describes is closed by there being one screen rather than by the two agreeing.
+>
+> Duplicate (§3.4) did not land and is still behind its parity test.

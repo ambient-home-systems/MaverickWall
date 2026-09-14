@@ -464,13 +464,13 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3292 tests passing**, over 230 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 495 · server 2330 over 185 files. CI runs the whole suite
+**3304 tests passing**, over 232 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2342 over 187 files. CI runs the whole suite
 and then the README's one-liner against a clean volume on Linux, which is the
 only place the install has ever been wrong. Measured on a clean run rather than
 added to the previous figure, which is the discipline the paragraph below spells
 out at length for the *other* count on this page and which applies to this one
-identically: RFC 013's four new server suites are +211 between them, and an
+identically: RFC 015 phase 3's two new server suites are +12 between them, and an
 arithmetic that happened to agree would prove nothing, because the way these
 numbers have always gone wrong is somebody incrementing rather than running.
 
@@ -533,8 +533,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**227 of the server's tests fail without a real Chromium and say so**, across
-36 files, which is worth knowing before reading a red suite as a regression. A
+**232 of the server's tests fail without a real Chromium and say so**, across
+37 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -552,9 +552,20 @@ over 35 while the truth was **227 over 36**, and that one is the cleanest
 demonstration this paragraph has: RFC 013 added four server suites and **not one
 browser test**, so the arithmetic said the number could not have moved and the
 number had moved anyway. It was already wrong before that work started; running
-it is the only thing that could have said so. Every one of the 36 was checked to
-be the browser's own sentence rather than a real failure hiding in the count,
-which is the other half of the method and the half an incrementer skips. That is
+it is the only thing that could have said so. **And it read 227 over 36 while
+the truth was 232 over 37**, re-measured for RFC 015 phase 3's one browser file
+— which carries four tests, so the arithmetic predicted 231 and the reading said
+232. One off, again, and in the same direction, which is what a paragraph that
+has been wrong five times should expect of itself. Every one of the 37 was
+checked to be the browser's own sentence rather than a real failure hiding in
+the count — no assertion, timeout or type error anywhere in the run — which is
+the other half of the method and the half an incrementer skips. **15 of them are
+reported as skipped rather than failed**, which is why 232 + 2095 does not reach
+2342 and is not a sixth drift: two files ask for the browser in a `beforeAll`,
+so the hook is what goes red and vitest marks the tests under it skipped. The
+files are red either way — this is the arithmetic of the report rather than a
+test quietly opting out, which is the distinction the sentence after this one
+depends on. That is
 the right failure — these measure layout, and a browser test that silently skips
 is this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
@@ -6061,7 +6072,7 @@ encourages the belief that "the text is too small" is answerable here.
 
 **Phase 1 touched no schema, no migration and no manifest shape, and nothing
 in `apps/display`.** One control for the choice, wherever it is taken, is
-phase 3 and is not done. **Still unproven where it counts:** nobody has looked
+phase 3 and is below. **Still unproven where it counts:** nobody has looked
 at the gallery on a real phone or in a real supervisor's sidebar.
 
 **The household theme is retired, and every wall names its own (RFC 015
@@ -6127,6 +6138,105 @@ rewritten to what the page says rather than deleted — an assertion that the
 old sentence is gone passes just as happily on a page offering no theme at all.
 **Still unproven where it counts:** nobody has paired a wall through either
 door on a real phone or in a real supervisor's sidebar and chosen a card there.
+
+**And the choice has one appearance wherever it is taken (RFC 015 phase 3).**
+The wall's own Appearance pane drew a `<select>` while `/admin/walls/new` drew
+`themeCards` — one stored value through two controls, which is `shifts[0]` /
+`display_mode` / `cellEvents` a layer up, occurring in the furniture rather than
+in a renderer. It is the same grid on both now, checked through `displayThemeRef`
+so a wall still stored as `board` opens on the Panels card rather than on a grid
+with nothing checked, which would read as "this wall has no theme" on the one
+screen whose whole subject is that every wall has one. `THEME_SWATCHES`' docstring
+has said since it was written that the colours are "for the wall settings theme
+cards"; this is them arriving. The daylight theme stays a `<select>`,
+deliberately — two card grids on one pane are two controls that look identical
+and answer different questions, and it is the half with a real *absence* in it,
+which is a line in a list rather than a card in a grid.
+
+**The parity is a test rather than a convention**, and it reads the two rendered
+pages rather than calling the builder twice: calling one builder twice proves
+only that a function is deterministic, and what is under test is that both
+screens call it, with the household's own themes, in the same order, into the
+same markup. Each card is compared minus the one attribute that must differ —
+**nothing is checked when a wall is being created and the wall's own theme is
+checked on its page**, which are the two opposite halves of the same rule.
+
+**The step this document can now record as a real fault was invisible from the
+markup, and a browser is what found it.** `applyTemplate` writes
+`template.theme` when the card names one, the creation handler seeds the chosen
+template immediately after creating the wall, and **twelve of the fourteen
+templates name a theme** — so choosing Sky Week and then Panels made an Almanac
+wall. The step phase 2 made *mandatory* was a control that did nothing on twelve
+fourteenths of the form, which is the `options.json` rule arriving through the
+one door RFC 015 spent a section defending. Every assertion the RFC asked for
+passes over it, because each is about what the form *offers*. The household's
+theme is written after the seed now, never instead of it: `applyTemplate` is the
+one place a canvas and its theme are kept consistent, so what is overridden is
+the answer and never the ordering that produced it.
+
+**Choosing a starting layout suggests a theme, and can never choose one.**
+`template-gallery.js` writes "Suggested for Sky Week" into the named theme's card
+and touches no radio's `checked`. The no-script form is the *specification* —
+nothing preselected, a choice still required — because a preselected card is a
+default wearing a different hat, which is exactly what phase 2 retired; a
+household with scripting blocked picks a template and then picks a theme, which
+is the mandate working as stated rather than degraded. It is derived from
+whatever template is *checked* rather than from the click that set it, so it
+survives the 400 re-render, which is the one page where the household is being
+asked to look at the form again. The template's name rides in the gallery JSON
+the page already carries.
+
+**Applying a template stops being silent.** `layout-template-applied-panels` and
+`layout-template-applied-almanac` sit beside the generic key, and the names are
+*literals* in `SAVED_MESSAGES` because `saved.ts`'s first stated property is that
+a token is a key and never a message — nothing a caller passes is echoed. That is
+affordable while fourteen cards name two themes between them, and
+`saved-template-theme.test.ts` is what keeps it affordable: it walks the
+catalogue and fails the build when a template names a theme with no key, so a
+fifteenth card in a third theme is a hole somebody fills rather than a strip that
+quietly names the wrong colour. `templateAppliedKey`'s own fallback answers the
+generic sentence rather than throwing — a household who applied a template must
+be told their layout changed even on the day the table has not caught up — and
+that silent, correct-looking fallback is precisely why the gate has to be a test.
+
+**Themes' usage tags open the wall they name**, with the word unchanged.
+`themeUsageOf` has carried the id beside the name since phase 1 on its own stated
+argument that "a tag naming a wall is a tag somebody will eventually want to
+press"; this is that. `tag()` becomes an anchor rather than growing a wrapper
+round its span — a wrapping `<a>` brings the page's link colour and underline
+inside the chip and the tone's ink stops reaching the word. And the wall page's
+two sentences about the daylight window are one hint in System's own words, that
+section having been retired in phase 2: the divergence RFC 015 §2.7 counted is
+closed by there being one screen rather than by the two agreeing.
+
+**Measured in a real browser at 390x844 and 1280x800.** On a phone the first
+theme card sits **3,797px down a 4,741px form**, one column, 350px wide, with
+**no sideways scroll** — the page is exactly its 390px viewport. The height is
+the fourteen starting layouts above it, which are pictures now and are meant to
+be; the sticky `.addbar` submit is what keeps the button one tap away at that
+depth, and it is the same mechanism RFC 009 phase 4 measured this form at
+3,775px with. That number is superseded rather than contradicted — it was taken
+before this form asked for a theme at all, and the theme step is most of the
+966px between them.
+
+The assertions read the radio's `checked` **property** and the computed
+outline, never a class, and reach the cards by **Tab** rather than by
+`element.focus()`: `:focus-visible` is decided by modality, so a programmatic
+focus reads 0px on a rule that is perfectly correct — this document's own "a ring
+assertion that neither of its own fixes could turn red", avoided rather than
+repeated. Two things the test had to be told rather than assume: a theme card
+hides its own radio, so waiting for the input to be *visible* is waiting for
+something the design says will never happen; and the wall page's save bar is
+`display-editor.ts`'s rather than `settings-form.ts`'s, arming on the settings
+form's own `change`, which a label-wrapped radio fires. `looksEdited` already
+compares a radio against `defaultChecked`, so nothing there needed fixing.
+
+**Seven mutations checked and all seven red**: dropping the creation override,
+dropping the suggestion wiring, a suggestion that checks its card, a preselected
+card on the creation form, a wall page picker checked on nothing, and each of the
+two rings. **Still unproven where it counts:** nobody has created a wall or
+changed a theme on a real phone or in a real supervisor's sidebar, which by this
+project's history is where a form fault surfaces.
 
 ---
 

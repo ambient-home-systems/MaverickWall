@@ -25,6 +25,7 @@ import {
   readHousehold,
   requestSyncNow,
   createScreen,
+  setOwnerTheme,
   readLayoutWidgets,
   panelCanvasOwner,
   clearLayout,
@@ -132,7 +133,7 @@ import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, fe
   networkAccessDisclosure, networkAccessSuggestion, page, saveRow,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
-import { readSaved, savedRedirect } from './saved.js';
+import { readSaved, savedRedirect, templateAppliedKey } from './saved.js';
 import { bounded, checkbox, colour, oneOf, optionalText, parse, quarterTurn, text, z } from '../validation.js';
 
 /**
@@ -648,6 +649,11 @@ function wallTemplatePreviews(
 ): readonly Record<string, unknown>[] {
   return catalogue.map((t) => ({
     id: t.id,
+    // The name travels for the suggestion on `/admin/walls/new`: a card
+    // reading "Suggested for Sky Week" has to name the card the household just
+    // pressed, and reading it back out of the DOM would be a second copy of a
+    // string this JSON already holds (RFC 015 §3.1).
+    name: t.name,
     aspect: t.portrait.aspect,
     widgets: t.portrait.widgets,
     ...(t.theme !== undefined ? { theme: t.theme } : {}),
@@ -2887,6 +2893,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       template.id === 'classic' ? classicSeed(deps.db, id, householdSetUp(deps.db)) : template,
       seedAspects(deps.db, id),
     );
+    /*
+     * And the theme the household chose wins over the template's own.
+     *
+     * `applyTemplate` writes `template.theme` when the card names one, which is
+     * right on the gallery — pressing Sky Week there *is* asking for Almanac,
+     * and the strip now says so — and wrong here, where the household answered
+     * the same question themselves two fields further down this form. Twelve of
+     * the fourteen templates name a theme, so without this the step phase 2
+     * made mandatory is a control that does nothing on twelve fourteenths of
+     * the page: measured in a real browser, choosing Sky Week and then Panels
+     * made an Almanac wall (RFC 015 §3.1, and the `options.json` rule).
+     *
+     * Written *after* rather than instead, because `applyTemplate` is the one
+     * place that keeps a canvas and its theme consistent and the template's
+     * backgrounds are authored for its own theme. What is overridden is the
+     * answer, never the ordering that produced it — and the household was shown
+     * the template's theme as a suggestion on the card before they chose.
+     */
+    setOwnerTheme(deps.db, id, shaped.value.theme);
     // Shown on the page the redirect lands on, not here: a POST's own answer
     // is a page a reload resubmits (a second wall) and Back cannot return to.
     reveals.put(id, issued, now());
@@ -3174,7 +3199,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // nominal one — `TemplateAspects` carries why.
       panel === undefined ? undefined : panelPixelAspects(panel),
     );
-    return savedRedirect(c, layoutUrl(owner), 'layout-template-applied');
+    /*
+     * And say which colour it just painted (RFC 015 §3.6).
+     *
+     * `applyTemplate` writes `template.theme` when the card names one — it has
+     * to, because a template's canvas backgrounds are authored for its theme —
+     * and that was silent until now. The token is a key per theme rather than a
+     * sentence with a name in it, because `saved.ts`'s first stated property is
+     * that nothing a caller passes is echoed; `templateAppliedKey` is where the
+     * two halves meet and where a template naming a third theme fails to
+     * compile.
+     */
+    return savedRedirect(c, layoutUrl(owner), templateAppliedKey(template.theme));
   });
 
   /**
@@ -4409,26 +4445,53 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ) +
       wsetGroup(
         'Theme',
+        /*
+         * The same cards the creation page and Themes draw, and that is the
+         * whole of RFC 015 §3.5: one decision with one appearance wherever it
+         * is taken. This pane rendered a `<select>` while `/admin/walls/new`
+         * rendered `themeCards` — one stored value through two controls, which
+         * is `shifts[0]` occurring in the furniture rather than in a renderer,
+         * and `THEME_SWATCHES`' own docstring has said since it was written
+         * that the colours are "for the wall settings theme cards".
+         *
+         * Checked on the wall's current theme, custom themes included, through
+         * the same `readThemes` the picker on every other screen reads — so a
+         * household who built a theme meets it here in the grid rather than
+         * as the last line of a list.
+         *
+         * There is no "Household default" card, because there is no household
+         * theme to follow (RFC 015 phase 2): the grid is exactly the themes
+         * this wall can draw.
+         */
+        `<fieldset class="wset-themes">` +
+        `<legend class="field-label">Theme</legend>` +
+        themeCards(displayThemeRef(screen.theme ?? ''), readThemes(deps.db)) +
+        `</fieldset>` +
         `<div class="rows">` +
-          // No "Household default" option on either select (RFC 015 phase 2):
-          // there is no household theme, so this wall's theme is its own and the
-          // list is exactly the themes it can draw. Blank on the daylight select
-          // is a real answer — the same theme all day — and says so.
-          selectRow({
-            label: 'Theme',
-            name: 'theme',
-            wide: true,
-            optionsHtml:
-              THEMES.map((theme) =>
-                option(theme.key, theme.label, displayThemeRef(screen.theme ?? '') === theme.key),
-              ).join('') +
-              customThemeOptions(screen.theme),
-          }) +
+          /*
+           * The daylight theme stays a `<select>`, deliberately. Two card grids
+           * on one pane are two controls that look identical and answer
+           * different questions, and the one a household reaches for first is
+           * whichever is nearer the top. It is also the half with a real
+           * *absence* in it — "Same theme all day" — and an absence is a line
+           * in a list rather than a card in a grid.
+           */
           selectRow({
             label: 'Daytime theme',
             name: 'daytime_theme',
             wide: true,
-            hint: 'A lighter theme during the hours below.',
+            /*
+             * One hint, and it is System's own words before that screen's
+             * "Wall appearance" section was retired with the household theme
+             * (RFC 015 phase 2). This page used to split the same two sentences
+             * across a hint and a trailing paragraph while System carried both
+             * in one — two screens saying one thing differently, which is §2.7
+             * expressed as furniture. There is one screen now, so there is one
+             * hint.
+             */
+            hint:
+              'A lighter theme during the hours below. A dark theme at noon is a hole in ' +
+              'the wall; a light one at 2am is a lamp.',
             optionsHtml:
               option('', 'Same theme all day', !scheduled) +
               THEMES.map((theme) =>
@@ -4454,9 +4517,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             value: screen.daytimeEndsAt ?? '21:00',
           }) +
           `</div></div></div>` +
-          `</div>` +
-          `<p class="hint-1">A dark theme at noon is a hole in the wall; a light one at 2am ` +
-          `is a lamp.</p>`,
+          `</div>`,
       );
 
     // --- Content defaults -------------------------------------------------
@@ -4719,7 +4780,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('appearance', 'Appearance', 'The layout this wall starts from and how it looks. Anything left on the household default follows the wall defaults on System.', appearance, true) +
+      wsetPanel('appearance', 'Appearance', 'The layout this wall starts from and how it looks. Both are this wall’s own — nothing here is shared with another wall.', appearance, true) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
       // Both switches, not just the alert one — this panel is now where every
@@ -4971,10 +5032,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<legend class="field-label">Theme</legend>` +
         themeCards(said('theme'), readThemes(deps.db)) +
         `</fieldset>` +
-        `<p class="field-hint">How this wall looks — its colours and type. Panels separates ` +
-        `the shift colours best from across a room. Build your own on the ` +
-        `<a class="link" href="admin/themes">Themes</a> page; you can change this ` +
-        `wall’s afterwards on its own page.</p>` +
+        `<p class="field-hint">A wall keeps the theme you pick here until you change it ` +
+        `on the wall’s own page.</p>` +
         /*
          * The submit rides the foot of the viewport while the form is on
          * screen, rather than sitting 3,700px down behind fourteen previews.

@@ -1258,6 +1258,15 @@ label.themecard{cursor:pointer}
  * picker's <label> is a control the label steals the click from. */
 .themecard .tm-use{display:flex;flex-wrap:wrap;gap:var(--mw-s-1);margin-top:var(--mw-s-2)}
 .themecard .tm-act{display:flex;flex-wrap:wrap;gap:var(--mw-s-2);margin-top:var(--mw-s-3)}
+/* "Suggested for Sky Week", written into the picker's card by
+ * template-gallery.js when the starting layout names a theme (RFC 015 3.1).
+ * The accent ink is what tells it from the caption above it; it is a word and
+ * never a ring, because a ring is what a checked card wears and this card is
+ * deliberately not checked. Minted by the script, so the [hidden] rule is what
+ * keeps an unsuggested card from carrying an empty line. */
+.themecard .tm-sugg{display:block;margin-top:var(--mw-s-1);
+  color:var(--mw-accent-soft-ink)}
+.themecard .tm-sugg[hidden]{display:none}
 /* The Themes list row's swatch strip — a 66x34 three-colour preview as the
  * listRow lead. The dimensions are a fixed preview size (like .cpreview's
  * width), the corner is a token, and each bar carries only its colour, as a
@@ -2200,6 +2209,15 @@ pre.code{background:var(--mw-surface-2);
 .wset-group{position:relative;margin:var(--mw-s-5) 0 0}
 .wset-group:first-of-type{margin-top:var(--mw-s-4)}
 .wset-group>.kick{margin:0 0 var(--mw-s-2)}
+/* The theme picker inside the wall's settings sheet: the same .themegrid of
+ * .themecard labels the creation page and Themes draw, so the choice has one
+ * appearance wherever it is taken (RFC 015 3.5). A bare fieldset, because the
+ * cards are already the surface and a border round them would be a box round a
+ * box -- .tplpick-field one form along is written the same way. The grid's own
+ * max-width:560px rule drops it to one column, so nothing here has a width of
+ * its own to keep in step with the sheet's 720px cap. */
+.wset-themes{border:0;padding:0;margin:0;min-width:0}
+.wset-themes>.themegrid{margin-bottom:var(--mw-s-4)}
 
 /* ---- Compact settings rows ---------------------------------------------- */
 /* A grouped surface of rows, with dividers rather than a box round each one. */
@@ -2484,7 +2502,7 @@ ${COMPONENT_STYLE}
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,input,select,textarea):focus-visible{
+:is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,a.tag,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
 .themecard:has(input:focus-visible),
 .tplpick:has(input:focus-visible){outline:3px solid var(--mw-accent);
