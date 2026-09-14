@@ -113,17 +113,57 @@ forty times the work.
 
 ### 4.2 What it costs
 
-Migration **0042** (0041 is RFC 012's), additive, two columns on
-`calendar_sources`:
+Migration **the next number drizzle-kit generates** — hardcoding one here was
+already fragile with RFC 012 drawing from the same sequence, and pinning a
+literal number in this document is exactly the kind of claim CLAUDE.md's own
+header warns rots the moment either RFC ships out of the order this document
+assumes — additive, two columns on `calendar_sources`:
 
 - `authUsername` — in clear. It is a username; the admin screen has to show
-  which account a feed uses, and the same reasoning `haEntityId` records
-  applies.
+  which account a feed uses. It is deliberately not compared to `haEntityId`,
+  which records an entity id rather than anything a person typed: a CalDAV or
+  Basic-auth username is very often an email address, which is exactly what
+  `api/diagnostics.ts` already promises the export contains none of — "no
+  email addresses" — so this column is where one would first sneak past that
+  promise. `authUsername` is left out of the diagnostics export entirely, and
+  the existing test that stuffs a database with an email address and asserts
+  none of it survives into the export is extended to seed a calendar source
+  whose username is shaped like one.
 - `authPasswordEncrypted` — a keyring envelope, new purpose `feed-password`.
 
-Then: two fields on the add/edit form, two on `TestFeedRequest`, an
-`authorization: Basic …` header on the fetch in `ics-sync.ts` and in
-`test-feed.ts`, and `--user` on the `add-source` CLI tool.
+Whatever number the migration lands on, its generated SQL is read line by line
+before it is committed rather than trusted — the discipline every migration in
+this repository has followed since rule 7's `0009` paragraph, where a
+generated `INSERT … SELECT` silently wrote column names as string literals and
+would have set `kind = 'kind'` on every household's calendars. Phase A's own
+migration is two plain `ALTER TABLE ADD COLUMN`s and has no table recreate to
+go wrong; the habit matters more once §6.2.1's migration lands, where the
+nullable `caldav_account_id` column carries a `REFERENCES caldav_accounts(id)`
+clause — a foreign key is one more thing a generated recreate can get subtly
+wrong, and one more reason to read the statement rather than assume additive
+means safe.
+
+Then: two fields on the add/edit form, the same two — script-free — on the
+wizard's own calendar step (`http/setup.ts` step 3, §10), two on
+`TestFeedRequest`, an `authorization: Basic …` header on the fetch in
+`ics-sync.ts` and in `test-feed.ts`, and the CLI. `add-source` grows `--user`
+and reads the password from stdin (`--password-stdin`) or, with neither a pipe
+nor the flag, prompts at a TTY with echo off — never as an argument, because
+`argv` is readable by anything else running on the same machine, which is a
+worse leak than any log line. `diagnose-source` prints the username next to a
+feed that has one and the words "password stored" in place of anything that
+could be the password itself, the same rule §4.6 states for `lastError`.
+
+**Editing is not adding, and the settings row does not yet know that.**
+`updateSource`/`SourceSettings` (`apps/server/src/api/queries.ts`) writes
+name, colour, person and the three network switches to an existing row — it
+has no `url` field and cannot touch it, which is correct and stays that way: a
+changed address is a different feed, and "remove it and add it again" is the
+right journey for that. It also, as it stands, has nothing for Phase A's new
+password column at all: nothing in Phase A gives an existing row a way to
+change a stored password. §4.5 is where that gets an answer, and it has to,
+because a form that can set a password on add and never touch it again is not
+a finished feature.
 
 **These columns live on `calendar_sources` deliberately, and stay there.** A
 Basic-auth ICS feed genuinely is one URL, one credential, one calendar — flat
@@ -157,6 +197,29 @@ product has no way to use it. It becomes "…enter them in the Username and
 Password fields below." Listed here rather than left to be found, because it is
 one sentence in a pure package with no view of the form it is describing.
 
+**It is not the only stale copy.** `test-feed.ts`'s own `suggestionFor` carries
+a second one, the identical fault one layer up: its `userinfo-present` branch
+returns "Remove the username and password from the address." and stops there.
+This module states its own reason for naming no control ("nothing here may
+name a control") and that reason is right for most of its branches — but wrong
+for this one from the day Phase A ships, because this exact failure gets a real
+remedy for the first time: type them into the fields instead. It needs the same
+correction as the `url.ts` sentence, under the same constraint that it cannot
+name a form field by its label: "…and enter them where the calendar's username
+and password are asked for below."
+
+**`unacceptable-content-type`'s suggestion needs the same kind of correction
+for a different reason.** It names Google's secret address by name and offers
+nothing else, which was complete advice when a web page arriving in place of a
+calendar meant exactly one thing — the wrong of Google's two links. Once a feed
+can be credentialed, a web page can mean a second thing: a server answering an
+unauthenticated `GET` with an HTML sign-in page rather than a 401, which
+happens more often than a bare 401 does. When the request carried no username,
+the sentence gains the second clause every other "this needed a password"
+diagnosis in Phase A carries: "…or, if this calendar needs a username and
+password, enter them below." When one was already supplied, the Google
+sentence is more likely to be the right one and is left as it is.
+
 Worth noting what else shifts. `urlEncrypted`/`urlHost` exist because "the path
 is the credential" — a Google secret iCal address is a permanent bearer token
 and `/data` is what people copy to a NAS. For a **credentialed** feed that
@@ -174,6 +237,109 @@ on, and a 401 with credentials supplied and a 401 with none are different
 diagnoses: *the password is wrong* against *this calendar needs a password, and
 here is where to put it.* Both are one clause, and getting them wrong turns the
 best screen in the admin into a shrug.
+
+**There is a third case, and it is not a wrong password either.**
+`isCrossOrigin` (`packages/core/src/net/url.ts`) treats a protocol change, a
+host change or a port change as cross-origin — all three, not the host alone —
+so a server that redirects its own `http://` address to `https://` on the
+identical hostname is cross-origin by this test. `SENSITIVE_HEADERS` drops
+`authorization` across it exactly as it should for a genuinely off-host
+redirect, and the second hop then answers 401 to a request that arrived with
+no credential at all. A household who typed the right password sees the
+identical "wrong password" sentence a household who typed the wrong one sees,
+and the fix the sentence implies — re-type a password that was never the
+problem — does nothing.
+
+Decided: `FetchOutcome`'s `failed` variant carries `finalUrl` and a
+`credentialsDropped` flag, so `testFeed` can tell the three cases apart. The
+401 sentence therefore has three forms: *this calendar needs a username and
+password, and here is where to put them* (none supplied); *that password was
+not accepted* (supplied, and either no redirect or a same-host one); and *that
+address redirected somewhere the password is not sent — try the address it
+redirected to*, naming `finalUrl` (supplied, `credentialsDropped`). The third
+sentence points at the address rather than the password, because the password
+was never the problem.
+
+This is the same policy §6.3.1 chooses for CalDAV discovery, arriving here
+first only because Phase A ships first: a redirect that stays on the
+household's own host is silent, and a redirect to a different host is never
+trusted with the credential without being asked. Phase A has no confirmation
+flow to re-attach it — that machinery is §6.3.1's, built for CalDAV — so a
+cross-host redirect on an ICS feed fails outright with a sentence naming where
+it went, rather than following the household's password there unasked.
+
+### 4.5 Rotating a credential
+
+An app-specific password is not the feed's address — it expires, gets
+revoked, gets reissued termly by a school office — and the edit form has to do
+more than sit beside a value it cannot show. Decided:
+
+**A "Change password" field, blank by default, meaning keep what is stored.**
+The row holds a keyring envelope, not plaintext, so there is nothing to
+prefill the field *with*; an edit form that echoed the stored password back
+would mean storing it reversibly for a value that exists so it can be kept
+secret from everything but the keyring and the outbound request. Blank-and-
+unchanged is not a special case bolted onto the form, it is the form's only
+honest reading of "I did not touch this field": `updateSource` writes a new
+envelope when the field carries a value and leaves the existing one alone when
+it does not.
+
+**A "Remove the password" switch, separate from the field.** Blank cannot also
+mean "delete it" — that is indistinguishable from "I have nothing to say about
+the password" — so removing a credential a feed no longer needs (a school
+calendar made public, a share reconfigured to allow anonymous read) needs its
+own control rather than an inferred one.
+
+**A password is never echoed back on a 400 re-render, and this is a deliberate
+exception to the echo-on-400 rule rather than an oversight.** Every other field
+on this form follows the ordinary rule: a rejected save re-renders with what
+was typed, so a household does not retype a name or a colour because one other
+field was wrong. The password field breaks that rule on purpose — echoing it
+back means putting it in the response HTML and in a browser's own
+form-autofill memory, for the one field on the page that exists to be kept out
+of both. It blanks on any re-render, 400 included, and the household re-types
+it if that was the field actually at fault.
+
+**This is §6.2.1's rotation argument, arriving a phase early.** §6.2.1 stores
+CalDAV credentials on their own account row precisely so a rotated Apple
+app-specific password is one edit rather than four; the same argument — a
+credential that outlives the row it sits beside, and that a household will
+need to change without re-adding the feed — is exactly as true of a single ICS
+password, and there is no reason to make a Phase A household wait for Phase C
+to get it.
+
+### 4.6 An auth failure is not retried on schedule
+
+Decided: a 401 or a 403 in `ics-sync.ts` takes the shape the decrypt-failure
+branch already has a few lines above it (`opened.ok === false`) — fail, keep
+the cached events, and do not schedule the next sync at the ordinary interval
+until the credential is edited. That branch already exists because no amount
+of waiting recovers a key that is gone; an auth failure is the same shape for
+a different reason — no amount of waiting turns a wrong password right.
+
+The reason this has to be decided rather than left to the ordinary
+retry-with-backoff path is what an ordinary retry *does* to a live credential.
+Apple locks an Apple ID out of CalDAV after enough wrong app-specific-password
+attempts in a window, and Nextcloud's own brute-force protection does the same
+to an account after a run of failed Basic-auth requests from one address — so
+a feed polled on the ordinary schedule with a password that went stale on day
+one would still be quietly hammering the household's own account with the
+wrong password days later, on a fixed interval, and could lock it. A calendar
+that stops trying is a better neighbour to the account it is a guest of than
+one that keeps knocking.
+
+The Calendars screen names the fix rather than leaving `lastError` to speak
+for itself — "Sign-in failed. Update the password to resume syncing" —
+because a household reading "401 Unauthorized" has no next action and a
+household reading a sentence naming the control does.
+
+**`lastError` may name the username and never the password.** The username is
+already shown on the settings row, so repeating it in the failure sentence
+costs nothing and can genuinely help ("Sign-in failed for jane@example.com") —
+but the password crosses this codebase exactly as far as the outbound request
+and the keyring, and a diagnosis string is neither. This is not a new kind of
+message needing a carve-out; it is CLAUDE.md's existing rule on warnings and
+logs, applied to a failure kind Phase A introduces.
 
 ## 5. Phase B — the route that already works, that nothing mentions
 
@@ -202,6 +368,24 @@ Two honest caveats, both of which belong in the copy rather than in a footnote:
   this correctly — every failure path leaves the expanded events in place — but
   the household should know they have coupled their calendar to their smart
   home.
+
+**The copy has to render whether or not Home Assistant is connected, and
+today's screen would default to hiding it.** The existing calendar-entity
+picker — the control this RFC's copy sits beside — only appears once a
+household has a live Home Assistant connection, which is right for a control
+that needs one to do anything. The copy is the opposite case: a household with
+**no** connection is exactly who needs to be told that connecting one is a way
+to reach Google and iCloud, so it has to render in that state too, as a plain
+paragraph with no picker attached, and only give way to the picker once a
+connection exists. Gated on the same condition as the picker, the sentence
+would only ever be read by households who had already solved the problem it
+describes.
+
+**And it has to say Google, iCloud, Nextcloud and Microsoft 365 without saying
+"screen" or "display" while it does it.** `admin-vocabulary.test.ts`'s
+retired-noun sweep (`screens?`, `displays?`, `canvas(es)`, `blocks?`) runs over
+every admin page's rendered text, and this is new admin copy like any other —
+it gets no exemption for being explanatory rather than a label.
 
 One genuine bonus, worth knowing before anybody optimises the wrong thing:
 **Home Assistant expands recurrence itself.** `/api/calendars/<entity>` takes a
@@ -344,10 +528,23 @@ supervisor's injected token and a pasted long-lived one — by resolving them in
 **one function**, and everything downstream is the same code. Its own docstring
 is the heading: *two credential paths, one client.*
 
-So `credentialFor(source)` answers "the `authorization` header for this source",
-reading the account through the FK first and the row's own columns second. The
-sync jobs, `testFeed` and the CLI all call it and none of them knows there are
-two shapes — which means there is one thing to test rather than three call
+So `connectionFor(source)` — the name is `credentialFor` renamed, and the
+rename is itself the decision — answers URL, `UrlPolicy` and the
+`authorization` header together, reading the account through the FK first and
+the row's own columns second. A resolver that answered only the header was
+right up to the point §6.2.1's table put `allowHttp`, `allowPrivateNetwork`
+and `allowLoopback` on the **account** row for a CalDAV source rather than the
+calendar row: those three switches are what builds a `UrlPolicy`, so a
+header-only resolver would leave the network opt-ins read from the calendar
+row for Phase A and from the account row for Phase C — two shapes, read from
+two different places by two different callers, which is exactly the drift this
+whole section exists to prevent, one layer down from where it names it.
+`connectionFor` returns the address, the policy and the header as one small
+object resolved from the same branch, so no caller can read one part from one
+shape and another part from the other by accident.
+
+The sync jobs, `testFeed` and the CLI all call it and none of them knows there
+are two shapes — which means there is one thing to test rather than three call
 sites to keep in step.
 
 **Phase C should not ship before Phase A**, and this is the reason: the resolver
@@ -374,6 +571,26 @@ dropping `authorization` across an origin change. What re-attaches it, and on
 what authority, is §6.3.1 — and that is a security decision rather than a
 transport detail, which is why it has a section of its own rather than a clause
 in this one.
+
+**Written down once, as a port shape, rather than twice as two proposals.**
+`FetchRequest` gains `method` — a closed set, `'GET' | 'POST' | 'PROPFIND' |
+'REPORT'`, never a free string — an optional `body`, and a redirect policy
+keyed by method rather than one flag, because `GET` and `REPORT` should follow
+a redirect exactly as they do today and RFC 012's `POST` should not.
+`FETCH_LIMITS` (`packages/core/src/ports/fetcher.ts`) gains `.dav` alongside
+`.ics`, since a `multistatus` response and an ICS feed have no reason to share
+a byte ceiling picked for the other. And the accepted-content-type check grows
+`application/xml` and `text/xml` — CalDAV servers disagree on which of the two
+they answer with — beside the JSON allowance RFC 012 needs; the 2xx status
+check already passes a `207 Multi-Status` through unmodified, because it was
+written as a range rather than a single code, so nothing there needs to move.
+
+**RFC 012 should reference this section rather than defining `postJson`'s
+shape a second time.** Both RFCs arrive at the same conclusion — one widening
+of the single guarded boundary, not two — and the risk in shipping them
+separately is that each ends up owning a slightly different version of the
+same method allowlist. This section is the one to point at; RFC 012 §4 should
+say so rather than restate it.
 
 ### 6.3.1 What stops discovery walking off with the password
 
@@ -402,6 +619,26 @@ authentication.
 That is the shape `allowHttp` and `allowPrivateNetwork` already have — a
 deliberate per-source decision, made once, on the screen where somebody is
 already paying attention — rather than a global rule nobody sees.
+
+**Mechanically, that is a second form submission, not a modal.** The add flow
+is already a sequence of plain POSTs with no script (§4.2's wizard, the
+Calendars screen), so the confirmation is one more submission rather than
+client-side state. The first POST carries the address, the username and the
+password; discovery runs, and if it lands on a different host the handler does
+not store anything yet — it holds the account **provisionally**, keyed by an
+opaque id, the way a staged restore is held rather than applied live — and
+re-renders the same form as a confirmation screen: the discovered host named
+in prose, a hidden field carrying that id, and one "Continue" button. **The
+password crosses that round trip without ever being echoed**, because it does
+not cross it at all: it was consumed by the first POST to run discovery and is
+never read back out of anything to build the confirmation page, so there is
+nothing in that page's markup for a browser's autofill or a screenshot to
+remember. Pressing Continue re-submits the id alone, and that is what tells
+the handler the household has seen and accepted the host — only then is the
+account row written, the already-resolved host stored as `confirmedHost`, and
+the password moved out of its provisional holding place and into the row's own
+keyring envelope. Every sync after reads `confirmedHost` and asks nothing
+again.
 
 **The tempting alternative is rejected and it is worth saying why**, because it
 is what a reviewer will propose. "Same registrable domain" would be silent for
@@ -611,16 +848,25 @@ cosmetics. That is the file to review hardest.
 
 ## 10. Phases
 
-**A — a feed can have a password.** Migration, two columns, two fields, the
-header, the CLI flag, the 401 diagnosis, and the `url.ts` sentence. Days. Gets
-Nextcloud and a long tail, with no protocol work and no Fetcher change.
+**A — a feed can have a password.** Migration, two columns, two fields on the
+admin form and the same two — script-free — on the wizard's own calendar step
+(§4.2), the header, the CLI's `--user` and `--password-stdin`, the three-form
+401 diagnosis (§4.4), the rotation field and switch (§4.5), the no-retry-on-
+auth-failure branch (§4.6), and the stale sentences in `url.ts` and
+`test-feed.ts` (§4.3). Also `docs/backup.md` — "calendar addresses" becomes
+"calendar addresses and feed passwords", since Phase A adds a second secret
+the key protects — `docs/first-run.md`'s "Adding a calendar" section, and the
+`urlEncrypted` schema comment §4.3 already flags as due for correction. Days.
+Gets Nextcloud and a long tail, with no protocol work and no Fetcher change.
 
-**B — say the Home Assistant route exists.** Copy on the Calendars screen and
-in `docs/`. Hours. Gets Google and iCloud for households who have Home
-Assistant, which is a large fraction of this product's audience.
+**B — say the Home Assistant route exists.** Copy on the Calendars screen —
+rendered whether or not Home Assistant is connected, and clearing
+`admin-vocabulary.test.ts`'s retired nouns (§5) — and in `docs/`. Hours. Gets
+Google and iCloud for households who have Home Assistant, which is a large
+fraction of this product's audience.
 
 **C — CalDAV.** The method allowlist on the Fetcher, the discovery chain, the
-`caldav_accounts` table and `credentialFor` (§6.2.1, §6.2.2), the `REPORT`, a
+`caldav_accounts` table and `connectionFor` (§6.2.1, §6.2.2), the `REPORT`, a
 minimal XML reader, the CTag, the fourth `testFeed` stage and the calendar
 picker. Weeks, and the only part of this RFC that is a project. Gets iCloud
 directly, and is **committed rather than costed** (§6.1) — the alternative for
@@ -643,7 +889,32 @@ either.
 
 **A wrong password, deliberately.** The 401 diagnosis in §4.4 is the whole of
 Phase A's user experience and it is the one thing a happy-path test cannot see.
-Both cases: credentials supplied and wrong, and credentials needed and absent.
+All three cases: credentials needed and absent, credentials supplied and
+wrong, and credentials supplied and dropped by a same-host redirect.
+
+**The redirect header-drop, deliberately.** §4.4's third case rests on
+`SENSITIVE_HEADERS` actually being stripped across a protocol change on the
+same host, and nothing in this repository proves that today — it is read from
+the code, not from a request. It needs two origins, not one stub: a server
+that redirects to a second origin (a second port standing in for one is
+enough) and records which headers the second request actually carried, so the
+assertion is on what arrived rather than on what the client believes it sent.
+This has no test yet and should get one for Phase A, before it is needed again
+for §6.3.1's confirmation flow.
+
+**No password anywhere in a log line or a text column, checked rather than
+assumed.** `redact.ts`'s `looksLikeSecret` is tuned to catch a *generated*
+token — vowel density, length, case-flips — and this project's own
+measurement of it already admits a real miss rate on those. A password a
+person chose (`Fluffy2019!`, a word and a year) is not shaped like a generated
+token at all, and `looksLikeSecret` has no reason to catch it. So the
+no-password-in-logs guarantee for Phase A cannot rest on the redactor — it has
+to be structural, meaning the password is never formatted into a message in
+the first place — and the test for it is a grep: run a sync with a known,
+human-chosen password against a server that rejects it, then grep every log
+line and every text column (`lastError` included) in the database for that
+literal string. `looksLikeSecret`'s blindness to it is exactly why the check
+has to be the string itself and not the redactor's opinion of it.
 
 **A real iCloud account.** There is no substitute and no fixture that stands in
 for one. Specifically: the partition-host hop, whether the credential has to be
@@ -685,7 +956,7 @@ fails on two of the three — so it is the test that would have to be deleted
 rather than adjusted if somebody later flattened the schema, which is the kind
 of test worth having.
 
-**`credentialFor` against both shapes**, as a unit, because it is one function
+**`connectionFor` against both shapes**, as a unit, because it is one function
 standing in for two storage locations and §6.2.2's whole claim is that no
 caller knows the difference. A Phase A row, a Phase C row, a row with both (a
 mistake, and it should prefer the account and say so), and a row with neither.
@@ -704,12 +975,15 @@ optimisation.
 
 ## 12. Open decisions
 
-- **Whether two CalDAV accounts can share a server row.** §6.2.1 settles the
-  account/calendar split and does not settle this: two adults' separate iCloud
-  accounts are two credentials against one hostname, and two partition hosts.
-  Two account rows is almost certainly right and costs nothing; it is listed so
-  that nobody deduplicates by hostname later and merges two people's
-  calendars.
+- ~~Whether two CalDAV accounts can share a server row.~~ **Closed: two
+  account rows, always.** §6.2.1 settles the account/calendar split and this
+  was the one place it stayed silent — two adults' separate iCloud accounts
+  are two credentials against one hostname, and two different partition hosts
+  once discovery runs, so a server row keyed by hostname would either merge
+  two people's calendars under one credential or need a second key beside the
+  one that already exists. Closed rather than merely decided, so that nobody
+  reaches for hostname-deduplication later as a tidiness pass without reading
+  why it was rejected here.
 - **CTag or `sync-collection` first.** §6.6. Measure against both providers.
 - **How often.** ICS syncs on a schedule tuned for a cacheable document. A
   CalDAV CTag check is much cheaper than a full ICS fetch, so a CalDAV source
