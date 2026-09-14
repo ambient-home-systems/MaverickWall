@@ -3,6 +3,7 @@ import { lookup as dnsLookup } from 'node:dns';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import {
+  REDIRECT_POLICY,
   classifyIp,
   formatIp,
   isCrossOrigin,
@@ -11,6 +12,7 @@ import {
   validateOutboundUrl,
   validateRedirect,
   type FetchFailureCode,
+  type FetchMethod,
   type FetchOutcome,
   type FetchRejectionCode,
   type FetchRequest,
@@ -364,7 +366,7 @@ interface RedirectResult {
  * in one of two places is the whole reason there is one adapter at all.
  */
 interface WireRequest {
-  readonly method: 'GET' | 'POST';
+  readonly method: FetchMethod;
   readonly maxBytes: number;
   readonly timeoutMs?: number;
   readonly acceptContentTypes?: readonly string[];
@@ -496,21 +498,23 @@ async function performRequest(
              * Refused here rather than one hop later, and refused before the
              * body is read.
              *
-             * A redirect is a request replayed at another address, and this
-             * one carries a body and a bearer token. The only host a POST from
-             * this application ever speaks to is the household's own Home
-             * Assistant, so a 3xx off it is a misconfiguration or an attack and
-             * there is no third reading worth preserving. `rejected` rather
-             * than `failed` because it is not retryable and names a bad
-             * address rather than a broken network.
+             * A redirect is a request replayed at an address a server chose,
+             * and this one carries a body and usually a credential.
+             * `REDIRECT_POLICY` decides which methods may be: a `POST` only
+             * ever speaks to the household's own Home Assistant and a `REPORT`
+             * only to a collection this application has already discovered and
+             * stored, so a 3xx off either is a misconfiguration or an attack
+             * and there is no third reading worth preserving. `rejected` rather
+             * than `failed` because it is not retryable and names a bad address
+             * rather than a broken network.
              */
             response.resume();
             finish({
               kind: 'done',
               outcome: rejected(
                 'redirect-rejected',
-                `The server answered ${status} with a redirect. A POST is never replayed at ` +
-                  `another address.`,
+                `The server answered ${status} with a redirect. A ${request.method} is never ` +
+                  `replayed at another address.`,
               ),
             });
             return;
@@ -661,18 +665,32 @@ async function performRequest(
 export function createFetcher(): Fetcher {
   return {
     /**
-     * GET, and **only** GET.
+     * One read, at one address, under the guard — for four verbs rather than
+     * one.
      *
-     * There is deliberately no `method` and no `body` on `FetchRequest`, so the
-     * sentence this boundary is worth keeping stays true: **no arbitrary method
-     * and no household-authored body reaches the network.** Every user-supplied
-     * URL in this product — calendar feeds, remote images, recipe modules,
-     * catalogue sources — arrives here, and every one of them is a read.
+     * It was GET-only until RFC 013 §6.3, and the sentence that justified that
+     * has been narrowed rather than dropped, because the narrower one is the
+     * one that was ever load-bearing: **no household-authored body reaches the
+     * network.** A method is a closed union of four in the port, so nothing can
+     * ask for a fifth; a body is built from a first-party template in this
+     * repository, and `caldav/discover.ts` and `caldav/query.ts` are the only
+     * two places that build one.
      *
-     * `postJson` below is the one exception and it is not a general one: fixed
-     * verb, fixed content type, a body the adapter serialises, and no redirect
-     * followed. Its only caller is the Home Assistant client's `callService`,
-     * which is held to a two-member allowlist by `ha-write-boundary.test.ts`.
+     * Every guard is unchanged and applies to all four: the URL is validated
+     * against the same `UrlPolicy`, the name is resolved and every address it
+     * answers with is checked, the socket connects to the address that was
+     * checked rather than to the hostname, the byte ceiling is enforced while
+     * streaming, and `authorization` is dropped across an origin change. What
+     * varies by method is one thing and it is read from a table in the port
+     * rather than from an argument: whether a 3xx is followed at all
+     * (`REDIRECT_POLICY`).
+     *
+     * `postJson` below is `fetch` with the method fixed to `POST` and four
+     * things it does not do — it serialises the body itself, fixes both content
+     * types, sends no conditional request, and keeps a non-2xx body as the
+     * upstream's own diagnosis. Its only caller is the Home Assistant client's
+     * `callService`, which is held to a two-member allowlist by
+     * `ha-write-boundary.test.ts`.
      */
     async fetch(request: FetchRequest): Promise<FetchOutcome> {
       try {
@@ -682,6 +700,12 @@ export function createFetcher(): Fetcher {
         }
 
         let target = validated.value;
+        const method = request.method ?? 'GET';
+        // The union in the port is what makes this `undefined` for a GET; there
+        // is no branch here refusing a combination, because there is no way to
+        // write one.
+        const body =
+          request.body === undefined ? undefined : Buffer.from(request.body, 'utf8');
 
         const baseHeaders: Record<string, string> = {
           'user-agent': request.userAgent ?? DEFAULT_USER_AGENT,
@@ -699,6 +723,23 @@ export function createFetcher(): Fetcher {
         }
         if ((request.acceptContentTypes ?? []).length > 0) {
           baseHeaders['accept'] = [...(request.acceptContentTypes ?? []), '*/*;q=0.1'].join(', ');
+        }
+        if (body !== undefined) {
+          /*
+           * Last, and deliberately not overridable by `request.headers` — the
+           * same rule `postJson` states one function down. The body is XML
+           * whatever a caller would rather say about it, and a content type
+           * that disagrees with the bytes is how a server is talked into
+           * parsing something as the wrong thing.
+           *
+           * `charset=utf-8` is stated rather than left to the default because
+           * XML's own default when a document has no declaration is UTF-8 but
+           * HTTP's for `text/*` historically was not, and a household whose
+           * calendar is named in anything but ASCII should not depend on which
+           * of those a server believes.
+           */
+          baseHeaders['content-type'] = 'application/xml; charset=utf-8';
+          baseHeaders['content-length'] = String(body.byteLength);
         }
 
         let headers = baseHeaders;
@@ -720,7 +761,7 @@ export function createFetcher(): Fetcher {
             target,
             resolution.addresses,
             {
-              method: 'GET',
+              method,
               maxBytes: request.maxBytes,
               ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
               ...(request.acceptContentTypes !== undefined
@@ -729,7 +770,9 @@ export function createFetcher(): Fetcher {
               conditional:
                 request.conditional?.etag !== undefined ||
                 request.conditional?.lastModified !== undefined,
-              followRedirects: true,
+              // The table in the port, not an argument. See `REDIRECT_POLICY`.
+              followRedirects: REDIRECT_POLICY[method] === 'follow',
+              ...(body !== undefined ? { body } : {}),
               keepErrorBody: false,
             },
             headers,
