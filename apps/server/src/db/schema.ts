@@ -690,6 +690,161 @@ export const screens = sqliteTable(
 // ---------------------------------------------------------------------------
 
 /**
+ * One CalDAV credential, and the several calendars it reaches (RFC 013 §6.2.1).
+ *
+ * The one place CalDAV does not fit the shape `calendar_sources` already has.
+ * An ICS feed is one URL to one calendar and that table is exactly that; a
+ * CalDAV account is **one credential to many calendars** — a household types an
+ * Apple ID and one app-specific password, and what comes back is Home, Work,
+ * Kids' school and Birthdays. Three of those go on the wall, in different
+ * colours, with Work off the month grid.
+ *
+ * Asking of every existing column whether it is a fact about the *account* or
+ * about the *calendar* splits them cleanly, and almost everything was already
+ * in the right place. `name`, `color`, `person_id`, `visible`, `show_in_grid`,
+ * the CTag, every health column and the collection href are per calendar. Only
+ * three things had nowhere correct to live, and they are this table: the
+ * username and password, the three network opt-ins (it is one server), and the
+ * URLs discovery resolved once.
+ *
+ * **What decides it is password rotation**, not tidiness. Apple app-specific
+ * passwords get regenerated, and under a flat scheme — each calendar row
+ * carrying its own copy of the same envelope — a household then has to edit
+ * four rows with the same new password. Miss one and a single calendar
+ * silently stops syncing, which presents as "one of my calendars stopped
+ * updating": about the hardest fault for a household to describe and for
+ * `diagnose-source` to be pointed at. `caldav-account.test.ts`'s rotation case
+ * — three calendars, one password change, all three sync — is the whole
+ * argument of this table written as an assertion, and under a flat scheme it
+ * fails on two of the three.
+ *
+ * The second argument is the add flow: "here is your account, here are its
+ * calendars, tick the ones you want" has nowhere to come back from if the
+ * account is not a row. A household who adds three calendars in March and
+ * wants a fourth in June would otherwise have to retype the password, because
+ * there is nothing to reopen.
+ *
+ * **Rejected: one `calendar_sources` row per account**, drawing all its
+ * calendars. It gives a whole account one colour, one person and one
+ * `show_in_grid`, which breaks the column that exists to fix the standup fault.
+ *
+ * **The premise, checked rather than assumed.** All of this rests on households
+ * ending up with more than one calendar per CalDAV account. §11 puts that in
+ * front of a real account *before* this table is written, because it is cheap
+ * to reopen now and expensive afterwards; it was confirmed before this file
+ * changed.
+ *
+ * **Removing an account's last calendar removes the account and its
+ * credential** (`api/caldav-accounts.ts`). An orphaned credential is a stored
+ * secret nothing uses, which is the spirit of rule six. A household wanting a
+ * calendar back temporarily has `enabled` and `visible`; removal is removal.
+ */
+export const caldavAccounts = sqliteTable('caldav_accounts', {
+  id: text('id').primaryKey(),
+
+  /**
+   * The address the household typed, as a keyring envelope.
+   *
+   * Encrypted for the same reason `calendar_sources.url_encrypted` is, and the
+   * same reason applies less forcefully here rather than not at all: a CalDAV
+   * server address on its own fetches nothing without the password beside it,
+   * so this is not a bearer credential the way a Google secret iCal address is.
+   * It is encrypted anyway because it is the one column that says *where a
+   * household's family calendar lives*, and `/data` is exactly what people copy
+   * to a NAS and attach to bug reports. `server_host` below is the clear copy
+   * anything that has to display or diagnose reads.
+   */
+  serverUrlEncrypted: text('server_url_encrypted').notNull(),
+  /** Host only, in clear, for the settings row and for diagnostics. */
+  serverHost: text('server_host'),
+
+  /**
+   * The account, in clear.
+   *
+   * The same argument `calendar_sources.auth_username` makes and with the same
+   * exception attached: a CalDAV username is very often an **email address** —
+   * on iCloud it always is — which is exactly what `api/diagnostics.ts`
+   * promises its export contains none of. So this column is left out of that
+   * projection entirely, and the test that stuffs a database with personal data
+   * and asserts none of it survives seeds one of these too.
+   */
+  username: text('username').notNull(),
+  /**
+   * The app-specific password. A keyring envelope, purpose `caldav-password`.
+   *
+   * Its own purpose rather than a second use of `feed-password`, for the reason
+   * the keyring binds purposes into the ciphertext at all: without the split, a
+   * feed's password could be swapped into this column and would still decrypt.
+   *
+   * It is never echoed back to a form, never formatted into `last_error`, and
+   * never printed by a CLI tool — including across §6.3.1's confirmation round
+   * trip, where it is not echoed because it does not cross it.
+   */
+  passwordEncrypted: text('password_encrypted').notNull(),
+
+  /**
+   * What discovery resolved, once, at add time.
+   *
+   * Storing these is what turns RFC 6764's four-request chain into a setup cost
+   * rather than a per-poll one, which is the difference between CalDAV being
+   * viable here and not. Sync afterwards is one `REPORT` per calendar and
+   * touches neither.
+   */
+  principalUrl: text('principal_url'),
+  homeSetUrl: text('home_set_url'),
+
+  /**
+   * A host the household has been shown and accepted (§6.3.1). Null when
+   * discovery never left the host they typed, which is every self-hosted
+   * server.
+   *
+   * The discovery chain is server-directed twice, and we attach the household's
+   * password to every hop after the first — so "follow the discovery wherever
+   * it points and send the credential there" is a credential-disclosure
+   * primitive the SSRF guard has nothing to say about. It cannot simply be
+   * refused, because iCloud requires exactly that move: `caldav.icloud.com` is
+   * what a household types and `pNN-caldav.icloud.com` is where their calendars
+   * are. So: same host is silent, a different host is confirmed once and stored
+   * here, and every sync after reads this and asks nothing again.
+   *
+   * **One host, not a list.** The chain moves at most once in practice, and a
+   * list is a thing that grows by one silently every time a server points
+   * somewhere new.
+   */
+  confirmedHost: text('confirmed_host'),
+
+  /**
+   * The three network opt-ins, on the account because it is one server.
+   *
+   * The same deliberate per-source decisions `calendar_sources` carries, made
+   * once on the screen where somebody is already paying attention rather than
+   * as a global rule nobody sees. They are what `connectionFor` builds a
+   * `UrlPolicy` out of, which is why a header-only resolver would have been
+   * wrong: the switches would have been read from the calendar row for Phase A
+   * and from here for Phase C, by two callers, which is the drift §6.2.2 exists
+   * to prevent.
+   */
+  allowPrivateNetwork: integer('allow_private_network', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  allowLoopback: integer('allow_loopback', { mode: 'boolean' }).notNull().default(false),
+  allowHttp: integer('allow_http', { mode: 'boolean' }).notNull().default(false),
+
+  /**
+   * The last thing that went wrong for the *account* rather than for one
+   * calendar — a password that stopped being accepted, which is the fault that
+   * hits all of them at once.
+   *
+   * Per-calendar health stays on `calendar_sources`, because one calendar
+   * failing must not read as the account being down.
+   */
+  lastError: text('last_error'),
+
+  ...timestamps,
+});
+
+
+/**
  * A calendar the household has subscribed to, by whatever route.
  *
  * Started as "a subscribed ICS feed" and grew a `kind` when Home Assistant
@@ -710,13 +865,28 @@ export const calendarSources = sqliteTable(
      * address of its own — it is reached through the one connection configured
      * on the Home Assistant screen, with that connection's credential.
      *
+     * `caldav` is one collection on a CalDAV server, reached with the
+     * credential on `caldav_accounts` rather than with one of its own. It is a
+     * third kind rather than a flag on `ics` because the *transport* is
+     * different all the way down — a `PROPFIND` for the CTag and a `REPORT`
+     * for the events, against one `VCALENDAR` per resource — while everything
+     * above the sync job is identical.
+     *
      * A kind rather than a second table, so everything downstream is
      * identical: colour, whose calendar it is, visibility, health, and the
      * same expanded rows in the same cache. A separate table would mean a
      * second code path through the manifest, and the manifest is the one
      * document the wall depends on.
+     *
+     * **Widening this enum is a type change and must stay one.** Drizzle emits
+     * no `CHECK` constraint for a SQLite text enum — it is a compile-time
+     * narrowing over a plain `text` column — so adding a member generates no
+     * DDL at all. `migration-upgrade.test.ts` asserts that, because the
+     * alternative would be a table recreate on a table holding somebody's
+     * calendars, which is rule seven's `0009` hazard and the one migration
+     * fault in this repository that reported success.
      */
-    kind: text('kind', { enum: ['ics', 'homeassistant'] })
+    kind: text('kind', { enum: ['ics', 'homeassistant', 'caldav'] })
       .notNull()
       .default('ics'),
 
@@ -737,6 +907,47 @@ export const calendarSources = sqliteTable(
     urlEncrypted: text('url_encrypted'),
     /** Host only, for display and diagnostics. Never the path or the token. */
     urlHost: text('url_host'),
+
+    /**
+     * The CalDAV account this collection is reached through. Null for every
+     * other kind (RFC 013 §6.2.1).
+     *
+     * **The declared `cascade` does not reach the database, and that is
+     * measured rather than assumed.** drizzle-kit emits an `ALTER TABLE ADD
+     * COLUMN` whose `REFERENCES` clause carries no action at all, so SQLite
+     * applies `NO ACTION` and a delete of an account that still has calendars
+     * is *refused* rather than cascaded — checked by running both spellings
+     * against a real `better-sqlite3` with `foreign_keys = ON`, because
+     * reading the schema file here answers the wrong question. `person_id`
+     * one column along has had the identical divergence since `0006`, and the
+     * repository's existing answer to it is `deletePerson`, which nulls the
+     * column itself inside the transaction rather than trusting a constraint.
+     * `removeCaldavAccount` does the same thing for the same reason, and
+     * `caldav-account.test.ts` asserts the row is gone rather than that the
+     * constraint fired.
+     *
+     * The declaration stays, because it is the correct *intent* and is what a
+     * future recreate of this table would emit; what it is not is a thing to
+     * rely on today.
+     *
+     * The direction it describes is the one the household never presses:
+     * removing an *account* takes its calendars with it, because a collection
+     * href with no credential behind it fetches nothing and would sit on the
+     * Calendars screen failing for ever. The journey a household actually takes
+     * is the other way round — removing the last *calendar* of an account
+     * removes the account — and that is a deliberate act in
+     * `api/caldav-accounts.ts` rather than a constraint, because a database
+     * cannot tell "they removed their last calendar" from "this is the middle
+     * of a rearrangement".
+     *
+     * For a `caldav` source, `url_encrypted` holds the **collection href** and
+     * `etag` holds the **CTag** — the collection's own change marker, which is
+     * exactly what those two columns already mean one transport along. That is
+     * why §6.6 needs no schema change: a CTag is an ETag for a collection.
+     */
+    caldavAccountId: text('caldav_account_id').references(() => caldavAccounts.id, {
+      onDelete: 'cascade',
+    }),
 
     /**
      * The calendar entity, for a `homeassistant` source. Null otherwise.
@@ -837,7 +1048,15 @@ export const calendarSources = sqliteTable(
     allowLoopback: integer('allow_loopback', { mode: 'boolean' }).notNull().default(false),
     allowHttp: integer('allow_http', { mode: 'boolean' }).notNull().default(false),
 
-    /** Conditional GET state, so an unchanged feed costs one 304. */
+    /**
+     * Conditional GET state, so an unchanged feed costs one 304.
+     *
+     * For a `caldav` source this holds the collection's **CTag** (`CS:getctag`)
+     * instead, which is the same idea one transport along: one cheap
+     * `PROPFIND` answers "has anything in this calendar changed", and an
+     * unchanged answer costs no `REPORT` and no parsing. `last_modified` stays
+     * null there — CalDAV has no equivalent at the collection.
+     */
     etag: text('etag'),
     lastModified: text('last_modified'),
 

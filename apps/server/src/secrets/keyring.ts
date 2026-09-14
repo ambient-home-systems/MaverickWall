@@ -41,6 +41,16 @@ export type SecretPurpose =
    * address could be swapped into its password column and would still decrypt.
    */
   | 'feed-password'
+  /**
+   * The app-specific password a CalDAV account signs in with (RFC 013 §6.2.1).
+   *
+   * Its own purpose rather than a second use of `feed-password`, for the same
+   * reason that one is not a second use of `calendar-source-url`: the purpose
+   * is bound into the ciphertext, so without the split an envelope from one
+   * column would decrypt in the other. Here that is the difference between one
+   * feed's password and the credential to a household's whole Apple account.
+   */
+  | 'caldav-password'
   /** Session signing. */
   | 'session';
 
