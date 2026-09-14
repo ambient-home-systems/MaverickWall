@@ -102,6 +102,43 @@ is how Nextcloud's brute-force protection and Apple's account lockout get
 triggered against your own account. Entering a new one starts it again straight
 away.
 
+### An iCloud calendar, or any CalDAV server
+
+**Calendars → Add a CalDAV account.** This is the route for iCloud, and it
+works for any server that speaks CalDAV — Nextcloud, Baïkal, Radicale, SOGo,
+Fastmail — where one sign-in reaches every calendar on the account rather than
+one address per calendar.
+
+For **iCloud** the address is exactly `https://caldav.icloud.com`, your username
+is your Apple ID, and the password **must be an app-specific password** made at
+[appleid.apple.com](https://appleid.apple.com) under *Sign-In and Security*.
+Your Apple ID password will not work, and this is Apple's rule rather than ours.
+
+It then signs in, finds every calendar on the account and asks which ones you
+want. Tick them and they arrive as ordinary calendars — their own colour, their
+own owner, their own switch for the month grid. Adding more later means opening
+the account again rather than typing the password a second time.
+
+**If it asks "is that the right server?", read it.** Apple keeps each account's
+calendars on a numbered server — you type `caldav.icloud.com` and your calendars
+live somewhere like `p42-caldav.icloud.com` — so the address moves once during
+setup. Your password is **not** sent to the second address until you press
+Continue, and the answer is remembered so you are never asked again. A
+self-hosted server normally does not move at all and this never appears; if it
+does appear for a server you did not expect it to, stop and check the address
+you typed.
+
+Changing the password later is one field on the account, not one per calendar:
+**Calendars → CalDAV accounts → Change password.** That is the whole reason an
+account is a thing here rather than a copy of the same password on each
+calendar — regenerate an app-specific password, change it once, and all of them
+keep working.
+
+**This is not part of first-run setup.** The wizard asks for one ICS address, to
+get something on the wall in the first five minutes; a household on iCloud adds
+their account from the Calendars page afterwards. Nothing is lost by skipping
+the wizard's calendar step entirely.
+
 ### Google, iCloud and Microsoft 365, through Home Assistant
 
 If you run Home Assistant, its own integrations are the best route for these —
@@ -109,8 +146,10 @@ it does the signing in, and the calendars then appear here like any other.
 
 - **Google Calendar** and **Microsoft 365** have their own Home Assistant
   integrations and keep up promptly.
-- **iCloud** has no ICS address worth using. The **CalDAV** integration with an
-  Apple ID and an app-specific password is the way in.
+- **iCloud** has no ICS address worth using. Its **CalDAV** integration with an
+  Apple ID and an app-specific password works — and so does adding the same
+  account here directly, which needs no Home Assistant at all. Either is fine;
+  the direct route is one fewer thing to keep running.
 - **Remote Calendar** takes a plain ICS address, and refreshes **once a day** —
   so routing a feed through it is slower than adding the address here directly.
 

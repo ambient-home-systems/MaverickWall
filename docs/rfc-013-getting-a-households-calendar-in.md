@@ -921,6 +921,17 @@ an iCloud household is an unauthenticated public share link, which is not an
 answer this product should be giving. What §11 gates is the schema and not the
 phase.
 
+**It is deliberately not in the wizard**, and that is a decision rather than an
+omission. The wizard asks for one ICS address because its job is something on
+the wall in the first five minutes, and its calendar step is already skippable
+(§4.2); a CalDAV account is three fields, a possible host confirmation and a
+picker, which is a second screen and a second journey inside the one screen
+that has to stay a straight line. An iCloud household adds it from Calendars
+afterwards, and `docs/first-run.md` says so where they are standing. Revisit it
+if adding an account from Calendars turns out to be the commonest first act —
+that would be evidence the wizard is asking the wrong question, and it is
+cheap to move then and expensive to unpick if it goes in now.
+
 **D — M365 device flow.** Only on demand. Shares C's Fetcher work.
 
 A and B should ship together: A without B leaves Google and iCloud users with
