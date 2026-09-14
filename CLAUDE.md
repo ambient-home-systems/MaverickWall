@@ -464,10 +464,15 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3064 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
-display 495 · server 2102. CI runs the whole suite and then the README's
+**3275 tests passing.** calendar 153 (plus 1 skipped) · core 314 ·
+display 495 · server 2313. CI runs the whole suite and then the README's
 one-liner against a clean volume on Linux, which is the only place the install
-has ever been wrong.
+has ever been wrong. Measured on a clean run rather than added to the previous
+figure, which is the discipline the paragraph below spells out at length for the
+*other* count on this page and which applies to this one identically: RFC 013's
+four new server suites are +211 between them, and an arithmetic that happened to
+agree would prove nothing, because the way these numbers have always gone wrong
+is somebody incrementing rather than running.
 
 **Two of them were red for all but about two minutes a day, and it is the
 bootstrap code's fault a third time.** `admin-status-claims` and
@@ -520,8 +525,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**226 of the server's tests fail without a real Chromium and say so**, across
-35 files, which is worth knowing before reading a red suite as a regression. A
+**227 of the server's tests fail without a real Chromium and say so**, across
+36 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -534,11 +539,14 @@ all — measured in passing, while running the suite for something else. **And
 it read 220 over 33 while the truth was 222 over 34**, re-measured for the
 to-do list's two browser tests the same way — the server suite run with
 `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing, every failure checked to be the
-browser's own sentence — rather than incremented by the files added. It is 226
-over 35 now, measured the same way and for the same reason — and this time the
-measurement happens to agree with the arithmetic the tick's own four tests
-predict, which is a coincidence worth nothing: the only thing that makes the
-number true is that the run was made. That is
+browser's own sentence — rather than incremented by the files added. It read 226
+over 35 while the truth was **227 over 36**, and that one is the cleanest
+demonstration this paragraph has: RFC 013 added four server suites and **not one
+browser test**, so the arithmetic said the number could not have moved and the
+number had moved anyway. It was already wrong before that work started; running
+it is the only thing that could have said so. Every one of the 36 was checked to
+be the browser's own sentence rather than a real failure hiding in the count,
+which is the other half of the method and the half an incrementer skips. That is
 the right failure — these measure layout, and a browser test that silently skips
 is this document's whole complaint about assertions that cannot go red — but the
 count in the paragraph above is the one with a browser present.
