@@ -287,11 +287,56 @@ describe('adding a CalDAV account', () => {
 
     expect(response.status).toBe(400);
     expect(html).toContain('not accepted');
+    /*
+     * And the controls the error points at are **open**, which is
+     * `networkAccessDisclosure`'s own rule: an error naming a remedy folded
+     * shut underneath it is not a remedy, and it took three submissions to add
+     * a loopback http feed before the ICS form learned that. This form copies
+     * the mechanism, so it has to copy the behaviour — here the address was
+     * reachable, so nothing is open; the refusal below is the case that opens
+     * it.
+     */
+    expect(html).toContain('Add a CalDAV account');
     // Echoed, so a mistyped password does not also cost the two fields above it.
     expect(html).toContain(server.base);
     expect(html).toContain(USERNAME);
     // Never the password, on the failure branch either.
     expect(html).not.toContain('not-the-password');
+
+    /*
+     * The other refusal: the guard stops the address outright, and the three
+     * switches that would let it through are named **all at once** and their
+     * disclosure is opened. Answering one code per submission is the fault the
+     * ICS path already fixed, and a form that reports it with the controls
+     * folded shut is the same fault wearing a different costume.
+     */
+    const refused = await form('/admin/calendars/caldav', {
+      server_url: server.base,
+      caldav_username: USERNAME,
+      caldav_password: PASSWORD,
+    });
+    const refusedHtml = await refused.text();
+    expect(refused.status).toBe(400);
+    // Both switches, in one answer.
+    expect(refusedHtml).toContain('Allow plain http');
+    expect(refusedHtml).toContain('Allow this machine');
+    /*
+     * And **that** disclosure is open, found by its own summary.
+     *
+     * The first draft of this asked whether *any* `<details>` on the page was
+     * open, which passes on every render: the CalDAV section wraps itself in
+     * one, and `networkAccessDisclosure` opens itself whenever a switch is
+     * already on. Setting `open: false` left it green — an assertion neither of
+     * its own fixes could turn red, which is this repository's own most
+     * repeated finding. Matching the summary is what makes it the right
+     * element.
+     */
+    const networkDisclosure = /<details class="disclose"( open)?><summary>Network access/.exec(
+      refusedHtml,
+    );
+    expect(networkDisclosure, 'the network-access disclosure was not on the page').not.toBeNull();
+    expect(networkDisclosure?.[1]).toBe(' open');
+    expect(refusedHtml).not.toContain(PASSWORD);
   });
 
   it('shows the account with its calendars, and changes one password for all of them', async () => {
