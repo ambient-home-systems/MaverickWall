@@ -73,8 +73,8 @@ import { selfHref } from './self.js';
  * panel — a second mount is how the e-paper page silently lost its editor for
  * two releases once already).
  *
- * The Walls list's e-paper row (`epaperListCard`) deliberately stays in
- * `admin.ts`: it is a row in that list, not a page here.
+ * The Walls list's e-paper row (`epaperListCard`) deliberately lives with
+ * the list, in `admin-walls.ts`: it is a row in that list, not a page here.
  */
 
 /**
