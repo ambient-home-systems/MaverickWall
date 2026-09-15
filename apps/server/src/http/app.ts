@@ -294,6 +294,103 @@ export function localClock(at: number, timezone: string): string {
   }
 }
 
+/**
+ * Which surfaces the display's Content-Security-Policy is served on.
+ *
+ * Every document and asset a wall screen loads, and nothing else. The admin,
+ * the wizard and sign-in are deliberately out: they carry an inline `<style>`
+ * on the two pages that must work before anything else does, a `srcdoc`
+ * preview iframe, and `blob:` object URLs in the editor — a policy that fits
+ * them is a different policy, and one header covering both would have to be
+ * the looser of the two.
+ *
+ *   - `/`          the wall's own document (under ingress this is a redirect
+ *                  to `/admin`, so the header lands on a bodyless response and
+ *                  the admin never inherits it)
+ *   - `/pair`      the token exchange and the code post
+ *   - `/d/*`       the manifest, `/d/media`, the e-paper frame, the ticks
+ *   - `/assets/*`  the bundle, its stylesheet and the bundled faces
+ *   - `/sw.js`     the service worker, whose own execution context a CSP on
+ *                  its script *does* govern — which is what carries the policy
+ *                  into the offline shell
+ */
+export function isDisplaySurface(path: string): boolean {
+  return (
+    path === '/' ||
+    path === '/pair' ||
+    path === '/sw.js' ||
+    path.startsWith('/d/') ||
+    path.startsWith('/assets/')
+  );
+}
+
+/**
+ * The display's Content-Security-Policy (RFC 014 §7, precondition 1).
+ *
+ * Rule three — no third-party origin in the display bundle or HTML — has
+ * always held here as a property of the *code*: nothing in `apps/display`
+ * fetches from anywhere but its own origin, and `admin-origins.test.ts` and
+ * the bundle's own tests read the sources to prove it. This is the second
+ * mechanism, and it is a property of the *browser*: a reference that got past
+ * the first is refused by the second. It is not a replacement for the first
+ * and it is not where rule three is enforced — `WIDGET_TYPES` and the
+ * manifest's own schemas still are.
+ *
+ * Every directive is the tightest value the surfaces actually need, measured
+ * rather than reasoned (`test/display-csp.test.ts` drives five of them in a
+ * real browser and counts `securitypolicyviolation`):
+ *
+ *   - `script-src 'self'` — the wall loads one module, `/assets/main.js`, and
+ *     has no inline script at all.
+ *   - `style-src 'self'` — **no `'unsafe-inline'`**, which RFC 014 §7 expected
+ *     to be needed and is not. The renderer writes every style through the
+ *     CSSOM (`element.style.setProperty`, `element.style.x = …`), and the
+ *     CSSOM is not a parse of author text, so CSP does not govern it. What
+ *     *is* governed is a `style` attribute in markup and a `<style>` element,
+ *     and the wall's HTML has neither.
+ *   - `img-src 'self' data:` — `/d/media` for pictures and avatars, and
+ *     `data:` for the one inline favicon, which is inline precisely because a
+ *     fetched one would be a third-party origin.
+ *   - `font-src 'self'` — the eight bundled faces, `@font-face`'d from
+ *     `/assets/fonts`.
+ *   - `connect-src` — the poll, the ticks and the pairing post, plus the push
+ *     hub (`net/push-hub.ts`, `PUSH_PATH`). `'self'` is specified to cover a
+ *     `ws:`/`wss:` upgrade of the document's own origin, but engines have
+ *     disagreed about that for years, so the host is named outright. Both
+ *     schemes for one host rather than the one matching the scheme we think we
+ *     are on: behind a reverse proxy that is a guess, and a wrong guess would
+ *     cost the socket rather than deny anything a bare host does not already.
+ *   - `frame-ancestors 'self'` — a wall in somebody else's page is a wall
+ *     whose display cookie is being spent by a site the household did not
+ *     open. The cost, stated because nothing in the test can see it: a
+ *     household embedding the wall in a Home Assistant webpage card is
+ *     refused. That is not a documented flow and the e-paper frame — which
+ *     *is* how a panel reaches Home Assistant — is an image, which this does
+ *     not govern.
+ *   - `base-uri 'self'`, `form-action 'self'`, `object-src 'none'` — nothing
+ *     on the wall uses any of the three, so each is free.
+ *
+ * `report-uri` is deliberately absent: it would be a beacon, and this product
+ * has nowhere to send one.
+ */
+export function displayCsp(origin: string): string {
+  // `URL.host` is already parsed and normalised, so nothing a `Host` header
+  // carries can inject a `;` or a newline into the directive below.
+  const host = new URL(origin).host;
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    `connect-src 'self' ws://${host} wss://${host}`,
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ].join('; ');
+}
+
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   const now = deps.now ?? (() => Date.now());
@@ -445,6 +542,35 @@ export function createApp(deps: AppDeps): Hono {
    * and because every response it rewrites has to be rewritten on the way out.
    */
   app.use('*', ingress());
+
+  /*
+   * The display's CSP, set on the way *out* (RFC 014 §7, precondition 1).
+   *
+   * After `next()` rather than before it, because these routes answer in four
+   * shapes — a body, a bare `304` built by `serveWithEtag`, a `302` from
+   * `/pair`, and a `401` from `requireScreen` — and only the final response is
+   * one thing. Setting it on `c.res.headers` is what covers all four; a
+   * `c.header()` ahead of the handler covers whichever of them Hono happens to
+   * carry prepared headers into.
+   *
+   * Registered here, at the top, so it cannot be outflanked by a route added
+   * below it. The predicate reads the un-prefixed path because the supervisor
+   * strips its own prefix before forwarding — `ingress()` puts it back on the
+   * way *out*, and does so after this runs, so a redirect it rewrites keeps
+   * the header this set.
+   *
+   * The origin is the effective one, so a wall behind a household's TLS proxy
+   * names `wss://` at the host the browser actually used rather than at the
+   * host the container saw.
+   */
+  app.use('*', async (c: Context, next: Next): Promise<void> => {
+    await next();
+    if (!isDisplaySurface(c.req.path)) return;
+    c.res.headers.set(
+      'content-security-policy',
+      displayCsp(effectiveOrigin(c, clientAddress(c), trustedProxies)),
+    );
+  });
 
   /*
    * The one fact this whole feature turns on, printed once so it can be
@@ -1934,12 +2060,22 @@ export function createApp(deps: AppDeps): Hono {
       return serveWithEtag(c, { ...shell, contentType: 'text/html; charset=utf-8' }, 'no-cache');
     }
 
-    // Not built. Say so rather than 404 — a blank screen is the one outcome to
-    // avoid, and "the bundle is missing" is a fault somebody can act on.
+    /*
+     * Not built. Say so rather than 404 — a blank screen is the one outcome to
+     * avoid, and "the bundle is missing" is a fault somebody can act on.
+     *
+     * Drawn with the browser's own defaults, which is the whole reason there is
+     * no `style` attribute on the body here any more. This path is served with
+     * the display's CSP, whose `style-src 'self'` refuses a `style` attribute
+     * in markup — so the attribute was doing nothing but raising a violation on
+     * a page that exists to be read. There is no stylesheet to point at either:
+     * the branch that renders this is the branch where the bundle, and
+     * `display.css` with it, is missing.
+     */
     const users = countUsers(deps.db);
     return c.html(
       `<!doctype html><meta charset="utf-8"><title>Maverick Wall</title>` +
-        `<body style="font:16px system-ui;padding:2rem;background:#0B0E11;color:#E9EEF4">` +
+        `<body>` +
         `<h1>Maverick Wall</h1>` +
         `<p>The server is running, but the display bundle was not found at ` +
         `<code>${escapeHtml(staticFiles.directory)}</code>.</p>` +

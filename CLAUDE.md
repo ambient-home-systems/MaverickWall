@@ -6446,6 +6446,67 @@ counts:** nobody has looked at a card on a real phone or in a real supervisor's
 sidebar, which is where a picture's next fault surfaces, and nobody can until
 the gate is re-stated.
 
+**The display serves a Content-Security-Policy, and it is the *second*
+mechanism for rule three rather than the first (RFC 014 §7, precondition 1).**
+Rule three has always held here as a property of the code — nothing in
+`apps/display` fetches from anywhere but its own origin, `WIDGET_TYPES` refuses
+a `website` or `iframe` widget, the manifest's schemas carry no URL a stranger
+wrote, and `admin-origins.test.ts` reads the served markup to prove the same of
+the admin. None of that moves. What the header adds is a browser that refuses a
+reference which got past all of it. Served on `/`, `/pair`, `/d/*`, `/assets/*`
+and `/sw.js` — every document and asset a wall loads — and on nothing in the
+admin, which carries an inline `<style>` on the two pages that must work before
+anything else does, a `srcdoc` preview iframe and `blob:` URLs in the editor: a
+policy that fits both would have to be the looser of the two.
+
+    default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
+    font-src 'self'; connect-src 'self' ws://<host> wss://<host>;
+    frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
+
+**`'unsafe-inline'` is not in it, and the RFC said it would have to be.** The
+reasoning under that prediction was right — CSP does not govern the CSSOM — and
+it drew the wrong consequence from it: the renderer writes *every* style
+through that door (`element.style.setProperty` in `theme.ts` and `main.ts`,
+`element.style.x = …` in `render.ts`), not only the household's future block,
+and the wall's own markup carries neither a `style` attribute nor a `<style>`
+element for `style-src` to have an opinion about. Measured rather than
+reasoned: `display-csp.test.ts` arms a `securitypolicyviolation` listener
+*before* each navigation and counts zero across the pairing form, the shipped
+Classic wall, the offline shell, the theme builder's preview iframe and an
+image widget from `/d/media`. The one thing a surface did need was a change on
+our side rather than in the policy — the "the display bundle was not found"
+page at `/` carried a `style` attribute, the single thing on any of these paths
+a browser would have refused, and is written without one now.
+
+Three things in it are worth keeping. **`data:` in `img-src` is load-bearing**,
+which reads like the loose end of an otherwise `'self'`-only policy and is the
+wall's inline favicon — inline precisely because a fetched one is the
+third-party origin rule three exists to refuse; `img-src *`, which reads looser
+and is not, reddens four of five surfaces with `img-src refused data`. **The
+header is set after `next()`**, on `c.res.headers`, because these routes answer
+in four shapes — a body, a bare `304` from `serveWithEtag`, a `302` from
+`/pair`, a `401` from `requireScreen` — and only the final response is one
+thing. And **the offline shell carries it for free and that is asserted rather
+than assumed**: the Cache API stores a response with its headers, so the
+replayed `/` is under the same policy; a wall that dropped it on the way through
+the cache would draw identically and be unprotected.
+
+**Without the positive control the file could not go red**, which is the same
+shape as every other row in the table above: five surfaces reporting no
+violations is also exactly what a missing header looks like. So the last test
+inserts a rule through `CSSStyleSheet.insertRule` — the door precondition 3
+would hand a household's own CSS block — painting a box with
+`url(https://example.invalid/x.png)`, and asserts exactly one violation naming
+that host. It proves both halves at once: the CSSOM accepts and applies the
+declaration, and `img-src` refuses the fetch it asks for. Six mutations were
+checked and all six are red. **The cost, stated because no test can see it:**
+`frame-ancestors 'self'` refuses a wall embedded in a Home Assistant webpage
+card. That is not a documented flow, and the e-paper frame — which *is* how a
+panel reaches Home Assistant — is an image, which the directive does not
+govern. **Still unproven where it counts:** nobody has looked at a wall under
+this header on a real tablet or a real supervisor, which by this project's
+history is where the next fault in it surfaces.
+
 ---
 
 ## Open decisions
