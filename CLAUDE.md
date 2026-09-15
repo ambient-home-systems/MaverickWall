@@ -464,8 +464,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3325 tests passing**, over 236 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 495 · server 2363 over 191 files. CI runs the whole suite
+**3326 tests passing**, over 237 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2364 over 192 files. CI runs the whole suite
 and then the README's one-liner against a clean volume on Linux, which is the
 only place the install has ever been wrong. Measured on a clean run rather than
 added to the previous figure, which is the discipline the paragraph below spells
@@ -474,7 +474,25 @@ identically: RFC 016 phase 0's two new server suites were +10 between them, and
 phase 1's two new files plus the assertions added to three existing ones are +11
 — an arithmetic that happened to agree would prove nothing, because the way
 these numbers have always gone wrong is somebody incrementing rather than
-running.
+running. RFC 016 phase 2 is +1 and one file: the budget measurement is what
+survived it (the paragraph on it, below, says why), and the twenty-two
+assertions that came with the previews went with them — measured on the tree
+that has them, 2386 over 195, and on the tree that does not, which is this one.
+
+**A count taken with a browser depends on which browser, and on this tree the
+difference is one test.** `browser-calendars.test.ts` holds a closed
+overflow menu to a zero area at rest, and Playwright's *headless shell* — the
+build `chromium.launch()` picks with no channel, which is what `browser-harness`
+launches from a provisioned `PLAYWRIGHT_BROWSERS_PATH` — lays out a closed
+`<details>`' content with a real box, at the same Chromium version (151) where
+the full browser in new headless mode does not: measured with a plain in-flow
+`<div>` inside a closed `<details>`, 280x48 in the shell and nothing in the
+browser. So the figure above is the harness's own resolution on a laptop
+(`channel chromium`, full Chromium); the same tree with the cache named
+explicitly reads 2363 over 192 and one red, on a file this project has not
+changed since. A provisioned CI directory that carries the shell would read the
+same. Recorded rather than fixed, because it is a fact about which browser
+answers and not about the page.
 
 **A clone with no tags fails one of them and the message says why**, which is
 worth knowing before reading a red suite as a regression.
@@ -535,8 +553,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**234 of the server's tests fail without a real Chromium and say so**, across
-38 files, which is worth knowing before reading a red suite as a regression. A
+**235 of the server's tests fail without a real Chromium and say so**, across
+39 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -559,15 +577,21 @@ the truth was 232 over 37**, re-measured for RFC 015 phase 3's one browser file
 — which carries four tests, so the arithmetic predicted 231 and the reading said
 232. One off, again, and in the same direction, which is what a paragraph that
 has been wrong five times should expect of itself. **It read 232 over 37 while
-the truth is 234 over 38**, re-measured for RFC 016 phase 1's one browser file,
+the truth was 234 over 38**, re-measured for RFC 016 phase 1's one browser file,
 which carries two tests — the one time so far the arithmetic and the reading
 have agreed, which proves nothing about the arithmetic and is recorded so the
-next reader does not take agreement for a method. Every one of the 38 was
+next reader does not take agreement for a method. **It reads 235 over 39 now**,
+re-measured for RFC 016 phase 2's one surviving browser file, the budget
+measurement, which carries one test: agreement a second time, and measured the
+same way rather than believed — with `MW_BROWSER_EXECUTABLE` pointed at a path
+that does not exist rather than `PLAYWRIGHT_BROWSERS_PATH` at nothing, because
+on a laptop with Google Chrome installed the harness's channel fallback finds
+it and "no browser" quietly becomes "Chrome". Every one of the 39 was
 checked to be the browser's own sentence rather than a real failure hiding in
 the count — no assertion, timeout or type error anywhere in the run — which is
 the other half of the method and the half an incrementer skips. **15 of them are
-reported as skipped rather than failed**, which is why 234 + 2114 does not reach
-2363 and is not a sixth drift: two files ask for the browser in a `beforeAll`,
+reported as skipped rather than failed**, which is why 235 + 2114 does not reach
+2364 and is not a seventh drift: two files ask for the browser in a `beforeAll`,
 so the hook is what goes red and vitest marks the tests under it skipped. The
 files are red either way — this is the arithmetic of the report rather than a
 test quietly opting out, which is the distinction the sentence after this one
@@ -6356,6 +6380,71 @@ because the summary's "panel checked in within the hour" had no panel in that
 state to be wrong about. **Still unproven where it counts:** nobody has used
 this list on a real phone or in a real supervisor's sidebar, which by this
 project's history is where a settings screen's next fault surfaces.
+
+**Every card on the Walls list carried a preview for one commit, and the
+budget the RFC set in advance refused it (RFC 016 phase 2).** The list shows
+no wall: every card is a name, a chip, a status line and "Open", on a product
+whose whole subject is that each wall draws a *different arrangement*, one
+page away from a gallery that draws fourteen. Phase 2 put a picture on each
+card through two mechanisms and no third. A **browser wall's** card is drawn
+in the browser through the wall's own renderer — `template-gallery.js` gains
+a second entry point keyed on a `#wall-previews` mount, the `#template-gallery`
+path untouched — from that wall's own manifest, in the canvas it is hung for,
+into a shadow root through `previewStylesheet` and `layoutPreviewRoot` exactly
+as the gallery, wearing the theme the wall is wearing at that minute. Which
+canvas is decided the way the wall decides it: `http/wall-hung.ts` transcribes
+`resolveLayout` and its three companions from `orientation.ts` character for
+character, held by a parity test, and feeds them the pinned orientation, else
+the reported viewport turned through the rotation, else the rotation on a
+nominal portrait viewport, else portrait. The page's JSON carries each wall's
+widgets **as the manifest carries them** — `placeCanvas` exported for the one
+caller, so the omission and the to-do handle cannot drift between the picture
+and the glass. A **panel's** card is one `<img>` on
+`GET /admin/epaper/:id/preview.png`, the frame its own page already draws
+through `livePanelCanvasOwner`, so a following panel's card is the followed
+wall on one bit — the case the RFC's draft mechanism would have drawn empty —
+and it needs no script at all. Decoded, never eyeballed: the ink is held to
+the posted box and a following panel's bytes to the device's own frame.
+
+**Two things building it found, and one is a correction to the RFC.** §9.3
+said `manifest.theme.active` is resolved "at now, daylight window included".
+It is not: the wall evaluates the window itself on every draw, in `main.ts`,
+so a card applying `active` alone draws a wall on Almanac by day and Panels by
+night as Panels at noon. The card repeats the wall's own arithmetic — and
+reads the **server's** clock for it, the manifest's `generatedAt`, because
+under the harness (server pinned to eleven) the browser's own clock put a
+daytime theme on the wrong side of its window, which on a real install is a
+phone with a wrong clock drawing every card a different day from its walls.
+And the rule-nine assertion — with the manifest refused, the frame refused,
+and the script blocked, every card keeps its name, chip, status and control —
+was first written as "still non-empty", and a script writing "Preview failed"
+over the status line passed it; it holds the four to the server's own HTML now,
+word for word.
+
+**The budget is the paragraph that matters, and it is why the page is phase
+1's.** RFC 016 §9.1 says the measurement, not an opinion, decides, and the
+gate set for the build was three times the phase-1 page's server time, or one
+second to the above-the-fold cards. Measured by `walls-list-budget.test.ts` on
+six walls with the harness's three real calendars, a forecast and a rota, on an
+idle Apple M5, warm medians of five: the phase-1 page is **2.0ms**; the
+phase-2 page is 2.3ms and the six builds it asks for are 18.0–18.4ms (2.5–2.6
+per manifest, 3.8–4.0 per 1-bit frame), **20.5ms** together, 27–28ms cold; in
+the browser at 1280x800 the first card is drawn at 14–18ms and all six at
+91–94ms, exactly one build per card. **The server gate fails by ten times and
+the browser gate passes by ten times**, so phase 2 is reverted in the PR that
+built it, with its tests, and un-reverting is one `git revert` of the revert.
+What the gate turned out to mean is the useful part: the base is two
+milliseconds, one manifest is two and a half, so a ratio against this base
+admits one card and refuses two — it is a decision that the list draws no
+pictures, taken before the base was known. The absolute figure it stood in
+for is twenty-one milliseconds per page view, a third of what six walls ask
+of the server every minute by polling. Whether that is acceptable is
+re-stated in the RFC as the decision to take, deliberately not taken here.
+What stays: the budget test, which on this tree prints the phase-1 figure and
+asserts nothing, because there is nothing to count. **Still unproven where it
+counts:** nobody has looked at a card on a real phone or in a real supervisor's
+sidebar, which is where a picture's next fault surfaces, and nobody can until
+the gate is re-stated.
 
 ---
 
