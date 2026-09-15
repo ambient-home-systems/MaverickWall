@@ -13,7 +13,7 @@ import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
-import { gutterValue } from './gutter.js';
+import { boxRect, gutterStepFor } from './gutter.js';
 import { inkOn, shiftTint } from './theme.js';
 import {
   HOUSE_ROLES,
@@ -2819,18 +2819,24 @@ export function renderFreeform(
   const canvas = el('div', 'canvas');
   canvas.style.setProperty('--aspect', String(layout.aspect));
   /*
-   * How much room between the widgets (RFC 014 §4.4).
+   * How much room between the widgets (RFC 014 §4.4), out of two budgets.
    *
-   * One property, on the canvas, inherited by every `.fw` under it — the boxes
-   * tile, so the only room between two of them is twice their own padding, and
-   * `.fw` is the one rule that spends it. **Set only when the household has
-   * chosen**: `gutterValue` answers `undefined` for a wall that has not and for
-   * any step this bundle does not know, and an absent property is what reaches
-   * `.fw`'s own `var(--fw-gutter, var(--s4))` fallback — which is the exact
-   * `calc(var(--s4) / 2)` per side the wall drew before this existed.
+   * `--fw-gutter` is the widget box's own padding, on the canvas and inherited
+   * by every `.fw` under it, where `.fw` is the one rule that spends it. Up to
+   * `--s4` that is the whole gutter and the boxes go on tiling. Past it the
+   * padding stays at its permission and `step.canvas` is what the *canvas*
+   * spends, taken out of each box's rectangle by `boxRect` below — so the
+   * boxes stop sharing edges and the wall's own ground opens between them.
+   *
+   * **Set only when the household has chosen**: `gutterStepFor` answers
+   * `undefined` for a wall that has not and for any step this bundle does not
+   * know, and an absent property is what reaches `.fw`'s own
+   * `var(--fw-gutter, var(--s4))` fallback — the exact `calc(var(--s4) / 2)`
+   * per side the wall drew before any of this existed, with every box at the
+   * rectangle it was authored at.
    */
-  const gutter = gutterValue(model.layoutGutter);
-  if (gutter !== undefined) canvas.style.setProperty('--fw-gutter', gutter);
+  const gutter = gutterStepFor(model.layoutGutter);
+  if (gutter !== undefined) canvas.style.setProperty('--fw-gutter', gutter.padding);
   // The canvas background (RFC 005 Phase 3): a solid colour or a gradient behind
   // the widgets. `background` is a shorthand, so it overrides the theme's wall
   // colour on this canvas only; absent leaves the theme showing through.
@@ -2869,13 +2875,24 @@ export function renderFreeform(
      * survived in the real preview; nothing on a wall reads it.
      */
     box.dataset['widgetId'] = widget.id;
-    // Percentages of the canvas, so the same layout fills any resolution of
-    // the authored aspect.
-    box.style.left = `${widget.x * 100}%`;
-    box.style.top = `${widget.y * 100}%`;
-    box.style.width = `${widget.w * 100}%`;
-    box.style.height = `${widget.h * 100}%`;
+    /*
+     * Percentages of the canvas, so the same layout fills any resolution of
+     * the authored aspect — less whatever the canvas gutter takes off the
+     * edges this box shares with another (`boxRect`, which keeps the edges
+     * that are the layout's own). Identical strings to the four it wrote
+     * before this existed whenever no step is chosen or the step spends
+     * nothing at the canvas.
+     */
+    const rect = boxRect(widget, gutter?.canvas);
+    box.style.left = rect.left;
+    box.style.top = rect.top;
+    box.style.width = rect.width;
+    box.style.height = rect.height;
     box.style.zIndex = String(widget.z);
+    // What the canvas took, so `.fw` can size a box-relative widget against
+    // the box it actually has rather than the one it was authored at.
+    if (rect.insetX !== '0px') box.style.setProperty('--in-x', rect.insetX);
+    if (rect.insetY !== '0px') box.style.setProperty('--in-y', rect.insetY);
     // The box's own size, as fractions of the canvas — read in CSS as
     // `--bw`/`--bh` by the clock, which sizes its text against its box.
     box.style.setProperty('--bw', String(widget.w));

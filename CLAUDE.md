@@ -464,8 +464,8 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3361 tests passing**, over 241 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 501 · server 2393 over 195 files, measured on a clone whose
+**3371 tests passing**, over 241 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 508 · server 2396 over 195 files, measured on a clone whose
 tags had been fetched, so `changelog-shape.test.ts` compares rather than
 refusing and the server figure is the clean one with nothing deducted. CI runs the whole suite and then the
 README's one-liner against a clean volume on Linux, which is the only place
@@ -489,14 +489,16 @@ that has them, 2386 over 195, and on the tree that does not, which is this one.
 
 **And the two figures it carried before RFC 014 §4.4 were both stale, in
 opposite ways, which is this paragraph's own subject arriving on schedule for
-the seventh time.** The gutter step adds one server file of ten tests and one
-display file of five, so arithmetic on the previous line predicts server 2392
-over 195 and display 500. Measured: **2393 over 195 and 501**. Both were out by
-one before this phase started, in a direction nothing in the diff explains and
-nothing but running could have said. The file total does reconcile this
-time — two new files, 239 to 241 — and that proves nothing about the method
-either, which is the same footnote the browser count below already carries
-about agreement.
+the seventh time.** The gutter step's tighter half added one server file of ten
+tests and one display file of five, so arithmetic on the previous line predicted
+server 2392 over 195 and display 500. Measured: **2393 over 195 and 501**. Both
+were out by one before that phase started, in a direction nothing in the diff
+explains and nothing but running could have said. The file total did reconcile
+— two new files, 239 to 241 — and that proves nothing about the method either,
+which is the same footnote the browser count below carries about agreement. The
+airier half then added three tests to the one server file and seven to the one
+display file and no files at all: **2396 and 508**, measured, and this time the
+arithmetic agrees on both.
 
 **A count taken with a browser depends on which browser, and on this tree the
 difference is one test.** `browser-calendars.test.ts` holds a closed
@@ -612,16 +614,19 @@ predicted 241 over 40 and the reading says **250 over 42**. Nine tests and two
 whole files had gone unmeasured, in a direction nothing in any of the diffs
 between explains — two consecutive agreements are what made this one worth
 taking slowly, and they are exactly why the paragraph above says agreement is
-not a method. Every one of the 42 was
+not a method. **It reads 253 over 42 now**, re-measured for §4.4's airier half,
+which adds three browser tests to a file already in the count and no new file:
+the arithmetic and the reading agree, which is the third agreement in this
+paragraph and still not a method. Every one of the 42 was
 checked to be the browser's own sentence rather than a real failure hiding in
-the count — no assertion, timeout or type error anywhere in the run, and 194
+the count — no assertion, timeout or type error anywhere in the run, and 197
 failure blocks all carrying `browserType.launch: Failed to launch chromium`,
 which is the launcher's own message rather than the harness's "No Chromium to
 drive" precisely *because* the executable was named: the explicit path is tried
 first and throws before the fallback chain is reached. That is the other half of
 the method and the half an incrementer skips. **15 of them are
-reported as skipped rather than failed**, which is why 250 + 2128 does not reach
-2393 and is not a drift of its own: two files ask for the browser in a
+reported as skipped rather than failed**, which is why 253 + 2128 does not reach
+2396 and is not a drift of its own: two files ask for the browser in a
 `beforeAll`,
 so the hook is what goes red and vitest marks the tests under it skipped. The
 files are red either way — this is the arithmetic of the report rather than a
@@ -6604,16 +6609,49 @@ spend rather than a description of what this one does. So
 mapping to `0`, `--s1` … `--s4` — and the top of the ladder is where every wall
 already stood.
 
-**It stops at step 4 for a reason, and the reason is the other permission.**
-The gutter is drawn as the *widget box's own padding*, and the scale's second
-permission is that a widget box spends at most step 4, total, per axis — so a
-step-5 gutter would be canvas spacing taken out of the widget's budget, on a
-fixed layout with no scrollbar where chrome competes with content for every
-pixel. **Airier than today is a layout change rather than a spacing one**:
-room the boxes do not own, which on a canvas whose boxes tile means they stop
-tiling. What shipped is the tighter half, which is the half that hands pixels
-back to what is drawn; the airier half is a decision on its own and is written
-up in the RFC as one rather than quietly half-built here.
+**It stopped at step 4 for a reason that was half right, and the other half is
+the airier rungs.** The gutter is drawn as the *widget box's own padding*, and
+the scale's second permission is that a widget box spends at most step 4, total,
+per axis — so a step-5 gutter **spent as padding** would be canvas spacing taken
+out of the widget's budget. What that argument missed is that the scale declares
+a *third* permission, on the canvas itself — *at most step 5 between the boxes
+it holds* — and the wall had never spent a pixel of it. Two budgets, one in use,
+and "airier is a layout change" was a conclusion about the only mechanism
+anybody had looked at.
+
+**So the ladder is seven rungs and the renderer decides which budget pays.** Up
+to `--s4` it is the widget's own padding and the boxes go on tiling; at rungs 5
+and 6 the padding stays pinned at its permission and the **canvas** pays, by
+taking room out of the box rectangle — the boxes stop sharing edges and the
+wall's ground opens between them, which is the honest reading of "room the
+boxes do not own". The two spend `--s3` and then `--s5`, so the widest gutter is
+`--s4 + --s5`: the sum of the two permissions and nothing past either. It cost
+no migration — the column already held an integer, and what a step *means* is
+the display's table.
+
+**A box gives up half the gutter on each side that is not the edge of the
+layout**, and that clause is doing more than it looks. It lets the placement be
+decided per box with no adjacency graph, because two boxes sharing an edge each
+give up half and end up a full gutter apart. And it is what stops an airier wall
+letterboxing itself: Classic's boxes were reworked to *tile* precisely because
+the wall was losing a third of itself to margins it did not need, so insetting
+every side would hand that border straight back. `browser-canvas-gutter` holds
+the boxes to reaching all four edges at every rung, and an inset-everything
+mutation reddens it with "the boxes leave 22.84px of the layout bare at the
+left" — which no gap measurement could have seen.
+
+**`--bw`/`--bh` stay the authored fractions and `.fw` nets `--buw`/`--buh` of
+what the box lost.** They are what a template wrote and what the editor reads
+back, so they cannot move; but a widget that sizes its own type against its box
+would then size for room the canvas has just taken. `0px` is the arithmetic
+identity, so an unchosen wall computes exactly what it always did.
+
+**And the two mechanisms are not interchangeable even where the arithmetic
+agrees**, which is the reason this is a second property rather than a bigger
+number. For a widget with no background of its own, padding and an inset move
+the content the same distance. On a theme that draws a widget as a card, padding
+grows the card and an inset opens a gap *between* cards — and the second is what
+a household asking for an airier wall is asking for.
 
 **One property, one rule, and the fallback is the whole of rule nine.**
 `renderFreeform` writes `--fw-gutter` on the layout and `.fw` reads
@@ -6658,17 +6696,43 @@ wall — it draws its own frame at its own geometry from the same canvas.
 **content** edges on a real paired Classic wall at 1080x1920 — derived from the
 drawn rectangles rather than from a list of widget names, so it cannot quietly
 stop measuring anything when Classic's boxes move. Zero at step 0; `--s4` at
-step 4, read off a probe planted in the same layout because
-`getPropertyValue('--s4')` answers the token stream and not a length; no run
-under the floor at either end. 1080x1920 is load-bearing: it is the one
-viewport where the shipped seed draws no run under the floor at all on an
-unmeasured wall, so anywhere smaller that clause would be a claim about the
-panel rather than about the gutter. The unasked wall is a block of its own,
-which is what makes the `.fw` fallback's revert legible — it reddens that block
-and leaves both ends of the ladder green. Six mutations checked, all six red.
-`wall-density` and `browser-classic-proportions` were run on a clean worktree
-of `main` and on the branch at the same pinned hour, and with the column null
-every `BASELINE` number is unmoved.
+step 4; `--s4 + --s5` at the top; the gap growing at every rung and never
+shrinking; the widest padding any box spends pinned at `--s4` across the airier
+rungs, which is the two budgets staying separate; all four edges of the layout
+still reached; no run under the floor at either end. Each length is read off a
+probe planted in the same layout, because `getPropertyValue('--s4')` answers the
+token stream and not a length. 1080x1920 is load-bearing: it is the one viewport
+where the shipped seed draws no run under the floor at all on an unmeasured
+wall, so anywhere smaller that clause would be a claim about the panel rather
+than about the gutter. The unasked wall is a block of its own, which is what
+makes the `.fw` fallback's revert legible — it reddens that block and leaves
+every rung of the ladder green. `wall-density` and `browser-classic-proportions`
+were run on a clean worktree of `main` and on the branch at the same pinned
+hour, and with the column null every `BASELINE` number is unmoved.
+
+**The seam search had to be loosened and then pinned, which is worth one line.**
+It finds neighbours by looking for border edges that meet — correct while the
+boxes tile, and the airier rungs are the boxes deliberately no longer touching,
+so it found nothing and the file went red on its own premise. It searches out to
+the widest gutter the ladder can produce now, which cannot flatter the
+measurement (what it then measures is compared against an exact expected
+length) — and the *pair count* is pinned to the first reading of the run, so a
+loosened search wandering onto a new neighbour at the airy end fails rather than
+averaging it in.
+
+**Two assertions written for the netting could not turn red, and probing the
+live wall is what said why.** "Does anything overflow its box" cannot see it:
+`.clock` is a block, so its `scrollWidth` is its parent's width until the text
+is genuinely wider, and on this fixture it fits at either size. Nor can a
+12-hour clock, which is where this went next on the strength of this document's
+own note that "08:26 pm" puts the clock on its *width* term — measured, the
+clock here is bound by its **height** term and the width one never binds. What
+is observable is the **proportion**: 89.9px of type in a 173px box at the
+default rung and 78.0px in a 150px box at the airiest, the same 0.52 twice,
+because the widget followed its box down. Reverting the netting moves it to 0.60
+and the file goes red saying so. Three mutations were checked on the airier half
+— the rung paid from padding, every side inset, the netting reverted — and all
+three are red.
 
 **One thing it broke was caught by the test written for it the last time**:
 `gutter.ts` is a new module in `main.ts`'s import graph and `sw.ts`'s `SHELL`
