@@ -999,7 +999,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               report_w AS reportW, report_h AS reportH,
               last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp,
               last_seen_forwarding AS lastSeenForwarding, app_version AS appVersion
-         FROM screens ORDER BY name`,
+         FROM screens ORDER BY name COLLATE NOCASE`,
     )
     .all() as AdminScreenRow[];
 }
@@ -1830,11 +1830,28 @@ export function setOwnerTheme(db: SqliteDatabase, owner: string, theme: string):
   db.prepare('UPDATE screens SET theme = ?, updated_at = ? WHERE id = ?').run(theme, Date.now(), owner);
 }
 
-export function touchScreen(db: SqliteDatabase, id: string, ip: string | null, agent: string | null): void {
+/**
+ * Stamp a screen as seen, on the caller's clock.
+ *
+ * `at` is required and deliberately not defaulted — the rule
+ * `addCalendarSource` and `equipHousehold` already state, and for the same
+ * fault. The stamp was a bare `Date.now()` while every page that reads it
+ * compares against the app's injected `now`: one clock in production, and hours
+ * apart under `browser-harness`, which pins that `now` to `HARNESS_HOUR`. A wall
+ * polled a second ago read "not seen for 9 hours" there. A default is exactly
+ * how the second clock comes back, so every caller answers.
+ */
+export function touchScreen(
+  db: SqliteDatabase,
+  id: string,
+  ip: string | null,
+  agent: string | null,
+  at: number,
+): void {
   db.prepare(
     `UPDATE screens SET last_seen_at = ?, last_seen_ip = ?, last_seen_user_agent = ?
       WHERE id = ?`,
-  ).run(Date.now(), ip, agent, id);
+  ).run(at, ip, agent, id);
 }
 
 /**

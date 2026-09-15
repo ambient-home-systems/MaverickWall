@@ -129,6 +129,7 @@ import type { Keyring } from '../secrets/keyring.js';
 import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
+import { ago, presence, presenceDot } from './presence.js';
 import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, feedCredentialFields, icon,
   networkAccessDisclosure, networkAccessSuggestion, page, saveRow,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
@@ -728,42 +729,23 @@ export function civilDateLabel(date: string): string {
     .format(new Date(`${date}T00:00:00Z`));
 }
 
-export function ago(from: number | null, now: number): string {
-  if (from === null) return 'never';
-  const seconds = Math.max(0, Math.round((now - from) / 1000));
-  if (seconds < 60) return 'just now';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  const days = Math.round(hours / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
-}
-
-/**
- * How long since a screen last called in before its dot goes idle.
- *
- * A browser wall polls every minute, so five minutes is generous and says
- * "up" without pretending to diagnose. An e-paper panel on battery sleeps
- * between pulls — the shipped ESPHome recipe sleeps thirty minutes and the
- * Home Assistant one pushes every fifteen — so its window is an hour, or
- * every sleeping panel in the house would read as idle for most of the day.
- * Exported beside `ago` because the panel's own page (`admin-epaper.ts`)
- * draws the same dot the Walls list and a browser wall's page do.
+/*
+ * `ago` and the two seen-windows live in `presence.ts` now, beside the one
+ * function that decides whether a wall is alive; re-exported here because four
+ * admin screens have always imported `ago` from this file.
  */
-export const BROWSER_SEEN_WINDOW_MS = 5 * 60_000;
-export const EPAPER_SEEN_WINDOW_MS = 60 * 60_000;
-/** A wall unseen for this long is worth a row on the Overview, whatever its kind. */
-const DAY_MS = 24 * 60 * 60_000;
+export { ago, BROWSER_SEEN_WINDOW_MS, EPAPER_SEEN_WINDOW_MS } from './presence.js';
+/**
+ * A wall unseen for this long is worth a row on the Overview, whatever its kind.
+ *
+ * Applied on top of `presence`'s state rather than instead of it, and a
+ * different number on purpose: "fresh" answers whether the wall is drawing,
+ * and a browser wall five minutes quiet is not yet something a household
+ * should be sent to look at from the first page they open. A day is.
+ */
+export const OVERVIEW_UNSEEN_MS = 24 * 60 * 60_000;
 /** How many of today's events the Overview lists before saying "and N more". */
 const TODAY_EVENT_LIMIT = 8;
-
-export function seenDot(lastSeenAt: number | null, at: number, windowMs = BROWSER_SEEN_WINDOW_MS): string {
-  const fresh = lastSeenAt !== null && at - lastSeenAt < windowMs;
-  return fresh
-    ? `<span class="dot dot-ok pulse"></span>`
-    : `<span class="dot dot-idle"></span>`;
-}
 
 /**
  * What making a new pairing link costs, said before it is done.
@@ -1129,12 +1111,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const plans = readShiftPlansAdmin(deps.db);
     const at = now();
     const zone = household.timezone;
-    const online = screens.filter(
-      (screen) =>
-        screen.lastSeenAt !== null &&
-        at - screen.lastSeenAt <
-          (screen.kind === 'epaper' ? EPAPER_SEEN_WINDOW_MS : BROWSER_SEEN_WINDOW_MS),
-    ).length;
+    const online = screens.filter((screen) => presence(screen, at).state === 'fresh').length;
 
     /*
      * Today, in the household's own zone.
@@ -1199,7 +1176,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         screen.kind === 'epaper'
           ? `admin/epaper/${encodeURIComponent(screen.id)}/design`
           : `admin/walls/${encodeURIComponent(screen.id)}`;
-      if (screen.lastSeenAt === null) {
+      const state = presence(screen, at).state;
+      if (state === 'unpaired') {
         attention.push({
           title: `${screen.name} has never connected`,
           detail:
@@ -1208,7 +1186,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               : 'Open its pairing link on the wall.',
           href, tag: 'Never connected', bad: false,
         });
-      } else if (at - screen.lastSeenAt > DAY_MS) {
+      } else if (state === 'stale' && screen.lastSeenAt !== null && at - screen.lastSeenAt > OVERVIEW_UNSEEN_MS) {
         attention.push({
           title: `${screen.name} last seen ${ago(screen.lastSeenAt, at)}`,
           detail: 'It may be off, or unable to reach this box.',
@@ -4826,13 +4804,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  /** "● Last seen 3 min ago from 10.0.0.4" — the dot says whether that is recent. */
-  function seenLine(screen: AdminScreenRow, at: number, windowMs?: number): string {
-    return (
-      seenDot(screen.lastSeenAt, at, windowMs) +
-      `Last seen ${escapeHtml(ago(screen.lastSeenAt, at))}` +
-      (screen.lastSeenIp === null ? '' : ` from ${escapeHtml(screen.lastSeenIp)}`)
-    );
+  /**
+   * "● Drawing now", "● Not paired yet", "● Not seen recently · last seen 3 days
+   * ago from 10.0.0.4" — `presence`'s words, per kind.
+   *
+   * It said "Last seen never" for a wall nothing had ever used, which on a
+   * household with five new walls was the whole second line of five cards, and
+   * the same sentence for a link nobody opened and a wall that drew once and
+   * stopped. The window is the kind's, from the same function the wall's own
+   * page reads.
+   */
+  function seenLine(screen: AdminScreenRow, at: number): string {
+    const p = presence(screen, at);
+    return presenceDot(p) + escapeHtml(p.headline) + (p.detail === '' ? '' : ` · ${escapeHtml(p.detail)}`);
   }
 
   /** A browser wall: its page holds status, pairing, settings and layout together. */
@@ -4857,7 +4841,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `admin/epaper/${encodeURIComponent(screen.id)}/design`,
       screen.name,
       'E-paper',
-      seenLine(screen, at, EPAPER_SEEN_WINDOW_MS) +
+      seenLine(screen, at) +
         ` · ${screen.panelWidth ?? '?'}×${screen.panelHeight ?? '?'}` +
         (screen.rotation === 0 ? '' : ` · rotated ${screen.rotation}°`) +
         (screen.lanOnly === 1 ? ' · LAN only' : ''),
@@ -5318,15 +5302,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // ---- the wall's own header ------------------------------------------
     //
     // Status in words rather than a colour alone, and short enough to sit on
-    // one line beside a name that may be long. The five-minute freshness test
-    // is the one the list page has always used.
-    const online = owner !== null && owner.lastSeenAt !== null && at - owner.lastSeenAt < 5 * 60_000;
+    // one line beside a name that may be long. Whether it is up is `presence`'s
+    // answer, the one the list page reads: this used to be a literal
+    // `5 * 60_000` that nothing held to the list's constant.
+    const ownerPresence = owner === null ? undefined : presence(owner, at);
     const statusLine =
-      owner === null
+      owner === null || ownerPresence === undefined
         ? `<b>Shared default</b> · the layout and settings every wall starts from`
-        : owner.lastSeenAt === null
+        : ownerPresence.state === 'unpaired'
           ? `<b>Never connected</b> · open its pairing link on the wall, or make a new one from the menu`
-          : online
+          : ownerPresence.state === 'fresh'
             ? `<b>Online</b>${owner.appVersion === null ? '' : ` · ${escapeHtml(owner.appVersion)}`}`
             : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(owner.lastSeenAt, at))}`;
 
@@ -5356,7 +5341,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // second header on a phone is a screenful before anything is editable.
     const statusAndMenu =
       `<p class="wall-status">` +
-      (owner === null ? '' : seenDot(owner.lastSeenAt, at)) +
+      (ownerPresence === undefined ? '' : presenceDot(ownerPresence)) +
       `<span>${statusLine}</span></p>` +
       `<details class="ovf" data-overflow>` +
       `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
