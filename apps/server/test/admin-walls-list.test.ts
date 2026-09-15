@@ -18,7 +18,7 @@ import { install, type Installation } from './browser-harness.js';
  * `<button>` the grid must not.
  */
 function gridOf(html: string): string {
-  const start = html.indexOf('<div class="grid g2">');
+  const start = html.indexOf('<div class="grid g3">');
   expect(start, 'no card grid on the page').toBeGreaterThan(-1);
   const ends = ['<details class="disclose wall-revoked">', '</main>']
     .map((marker) => html.indexOf(marker, start))
@@ -213,7 +213,7 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     expect(row).toContain('<a class="btn btn-tonal" href="admin/epaper#add">Add an e-paper panel</a>');
     expect(row).toContain('<a class="btn btn-ghost" href="admin/screens/approve">Approve a pairing code</a>');
     // The row sits above the grid, not under it.
-    expect(html.indexOf('<div class="wall-actions">')).toBeLessThan(html.indexOf('<div class="grid g2">'));
+    expect(html.indexOf('<div class="wall-actions">')).toBeLessThan(html.indexOf('<div class="grid g3">'));
     // And the prose, the section and its field are gone.
     expect(html).not.toContain('Pair a new wall');
     expect(html).not.toContain('Add an e-paper wall');
@@ -229,7 +229,7 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     const html = await h.text('/admin/walls');
     expect(html).toContain('<div class="mw-empty">');
     expect(html).toContain('<a class="btn" href="admin/walls/new">Pair a browser wall</a>');
-    expect(html).not.toContain('<div class="grid g2">');
+    expect(html).not.toContain('<div class="grid g3">');
     expect(html).not.toContain('class="wall-summary"');
     expect(html).not.toContain('No walls paired yet. Add one below');
   });
@@ -249,7 +249,7 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     expect(html).toContain('<details class="disclose wall-revoked"><summary>1 unpaired wall kept for the record</summary>');
     expect(html).not.toContain('<details class="disclose wall-revoked" open');
     // Under the grid, not in it.
-    expect(html.indexOf('<div class="grid g2">')).toBeLessThan(html.indexOf('<details class="disclose wall-revoked">'));
+    expect(html.indexOf('<div class="grid g3">')).toBeLessThan(html.indexOf('<details class="disclose wall-revoked">'));
     expect(gridOf(html)).not.toContain('Old hall');
     // Each revoked wall is a row with its name, when it was unpaired, and a
     // Forget that leads to a confirmation rather than acting.
@@ -477,7 +477,7 @@ describe('a card reads presence() for its state, and the summary line is that fu
         '<span><span class="dot dot-idle"></span>1 not seen for 30 days</span>' +
         '</p>',
     );
-    expect(html.indexOf('class="wall-summary"')).toBeLessThan(html.indexOf('<div class="grid g2">'));
+    expect(html.indexOf('class="wall-summary"')).toBeLessThan(html.indexOf('<div class="grid g3">'));
   });
 
   it('draws no summary line over one wall, and one over two', async () => {

@@ -36,7 +36,16 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
-import { TEARDOWN, browser, install, loadWallSettled, shutDownBrowser, type Installation } from './browser-harness.js';
+import {
+  HOUSEHOLD_CALENDARS,
+  TEARDOWN,
+  browser,
+  equipHousehold,
+  install,
+  loadWallSettled,
+  shutDownBrowser,
+  type Installation,
+} from './browser-harness.js';
 
 process.env['TZ'] = 'UTC';
 
@@ -200,6 +209,107 @@ describe('a starting-layout card against the wall it is a picture of', () => {
        */
       expect(onWall.cursor, 'the wall stopped hiding its pointer').toBe('none');
       expect(onCard.cursor, 'the card hides the pointer over a control').not.toBe('none');
+    },
+    SLOW,
+  );
+});
+
+/**
+ * The Walls list's card (RFC 016 phase 2, §5.3, §7): the same measurement,
+ * against the same kind of control, for the card that pictures a *paired*
+ * wall rather than a template.
+ *
+ * Deliberately the same ratio and the same three-part reading rather than a
+ * recorded number, and for the same reason the gallery's is: a card measured
+ * against itself cannot see itself drift from the wall. This one goes one
+ * step further than the gallery's and names the three roles the RFC asks for
+ * — an event name, a date numeral and a section label — *and* asserts each is
+ * present on both pictures, because a card and a wall that draw almost
+ * nothing agree about almost nothing, and "every role in common is within 2%"
+ * is an assertion that passes over an empty well.
+ *
+ * The household carries three ordinary family calendars, a forecast and a
+ * rota (`HOUSEHOLD_CALENDARS`, `equipHousehold`), so today's agenda has names
+ * on it and the roles under test are drawn rather than absent. The card's own
+ * ratio does the scaling: every size is read against each root's *layout*
+ * height, and the card's root is the reference-resolution wall transformed
+ * down, so both readings are a share of their own frame.
+ */
+describe('a Walls-list card against the wall it is a picture of', () => {
+  it(
+    'draws an event name, a date numeral and a section label at the share of the frame the wall draws them at',
+    async () => {
+      const home = await install({ calendars: HOUSEHOLD_CALENDARS });
+      installations.push(home);
+      equipHousehold(home.db, home.now());
+
+      const link = await home.pairLink('Kitchen');
+      const id = (home.db.prepare(`SELECT id FROM screens WHERE name = 'Kitchen'`).get() as { id: string }).id;
+      // The wall itself, at a known size. Its poll reports that size, which is
+      // what the list reads to decide which canvas the card draws.
+      const real = await loadWallSettled(link, { width: 1080, height: 1920 });
+      const onWall = (await real.page.evaluate(SCAN('.canvas', null))) as Scan;
+      await real.close();
+
+      const context = await (await browser()).newContext({ viewport: { width: 1280, height: 900 } });
+      let onCard: Scan;
+      try {
+        const page: Page = await context.newPage();
+        await home.signIn(page);
+        await page.goto(`${home.base}/admin/walls`, { waitUntil: 'load' });
+        const host = `.wall-preview[data-wall="${id}"]`;
+        await page.waitForSelector(host);
+        await page.waitForFunction(
+          (selector) => (document.querySelector(selector)?.shadowRoot?.querySelectorAll('*').length ?? 0) > 3,
+          host,
+          { timeout: 20_000 },
+        );
+        onCard = (await page.evaluate(SCAN('.canvas', host))) as Scan;
+      } finally {
+        await context.close();
+      }
+
+      // The premise: both pictures have something on them, and they are the
+      // same shape, or a share of the height is not a comparison.
+      expect(onWall.runs.length, 'the paired wall drew almost nothing').toBeGreaterThan(20);
+      expect(onCard.runs.length, 'the card drew almost nothing').toBeGreaterThan(20);
+      expect(onCard.frame.w / onCard.frame.h).toBeCloseTo(onWall.frame.w / onWall.frame.h, 2);
+
+      const wallShare = sharePerClass(onWall);
+      const cardShare = sharePerClass(onCard);
+
+      // The three roles the RFC names, each present on both, each within 2%.
+      const NAMED = { 'dr-ev-title': 'an event name', 'dr-num': 'a date numeral', 'section-label': 'a section label' };
+      for (const [cls, what] of Object.entries(NAMED)) {
+        expect(wallShare.has(cls), `the wall drew no ${what} (.${cls})`).toBe(true);
+        expect(cardShare.has(cls), `the card drew no ${what} (.${cls})`).toBe(true);
+        const onOne = wallShare.get(cls) ?? 0;
+        const onOther = cardShare.get(cls) ?? 0;
+        expect(
+          Math.abs(onOther - onOne) <= onOne * 0.02,
+          `${what}: wall ${onOne.toFixed(3)}% of frame, card ${onOther.toFixed(3)}% (${(onOther / onOne).toFixed(2)}x)`,
+        ).toBe(true);
+      }
+
+      // And every other role the two have in common.
+      const shared = [...wallShare.keys()].filter((cls) => cardShare.has(cls));
+      expect(shared.length, 'the card and the wall have no type roles in common').toBeGreaterThan(5);
+      const off: string[] = [];
+      for (const cls of shared) {
+        const onOne = wallShare.get(cls) ?? 0;
+        const onOther = cardShare.get(cls) ?? 0;
+        if (Math.abs(onOther - onOne) > onOne * 0.02) {
+          off.push(`.${cls}: wall ${onOne.toFixed(3)}% of frame, card ${onOther.toFixed(3)}% (${(onOther / onOne).toFixed(2)}x)`);
+        }
+      }
+      expect(off, 'the card draws type at a different size from the wall').toEqual([]);
+
+      // The faces, the figures and the leading, as for the gallery card.
+      expect(new Set(onCard.runs.map((run) => run.fam))).toEqual(new Set(onWall.runs.map((run) => run.fam)));
+      expect(onCard.runs.filter((run) => run.num !== 'tabular-nums').map((run) => run.cls)).toEqual([]);
+      expect(onCard.runs.filter((run) => run.lh === 'normal').map((run) => run.cls)).toEqual([]);
+      expect(onWall.cursor).toBe('none');
+      expect(onCard.cursor).not.toBe('none');
     },
     SLOW,
   );

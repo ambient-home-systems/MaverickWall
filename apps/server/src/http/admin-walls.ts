@@ -1,17 +1,24 @@
 import type { Context, Hono } from 'hono';
 
+import type { SqliteDatabase } from '../db/open.js';
+import { aspectOf, parseBackground, placeCanvas } from '../api/manifest.js';
 import {
   deleteRevokedScreens,
   deleteScreen,
+  effectiveDisplay,
   readAdminScreens,
+  readHousehold,
+  readLayoutWidgets,
   type AdminScreenRow,
 } from '../api/queries.js';
+import { householdSetUp } from '../modules/index.js';
 import { navModules, type AdminDeps } from './admin.js';
 import { card, destructive, emptyState, listRow, tag } from './components.js';
 import { confirmDestroyPage, errorBlock, escapeHtml, icon, page } from './html.js';
 import { ago, presence, presenceDot, type Presence } from './presence.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
+import { wallCardCanvas, type CardCanvas, type WallCardCanvas } from './wall-hung.js';
 
 /**
  * The Walls list (RFC 016 phase 1).
@@ -80,9 +87,11 @@ function wallCard(
   status: string,
   p: Presence,
   trail: string,
+  preview: string,
 ): string {
   return card(
-    `<div class="wall-head">` +
+    `<div class="wall-preview-well">${preview}</div>` +
+      `<div class="wall-head">` +
       `<div class="wall-head-main">` +
       `<div class="rname"><a class="wall-link" href="${href}">${escapeHtml(name)}</a>` +
       ` ${tag(kind)}` +
@@ -92,6 +101,96 @@ function wallCard(
       `</div>`,
     { tone: p.state === 'unpaired' ? 'warn' : 'neutral', className: 'wall-card' },
   );
+}
+
+/**
+ * The picture on a browser wall's card (RFC 016 §4.1): an empty well the
+ * gallery script draws into, through the wall's own renderer.
+ *
+ * Nothing but a box and the wall's id here — no label, because the name is
+ * on the line beneath it and a fallback naming the wall twice is the sentence
+ * twice. With the script blocked, or the manifest refused, the well is the
+ * ground and nothing else, and the card keeps its name, chip, status and
+ * control: rule nine, in the form "the worst a broken preview may cost is
+ * the picture". The ratio is the canvas the wall is hung for, so the well is
+ * the shape of the thing on the wall.
+ */
+function wallPreview(screen: AdminScreenRow, canvas: WallCardCanvas): string {
+  return (
+    `<div class="wall-preview" data-wall="${escapeHtml(screen.id)}"` +
+    ` style="--wall-ar:${canvas.aspect}"></div>`
+  );
+}
+
+/**
+ * The picture on a panel's card (RFC 016 §4.2): one `<img>` on the frame its
+ * own page already draws, and no script at all.
+ *
+ * `GET /admin/epaper/:id/preview.png` renders the panel's *stored* canvas
+ * through `livePanelCanvasOwner` — its own, the wall it follows, or the
+ * built-in view — with the omission the device endpoint applies, behind the
+ * session. It is what the panel's page captions "what the panel actually
+ * draws", so the card and the glass cannot disagree about whose canvas a
+ * panel draws; a following panel's card is the followed wall's arrangement
+ * on one bit, which is the case a card built from the panel's own rows would
+ * have drawn empty. `loading="lazy"` is the observer, and a failed fetch
+ * degrades to an empty alt.
+ *
+ * The plate is the panel's *native* buffer, however it is hung: the preview
+ * endpoint answers `panelWidth x panelHeight` and turns the raster itself,
+ * exactly as the panel's gallery cards and its Arrange backdrop do.
+ */
+function panelPreview(screen: AdminScreenRow): string {
+  const id = encodeURIComponent(screen.id);
+  return (
+    `<div class="wall-preview is-ink" style="--wall-ar:${screen.panelWidth ?? 800}/${screen.panelHeight ?? 480}">` +
+    `<img class="wall-ink" src="admin/epaper/${id}/preview.png" alt="" loading="lazy">` +
+    `</div>`
+  );
+}
+
+/**
+ * What `template-gallery.js` draws a browser wall's card from: the canvas the
+ * wall is hung for, and its widgets **as the manifest carries them**.
+ *
+ * `placeCanvas` is the manifest's own placement — the omission of widgets the
+ * household has nothing set up for, the coordinate clamps, and a to-do
+ * widget's entity id leaving as a handle — so the card's widgets are the
+ * wall's to the byte, and `walls-list-previews.test.ts` holds them to the
+ * manifest the wall polls. The aspect and background are the same
+ * `effectiveDisplay` resolution the manifest route makes for that wall.
+ *
+ * Read here, on the page, rather than fetched by the script: the page already
+ * knows every wall it draws, and a page that says which canvas each card is
+ * without needing a browser is a page a route test can hold to the pick.
+ */
+export interface WallPreviewEntry extends WallCardCanvas {
+  readonly id: string;
+}
+
+export function wallPreviewEntries(db: SqliteDatabase, walls: readonly AdminScreenRow[]): WallPreviewEntry[] {
+  const browserWalls = walls.filter((screen) => screen.kind !== 'epaper');
+  if (browserWalls.length === 0) return [];
+  const household = readHousehold(db);
+  const setUp = householdSetUp(db);
+  return browserWalls.map((screen) => {
+    const { household: effective, layoutOwner } = effectiveDisplay(household, screen);
+    const canvas = (orientation: 'portrait' | 'landscape'): CardCanvas => {
+      const portrait = orientation === 'portrait';
+      const background = parseBackground(
+        portrait ? effective.layoutBackground : effective.layoutLandscapeBackground,
+      );
+      return {
+        aspect: aspectOf(
+          portrait ? effective.layoutAspect : effective.layoutLandscapeAspect,
+          portrait ? 0.5625 : 1.7778,
+        ),
+        widgets: placeCanvas(readLayoutWidgets(db, layoutOwner, orientation), setUp),
+        ...(background !== undefined ? { background } : {}),
+      };
+    };
+    return { id: screen.id, ...wallCardCanvas(screen, canvas('portrait'), canvas('landscape')) };
+  });
 }
 
 /** The card-go "Open", for a wall that has drawn: decoration inside the card, never a control. */
@@ -129,7 +228,7 @@ function unpairedControl(screen: AdminScreenRow): string {
 }
 
 /** A browser wall: its page holds status, pairing, settings and layout together. */
-function displayListCard(screen: AdminScreenRow, p: Presence): string {
+function displayListCard(screen: AdminScreenRow, p: Presence, canvas: WallCardCanvas): string {
   return wallCard(
     `admin/walls/${encodeURIComponent(screen.id)}`,
     screen.name,
@@ -137,6 +236,7 @@ function displayListCard(screen: AdminScreenRow, p: Presence): string {
     seenLine(p) + (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`),
     p,
     p.state === 'unpaired' ? unpairedControl(screen) : openGo,
+    wallPreview(screen, canvas),
   );
 }
 
@@ -158,6 +258,7 @@ function epaperListCard(screen: AdminScreenRow, p: Presence): string {
       (screen.lanOnly === 1 ? ' · LAN only' : ''),
     p,
     p.state === 'unpaired' ? unpairedControl(screen) : openGo,
+    panelPreview(screen),
   );
 }
 
@@ -284,8 +385,34 @@ export function displaysPage(c: Context, deps: AdminDeps, error?: string): strin
 
   // One reading per wall, shared by its card and by the summary line.
   const walls = active.map((screen) => ({ screen, p: presence(screen, at) }));
+  /*
+   * One canvas per browser wall, shared by its card's well (the shape) and by
+   * the JSON the script draws it from (the widgets), so the two cannot name
+   * different canvases. Panels need no entry: their picture is an <img>.
+   */
+  const previews = wallPreviewEntries(deps.db, active);
+  const previewOf = (screen: AdminScreenRow): WallCardCanvas => {
+    const found = previews.find((entry) => entry.id === screen.id);
+    if (found === undefined) throw new Error(`no preview canvas for wall ${screen.id}`);
+    return found;
+  };
   const cardFor = (w: { screen: AdminScreenRow; p: Presence }): string =>
-    w.screen.kind === 'epaper' ? epaperListCard(w.screen, w.p) : displayListCard(w.screen, w.p);
+    w.screen.kind === 'epaper'
+      ? epaperListCard(w.screen, w.p)
+      : displayListCard(w.screen, w.p, previewOf(w.screen));
+  /*
+   * The gallery script's second entry point (RFC 016 §4.1), on a page with at
+   * least one browser wall to draw: `#wall-previews` is the mount and the JSON
+   * is one entry per wall. A page of panels alone carries no script, because a
+   * panel's card is an <img> and needs none. Everything the script does is
+   * enhancement — with it blocked, every card is its name, chip, status and
+   * control over an empty well.
+   */
+  const previewScript =
+    previews.length === 0
+      ? ''
+      : `<div id="wall-previews" data-json="${escapeHtml(JSON.stringify({ walls: previews }))}"></div>` +
+        `<script type="module" src="assets/template-gallery.js"></script>`;
 
   /*
    * The two doors, and the rare third, as buttons (RFC 016 §3.1). Filled,
@@ -325,8 +452,18 @@ export function displaysPage(c: Context, deps: AdminDeps, error?: string): strin
        */
       (walls.length === 0
         ? emptyState('No walls yet.', { label: 'Pair a browser wall', href: 'admin/walls/new' })
-        : wallSummary(walls, at) + `<div class="grid g2">` + walls.map(cardFor).join('') + `</div>`) +
-      revokedDisclosure(revoked, at),
+        : wallSummary(walls, at) +
+          /*
+           * Three across (RFC 016 §5.4): a card carrying a preview well is
+           * taller, and .g3 already steps to two columns at 1040px and to one
+           * at 720px. The fold holds one row of three rather than two rows
+           * of two, which is the trade the RFC states rather than discovers.
+           */
+          `<div class="grid g3">` +
+          walls.map(cardFor).join('') +
+          `</div>`) +
+      revokedDisclosure(revoked, at) +
+      previewScript,
   });
 }
 
