@@ -1006,6 +1006,8 @@ export interface AdminScreenRow extends ScreenRow {
    */
   readonly lastSeenForwarding: string | null;
   readonly appVersion: string | null;
+  /** The canvas gutter step, 0-4; null is today's spacing (RFC 014 §4.4). */
+  readonly layoutGutter: number | null;
   /** The viewport this screen last reported, for the editor's "match" (RFC 005). */
   readonly reportW: number | null;
   readonly reportH: number | null;
@@ -1035,6 +1037,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
+              layout_gutter AS layoutGutter,
               report_w AS reportW, report_h AS reportH,
               last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp,
               last_seen_forwarding AS lastSeenForwarding, app_version AS appVersion
@@ -1086,6 +1089,24 @@ export interface ScreenSettings {
   readonly panelWidthMm: number | null;
   readonly panelHeightMm: number | null;
   readonly readDistanceMm: number | null;
+  /**
+   * The canvas gutter step, 0-4, or null for "never asked" (RFC 014 §4.4).
+   *
+   * The form always renders one segment checked — null and step 4 draw the
+   * identical wall, so the control can honestly check `Normal` on a wall that
+   * has never been asked, where a grid with nothing chosen would read as "this
+   * wall has no spacing" (RFC 015 §3.5's rule for the theme cards, one row
+   * along). So a save from a page rendered since this shipped always carries a
+   * step.
+   *
+   * Null is what a page rendered *before* it posts, and the handler resolves
+   * that to whatever the column already holds rather than to a guess — so a
+   * stale tab saving a timezone cannot quietly write a spacing nobody chose,
+   * and a wall that has never been saved keeps the null that makes its
+   * manifest byte-identical to the document it sent before this column
+   * existed.
+   */
+  readonly layoutGutter: number | null;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -1099,6 +1120,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
                 clock_24 = ?,
                 panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?,
+                layout_gutter = ?,
                 updated_at = ?
           WHERE id = ?`,
       )
@@ -1108,6 +1130,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0, s.allowTodo ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
+        s.layoutGutter,
         Date.now(), id,
       ).changes > 0
   );
@@ -1897,6 +1920,13 @@ export interface ScreenRow {
   readonly layoutLandscapeAspect: number | null;
   readonly layoutBackground: string | null;
   readonly layoutLandscapeBackground: string | null;
+  /**
+   * The canvas gutter step, 0-4; null is what the wall drew before the column
+   * existed (RFC 014 §4.4). Named in the `SELECT` below for the reason
+   * `allowTodo` above spells out at length — a column the types swear is there
+   * and the query never asks for is a silent `undefined` at runtime.
+   */
+  readonly layoutGutter: number | null;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
@@ -1921,7 +1951,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               layout_aspect AS layoutAspect,
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
-              layout_landscape_background AS layoutLandscapeBackground
+              layout_landscape_background AS layoutLandscapeBackground,
+              layout_gutter AS layoutGutter
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

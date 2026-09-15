@@ -475,6 +475,40 @@ export const screens = sqliteTable(
      */
     layoutFollows: text('layout_follows'),
     layoutAspect: real('layout_aspect'),
+
+    /**
+     * How much room this wall leaves between the boxes on its canvas, as a
+     * step on the spacing scale (RFC 014 §4.4).
+     *
+     * `0` to `4`, resolving to `0`, `--s1` … `--s4` — the gutter measured
+     * between two adjacent boxes' *content*, which on a tiled canvas is twice
+     * the `.fw` padding and nothing else. It is one number for the whole
+     * screen rather than one per orientation, because how airy a wall reads is
+     * a fact about the wall and not about which way up it happens to be drawn.
+     *
+     * **Null is what the wall drew before this column existed**, and that has
+     * to stay the cheap case: `manifestEtag` hashes the serialisation, so this
+     * is spread into the manifest rather than emitted as
+     * `"layoutGutter": null`, exactly as the three millimetre columns above
+     * are. Null and an explicit `4` draw the identical wall — `.fw`'s padding
+     * is `calc(var(--s4) / 2)` today and the step-4 gutter is `--s4` — so the
+     * settings control can honestly check `Normal` on a wall that has never
+     * been asked, with nothing on the glass changing when it is saved.
+     *
+     * The top step is today's value and not a step airier, and that is the
+     * scale rather than an oversight: the gutter here is drawn *as the widget
+     * box's own padding*, and the spacing scale's second permission is that a
+     * widget box spends at most step 4, total, per axis. A step-5 gutter would
+     * be canvas spacing spent out of the widget's budget. Going airier than
+     * today means giving the canvas room the boxes do not own, which is a
+     * layout change rather than a spacing one.
+     *
+     * Read by the browser wall only. An e-paper panel draws its own metrics
+     * (`epaper/metrics.ts`, every number arithmetic on the panel) and never
+     * reads this — see the note at `PANEL_IGNORES` for why it is in neither
+     * honours table.
+     */
+    layoutGutter: integer('layout_gutter', { mode: 'number' }),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */
     layoutLandscapeAspect: real('layout_landscape_aspect'),
     /** Per-orientation canvas background as JSON; null is none (RFC 005 Phase 3). */

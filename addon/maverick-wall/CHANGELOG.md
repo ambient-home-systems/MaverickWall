@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**You can choose how much room a wall leaves between its widgets.** Every wall
+has spent the same amount of itself on the space around each widget, and on a
+small screen that space is a row of the agenda or a name in the month grid. A
+wall's **Layout** settings now carry *Room between widgets*: **Normal** is what
+your wall draws today, and **Snug**, **Tight**, **Very tight** and **None** hand
+that room back to what is on the wall. Nothing changes until you pick one, and
+e-paper panels size themselves and are not affected.
+
 **A theme you build can borrow a built-in's shape.** Colour has always been
 yours to pick in the theme builder, but a few things about how a wall reads —
 Almanac's italic date, Panels giving each widget its own card — were shape

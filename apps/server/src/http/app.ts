@@ -975,6 +975,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly panelWidthMm?: number | null;
     readonly panelHeightMm?: number | null;
     readonly readDistanceMm?: number | null;
+    /** The gutter step, when a household has chosen one (RFC 014 §4.4). */
+    readonly layoutGutter?: number | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -1088,6 +1090,9 @@ export function createApp(deps: AppDeps): Hono {
         panelWidthMm: screenLike.panelWidthMm ?? null,
         panelHeightMm: screenLike.panelHeightMm ?? null,
         readDistanceMm: screenLike.readDistanceMm ?? null,
+        // Handed over as it is stored; `buildManifest` is what decides whether
+        // it is a step at all, and spreads it away when it is not.
+        layoutGutter: screenLike.layoutGutter ?? null,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -1136,6 +1141,7 @@ export function createApp(deps: AppDeps): Hono {
       panelWidthMm: screen.panelWidthMm,
       panelHeightMm: screen.panelHeightMm,
       readDistanceMm: screen.readDistanceMm,
+      layoutGutter: screen.layoutGutter,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.

@@ -190,6 +190,36 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
  * endpoint at all.
  */
 
+/*
+ * **Where the canvas gutter is, and why it is in neither table** (RFC 014 §4.4).
+ *
+ * The identical argument as the to-do tick above, and it is worth stating
+ * rather than leaving to be re-derived, because the gutter looks far more like
+ * a `PANEL_IGNORES` entry than the tick does: it is spacing, a panel plainly
+ * does not draw it, and "a panel spaces itself" is exactly the sentence that
+ * table exists to put beside a control.
+ *
+ * It cannot go there. Both tables are keyed on **a widget's config** — the set
+ * is closed against `widgetConfigBody`, and `epaper-ink.test.ts` asserts of
+ * every entry that `SCHEMA_KEYS` contains its key, then proves the entry by
+ * *setting that key on a widget and watching no ink move*. `layout_gutter` is
+ * a column on `screens`, like `allow_todo`, `rotation` and `lan_only`: there
+ * is no widget config to set it on, so an entry would be a key no schema has
+ * on a table whose whole worth is that it is derived by rendering. Adding one
+ * turns that file red rather than satisfying it, and the closure check it
+ * would supposedly satisfy iterates `SCHEMA_KEYS` and never sees a screen
+ * column at all.
+ *
+ * What answers the household's question instead is the control's own page: the
+ * gutter row is on a *wall's* layout settings, and an e-paper panel's settings
+ * have never carried it — the same place alert dismissal, the chore tick and
+ * the to-do tick are answered. A panel's every measurement is arithmetic on
+ * the panel (`epaper/metrics.ts`, and `MARGIN` in particular is derived from
+ * its short side), so there is nothing for a wall's step to override even when
+ * that panel is *following* the wall: it draws its own frame, at its own
+ * geometry, from the same canvas.
+ */
+
 /**
  * The widget's options as the panel reads them: the wall's, with the ink lane
  * laid over the top.
