@@ -16,6 +16,32 @@
 
 ## Unreleased
 
+**Adding a wall or panel is two buttons, not two sentences.** `/admin/walls`
+used to bury "Pair a new wall" and "Add an e-paper wall" as links in a
+paragraph below all your cards. They're an action row at the top now: **Pair
+a browser wall**, **Add an e-paper panel**, **Approve a pairing code**.
+
+**"Last seen never" is gone.** Every wall and panel now says something you can
+act on. One nothing has used yet says *Not paired yet* with a **Pair it**
+link, or *Waiting for its device* with **Set up the device**. One that's
+working says *Drawing now*, or *Checked in N ago* for a panel. One that's gone
+quiet says how long, and from where.
+
+**With two or more walls, a line above the grid sums them up** — how many are
+drawing, how many are still waiting to be paired, how many have gone quiet —
+so you can tell at a glance whether anything needs a look.
+
+**Unpaired walls you kept for the record can now be opened and cleared.** They
+used to be a number in a sentence with nothing to click. Now they're a list:
+**Forget** removes one for good, **Forget all** clears them at once, and
+either one takes the wall's saved layout with it. A panel that was following a
+wall you've since forgotten now falls back to its own layout instead of going
+on drawing the one that's gone.
+
+**Walls sort the way you'd expect.** Names no longer sort every capitalised
+one ahead of every lowercase one — "attic tablet" sits next to "Kitchen" now,
+not at the very end of the list.
+
 ## 0.64.0
 
 **A calendar can have a username and a password.** Nextcloud, Baïkal, Radicale,
