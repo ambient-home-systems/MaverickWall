@@ -592,6 +592,35 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('carries an existing custom theme through the shape column with no shape set (0046)', () => {
+    // RFC 014 §4.3. The `shape` column is additive — one `ALTER TABLE ADD
+    // COLUMN`, never a recreate — so a theme saved before it existed must come
+    // out the other side with `shape: null`, which is exactly what
+    // `resolveTheme` already treats as the `board` sentinel: a theme that never
+    // chose a shape keeps drawing precisely what it drew before this column
+    // existed, with no ETag churn.
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    for (const entry of entries) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0021')) {
+        db.prepare(
+          `INSERT INTO themes (id, name, tokens, created_at, updated_at)
+           VALUES ('thm-1', 'Sunroom', '{"--bg":"#111111"}', ?, ?)`,
+        ).run(stamp, stamp);
+      }
+    }
+
+    expect(db.prepare(`SELECT id, name, shape FROM themes WHERE id = 'thm-1'`).get()).toEqual({
+      id: 'thm-1',
+      name: 'Sunroom',
+      shape: null,
+    });
+    db.close();
+  });
+
   it('carries an existing free-form canvas onto the portrait side (RFC 005)', () => {
     // A wall arranged before the two-canvas split has widgets with no
     // orientation column. The 0024 migration adds it with a `portrait` default,

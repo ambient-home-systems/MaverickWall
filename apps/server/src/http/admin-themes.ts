@@ -1,5 +1,13 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, escapeHtml, errorBlock, page, selectField, textField } from './html.js';
+import {
+  confirmDestroyPage,
+  escapeHtml,
+  errorBlock,
+  page,
+  segControl,
+  selectField,
+  textField,
+} from './html.js';
 import { destructive, section, tag } from './components.js';
 import { navModules, type AdminDeps } from './admin.js';
 import {
@@ -11,11 +19,13 @@ import {
   FONT_TOKENS,
   readTheme,
   readThemes,
+  themeShapeSchema,
   themeTokensSchema,
   themeUsage,
   themeUsageOf,
   updateTheme,
   type ThemeRow,
+  type ThemeShape,
   type ThemeTokens,
 } from '../api/themes.js';
 import { colour, oneOf, parse, text } from '../validation.js';
@@ -99,6 +109,22 @@ const RADII: readonly { readonly value: string; readonly label: string }[] = [
   { value: '1.2rem', label: 'Round' },
 ];
 
+/**
+ * The shape control's own words, in `THEME_SHAPES`' order (RFC 014 §4.3).
+ * Every value in that enum needs a label here — a theme's colours are its
+ * own, but its *shape* borrows a built-in's, and the label says which rules
+ * come along: Almanac's italic date, Panels' card borders, Blueprint's
+ * square corners, Swiss's flat rules with no cards at all.
+ */
+const SHAPE_OPTIONS: readonly { readonly value: ThemeShape; readonly label: string }[] = [
+  { value: 'neutral', label: 'None' },
+  { value: 'panels', label: 'Panels' },
+  { value: 'household', label: 'Household' },
+  { value: 'blueprint', label: 'Blueprint' },
+  { value: 'almanac', label: 'Almanac' },
+  { value: 'swiss', label: 'Swiss' },
+];
+
 const nameBody = text('A name for the theme', 60);
 
 export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
@@ -140,7 +166,10 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     if (!mode.ok) return c.html(themesPage(c, 'Choose dark or light.'), 400);
 
     const tokens = themeTokensSchema.parse(generateThemeTokens(seed.value, mode.value));
-    const created = createTheme(deps.db, { name: name.value, tokens });
+    // A generated theme starts with no shape borrowed — its whole point is a
+    // palette worked out from one colour, and picking a built-in's shape too
+    // is a second decision the household can make afterwards, in the builder.
+    const created = createTheme(deps.db, { name: name.value, tokens, shape: 'neutral' });
     // Land in the builder so the result is immediately previewable and editable.
     return savedRedirect(c, `/admin/themes/${encodeURIComponent(created.id)}`, 'theme-generated');
   });
@@ -204,10 +233,12 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   // ---- shaping -------------------------------------------------------------
 
-  /** Pull the name and every colour token out of a form body, then validate. */
+  /** Pull the name, every colour token and the shape out of a form body, then validate. */
   function shapeSubmission(
     body: Record<string, unknown>,
-  ): { ok: true; value: { name: string; tokens: ThemeTokens } } | { ok: false; message: string } {
+  ):
+    | { ok: true; value: { name: string; tokens: ThemeTokens; shape: ThemeShape } }
+    | { ok: false; message: string } {
     const name = parse(nameBody, body['name']);
     if (!name.ok) return { ok: false, message: name.message };
 
@@ -225,7 +256,20 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     if (!tokens.success) {
       return { ok: false, message: 'Every colour needs to be a valid swatch, and the corners a preset.' };
     }
-    return { ok: true, value: { name: name.value, tokens: tokens.data } };
+
+    // The control always renders one segment checked (`segControl` seeds
+    // 'neutral' when nothing is stored yet), so an absent field means only a
+    // hand-built or pre-phase request — read the same as 'neutral' rather
+    // than refused. A field that *is* present and not one of the six values
+    // is refused: rule five is reject, not coerce.
+    const shapeField = body['shape'];
+    const shape =
+      shapeField === undefined
+        ? { ok: true as const, value: 'neutral' as const }
+        : parse(themeShapeSchema, shapeField);
+    if (!shape.ok) return { ok: false, message: shape.message };
+
+    return { ok: true, value: { name: name.value, tokens: tokens.data, shape: shape.value } };
   }
 
   // ---- pages ---------------------------------------------------------------
@@ -364,6 +408,11 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     const nameVal =
       typeof values?.['name'] === 'string' ? (values['name'] as string) : (theme?.name ?? '');
     const currentRadius = val('--radius', DEFAULT_TOKENS['--radius']);
+    const submittedShape = values?.['shape'];
+    const currentShape: ThemeShape =
+      typeof submittedShape === 'string' && themeShapeSchema.safeParse(submittedShape).success
+        ? (submittedShape as ThemeShape)
+        : (theme?.shape ?? 'neutral');
 
     const colourField = (token: (typeof TOKEN_HELP)[number]): string =>
       `<div class="tf-row">` +
@@ -453,6 +502,21 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
           }) +
             fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
             fontField('--f-sans', 'Body', 'Event titles and the everyday text.'),
+        ) +
+
+        section(
+          'Shape',
+          'Colours are yours, but a few rules in the wall’s stylesheet are shape ' +
+            'rather than colour — Almanac italicises the date and drops the month to a ' +
+            'ledger look, Panels gives each widget a card, Blueprint squares every ' +
+            'corner, Swiss draws flat rules with no cards at all. Borrow one, or keep ' +
+            'None for the plain default this theme has always drawn.',
+          segControl({
+            label: 'Shape',
+            name: 'shape',
+            options: SHAPE_OPTIONS,
+            selected: currentShape,
+          }),
         ) +
 
         `<button type="submit">${editing ? 'Save theme' : 'Create theme'}</button>` +

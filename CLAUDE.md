@@ -464,19 +464,27 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3326 tests passing**, over 237 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 495 · server 2364 over 192 files. CI runs the whole suite
-and then the README's one-liner against a clean volume on Linux, which is the
-only place the install has ever been wrong. Measured on a clean run rather than
-added to the previous figure, which is the discipline the paragraph below spells
-out at length for the *other* count on this page and which applies to this one
-identically: RFC 016 phase 0's two new server suites were +10 between them, and
-phase 1's two new files plus the assertions added to three existing ones are +11
-— an arithmetic that happened to agree would prove nothing, because the way
-these numbers have always gone wrong is somebody incrementing rather than
-running. RFC 016 phase 2 is +1 and one file: the budget measurement is what
-survived it (the paragraph on it, below, says why), and the twenty-two
-assertions that came with the previews went with them — measured on the tree
+**3344 tests passing**, over 239 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2382 over 194 files (one more — a real
+`git fetch --tags --unshallow` — clears `changelog-shape.test.ts`'s own refusal
+below and brings that to 2383 clean). CI runs the whole suite and then the
+README's one-liner against a clean volume on Linux, which is the only place
+the install has ever been wrong. Measured on a clean run rather than added to
+the previous figure, which is the discipline the paragraph below spells out at
+length for the *other* count on this page and which applies to this one
+identically — re-run in full for RFC 014 §4.3 (a custom theme choosing a
+shape, `browser-theme-shape.test.ts` new, four existing files touched), with a
+real Chromium and against calendar, core and display too, rather than assumed
+unaffected. The file total does not reconcile to "one new file" against the
+figure this paragraph carried before that phase, which is the paragraph's own
+warning arriving on schedule rather than a fault in the arithmetic here: RFC
+016 phase 0's two new server suites were +10 between them, and phase 1's two
+new files plus the assertions added to three existing ones are +11 — an
+arithmetic that happened to agree would prove nothing, because the way these
+numbers have always gone wrong is somebody incrementing rather than running.
+RFC 016 phase 2 is +1 and one file: the budget measurement is what survived it
+(the paragraph on it, below, says why), and the twenty-two assertions that
+came with the previews went with them — measured on the tree
 that has them, 2386 over 195, and on the tree that does not, which is this one.
 
 **A count taken with a browser depends on which browser, and on this tree the
@@ -6506,6 +6514,59 @@ panel reaches Home Assistant — is an image, which the directive does not
 govern. **Still unproven where it counts:** nobody has looked at a wall under
 this header on a real tablet or a real supervisor, which by this project's
 history is where the next fault in it surfaces.
+
+**A custom theme can borrow a built-in's shape now, and the display bundle did
+not need to be told (RFC 014 §4.3).** `display.css` carries a few rules that are
+shape rather than colour — Almanac's 400-weight date numeral, Panels' card
+treatment on `.now`/`.next`/`.horizon`/`.wx`/`.house` — keyed on `data-theme`,
+and a custom theme's `data-theme` was pinned to the neutral `board` sentinel
+unconditionally: `resolveTheme` always returned it, whatever the household's
+own theme might otherwise have wanted to borrow. `themes.shape` is a nullable
+column (migration `0046`, an `ALTER TABLE ADD COLUMN` and not a recreate, the
+`0009` shape everything touching that table has to be), holding one of
+`'neutral' | 'panels' | 'household' | 'blueprint' | 'almanac' | 'swiss'` —
+`themeShapeSchema`, a Zod enum, refuses anything else. `resolveTheme` now
+returns the stored key in place of the sentinel when one was chosen, so a
+custom theme's own colours travel exactly as they always did while its
+`data-theme` borrows a built-in's shape rules — and `apps/display` changes not
+at all, because `applyTheme` has set `data-theme` to whatever the manifest
+sends since before this phase existed.
+
+**`null` and an explicit `'neutral'` are one answer, on purpose.** A theme
+saved before the column existed reads a genuine `NULL`; a household who opens
+the builder today and leaves the new control on its first option writes the
+literal string. Both collapse to the same `board` sentinel at resolve time, so
+a theme nobody has touched since this shipped draws exactly what it drew
+before and its manifest ETag does not churn — `migration-upgrade.test.ts`
+carries a pre-existing custom theme through the migration and asserts `shape`
+comes out `null`, and `themes.test.ts` asserts the two readings resolve
+identically.
+
+**The builder's control is `segControl`, and it had to not be a `<button>`.**
+`apps/server/src/http/html.ts` already had `.seg`, the segmented-button styling
+`admin-modules.ts`'s per-click Alerts control uses — one submit per segment,
+posted the instant it is clicked. That is wrong here: the shape choice sits
+inside the same form as eleven colours and a radius, and a segment that posted
+alone would discard whatever the household was mid-editing, the Weather
+screen's own fault (this document, above) one control further along. So
+`segControl` is a radio per segment wrapped in a `<label>`, hidden the way
+`.themecard`'s radio is, with `:has(input:checked)` standing in for the
+`.on` class a `<button>` reads server-side — the `.seg` rules were widened to
+cover both shapes rather than duplicated. The live preview
+(`apps/display/src/theme-editor.ts`) reads the checked segment on `change` and
+re-themes the iframe immediately, the same event a colour input already fires.
+
+**Verified by measurement, the way every shape claim in this project is.**
+`browser-theme-shape.test.ts` pairs a real wall on a custom theme with
+`shape: 'almanac'` and reads `.dr-num`'s computed `font-weight` off it (400,
+against the unshaped 700), pairs another with `shape: 'panels'` and reads the
+reused calendar section's computed background and corner radius, and pairs a
+third pair — one theme with an explicit `'neutral'`, one with a raw `NULL`
+column — and asserts their computed styles are identical. Reverting
+`resolveTheme`'s change back to the constant `board` sentinel was checked to
+turn both the almanac and the panels case red, and to leave the neutral-parity
+case green, which is the sentence this paragraph exists to prove: a theme that
+never asked for a shape is unaffected either way.
 
 ---
 
