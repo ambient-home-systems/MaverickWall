@@ -330,6 +330,13 @@
       "when": 1789473108885,
       "tag": "0046_blue_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1789476254592,
+      "tag": "0047_organic_rockslide",
+      "breakpoints": true
     }
   ]
 }

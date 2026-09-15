@@ -1,10 +1,14 @@
 # RFC 014 — Styling and layout flexibility
 
-Status: **proposed; §7 precondition 1 and §4.3 are built** — the display
-serves a Content-Security-Policy (`apps/server/src/http/app.ts`,
-`apps/server/test/display-csp.test.ts`), and a custom theme can name a shape
-(`apps/server/src/api/themes.ts`'s `resolveTheme`,
-`apps/server/test/browser-theme-shape.test.ts`); nothing else here is built ·
+Status: **proposed; §7 precondition 1, §4.3 and the gutter half of §4.4 are
+built** — the display serves a Content-Security-Policy
+(`apps/server/src/http/app.ts`, `apps/server/test/display-csp.test.ts`), a
+custom theme can name a shape (`apps/server/src/api/themes.ts`'s
+`resolveTheme`, `apps/server/test/browser-theme-shape.test.ts`), and a wall
+names its own gutter step (`screens.layout_gutter`, migration `0047`,
+`apps/server/src/gutter.ts`, `apps/display/src/gutter.ts`,
+`apps/server/test/browser-canvas-gutter.test.ts`); §4.4's *default widget
+style* waits on §4.1, and nothing else here is built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
@@ -224,7 +228,7 @@ alongside the borrowed shape, and a theme with no shape chosen measured
 byte-for-byte identical to one carrying a genuine pre-phase `NULL` column.
 Days of work, as the estimate said, and a real gap closed.
 
-### 4.4 Canvas-level styling
+### 4.4 Canvas-level styling — the gutter step is **built**
 
 Two things a household reaches for that are about the wall rather than a
 widget: a **gutter step** between boxes (today the canvas spends up to `--s5`
@@ -233,6 +237,67 @@ the lane in 4.1 inherits from, so a household who wants every widget in
 Fraunces sets it once. Both are one row on the screen's layout settings, both
 are the existing scale, and both fall inside the "no absolute px" rule by
 construction.
+
+**The gutter step shipped, and the draft above was wrong about the top of the
+ladder.** It says the canvas "spends up to `--s5`". It does not: the boxes
+tile, so the only room between two adjacent widgets is twice the `.fw` padding
+and nothing else, and that padding is `calc(var(--s4) / 2)` — a gutter of
+exactly `--s4`. The `--s5` in the draft is the spacing scale's *canvas*
+permission, which is a ceiling on what a canvas may spend and not a
+description of what this one does. So the ladder is five steps down to
+nothing, `0` through `4` mapping to `0`, `--s1` … `--s4`, and the top of it is
+where every wall already stood.
+
+It stops there for a reason rather than for tidiness. The gutter is drawn as
+the *widget box's own padding*, and the scale's second permission is that a
+widget box spends at most step 4, total, per axis — so a step-5 gutter would
+be canvas spacing taken out of the widget's budget, on a fixed layout with no
+scrollbar where chrome competes with content for every pixel. **Airier than
+today is therefore a layout change and not a spacing one**: it means room the
+boxes do not own, which on a canvas whose boxes tile means they stop tiling.
+That is a separate decision and is deliberately not this; what shipped is the
+tighter half, which is the half that gives pixels back to what is drawn.
+
+What it is:
+
+- `screens.layout_gutter`, nullable, migration `0047` — generated and read as
+  a single `ALTER TABLE ADD COLUMN`, the `0009` shape. **Null is what the wall
+  drew before the column existed**, spread out of the manifest rather than
+  emitted as a null, so a household who never opens the setting sends the
+  bytes they sent before and no stored ETag churns. Out of the ladder is
+  refused rather than clamped, which is `physicalWall`'s rule one setting
+  along.
+- One custom property, `--fw-gutter`, written on the layout by `renderFreeform`
+  and read by exactly one rule: `.fw`'s `padding: calc(var(--fw-gutter,
+  var(--s4)) / 2)`. The fallback is the whole of rule nine here — an absent
+  property computes to the value every wall has always drawn, and
+  `renderFreeform` *removes* the property rather than writing a default, so
+  the two directions are one mechanism. No other rule in the stylesheet
+  changed.
+- `segControl` on the wall's Layout settings, riding the settings form's one
+  Save. One segment is always checked, and on a wall that has never been asked
+  it is `Normal` — null and step 4 are the same pixels, so that is honest
+  rather than a default wearing a different hat (RFC 015 §3.5's argument about
+  the theme cards, one row along).
+- **In neither honours table, and the note is at `PANEL_IGNORES`.** An entry
+  looks right and would turn `epaper-ink.test.ts` red: both tables are keyed
+  on a widget's config, closed against `widgetConfigBody`, and every entry is
+  proved by setting its key on a widget and watching no ink move. A screen
+  column has no widget to be set on — the `allow_todo` argument verbatim. A
+  panel's every measurement is arithmetic on the panel, so there is nothing
+  for a wall's step to override even when the panel is following that wall.
+
+Verified as §10 asks: `browser-canvas-gutter.test.ts` measures the gap between
+two adjacent widgets' **content** edges on a real paired Classic wall at
+1080x1920 — zero at step 0, and `--s4` at step 4 read off a probe planted in
+the same layout so every `var()` resolves through the live cascade — with no
+run under the floor at either end, and a block of its own for the wall nobody
+has asked, which is the one the `.fw` fallback exists for. `wall-density` and
+`browser-classic-proportions` were run on a clean worktree of `main` and on
+the branch at the same pinned hour: with the column null every `BASELINE`
+number is unmoved. Six mutations were checked and all six are red, including
+the fallback reverted, which reddens the unasked-wall block alone and leaves
+both ends of the ladder green.
 
 ## 5. Layout — four steps
 

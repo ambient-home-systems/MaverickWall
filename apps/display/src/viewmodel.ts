@@ -400,6 +400,17 @@ export interface DisplayModel {
    */
   readonly allowTodo: boolean;
   /**
+   * How much room this wall leaves between its widgets, as a step on the
+   * spacing scale (RFC 014 §4.4), or `undefined` when the household has not
+   * chosen — which is most walls, and draws what the wall always drew.
+   *
+   * Carried on the model rather than on the canvas handed to `renderFreeform`
+   * because it is a fact about the *screen*, like `allowDismiss` above it: one
+   * answer for both orientations, since how airy a wall reads does not depend
+   * on which way up it is hung.
+   */
+  readonly layoutGutter: number | undefined;
+  /**
    * A sentence about a tick that did not happen, by widget id (RFC 012 §7.4).
    *
    * The one piece of this model that is not the manifest. A draw rebuilds the
@@ -1429,6 +1440,9 @@ export function buildModel(options: BuildOptions): DisplayModel {
     allowDismiss: manifest.screen?.allowDismiss === true,
     allowChores: manifest.screen?.allowChores === true,
     allowTodo: manifest.screen?.allowTodo === true,
+    // Straight off the document: `gutterValue` is the one place a step becomes
+    // a length, and it refuses anything this bundle does not know.
+    layoutGutter: manifest.screen?.layoutGutter,
     todoNotices: options.todoNotices ?? {},
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,

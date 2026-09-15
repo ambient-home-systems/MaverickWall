@@ -196,6 +196,13 @@ export interface Manifest {
     readonly panelWidthMm?: number;
     readonly panelHeightMm?: number;
     readonly readDistanceMm?: number;
+    /**
+     * How much room this wall leaves between its widgets, as a step on the
+     * spacing scale (RFC 014 §4.4). Absent on a wall whose household has not
+     * chosen — which is every wall until one does — and on a server older than
+     * the setting; both draw the spacing the wall always drew.
+     */
+    readonly layoutGutter?: number;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

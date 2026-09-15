@@ -15,6 +15,7 @@ import {
   type WeekScheme,
 } from '@maverick-wall/core';
 
+import { canvasGutterStep } from '../gutter.js';
 import { physicalWall } from '../wall-sizes.js';
 
 /**
@@ -703,6 +704,25 @@ export interface Manifest {
     readonly panelWidthMm?: number;
     readonly panelHeightMm?: number;
     readonly readDistanceMm?: number;
+    /**
+     * How much room this wall leaves between the widgets on it, as a step on
+     * the spacing scale — `0` (touching) to `4` (what every wall drew before
+     * this field existed). RFC 014 §4.4.
+     *
+     * **Optional, and absent when the household has not chosen**, which is the
+     * `panelWidthMm` argument above rather than a second convention:
+     * `manifestEtag` hashes the serialisation, so a `"layoutGutter": null` on
+     * every wall in the world would churn every stored ETag at one image pull
+     * for a setting nobody opened. Absent and `4` draw the identical wall —
+     * `.fw`'s padding is `calc(var(--s4) / 2)` either way — so a household who
+     * saves the setting at its default moves their ETag once and nothing on
+     * the glass.
+     *
+     * The display reads it through `gutterValue`, which answers `undefined`
+     * for anything outside the ladder and so removes the property rather than
+     * writing a value it cannot mean.
+     */
+    readonly layoutGutter?: number;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -896,6 +916,8 @@ export interface BuildManifestInput {
     readonly panelWidthMm?: number | null;
     readonly panelHeightMm?: number | null;
     readonly readDistanceMm?: number | null;
+    /** The gutter step off the row; null until the household chooses one. */
+    readonly layoutGutter?: number | null;
   };
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
@@ -1290,6 +1312,9 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   const pick = (screenValue: string | null | undefined): string | null =>
     screenValue === undefined || screenValue === null || screenValue === '' ? null : screenValue;
 
+  // Refused rather than clamped, and resolved once — see the spread below.
+  const gutterStep = canvasGutterStep(input.screen?.layoutGutter);
+
   const activeTheme = pick(input.screen?.theme) ?? STAND_IN_THEME;
   const daytimeTheme = pick(input.screen?.daytimeTheme);
   const daytimeStartsAt = pick(input.screen?.daytimeStartsAt);
@@ -1360,6 +1385,14 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         input.screen?.panelHeightMm,
         input.screen?.readDistanceMm,
       ) ?? {}),
+      /*
+       * Spread and refused on the same argument as the three above it, one
+       * setting along: absent has to be *identical* to the document this was
+       * before the column existed, and a step outside the ladder draws the
+       * spacing the household had yesterday rather than a confident guess at
+       * which end of it they meant.
+       */
+      ...(gutterStep === undefined ? {} : { layoutGutter: gutterStep }),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

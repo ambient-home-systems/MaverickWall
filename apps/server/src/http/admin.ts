@@ -130,8 +130,9 @@ import { normaliseMasterKeyBytes } from '../secrets/keyring.js';
 import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { ago, presence, presenceDot } from './presence.js';
+import { canvasGutterStep, GUTTER_DEFAULT_STEP, GUTTER_LABELS } from '../gutter.js';
 import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, feedCredentialFields, icon,
-  networkAccessDisclosure, networkAccessSuggestion, page, saveRow,
+  networkAccessDisclosure, networkAccessSuggestion, page, saveRow, segControl,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
 import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
 import { readSaved, savedRedirect, templateAppliedKey } from './saved.js';
@@ -355,6 +356,15 @@ const screenBody = z.object({
   panel_width_mm: optionalText(6),
   panel_height_mm: optionalText(6),
   read_distance_mm: optionalText(6),
+  /*
+   * How much room between the widgets, as a step on the spacing scale (RFC 014
+   * §4.4). One digit; the range is checked in the handler beside the theme and
+   * zone checks, because a step outside the ladder is a broken client rather
+   * than a shape error. Optional in shape so a page cached from before this
+   * row existed still saves — it posts no step and the handler leaves the
+   * column exactly as it found it.
+   */
+  layout_gutter: optionalText(1),
 });
 
 /**
@@ -2705,10 +2715,31 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * System has the same pair; getting only one half of it is how this
      * survived there once already.
      */
-    const screenZone =
-      readAdminScreens(deps.db).find((candidate) => candidate.id === id)?.timezone ?? null;
+    const stored = readAdminScreens(deps.db).find((candidate) => candidate.id === id);
+    const screenZone = stored?.timezone ?? null;
     if (timezone !== '' && timezone !== screenZone && !offeredTimezones().includes(timezone)) {
       return c.html(displayDetailPage(id, 'Choose a timezone from the list.', c), 400);
+    }
+
+    /*
+     * How much room between the widgets (RFC 014 §4.4).
+     *
+     * Absent is **what this wall already has**, never a default: the control
+     * always renders one segment checked, so the only body that reaches here
+     * without a step is one a browser built from a page rendered before this
+     * row existed — and a stale tab saving a timezone must not write a spacing
+     * nobody chose. Out of the ladder is a refusal rather than a clamp, the
+     * rule `physicalWall` states one group up, and it is reachable only by
+     * hand: every value the form offers is in range.
+     */
+    const gutterSaid = (shaped.value.layout_gutter ?? '').trim();
+    let layoutGutter: number | null = stored?.layoutGutter ?? null;
+    if (gutterSaid !== '') {
+      const step = canvasGutterStep(Number(gutterSaid));
+      if (step === undefined) {
+        return c.html(displayDetailPage(id, 'Choose how much room to leave between widgets.', c), 400);
+      }
+      layoutGutter = step;
     }
 
     // Density overrides: empty follows the household default, a number is
@@ -2772,6 +2803,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         panelWidthMm: size.widthMm,
         panelHeightMm: size.heightMm,
         readDistanceMm: size.distanceMm,
+        layoutGutter,
       })
     ) {
       return c.redirect('/admin/walls', 302);
@@ -4420,7 +4452,33 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<span class="arow-text">Start from a template` +
           `<small>Replace this wall's layout with one we ship, or copy another wall's.</small></span>` +
           `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
-          `</div>`,
+          `</div>` +
+          /*
+           * How much room between the widgets (RFC 014 §4.4).
+           *
+           * `segControl` rather than a `<select>`, because five steps of one
+           * scale are a thing to compare at a glance rather than a list to
+           * read — and rather than five submit buttons, because this rides
+           * inside the settings form's one Save and a segment that posted
+           * alone would discard whatever else was mid-edit (the Weather
+           * screen's own fault, which `segControl`'s docstring records).
+           *
+           * **One segment is always checked, and on a wall that has never been
+           * asked it is the one that draws what the wall is drawing.** Null and
+           * step 4 are the same pixels, so this is honest rather than a
+           * preselected default standing in for a choice — a grid with nothing
+           * checked would read as "this wall has no spacing", which is RFC 015
+           * §3.5's argument about the theme cards one row along.
+           */
+          segControl({
+            label: 'Room between widgets',
+            name: 'layout_gutter',
+            hint:
+              'How much of the wall goes to the space around each widget. ' +
+              'Normal is what this wall draws today; tighter gives the room back to what is on it.',
+            selected: String(screen.layoutGutter ?? GUTTER_DEFAULT_STEP),
+            options: GUTTER_LABELS.map((label, step) => ({ value: String(step), label })),
+          }),
       ) +
       wsetGroup(
         'Theme',
