@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**Your wall screens now tell the browser they are only allowed to load from
+your own box.** Nothing about the calendar changes, and there is nothing to
+turn on — it is a second lock on a door that was already shut. Maverick Wall
+has never fetched a font, a script or a picture from anywhere but your own
+server; now the browser on the wall refuses to, even if something slipped
+through. A tablet in your kitchen cannot be talked into fetching anything from
+the internet, and a wall screen can no longer be shown inside somebody else's
+web page.
+
 ## 0.65.0
 
 **Adding a wall or panel is two buttons, not two sentences.** `/admin/walls`

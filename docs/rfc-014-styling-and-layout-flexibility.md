@@ -1,6 +1,9 @@
 # RFC 014 — Styling and layout flexibility
 
-Status: **proposed; nothing built** · Owner: — · First drafted 2026-09-15 ·
+Status: **proposed; §7 precondition 1 is built** — the display serves a
+Content-Security-Policy (`apps/server/src/http/app.ts`,
+`apps/server/test/display-csp.test.ts`); nothing else here is built ·
+Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
 `apps/server/src/api/themes.ts`, `apps/display/src/render.ts`
@@ -64,10 +67,13 @@ box and chooses a form is rewritten as the measurements improve. A CSS block
 written against `.hz-num` freezes that DOM on the day the first household saves
 one, and every later refactor becomes "somebody's kitchen wall changed".
 
-Two more facts bound the design rather than shape it. **The display serves no
-Content-Security-Policy.** Rule three holds today because nothing in the bundle
-fetches from anywhere but its own origin — a property of the code, not of a
-header. And **the e-paper panel draws from config, never from CSS.**
+Two more facts bound the design rather than shape it. ~~**The display serves no
+Content-Security-Policy.**~~ **It does now** — §7's precondition 1, built
+ahead of the rest of this RFC because it is worth having on its own. Rule three
+was a property of the code (nothing in the bundle fetches from anywhere but its
+own origin) and is now also a property of the browser. The code is still where
+it is *enforced*; the header is the second mechanism, not a replacement for the
+first. And **the e-paper panel draws from config, never from CSS.**
 `epaper/honours.ts` states per key what a panel honours and what it ignores; a
 CSS block would be an ignored key by construction, and a panel following a
 styled wall would draw the unstyled one.
@@ -306,15 +312,35 @@ block per wall and one per widget, on an **Advanced** screen, with these
 properties. None is optional and all three preconditions ship before the
 textarea does.
 
-**Precondition 1 — a Content-Security-Policy on the display.** `default-src
-'self'; img-src 'self' data:; font-src 'self'; style-src 'self'
-'unsafe-inline'; connect-src 'self'` on every `/d/*` document, with a test in
-the shape of `admin-origins.test.ts`. Worth doing on its own: it turns rule
-three from a property of the code into a property of the browser, and it is
-what makes the sanitiser below defence in depth rather than the only defence.
-`'unsafe-inline'` is needed for the inline styles the renderer already writes;
-the household's block is inserted through the CSSOM rather than as a `<style>`
-element, which CSP does not govern, so it needs no relaxation of its own.
+**Precondition 1 — a Content-Security-Policy on the display. Built.** It
+turns rule three from a property of the code into a property of the browser,
+and it is what makes the sanitiser below defence in depth rather than the only
+defence.
+
+What shipped is tighter than this paragraph asked for, and the difference is
+the useful part. The policy is
+
+```
+default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
+font-src 'self'; connect-src 'self' ws://<host> wss://<host>;
+frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
+```
+
+on `/`, `/pair`, `/d/*`, `/assets/*` and `/sw.js` — every document and asset a
+wall loads, and nothing in the admin. **`'unsafe-inline'` turned out not to be
+needed**, which this paragraph asserted it was. The claim under it was right —
+the CSSOM is not governed by CSP — and its conclusion drew the wrong
+consequence: the renderer writes *every* style through that same door
+(`element.style.setProperty`, `element.style.x = …`), not only the household's
+future block, and the wall's markup carries no `style` attribute and no
+`<style>` element for `style-src` to have an opinion about. Measured rather
+than reasoned: `apps/server/test/display-csp.test.ts` draws the shipped Classic
+wall, the pairing form, the offline shell, the theme builder's preview iframe
+and an image widget from `/d/media` in a real Chromium with a
+`securitypolicyviolation` listener armed before each navigation, and counts
+zero. So the household's block needs no relaxation of its own **and neither
+does anything already on the wall** — which is a stronger starting point for
+precondition 2 than this RFC expected to have.
 
 **Precondition 2 — a real parser and an allowlist, rejecting.** Parsed on the
 server with `css-tree` or `postcss` at save time, never at render time.
@@ -353,7 +379,7 @@ cannot do.
 | Rule | Where it bites | How it holds |
 |---|---|---|
 | 2 (ES2019) | Scoping | Selector prefixing, not `@scope`; no `:has()` in any generated rule |
-| 3 (no third-party origins) | The CSS block | CSP on `/d/*` first; `url()`, `@import`, `@font-face` refused at save |
+| 3 (no third-party origins) | The CSS block | CSP on the display — **built**, and wider than `/d/*`: `/`, `/pair`, `/d/*`, `/assets/*`, `/sw.js`; `url()`, `@import`, `@font-face` still refused at save |
 | 5 (Zod at every boundary) | Every new key | Enums and bounded numbers; the lane is `themeTokensSchema` picked; the block is parsed, never regex-checked |
 | 6 (no secrets in logs) | Unchanged | No new string reaches a log |
 | 9 (never brick) | The lane's `scale`; the block | Bounds on `scale`; safe mode; chrome never under the block; a refused block is a 400, not a blank wall |
