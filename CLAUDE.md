@@ -464,19 +464,27 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3326 tests passing**, over 237 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 495 · server 2364 over 192 files. CI runs the whole suite
-and then the README's one-liner against a clean volume on Linux, which is the
-only place the install has ever been wrong. Measured on a clean run rather than
-added to the previous figure, which is the discipline the paragraph below spells
-out at length for the *other* count on this page and which applies to this one
-identically: RFC 016 phase 0's two new server suites were +10 between them, and
-phase 1's two new files plus the assertions added to three existing ones are +11
-— an arithmetic that happened to agree would prove nothing, because the way
-these numbers have always gone wrong is somebody incrementing rather than
-running. RFC 016 phase 2 is +1 and one file: the budget measurement is what
-survived it (the paragraph on it, below, says why), and the twenty-two
-assertions that came with the previews went with them — measured on the tree
+**3344 tests passing**, over 239 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2382 over 194 files (one more — a real
+`git fetch --tags --unshallow` — clears `changelog-shape.test.ts`'s own refusal
+below and brings that to 2383 clean). CI runs the whole suite and then the
+README's one-liner against a clean volume on Linux, which is the only place
+the install has ever been wrong. Measured on a clean run rather than added to
+the previous figure, which is the discipline the paragraph below spells out at
+length for the *other* count on this page and which applies to this one
+identically — re-run in full for RFC 014 §4.3 (a custom theme choosing a
+shape, `browser-theme-shape.test.ts` new, four existing files touched), with a
+real Chromium and against calendar, core and display too, rather than assumed
+unaffected. The file total does not reconcile to "one new file" against the
+figure this paragraph carried before that phase, which is the paragraph's own
+warning arriving on schedule rather than a fault in the arithmetic here: RFC
+016 phase 0's two new server suites were +10 between them, and phase 1's two
+new files plus the assertions added to three existing ones are +11 — an
+arithmetic that happened to agree would prove nothing, because the way these
+numbers have always gone wrong is somebody incrementing rather than running.
+RFC 016 phase 2 is +1 and one file: the budget measurement is what survived it
+(the paragraph on it, below, says why), and the twenty-two assertions that
+came with the previews went with them — measured on the tree
 that has them, 2386 over 195, and on the tree that does not, which is this one.
 
 **A count taken with a browser depends on which browser, and on this tree the
