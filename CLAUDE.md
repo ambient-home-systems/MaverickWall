@@ -464,15 +464,17 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3314 tests passing**, over 234 files. calendar 153 (plus 1 skipped) ·
-core 314 · display 495 · server 2352 over 189 files. CI runs the whole suite
+**3325 tests passing**, over 236 files. calendar 153 (plus 1 skipped) ·
+core 314 · display 495 · server 2363 over 191 files. CI runs the whole suite
 and then the README's one-liner against a clean volume on Linux, which is the
 only place the install has ever been wrong. Measured on a clean run rather than
 added to the previous figure, which is the discipline the paragraph below spells
 out at length for the *other* count on this page and which applies to this one
-identically: RFC 016 phase 0's two new server suites are +10 between them, and an
-arithmetic that happened to agree would prove nothing, because the way these
-numbers have always gone wrong is somebody incrementing rather than running.
+identically: RFC 016 phase 0's two new server suites were +10 between them, and
+phase 1's two new files plus the assertions added to three existing ones are +11
+— an arithmetic that happened to agree would prove nothing, because the way
+these numbers have always gone wrong is somebody incrementing rather than
+running.
 
 **A clone with no tags fails one of them and the message says why**, which is
 worth knowing before reading a red suite as a regression.
@@ -533,8 +535,8 @@ regression somebody had blessed by raising a number. The
 21.7px itself is a real product fault and is still not fixed; it is written up
 below and filed, because no one-line cure survives the geometry.
 
-**232 of the server's tests fail without a real Chromium and say so**, across
-37 files, which is worth knowing before reading a red suite as a regression. A
+**234 of the server's tests fail without a real Chromium and say so**, across
+38 files, which is worth knowing before reading a red suite as a regression. A
 correct run on this tree with a browser present is **green**, which the
 sentence here could not say for one release. Both numbers are **measured** — the server
 suite run with `PLAYWRIGHT_BROWSERS_PATH` pointed at nothing — rather than
@@ -556,12 +558,16 @@ it is the only thing that could have said so. **And it read 227 over 36 while
 the truth was 232 over 37**, re-measured for RFC 015 phase 3's one browser file
 — which carries four tests, so the arithmetic predicted 231 and the reading said
 232. One off, again, and in the same direction, which is what a paragraph that
-has been wrong five times should expect of itself. Every one of the 37 was
+has been wrong five times should expect of itself. **It read 232 over 37 while
+the truth is 234 over 38**, re-measured for RFC 016 phase 1's one browser file,
+which carries two tests — the one time so far the arithmetic and the reading
+have agreed, which proves nothing about the arithmetic and is recorded so the
+next reader does not take agreement for a method. Every one of the 38 was
 checked to be the browser's own sentence rather than a real failure hiding in
 the count — no assertion, timeout or type error anywhere in the run — which is
 the other half of the method and the half an incrementer skips. **15 of them are
-reported as skipped rather than failed**, which is why 232 + 2095 does not reach
-2342 and is not a sixth drift: two files ask for the browser in a `beforeAll`,
+reported as skipped rather than failed**, which is why 234 + 2114 does not reach
+2363 and is not a sixth drift: two files ask for the browser in a `beforeAll`,
 so the hook is what goes red and vitest marks the tests under it skipped. The
 files are red either way — this is the arithmetic of the report rather than a
 test quietly opting out, which is the distinction the sentence after this one
@@ -6272,6 +6278,84 @@ hour-dependent in one direction — a stamp later than the pinned hour is a
 negative age, which is inside every window — so reverting the fix reddens the
 page only while the runner is behind eleven in London, and the stamp at any
 hour. Eleven mutations checked across the three files, all red.
+
+**The Walls list does the two things a household comes to it for, and it did
+both worst (RFC 016 phase 1).** Both doors were `<a class="link">` inside a
+`<p class="hint">` under every card, set in the body role in the middle of the
+prose explaining them; five of six status lines read "Last seen never"; the
+largest number on the page — eighteen revoked walls against six shown, on the
+household it was reviewed against — was prose with nothing to press; and the
+rarest action, approving a device-flow code, was a whole section at the foot.
+The list moved out of `admin.ts` first, into `http/admin-walls.ts` on the
+`admin-ha.ts` precedent, in its own commit with nothing changed, so the diff
+that matters is one somebody can read. Then: the two doors and the rare third
+are three buttons in a row under the app bar, at the three emphases the sheet
+already declares (the approve form is a ghost link to the page that already
+draws it); every card reads `presence()` and nothing else for its state, and a
+card for a wall nothing has used takes the warn tone — the edge, never the
+ground — and the one thing to do about it, per kind, as a link to the page
+where the act lives: **Pair it** for a browser wall, **Set up the device** for
+a panel; one quiet summary line above the grid is that same function counted,
+on two walls or more and never as stat tiles; and the revoked walls are a
+closed `<details>` under the grid, each a `listRow` with a Forget, and a
+Forget all.
+
+**The card stopped being a bare `<a>`, and one shipped assertion changed its
+letter for it.** A control inside a link is invalid HTML and an element the
+keyboard cannot reach, so the card is `card()`'s `<article>` with the name's
+own link stretched over it by `::after` — `listRow`'s anatomy one component
+along, with the same coupling: the control paints over the overlay unaided
+because `button,.btn` is already `position:relative`. `admin-walls-list`'s
+"no `<button>` in the grid" is now "at most one trailing control on a card,
+only on a not-yet-paired one, from a fixed set of two", and its docstring says
+why the letter moved and the intent did not. `browser-walls-list.test.ts` taps
+the centre of Pair it at 1280 and 390 and reads back what is under the finger,
+reads the warn edge off the **computed** border colour against `--mw-warn`
+resolved through a probe rather than off the class, and presses it.
+
+**`deleteScreen` is the first hard delete of a screen this application has
+ever made, and what it sweeps is the design.** `revokeScreen` was the whole
+lifecycle and its argument for keeping the row stands, so the delete refuses a
+row whose `revoked_at` is null **inside the transaction** — the list only
+offers Forget on revoked walls, but the list is a convenience and the POST is
+the boundary. Two things go with the row that no foreign key would take:
+`layout_widgets.screen_id` and `screens.layout_follows` are plain columns. So
+the wall's widgets go in **both** orientations, and every panel in `follow`
+mode naming the wall has its `layout_mode` and `layout_follows` cleared
+together, so it draws its built-in view — cleared rather than left, because a
+follow whose target is gone reads as `[]`, and since the Blank card an empty
+canvas is a frame rather than a fallback. A panel in some other mode with a
+stale name pointing at the wall loses only the name. Forget all is that
+function in a loop inside one more transaction. Both confirms are
+`confirmDestroyPage`, exactly as the panel's own Remove is, and both POSTs
+answer with `savedRedirect` — except the Forget all with nothing to forget,
+which answers a plain redirect, because a token is a claim.
+
+**And a panel following a *revoked* wall kept drawing it, which the RFC
+records as already wrong one state earlier.** `panelCanvasOwner` reads the
+panel's own row and its docstring claimed a follow whose target was revoked
+"reads as a canvas with no widgets" — it does not, because revoking leaves the
+widgets where they are, which is the point of revoking. `livePanelCanvasOwner`
+asks the database, and both renderers of a panel's frame — the device route
+and the design page's preview — read it; the pure function stays for the
+callers asking which panels follow *this* wall, where the wall is being edited
+and is live by construction. `screen-forget.test.ts` holds all of it to
+**decoded frame bytes** rather than to a status: the frame before following,
+the frame while following (different), the frame after revoking (the first
+one again, with the panel's row still saying `follow`), and the frame after
+forgetting (the first one again, with the row saying nothing).
+
+**The vocabulary crawl seeds two revoked walls now, and the never-paired one it
+always had.** The not-yet-paired card's control, the disclosure and the two
+Forget confirmations are all conditional sections, which is this document's
+own recorded blind spot for that file; "screen" put back in the never-paired
+line is red only once they are on a page the crawl can see. Twenty-five
+mutations were checked across the five files and all twenty-five are red —
+one of them only after the fixture grew a panel that had *fetched* its frame,
+because the summary's "panel checked in within the hour" had no panel in that
+state to be wrong about. **Still unproven where it counts:** nobody has used
+this list on a real phone or in a real supervisor's sidebar, which by this
+project's history is where a settings screen's next fault surfaces.
 
 ---
 

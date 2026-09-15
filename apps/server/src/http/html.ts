@@ -1130,8 +1130,37 @@ a.card:active{background:var(--mw-surface-3)}
  * so the grid composes as one object rather than three shapes at three
  * heights. */
 .wall-card{display:flex;flex-direction:column;gap:var(--mw-s-3)}
+/* The card is not an <a> any more (RFC 016 §5.1): a card that carries a
+ * control cannot be one, since a link inside a link is invalid HTML and an
+ * element the keyboard cannot reach. It is listRow's anatomy instead — the
+ * positioned .card, the name's own link stretched over it by ::after, and a
+ * control in the head painting over that unaided because button/.btn in this
+ * sheet is already position:relative. The hover moves the ground only: the
+ * edge is where a tone lives, and a hover that repainted it would take the
+ * warn hue off a not-yet-paired card the moment somebody pointed at it. */
+.wall-link{color:inherit;text-decoration:none}
+.wall-link::after{content:"";position:absolute;inset:0}
+.wall-card:hover{background:var(--mw-surface-2)}
+.wall-card:active{background:var(--mw-surface-3)}
 .wall-head{display:flex;align-items:center;gap:var(--mw-s-3)}
 .wall-head-main{flex:1 1 auto;min-width:0}
+.wall-head .btn{flex:0 0 auto;margin-top:0}
+/* The action row under the app bar: the two doors and the rare third, as the
+ * three button emphases the sheet already has. In the body rather than the
+ * app bar because pageHeader takes one action and two equal doors are not one. */
+.wall-actions{display:flex;flex-wrap:wrap;gap:var(--mw-s-3);margin:0 0 var(--mw-s-5)}
+.wall-actions .btn{margin-top:0}
+/* One quiet line, body-small, above the grid: presence() counted. Not stat
+ * tiles — a 3-up row of big numbers is the dashboard idiom this product
+ * refuses on the wall, and it is a calendar here too. */
+.wall-summary{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-1) var(--mw-s-3);
+  font:var(--mw-t-body-sm);letter-spacing:var(--mw-t-body-sm-tracking);
+  color:var(--mw-ink-muted);margin:0 0 var(--mw-s-3)}
+.wall-summary .dot{margin-right:var(--mw-s-1);vertical-align:middle}
+/* The revoked walls, folded away: a list of rows inside the disclosure, and
+ * the one control that forgets them all under it. */
+.wall-revoked .mw-row:first-child{margin-top:var(--mw-s-2)}
+.wall-revoked>form{margin-top:var(--mw-s-3)}
 /* The status dot rides the status line rather than the head, so a card with
  * no dot (a wall that has never connected) keeps its name on the same edge as
  * its neighbours'. */
@@ -2502,7 +2531,7 @@ ${COMPONENT_STYLE}
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(a.card,button,.btn,.walls a,.mw-row-link,.le-tool-link,.nav-item,.saved-x,a.tag,input,select,textarea):focus-visible{
+:is(a.card,button,.btn,.walls a,.mw-row-link,.wall-link,.le-tool-link,.nav-item,.saved-x,a.tag,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
 .themecard:has(input:focus-visible),
 .tplpick:has(input:focus-visible){outline:3px solid var(--mw-accent);

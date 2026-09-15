@@ -1,6 +1,6 @@
 # RFC 016 — The Walls list shows the walls
 
-Status: **proposed** · Owner: — · First drafted 2026-09-14 ·
+Status: **phase 1 shipped** (phase 0 and phase 1 on `main`; Forget, listed below as phase 3, shipped with phase 1) · Owner: — · First drafted 2026-09-14 ·
 Relates to `apps/server/src/http/admin.ts` (`displaysPage`, `wallCard`,
 `displayListCard`, `epaperListCard`, `seenLine`, `wallTemplatePreviews`),
 `apps/display/src/template-gallery.ts`, `apps/display/src/preview-css.ts`,
@@ -55,17 +55,19 @@ This RFC proposes:
    household with two walls or more.
 5. **The revoked count becomes a disclosure** that can be read and cleared.
 
-No schema change. No migration. No manifest change. (Phase 3's Forget is the
-one write this page would ever make that the application has not made before,
-and §3.5 is why it is last.) The display bundle gains
-nothing it does not already have; one admin module gains a second entry point.
+No schema change. No migration. No manifest change. (Forget is the one write
+this page makes that the application had not made before; §3.5 is what it has
+to sweep. It was listed as phase 3 and shipped with phase 1, because the
+disclosure it sits in and the delete it needs turned out to be one question.)
+The display bundle gains nothing it does not already have; one admin module
+gains a second entry point.
 
 **§2.7 is a shipped defect with no design decision attached and should not wait
 on any of this.**
 
 ## 2. What the screen is today, counted
 
-### 2.1 Both primary actions are prose
+### ~~2.1 Both primary actions are prose~~ — closed by phase 1
 
 ```
 `<p class="hint">A tablet, monitor or television with Maverick Wall open in `
@@ -84,7 +86,7 @@ smaller tap target than "Continue" on the pairing-code form below it.
 This section also sits **after** the card grid and the revoked line, so on a
 phone it is reached by scrolling past every wall the household already has.
 
-### 2.2 Five of six status lines say nothing, and "never" is two states
+### ~~2.2 Five of six status lines say nothing, and "never" is two states~~ — closed by phase 0 and phase 1
 
 `ago(null, at)` returns `'never'`, unconditionally. `seenDot` (`admin.ts`)
 draws `dot-idle` for both `lastSeenAt === null` and a stale timestamp, so the
@@ -122,7 +124,7 @@ it — and the fourth asks a genuinely different question. A summary line counte
 from a fifth reading would be a fifth vocabulary. Phase 0 is where that closes
 (§6).
 
-### 2.3 The largest number on the page is unreachable
+### ~~2.3 The largest number on the page is unreachable~~ — closed by phase 1
 
 ```
 `<p class="hint">${revoked} unpaired wall${…} kept for the record. ` +
@@ -133,7 +135,7 @@ On the reviewed household that is **18 against 6 shown** — three times as many
 walls reported as displayed, in prose, with nothing to click. There is no route
 in the admin to look at them, tell which was which, or clear them out.
 
-### 2.4 The rarest action carries the most structure
+### ~~2.4 The rarest action carries the most structure~~ — closed by phase 1
 
 `approveForm` is a full `section()` — heading, two lines of help, a labelled
 field, a button — for the path taken when a *wall* starts its own device flow.
@@ -168,7 +170,7 @@ empty page.
 
 `.g3` already exists, with `repeat(3,1fr)` and its own 1040px step down to two.
 
-### 2.7 The list is ordered by name, case-sensitively
+### ~~2.7 The list is ordered by name, case-sensitively~~ — closed by phase 0
 
 `readAdminScreens` ends `ORDER BY name` with SQLite's default
 `BINARY` collation, so every capitalised name sorts before every lowercase one.
@@ -318,8 +320,11 @@ forgotten wall draws — the built-in view is the answer `panelCanvasOwner`
 already gives a panel with no owner, and that decision is written down rather
 than fallen into. It is destructive, so it takes the `confirmDestroyPage` idiom
 the panel's own Remove uses — a GET that names what goes, then the POST —
-rather than an inline button in a `<details>`. That is why Forget is phase 3
-(§6) and the disclosure in phase 1 is read-only.
+rather than an inline button in a `<details>`. (Written as phase 3 and shipped
+in phase 1: `deleteScreen` in `api/queries.ts` is that transaction — the refusal
+of a still-paired row, both orientations' widgets, and every following panel
+sent back to its built-in view — and `screen-forget.test.ts` decodes the
+frames.)
 
 **The following case is already wrong one state earlier.** A panel following a
 *revoked* wall keeps drawing that wall's canvas today: `panelCanvasOwner` reads
@@ -555,10 +560,11 @@ Each is shippable alone and each leaves the page better than it found it.
    state, because "worth a row on the Overview" is a different question from
    "is it fresh".
 
-**Phase 1 — the actions and the states.** The action row (§3.1), the three
-states and their per-kind links (§3.3), the summary line on two walls or more
-(§3.4), the approve form demoted to a link, the read-only revoked disclosure
-(§3.5), a panel following a revoked wall no longer drawing it (§3.5), the
+**Phase 1 — the actions and the states. Shipped.** The action row (§3.1), the
+three states and their per-kind links (§3.3), the summary line on two walls or
+more (§3.4), the approve form demoted to a link, the revoked disclosure with
+Forget and Forget all behind `confirmDestroyPage` (§3.5, which was phase 3
+below), a panel following a revoked wall no longer drawing it (§3.5), the
 stretched-link anatomy and the `admin-walls-list` amendment (§5.1).
 
 The list **moves out of `admin.ts`** — 6,561 lines — into `http/admin-walls.ts`,
@@ -579,11 +585,13 @@ for browser walls (§4.1), panels are an `<img>` on the existing GET (§4.2), th
 grid becomes `.g3` (§5.4). This is the phase with a cost in it and the one worth
 reverting if §9.1's measurement says so.
 
-**Phase 3 — Forget.** The revoked list gains its delete: both orientations'
-widgets and the row in one transaction, a decided answer for panels following
-the forgotten wall, and `confirmDestroyPage` in front of it (§3.5).
-Deliberately last: it is the first delete of a screen this application has
-ever done, and it may turn out that one Forget-all is the whole feature.
+**Phase 3 — Forget. Shipped with phase 1.** The revoked list gains its delete:
+both orientations' widgets and the row in one transaction, a decided answer for
+panels following the forgotten wall, and `confirmDestroyPage` in front of it
+(§3.5). It was to be last, as the first delete of a screen this application has
+ever done; it went with phase 1 because the disclosure and the delete answer the
+same question, and both Forget and Forget all are there — whether one Forget-all
+would have been the whole feature is now something a household can say.
 
 ## 7. How this gets proven (verification is the job)
 

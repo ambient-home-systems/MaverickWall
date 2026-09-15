@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -10,6 +10,26 @@ import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
+import { install, type Installation } from './browser-harness.js';
+
+/**
+ * The card grid, and nothing after it: the revoked disclosure under the grid
+ * carries `destructive()`'s GET forms, which are exactly the `<form>` and
+ * `<button>` the grid must not.
+ */
+function gridOf(html: string): string {
+  const start = html.indexOf('<div class="grid g2">');
+  expect(start, 'no card grid on the page').toBeGreaterThan(-1);
+  const ends = ['<details class="disclose wall-revoked">', '</main>']
+    .map((marker) => html.indexOf(marker, start))
+    .filter((at) => at > -1);
+  return html.slice(start, Math.min(...ends));
+}
+
+/** Every card's trailing control — the anchors wearing `.btn` inside the head. */
+function controlsOf(grid: string): string[] {
+  return [...grid.matchAll(/<a class="btn[^"]*" href="[^"]*">[^<]*<\/a>/g)].map((m) => m[0]);
+}
 
 /**
  * The Walls list is one list, and the sidebar is grouped by subject.
@@ -26,6 +46,20 @@ import { createFetcher } from '../src/net/fetcher.js';
  * These walk the markup a household receives rather than the builders, the way
  * `admin-button-anatomy.test.ts` does, because the fault both times was in what
  * the page composed, not in any one piece.
+ *
+ * **One assertion here changed its letter and not its intent (RFC 016 §5.1).**
+ * It used to pin the card as a bare `<a class="card wall-card">` with no
+ * `<article>` and no `<button>` in the grid — the shape that replaced the
+ * panel's static card and its ⋮ — and read "Last seen never" on both cards. A
+ * card carries a control now, for a wall nothing has ever used, and a control
+ * inside an `<a>` is invalid HTML and an element the keyboard cannot reach; so
+ * the card is `card()`'s `<article>` with the name's own link stretched over
+ * it, which is `listRow`'s anatomy one component along. What the assertion
+ * *meant* — a card is not a control panel, and a panel's actions live on its
+ * page — is held more precisely than before: still no ⋮, no `<form>`, no
+ * "Arrange layout", and **at most one trailing control on a card, only on a
+ * not-yet-paired one, from a fixed set of two**, each a link to the page where
+ * the act lives. "Last seen never" went with phase 0, which retired the string.
  */
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
@@ -116,12 +150,11 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     await h.form('/admin/epaper', { name: 'Hall panel', preset: 'seeed-7in5', rotation: '0' });
     const html = await h.text('/admin/walls');
-    const start = html.indexOf('<div class="grid g2">');
-    const grid = html.slice(start, html.indexOf('<section class="mw-sect"', start));
+    const grid = gridOf(html);
 
     /*
-     * Two walls, two link cards, and nothing else in the grid: no static
-     * <article>, no ⋮ menu, no button — the panel's actions live on its page.
+     * Two walls, two cards of one shape, and nothing else in the grid: no ⋮
+     * menu, no form, no button — the panel's actions live on its page.
      *
      * It was three, and the third was the Default wall — a card for the shared
      * household row, which is not a device: nothing is paired to it and nothing
@@ -129,19 +162,29 @@ describe('the Walls list is one card shape for every kind of wall', () => {
      * exist. It is retired; what it held is on System (the settings every wall
      * inherits) and on the walls themselves (the canvas they fell back to).
      */
-    expect(grid.match(/<a class="card wall-card"/g)?.length).toBe(2);
-    expect(grid).not.toContain('<article');
+    expect(grid.match(/<article class="card[^"]*wall-card"/g)?.length).toBe(2);
     expect(grid).not.toContain('class="ovf');
     expect(grid).not.toContain('<button');
+    expect(grid).not.toContain('<form');
     expect(grid).not.toContain('Arrange layout');
-    // Every card opens its wall's own page — a panel's is its layout page.
+    // Every card opens its wall's own page — a panel's is its layout page —
+    // through the name's own link, stretched over the card.
     expect(grid, 'the Default wall is back on the list').not.toContain(`href="admin/walls/default"`);
-    expect(grid).toContain(`href="admin/walls/${h.screenId('browser')}"`);
-    expect(grid).toContain(`href="admin/epaper/${h.screenId('epaper')}/design"`);
-    // And every card says "Open" the same way.
-    expect(grid.match(/class="card-go">Open/g)?.length).toBe(2);
-    // Both kinds carry a kind tag and a "Last seen" line, and every card on the
-    // list is now a real device that can have one.
+    expect(grid).toContain(`<a class="wall-link" href="admin/walls/${h.screenId('browser')}">`);
+    expect(grid).toContain(`<a class="wall-link" href="admin/epaper/${h.screenId('epaper')}/design">`);
+    /*
+     * At most one trailing control per card, only on a not-yet-paired card,
+     * and from a fixed set — a link to the page where the act lives (RFC 016
+     * §3.3, §5.1). Both of these walls are not yet paired, so both carry one
+     * and neither says "Open"; the fresh and stale cards are driven below.
+     */
+    expect(controlsOf(grid)).toEqual([
+      `<a class="btn btn-ghost btn-sm" href="admin/epaper/${h.screenId('epaper')}">Set up the device</a>`,
+      `<a class="btn btn-ghost btn-sm" href="admin/walls/${h.screenId('browser')}">Pair it</a>`,
+    ]);
+    expect(grid).not.toContain('class="card-go">Open');
+    // Both kinds carry a kind tag, and every card on the list is now a real
+    // device that can have one.
     expect(grid).toContain('<span class="tag">Browser</span>');
     expect(grid).toContain('<span class="tag">E-paper</span>');
     // The literal moved and the two cards did not (RFC 016 phase 0): the line
@@ -151,6 +194,81 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     // count of an alternation stays at two if both kinds say the same thing.
     expect(grid.match(/Not paired yet|Waiting for its device/g)).toEqual(['Waiting for its device', 'Not paired yet']);
     expect(grid).toContain('800×480');
+  });
+
+  it('offers the two doors and the rare third as buttons, and not as prose', async () => {
+    const h = await harness();
+    await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
+    const html = await h.text('/admin/walls');
+    /*
+     * Both doors used to be `<a class="link">` inside a `<p class="hint">`,
+     * set in the body role in the middle of the prose explaining them and
+     * below every card on the page (RFC 016 §2.1); the approve form was a
+     * whole section at the foot (§2.4). Three buttons in one row now, at the
+     * three emphases the sheet declares, each wearing `.btn` beside its
+     * variant — `admin-button-anatomy` is what holds every anchor to that.
+     */
+    const row = html.slice(html.indexOf('<div class="wall-actions">'), html.indexOf('</div>', html.indexOf('<div class="wall-actions">')));
+    expect(row).toContain('<a class="btn" href="admin/walls/new">Pair a browser wall</a>');
+    expect(row).toContain('<a class="btn btn-tonal" href="admin/epaper#add">Add an e-paper panel</a>');
+    expect(row).toContain('<a class="btn btn-ghost" href="admin/screens/approve">Approve a pairing code</a>');
+    // The row sits above the grid, not under it.
+    expect(html.indexOf('<div class="wall-actions">')).toBeLessThan(html.indexOf('<div class="grid g2">'));
+    // And the prose, the section and its field are gone.
+    expect(html).not.toContain('Pair a new wall');
+    expect(html).not.toContain('Add an e-paper wall');
+    expect(html).not.toContain('<h2>Approve a pairing code</h2>');
+    expect(html).not.toContain('name="code"');
+    expect(html).not.toContain('<h2>Add a wall</h2>');
+    // The link it demotes to still draws the form.
+    expect(await h.text('/admin/screens/approve')).toContain('name="code"');
+  });
+
+  it('draws an empty state whose action is the first door, with no walls', async () => {
+    const h = await harness();
+    const html = await h.text('/admin/walls');
+    expect(html).toContain('<div class="mw-empty">');
+    expect(html).toContain('<a class="btn" href="admin/walls/new">Pair a browser wall</a>');
+    expect(html).not.toContain('<div class="grid g2">');
+    expect(html).not.toContain('class="wall-summary"');
+    expect(html).not.toContain('No walls paired yet. Add one below');
+  });
+
+  it('folds the revoked walls into a closed disclosure, and draws none when there are none', async () => {
+    const h = await harness();
+    await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
+    await h.form('/admin/screens', { name: 'Old hall', theme: 'panels' });
+    const before = await h.text('/admin/walls');
+    expect(before).not.toContain('wall-revoked');
+    expect(before).not.toContain('kept for the record');
+
+    const old = (h.db.prepare(`SELECT id FROM screens WHERE name = 'Old hall'`).get() as { id: string }).id;
+    await h.form(`/admin/screens/${old}/revoke`, {});
+    const html = await h.text('/admin/walls');
+    // Closed by default — the page is unchanged for a household not looking.
+    expect(html).toContain('<details class="disclose wall-revoked"><summary>1 unpaired wall kept for the record</summary>');
+    expect(html).not.toContain('<details class="disclose wall-revoked" open');
+    // Under the grid, not in it.
+    expect(html.indexOf('<div class="grid g2">')).toBeLessThan(html.indexOf('<details class="disclose wall-revoked">'));
+    expect(gridOf(html)).not.toContain('Old hall');
+    // Each revoked wall is a row with its name, when it was unpaired, and a
+    // Forget that leads to a confirmation rather than acting.
+    const open = html.indexOf('<details class="disclose wall-revoked">');
+    const details = html.slice(open, html.indexOf('</details>', open));
+    expect(details).toContain('<b>Old hall</b>');
+    expect(details).toContain('Browser · unpaired just now');
+    expect(details).toContain(`<form method="get" action="admin/screens/${old}/forget">`);
+    expect(details).toContain('aria-label="Forget Old hall">Forget…</button>');
+    // One revoked wall is not a "Forget all".
+    expect(details).not.toContain('admin/screens/forget-revoked');
+    // Two are.
+    await h.form('/admin/screens', { name: 'Older hall', theme: 'panels' });
+    const older = (h.db.prepare(`SELECT id FROM screens WHERE name = 'Older hall'`).get() as { id: string }).id;
+    await h.form(`/admin/screens/${older}/revoke`, {});
+    const two = await h.text('/admin/walls');
+    expect(two).toContain('<summary>2 unpaired walls kept for the record</summary>');
+    expect(two).toContain('<form method="get" action="admin/screens/forget-revoked">');
+    expect(two).toContain('aria-label="Forget all unpaired walls">Forget all…</button>');
   });
 
   it("gives an e-paper panel a page of its own, which carries what the card used to", async () => {
@@ -259,4 +377,119 @@ describe('the sidebar is grouped by subject', () => {
     const wall = await h.text(`/admin/walls/${h.screenId('browser')}`);
     expect(wall).toContain('class="crumb crumb-back" href="admin/walls"');
   });
+});
+
+/*
+ * The three states, driven through the real app under the pinned clock
+ * (RFC 016 §7). `install()` from `browser-harness` pins the app's `now` to
+ * `HARNESS_HOUR`, which is what makes the middle case reachable: a wall
+ * touched by a real `/d/manifest` poll is stamped on that clock (phase 0), and
+ * a page comparing it against the same clock reads "Drawing now". Each state
+ * is checked against a wall *in* that state, because an assertion written
+ * against null alone passes a page that draws one state for all three.
+ */
+describe('a card reads presence() for its state, and the summary line is that function counted', () => {
+  let home: Installation;
+  const DAY = 24 * 60 * 60_000;
+
+  beforeAll(async () => {
+    home = await install();
+  }, 120_000);
+  afterAll(async () => {
+    await home?.dispose();
+  });
+
+  const idNamed = (name: string): string =>
+    (home.db.prepare('SELECT id FROM screens WHERE name = ?').get(name) as { id: string }).id;
+  const cardNamed = (grid: string, name: string): string => {
+    const cards = grid.split('<article class="card').slice(1).map((c) => '<article class="card' + c);
+    const found = cards.find((c) => c.includes(`>${name}</a>`));
+    expect(found, `no card for ${name}`).toBeDefined();
+    return found as string;
+  };
+
+  it('draws the not-yet-paired, the fresh and the stale wall each as itself', async () => {
+    // Not yet paired: a link nobody has opened.
+    await home.pairWall('Attic');
+    // Fresh: paired and polled a moment ago, through the real manifest route.
+    const link = await home.pairLink('Kitchen');
+    const token = new URL(link).searchParams.get('token') ?? '';
+    const polled = await home.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } });
+    expect(polled.status).toBe(200);
+    // Stale: drew once, a month ago, on the app's own clock.
+    await home.pairWall('Hall');
+    home.db.prepare('UPDATE screens SET last_seen_at = ?, last_seen_ip = ? WHERE id = ?')
+      .run(home.now() - 30 * DAY, '10.0.0.4', idNamed('Hall'));
+    // A panel nothing has fetched, and one that fetched its frame a moment ago
+    // — the second is what separates "wall drawing now" from "panel checked
+    // in", which is a distinction one fresh browser wall cannot see.
+    const made = await home.post('/admin/epaper', { name: 'Porch', preset: 'seeed-7in5', rotation: '0' });
+    expect(made.status).toBe(303);
+    const shed = await home.post('/admin/epaper', { name: 'Shed', preset: 'seeed-7in5', rotation: '0' });
+    const recipes = await (await home.call(shed.headers.get('location') ?? '')).text();
+    const frame = /https?:\/\/[^"<\s]*(\/d\/epaper\/[^"<\s]+)/.exec(recipes)?.[1];
+    if (frame === undefined) throw new Error('no frame URL on the panel’s recipes page');
+    expect((await home.call(frame)).status).toBe(200);
+
+    const html = await (await home.call('/admin/walls')).text();
+    const grid = gridOf(html);
+
+    const attic = cardNamed(grid, 'Attic');
+    expect(attic).toContain('<article class="card is-warn wall-card">');
+    expect(attic).toContain('<span class="dot dot-idle"></span>Not paired yet');
+    expect(attic).toContain(`<a class="btn btn-ghost btn-sm" href="admin/walls/${idNamed('Attic')}">Pair it</a>`);
+    expect(attic).not.toContain('class="card-go">Open');
+
+    const kitchen = cardNamed(grid, 'Kitchen');
+    expect(kitchen).toContain('<article class="card wall-card">');
+    expect(kitchen).toContain('<span class="dot dot-ok pulse"></span>Drawing now');
+    expect(kitchen).toContain('class="card-go">Open');
+    expect(kitchen).not.toContain('class="btn');
+
+    const hall = cardNamed(grid, 'Hall');
+    expect(hall).toContain('<article class="card wall-card">');
+    expect(hall).toContain('<span class="dot dot-idle"></span>Not seen recently · last seen 30 days ago from 10.0.0.4');
+    expect(hall).toContain('class="card-go">Open');
+    expect(hall).not.toContain('class="btn');
+
+    const porch = cardNamed(grid, 'Porch');
+    expect(porch).toContain('<article class="card is-warn wall-card">');
+    expect(porch).toContain('Waiting for its device');
+    expect(porch).toContain(`<a class="btn btn-ghost btn-sm" href="admin/epaper/${idNamed('Porch')}">Set up the device</a>`);
+
+    const shedCard = cardNamed(grid, 'Shed');
+    expect(shedCard).toContain('<article class="card wall-card">');
+    expect(shedCard).toContain('<span class="dot dot-ok pulse"></span>Checked in just now');
+    expect(shedCard).toContain('class="card-go">Open');
+    expect(shedCard).not.toContain('class="btn');
+
+    // The whole grid: exactly two controls, both on not-yet-paired cards.
+    expect(controlsOf(grid)).toHaveLength(2);
+    expect(grid.match(/class="card-go">Open/g)?.length).toBe(3);
+
+    // And the summary is those five readings counted, in that order.
+    expect(html).toContain(
+      '<p class="wall-summary">' +
+        '<span><span class="dot dot-ok"></span>1 wall drawing now</span><span aria-hidden="true">·</span>' +
+        '<span><span class="dot dot-ok"></span>1 panel checked in within the hour</span><span aria-hidden="true">·</span>' +
+        '<span><span class="dot dot-idle"></span>1 not paired yet</span><span aria-hidden="true">·</span>' +
+        '<span><span class="dot dot-idle"></span>1 panel waiting for its device</span><span aria-hidden="true">·</span>' +
+        '<span><span class="dot dot-idle"></span>1 not seen for 30 days</span>' +
+        '</p>',
+    );
+    expect(html.indexOf('class="wall-summary"')).toBeLessThan(html.indexOf('<div class="grid g2">'));
+  });
+
+  it('draws no summary line over one wall, and one over two', async () => {
+    const alone = await install();
+    try {
+      await alone.pairWall('Only');
+      expect(await (await alone.call('/admin/walls')).text()).not.toContain('wall-summary');
+      await alone.pairWall('Second');
+      const two = await (await alone.call('/admin/walls')).text();
+      expect(two).toContain('<p class="wall-summary"><span><span class="dot dot-idle"></span>2 not paired yet</span></p>');
+    } finally {
+      await alone.dispose();
+    }
+  }, 120_000);
 });

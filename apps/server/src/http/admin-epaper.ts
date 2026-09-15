@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 
 import {
   createEpaperScreen,
-  panelCanvasOwner,
+  livePanelCanvasOwner,
   readAdminScreens,
   readLayoutWidgets,
   readPeopleAdmin,
@@ -73,8 +73,8 @@ import { selfHref } from './self.js';
  * panel — a second mount is how the e-paper page silently lost its editor for
  * two releases once already).
  *
- * The Walls list's e-paper row (`epaperListCard`) deliberately stays in
- * `admin.ts`: it is a row in that list, not a page here.
+ * The Walls list's e-paper row (`epaperListCard`) deliberately lives with
+ * the list, in `admin-walls.ts`: it is a row in that list, not a page here.
  */
 
 /**
@@ -1041,8 +1041,8 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
   /**
    * The canvas a panel draws: its own, a wall's, or none (the built-in layout).
    *
-   * `panelCanvasOwner` is the one resolver, shared with the device endpoint, so
-   * the preview on this page and the frame on the glass can never disagree
+   * `livePanelCanvasOwner` is the one resolver, shared with the device
+   * endpoint, so the preview on this page and the frame on the glass can never disagree
    * about whose boxes they are — which is the failure this project keeps
    * finding whenever two places answer one question.
    */
@@ -1056,7 +1056,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
    * other.
    */
   const epaperWidgetsFor = (id: string, screen: AdminScreenRow): PlacedWidgetRow[] | undefined => {
-    const owner = panelCanvasOwner({ ...screen, id });
+    const owner = livePanelCanvasOwner(deps.db, { ...screen, id });
     return owner === undefined ? undefined : readLayoutWidgets(deps.db, owner, epaperOrientation(screen));
   };
 

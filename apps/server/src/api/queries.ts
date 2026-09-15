@@ -297,9 +297,11 @@ export function replaceLayout(
  * the per-widget ink override is how the one canvas says something different in
  * black and white.
  *
- * A `follow` pointing at a screen that has since been revoked or deleted reads
- * as a canvas with no widgets, which falls back to the built-in layout rather
- * than to a blank panel (rule nine).
+ * This reads the panel's own row and nothing else, so it cannot see whether
+ * the wall a `follow` names is still paired. It used to claim here that such
+ * a follow "reads as a canvas with no widgets" — false, since revoking leaves
+ * the widgets in place. `livePanelCanvasOwner` below is what a frame renderer
+ * asks.
  */
 export function panelCanvasOwner(screen: {
   readonly id?: string;
@@ -309,6 +311,43 @@ export function panelCanvasOwner(screen: {
   if (screen.layoutMode === 'freeform') return screen.id ?? null;
   if (screen.layoutMode === 'follow') return screen.layoutFollows ?? null;
   return undefined;
+}
+
+/**
+ * `panelCanvasOwner`, asked of the database as well: a follow whose target is
+ * revoked, or gone, is no canvas (RFC 016 §3.5).
+ *
+ * The pure resolver above reads only the panel's own row, and its docstring
+ * claimed that a `follow` pointing at a revoked wall "reads as a canvas with no
+ * widgets, which falls back to the built-in layout". It did not. Revoking a
+ * wall leaves its widgets where they are — that is the whole point of revoking
+ * rather than deleting — so a panel following a revoked wall went on drawing
+ * that wall's arrangement, and a household who unpaired a wall and expected it
+ * gone found it still on the hall panel. And a target that has been *deleted*
+ * would read as `[]`, which is the Blank frame now rather than the built-in
+ * one. Both are `undefined` here — the built-in view — which is the answer a
+ * panel with no owner has always had.
+ *
+ * Every renderer of a panel's frame asks this one rather than the pure
+ * function, so the glass and the design page cannot disagree about it. The
+ * pure function stays for the callers that ask the question the other way
+ * round (which panels follow *this* wall), where the wall is one being edited
+ * and is live by construction.
+ */
+export function livePanelCanvasOwner(
+  db: SqliteDatabase,
+  screen: {
+    readonly id?: string;
+    readonly layoutMode?: string | null;
+    readonly layoutFollows?: string | null;
+  },
+): string | null | undefined {
+  const owner = panelCanvasOwner(screen);
+  if (screen.layoutMode !== 'follow' || typeof owner !== 'string') return owner;
+  const target = db.prepare('SELECT revoked_at AS revokedAt FROM screens WHERE id = ?').get(owner) as
+    | { revokedAt: number | null }
+    | undefined;
+  return target === undefined || target.revokedAt !== null ? undefined : owner;
 }
 
 /**
@@ -1283,6 +1322,75 @@ export function revokeScreen(db: SqliteDatabase, id: string): boolean {
     db.prepare(`UPDATE screens SET revoked_at = ?, updated_at = ? WHERE id = ? AND revoked_at IS NULL`)
       .run(Date.now(), Date.now(), id).changes > 0
   );
+}
+
+/**
+ * Forget a revoked screen: the first hard delete of a screen this application
+ * has ever made (RFC 016 phase 1).
+ *
+ * `revokeScreen`'s argument for keeping the row still stands — a token that
+ * stops working is a record somebody reads while working out what is still on
+ * their wall — and this does not overrule it: **only a revoked row may go**.
+ * The Walls list offers Forget for revoked walls alone, but the list is a
+ * convenience and the POST is the boundary, so the refusal is here, inside the
+ * transaction, rather than in the handler that happens to call it today.
+ *
+ * Two things have to go with the row, because neither is held by a foreign
+ * key — `layout_widgets.screen_id` and `screens.layout_follows` are plain
+ * columns, and `db/schema.ts` says why at each declaration:
+ *
+ *  - **Its widgets, in both orientations.** A wall authors a portrait and a
+ *    landscape canvas; deleting one of them leaves rows nothing can reach.
+ *  - **A panel following it goes back to its built-in view.** `layout_mode`
+ *    and `layout_follows` are cleared together on every panel in `follow`
+ *    mode that names this wall — cleared rather than left, because a `follow`
+ *    whose target is gone would read as `[]`, and since the gallery grew a
+ *    Blank card an empty canvas is a *frame*, not a fallback: the panel would
+ *    draw blank where the household expects the view it drew before it
+ *    followed anything. A panel in some other mode with a stale
+ *    `layout_follows` naming this wall only loses the stale name, never its
+ *    mode: nulling `layout_mode` there would take a panel off its own canvas
+ *    for a value `panelCanvasOwner` was already ignoring.
+ *
+ * One transaction, so a crash between the sweep and the delete cannot leave a
+ * row whose canvas is gone. Answers `false` for an id that does not exist or
+ * is still paired, and writes nothing on either.
+ */
+export function deleteScreen(db: SqliteDatabase, id: string): boolean {
+  const remove = db.transaction((screenId: string): boolean => {
+    const row = db.prepare('SELECT revoked_at AS revokedAt FROM screens WHERE id = ?').get(screenId) as
+      | { revokedAt: number | null }
+      | undefined;
+    if (row === undefined || row.revokedAt === null) return false;
+    const at = Date.now();
+    db.prepare(
+      `UPDATE screens SET layout_mode = NULL, layout_follows = NULL, updated_at = ?
+        WHERE layout_mode = 'follow' AND layout_follows = ?`,
+    ).run(at, screenId);
+    db.prepare(`UPDATE screens SET layout_follows = NULL, updated_at = ? WHERE layout_follows = ?`).run(
+      at,
+      screenId,
+    );
+    // No orientation clause: both canvases go.
+    db.prepare('DELETE FROM layout_widgets WHERE screen_id = ?').run(screenId);
+    return db.prepare('DELETE FROM screens WHERE id = ?').run(screenId).changes > 0;
+  });
+  return remove(id);
+}
+
+/**
+ * Forget every revoked screen at once, through `deleteScreen` for each so the
+ * sweep is the same sweep. One outer transaction, so "Forget all" either
+ * forgets all of them or none. Answers how many went.
+ */
+export function deleteRevokedScreens(db: SqliteDatabase): number {
+  const removeAll = db.transaction((): number => {
+    const ids = db.prepare('SELECT id FROM screens WHERE revoked_at IS NOT NULL').all() as { id: string }[];
+    let gone = 0;
+    for (const { id } of ids) if (deleteScreen(db, id)) gone += 1;
+    return gone;
+  });
+  return removeAll();
 }
 
 export interface WeatherSettings {

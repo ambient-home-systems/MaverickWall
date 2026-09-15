@@ -66,7 +66,7 @@ import {
   countUsers,
   readEvents,
   readLayoutWidgets,
-  panelCanvasOwner,
+  livePanelCanvasOwner,
   effectiveDisplay,
   readHousehold,
   readLastSync,
@@ -1434,12 +1434,13 @@ export function createApp(deps: AppDeps): Hono {
     /*
      * Whose canvas this panel draws — its own, a wall's, or none at all.
      *
-     * `panelCanvasOwner` is the one place that decides, shared with the admin
-     * preview so the frame on the glass and the frame on the design page cannot
-     * disagree. `undefined` means the built-in fixed layout and the read is
-     * skipped entirely.
+     * `livePanelCanvasOwner` is the one place that decides, shared with the
+     * admin preview so the frame on the glass and the frame on the design page
+     * cannot disagree — and asked of the database, so a follow whose wall has
+     * been unpaired is no canvas (RFC 016 §3.5). `undefined` means the built-in
+     * fixed layout and the read is skipped entirely.
      */
-    const canvasOwner = panelCanvasOwner(screen);
+    const canvasOwner = livePanelCanvasOwner(deps.db, screen);
     /*
      * The same omission the wall makes, on the same canvas (RFC 009 Phase 2).
      *
