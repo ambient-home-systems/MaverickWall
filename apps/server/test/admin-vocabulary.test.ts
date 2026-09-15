@@ -160,6 +160,22 @@ async function crawl(): Promise<readonly Rendered[]> {
   // very fault they were written for.
   const madeWall = await home.post('/admin/screens', { name: 'Kitchen', theme: 'panels' });
   expect(madeWall.status, 'the wall must be created for its pages to be crawled').toBe(303);
+  /*
+   * Two more walls, both revoked, and the Kitchen one above never paired
+   * (RFC 016 phase 1). The Walls list draws three things conditionally — the
+   * not-yet-paired card's control, the revoked disclosure, and the two Forget
+   * confirmations it leads to, of which "Forget all" needs two revoked walls
+   * to be offered at all — and this file's own stated blind spot is a
+   * conditional section its harness never seeds. Revoked through the real
+   * route rather than a column write, so the row is what a household's is.
+   */
+  for (const name of ['Old hall', 'Older hall']) {
+    const made = await home.post('/admin/screens', { name, theme: 'panels' });
+    expect(made.status, `${name} must be created before it can be unpaired`).toBe(303);
+    const id = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
+    const revoked = await home.post(`/admin/screens/${id}/revoke`, {});
+    expect(revoked.status, `${name} must be unpaired for the disclosure to be crawled`).toBe(302);
+  }
   const madePanel = await home.post('/admin/epaper', {
     name: 'Hallway tag',
     preset: 'seeed-7in5',
@@ -376,6 +392,16 @@ describe('the admin, read out loud', () => {
         seen.filter((p) => /^\/admin\/epaper\/[0-9a-f]{8,}\/design$/.test(p)).length,
         'the e-paper panel’s design page',
       ).toBeGreaterThan(0);
+      /*
+       * The two Forget confirmations (RFC 016 phase 1), reachable only from
+       * the revoked disclosure on the Walls list — which draws only with a
+       * revoked wall seeded, and offers "Forget all" only with two.
+       */
+      expect(
+        seen.filter((p) => /^\/admin\/screens\/[0-9a-f]{8,}\/forget$/.test(p)).length,
+        'a revoked wall’s Forget confirmation',
+      ).toBeGreaterThan(0);
+      expect(seen, 'the Forget-all confirmation').toContain('/admin/screens/forget-revoked');
       /*
        * And the remove-a-theme confirmation, which is the page that named a
        * theme nobody could choose. It is reachable only from a custom theme's

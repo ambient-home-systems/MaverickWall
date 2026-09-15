@@ -96,6 +96,11 @@ export const SAVED_MESSAGES = {
   // Displays / walls
   'screen-settings': 'Wall settings saved.',
   'screen-removed': 'Wall removed.',
+  // Forgetting is the first hard delete of a screen (RFC 016 phase 1): the
+  // row, both canvases, and a following panel's link to it. Two keys because
+  // "Forget all" is its own confirm and its own POST.
+  'wall-forgotten': 'Wall forgotten.',
+  'walls-forgotten': 'Unpaired walls forgotten.',
   /*
    * Applying a template repaints the wall, and this is where it stops being
    * silent (RFC 015 §3.6).

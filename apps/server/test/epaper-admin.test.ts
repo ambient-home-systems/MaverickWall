@@ -447,7 +447,18 @@ describe('the eInk Displays page', () => {
     await h.post(`${B}/admin/epaper/${id}/revoke`, {});
 
     expect((await h.call(url)).status).toBe(404); // token no longer resolves
-    expect(await (await h.call(`${B}/admin/walls`)).text()).not.toContain('Gone');
+    /*
+     * Off the grid, and into the record. The list keeps a revoked wall's name
+     * in its closed disclosure (RFC 016 phase 1), because "18 unpaired walls
+     * kept for the record" with nothing to open was the fault that page had —
+     * so what this asserts is that it is no longer *a wall on the list*: no
+     * card, and no link to its page.
+     */
+    const after = await (await h.call(`${B}/admin/walls`)).text();
+    expect(after).not.toContain('<div class="grid g2">');
+    expect(after).not.toContain(`href="admin/epaper/${id}/design"`);
+    expect(after).toContain('<summary>1 unpaired wall kept for the record</summary>');
+    expect(after).toContain('<b>Gone</b>');
   });
 
   /*

@@ -92,7 +92,8 @@ describe('the Walls list orders by name the way a person reads one', () => {
       expect(made.status).toBe(303);
     }
     const html = await (await home.call('/admin/walls')).text();
-    const names = [...html.matchAll(/<div class="rname">([^<]+)/g)]
+    // The name is the card's own link now (RFC 016 phase 1), not a bare div.
+    const names = [...html.matchAll(/<a class="wall-link" href="[^"]*">([^<]+)<\/a>/g)]
       .map((m) => (m[1] ?? '').trim())
       .filter((n) => ['Hall', 'Kitchen', 'attic tablet'].includes(n));
     expect(names).toEqual(['attic tablet', 'Hall', 'Kitchen']);
