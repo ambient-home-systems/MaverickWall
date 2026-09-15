@@ -121,10 +121,31 @@ export const themeTokensSchema = z
 
 export type ThemeTokens = z.infer<typeof themeTokensSchema>;
 
+/**
+ * The built-in shapes a custom theme may borrow (RFC 014 §4.3).
+ *
+ * `display.css` carries per-theme *shape* rules keyed on `data-theme` —
+ * Almanac's 400-weight numerals and italic date, Panels' card borders,
+ * Blueprint's condensed heads — that a custom theme could never reach: its
+ * colours travel as resolved tokens, but its `data-theme` was pinned to the
+ * neutral sentinel unconditionally. `neutral` is the explicit member of this
+ * enum for "none of these", so the control always has something checked; it
+ * and an absent value resolve identically (see `resolvedShapeKey`), which is
+ * what keeps a theme that never touched this control drawing exactly what it
+ * drew before the column existed — no display code changes, no ETag churn.
+ */
+export const THEME_SHAPES = ['neutral', 'panels', 'household', 'blueprint', 'almanac', 'swiss'] as const;
+
+export type ThemeShape = (typeof THEME_SHAPES)[number];
+
+export const themeShapeSchema = z.enum(THEME_SHAPES, { error: () => 'Choose a shape from the list.' });
+
 export interface ThemeRow {
   readonly id: string;
   readonly name: string;
   readonly tokens: ThemeTokens;
+  /** Resolved from the stored column — `null` reads as `'neutral'`. */
+  readonly shape: ThemeShape;
 }
 
 // --- Colour maths, mirrored from the display bundle (see the header note) -----
@@ -244,13 +265,19 @@ export interface ResolvedTheme {
   /**
    * The `data-theme` value the display should set.
    *
-   * A built-in's key drives its shape CSS. A custom theme carries `board`,
-   * which is **not** a theme name here but a neutral sentinel: `board` is the
-   * one value no `:root[data-theme="…"]` rule in `display.css` matches, so a
-   * custom theme inherits the default shape rather than Panels' cards or
-   * Almanac's ledger. Renaming it to a live key would repaint every custom
-   * theme (RFC 015 §2.1); giving it an honest name needs a `neutral` key in
-   * the display bundle, which is a display change and a later phase.
+   * A built-in's key drives its shape CSS. A custom theme carries `board` by
+   * default, which is **not** a theme name here but a neutral sentinel:
+   * `board` is the one value no `:root[data-theme="…"]` rule in `display.css`
+   * matches, so a theme with no shape choice inherits the default rather than
+   * Panels' cards or Almanac's ledger. Renaming it to a live key would repaint
+   * every custom theme with no shape set (RFC 015 §2.1); giving it an honest
+   * name needs a `neutral` key in the display bundle, which is a display
+   * change and a later phase.
+   *
+   * A custom theme that *did* choose a shape (RFC 014 §4.3) carries that
+   * built-in's own key instead — `panels`, `household`, `blueprint`,
+   * `almanac` or `swiss` — which borrows only the shape rules those keys
+   * drive; the colours still come from `tokens` above, unchanged.
    */
   readonly shape: string;
 }
@@ -286,18 +313,34 @@ export const FALLBACK_THEME = 'panels';
  */
 const NEUTRAL_SHAPE = 'board';
 
+/**
+ * What a stored `shape` column value resolves to as a `data-theme`.
+ *
+ * `null` (a theme saved before the column existed) and `'neutral'` (a theme
+ * that explicitly declined to borrow one) both collapse to `NEUTRAL_SHAPE` —
+ * they must draw identically, which is what keeps a theme nobody has touched
+ * since this shipped from churning its manifest ETag. Anything else that
+ * fails to parse as a live shape key falls back the same way (rule nine): a
+ * row this process did not write is never trusted over a wall staying blank.
+ */
+function resolvedShapeKey(stored: string | null): string {
+  if (stored === null) return NEUTRAL_SHAPE;
+  const parsed = themeShapeSchema.safeParse(stored);
+  return !parsed.success || parsed.data === 'neutral' ? NEUTRAL_SHAPE : parsed.data;
+}
+
 export function resolveTheme(db: SqliteDatabase, ref: string): ResolvedTheme {
   if (!ref.startsWith(CUSTOM_PREFIX)) return { shape: ref };
 
   const id = ref.slice(CUSTOM_PREFIX.length);
-  const row = db.prepare('SELECT tokens FROM themes WHERE id = ?').get(id) as
-    | { tokens: string }
+  const row = db.prepare('SELECT tokens, shape FROM themes WHERE id = ?').get(id) as
+    | { tokens: string; shape: string | null }
     | undefined;
   if (row === undefined) return { shape: FALLBACK_THEME };
 
   const parsed = themeTokensSchema.safeParse(safeJson(row.tokens));
   if (!parsed.success) return { shape: FALLBACK_THEME };
-  return { tokens: withTints(parsed.data), shape: NEUTRAL_SHAPE };
+  return { tokens: withTints(parsed.data), shape: resolvedShapeKey(row.shape) };
 }
 
 // --- Storage ------------------------------------------------------------------
@@ -310,44 +353,60 @@ function safeJson(value: string): unknown {
   }
 }
 
-function rowToTheme(row: { id: string; name: string; tokens: string }): ThemeRow | undefined {
+/** The stored `shape` column as a `ThemeShape` — `null` and anything this
+ *  process did not write both read as `'neutral'` (rule nine). */
+function normalizeShape(stored: string | null): ThemeShape {
+  if (stored === null) return 'neutral';
+  const parsed = themeShapeSchema.safeParse(stored);
+  return parsed.success ? parsed.data : 'neutral';
+}
+
+function rowToTheme(row: {
+  id: string;
+  name: string;
+  tokens: string;
+  shape: string | null;
+}): ThemeRow | undefined {
   const parsed = themeTokensSchema.safeParse(safeJson(row.tokens));
   if (!parsed.success) return undefined;
-  return { id: row.id, name: row.name, tokens: parsed.data };
+  return { id: row.id, name: row.name, tokens: parsed.data, shape: normalizeShape(row.shape) };
 }
 
 export function readThemes(db: SqliteDatabase): ThemeRow[] {
   const rows = db
-    .prepare('SELECT id, name, tokens FROM themes ORDER BY name')
-    .all() as { id: string; name: string; tokens: string }[];
+    .prepare('SELECT id, name, tokens, shape FROM themes ORDER BY name')
+    .all() as { id: string; name: string; tokens: string; shape: string | null }[];
   return rows.map(rowToTheme).filter((t): t is ThemeRow => t !== undefined);
 }
 
 export function readTheme(db: SqliteDatabase, id: string): ThemeRow | undefined {
-  const row = db.prepare('SELECT id, name, tokens FROM themes WHERE id = ?').get(id) as
-    | { id: string; name: string; tokens: string }
+  const row = db.prepare('SELECT id, name, tokens, shape FROM themes WHERE id = ?').get(id) as
+    | { id: string; name: string; tokens: string; shape: string | null }
     | undefined;
   return row === undefined ? undefined : rowToTheme(row);
 }
 
-export function createTheme(db: SqliteDatabase, input: { name: string; tokens: ThemeTokens }): ThemeRow {
+export function createTheme(
+  db: SqliteDatabase,
+  input: { name: string; tokens: ThemeTokens; shape: ThemeShape },
+): ThemeRow {
   const id = randomBytes(8).toString('hex');
   const at = Date.now();
   db.prepare(
-    'INSERT INTO themes (id, name, tokens, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-  ).run(id, input.name, JSON.stringify(input.tokens), at, at);
-  return { id, name: input.name, tokens: input.tokens };
+    'INSERT INTO themes (id, name, tokens, shape, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, input.name, JSON.stringify(input.tokens), input.shape, at, at);
+  return { id, name: input.name, tokens: input.tokens, shape: input.shape };
 }
 
-/** Update a theme's name and tokens. Returns false when the id is unknown. */
+/** Update a theme's name, tokens and shape. Returns false when the id is unknown. */
 export function updateTheme(
   db: SqliteDatabase,
   id: string,
-  input: { name: string; tokens: ThemeTokens },
+  input: { name: string; tokens: ThemeTokens; shape: ThemeShape },
 ): boolean {
   const result = db
-    .prepare('UPDATE themes SET name = ?, tokens = ?, updated_at = ? WHERE id = ?')
-    .run(input.name, JSON.stringify(input.tokens), Date.now(), id);
+    .prepare('UPDATE themes SET name = ?, tokens = ?, shape = ?, updated_at = ? WHERE id = ?')
+    .run(input.name, JSON.stringify(input.tokens), input.shape, Date.now(), id);
   return result.changes > 0;
 }
 

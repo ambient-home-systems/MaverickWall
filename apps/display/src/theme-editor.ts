@@ -42,6 +42,9 @@ function init(root: HTMLElement): void {
     | HTMLInputElement
     | HTMLSelectElement
     | null;
+  // The shape segControl (RFC 014 §4.3) — a radio per built-in shape, plus
+  // 'neutral' for none. Read like any other field: whichever is checked.
+  const shapeInputs = Array.from(form.querySelectorAll('[name="shape"]')) as HTMLInputElement[];
 
   // The iframe's <html>, once it has loaded — where the theme tokens are set so
   // they cascade through the whole preview document.
@@ -56,9 +59,18 @@ function init(root: HTMLElement): void {
     return base;
   };
 
+  // `resolveTheme` sends 'neutral' (and an absent column) as the display's
+  // 'board' sentinel — the preview has to read the same value the manifest
+  // will carry, or a household would see one shape while saving another.
+  const readShape = (): string => {
+    const checked = shapeInputs.find((input) => input.checked);
+    const value = checked?.value ?? 'neutral';
+    return value === 'neutral' ? 'board' : value;
+  };
+
   const apply = (): void => {
     const base = readBase();
-    if (previewRoot !== undefined) applyTheme(previewRoot, 'custom', customTokens(base), 'board');
+    if (previewRoot !== undefined) applyTheme(previewRoot, 'custom', customTokens(base), readShape());
     if (contrastBox !== null) renderContrast(contrastBox, base);
   };
 
@@ -67,6 +79,7 @@ function init(root: HTMLElement): void {
     control.addEventListener('change', apply);
   }
   radiusInput?.addEventListener('change', apply);
+  for (const input of shapeInputs) input.addEventListener('change', apply);
 
   // The preview: the real wall, drawn once, then re-themed live. A failure just
   // leaves the form fully usable without the preview.

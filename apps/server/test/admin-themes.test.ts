@@ -343,6 +343,51 @@ describe('the theme builder', () => {
     expect(removed.status).toBe(302);
     expect(readThemes(h.db)).toHaveLength(0);
   });
+
+  /*
+   * RFC 014 §4.3. No `shape` field at all (`themeFields` sends none) is the
+   * form's own default — every case above already exercises that path and
+   * stays green — so this is the other three: an explicit choice stored and
+   * reflected, an explicit "neutral" reading the same as never choosing one,
+   * and a value outside the six refused rather than coerced (rule five).
+   */
+  it('stores a chosen shape, and a household body outside the six is refused', async () => {
+    const h = await harness();
+    const made = await h.form('/admin/themes', themeFields('Ledger', { shape: 'almanac' }));
+    expect(made.status).toBe(302);
+    expect(readThemes(h.db)[0]?.shape).toBe('almanac');
+
+    const bad = await h.form('/admin/themes', themeFields('Bad shape', { shape: 'board' }));
+    expect(bad.status).toBe(400);
+    expect(readThemes(h.db)).toHaveLength(1);
+  });
+
+  it('resolves a chosen shape into the manifest a wall polls, colours unchanged', async () => {
+    const h = await harness();
+    await h.form('/admin/themes', themeFields('Ledger', { shape: 'almanac' }));
+    const id = readThemes(h.db)[0]?.id ?? '';
+    const token = wearing(h.db, 'w1', 'Kitchen', `custom:${id}`);
+
+    const manifest = (await (
+      await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
+    ).json()) as { theme: { active: string; activeShape: string } };
+    // The shape borrowed, and the ref stays this theme's own — never Almanac's.
+    expect(manifest.theme.active).toBe(`custom:${id}`);
+    expect(manifest.theme.activeShape).toBe('almanac');
+  });
+
+  it('renders the shape control as a real segmented radio group, checked on what is stored', async () => {
+    const h = await harness();
+    await h.form('/admin/themes', themeFields('Ledger', { shape: 'almanac' }));
+    const id = readThemes(h.db)[0]?.id ?? '';
+    const page = await (await h.call(`/admin/themes/${id}`)).text();
+    expect(page).toContain('<input type="radio" name="shape" value="almanac" checked>');
+    // Every option present, and only the stored one checked.
+    for (const value of ['neutral', 'panels', 'household', 'blueprint', 'almanac', 'swiss']) {
+      expect(page).toContain(`<input type="radio" name="shape" value="${value}"`);
+    }
+    expect((page.match(/name="shape"[^>]*checked/g) ?? []).length).toBe(1);
+  });
 });
 
 /**

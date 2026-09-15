@@ -1,8 +1,10 @@
 # RFC 014 — Styling and layout flexibility
 
-Status: **proposed; §7 precondition 1 is built** — the display serves a
-Content-Security-Policy (`apps/server/src/http/app.ts`,
-`apps/server/test/display-csp.test.ts`); nothing else here is built ·
+Status: **proposed; §7 precondition 1 and §4.3 are built** — the display
+serves a Content-Security-Policy (`apps/server/src/http/app.ts`,
+`apps/server/test/display-csp.test.ts`), and a custom theme can name a shape
+(`apps/server/src/api/themes.ts`'s `resolveTheme`,
+`apps/server/test/browser-theme-shape.test.ts`); nothing else here is built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
@@ -178,20 +180,49 @@ before it ships, the way Swiss mode was. This is how the project has always
 delivered flexibility — as an enum somebody drew rather than a string somebody
 typed — and it is the only form of it the panel can follow.
 
-### 4.3 Open the theme's shape
+### 4.3 Open the theme's shape — **built**
 
 `display.css` carries per-theme *shape* rules keyed on `data-theme`: Almanac's
 400-weight numerals and italic date, Panels' card borders, Blueprint's
 condensed heads. A custom theme is pinned to the neutral shape (`board`, which
-no built-in resolves to). Let a custom theme name a shape:
+no built-in resolves to). A custom theme names a shape:
 
 ```
 theme.shape = 'panels' | 'household' | 'blueprint' | 'almanac' | 'swiss' | 'neutral'
 ```
 
-One enum, one `setAttribute` that `applyTheme` already makes, and a household
-with a generated palette gets Almanac's italics or Panels' cards under their
-own colours. Days of work, and a real gap.
+One enum, one `setAttribute` that `applyTheme` already made — no display code
+changed at all, since `apps/display`'s `applyTheme` has always set `data-theme`
+to whatever the manifest sends. What shipped is the server side alone:
+`themes.shape`, a nullable column added by migration `0046` (an `ALTER TABLE
+ADD COLUMN`, not a recreate, walked through `migration-upgrade.test.ts`);
+`themeShapeSchema`, the Zod enum on the body, rejecting anything outside the
+six; and `resolveTheme` returning the chosen key — `panels`, say — in place of
+the neutral `board` sentinel it always returned before, so a household with a
+generated palette gets Almanac's italics or Panels' cards under their own
+colours. `null` (a theme saved before the column existed) and an explicit
+`'neutral'` both still resolve to `board`, so nothing on any existing wall
+moved and no stored manifest ETag churned.
+
+The builder's own control is `segControl` (`apps/server/src/http/html.ts`), a
+scriptless radio-per-segment field styled on the `.seg` idiom
+`admin-modules.ts`'s per-click Alerts control already used, extended to a
+`<label>`-wrapped, `:has(input:checked)`-ringed variant so a shape choice
+rides inside the theme form's one Save rather than posting alone — a segment
+that posted on click would have discarded whatever colours were mid-edit, the
+Weather screen's own fault one control along. The live preview iframe
+(`apps/display/src/theme-editor.ts`) reads the checked segment on `change` and
+re-themes with it immediately, the same way it already re-themes on a colour
+edit.
+
+Verified by measurement rather than by class name
+(`apps/server/test/browser-theme-shape.test.ts`): a real paired wall's
+`.dr-num` computed `font-weight` under a custom theme with `shape: 'almanac'`,
+and the reused calendar section's computed background and corner radius under
+`shape: 'panels'` — with the theme's own colours proved to still be its own
+alongside the borrowed shape, and a theme with no shape chosen measured
+byte-for-byte identical to one carrying a genuine pre-phase `NULL` column.
+Days of work, as the estimate said, and a real gap closed.
 
 ### 4.4 Canvas-level styling
 

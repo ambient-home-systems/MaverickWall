@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**A theme you build can borrow a built-in's shape.** Colour has always been
+yours to pick in the theme builder, but a few things about how a wall reads —
+Almanac's italic date, Panels giving each widget its own card — were shape
+rather than colour, and a theme of your own could never have them. There's a
+new control on the builder now: pick a shape, or keep your theme exactly as
+it drew before.
+
 **Your wall screens now tell the browser they are only allowed to load from
 your own box.** Nothing about the calendar changes, and there is nothing to
 turn on — it is a second lock on a door that was already shut. Maverick Wall

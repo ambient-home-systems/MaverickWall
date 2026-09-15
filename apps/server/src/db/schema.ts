@@ -280,6 +280,14 @@ export const themes = sqliteTable('themes', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   tokens: text('tokens', { mode: 'json' }).$type<Record<string, string>>().notNull(),
+  /**
+   * The built-in shape this theme borrows (RFC 014 §4.3) — one of
+   * `panels`/`household`/`blueprint`/`almanac`/`swiss`, or null for a theme
+   * that has never set one. Null and `'neutral'` both resolve to the `board`
+   * sentinel at read time (`apps/server/src/api/themes.ts`), so a theme
+   * created before this column existed draws exactly what it always drew.
+   */
+  shape: text('shape'),
   ...timestamps,
 });
 

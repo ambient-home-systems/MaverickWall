@@ -17,7 +17,9 @@ import {
   mix,
   readThemes,
   resolveTheme,
+  themeShapeSchema,
   themeTokensSchema,
+  THEME_SHAPES,
   withTints,
   type ThemeTokens,
 } from '../src/api/themes.js';
@@ -217,7 +219,7 @@ describe('font tokens', () => {
 
   it('carries a chosen font through resolution', () => {
     const d = db();
-    const created = createTheme(d, { name: 'Typed', tokens: { ...DARK, '--f-sans': body } });
+    const created = createTheme(d, { name: 'Typed', tokens: { ...DARK, '--f-sans': body }, shape: 'neutral' });
     expect(resolveTheme(d, `custom:${created.id}`).tokens?.['--f-sans']).toBe(body);
   });
 });
@@ -231,7 +233,7 @@ describe('resolveTheme', () => {
 
   it('carries the full resolved token set for a custom theme, with board shape', () => {
     const d = db();
-    const created = createTheme(d, { name: 'Sunset', tokens: DARK });
+    const created = createTheme(d, { name: 'Sunset', tokens: DARK, shape: 'neutral' });
     const resolved = resolveTheme(d, `custom:${created.id}`);
     expect(resolved.shape).toBe('board');
     expect(resolved.tokens?.['--bg']).toBe(DARK['--bg']);
@@ -251,10 +253,53 @@ describe('resolveTheme', () => {
   });
 });
 
+describe('a custom theme choosing a shape (RFC 014 §4.3)', () => {
+  it('refuses anything outside the six named shapes', () => {
+    for (const bad of ['almanac ', 'Almanac', 'board', '', 'panels;drop', 'ALMANAC']) {
+      expect(themeShapeSchema.safeParse(bad).success, bad).toBe(false);
+    }
+    for (const good of THEME_SHAPES) expect(themeShapeSchema.safeParse(good).success, good).toBe(true);
+  });
+
+  it('carries a live shape key through resolution unchanged — the display keys its shape CSS on it directly', () => {
+    const d = db();
+    const created = createTheme(d, { name: 'Ledger', tokens: DARK, shape: 'almanac' });
+    const resolved = resolveTheme(d, `custom:${created.id}`);
+    expect(resolved.shape).toBe('almanac');
+    // The colours are still this theme's own — choosing a shape borrows
+    // only the shape rules `display.css` keys on `data-theme`, never the palette.
+    expect(resolved.tokens?.['--bg']).toBe(DARK['--bg']);
+  });
+
+  it('resolves an explicit "neutral" choice to the same board sentinel as never choosing one', () => {
+    const d = db();
+    const neutral = createTheme(d, { name: 'Plain', tokens: DARK, shape: 'neutral' });
+    const untouched = createTheme(d, { name: 'Also plain', tokens: DARK, shape: 'neutral' });
+    expect(resolveTheme(d, `custom:${neutral.id}`).shape).toBe('board');
+    expect(resolveTheme(d, `custom:${untouched.id}`).shape).toBe('board');
+  });
+
+  it('reads a stored shape of null (a theme saved before this column existed) as board, not a crash', () => {
+    const d = db();
+    const created = createTheme(d, { name: 'Old', tokens: DARK, shape: 'neutral' });
+    // Simulate a pre-phase row directly — createTheme always writes a value now.
+    d.prepare(`UPDATE themes SET shape = NULL WHERE id = ?`).run(created.id);
+    expect(resolveTheme(d, `custom:${created.id}`).shape).toBe('board');
+    expect(readThemes(d)[0]?.shape).toBe('neutral');
+  });
+
+  it('never lets a stray column value reach the wall as a shape', () => {
+    const d = db();
+    const created = createTheme(d, { name: 'Tampered', tokens: DARK, shape: 'panels' });
+    d.prepare(`UPDATE themes SET shape = ? WHERE id = ?`).run("swiss'; --", created.id);
+    expect(resolveTheme(d, `custom:${created.id}`).shape).toBe('board');
+  });
+});
+
 describe('storage round-trip', () => {
   it('creates a theme and reads it back', () => {
     const d = db();
-    const created = createTheme(d, { name: 'Sunset', tokens: DARK });
+    const created = createTheme(d, { name: 'Sunset', tokens: DARK, shape: 'neutral' });
     const all = readThemes(d);
     expect(all).toHaveLength(1);
     expect(all[0]?.id).toBe(created.id);
@@ -277,7 +322,7 @@ describe('a custom theme reaches a paired wall via /d/manifest', () => {
 
     // A household that has finished setup, and a wall wearing a custom theme —
     // the wall's own, since there is no household theme (RFC 015 phase 2).
-    const theme = createTheme(database, { name: 'Sunset', tokens: DARK });
+    const theme = createTheme(database, { name: 'Sunset', tokens: DARK, shape: 'neutral' });
     database
       .prepare(`UPDATE household_settings SET setup_completed_at = ? WHERE id = 'singleton'`)
       .run(at);

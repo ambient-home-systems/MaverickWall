@@ -868,10 +868,19 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * One outlined container, full corner on the outer ends, 40px height; the
  * selected segment is secondary-container with a leading check drawn in CSS.
  * No overflow:hidden — it would clip the focus ring — so the end radii live on
- * the end segments themselves. */
+ * the end segments themselves.
+ *
+ * A segment is a button where a click posts straight away (Store alerts, one
+ * submit per segment) and a label wrapping a hidden radio where it must not
+ * (segControl, one field inside a larger form — the theme builder's shape
+ * control is the reason: posting the shape alone, the way a button segment
+ * does, would discard whatever colours were mid-edit, the Weather screen's
+ * own fault one control along). The radio is hidden the way .themecard's is,
+ * and "on" is :has(input:checked) rather than a server-written class, so the
+ * browser's own selection is what the ring follows. */
 .seg,.le-orient,.themebar{display:inline-flex;margin:0;border:1px solid var(--mw-ink-3);
   border-radius:var(--mw-r-2);background:transparent;overflow:visible}
-.seg button,.le-orient-btn,.themebtn{position:relative;flex:1;margin:0;height:38px;
+.seg button,.seg label,.le-orient-btn,.themebtn{position:relative;flex:1;margin:0;height:38px;
   padding:0 var(--mw-s-4);border:0;border-left:1px solid var(--mw-ink-3);border-radius:0;
   background:transparent;color:var(--mw-ink);
   font-family:var(--sans);
@@ -879,25 +888,26 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
   font-weight:var(--mw-t-label-weight);
   letter-spacing:var(--mw-t-label-tracking);
   display:inline-flex;align-items:center;justify-content:center;gap:var(--mw-s-2);cursor:pointer}
-.seg button:first-child,.le-orient-btn:first-child,.themebtn:first-child{border-left:0;
+.seg label input{position:absolute;opacity:0;pointer-events:none}
+.seg button:first-child,.seg label:first-child,.le-orient-btn:first-child,.themebtn:first-child{border-left:0;
   border-radius:var(--mw-r-2) 0 0 var(--mw-r-2)}
-.seg button:last-child,.le-orient-btn:last-child,.themebtn:last-child{
+.seg button:last-child,.seg label:last-child,.le-orient-btn:last-child,.themebtn:last-child{
   border-radius:0 var(--mw-r-2) var(--mw-r-2) 0}
-.seg button:hover,.le-orient-btn:hover,.themebtn:hover{background:color-mix(in srgb,
+.seg button:hover,.seg label:hover,.le-orient-btn:hover,.themebtn:hover{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent);
   color:var(--mw-ink)}
-.seg button:active,.le-orient-btn:active,.themebtn:active{background:color-mix(in srgb,
+.seg button:active,.seg label:active,.le-orient-btn:active,.themebtn:active{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-press),transparent)}
-.seg button.on,.le-orient-btn.is-on,.themebtn[data-active="true"]{
+.seg button.on,.seg label:has(input:checked),.le-orient-btn.is-on,.themebtn[data-active="true"]{
   background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
-.seg button.on:hover,.le-orient-btn.is-on:hover,.themebtn[data-active="true"]:hover{
+.seg button.on:hover,.seg label:has(input:checked):hover,.le-orient-btn.is-on:hover,.themebtn[data-active="true"]:hover{
   background:color-mix(in srgb,
   var(--mw-accent-soft-ink) var(--mw-wash-hover),
   var(--mw-accent-soft))}
 /* The selected segment's leading check, drawn rather than fetched: a small box
  * with two borders, rotated into a tick. */
-.seg button.on::before,.le-orient-btn.is-on::before,.themebtn[data-active="true"]::before{
+.seg button.on::before,.seg label:has(input:checked)::before,.le-orient-btn.is-on::before,.themebtn[data-active="true"]::before{
   content:"";width:9px;height:5px;margin-top:calc(-1 * var(--mw-s-1));flex:0 0 auto;
   border-left:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(-45deg)}
@@ -905,7 +915,7 @@ button.text:active,.btn-text:active{background:color-mix(in srgb,
  * labels in a tight column, so they trade the 16px padding for 10px. */
 .themebar{display:flex}
 .themebtn{padding:0 var(--mw-s-3)}
-.seg button::after,.le-orient-btn::after,.themebtn::after{content:"";position:absolute;
+.seg button::after,.seg label::after,.le-orient-btn::after,.themebtn::after{content:"";position:absolute;
   left:0;right:0;top:50%;height:48px;transform:translateY(-50%)}
 
 /* ---- Errors and disclaimers (the .error box) -----------------------------
@@ -2534,7 +2544,8 @@ ${COMPONENT_STYLE}
 :is(a.card,button,.btn,.walls a,.mw-row-link,.wall-link,.le-tool-link,.nav-item,.saved-x,a.tag,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
 .themecard:has(input:focus-visible),
-.tplpick:has(input:focus-visible){outline:3px solid var(--mw-accent);
+.tplpick:has(input:focus-visible),
+.seg label:has(input:focus-visible){outline:3px solid var(--mw-accent);
   outline-offset:2px}
 
 /* ---- Motion, gated on the reader's preference ----------------------------
@@ -3574,6 +3585,52 @@ export function switchRow(options: SwitchRowOptions): string {
     (options.checked ? ' checked' : '') +
     (options.attrs === undefined ? '' : ` ${options.attrs}`) +
     `></label>`
+  );
+}
+
+/**
+ * A scriptless mutually-exclusive choice, drawn as one row of segments.
+ *
+ * The wall editor's own `segControl` (`apps/display/src/layout-editor.ts`) is
+ * client-rendered `<button>`s inside an already-scripted panel; this is the
+ * admin's twin for a form that must still save with script off. A radio per
+ * segment, hidden the way `.themecard`'s is, wrapped in the `.seg` styling
+ * `admin-modules.ts`'s per-click Alerts control already uses — but as a
+ * `<label>` rather than a `<button>`, because these segments are one field
+ * among several in a larger form and must ride along with whatever else was
+ * mid-edit rather than post alone. Posting alone is the Weather screen's own
+ * fault (CLAUDE.md, "the Weather screen lost a typed location every time
+ * somebody pressed the wrong Save") one control further along: a segment that
+ * submits on click would discard the rest of the form's unsaved fields the
+ * moment somebody picked a shape.
+ */
+export interface SegControlOptions {
+  readonly label: string;
+  readonly name: string;
+  readonly options: readonly { readonly value: string; readonly label: string }[];
+  readonly selected: string;
+  readonly hint?: string;
+}
+
+export function segControl(options: SegControlOptions): string {
+  const segments = options.options
+    .map(
+      (opt) =>
+        `<label>` +
+        `<input type="radio" name="${escapeHtml(options.name)}" value="${escapeHtml(opt.value)}"` +
+        (opt.value === options.selected ? ' checked' : '') +
+        `><span>${escapeHtml(opt.label)}</span></label>`,
+    )
+    .join('');
+  // Not `fieldWrap`: that wraps its control in a `<label>`, and a segment is
+  // already one — nesting them is invalid HTML with no clear focus target.
+  // `role="radiogroup"` plus the visible legend is the accessible substitute.
+  return (
+    `<div class="field field-seg">` +
+    `<span class="field-label">${escapeHtml(options.label)}</span>` +
+    `<div class="seg" role="radiogroup" aria-label="${escapeHtml(options.label)}">${segments}</div>` +
+    (options.hint === undefined ? '' : `<p class="field-hint">${escapeHtml(options.hint)}</p>`) +
+    `</div>`
   );
 }
 

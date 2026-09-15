@@ -674,6 +674,7 @@ describe('destructive actions ask first', () => {
         '--muted': '#7E8C9C', '--faint': '#4A5563', '--accent': '#E8A33D', '--s-day': '#E8A33D',
         '--s-night': '#4C7FD1', '--s-break': '#35916A', '--s-straight': '#6B7684', '--radius': '0.2rem',
       },
+      shape: 'neutral',
     });
 
     const interstitial = await (await h.call(`/admin/themes/${theme.id}/delete`)).text();
@@ -700,6 +701,7 @@ describe('destructive actions ask first', () => {
         '--muted': '#7E8C9C', '--faint': '#4A5563', '--accent': '#E8A33D', '--s-day': '#E8A33D',
         '--s-night': '#4C7FD1', '--s-break': '#35916A', '--s-straight': '#6B7684', '--radius': '0.2rem',
       },
+      shape: 'neutral',
     });
     const stamp = Date.now();
     h.db
