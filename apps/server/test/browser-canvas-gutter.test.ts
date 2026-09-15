@@ -38,7 +38,7 @@ import {
   shutDownBrowser,
   type Installation,
 } from './browser-harness.js';
-import { GUTTER_DEFAULT_STEP } from '../src/gutter.js';
+import { GUTTER_DEFAULT_STEP, GUTTER_MAX } from '../src/gutter.js';
 
 /* A container installs with no `TZ` and the wizard is told Europe/London. */
 process.env['TZ'] = 'UTC';
@@ -62,12 +62,21 @@ const FLOOR_PX = 22;
 const VIEWPORT = { width: 1080, height: 1920 } as const;
 
 /**
- * Two boxes are adjacent when their border edges meet, within this.
+ * How far apart two border edges can be and still be one seam.
  *
- * The boxes are placed as percentages of a letterboxed layout, so two edges
- * that tile land a rounding error apart rather than on the same number.
+ * Below step 5 the boxes tile and two edges that meet land a rounding error
+ * apart, so a pixel would do. Above it the canvas takes room out of every
+ * shared edge — which is the whole point — and the neighbours this is looking
+ * for are deliberately no longer touching. So the search is loose and the
+ * *assertion* is exact: the widest gutter the ladder can produce is the sum of
+ * the two permissions, `--s4 + --s5`, and anything inside that with an overlap
+ * on the other axis is a neighbour on a canvas whose boxes were authored to
+ * tile. Selecting the pairs loosely cannot flatter the measurement, because
+ * what is then measured is compared against an exact expected length — and
+ * `expectATiledWall` holds the pair *count* to the same number at every rung,
+ * which is what would catch a loose search wandering onto a new pair.
  */
-const TOUCHING_PX = 1;
+const TOUCHING_SLACK_PX = 1;
 
 /**
  * What a gap has to match, in pixels.
@@ -110,12 +119,13 @@ afterAll(async () => {
  * schema that refuses the field, a handler that never reads it and a control
  * that posts the wrong name.
  */
-async function chooseGutter(step: number): Promise<void> {
+async function chooseGutter(step: number, clock24 = ''): Promise<void> {
   const saved = await wall.post(`/admin/screens/${screenId}`, {
     name: 'Kitchen',
     orientation: 'auto',
     rotation: '0',
     theme: 'panels',
+    clock_24: clock24,
     layout_gutter: String(step),
   });
   expect(saved.status, `saving step ${step}`).toBe(302);
@@ -144,12 +154,56 @@ function neverAsked(): void {
 interface GutterMeasurement {
   /** Every adjacent pair's content-edge gap, in CSS pixels. */
   readonly gaps: readonly number[];
-  /** `--s4`, resolved through this wall's own cascade. */
+  /** `--s4` and `--s5`, resolved through this wall's own cascade. */
   readonly s4: number;
+  readonly s5: number;
   /** Every visible run drawn under the floor, for the message. */
   readonly under: readonly string[];
   /** How many boxes were on the layout, so an empty wall cannot pass quietly. */
   readonly boxes: number;
+  /**
+   * The widest padding any box spends on one axis, in total.
+   *
+   * The widget box's own permission is step 4, and the airier rungs must pay
+   * the canvas rather than raise this — so it is the number that says the two
+   * budgets stayed separate rather than one growing past its limit.
+   */
+  readonly widestPadding: number;
+  /** How far the union of the boxes falls short of the layout, per edge. */
+  readonly edgeSlack: { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+  /**
+   * Anything drawn wider or taller than the box it is in, named.
+   *
+   * `--bw`/`--bh` are the *authored* fractions, so a widget that sizes its own
+   * type against its box — the clock, the countdown — would size for room the
+   * canvas has just taken away unless `.fw` subtracts it. The clock is
+   * `white-space: nowrap` precisely so an oversized one clips rather than
+   * wrapping, which means neither its rectangle nor a line count can see this:
+   * `scrollWidth` past `clientWidth` can, which is the idiom the landscape
+   * clock's own fix already had to reach for.
+   *
+   * **Width only, and that is a correction rather than a narrowing.** The
+   * first draft asked the same question of the height and reported the clock
+   * overflowing 84 into 78 at every rung, this change or not: `.clock` sets
+   * `line-height` below 1, so it exceeds its own client height by the leading
+   * alone with nothing hidden. That exact false positive is written up in
+   * CLAUDE.md, where a clip detector flagged `.clock` and `.dr-num` for it and
+   * the flag was confirmed pre-existing by stashing the change and measuring
+   * the identical numbers. Horizontal is where this widget actually clips.
+   */
+  readonly clipped: readonly string[];
+  /**
+   * The clock's drawn type as a fraction of the box it is actually in.
+   *
+   * The one number that can see `--buw`/`--buh` being netted of what the
+   * canvas took. `--bw`/`--bh` stay the *authored* fractions, so without the
+   * subtraction a box-relative widget sizes itself for room it no longer has —
+   * and on this wall the clock is bound by its box's **height** term, measured:
+   * 89.9px in a 173px box at the default rung and 78.0px in a 150px box at the
+   * airiest, which is the same 0.52 twice. Leave the netting out and the
+   * numerator stays at the default rung's size while the denominator shrinks.
+   */
+  readonly clockToBox: number | undefined;
 }
 
 async function measureGutter(): Promise<GutterMeasurement> {
@@ -178,6 +232,32 @@ async function readGaps(page: Page): Promise<Omit<GutterMeasurement, 'under'>> {
   return page.evaluate(
     ({ touching }) => {
       const canvas = document.querySelector('.canvas') as HTMLElement;
+
+      /*
+       * `--s4` and `--s5` as this wall resolves them, from a probe in the
+       * layout itself — resolved first, because the seam search below is bounded
+       * by their sum.
+       *
+       * `getComputedStyle().getPropertyValue('--s4')` answers the token stream
+       * — `calc(… * 0.85)` — and not a length, because the property is
+       * unregistered. A real element with that height is the only thing that
+       * makes the browser do the arithmetic, and planting it inside `.canvas`
+       * is what makes it the *same* arithmetic: `--s4`'s base is
+       * `var(--t-wall-event, var(--t-base))`, which is inherited from here.
+       */
+      const probe = document.createElement('div');
+      probe.style.position = 'absolute';
+      probe.style.visibility = 'hidden';
+      canvas.appendChild(probe);
+      const resolve = (token: string): number => {
+        probe.style.height = token;
+        return probe.getBoundingClientRect().height;
+      };
+      const s4 = resolve('var(--s4)');
+      const s5 = resolve('var(--s5)');
+      probe.remove();
+      const seam = s4 + s5 + touching;
+
       const boxes = [...canvas.querySelectorAll(':scope > .fw')].map((node) => {
         const rect = node.getBoundingClientRect();
         const style = window.getComputedStyle(node);
@@ -196,16 +276,16 @@ async function readGaps(page: Page): Promise<Omit<GutterMeasurement, 'under'>> {
       for (const a of boxes) {
         for (const b of boxes) {
           if (a === b) continue;
-          // b sits directly below a.
-          if (
-            Math.abs(b.rect.top - a.rect.bottom) <= touching &&
+          // b sits below a, with at most one seam between them.
+          const below = b.rect.top - a.rect.bottom;
+          if (below >= -touching && below <= seam &&
             overlaps(a.rect.left, a.rect.right, b.rect.left, b.rect.right)
           ) {
             gaps.push(b.rect.top + b.top - (a.rect.bottom - a.bottom));
           }
-          // b sits directly to the right of a.
-          if (
-            Math.abs(b.rect.left - a.rect.right) <= touching &&
+          // b sits to the right of a, with at most one seam between them.
+          const right = b.rect.left - a.rect.right;
+          if (right >= -touching && right <= seam &&
             overlaps(a.rect.top, a.rect.bottom, b.rect.top, b.rect.bottom)
           ) {
             gaps.push(b.rect.left + b.left - (a.rect.right - a.right));
@@ -213,29 +293,57 @@ async function readGaps(page: Page): Promise<Omit<GutterMeasurement, 'under'>> {
         }
       }
 
-      /*
-       * `--s4` as this wall resolves it, from a probe in the layout itself.
-       *
-       * `getComputedStyle().getPropertyValue('--s4')` answers the token stream
-       * — `calc(… * 0.85)` — and not a length, because the property is
-       * unregistered. A real element with that height is the only thing that
-       * makes the browser do the arithmetic, and planting it inside `.canvas`
-       * is what makes it the *same* arithmetic: `--s4`'s base is
-       * `var(--t-wall-event, var(--t-base))`, which is inherited from here.
-       */
-      const probe = document.createElement('div');
-      probe.style.position = 'absolute';
-      probe.style.visibility = 'hidden';
-      probe.style.height = 'var(--s4)';
-      canvas.appendChild(probe);
-      const s4 = probe.getBoundingClientRect().height;
-      probe.remove();
+      const widestPadding = Math.max(
+        0,
+        ...boxes.map((box) => Math.max(box.left + box.right, box.top + box.bottom)),
+      );
 
-      return { gaps, s4, boxes: boxes.length };
+      /*
+       * How far the boxes fall short of the layout's own edges.
+       *
+       * The placement rule keeps the edges of the layout and opens only the
+       * seams, so this must stay at zero at every step — a rule that inset
+       * every side would letterbox the wall, which no gap measurement can see.
+       */
+      const frame = canvas.getBoundingClientRect();
+      const edgeSlack = {
+        left: Math.min(...boxes.map((b) => b.rect.left)) - frame.left,
+        top: Math.min(...boxes.map((b) => b.rect.top)) - frame.top,
+        right: frame.right - Math.max(...boxes.map((b) => b.rect.right)),
+        bottom: frame.bottom - Math.max(...boxes.map((b) => b.rect.bottom)),
+      };
+
+      const clipped: string[] = [];
+      for (const node of canvas.querySelectorAll('.clock, .cd, .fw-content > *')) {
+        const el = node as HTMLElement;
+        if (el.scrollWidth > el.clientWidth + 1) {
+          clipped.push(`${el.className || el.tagName} ${el.scrollWidth} wide in ${el.clientWidth}`);
+        }
+      }
+
+      const clockBox = canvas.querySelector(':scope > .fw-clock') as HTMLElement | null;
+      const clock = clockBox?.querySelector('.clock') as HTMLElement | null;
+      const clockToBox =
+        clockBox !== null && clock !== null && clockBox.clientHeight > 0
+          ? parseFloat(window.getComputedStyle(clock).fontSize) / clockBox.clientHeight
+          : undefined;
+
+      return { gaps, s4, s5, boxes: boxes.length, widestPadding, edgeSlack, clipped, clockToBox };
     },
-    { touching: TOUCHING_PX },
+    { touching: TOUCHING_SLACK_PX },
   );
 }
+
+/**
+ * How many seams this fixture's Classic seed has.
+ *
+ * Recorded rather than derived, and it is what keeps the loose seam search
+ * honest: the same pairs must be found at every rung, so a search widened to
+ * span the gutter cannot quietly pick up a *new* neighbour at the airy end and
+ * average it into the answer. Seeded from the first measurement of the run so
+ * the number is this wall's own rather than one transcribed from a template.
+ */
+let seams: number | undefined;
 
 /** Every measurement here is about pairs, so a wall with none proves nothing. */
 function expectATiledWall(measured: GutterMeasurement): void {
@@ -245,6 +353,22 @@ function expectATiledWall(measured: GutterMeasurement): void {
     'no two boxes on this wall share an edge, so there is no gutter to measure',
   ).toBeGreaterThan(2);
   expect(measured.s4, '--s4 resolved to nothing on this wall').toBeGreaterThan(1);
+  expect(measured.s5, '--s5 resolved to nothing on this wall').toBeGreaterThan(measured.s4);
+  seams ??= measured.gaps.length;
+  expect(
+    measured.gaps.length,
+    `the seam search found ${measured.gaps.length} pairs where it found ${seams} on this same wall`,
+  ).toBe(seams);
+  /*
+   * The edges of the layout are kept at every step, which is the half of the
+   * placement rule a gap measurement cannot see. A rule that inset every side
+   * would read as a perfectly good gutter and quietly letterbox the wall —
+   * handing back the border of air the tiling rework spent a phase removing.
+   */
+  for (const [edge, slack] of Object.entries(measured.edgeSlack)) {
+    expect(Math.abs(slack), `the boxes leave ${slack.toFixed(2)}px of the layout bare at the ${edge}`)
+      .toBeLessThan(EXACT_PX);
+  }
 }
 
 describe('the room between a wall’s widgets, at both ends of the ladder', () => {
@@ -285,6 +409,135 @@ describe('the room between a wall’s widgets, at both ends of the ladder', () =
         measured.under,
         `${measured.under.length} runs under the ${FLOOR_PX}px floor at step 4:\n  ${measured.under.join('\n  ')}`,
       ).toEqual([]);
+    },
+    SLOW,
+  );
+
+  it(
+    'pays the airier rungs from the canvas and never from the widget box',
+    async () => {
+      /*
+       * **The two budgets, measured.** The spacing scale lets a widget box
+       * spend at most step 4 on padding, total per axis, and lets the canvas
+       * spend at most step 5 between the boxes it holds. Every rung past 4
+       * therefore has to arrive as room taken *out of the box rectangle* — the
+       * boxes stop sharing edges and the wall's ground opens between them —
+       * rather than as more padding, which would be the widget paying the
+       * canvas's bill out of a budget already spent to its limit.
+       *
+       * So: the gap grows, and `widestPadding` does not.
+       */
+      await chooseGutter(GUTTER_DEFAULT_STEP);
+      const normal = await measureGutter();
+      expectATiledWall(normal);
+
+      await chooseGutter(GUTTER_MAX);
+      const airy = await measureGutter();
+      expectATiledWall(airy);
+
+      // The airiest rung is the widget's whole padding plus the canvas's whole
+      // ceiling: `--s4 + --s5`, which is the sum of the two permissions.
+      for (const gap of airy.gaps) {
+        expect(
+          Math.abs(gap - (airy.s4 + airy.s5)),
+          `a gap of ${gap.toFixed(2)}px against --s4 + --s5 at ${(airy.s4 + airy.s5).toFixed(2)}px`,
+        ).toBeLessThan(EXACT_PX);
+      }
+      expect(
+        airy.widestPadding,
+        'the airier rung raised the widget box past its own step-4 permission',
+      ).toBeCloseTo(normal.widestPadding, 1);
+      expect(airy.widestPadding, 'the padding is not the step-4 permission').toBeCloseTo(airy.s4, 1);
+
+      expect(
+        airy.under,
+        `${airy.under.length} runs under the ${FLOOR_PX}px floor at the airiest rung:\n  ${airy.under.join('\n  ')}`,
+      ).toEqual([]);
+
+      /*
+       * And nothing overflows the box it was given. This is what says `.fw`
+       * nets `--buw`/`--buh` of what the canvas took: leave them on the
+       * authored fraction and a box-relative widget sizes itself for room it
+       * no longer has, by exactly the gutter.
+       */
+      expect(
+        airy.clipped,
+        `${airy.clipped.length} things overflow their box at the airiest rung:\n  ${airy.clipped.join('\n  ')}`,
+      ).toEqual([]);
+      expect(normal.clipped, 'something already overflowed at the default rung').toEqual([]);
+    },
+    SLOW,
+  );
+
+  it(
+    'sizes a box-relative widget against the box the canvas left it',
+    async () => {
+      /*
+       * **The netting, measured as a proportion — and the two assertions that
+       * could not see it at all.** `--bw`/`--bh` stay the authored fractions,
+       * so `.fw` has to subtract what the canvas took or a widget sizing itself
+       * against its box sizes for room it no longer has.
+       *
+       * Asking whether anything *overflows* cannot see that, and neither can a
+       * 12-hour clock, which is where this went first on CLAUDE.md's own
+       * evidence that "08:26 pm" puts the clock on its width term. Both were
+       * written, both stayed green with the netting reverted, and probing the
+       * live wall is what said why: `.clock` is a block, so its `scrollWidth`
+       * is its parent's width until the text is genuinely wider — and on this
+       * fixture the text fits at either size, in either format. The clock here
+       * is bound by its box's **height** term.
+       *
+       * So the observable is the proportion. Measured: 89.9px of type in a
+       * 173px box at the default rung, 78.0px in a 150px box at the airiest —
+       * the same 0.52 twice, because the widget followed its box down. Without
+       * the subtraction the numerator stays at the default rung's size while
+       * the denominator shrinks, and the ratio moves by the whole gutter.
+       */
+      await chooseGutter(GUTTER_DEFAULT_STEP);
+      const normal = await measureGutter();
+      await chooseGutter(GUTTER_MAX);
+      const airy = await measureGutter();
+      expectATiledWall(airy);
+
+      expect(normal.clockToBox, 'no clock on this wall to measure').toBeDefined();
+      expect(airy.clockToBox, 'no clock on this wall to measure').toBeDefined();
+      expect(
+        airy.clockToBox!,
+        `the clock is ${(airy.clockToBox! * 100).toFixed(1)}% of its box at the airiest rung and ` +
+          `${(normal.clockToBox! * 100).toFixed(1)}% at the default one — it is sizing against a box it has not got`,
+      ).toBeCloseTo(normal.clockToBox!, 2);
+
+      // And the boxes really did get smaller, or the ratio above held for the
+      // uninteresting reason that nothing moved.
+      expect(airy.clipped, `something overflows its box at the airiest rung:\n  ${airy.clipped.join('\n  ')}`).toEqual([]);
+    },
+    SLOW,
+  );
+
+  it(
+    'grows the gap at every rung of the ladder, and never shrinks it',
+    async () => {
+      /*
+       * Monotone, measured end to end, which is what says the ladder is one
+       * scale across two mechanisms rather than two ladders with a seam in the
+       * middle. The interesting rung is 5, where the padding stops growing and
+       * the canvas starts paying: a break in the progression there would be the
+       * hand-off going wrong and would read, on a wall, as a setting that does
+       * nothing once.
+       */
+      const widest: number[] = [];
+      for (let step = 0; step <= GUTTER_MAX; step += 1) {
+        await chooseGutter(step);
+        const measured = await measureGutter();
+        expectATiledWall(measured);
+        widest.push(Math.max(...measured.gaps));
+      }
+      for (let step = 1; step < widest.length; step += 1) {
+        expect(
+          widest[step]!,
+          `step ${step} (${widest[step]!.toFixed(2)}px) is not airier than step ${step - 1} (${widest[step - 1]!.toFixed(2)}px)`,
+        ).toBeGreaterThan(widest[step - 1]! + EXACT_PX);
+      }
     },
     SLOW,
   );
@@ -398,7 +651,7 @@ describe('the control a household reaches it through', () => {
   it('offers the whole ladder, and exactly one of it', async () => {
     await chooseGutter(1);
     const { values, checked } = segments(await settingsHtml());
-    expect(values).toEqual(['0', '1', '2', '3', '4']);
+    expect(values).toEqual(['0', '1', '2', '3', '4', '5', '6']);
     // Exactly one, because a radio group with two checked posts the last and a
     // radio group with none posts nothing — and nothing is what this handler
     // reads as "leave the column alone", so the control would silently stop

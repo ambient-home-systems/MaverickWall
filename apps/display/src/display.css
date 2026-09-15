@@ -2420,8 +2420,16 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  --buw: calc(var(--canvas-w) * var(--bw, 0.25) / 100);
-  --buh: calc(var(--canvas-h) * var(--bh, 0.15) / 100);
+  /*
+   * One per cent of the box's own width and height — net of whatever the
+   * canvas gutter took off it (RFC 014 §4.4). `--bw`/`--bh` are the *authored*
+   * fractions and stay that way, so a widget that sizes its type against its
+   * box must subtract what it lost or a `nowrap` clock clips by exactly the
+   * gutter. `0px` is the arithmetic identity, so an unchosen wall computes
+   * precisely what it always did.
+   */
+  --buw: calc((var(--canvas-w) * var(--bw, 0.25) - var(--in-x, 0px)) / 100);
+  --buh: calc((var(--canvas-h) * var(--bh, 0.15) - var(--in-y, 0px)) / 100);
 }
 
 .fw-empty {

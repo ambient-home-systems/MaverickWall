@@ -5,8 +5,8 @@ built** — the display serves a Content-Security-Policy
 (`apps/server/src/http/app.ts`, `apps/server/test/display-csp.test.ts`), a
 custom theme can name a shape (`apps/server/src/api/themes.ts`'s
 `resolveTheme`, `apps/server/test/browser-theme-shape.test.ts`), and a wall
-names its own gutter step (`screens.layout_gutter`, migration `0047`,
-`apps/server/src/gutter.ts`, `apps/display/src/gutter.ts`,
+names its own gutter step across both budgets (`screens.layout_gutter`,
+migration `0047`, `apps/server/src/gutter.ts`, `apps/display/src/gutter.ts`,
 `apps/server/test/browser-canvas-gutter.test.ts`); §4.4's *default widget
 style* waits on §4.1, and nothing else here is built ·
 Owner: — · First drafted 2026-09-15 ·
@@ -248,15 +248,40 @@ description of what this one does. So the ladder is five steps down to
 nothing, `0` through `4` mapping to `0`, `--s1` … `--s4`, and the top of it is
 where every wall already stood.
 
-It stops there for a reason rather than for tidiness. The gutter is drawn as
-the *widget box's own padding*, and the scale's second permission is that a
-widget box spends at most step 4, total, per axis — so a step-5 gutter would
-be canvas spacing taken out of the widget's budget, on a fixed layout with no
-scrollbar where chrome competes with content for every pixel. **Airier than
-today is therefore a layout change and not a spacing one**: it means room the
-boxes do not own, which on a canvas whose boxes tile means they stop tiling.
-That is a separate decision and is deliberately not this; what shipped is the
-tighter half, which is the half that gives pixels back to what is drawn.
+It stopped there at first, and the reason was half right. The gutter is drawn
+as the *widget box's own padding*, and the scale's second permission is that a
+widget box spends at most step 4, total, per axis — so a step-5 gutter **spent
+as padding** would be canvas spacing taken out of the widget's budget. What
+that argument missed is that the scale declares a *third* permission, on the
+canvas itself — *at most step 5 between the boxes it holds* — and the wall had
+never spent a pixel of it. Two budgets, and only one was in use.
+
+**So the airier half is built, and it is a second mechanism rather than a
+larger number.** The ladder is one household-facing rung count and the
+renderer decides how to pay for it: up to `--s4` out of the widget's padding,
+with the boxes still tiling; past it the padding stays pinned at its
+permission and the **canvas** pays, by taking room out of the box rectangle so
+the boxes stop sharing edges and the wall's own ground opens between them.
+That is the honest reading of "room the boxes do not own". Seven rungs, the
+top two spending `--s3` and then `--s5` of the canvas budget, for a widest
+gutter of `--s4 + --s5` — the sum of the two permissions and nothing beyond
+either.
+
+Three things in it are load-bearing and none is obvious from the diff.
+**A box gives up half the gutter on each side that is not the edge of the
+layout**, which is what lets the placement be decided per box with no
+adjacency graph — two boxes that share an edge each give up half and end up a
+full gutter apart — and, more importantly, is what stops an airier wall
+letterboxing itself: Classic's boxes were reworked to *tile* because the wall
+was losing a third of itself to margins it did not need, and insetting every
+side would hand that border straight back. **`--bw`/`--bh` stay the authored
+fractions** and `.fw` nets `--buw`/`--buh` of what the box lost, or a widget
+that sizes its own type against its box sizes for room the canvas has just
+taken. And **the two mechanisms are not interchangeable even where the
+arithmetic agrees**: for a widget with no background they move content by the
+same distance, but on a theme that draws a widget as a card, padding grows the
+card where an inset opens a gap *between* cards — which is what a household
+asking for an airier wall is actually asking for.
 
 What it is:
 
@@ -266,7 +291,9 @@ What it is:
   emitted as a null, so a household who never opens the setting sends the
   bytes they sent before and no stored ETag churns. Out of the ladder is
   refused rather than clamped, which is `physicalWall`'s rule one setting
-  along.
+  along. The airier half widened the ladder from five rungs to seven and
+  touched no schema: the column already held an integer and the step's
+  *meaning* is the display's table.
 - One custom property, `--fw-gutter`, written on the layout by `renderFreeform`
   and read by exactly one rule: `.fw`'s `padding: calc(var(--fw-gutter,
   var(--s4)) / 2)`. The fallback is the whole of rule nine here — an absent
@@ -289,10 +316,27 @@ What it is:
 
 Verified as §10 asks: `browser-canvas-gutter.test.ts` measures the gap between
 two adjacent widgets' **content** edges on a real paired Classic wall at
-1080x1920 — zero at step 0, and `--s4` at step 4 read off a probe planted in
-the same layout so every `var()` resolves through the live cascade — with no
-run under the floor at either end, and a block of its own for the wall nobody
-has asked, which is the one the `.fw` fallback exists for. `wall-density` and
+1080x1920 — zero at step 0, `--s4` at step 4 and `--s4 + --s5` at the top, each
+read off a probe planted in the same layout so every `var()` resolves through
+the live cascade — with the gap growing at every rung and never shrinking, the
+widest padding any box spends pinned at `--s4` across the airier rungs (the two
+budgets staying separate), the boxes still reaching all four edges of the
+layout at every rung, no run under the floor at either end, and a block of its
+own for the wall nobody has asked, which is the one the `.fw` fallback exists
+for.
+
+**Two assertions written for the airier half could not turn red and the
+probing is why they were replaced.** Whether anything *overflows* its box
+cannot see `--buw`/`--buh` being netted: `.clock` is a block, so its
+`scrollWidth` is its parent's width until the text is genuinely wider, and on
+this fixture it fits at either size. Nor can a 12-hour clock, which is where
+this went next on the strength of this repository's own note that "08:26 pm"
+puts the clock on its *width* term — measured on the live wall, the clock here
+is bound by its **height** term and the width one never binds. What is
+observable is the **proportion**: 89.9px of type in a 173px box at the default
+rung and 78.0px in a 150px box at the airiest, the same 0.52 twice, because the
+widget followed its box down. Reverting the netting moves it to 0.60 and the
+file goes red with that sentence. `wall-density` and
 `browser-classic-proportions` were run on a clean worktree of `main` and on
 the branch at the same pinned hour: with the column null every `BASELINE`
 number is unmoved. Six mutations were checked and all six are red, including
