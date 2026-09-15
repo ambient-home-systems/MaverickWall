@@ -1,8 +1,24 @@
 # RFC 010 — The agenda, redrawn (what to take from Calendar Card Pro)
 
-Status: **proposed, nothing built** · Owner: — · First drafted 2026-08-21 ·
+Status: **built** (phases 0–4) · Owner: — · First drafted 2026-08-21 ·
+Status line corrected 2026-09-15 ·
 Builds on the display's widget model (`renderWidget`, `viewmodel.ts`,
 `render.ts`) and RFC 005 (the free-form canvas)
+
+> **Status corrected 2026-09-15.** The header read "proposed, nothing built"
+> under four update notes saying phases 0 to 3 were built, which is this
+> document contradicting itself on its own first line. Phase 4 landed too:
+> `weekNumber` is in `packages/core/src/time/civil.ts`, honours `week_start`
+> through `weekScheme`, and is stamped on every manifest day.
+>
+> **One defect in phase 4 is live and is worth reading before trusting the
+> feature.** "Show week numbers" draws nothing on five days out of seven. The
+> grid starts on the household's week start — up to six days before the
+> manifest window, which begins at `today - 1` — so those leading cells carry
+> no manifest day, `HorizonCell.weekNumber` is `day?.weekNumber` and therefore
+> `undefined` (`viewmodel.ts`), and `render.ts` only draws the column when
+> *every* row can be labelled. The gate is right; the input is short. It is
+> noted at both declarations and still unfixed.
 
 > **Correction — there is no block model any more, and this RFC was drafted as
 > if there were.** `main.ts` says it plainly: *"Every wall is free-form now —

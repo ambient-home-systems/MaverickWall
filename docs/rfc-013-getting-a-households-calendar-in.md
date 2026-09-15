@@ -1,7 +1,7 @@
 # RFC 013 — Getting a household's calendar in
 
-Status: **Phases A and B shipped; Phase C's transport shipped, the rest of
-Phase C not started** · Owner: — · First drafted 2026-09-13 ·
+Status: **Phases A, B and C shipped; D not started** · Owner: — ·
+First drafted 2026-09-13 · Status line corrected 2026-09-15 ·
 Relates to `apps/server/src/db/schema.ts` (`calendar_sources`),
 `apps/server/src/api/test-feed.ts`, `apps/server/src/jobs/ics-sync.ts`,
 `apps/server/src/jobs/ha-calendar-sync.ts`,
