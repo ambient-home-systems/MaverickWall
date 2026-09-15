@@ -1,10 +1,24 @@
 # RFC 005 — Canvas-first displays with a template gallery
 
-Status: **proposed** · Owner: — · First drafted 2026-08-13 ·
+Status: **built** (phases 0–3) · Owner: — · First drafted 2026-08-13 ·
+Status line corrected 2026-09-15 ·
 Builds on the free-form layout that shipped in v0.1.5 (`layout_mode`,
 `layout_widgets`, `renderFreeform`, the `/admin/layout` editor) and the
 first-party `WIDGET_TYPES` allowlist where [RFC 001](./rfc-001-module-framework.md)'s
 "data crosses the boundary, code never does" posture lives.
+
+> **Status corrected 2026-09-15.** The header read "proposed" long after every
+> phase had landed, this one included — the two canvases, the add-a-display flow,
+> the gallery and its templates, and both halves of Part D. Checked against the
+> code rather than the prose: the Layers popover and the snap grid are in
+> `layout-editor.ts`, per-display settings are the wall page's two panes
+> (RFC 009 phase 4), **match-resolution** is `screens.report_w`/`report_h` fed by
+> the wall's own poll, and **phase 3's backgrounds** are
+> `screens.layout_background`/`layout_landscape_background` with `bgFrom` reading
+> them in `render.ts`. What is left is the open questions at the foot — of which
+> "whether the Adaptive template is editable" is moot, the `auto` layout having
+> been retired — and reusable profiles / Linked Displays, which this document
+> already defers to an RFC of its own.
 
 > **Update — the Calendar widget's "Show as" control is now labelled "Style".**
 > Part C below describes it under its original name. The options and the stored

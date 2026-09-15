@@ -1,8 +1,19 @@
 # RFC 006 — eInk (e-paper) screens
 
-Status: **phase 1 built (in code, tested); unproven on hardware** · Owner: — ·
-First drafted 2026-08-13 · Builds on the display token / `screens` model and
-RFC 001 (modules)
+Status: **phases 1 and 2 built, with the proportional, tier and type work that
+followed; phase 3 (colour) not started; unproven on hardware** · Owner: — ·
+First drafted 2026-08-13 · Status line corrected 2026-09-15 · Builds on the
+display token / `screens` model and RFC 001 (modules)
+
+> **Status corrected 2026-09-15.** The header named phase 1 while phase 2 had
+> shipped in v0.29.0 and a good deal more has landed since — `epaper/metrics.ts`
+> (every layout number as arithmetic on the panel), `tiers.ts`/`type-tiers.ts`,
+> the three bitmap faces, `glyphs.ts`, and the refresh-stability contract. None
+> of that is recorded in the phase list below, which still reads as three
+> phases. **Phase 3 is untouched**: `panel_colour` carries `bw | bwr | spectra6`
+> and only `bw` renders. The Open items list is corrected in place where three
+> of its entries have since been closed; the rest of it stands, and the first
+> item on it — real hardware — still gates everything.
 
 > **Update — phase 1 is implemented.** The B/W PNG + ESPHome path below is built
 > and tested: migration `0029` (additive columns on `screens`), a pure 1-bit
@@ -25,10 +36,12 @@ RFC 001 (modules)
 > decoder. `renderScreenFrame` draws the canvas when a screen is `freeform`, and
 > the widgets join the ETag preimage so an edit reaches the panel. The design
 > page carries a **live 1-bit preview** (`/admin/epaper/<id>/preview.png`),
-> because the editor's own DOM preview has colour a panel does not. Not yet done:
-> the editor's palette is not *restricted* to the 1-bit-legible subset (that
-> needs a display-bundle change), a `week`-mode calendar falls back to the list,
-> and the same real-hardware bar still stands.
+> because the editor's own DOM preview has colour a panel does not. Not yet done
+> *as written in 2026-08*: the editor's palette is not *restricted* to the
+> 1-bit-legible subset (that needs a display-bundle change), a `week`-mode
+> calendar falls back to the list, and the same real-hardware bar still stands.
+> Of those three, only the palette and the hardware still stand — a `week` view
+> is `drawWeekBox` now. See the Open items list, corrected in place.
 
 ## Summary
 
@@ -378,13 +391,19 @@ renderer risks polishing the wrong thing.
   the colour / gradient / shadow / opacity controls are shown but ignored.
 - The **`image` widget is a placeholder** — a real dithered photo needs a
   server-side PNG/JPEG decoder (grayscale → Bayer). Worth doing; not free.
-- **`week`-mode calendar falls back to the agenda list** — there is no 1-bit
-  week-columns draw.
-- **weather / Home Assistant / external** draw through a tolerant generic panel
-  reader (`panelLines`), not dedicated draws — no weather glyphs, no forecast
-  row. Functional but plain.
-- The **live preview polls every 4s** rather than refreshing the instant the
-  editor saves; hooking the editor's save event would make it immediate.
+- ~~**`week`-mode calendar falls back to the agenda list**~~ **Closed.**
+  `calendarView(config)` resolves the view and `drawWeekBox` draws it, so a
+  panel and the wall it follows read one stored value the same way.
+- ~~**weather / Home Assistant / external** draw through a tolerant generic
+  panel reader~~ **Closed for two of the three.** `drawWeather` and `drawHouse`
+  are dedicated draws, and the forecast has real glyphs — a first-party
+  vocabulary in `epaper/glyphs.ts`, drawn as 1-bit cells, because the emoji this
+  list assumed were deleted outright by `asciiTitle`. A module's panel
+  (`external`) still goes through `drawPanel`, which is right: the rows are the
+  module's and this renderer has no opinion about somebody else's data.
+- ~~The **live preview polls every 4s**~~ **Closed.** The panel's backdrop is
+  re-fetched on change (`scheduleEpaperPreview`), debounced, rather than on a
+  timer.
 
 **3. Scope the RFC deferred:**
 - **Colour panels (phase 3):** tri-colour B/W/R (the two-plane `.bin` path plus a

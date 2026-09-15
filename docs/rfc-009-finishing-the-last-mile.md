@@ -1,10 +1,43 @@
 # RFC 009 — Finishing the last mile
 
-Status: **Phases 0, 1, 2, 3.1–3.3, 4 and 5 built; 6 to 7 proposed** · Owner: — ·
-First drafted 2026-08-24 ·
+Status: **Phases 0–5 built; 6 and 7 substantially delivered** · Owner: — ·
+First drafted 2026-08-24 · Status line corrected 2026-09-15 ·
 Arises from a full audit of the running application (built from a checkout,
 paired to a real screen, measured in a browser at six widths) rather than from
 a new feature
+
+> **Status corrected 2026-09-15.** The header read "6 to 7 proposed" while
+> nearly all of both had shipped. Phase 6's five assertions exist —
+> `admin-design-drift.test.ts` holds every `font-size` to a role and every
+> spacing value to the scale, reads every token it declares, `design-tokens.test.ts`
+> derives its pairs from the stylesheet, and `theme.test.ts` is `describe.each`
+> over all five themes — plus the two token changes (`.hint` on `--mw-ink-2`, the
+> light themes' shift hues darkened) and the ETag'd `assets/admin.css`. Phase 7
+> is done bar the items below: conditional fields are `data-cond`, touch targets
+> are `--mw-touch` under `max-width:900px`, the alert ladder carries a state chip
+> and an overflow action, the disclaimer is a `noticeBlock`, the coordinates read
+> "e.g. 38.8894", the three SSRF opt-ins are one shared `<details>`, `ago()` is
+> one function in `http/presence.ts`, the reserved suffixes have their own
+> message, `/healthz` answers 503, the display bundle ships no source maps, and
+> `docs/` gained upgrading, moving machine and a forgotten-password section.
+>
+> **What is left of 6 and 7**, verified rather than assumed:
+>
+> - Two contrast pairs remain on `design-tokens.test.ts`'s burn-down list —
+>   `ink-3 on surface-3` at 2.95 against a bar of 3, and `ok on surface-3` at
+>   4.21 against 4.5. The rest of that list is the `accent-ink` fan-out, which
+>   the file explains is a limit of the derivation rather than a defect.
+> - **There is still no password-recovery path on the add-on.** Phase 7 called
+>   this "the real hole" and what closed was the documentation, not the hole:
+>   `troubleshooting.md` offers a backup restore or hand-edited SQL, and the
+>   add-on has no shell to run the second in.
+>
+> And one thing this document does not record at all: **phases 8, 9, 10A, 10B
+> and 11 happened.** RFCs 014, 015 and 016 each cite "RFC 009 phases 10A/10B"
+> as the component layer they build on, `components.ts` and
+> `admin-component-drift.test.ts` are on `main`, and the phase list here stops
+> at 7. Writing those phases up is left as its own change rather than invented
+> here from the code.
 
 ## Summary
 

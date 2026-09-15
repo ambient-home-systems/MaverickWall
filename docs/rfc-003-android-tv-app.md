@@ -1,7 +1,20 @@
 # RFC 003 — The Android / Google TV app
 
-Status: **draft** · Owner: — · First drafted 2026-08-12 ·
+Status: **built** (phases 0–4); unproven on real hardware · Owner: — ·
+First drafted 2026-08-12 · Status line corrected 2026-09-15 ·
 Relates to `apps/display`, `apps/server/src/api/push.ts`, `apps/server/src/http/app.ts`
+
+> **Status corrected 2026-09-15.** The header read "draft" while all five phases
+> below carried ✅ and the code is on `main`: `net/push-hub.ts`, `net/mdns.ts`,
+> `auth/device-flow.ts`, `apps/android/`, and `release.yml`'s `android` job
+> attaching a signed APK to every Release. What remains is the **verification
+> bar** — a real Google TV cold-booting into the wall, a real tablet waking for a
+> seeded tornado warning, a real remote's OK clearing a banner, a TV cold-pairing
+> from the QR — and the Play Store / TV listing, which is deliberately later.
+>
+> Note for a reader arriving from `CLAUDE.md`'s "not started: ws push": the
+> server half and this app's client are done. The **browser** wall still polls
+> and opens no socket, which is RFC 009's non-goal rather than a gap here.
 
 ## Summary
 

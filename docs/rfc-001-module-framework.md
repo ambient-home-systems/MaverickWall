@@ -1,6 +1,17 @@
 # RFC 001 — Third-party module framework
 
-Status: **accepted, in progress** · Owner: — · First drafted 2026-08-10
+Status: **built** (phases 0, 1, 2a and 2b) · Owner: — · First drafted 2026-08-10 ·
+Status line corrected 2026-09-15
+
+> **Status corrected 2026-09-15.** The header read "accepted, in progress" while
+> every phase below but one had been marked **DONE** in its own bullet for
+> releases, and phase 3's two named deliverables — a docs page and a directory of
+> known modules — shipped as [`building-a-module.md`](./building-a-module.md) and
+> the in-repo store ([RFC 002](./rfc-002-module-catalog-and-recipes.md)). What is
+> genuinely open is the one line phase 2 already names: **per-module config passed
+> through** for a *service* module, which Decision 2 declines on purpose (a module
+> self-configures in its own UI; Maverick Wall stores URL, enable and order). A
+> recipe module has had a config prompt since RFC 002 A2.
 
 ## Summary
 
