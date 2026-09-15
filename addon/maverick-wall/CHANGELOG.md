@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.65.0
+
 **Adding a wall or panel is two buttons, not two sentences.** `/admin/walls`
 used to bury "Pair a new wall" and "Add an e-paper wall" as links in a
 paragraph below all your cards. They're an action row at the top now: **Pair
